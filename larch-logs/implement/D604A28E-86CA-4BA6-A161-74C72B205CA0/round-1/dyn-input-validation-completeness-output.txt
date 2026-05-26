@@ -1,0 +1,16 @@
+Reviewing branch changes against the plan, starting with the pre-computed diff and commit history.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **correctness** `scripts/tracking-issue-read.sh:278-290` — The sentinel path is correct: `extract_sentinel_key` strips trailing `\r` at line 279 before the new `case` guards at lines 285–290, so CRLF-terminated numeric `ISSUE_NUMBER` / charset-valid `RUN_ID` values still pass. The Bash 3.2 `*[!0-9]*` and `*[!A-Za-z0-9._-]*` patterns correctly reject non-empty malformed values while allowing empty strings (empty does not contain a disallowed byte). The trailing `-` in `[A-Za-z0-9._-]` is valid literal placement.
+
+- **correctness** `scripts/get-issue-state.sh:46-54` — Numeric `--issue` validation is ordered correctly: the existing empty check preserves `ERROR=--issue is required`; only non-empty non-numeric values hit the new guard. This matches the plan and existing caller contracts.
+
+- **risk-integration** `scripts/implement-bootstrap.sh:428-452` — Malformed sentinel fields now fail inside `tracking-issue-read.sh` with `read_rc=1` / `FAILED=true` instead of emitting bad values and failing later in `valid_issue_number` / `valid_run_id`. The bootstrap recovery path (“Clearing sentinel and re-adopting”) is unchanged.
+
+- **architecture** `scripts/tracking-issue-read.sh:275-281` — Embedded-newline sentinel injection remains outside post-extraction validation because `grep -m1` is line-oriented; this is an intentional, documented scope limit (harness cases p–w pin same-line invalid bytes only). Not a regression introduced by this branch.
+
+- **security** `scripts/tracking-issue-read.sh:291-294` — Pre-existing asymmetry: invalid `ADOPTED` values still echo the rejected value verbatim in `ERROR=`, while new `ISSUE_NUMBER` / `RUN_ID` guards use the fixed `'malformed-value-omitted'` token. Not introduced by this diff.

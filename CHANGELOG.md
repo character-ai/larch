@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.5.15] - 2026-05-25
+
+### Changed
+
+- Harden script issue-number boundaries with numeric self-validation before gh calls
+- Validate non-empty tracking sentinel ISSUE_NUMBER and RUN_ID values with fixed-token malformed-value errors
+- Add and wire offline regression coverage for the new validation contracts
+
 ## [42.5.14] - 2026-05-25
 
 ### Changed

@@ -26,6 +26,10 @@
 #   TASK_SOURCE=issue-plus-prompt|issue-only|prompt  (omitted for --sentinel)
 #   TASK_FILE=<path>                                  (omitted for --sentinel)
 #   RUN_ID=<id or empty>                              (only --sentinel)
+#   In --sentinel mode, non-empty ISSUE_NUMBER must be all digits and
+#   non-empty RUN_ID must match [A-Za-z0-9._-]+. Empty values pass through as
+#   "sentinel unusable"; malformed values fail with a fixed-token ERROR that
+#   does not echo the malformed value.
 #   ADOPTED=<true|false|>                             (only --sentinel; strict
 #                                                      contract: 'true' or
 #                                                      'false' when the key is
@@ -223,6 +227,12 @@ else
     fi
 fi
 
+if $HAVE_ISSUE; then
+    case "$ISSUE" in
+        *[!0-9]*) fail_usage "--issue must be numeric" ;;
+    esac
+fi
+
 # --sentinel branch: parse local markdown file, emit KEY=values.
 #
 # Contract (pinned by #359 for Phase 3 consumption):
@@ -241,6 +251,9 @@ fi
 #     Anything else → FAILED=true ERROR=... exit 1. Empty/absent means
 #     "sentinel unusable" and consumers MUST fall back to their
 #     fresh-creation path — NEVER treat empty as equivalent to "false".
+#   - ISSUE_NUMBER and RUN_ID are validated only when non-empty. Invalid
+#     values use fixed-token ERROR messages so malformed bytes are not echoed
+#     into the KEY=VALUE stdout stream.
 if $HAVE_SENTINEL; then
     if [[ ! -f "$SENTINEL" ]]; then
         emit_kv FAILED true
@@ -269,6 +282,12 @@ if $HAVE_SENTINEL; then
     ISSUE_NUMBER_VAL=$(extract_sentinel_key ISSUE_NUMBER)
     RUN_ID_VAL=$(extract_sentinel_key RUN_ID)
     ADOPTED_VAL=$(extract_sentinel_key ADOPTED)
+    case "$ISSUE_NUMBER_VAL" in
+        *[!0-9]*) emit_kv FAILED true; emit_kv ERROR "invalid ISSUE_NUMBER in sentinel: ISSUE_NUMBER: 'malformed-value-omitted'"; exit 1 ;;
+    esac
+    case "$RUN_ID_VAL" in
+        *[!A-Za-z0-9._-]*) emit_kv FAILED true; emit_kv ERROR "invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'"; exit 1 ;;
+    esac
     if [[ -n "$ADOPTED_VAL" && "$ADOPTED_VAL" != "true" && "$ADOPTED_VAL" != "false" ]]; then
         emit_kv FAILED true
         emit_kv ERROR "invalid ADOPTED value in sentinel: '$ADOPTED_VAL' (expected 'true' or 'false' or absent)"

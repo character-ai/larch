@@ -28,6 +28,7 @@ ERROR=<single-line>
 
 ## Behavior notes
 
+- **Self-validation**: `--issue` is checked for non-empty first, then validated as numeric before repo resolution or `gh` invocation. Non-empty non-numeric values fail with `FAILED=true` and `ERROR=--issue must be numeric`.
 - `gh` returns the URL of whatever `<N>` resolves to, including pull-request URLs, because `gh issue view` accepts a number and dispatches against either issue or PR objects sharing the repo's number namespace. The `/pull/` substring check is the load-bearing PR-vs-issue discriminator and matches the inline rule SKILL.md previously used.
 - The script does not encode the SKILL.md branching ("if `IS_PR=true`, abort; if `STATE=CLOSED`, emit `IMPLEMENT_BAIL_REASON=adopted-issue-closed`"). Callers consume the envelope and apply the policy. Keeping policy out of the wrapper means future **Step 0** adoption-branch changes (e.g., honoring `STATE=DRAFT` PRs differently) do not require touching this script.
 
@@ -37,4 +38,6 @@ Update this file when the wrapper grows new fields (e.g., `LABELS=`), when the `
 
 ## Test harness
 
-No sibling regression harness yet — the wrapper is a thin one-call delegate. The two-line policy logic (PR check, CLOSED check) is exercised end-to-end by every `/implement --issue` adoption run.
+`scripts/test-get-issue-state.sh` is the offline regression harness for this wrapper. It is wired as Makefile target `test-get-issue-state` and registered in shard `test-harnesses-18`.
+
+Coverage pins numeric `--issue` validation, preserved missing-argument behavior, valid numeric values reaching the `gh` boundary, `gh` failure envelopes, and the success envelope (`STATE=`, `URL=`, `IS_PR=`) with a PATH-stubbed `gh`.

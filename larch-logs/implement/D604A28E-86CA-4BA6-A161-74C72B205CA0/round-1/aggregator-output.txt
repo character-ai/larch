@@ -1,0 +1,4 @@
+Verifying key code sections to merge findings accurately and confirm overlap.
+Checking whether `get-issue-state.sh` emits `FAILED=true` and how cases (t)/(u) compare:
+Producing normalized aggregator output. In-scope: six merged findings; out-of-scope: six `OOS_N` blocks.
+

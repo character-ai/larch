@@ -2,42 +2,57 @@
 
 ## Purpose
 
-Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.sh`. Pins the `ADOPTED=` field contract defined by issue #359 for Phase 3 consumption.
+Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.sh`. It pins the `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` field contracts, plus the usage-level numeric validation for argv `--issue`.
 
 ## Invariants
 
 1. **Allowed `ADOPTED` values**: exactly `true` or `false` when the key is present with a valid value, or empty (key absent or explicit `ADOPTED=`). No other non-empty value is accepted — strict equality on the extracted value (case-sensitive, no whitespace trimming other than trailing `\r`).
-2. **Absence semantics**: an empty `ADOPTED=` line means "sentinel unusable". Absent key and explicit empty are semantically identical on stdout. Consumers MUST NOT treat empty as `false`.
-3. **Parser behavior**:
+2. **Allowed `ISSUE_NUMBER` values**: any non-empty extracted value must match `^[0-9]+$`. Empty and missing values pass through as `ISSUE_NUMBER=`.
+3. **Allowed `RUN_ID` values**: any non-empty extracted value must match `^[A-Za-z0-9._-]+$`. Empty and missing values pass through as `RUN_ID=`.
+4. **Absence semantics**: empty sentinel fields mean "sentinel unusable". Absent keys and explicit empty keys are semantically identical on stdout. Consumers MUST NOT treat empty `ADOPTED=` as `false`.
+5. **Parser behavior**:
    - Column-0 keys only: indented lines are silently treated as absent.
    - First match wins for duplicate keys (`grep -m1`).
    - Leading UTF-8 BOM stripped from the sentinel file's content before parsing.
    - Trailing `\r` stripped from extracted values (CRLF tolerance).
-   - Other trailing whitespace NOT stripped (e.g., a value like `true` followed by a trailing space is rejected).
-4. **Stdout shape on success**: exactly two lines — `ISSUE_NUMBER=<val>\n`, `ADOPTED=<val>\n` — in that order.
-5. **Stdout shape on failure**: exactly two lines — `FAILED=true\n` followed by `ERROR=<single-line message>\n` — and exit 1.
+   - Other trailing whitespace NOT stripped.
+6. **Malformed-value no-echo**: invalid `ISSUE_NUMBER=` and `RUN_ID=` errors use the fixed token `'malformed-value-omitted'` and never echo the malformed value verbatim in stdout.
+7. **Stdout shape on success**: exactly three lines — `ISSUE_NUMBER=<val>\n`, `RUN_ID=<val>\n`, `ADOPTED=<val>\n` — in that order.
+8. **Stdout shape on failure**: exactly two lines — `FAILED=true\n` followed by `ERROR=<single-line message>\n` — and exit 1.
+9. **Newline-injection scope**: the harness intentionally does not pin embedded-newline rejection for sentinel values. `extract_sentinel_key` is line-oriented (`grep -m1 ... | sed ...`), so a literal newline in the file becomes a separate physical line and is not exposed to the post-extraction case-pattern validator. Same-line invalid bytes (space, slash, tab, non-trailing CR) are pinned.
 
-## Test cases (15 total)
+## Test cases (28 total)
 
-| ID | Input                                      | Expected exit | Expected stdout (exact)                                                                                      |
-|----|--------------------------------------------|---------------|--------------------------------------------------------------------------------------------------------------|
-| a  | `ADOPTED=true`                             | 0             | `ISSUE_NUMBER=\nADOPTED=true\n`                                                          |
-| b  | `ADOPTED=false`                            | 0             | `ISSUE_NUMBER=\nADOPTED=false\n`                                                         |
-| c  | empty file                                 | 0             | `ISSUE_NUMBER=\nADOPTED=\n`                                                              |
-| d  | `ADOPTED=` (explicit empty)                | 0             | same as (c)                                                                                                  |
-| e  | `ADOPTED=yes`                              | 1             | `FAILED=true\nERROR=invalid ADOPTED value in sentinel: 'yes' (expected 'true' or 'false' or absent)\n`        |
-| f  | `ADOPTED=TRUE`                             | 1             | envelope names `'TRUE'`                                                                                      |
-| g  | `ADOPTED=1`                                | 1             | envelope names `'1'`                                                                                         |
-| h  | `ADOPTED=true` + trailing space            | 1             | envelope names the trailing-space value                                                                      |
-| i  | sentinel file does not exist              | 1             | `FAILED=true\nERROR=sentinel file not found: <path>\n`                                                       |
-| j  | all two keys valid                       | 0             | `ISSUE_NUMBER=123\nADOPTED=true\n`                                                    |
-| k  | duplicate `ADOPTED=` lines                 | 0             | first wins: `ADOPTED=true`                                                                                   |
-| l  | CRLF on ALL two keys                     | 0             | `\r` stripped from every value: `ISSUE_NUMBER=123\nADOPTED=true\n`                    |
-| m  | UTF-8 BOM-prefixed file                    | 0             | BOM stripped: first key on first line parses correctly                                                       |
-| n  | leading whitespace before key              | 0             | column-0 rule: line unmatched, emits `ADOPTED=`                                                              |
-| o  | sentinel file exists but unreadable (mode 000) | 1         | `FAILED=true\nERROR=sentinel file not readable: <path>\n` (skipped when running as root — chmod 000 is bypassed by root) |
-
-Happy-path cases (a, b, c, d, j, k, l, m, n) use `assert_equal_stdout` against the full expected stdout string to pin exact 3-line shape and ordering. Failure cases (e, i, o) assert the exact envelope; cases (f, g, h) use `assert_contains` to verify the quoted rejected value appears in the ERROR line.
+| ID | Input | Expected |
+|---|---|---|
+| a | `ADOPTED=true` | exit 0, exact three-line stdout with empty `ISSUE_NUMBER` and `RUN_ID` |
+| b | `ADOPTED=false` | exit 0, exact three-line stdout |
+| c | empty file | exit 0, all three keys emitted empty |
+| d | `ADOPTED=` | exit 0, same as empty file |
+| e | `ADOPTED=yes` | exit 1, exact invalid-ADOPTED envelope |
+| f | `ADOPTED=TRUE` | exit 1, envelope names `'TRUE'` |
+| g | `ADOPTED=1` | exit 1, envelope names `'1'` |
+| h | `ADOPTED=true` plus trailing space | exit 1, envelope names trailing-space value |
+| i | sentinel file missing | exit 1, exact not-found envelope |
+| j | `ISSUE_NUMBER=123`, `ADOPTED=true`, no `RUN_ID` | exit 0, `RUN_ID=` |
+| j2 | `ISSUE_NUMBER=456`, `RUN_ID=abc123`, `ADOPTED=false` | exit 0, exact three-line stdout |
+| k | duplicate `ADOPTED=` lines | exit 0, first wins |
+| l | CRLF on sentinel keys | exit 0, trailing `\r` stripped |
+| m | UTF-8 BOM-prefixed file | exit 0, first key parses |
+| n | leading whitespace before key | exit 0, indented key treated as absent |
+| o | unreadable sentinel file | exit 1, exact unreadable envelope; skipped as root |
+| p | `ISSUE_NUMBER=abc` | exit 1, fixed-token invalid-ISSUE_NUMBER error |
+| q | `ISSUE_NUMBER=12.3` | exit 1, fixed-token invalid-ISSUE_NUMBER error |
+| r | explicit empty `ISSUE_NUMBER=` | exit 0, empty pass-through |
+| s | missing `ISSUE_NUMBER` | exit 0, empty pass-through |
+| t | `RUN_ID=has space` | exit 1, fixed-token invalid-RUN_ID error, malformed value omitted |
+| u | `RUN_ID=path/traversal` | exit 1, fixed-token invalid-RUN_ID error, malformed value omitted |
+| v | `RUN_ID` with embedded tab | exit 1, fixed-token invalid-RUN_ID error |
+| w | `RUN_ID` with non-trailing CR | exit 1, fixed-token invalid-RUN_ID error |
+| x | explicit empty `RUN_ID=` | exit 0, empty pass-through |
+| y | missing `RUN_ID` | exit 0, empty pass-through |
+| z | `ISSUE_NUMBER=42`, `RUN_ID=run-1.0_test-abc`, `ADOPTED=true` | exit 0, exact three-line stdout |
+| aa | argv `--issue abc --out-dir <path>` | exit 1, `FAILED=true ERROR=usage: --issue must be numeric` before out-dir or `gh` work |
 
 ## Makefile wiring
 
@@ -51,11 +66,11 @@ The harness is Makefile-only (not referenced from any `SKILL.md`), so agent-lint
 
 | File | Relationship |
 |---|---|
-| `scripts/tracking-issue-read.sh` | Script under test. Every behavioral change in its `--sentinel` branch must be mirrored here — add / update assertions in the same PR. |
-| `scripts/tracking-issue-read.md` | Canonical contract document. Any new allowed `ADOPTED` value or parser behavior change requires updating the contract AND the harness in sync. |
-| `Makefile` | The `test-tracking-issue-read-sentinel` recipe and one `test-harnesses-N:` shard invoke this harness. Adding / removing targets must stay in sync with the `.PHONY` line. |
+| `scripts/tracking-issue-read.sh` | Script under test. Every behavioral change in its `--sentinel` branch or argv `--issue` validation must be mirrored here. |
+| `scripts/tracking-issue-read.md` | Canonical contract document. Any field-contract or parser behavior change requires updating the contract and harness in sync. |
+| `Makefile` | The `test-tracking-issue-read-sentinel` recipe and one `test-harnesses-N:` shard invoke this harness. Adding or removing targets must stay in sync with the `.PHONY` line. |
 | `agent-lint.toml` | Exclusion entry for this Makefile-only harness. |
 
 ## Conventions
 
-Bash 3.2-safe. No external `gh` stub needed — `--sentinel` mode is purely local (no network).
+Bash 3.2-safe. No external `gh` stub needed for sentinel mode; the argv validation case exits before `gh`.

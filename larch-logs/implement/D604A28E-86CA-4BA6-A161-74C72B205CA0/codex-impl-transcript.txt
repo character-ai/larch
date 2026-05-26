@@ -1,0 +1,18 @@
+Implemented the input-validation hardening and wrote the required manifest with `status=complete`.
+
+Changed:
+- Added numeric `--issue` validation in [scripts/get-issue-state.sh](<OPERATOR_REPO_PATH>/scripts/get-issue-state.sh) and [scripts/tracking-issue-read.sh](<OPERATOR_REPO_PATH>/scripts/tracking-issue-read.sh).
+- Added non-empty sentinel `ISSUE_NUMBER` and `RUN_ID` validation with fixed `'malformed-value-omitted'` errors.
+- Added [scripts/test-get-issue-state.sh](<OPERATOR_REPO_PATH>/scripts/test-get-issue-state.sh) and extended [scripts/test-tracking-issue-read-sentinel.sh](<OPERATOR_REPO_PATH>/scripts/test-tracking-issue-read-sentinel.sh).
+- Wired the new harness into `Makefile`, `agent-lint.toml`, and updated contract/security docs.
+
+Verification passed:
+- `bash scripts/relevant-checks.sh`
+- `make test-get-issue-state`
+- `make test-tracking-issue-read-sentinel`
+- `make test-harness-shards-coverage`
+- `make lint-bash32`
+- `make test-implement-bootstrap`
+- `git diff --check`
+
+`qa-pending.json` was not written because QA is not needed.
