@@ -546,7 +546,8 @@ export PATH="$TMPPRESC/findstub:$stub_presc:$PATH"
 mkdir -p "$TMPPRESC/design/plan-review/round-1"
 printf 'body\n' >"$TMPPRESC/design/plan.txt"
 printf 'ok\n' >"$TMPPRESC/design/plan-review/round-1/findings-classification.tsv"
-export ESCAPE_FIND_ROOT="$(cd "$TMPPRESC/design/plan-review" && pwd -P)"
+ESCAPE_FIND_ROOT="$(cd "$TMPPRESC/design/plan-review" && pwd -P)"
+export ESCAPE_FIND_ROOT
 export ESCAPE_FIND_PATH="$TMPPRESC/design/plan.txt"
 out_presc=$(
     (cd "$clone_presc" && bash "$PUBLISH" --design-tmpdir "$TMPPRESC/design" --run-id "RUNPRESC1" --issue 4 --repo owner/repo) 2>/dev/null || true
