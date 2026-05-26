@@ -1,0 +1,11 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- existing plan-review test suite uses the same per-case boilerplate pattern; factoring a helper adds complexity that exceeds the nit benefit
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- all three rejection paths fire larch_err+emit_publish_result false+exit 0 before any staging call; staged-then-failed scenario is physically impossible in this code
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch composition is a PR-review observation, not a concrete actionable issue worth filing; CI concern is ephemeral
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- residual gap is explicitly documented in SECURITY.md and the plan notes it is already tracked via OOS_2/OOS_4; re-filing would duplicate existing tracking
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer explicitly acknowledges this is by design under the same-user trust model; no actionable problem to file
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing, documented design decision; already addressed in prior reviews for this and adjacent PRs
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- "Symlinks at the top level are skipped" is semantically identical to the plan's "Top-level symlinks are skipped"; no automated grep-based acceptance check runs in this workflow
