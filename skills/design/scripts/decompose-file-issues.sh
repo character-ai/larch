@@ -94,14 +94,29 @@ for i, (pnum, title, body) in enumerate(pieces):
             dep = s.split(":", 1)[1].strip()
             break
     dep_lines.append(dep)
-    m = re.search(r"blocked-by\s+Piece\s+(\d+)", dep, re.I)
-    if m:
-        blocker = int(m.group(1))
-        if blocker not in index_by_num:
+    m_anchor = re.search(r"blocked-by\b(.*)$", dep, re.I)
+    if m_anchor:
+        remainder = m_anchor.group(1)
+        segments = [seg.strip() for seg in re.split(r",|\s+and\b", remainder, flags=re.I)]
+        segments = [seg for seg in segments if seg]
+        if not segments:
             print("DECOMPOSE_PARTITION_STATUS=bad-dependency-ref", flush=True)
             sys.exit(2)
-        bi = index_by_num[blocker]
-        edges.append((bi, i))
+        seen = set()
+        for seg in segments:
+            sm = re.fullmatch(r"Piece\s+(\d+)", seg, re.I)
+            if not sm:
+                print("DECOMPOSE_PARTITION_STATUS=bad-dependency-ref", flush=True)
+                sys.exit(2)
+            blocker = int(sm.group(1))
+            if blocker in seen:
+                continue
+            seen.add(blocker)
+            if blocker not in index_by_num:
+                print("DECOMPOSE_PARTITION_STATUS=bad-dependency-ref", flush=True)
+                sys.exit(2)
+            bi = index_by_num[blocker]
+            edges.append((bi, i))
 
 adj = defaultdict(list)
 indeg = [0] * n
