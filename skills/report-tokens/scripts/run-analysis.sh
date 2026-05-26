@@ -1056,12 +1056,12 @@ def create_report_issue(records, analysis_text):
 
 def redact_issue_body(body):
     text = re.sub(
-        r'/(?:private/)?tmp/larch-report-tokens[^/\s"]*',
+        r'/(?:private/)?tmp/+larch-report-tokens[^/\s"]*',
         "<TMPDIR>",
         body,
     )
     text = re.sub(
-        r'/var/folders/[^/]+/[^/]+/T/larch-report-tokens[^/\s"]*',
+        r'/var/folders/[^/]+/[^/]+/T/+larch-report-tokens[^/\s"]*',
         "<TMPDIR>",
         text,
     )
