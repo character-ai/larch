@@ -1,0 +1,31 @@
+## Approach Synthesis
+
+### Sketch availability
+- **Cursor-Generic**: effectively empty (4 meta-lines: "Exploring...", "Creating the implementation plan...") — no architectural content returned. Treated as degenerate; contributes nothing to synthesis.
+- **Codex-Generic**: substantive 2-paragraph sketch, strongly recommends the narrow option (modify `ship-pr.sh` `run_per_job_local_fix_loop`).
+
+### Agreement
+- Both (insofar as Cursor said anything) and the bug report agree on the surface area: `lint-fix-loop.sh:322` head-changed-after-dispatch path and the `run_per_job_local_fix_loop` callsite in `ship-pr.sh`.
+- Safety concerns: verify behavior after the coder commit before pushing; never push an unverified HEAD.
+- Test surface: `scripts/test-ship-pr.sh` and `scripts/test-lint-fix-loop.sh` need updates.
+
+### Divergence
+- **Sketch vs. Round 1 (Decision 1 — Fix layer)**: Codex argues the fix belongs in `ship-pr.sh` because `lint-fix-loop.sh` is generic and cannot know whether a caller is allowed to accept a coder-created commit. Round 1 explicitly chose the **broad** fix in `lint-fix-loop.sh`. Round 1 decisions bind plan drafting (per `discussion-rounds.md` Round 1 invariant), so the plan follows the broad fix. Codex's generality concern is partially mitigated by Decision 2 (commit-content forbidden-path check) and fully owned by the parent caller (`_stage_and_push_ci_fixes` already handles "already-committed" HEAD correctly via `git-push.sh`).
+- **Sketch vs. Round 1 (Decision 2 — Forbidden-path safety)**: Codex did not address committed-content safety. Round 1 chose to add the commit-content check. Plan adopts the Round 1 stance.
+
+### Architectural decisions for the plan
+- Modify `scripts/lint-fix-loop.sh` at the head-changed-after-dispatch detection site (line 320-323): when HEAD changed, capture the diff between `baseline_head` and the new HEAD, run the forbidden-path check against committed content first, then emit `LINT_FIX_STATUS=applied` with `LINT_FIX_DELTA_PATHS_FILE` derived from the commit diff and `LINT_FIX_COMMIT_SHA` set to the new HEAD.
+- Preserve the existing `applied` emission shape (single source of `emit_kv` lines for `LINT_FIX_STATUS=applied` at line 362-368) by routing both the helper-owned-commit path and the coder-owned-commit path through it.
+- Add a small distinguishing field `LINT_FIX_HEAD_CHANGED=true` only when the coder committed, so future consumers (and tests) can identify the path. Existing consumers ignore unknown fields, so this is backward-compatible.
+- Do not touch `ship-pr.sh`'s `_rcc_handle_fix_status` mapping (the `head-changed` defensive branch stays as a fallback but becomes unreachable on the success path).
+
+### Pragmatism / safety highlights (from Codex sketch and codebase)
+- Forbidden-path enforcement on committed content uses `git diff --name-only "$baseline_head".."$current_head"` against `forbidden_paths_file`. If any forbidden path appears, `git reset --hard "$baseline_head"` and emit `LINT_FIX_STATUS=failed FAILURE_REASON=forbidden-path-violation`.
+- Detached-HEAD case (current HEAD undetermined) keeps existing failure: emit `head-changed-after-dispatch` failure status. The Round-1 broad fix only redefines the "HEAD moved on the same branch" case; "couldn't resolve HEAD" remains a genuine failure.
+- The delta-paths file for the coder-committed case lists files in `git diff --name-only baseline_head..current_head`. Note: in the helper-owned-commit case, the delta paths file is the working-tree diff captured *before* the helper commit (line 332-333). For symmetry, both files are populated, but consumers must treat them as the same kind of input.
+- Test surface ownership: `scripts/test-lint-fix-loop.sh` case1 currently asserts the failure path; rewrite to assert applied + forbidden-path-violation cases. `scripts/test-ship-pr.sh` ~line 3287-3304 currently asserts the stall-via-10-head-changed exit; rewrite to assert push-and-rerun semantics, OR delete and trust the lint-fix-loop test layer.
+
+### Failure modes incorporated into plan
+1. Coder commits an *invalid* fix (e.g., introduces a new failure). Outcome: `_stage_and_push_ci_fixes` pushes, `ci-wait.sh` re-enters, CI fails, the `FIX_ATTEMPTS` counter advances (line 1974), the budget runs out, normal stall path engages. Acceptable — same recovery as a helper-owned bad fix.
+2. Coder commits forbidden paths. Outcome: detection rejects with `forbidden-path-violation`, parent records failure, `_RCC_STATUS=dispatch-failed`, retry budget continues.
+3. Coder commits between `baseline_head` capture and `current_head` resolution but resolves to empty / detached. Outcome: still classified as `head-changed-after-dispatch` failure (preserves current safety net).
