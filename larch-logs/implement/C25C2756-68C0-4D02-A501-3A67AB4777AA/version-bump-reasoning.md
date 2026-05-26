@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `643a8bdc` (chore(larch-logs): flush design run CCC6D057-03EC-4E37-9D92-AAE8818A3CD2 [skip ci] (#2933))
-- **Current version**: `42.5.24`
+- **Base commit**: `5ed07901` (Fixes #2878: Harden ADOPTED sentinel error redaction (#2936))
+- **Current version**: `42.5.25`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.5.25`
+- **New version**: `42.5.26`
 
 ### PATCH rationale
 
