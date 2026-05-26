@@ -715,8 +715,8 @@ test-log-phase:
 	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-log-phase.sh
 
 # test-review-and-fix runs all sections sequentially (local-dev convenience, NOT a test-harnesses
-# prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh). CI uses the three
-# section targets below instead.
+# prerequisite — see CARVE_OUTS in scripts/test-harness-shards-coverage.sh). CI uses the four
+# section targets below instead: dispatch, convergence, parsers, and step5-starting-round.
 test-review-and-fix:
 	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-and-fix.sh
 

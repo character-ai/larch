@@ -112,7 +112,7 @@ run_implement_loop() {
         fi
         if ! step5_probe_prior_round_env "$IMPLEMENT_TMPDIR" "$prior_round_num"; then
             larch_err "IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR STARTING_ROUND=$STARTING_ROUND expected_env_path=$expected_env_path base_cap=$base_cap entry_prior_deg=$entry_prior_deg entry_effective_cap=$entry_effective_cap"
-            step5_emit_final_envelope stall false starting-round-invalid 0 "$STARTING_ROUND" unknown "" "" "$base_cap"
+            step5_emit_final_envelope stall false starting-round-invalid 0 "$STARTING_ROUND" unknown "" "" "$entry_effective_cap"
             exit 2
         fi
     fi

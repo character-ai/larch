@@ -2003,6 +2003,7 @@ if section_runs parsers; then
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
+    eval "$(declare -f count_prior_degraded_rounds | sed '1s/count_prior_degraded_rounds/step5_original_count_prior_degraded_rounds/')"
 
     # step5_parse_kv_tokens under set -e (positive / miss / empty line).
     (
@@ -2163,13 +2164,14 @@ if section_runs step5-starting-round; then
     }
 
     step5_run_loop_case() {
-        local case_name="$1" starting_round="$2" round_cap="$3" sync_mode="$4" body_mode="$5"
+        local case_name="$1" starting_round="$2" round_cap="$3" sync_mode="$4" body_mode="$5" prior_deg_mode="${6:-normal}"
         local case_dir="$step5_tmp/$case_name" out_file="" err_file=""
         out_file="$case_dir/out.env"
         err_file="$case_dir/err.log"
         mkdir -p "$case_dir/impl"
         STEP5_SYNC_MODE="$sync_mode"
         STEP5_BODY_MODE="$body_mode"
+        STEP5_COUNT_PRIOR_MODE="$prior_deg_mode"
         STEP5_SYNC_CREATE_PATH="$case_dir/impl/round-$((10#$starting_round - 1))/review-and-fix.env"
         STEP5_FLUSH_LOG="$case_dir/flush.log"
         : > "$STEP5_FLUSH_LOG"
@@ -2190,11 +2192,30 @@ if section_runs step5-starting-round; then
                 awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
             }
             count_high_severity_accepted() { printf '0\n'; }
+            case "$STEP5_COUNT_PRIOR_MODE" in
+                normal) ;;
+                entry-nonnumeric)
+                    count_prior_degraded_rounds() {
+                        if [[ "$2" == "$STARTING_ROUND" ]]; then
+                            printf 'bogus\n'
+                        else
+                            step5_original_count_prior_degraded_rounds "$@"
+                        fi
+                    }
+                    ;;
+                *)
+                    printf 'unknown STEP5_COUNT_PRIOR_MODE=%s\n' "$STEP5_COUNT_PRIOR_MODE" >&2
+                    exit 98
+                    ;;
+            esac
             sync() {
                 case "$STEP5_SYNC_MODE" in
                     create-prior)
                         mkdir -p "$(dirname "$STEP5_SYNC_CREATE_PATH")"
                         printf 'DEGRADED_ROUND=false\n' > "$STEP5_SYNC_CREATE_PATH"
+                        ;;
+                    sleep-only)
+                        sleep 0.2
                         ;;
                     noop) ;;
                     *) command sync >/dev/null 2>&1 || true ;;
@@ -2241,6 +2262,32 @@ if section_runs step5-starting-round; then
         || fail "step5 retry-sees-prior must not emit starting-round-invalid"
     pass "step5-starting-round retry-sees-prior"
 
+    # Case 1b: prior artifact is written by another actor during sync; sync itself is a noop.
+    step5_reset_case retry-sees-prewritten-prior
+    for round in 1 2 3; do
+        step5_write_prior_round "$STEP5_LAST_CASE_DIR/impl" "$round" false
+    done
+    printf 'DEGRADED_ROUND=false\n' > "$STEP5_LAST_CASE_DIR/prewritten-round-4.env"
+    (
+        sleep 0.1
+        mkdir -p "$STEP5_LAST_CASE_DIR/impl/round-4"
+        cp "$STEP5_LAST_CASE_DIR/prewritten-round-4.env" "$STEP5_LAST_CASE_DIR/impl/round-4/review-and-fix.env"
+    ) &
+    step5_run_loop_case retry-sees-prewritten-prior 5 5 sleep-only complete
+    [[ "$STEP5_LAST_RC" -eq 0 ]] || { cat "$STEP5_LAST_ERR" >&2; fail "step5 retry-sees-prewritten-prior expected exit 0 got $STEP5_LAST_RC"; }
+    step5_assert_envelope "$STEP5_LAST_OUT" complete false "" 5
+    pass "step5-starting-round retry-sees-prewritten-prior"
+
+    # Case 1c: prior artifact is already visible on the first probe without sync.
+    step5_reset_case visible-prior-no-sync
+    for round in 1 2 3 4; do
+        step5_write_prior_round "$STEP5_LAST_CASE_DIR/impl" "$round" false
+    done
+    step5_run_loop_case visible-prior-no-sync 5 5 noop complete
+    [[ "$STEP5_LAST_RC" -eq 0 ]] || { cat "$STEP5_LAST_ERR" >&2; fail "step5 visible-prior-no-sync expected exit 0 got $STEP5_LAST_RC"; }
+    step5_assert_envelope "$STEP5_LAST_OUT" complete false "" 5
+    pass "step5-starting-round visible-prior-no-sync"
+
     # Case 2: prior artifact is genuinely missing after both attempts.
     step5_reset_case missing-prior
     for round in 1 2 3; do
@@ -2274,7 +2321,7 @@ if section_runs step5-starting-round; then
     done
     step5_run_loop_case inflated-anchor-reject 11 5 noop fail-if-called
     [[ "$STEP5_LAST_RC" -eq 2 ]] || fail "step5 inflated-anchor-reject expected exit 2 got $STEP5_LAST_RC"
-    step5_assert_envelope "$STEP5_LAST_OUT" stall false starting-round-invalid 5
+    step5_assert_envelope "$STEP5_LAST_OUT" stall false starting-round-invalid 10
     step5_assert_diagnostic_keys "$STEP5_LAST_ERR"
     pass "step5-starting-round inflated-anchor-reject"
 
@@ -2310,6 +2357,15 @@ if section_runs step5-starting-round; then
     [[ "$STEP5_LAST_RC" -eq 2 ]] || fail "step5 starting-round-999 expected exit 2 got $STEP5_LAST_RC"
     step5_assert_envelope "$STEP5_LAST_OUT" stall false starting-round-invalid 5
     pass "step5-starting-round attack-999"
+
+    # Case 8: non-numeric prior-degraded count fails closed before the loop starts.
+    step5_reset_case entry-prior-deg-nonnumeric
+    step5_run_loop_case entry-prior-deg-nonnumeric 1 5 noop fail-if-called entry-nonnumeric
+    [[ "$STEP5_LAST_RC" -eq 2 ]] || fail "step5 entry-prior-deg-nonnumeric expected exit 2 got $STEP5_LAST_RC"
+    step5_assert_envelope "$STEP5_LAST_OUT" stall true env-write-failed 5
+    grep -Fq 'count_prior_degraded_rounds returned non-numeric entry_prior_deg=bogus' "$STEP5_LAST_ERR" \
+        || fail "step5 entry-prior-deg-nonnumeric missing stderr"
+    pass "step5-starting-round entry-prior-deg-nonnumeric"
 fi  # end section: step5-starting-round
 
 # Breadcrumb pin: round entry and coder dispatch breadcrumbs appear when LARCH_QUIET_BREADCRUMBS=1.
