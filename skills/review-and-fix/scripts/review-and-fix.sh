@@ -1210,7 +1210,7 @@ _implement_round_body() {
             exit_code=2
             ;;
         aggregator-validation-exhausted)
-            emit_breadcrumb --category=warn "⚠ review-and-fix: findings aggregator validation exhausted (all outer phases)"
+            emit_breadcrumb --category=warn "⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch"
             status="$core_status"
             exit_code=2
             ;;

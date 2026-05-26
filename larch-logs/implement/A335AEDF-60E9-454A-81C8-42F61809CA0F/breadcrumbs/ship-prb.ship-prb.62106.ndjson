@@ -1,0 +1,71 @@
+larch:bc t=2026-05-26T21:00:02Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:02Z d=0 p=62487 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:06Z d=0 p=62487 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (4s, 0 polls)
+larch:bc t=2026-05-26T21:00:07Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:07Z d=0 p=63289 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:11Z d=0 p=63289 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (4s, 0 polls)
+larch:bc t=2026-05-26T21:00:13Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:13Z d=0 p=64179 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:16Z d=0 p=64179 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:17Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:17Z d=0 p=64818 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:20Z d=0 p=64818 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:22Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:22Z d=0 p=65493 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:25Z d=0 p=65493 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:27Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:27Z d=0 p=66423 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:30Z d=0 p=66423 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:31Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:31Z d=0 p=66976 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:34Z d=0 p=66976 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:36Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:36Z d=0 p=67617 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:39Z d=0 p=67617 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:40Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:41Z d=0 p=68276 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:44Z d=0 p=68276 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:45Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:45Z d=0 p=69211 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:49Z d=0 p=69211 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (4s, 0 polls)
+larch:bc t=2026-05-26T21:00:50Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:50Z d=0 p=70193 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:53Z d=0 p=70193 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:00:54Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:54Z d=0 p=70977 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:00:58Z d=0 p=70977 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (4s, 0 polls)
+larch:bc t=2026-05-26T21:00:59Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:00:59Z d=0 p=72819 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:02Z d=0 p=72819 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:01:04Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:04Z d=0 p=76972 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:08Z d=0 p=76972 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (4s, 0 polls)
+larch:bc t=2026-05-26T21:01:09Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:09Z d=0 p=81862 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:12Z d=0 p=81862 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:01:14Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:14Z d=0 p=86499 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:17Z d=0 p=86499 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:01:19Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:19Z d=0 p=89521 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:22Z d=0 p=89521 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:01:24Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:24Z d=0 p=90230 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:27Z d=0 p=90230 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:01:29Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:29Z d=0 p=91166 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:32Z d=0 p=91166 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:01:33Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:33Z d=0 p=91942 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:37Z d=0 p=91942 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (4s, 0 polls)
+larch:bc t=2026-05-26T21:01:38Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:38Z d=0 p=92837 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:42Z d=0 p=92837 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (4s, 0 polls)
+larch:bc t=2026-05-26T21:01:43Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:43Z d=0 p=94211 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:46Z d=0 p=94211 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (3s, 0 polls)
+larch:bc t=2026-05-26T21:01:48Z d=0 p=62150 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-26T21:01:48Z d=0 p=807 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-26T21:01:51Z d=0 p=807 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-26T21:02:05Z d=0 p=807 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-26T21:02:18Z d=0 p=807 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (30s, 2 polls)

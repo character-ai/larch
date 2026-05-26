@@ -269,6 +269,7 @@ set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --review-tmpdir) review_tmpdir="${2:?}"; shift 2 ;;
         --slots-file) slots="${2:?}"; shift 2 ;;
         --codex-present|--cursor-present|--mode) shift 2 ;;
         --diff-file|--plan-file|--feature-file|--scope-files|--description-text) shift 2 ;;
@@ -280,7 +281,7 @@ out=$(jq -r '.output' "$slots")
 mode="${AGGREGATE_STUB_MODE:-ok}"
 case "$mode" in
     fail_dispatch)
-        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
+        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\nALL_OUTPUT_FILES_PATH=\nALL_OUTPUT_TOOLS=\n'
         ;;
     ok)
         cat > "$out" <<'EOF'
@@ -290,7 +291,11 @@ case "$mode" in
 - **Suggested revision**: fix it
 
 EOF
-        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=%s\n' "$out" "${AGGREGATE_STUB_OUTPUT_TOOL:-cursor}"
+        printf '%s\n' "$out" > "$review_tmpdir/aggregate-output-files.txt"
+        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_FILES_PATH=%s\nALL_OUTPUT_TOOLS=%s\n' \
+            "$out" \
+            "$review_tmpdir/aggregate-output-files.txt" \
+            "${AGGREGATE_STUB_OUTPUT_TOOL:-cursor}"
         ;;
     *)
         echo "stub: bad AGGREGATE_STUB_MODE" >&2
@@ -315,9 +320,9 @@ done
     printf 'aggregate\n' >> "\${rtmp:?}/invoke-order.log"
 exec "\$AGG" "\$@"
 EOF
-    cat > "$TMP/aggregate-exhausted-stub.sh" <<'STUB'
+cat > "$TMP/aggregate-exhausted-stub.sh" <<'STUB'
 #!/usr/bin/env bash
-printf 'AGGREGATED=false\nINPUT_COUNT=2\nMERGED_COUNT=0\nREASON=validation-exhausted\nPHASES_ATTEMPTED=cursor,codex,claude\n'
+printf 'AGGREGATED=false\nINPUT_COUNT=2\nMERGED_COUNT=0\nREASON=validation-exhausted\n'
 exit 0
 STUB
     chmod +x "$TMP"/*.sh
@@ -419,8 +424,10 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 assert_contains "$out" "ACCEPTED_FINDINGS_FILE=$TMP/fix/accepted-findings.md"
 
-out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs")
-assert_contains "$out" '→ review: consolidating findings'
+fix_breadcrumbs_out="$TMP/fix-breadcrumbs.out"
+LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs" >"$fix_breadcrumbs_out"
+grep -Fq 'REVIEW_CORE_STATUS=fix-required' "$fix_breadcrumbs_out" || { echo "FAIL: fix-breadcrumbs status" >&2; cat "$fix_breadcrumbs_out" >&2; exit 1; }
+grep -Fq '→ review: consolidating findings' "$fix_breadcrumbs_out" || { echo "FAIL: fix-breadcrumbs breadcrumb" >&2; cat "$fix_breadcrumbs_out" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
