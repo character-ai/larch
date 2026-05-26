@@ -1,0 +1,4 @@
+Exploring the codebase around `drop-bump-commit.sh`, `ship-pr.sh` force-push-gate, and the re-bump sub-procedure.
+Checking how `classify-bump` behaves when HEAD is already a bump commit (resume path):
+Creating the implementation plan from the codebase analysis.
+

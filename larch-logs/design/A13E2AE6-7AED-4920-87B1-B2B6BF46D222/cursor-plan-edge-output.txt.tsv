@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:2274-2387	_run_rebase_rebump_from_step3 never runs commit-changelog after apply-bump	Step 10/12 run_rebase_rebump re-bumps via shell only; CHANGELOG stays at pre-rebase version while plugin.json advances; merge/audit drift	After apply-bump in _run_rebase_rebump_from_step3 invoke commit-changelog.sh --version "$new_version" (or shared helper) and document in ship-pr.md; mirror sub-procedure step 4a semantics
