@@ -1,0 +1,5 @@
+Reviewing the plan and validating proposed changes against the codebase.
+1. **[correctness]** `plan.txt:45-50` — Close comment template says PR #2892 "closed source issues #2858, #2859, #2860". Those issues were closed at 18:02Z with empty `closedByPullRequestsReferences`; PR #2892 merged later (~18:21Z). The comment overstates GitHub closure linkage. **Suggested revision:** Say the PR landed the runtime/wording fix for those items (or that they were marked COMPLETED during combine-issues triage), not that the PR closed them.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	plan.txt:45-50	Close comment claims PR #2892 closed source issues #2858-2860	Source issues show manual closure before merge with no linked PR; #2899 close comment misstates history	Say PR #2892 landed the fix for those items, or reference their COMPLETED/combine closure, instead of "the same PR that closed source issues"

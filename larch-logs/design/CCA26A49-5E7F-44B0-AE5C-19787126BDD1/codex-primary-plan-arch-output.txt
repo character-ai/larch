@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	architecture	scripts/test-implement-finalize.md:3	Proposed wording narrows the harness contract to CHANGELOG detection only even though the harness also stubs the separate CHANGELOG commit path	Future maintainers reading the sibling contract may miss that scripts/test-implement-finalize.sh:282-291 owns commit-changelog shim behavior, weakening the doc as an integration map	Use CHANGELOG detection/commit or CHANGELOG detection and separate CHANGELOG commit instead of CHANGELOG detection
+
+1. [architecture] `scripts/test-implement-finalize.md:3`
+
+Concern: the plan removes the stale `/amend` wording by changing `CHANGELOG detection/amend` to `CHANGELOG detection`, but the harness still has two distinct CHANGELOG helpers: `check-changelog-present.sh` at `scripts/test-implement-finalize.sh:270-274` and `commit-changelog.sh` at `scripts/test-implement-finalize.sh:282-291`.
+
+Suggested revision: keep the minimal edit but make the replacement `CHANGELOG detection/commit` or `CHANGELOG detection and separate CHANGELOG commit`. That removes the obsolete amend model while preserving the sibling doc’s role as a maintainable contract map.

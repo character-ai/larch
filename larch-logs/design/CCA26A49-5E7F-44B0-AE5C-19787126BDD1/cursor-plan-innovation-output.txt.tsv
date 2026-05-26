@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	plan.txt:7	Background labels landed merge as "#2852 PR" but fdfacb21 merged as PR #2892 (Fixes #2852)	Implementer copies Background instead of the close-comment template and cites the wrong PR on issue #2899	Rewrite Background to "PR #2892 (commit fdfacb21, Fixes #2852)" and keep issue vs PR identifiers consistent everywhere

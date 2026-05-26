@@ -1,0 +1,51 @@
+# [DESIGNING] [OOS] Bump-version / drop-bump / amend wording: 3 doc + wording fixes across implement-finalize, drop-bump-commit, apply-bump
+
+## Out-of-Scope Observation — combined follow-up
+
+**Sources**: #2860, #2859, #2858
+**Phase**: design
+**Combination rationale**: All three are doc/wording fixes to the post-bump / drop-bump / rebump pathway. Same code area; same originating context. Combined per OOS triage rule 4 (multiple moderate doc changes in one area).
+
+Each item below is independent and small (single-line or single-file doc edit); they may be picked off as one PR or split as convenient.
+
+**Note**: This combined issue inherits the blocked-by relationship to OPEN #2852 from its sources (preserved via separate `block-issue` link after creation).
+
+---
+
+**Item A — `scripts/implement-finalize.sh:780-781`: Step 8a failure strings still say "amend" after separate commit** (from #2860, OOS_3)
+
+- **Concern**: Step 8a failure strings still say "amend" after the behavior moved to a separate commit. Operator logs say "amend failed" even though the behavior is a new commit, misleading anyone debugging the pathway.
+- **Location**: `scripts/implement-finalize.sh:780-781`.
+- **Fix**: replace the "amend" wording in the failure strings to reflect the actual separate-commit behavior.
+- **Reviewer**: Cursor-Innovation. Severity: latent. Focus: architecture.
+
+**Item B — `scripts/drop-bump-commit.md:40-48`: docs still imply single amended bump+CHANGELOG commit only** (from #2859, OOS_2)
+
+- **Concern**: Edit-in-sync requires `conflict-resolution.md` updates for trivial-file behavior; the originating plan did not touch it. Docs in `drop-bump-commit.md` still imply a single amended bump+CHANGELOG commit only, even though current behavior may produce a separate commit.
+- **Location**: `scripts/drop-bump-commit.md:40-48` and the related `conflict-resolution.md`.
+- **Fix**: update `drop-bump-commit.md` (and `conflict-resolution.md` for the trivial-file path) so docs reflect the current bump+CHANGELOG commit topology.
+- **Reviewer**: Cursor-Arch. Severity: latent. Focus: architecture.
+
+**Item C — `.claude/skills/bump-version/scripts/apply-bump.md:40-41`: comment says drop-bump walks from HEAD and bump must remain at HEAD, but CHANGELOG may sit above bump** (from #2858, OOS_1)
+
+- **Concern**: Comment in `apply-bump.md` says drop-bump walks from HEAD and the bump must remain at HEAD; after the post-#2852 fix, CHANGELOG may sit above the bump commit. Misleads the maintainer mental model when debugging rebump.
+- **Location**: `.claude/skills/bump-version/scripts/apply-bump.md:40-41`.
+- **Fix**: rewrite the comment to acknowledge that CHANGELOG can sit above bump and clarify how drop-bump locates the bump commit.
+- **Reviewer**: Cursor-Arch. Severity: nit. Focus: architecture.
+
+---
+
+**Background — why one issue instead of three**: OOS triage rule 4 (multiple moderate doc changes in same area). All three items individually are < ~10 LOC doc edits; filed as a single follow-up because they cohere around the same bump+drop-bump pathway and the same originating /design pass.
+
+*This issue is a combine-issues consolidation of #2860, #2859, #2858.*
+
+**Blocked by** (preserved from sources, OPEN): #2852 — `ship-pr.sh exits 4 (stall) at force-push-gate when CHANGELOG.md is in the bump commit`. Wording fixes here should land after #2852 settles the runtime behavior.
+
+
+## Round 1 narrowing (for reviewer context)
+
+The three originally-cited files are already updated by #2852 / commit fdfacb21 (landed 2026-05-26). `grep -i amend` returns zero matches in all three. Source OOS issues #2858/#2859/#2860 closed today as COMPLETED.
+
+This plan covers the residual cleanup: two adjacent-doc wording edits (scripts/git-commit.md:3 and scripts/test-implement-finalize.md:3) that still imply an amend-into-bump-commit pathway. After PR merges, close #2899 with a short comment.
+
+Out of scope: edits to implement-finalize.sh, drop-bump-commit.md, apply-bump.md (already current); removal of git-amend-add.sh (intentionally retained per its .md); removal of STUB_AMEND_FAIL dead-code stub (surfaced as OOS).

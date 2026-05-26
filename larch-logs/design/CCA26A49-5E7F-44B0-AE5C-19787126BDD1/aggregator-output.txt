@@ -1,0 +1,2 @@
+Merging reviewer findings per aggregator rules: combining FINDING_1+FINDING_5 and FINDING_4+FINDING_7; keeping plan.txt issues separate (different fixes).
+
