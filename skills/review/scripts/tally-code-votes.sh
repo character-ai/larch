@@ -75,23 +75,12 @@ YIELD_TSV_FILE="$REVIEW_TMPDIR/scout-archetype-yield.tsv"
 
 nested_implement_round() {
     [[ -n "$REVIEW_TMPDIR" ]] || return 1
-    local review_real parent_real impl_real=""
+    local review_real
     review_real="$(cd "$REVIEW_TMPDIR" 2>/dev/null && pwd -P)" || return 1
     case "$review_real" in
-        */round-[0-9]*)
-            parent_real="$(dirname "$review_real")"
-            ;;
+        */round-[0-9]*) return 0 ;;
         *) return 1 ;;
     esac
-    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
-        impl_real="$(cd "$IMPLEMENT_TMPDIR" 2>/dev/null && pwd -P)" || return 1
-        [[ "$parent_real" == "$impl_real" ]] && return 0
-    fi
-    if [[ -n "$SESSION_ENV_PATH" ]]; then
-        impl_real="$(cd "$(dirname "$SESSION_ENV_PATH")" 2>/dev/null && pwd -P)" || return 1
-        [[ "$parent_real" == "$impl_real" ]] && return 0
-    fi
-    return 1
 }
 
 if nested_implement_round; then
