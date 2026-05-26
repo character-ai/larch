@@ -791,10 +791,71 @@ wait "$PARENT_PID" 2>/dev/null || true
 unset ec
 
 # ---------------------------------------------------------------------------
-# Test 28: lib-quiet paired PID writer integrates with timeout signaling.
+# Test 28: nested parent unset prevents child overwrite and preserves parent kill.
 # ---------------------------------------------------------------------------
 alloc_sentinels t28
-PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t28.paired.XXXXXX")"
+PARENT_PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t28.parent-paired.XXXXXX")"
+CHILD_PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t28.child-paired.XXXXXX")"
+FAKE_PARENT="$IMPLEMENT_TMPDIR/fake-family-b-parent-unset.sh"
+cat >"$FAKE_PARENT" <<FAKE
+#!/usr/bin/env bash
+set -euo pipefail
+source "$LIB_QUIET"
+export IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR}"
+export LARCH_PAIRED_PID_FILE="${PARENT_PAIRED_PID}"
+larch_quiet_write_paired_pid_file
+unset LARCH_PAIRED_PID_FILE
+bash -c '
+  set -euo pipefail
+  source "'"$LIB_QUIET"'"
+  export IMPLEMENT_TMPDIR="'"${IMPLEMENT_TMPDIR}"'"
+  export LARCH_PAIRED_PID_FILE="'"${CHILD_PAIRED_PID}"'"
+  larch_quiet_write_paired_pid_file
+  sleep 1
+'
+trap "" TERM
+sleep 30
+FAKE
+chmod +x "$FAKE_PARENT"
+"$FAKE_PARENT" &
+PARENT_PID=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [[ -s "$PARENT_PAIRED_PID" && -s "$CHILD_PAIRED_PID" ]] && break
+    sleep 0.1
+done
+PARENT_FILE_PID="$(tr -d '\n' < "$PARENT_PAIRED_PID" 2>/dev/null || true)"
+CHILD_FILE_PID="$(tr -d '\n' < "$CHILD_PAIRED_PID" 2>/dev/null || true)"
+if [[ -z "$PARENT_FILE_PID" || -z "$CHILD_FILE_PID" ]]; then
+    fail "test 28: expected parent and child paired pid files to be populated"
+fi
+if [[ "$PARENT_FILE_PID" != "$PARENT_PID" ]]; then
+    fail "test 28: parent paired pid file should keep parent pid $PARENT_PID, got ${PARENT_FILE_PID:-<empty>}"
+fi
+set +e
+out=$(LARCH_BM_TEST_MODE=1 LARCH_BM_TEST_TIMEOUT_SECONDS=1 "$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --paired-pid-file "$PARENT_PAIRED_PID" 2>&1)
+ec=$?
+set -e
+assert_pid_gone "$PARENT_PID" "test 28"
+wait "$PARENT_PID" 2>/dev/null || true
+if [ "$ec" -ne 4 ]; then
+    fail "test 28: timeout should exit 4, got $ec (out=$out)"
+fi
+if printf '%s' "$out" | grep -q "WARN paired-pid-file-missing"; then
+    fail "test 28: valid parent pid should not warn (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 29: lib-quiet paired PID writer integrates with timeout signaling.
+# ---------------------------------------------------------------------------
+alloc_sentinels t29
+PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t29.paired.XXXXXX")"
 FAKE_SCRIPT3="$IMPLEMENT_TMPDIR/fake-family-b-paired.sh"
 cat >"$FAKE_SCRIPT3" <<FAKE
 #!/usr/bin/env bash
@@ -826,10 +887,10 @@ set -e
 assert_pid_gone "$TARGET_PID" "test 28"
 wait "$TARGET_PID" 2>/dev/null || true
 if [ "$ec" -ne 4 ]; then
-    fail "test 28: timeout should exit 4, got $ec (out=$out)"
+    fail "test 29: timeout should exit 4, got $ec (out=$out)"
 fi
 if printf '%s' "$out" | grep -q "WARN paired-pid-file-missing"; then
-    fail "test 28: real writer pid should not warn (out=$out)"
+    fail "test 29: real writer pid should not warn (out=$out)"
 fi
 unset ec
 

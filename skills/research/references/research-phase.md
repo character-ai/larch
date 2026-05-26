@@ -190,6 +190,7 @@ Otherwise invoke the collector with substantive validation:
 ```bash
 mkdir -p "$RESEARCH_TMPDIR/breadcrumbs"
 _launch_id="collect-agent-results.$$"
+export RESEARCH_TMPDIR
 export LARCH_BREADCRUMB_STREAM="$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
 : > "$LARCH_BREADCRUMB_STREAM"
 export LARCH_DONE_SENTINEL="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
