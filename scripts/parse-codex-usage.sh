@@ -28,18 +28,13 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
-jq_err=$(mktemp "${TMPDIR:-/tmp}/parse-codex-usage.XXXXXX")
-usage_tsv=""
-if ! usage_tsv=$(
+usage_tsv=$(
     jq -nRr '
       def num($v): ($v | tonumber? // 0);
-      def usage_type($o): ($o.type? // $o.msg.type? // "");
-      def usage_marker($o):
-        ($o.msg.usage? // $o.usage? // (if ($o.msg.input_tokens? // $o.msg.cached_input_tokens? // $o.msg.output_tokens? // $o.input_tokens? // $o.cached_input_tokens? // $o.output_tokens? // null) == null then null else {} end));
       reduce (inputs | fromjson? | select(type == "object")) as $o
         ({count:0, input:0, cached:0, output:0};
-          usage_marker($o) as $usage |
-          if usage_type($o) != "token_usage" or $usage == null then
+          ($o.msg.usage? // $o.usage? // (if ($o.msg.input_tokens? // $o.msg.cached_input_tokens? // $o.msg.output_tokens? // $o.input_tokens? // $o.cached_input_tokens? // $o.output_tokens? // null) == null then null else {} end)) as $usage |
+          if $usage == null then
             .
           else
             .count += 1
@@ -48,14 +43,11 @@ if ! usage_tsv=$(
             | .output += num($o.msg.usage.output_tokens // $o.msg.output_tokens // $o.usage.output_tokens // $o.output_tokens // 0)
           end)
       | "\(.count)\t\(.input)\t\(.cached)\t\(.output)"
-    ' "$EVENTS_FILE" 2>"$jq_err"
-); then
-    cat "$jq_err" >&2
-    rm -f "$jq_err"
-    larch_err "parse-codex-usage.sh: jq failed"
+    ' "$EVENTS_FILE" 2>/dev/null
+) || {
+    larch_err "parse-codex-usage.sh: no usage events"
     exit 1
-fi
-rm -f "$jq_err"
+}
 
 IFS=$'\t' read -r usage_count input_tokens cached_tokens output_tokens <<EOF
 $usage_tsv

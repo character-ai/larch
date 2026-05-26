@@ -19,8 +19,8 @@ TOTAL=<input + cached_input + output>
 
 Exit codes:
 
-- `0`: at least one `type=="token_usage"` event parsed and total usage is non-zero.
-- `1`: fail-closed parse branch: missing/empty events file, missing `jq`, `jq` execution failure, no `token_usage` objects, zero total, or `cached_tokens > input_tokens`.
+- `0`: at least one usage object parsed and total usage is non-zero.
+- `1`: fail-closed parse branch: missing/empty events file, missing `jq`, no usage objects, zero total, or `cached_tokens > input_tokens`.
 - `2`: argv/usage error.
 
 Failure stdout is empty. Failure stderr is one short diagnostic.
@@ -31,7 +31,7 @@ OpenAI usage schemas report `input_tokens` as gross input, with cached tokens as
 
 ## Schema Probes
 
-Only JSON objects with `type=="token_usage"` (or `.msg.type=="token_usage"` for wrapped events) are counted. For each counted event, usage is detected in this order:
+Each counted event detects usage in this order:
 
 ```text
 usage payload = .msg.usage
@@ -42,7 +42,7 @@ usage payload = .msg.usage
                 is present
 ```
 
-Each token field is then coalesced once per counted event, in this order:
+Each token field is then coalesced once per event, in this order:
 
 ```text
 input_tokens  = .msg.usage.input_tokens // .usage.input_tokens
@@ -63,9 +63,9 @@ This handles top-level Codex-native `cached_input_tokens`, `.msg` top-level toke
 Example JSONL:
 
 ```jsonl
-{"type":"token_usage","msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
-{"type":"token_usage","usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":5},"output_tokens":7}}
-{"type":"token_usage","input_tokens":3,"cached_input_tokens":1,"output_tokens":2}
+{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
+{"usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":5},"output_tokens":7}}
+{"input_tokens":3,"cached_input_tokens":1,"output_tokens":2}
 ```
 
 Current consumers are `scripts/launch-review.sh`, `scripts/launch-codex-implement.sh`, `scripts/launch-codex-ci.sh`, and `scripts/test-parse-codex-usage.sh`.

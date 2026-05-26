@@ -227,12 +227,7 @@ END_S=$(date +%s)
     --exit-code "$LAUNCHER_EXIT" \
     --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" >/dev/null 2>&1 || true
 
-_codex_usage_err=$(mktemp "${TMPDIR:-/tmp}/launch-codex-ci-usage.XXXXXX")
-_codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>"$_codex_usage_err") || _codex_usage=""
-if [[ -z "$_codex_usage" && -s "$CODEX_EVENTS" && -s "$_codex_usage_err" ]]; then
-    cat "$_codex_usage_err" >> "$SIDECAR_LOG" 2>/dev/null || true
-fi
-rm -f "$_codex_usage_err"
+_codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>/dev/null) || _codex_usage=""
 if [[ -n "$_codex_usage" ]]; then
     INPUT=0
     CACHED_INPUT=0
@@ -240,10 +235,10 @@ if [[ -n "$_codex_usage" ]]; then
     TOTAL=0
     while IFS='=' read -r k v; do
         case "$k" in
-            INPUT) [[ "$v" =~ ^[0-9]+$ ]] && INPUT="$v" ;;
-            CACHED_INPUT) [[ "$v" =~ ^[0-9]+$ ]] && CACHED_INPUT="$v" ;;
-            OUTPUT) [[ "$v" =~ ^[0-9]+$ ]] && OUTPUT_T="$v" ;;
-            TOTAL) [[ "$v" =~ ^[0-9]+$ ]] && TOTAL="$v" ;;
+            INPUT) INPUT=$v ;;
+            CACHED_INPUT) CACHED_INPUT=$v ;;
+            OUTPUT) OUTPUT_T=$v ;;
+            TOTAL) TOTAL=$v ;;
         esac
     done <<< "$_codex_usage"
     printf 'TOOL=codex\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nTOTAL=%s\nRAW=codex_ci_fix\n' \

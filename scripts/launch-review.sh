@@ -557,7 +557,7 @@ fi
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
-if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" ]]; then
+if [[ "$SIDECAR" != "/dev/null" ]]; then
     _codex_usage_err=$(mktemp "${TMPDIR:-/tmp}/launch-review-codex-usage.XXXXXX")
     _codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>"$_codex_usage_err") || _codex_usage=""
     if [[ -z "$_codex_usage" && -s "$CODEX_EVENTS" && -s "$_codex_usage_err" ]]; then
@@ -571,10 +571,10 @@ if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" ]]; then
         TOTAL=0
         while IFS='=' read -r k v; do
             case "$k" in
-                INPUT) [[ "$v" =~ ^[0-9]+$ ]] && INPUT="$v" ;;
-                CACHED_INPUT) [[ "$v" =~ ^[0-9]+$ ]] && CACHED_INPUT="$v" ;;
-                OUTPUT) [[ "$v" =~ ^[0-9]+$ ]] && OUTPUT_T="$v" ;;
-                TOTAL) [[ "$v" =~ ^[0-9]+$ ]] && TOTAL="$v" ;;
+                INPUT) INPUT=$v ;;
+                CACHED_INPUT) CACHED_INPUT=$v ;;
+                OUTPUT) OUTPUT_T=$v ;;
+                TOTAL) TOTAL=$v ;;
             esac
         done <<< "$_codex_usage"
         "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex input="$INPUT" cache_read="$CACHED_INPUT" output="$OUTPUT_T" total="$TOTAL" raw="codex_review" >/dev/null 2>&1 || true

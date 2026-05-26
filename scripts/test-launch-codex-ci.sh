@@ -117,7 +117,7 @@ for arg in "\$@"; do
 done
 [[ -n "\$output_path" ]] || exit 9
 printf 'ci fix transcript\n' > "\$output_path"
-printf '{"type":"token_usage","msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
+printf '{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
 EOF
 chmod +x "$runtime_bin/codex"
 
@@ -180,30 +180,6 @@ if [[ ! -e "$TMPDIR_BASE/token-report.ndjson" ]] || ! grep -q '"tool":"codex"' "
     ok "empty codex token-record appends no ledger row"
 else
     fail "empty codex token-record should append no ledger row: $(cat "$TMPDIR_BASE/token-report.ndjson" 2>/dev/null)"
-fi
-
-cat > "$runtime_bin/codex" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-output_path=""
-last=""
-for arg in "$@"; do
-    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
-    last="$arg"
-done
-[[ -n "$output_path" ]] || exit 9
-printf 'ci fix transcript with drift\n' > "$output_path"
-printf '{"type":"task.completed","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
-EOF
-chmod +x "$runtime_bin/codex"
-OUT_DRIFT="$TMPDIR_BASE/ci-runtime-drift"
-(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
-    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_DRIFT" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
-if [[ ! -s "${OUT_DRIFT}.token-record" ]] && grep -q 'parse-codex-usage.sh: no usage events' "${OUT_DRIFT}.sidecar" 2>/dev/null; then
-    ok "runtime schema drift appends parse diagnostic and skips token-record"
-else
-    fail "runtime schema drift appends parse diagnostic and skips token-record: sidecar=$(cat "${OUT_DRIFT}.sidecar" 2>/dev/null) token-record=$(cat "${OUT_DRIFT}.token-record" 2>/dev/null)"
 fi
 
 cat > "$runtime_bin/codex" <<'EOF'
