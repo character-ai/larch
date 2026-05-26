@@ -1,0 +1,31 @@
+[DESIGNING] [OOS] Two input-validation hardening items from /implement #2842 (defense-in-depth)
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-security (rounds 1-2 of #2842)
+**Phase**: implement
+**Vote tally**: Item A 2-1 accepted; Item B 3-0 accepted
+
+## Description
+
+Two `[OUT_OF_SCOPE]` reviewer findings flagged as `security` were vote-accepted during the Step 5 review of PR #2842 (issue #2736, /implement run F13D3515-DC53-4985-8800-6630F4E8156B). Both are defense-in-depth input-validation hardening — adding explicit charset/format checks at the script entry point — for CLI tools that currently rely on caller-side quoting and integer-validation upstream. Neither is an active exploit; both close a hardening gap where a future caller could pass a non-validated value.
+
+    **Item A — `scripts/get-issue-state.sh` does not validate `--issue` as numeric before invoking `gh`**
+    - Location: `scripts/get-issue-state.sh:46-57`. After argv parse, `$ISSUE` is checked for non-empty (line 51) but is NOT validated as numeric. The value flows into the `gh issue view "$ISSUE" --json …` arg list (line 60) unquoted at the gh layer.
+    - Current safety: every caller in the tree passes integers (all callers are orchestrator code that has already digit-validated `$TARGET_ISSUE_NUMBER` via `^[0-9]+$` regex). `gh issue view` itself would reject most non-numeric input with a clear error, and the argv is properly quoted by Bash before being passed to gh, so shell-injection via `$ISSUE` is not directly reachable today.
+    - Latent risk: if a future caller drops the upstream digit validation, a non-numeric `--issue` value flows to `gh` with whatever interpretation `gh` makes of it. Defense-in-depth says the script should self-validate.
+    - Suggested fix: mirror the numeric validation already in `skills/implement/scripts/post-tracking-issue.sh`: after parsing `--issue`, add `case "$ISSUE" in *[!0-9]*|'') emit_kv FAILED true; emit_kv ERROR "--issue must be numeric"; exit 1 ;; esac` (Bash-3.2-portable form) before the `gh` invocation.
+    - Severity: hardening (latent); not an active vulnerability with current callers.
+
+    **Item B — `scripts/tracking-issue-read.sh` sentinel parser accepts arbitrary `ISSUE_NUMBER` / `RUN_ID` values**
+    - Location: `scripts/tracking-issue-read.sh:269-278`. The `--sentinel` branch extracts `ISSUE_NUMBER`, `RUN_ID`, and `ADOPTED` from `parent-issue.md`. `ADOPTED` is strictly validated as `true|false|empty` (lines 272-276), but `ISSUE_NUMBER` and `RUN_ID` are passed through with no charset or format check — the value can contain newlines, shell metacharacters, or path-traversal segments and is emitted to stdout as `ISSUE_NUMBER=<value>` / `RUN_ID=<value>` for the caller to parse.
+    - Current safety: `parent-issue.md` is written by `post-tracking-issue.sh` under `$IMPLEMENT_TMPDIR/` (a `mktemp -d` session directory the orchestrator owns); on-disk write goes through the orchestrator's vetted code path. The risk surface is therefore "operator-modified or corrupted sentinel file" — not a remote-input vector.
+    - Latent risk: a corrupted sentinel (operator edit, disk-level bit flip, partial write) could inject a multi-line `ISSUE_NUMBER=...` value that confuses the orchestrator's KV parser downstream (the orchestrator scans for `ISSUE_NUMBER=<value>` on stdout; an embedded newline could mask a second key). The blast radius is bounded to the calling session because the file lives inside the session tmpdir.
+    - Suggested fix: in the sentinel branch (`scripts/tracking-issue-read.sh:269-278`), add a regex check for `ISSUE_NUMBER` (must match `^[0-9]+$`) and `RUN_ID` (must match `^[A-Za-z0-9._-]+$` — same charset already enforced by `post-tracking-issue.sh --run-id`). On mismatch, emit `FAILED=true` + `ERROR=invalid <field> in sentinel: <field>: 'malformed-value-omitted'` (do NOT echo the malformed value verbatim back to stdout) and exit 1.
+    - Severity: hardening (latent); requires a corrupted sentinel as a precondition.
+
+    **Background — why these are filed publicly**: per the standard SECURITY.md disclosure policy, security findings are usually routed via private channels. These two are filed in the public issue tracker because (a) the user explicitly authorized public filing as follow-up tracking, (b) neither describes an active exploit or names a specific reachable attacker, and (c) the code paths and their callers are already public in the merged PR. Both are defensive hardening of CLI entry points that already have upstream digit/charset validation in every current caller — closing the validation gap at the script boundary itself is the goal, not patching an exploitable bug.
+
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

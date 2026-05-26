@@ -1,0 +1,24 @@
+Reviewing the plan and validating proposed Bash patterns and test coverage against the repository.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	plan.txt:100-104	Testing strategy lists make agent-lint but Files to modify omits agent-lint.toml	New scripts/test-get-issue-state.sh and scripts/test-get-issue-state.md will fail agent-lint (Makefile-only harness pattern; see agent-lint.toml:1334-1340 for test-get-issue-context)	Add agent-lint.toml exclusions for both new files mirroring test-get-issue-context; run make agent-lint in the verification checklist
+2	in_scope	latent	correctness	plan.txt:44-52	Sentinel harness additions cover RUN_ID whitespace (has space) but not ISSUE_NUMBER whitespace/tab	Charset *[!0-9]* would reject ISSUE_NUMBER=1 2 or embedded tab at runtime, but the harness never asserts it; asymmetric vs RUN_ID and vs get-issue-state --issue 1 2	Add sentinel cases such as ISSUE_NUMBER=1 2 and ISSUE_NUMBER=12 with trailing space or literal tab; expect exit 1 and the fixed malformed-value-omitted error for ISSUE_NUMBER
+3	in_scope	latent	correctness	plan.txt:46-52	Planned sentinel tests omit explicit tab (0x09) and embedded-CR (0x0D) corruption fixtures	Edge cases cite newline rejection; tab/CR are realistic sentinel artifacts and are not silently passed by the patterns, but harness leaves that class unverified	Add RUN_ID (and optionally ISSUE_NUMBER) fixtures with printf tab-only or embedded CR values; expect charset failure without echoing the raw bytes on stdout
+4	in_scope	nit	correctness	scripts/get-issue-state.md:38-40	Plan only adds a validation sentence to get-issue-state.md; stale Test harness section still says no sibling harness exists	After landing test-get-issue-state.sh the contract doc contradicts the repo and misleads readers	Update the Test harness section to name scripts/test-get-issue-state.sh, Makefile target test-get-issue-state, and shard test-harnesses-18
+5	in_scope	nit	correctness	scripts/tracking-issue-read.md:152	Plan updates tracking-issue-read.md but not scripts/test-tracking-issue-read-sentinel.md	New ISSUE_NUMBER/RUN_ID sentinel cases violate edit-in-sync pointer; harness .md still documents 15 two-line cases while harness already emits three keys	Extend scripts/test-tracking-issue-read-sentinel.md in the same PR with new case rows, three-line stdout invariant, and no-echo assertions
+6	in_scope	nit	correctness	plan.txt:50-51	Case 3 requires stdout not contain the malformed RUN_ID verbatim but does not specify an assertion mechanism	Implementer may only assert ERROR= and miss the no-echo invariant (regression of the newline-masking threat)	Reuse or add assert_not_contains in the harness (pattern in scripts/test-redact-secrets.sh:62-67) for each malformed RUN_ID fixture
+
+1. **correctness** — `plan.txt:30` / proposed `scripts/tracking-issue-read.sh`: The planned RUN_ID charset `*[!A-Za-z0-9._-]*` places the hyphen at the end of the bracket expression (matching `scripts/implement-bootstrap.sh:120` and `skills/implement/scripts/post-tracking-issue.sh:75`), so it is a literal hyphen rather than an accidental `.-_` range. No revision needed for hyphen placement.
+
+2. **correctness** — `plan.txt:62-63`: The new `test-get-issue-state.sh` case `--issue '1 2'` with `ERROR=--issue must be numeric` is present and sufficient to cover embedded-space rejection for the argv numeric validator (along with `abc` and `1-2`). No revision needed for that case.
+
+3. **risk-integration** — `plan.txt:100-104` / `agent-lint.toml`: Add Makefile-only harness exclusions for `scripts/test-get-issue-state.sh` and `scripts/test-get-issue-state.md` before relying on `make agent-lint`.
+
+4. **correctness** — `plan.txt:44-52`: Extend sentinel harness planned cases with at least one ISSUE_NUMBER whitespace/tab fixture; RUN_ID `has space` alone does not verify the numeric field’s no-whitespace invariant.
+
+5. **correctness** — `plan.txt:46-52`: Add explicit tab and embedded-CR sentinel fixtures so corruption artifacts called out in the edge-case narrative are harness-pinned, not only pattern-inferred.
+
+6. **correctness** — `scripts/get-issue-state.md:38-40`: Refresh the Test harness section when adding `test-get-issue-state.sh`.
+
+7. **correctness** — `scripts/tracking-issue-read.md:152` / `scripts/test-tracking-issue-read-sentinel.md`: Update the harness sibling contract in the same PR as new sentinel charset cases.
+
+8. **correctness** — `plan.txt:50-51`: Specify `assert_not_contains` (or equivalent) for the no-echo RUN_ID invariant in case 3.

@@ -1,0 +1,23 @@
+Reading the implementation plan and exploring the cited codebase paths.
+Checking agent-lint rules for Makefile-only harnesses and whether the plan's gh stub matches the script invocation.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:1334-1340	Plan omits agent-lint exclusions for the new Makefile-only harness	New scripts/test-get-issue-state.sh and scripts/test-get-issue-state.md mirror test-get-issue-context.* which are dead-script excluded; make agent-lint in the stated lint pipeline will likely fail	Add both paths to agent-lint.toml next to the test-get-issue-context.sh entry with the same Makefile-only rationale
+2	in_scope	important	correctness	scripts/test-tracking-issue-read-sentinel.sh:76-88	Plan requires stdout must not contain malformed RUN_ID but harness lacks assert_not_contains	Test case 3 cannot be implemented as written using only assert_equal_stdout/assert_equal_exit/assert_contains	Add a small assert_not_contains helper (pattern exists in scripts/test-redact-secrets.sh) or an explicit [[ "$LAST_STDOUT" != *"$needle"* ]] check per malformed fixture
+3	in_scope	important	security	scripts/test-tracking-issue-read-sentinel.sh:44-53	Plan tests RUN_ID no-echo for embedded newline but not ISSUE_NUMBER	Round-1 concern was forged KV lines from ISSUE_NUMBER values with embedded newlines; RUN_ID case 3 covers one field only	Add a sentinel fixture with ISSUE_NUMBER containing an embedded newline and assert exit 1, ERROR uses malformed-value-omitted, and stdout does not contain the injected payload
+4	in_scope	nit	architecture	scripts/get-issue-state.md:38-40	Plan adds one validation sentence but leaves Test harness section claiming no harness	Contract doc contradicts new scripts/test-get-issue-state.sh after landing	Replace the no-harness paragraph with Makefile target test-get-issue-state and pointer to scripts/test-get-issue-state.md
+5	in_scope	nit	architecture	scripts/tracking-issue-read.md:137	Plan does not update sentinel parser exit-1 conditions in the canonical contract section	Line 137 still says exit 1 only for missing file or invalid ADOPTED; post-change ISSUE_NUMBER/RUN_ID rejections are undocumented there	Extend the exit-1 bullet to list non-empty ISSUE_NUMBER must be all digits and RUN_ID must match ^[A-Za-z0-9._-]+$ with fixed-token ERROR lines
+6	in_scope	nit	architecture	scripts/test-tracking-issue-read-sentinel.md:1-58	Plan extends the sentinel harness but not its sibling contract doc	Edit-in-sync table at scripts/tracking-issue-read.md:152 requires harness .md updates in the same PR	Update test-tracking-issue-read-sentinel.md invariants and case table for ISSUE_NUMBER/RUN_ID validation and no-echo rules
+
+1. **[risk-integration]** [`agent-lint.toml:1334-1340`](agent-lint.toml) — The plan lists `make agent-lint` but does not add `scripts/test-get-issue-state.sh` / `.md` to `agent-lint.toml`. Sibling `test-get-issue-context.*` is Makefile-only excluded; without the same entry, CI lint will likely flag the new harness as dead.
+
+2. **[correctness]** [`scripts/test-tracking-issue-read-sentinel.sh:76-88`](scripts/test-tracking-issue-read-sentinel.sh) — Test plan item 3 requires proving stdout does not contain the malformed `RUN_ID`, but this harness only defines `assert_equal_stdout`, `assert_equal_exit`, and `assert_contains`. Add `assert_not_contains` or inline negated checks.
+
+3. **[security]** [`scripts/test-tracking-issue-read-sentinel.sh`](scripts/test-tracking-issue-read-sentinel.sh) — RUN_ID newline injection is covered; add a symmetric `ISSUE_NUMBER` embedded-newline case with the same no-echo invariant to lock the KV-forgery fix.
+
+4. **[architecture]** [`scripts/get-issue-state.md:38-40`](scripts/get-issue-state.md) — Update the Test harness section to reference `test-get-issue-state`, not only the one-line validation note.
+
+5. **[architecture]** [`scripts/tracking-issue-read.md:137`](scripts/tracking-issue-read.md) — Extend the `--sentinel` parser exit-1 list for ISSUE_NUMBER/RUN_ID charset failures alongside the planned one-sentence addition elsewhere.
+
+6. **[architecture]** [`scripts/test-tracking-issue-read-sentinel.md`](scripts/test-tracking-issue-read-sentinel.md) — Sync the harness contract doc when adding the new sentinel cases.
+
+[OUT_OF_SCOPE] **[architecture]** [`scripts/tracking-issue-read.sh:272-275`](scripts/tracking-issue-read.sh) — Invalid `ADOPTED` values still echo the raw rejected value in `ERROR=` (including possible embedded newlines). The plan intentionally fixes ISSUE_NUMBER/RUN_ID only; aligning ADOPTED with the fixed-token pattern would be a separate hardening pass.

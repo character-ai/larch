@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:1334-1346	Plan adds Makefile-only harness test-get-issue-state but omits agent-lint.toml exclude entries	make agent-lint flags scripts/test-get-issue-state.sh as dead/unreferenced and lint fails despite make lint listing agent-lint	Add commented exclude entries for scripts/test-get-issue-state.sh and scripts/test-get-issue-state.md mirroring scripts/test-get-issue-context.sh
