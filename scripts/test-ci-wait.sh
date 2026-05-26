@@ -82,6 +82,16 @@ SH
     chmod +x "$root/scripts/ci-decide.sh"
 }
 
+write_noop_sleep_stub() {
+    local root=$1
+    cat > "$root/scripts/fake-sleep.sh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+    chmod +x "$root/scripts/fake-sleep.sh"
+    ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
+}
+
 run_subject() {
     local root=$1 rc_file=$2
     shift 2
@@ -145,13 +155,7 @@ root=$(make_env pending_then_pass)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
 # Override sleep to be instantaneous so the 3 pending polls don't take 30s real time
-cat > "$root/scripts/fake-sleep.sh" <<'SH'
-#!/usr/bin/env bash
-# no-op sleep stub
-exit 0
-SH
-chmod +x "$root/scripts/fake-sleep.sh"
-ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
+write_noop_sleep_stub "$root"
 STUB_STATUSES=pending:pending:pending:pass run_subject "$root" "$root/.rc" --timeout 120
 assert_rc "$root/.rc" 0 "pending-then-pass: exits 0"
 assert_stdout_contains "$root" "ACTION=merge" "pending-then-pass: ACTION=merge"
@@ -228,13 +232,7 @@ root=$(make_env genuine_timeout)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
 # Override sleep to be instantaneous so test completes quickly
-cat > "$root/scripts/fake-sleep.sh" <<'SH'
-#!/usr/bin/env bash
-# no-op sleep stub
-exit 0
-SH
-chmod +x "$root/scripts/fake-sleep.sh"
-ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
+write_noop_sleep_stub "$root"
 
 STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 30
 assert_rc "$root/.rc" 0 "genuine timeout: exits 0"
@@ -270,6 +268,41 @@ if [[ -z "$stderr_no_newlines" ]]; then
     ok "breadcrumb stream: stderr has no progress output"
 else
     fail "breadcrumb stream: expected quiet stderr, got [$stderr_no_newlines]"
+fi
+
+# --- Case 6: breadcrumb stream captures dot progress across pending polls ---
+root=$(make_env breadcrumb_stream_pending_dots)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+write_noop_sleep_stub "$root"
+stream="$root/pending-dots.ndjson"
+LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pending:pending:pass run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "breadcrumb dots: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "breadcrumb dots: ACTION=merge"
+dot_count=$(grep -Fc 'text=.' "$stream" 2>/dev/null || echo 0)
+if [[ "$dot_count" -eq 2 ]]; then
+    ok "breadcrumb dots: writes one dot record per pending poll"
+else
+    fail "breadcrumb dots: expected 2 dot records, got $dot_count"
+    sed 's/^/    stream: /' "$stream"
+fi
+
+# --- Case 7: breadcrumb stream captures timeout bail warnings without stderr leakage ---
+root=$(make_env breadcrumb_stream_timeout_bail)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+write_noop_sleep_stub "$root"
+stream="$root/timeout-bail.ndjson"
+LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 20
+assert_rc "$root/.rc" 0 "breadcrumb timeout bail: exits 0"
+assert_stdout_contains "$root" "ACTION=bail" "breadcrumb timeout bail: ACTION=bail"
+assert_stream_contains "$stream" "c=warn" "breadcrumb timeout bail: warn category written"
+assert_stream_contains "$stream" "text= ⚠ CI wait timed out after 2 polls" "breadcrumb timeout bail: timeout warning written"
+stderr_no_newlines=$(tr -d '\n' <"$root/.stderr")
+if [[ -z "$stderr_no_newlines" ]]; then
+    ok "breadcrumb timeout bail: stderr remains quiet"
+else
+    fail "breadcrumb timeout bail: expected quiet stderr, got [$stderr_no_newlines]"
 fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then

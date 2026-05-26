@@ -351,4 +351,91 @@ out_meta=$(
 )
 [[ "$out_meta" == *"PUBLISH_OK=false"* ]] || fail "malformed meta should fail publish: $out_meta"
 
+echo "=== breadcrumb publish redacts PEM/tmpdir and copies non-ndjson files ==="
+TMPBC=$(mktemp -d "${TMPDIR:-/tmp}/larch-design-breadcrumbs.XXXXXX")
+clone_bc=$(setup_clone_with_origin_head "$TMPBC")
+stub_bc="$TMPBC/stub"
+make_gh_stub "$stub_bc"
+export PATH="$stub_bc:$PATH"
+export TEST_CLONE_ROOT="$clone_bc"
+export TEST_MERGE_BRANCH="larch-log-design-RUNBREAD1"
+unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPBC/design/breadcrumbs"
+printf 'body\n' >"$TMPBC/design/plan.txt"
+secret_path="$TMPBC/design/private.txt"
+pem_begin_part1='-----BEGIN RSA PRIVATE '
+pem_begin_part2='KEY-----'
+pem_body_part1='MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1'
+pem_body_part2='Pt8Qu'
+pem_end_part1='-----END RSA PRIVATE '
+pem_end_part2='KEY-----'
+pem_body="${pem_body_part1}${pem_body_part2}"
+{
+    printf 'larch:bc t=now d=0 p=1 s=test c=progress text=tmpdir %s\n' "$secret_path"
+    printf '%s%s\n' "$pem_begin_part1" "$pem_begin_part2"
+    printf '%s%s\n' "$pem_body_part1" "$pem_body_part2"
+    printf '%s%s\n' "$pem_end_part1" "$pem_end_part2"
+} >"$TMPBC/design/breadcrumbs/stream.ndjson"
+printf 'quiet tmpdir %s\n' "$secret_path" >"$TMPBC/design/breadcrumbs/stream.quiet"
+(
+    cd "$clone_bc" || exit 1
+    out_bc=$(bash "$PUBLISH" --design-tmpdir "$TMPBC/design" --run-id "RUNBREAD1" --issue 13 --repo owner/repo)
+    [[ "$out_bc" == *"PUBLISH_OK=true"* ]] || fail "breadcrumb publish PUBLISH_OK: $out_bc"
+)
+git -C "$clone_bc" pull -q origin main
+bc_stream="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.ndjson"
+bc_quiet="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.quiet"
+[[ -f "$bc_stream" ]] || fail "breadcrumb ndjson missing"
+[[ -f "$bc_quiet" ]] || fail "breadcrumb non-ndjson sidecar missing"
+grep -Eq '<TMPDIR>|<OPERATOR_REPO_PATH>' "$bc_stream" || fail "breadcrumb ndjson tmpdir redaction missing"
+! grep -Fq "$secret_path" "$bc_stream" || fail "breadcrumb ndjson leaked tmpdir path"
+grep -q '<REDACTED-PRIVATE-KEY>' "$bc_stream" || fail "breadcrumb ndjson PEM redaction missing"
+! grep -Fq "$pem_body" "$bc_stream" || fail "breadcrumb ndjson leaked PEM body"
+grep -Eq '<TMPDIR>|<OPERATOR_REPO_PATH>' "$bc_quiet" || fail "breadcrumb sidecar tmpdir redaction missing"
+! grep -Fq "$secret_path" "$bc_quiet" || fail "breadcrumb sidecar leaked tmpdir path"
+
+echo "=== breadcrumb publish rejects symlink source closed ==="
+TMPBCSYM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-breadcrumb-symlink.XXXXXX")
+clone_bcsym=$(setup_clone_with_origin_head "$TMPBCSYM")
+stub_bcsym="$TMPBCSYM/stub"
+make_gh_stub "$stub_bcsym"
+export PATH="$stub_bcsym:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPBCSYM/design/breadcrumbs"
+printf 'body\n' >"$TMPBCSYM/design/plan.txt"
+printf 'real\n' >"$TMPBCSYM/real-breadcrumb.txt"
+ln -s "$TMPBCSYM/real-breadcrumb.txt" "$TMPBCSYM/design/breadcrumbs/bad.ndjson"
+out_bcsym=$(
+    (cd "$clone_bcsym" && bash "$PUBLISH" --design-tmpdir "$TMPBCSYM/design" --run-id "RUNBSYM1" --issue 14 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_bcsym" == *"PUBLISH_OK=false"* ]] || fail "breadcrumb symlink should fail publish: $out_bcsym"
+[[ ! -e "$clone_bcsym/larch-logs/design/RUNBSYM1/breadcrumbs" ]] || fail "breadcrumb symlink failure should leave no published breadcrumbs"
+
+echo "=== breadcrumb publish fails closed on redactor failure ==="
+TMPBCFAIL=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-breadcrumb-fail.XXXXXX")
+clone_bcfail=$(setup_clone_with_origin_head "$TMPBCFAIL")
+stub_bcfail="$TMPBCFAIL/stub"
+make_gh_stub "$stub_bcfail"
+export PATH="$stub_bcfail:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPBCFAIL/design/breadcrumbs"
+printf 'body\n' >"$TMPBCFAIL/design/plan.txt"
+printf 'will fail redaction\n' >"$TMPBCFAIL/design/breadcrumbs/fail.ndjson"
+orig_redact="$REPO_ROOT/scripts/redact-secrets.sh"
+saved_redact="$TMPBCFAIL/redact-secrets.original.sh"
+cp "$orig_redact" "$saved_redact"
+cat >"$TMPBCFAIL/redact-secrets.fail.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+exit 1
+EOF
+chmod +x "$TMPBCFAIL/redact-secrets.fail.sh"
+cp "$TMPBCFAIL/redact-secrets.fail.sh" "$orig_redact"
+out_bcfail=$(
+    (cd "$clone_bcfail" && bash "$PUBLISH" --design-tmpdir "$TMPBCFAIL/design" --run-id "RUNBFAIL1" --issue 15 --repo owner/repo) 2>/dev/null || true
+)
+cp "$saved_redact" "$orig_redact"
+[[ "$out_bcfail" == *"PUBLISH_OK=false"* ]] || fail "breadcrumb redactor failure should fail publish: $out_bcfail"
+[[ ! -e "$clone_bcfail/larch-logs/design/RUNBFAIL1/breadcrumbs" ]] || fail "breadcrumb redactor failure should leave no published breadcrumbs"
+
 echo "All design-log-publish harness assertions passed."

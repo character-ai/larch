@@ -12,6 +12,8 @@ unset LARCH_BREADCRUMB_STREAM LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 MON="$REPO_ROOT/scripts/breadcrumb-monitor.sh"
 LIB_QUIET="$REPO_ROOT/scripts/lib-quiet.sh"
+LIB_LARCH_LOG="$REPO_ROOT/scripts/lib-larch-log.sh"
+LARCH_LOG_BATCHES="$REPO_ROOT/scripts/larch-log-batches.sh"
 
 if ! [ -x "$MON" ]; then
     echo "FAIL: $MON not executable" >&2
@@ -45,6 +47,8 @@ make_monitor_fixture() {
     mkdir -p "$root"
     cp "$MON" "$root/breadcrumb-monitor.sh"
     cp "$LIB_QUIET" "$root/lib-quiet.sh"
+    cp "$LIB_LARCH_LOG" "$root/lib-larch-log.sh"
+    cp "$LARCH_LOG_BATCHES" "$root/larch-log-batches.sh"
     case "$redactor_mode" in
         pass)
             cp "$REPO_ROOT/scripts/lib-redact-streaming.sh" "$root/lib-redact-streaming.sh"
@@ -479,7 +483,7 @@ fi
 unset ec
 
 # ---------------------------------------------------------------------------
-# Test 14: partial line is retained until a newline arrives.
+# Test 15: partial line is retained until a newline arrives.
 # ---------------------------------------------------------------------------
 alloc_sentinels t14
 (
@@ -501,18 +505,18 @@ out=$("$MON" \
 ec=${ec:-0}
 wait "$WRITER_PID" 2>/dev/null || true
 if [ "$ec" -ne 0 ]; then
-    fail "test 14: monitor exit was $ec, expected 0"
+    fail "test 15: monitor exit was $ec, expected 0"
 fi
 if printf '%s' "$out" | grep -q "text=partial$"; then
-    fail "test 14: partial line surfaced before newline"
+    fail "test 15: partial line surfaced before newline"
 fi
 if ! printf '%s' "$out" | grep -q "partial-complete"; then
-    fail "test 14: completed line missing (out=$out)"
+    fail "test 15: completed line missing (out=$out)"
 fi
 unset ec
 
 # ---------------------------------------------------------------------------
-# Test 15: redactor failure drops streamed line and surfaces a warning.
+# Test 16: redactor failure drops streamed line and surfaces a warning.
 # ---------------------------------------------------------------------------
 alloc_sentinels t15
 MON_FAIL=$(make_monitor_fixture monitor-fail-line fail)
@@ -527,18 +531,18 @@ out=$("$MON_FAIL" \
     --surfaced-sentinel "$SURFACED" 2>&1) || ec=$?
 ec=${ec:-0}
 if [ "$ec" -ne 0 ]; then
-    fail "test 15: monitor exit was $ec, expected 0"
+    fail "test 16: monitor exit was $ec, expected 0"
 fi
 if ! printf '%s' "$out" | grep -q "WARN redact-drop-line"; then
-    fail "test 15: redactor failure warning missing (out=$out)"
+    fail "test 16: redactor failure warning missing (out=$out)"
 fi
 if printf '%s' "$out" | grep -q "top-secret"; then
-    fail "test 15: raw streamed line leaked on redactor failure"
+    fail "test 16: raw streamed line leaked on redactor failure"
 fi
 unset ec
 
 # ---------------------------------------------------------------------------
-# Test 16: failure-tail redactor failure warns and leaks no raw quiet-log bytes.
+# Test 17: failure-tail redactor failure warns and leaks no raw quiet-log bytes.
 # ---------------------------------------------------------------------------
 alloc_sentinels t16
 MON_FAIL=$(make_monitor_fixture monitor-fail-tail fail)
@@ -553,13 +557,13 @@ out=$("$MON_FAIL" \
     --surfaced-sentinel "$SURFACED" 2>&1) || ec=$?
 ec=${ec:-0}
 if [ "$ec" -ne 0 ]; then
-    fail "test 16: monitor exit was $ec, expected 0"
+    fail "test 17: monitor exit was $ec, expected 0"
 fi
 if ! printf '%s' "$out" | grep -q "WARN redact-drop-line"; then
-    fail "test 16: failure-tail warning missing (out=$out)"
+    fail "test 17: failure-tail warning missing (out=$out)"
 fi
 if printf '%s' "$out" | grep -q "very-secret-tail"; then
-    fail "test 16: raw failure-tail content leaked on redactor failure"
+    fail "test 17: raw failure-tail content leaked on redactor failure"
 fi
 unset ec
 

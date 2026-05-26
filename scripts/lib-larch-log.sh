@@ -233,36 +233,86 @@ larch_log_canonical_dir() {
     )
 }
 
-larch_log_breadcrumbs_under_session_tmp() {
+larch_log_canonical_path() {
+    local path="$1" parent base parent_canon
+    if [ -L "$path" ]; then
+        return 1
+    fi
+    if [ -d "$path" ]; then
+        larch_log_canonical_dir "$path"
+        return $?
+    fi
+    if [ -e "$path" ]; then
+        parent="$(dirname "$path")"
+        base="$(basename "$path")"
+        parent_canon="$(larch_log_canonical_dir "$parent")" || return 1
+        printf '%s/%s\n' "$parent_canon" "$base"
+        return 0
+    fi
+    parent="$(dirname "$path")"
+    base="$(basename "$path")"
+    parent_canon="$(larch_log_canonical_dir "$parent")" || return 1
+    printf '%s/%s\n' "$parent_canon" "$base"
+}
+
+larch_log_session_tmp_root_canon_for_path() {
     local path="$1" path_canon root_canon log_root
     if larch_log_path_has_dotdot_component "$path"; then
         return 1
     fi
-    path_canon="$(larch_log_canonical_dir "$path")" || return 1
+    path_canon="$(larch_log_canonical_path "$path")" || return 1
     if [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
         root_canon="$(larch_log_canonical_dir "$IMPLEMENT_TMPDIR")" || return 1
-        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+        if larch_log_session_tmp_contains "$root_canon" "$path_canon"; then
+            printf '%s\n' "$root_canon"
+            return 0
+        fi
     fi
     if [ -n "${DESIGN_TMPDIR:-}" ]; then
         root_canon="$(larch_log_canonical_dir "$DESIGN_TMPDIR")" || return 1
-        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+        if larch_log_session_tmp_contains "$root_canon" "$path_canon"; then
+            printf '%s\n' "$root_canon"
+            return 0
+        fi
     fi
     if [ -n "${REVIEW_TMPDIR:-}" ]; then
         root_canon="$(larch_log_canonical_dir "$REVIEW_TMPDIR")" || return 1
-        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+        if larch_log_session_tmp_contains "$root_canon" "$path_canon"; then
+            printf '%s\n' "$root_canon"
+            return 0
+        fi
     fi
     if [ -n "${RESEARCH_TMPDIR:-}" ]; then
         root_canon="$(larch_log_canonical_dir "$RESEARCH_TMPDIR")" || return 1
-        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+        if larch_log_session_tmp_contains "$root_canon" "$path_canon"; then
+            printf '%s\n' "$root_canon"
+            return 0
+        fi
     fi
     log_root="$(larch_log_root)"
     case "$log_root" in
         */larch-logs)
             root_canon="$(larch_log_canonical_dir "${log_root%/larch-logs}")" || return 1
-            larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+            if larch_log_session_tmp_contains "$root_canon" "$path_canon"; then
+                printf '%s\n' "$root_canon"
+                return 0
+            fi
             ;;
     esac
     return 1
+}
+
+larch_log_breadcrumbs_under_session_tmp() {
+    larch_log_session_tmp_root_canon_for_path "$1" >/dev/null
+}
+
+larch_log_stat_link_count() {
+    local path="$1"
+    if stat -f '%l' "$path" >/dev/null 2>&1; then
+        stat -f '%l' "$path"
+    else
+        stat -c '%h' "$path"
+    fi
 }
 
 larch_log_cleanup_breadcrumb_staging() {
@@ -305,7 +355,7 @@ larch_log_publish_breadcrumbs_swap() {
 
 larch_log_publish_breadcrumbs_shared() {
     local source_dir="$1" dest_dir="$2" on_error="$3"
-    local staging_parent staging_dir f base state_file tmp_out found_any=false
+    local staging_parent staging_dir f base state_file tmp_out found_any=false link_count
 
     [ -n "$source_dir" ] || return 0
     if [ ! -e "$source_dir" ]; then
@@ -327,7 +377,6 @@ larch_log_publish_breadcrumbs_shared() {
         "$on_error" "breadcrumbs source must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR: $source_dir"
         return 1
     fi
-
     staging_parent="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-breadcrumbs.XXXXXX")" || {
         "$on_error" "cannot create breadcrumbs staging temp"
         return 1
@@ -339,7 +388,7 @@ larch_log_publish_breadcrumbs_shared() {
         return 1
     }
 
-    for f in "$source_dir"/*.ndjson; do
+    for f in "$source_dir"/*; do
         [ -e "$f" ] || continue
         [ ! -L "$f" ] || {
             rm -rf "$staging_parent"
@@ -347,6 +396,17 @@ larch_log_publish_breadcrumbs_shared() {
             return 1
         }
         [ -f "$f" ] || continue
+        if ! larch_log_breadcrumbs_under_session_tmp "$f"; then
+            rm -rf "$staging_parent"
+            "$on_error" "breadcrumbs source file must stay under the session tmpdir: $f"
+            return 1
+        fi
+        link_count="$(larch_log_stat_link_count "$f" 2>/dev/null || printf '0')"
+        if [ "${link_count:-0}" -gt 1 ]; then
+            rm -rf "$staging_parent"
+            "$on_error" "breadcrumbs source file must not be a hardlink: $f"
+            return 1
+        fi
         base="$(basename "$f")"
         case "$base" in
             */*|.*|*..*)

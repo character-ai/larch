@@ -7,6 +7,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-larch-log.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-larch-log.sh"
 
 LARCH_QUIET_DISABLE=1
 export LARCH_QUIET_DISABLE
@@ -25,23 +28,6 @@ usage() {
     printf 'Usage: %s --stream PATH --done-sentinel PATH --status-file PATH --quiet-log PATH --surfaced-sentinel PATH [--poll-interval=SEC] [--rate-cap=N] [--final-tail-lines=N] [--mode=tail|monitor]\n' "$(basename "$0")" >&2
 }
 
-larch_bm_under_session_tmp() {
-    local p=$1
-    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
-        case "$p" in "$IMPLEMENT_TMPDIR"/*) return 0 ;; esac
-    fi
-    if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
-        case "$p" in "$DESIGN_TMPDIR"/*) return 0 ;; esac
-    fi
-    if [[ -n "${REVIEW_TMPDIR:-}" ]]; then
-        case "$p" in "$REVIEW_TMPDIR"/*) return 0 ;; esac
-    fi
-    if [[ -n "${RESEARCH_TMPDIR:-}" ]]; then
-        case "$p" in "$RESEARCH_TMPDIR"/*) return 0 ;; esac
-    fi
-    return 1
-}
-
 larch_bm_validate_path() {
     local label=$1 path=$2
     if [[ -z "$path" || "$path" != /* ]]; then
@@ -56,7 +42,7 @@ larch_bm_validate_path() {
         larch_err "${label}: symlinks are rejected"
         return 2
     fi
-    if ! larch_bm_under_session_tmp "$path"; then
+    if ! larch_log_breadcrumbs_under_session_tmp "$path"; then
         larch_err "${label}: path must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR"
         return 2
     fi

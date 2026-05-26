@@ -188,7 +188,7 @@ while true; do
     if [[ $checks -ge $MAX_POLLS ]]; then
         ACTION="bail"
         BAIL_REASON="Poll budget (${MAX_POLLS} polls / ${TIMEOUT}s) exhausted"
-        larch_errf "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS"
+        emit_breadcrumb_stderr --category=warn "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS"
         exit 0
     fi
 
@@ -204,7 +204,7 @@ while true; do
         if [[ "$ci_failures" -ge 3 ]]; then
             ACTION="bail"
             BAIL_REASON="ci-status.sh returned no valid output 3 times consecutively"
-            larch_errf "\n❌ ci-status.sh failed repeatedly\n"
+            emit_breadcrumb_stderr --category=warn "\n❌ ci-status.sh failed repeatedly\n"
             exit 0
         fi
         CI_STATUS="pending"
@@ -219,7 +219,7 @@ while true; do
     if [[ "$CI_STATUS" == "NO_CHECKS" ]]; then
         ACTION="bail"
         BAIL_REASON="No CI checks observed after ${EMPTY_CHECKS_GRACE}s grace"
-        larch_errf "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE"
+        emit_breadcrumb_stderr --category=warn "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE"
         exit 0
     fi
 
@@ -235,7 +235,7 @@ while true; do
     if [[ "$DECIDE_EXIT" -ne 0 ]]; then
         ACTION="bail"
         BAIL_REASON="ci-decide.sh exited with error (code $DECIDE_EXIT)"
-        larch_errf "\n❌ ci-decide.sh failed (exit %d)\n" "$DECIDE_EXIT"
+        emit_breadcrumb_stderr --category=warn "\n❌ ci-decide.sh failed (exit %d)\n" "$DECIDE_EXIT"
         exit 0
     fi
 

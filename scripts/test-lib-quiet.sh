@@ -163,4 +163,24 @@ assert_eq "$(cat "$SCRATCH/breadcrumb-stream-only.err")" "" "emit_breadcrumb str
 assert_file_contains "$SCRATCH/breadcrumb-only.ndjson" "c=progress" "emit_breadcrumb stream-only category"
 assert_file_contains "$SCRATCH/breadcrumb-only.ndjson" "text=secret token" "emit_breadcrumb stream-only payload"
 
+# 16. Missing category with a stream warns and writes no record.
+helper="$SCRATCH/breadcrumb-missing-category.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; export LARCH_BREADCRUMB_STREAM; larch_quiet_init; emit_breadcrumb "missing category"'
+"$helper" "$SCRATCH/breadcrumb-missing-category.ndjson" >"$SCRATCH/breadcrumb-missing-category.out" 2>"$SCRATCH/breadcrumb-missing-category.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-missing-category.out")" "" "missing category stdout"
+assert_file_contains "$SCRATCH/breadcrumb-missing-category.err" "WARN unknown-category=<missing>" "missing category warning"
+if [[ -s "$SCRATCH/breadcrumb-missing-category.ndjson" ]]; then
+    fail "missing category should not write a stream record"
+fi
+
+# 17. Invalid category with a stream warns and writes no record.
+helper="$SCRATCH/breadcrumb-invalid-category.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; export LARCH_BREADCRUMB_STREAM; larch_quiet_init; emit_breadcrumb --category=bogus "invalid category"'
+"$helper" "$SCRATCH/breadcrumb-invalid-category.ndjson" >"$SCRATCH/breadcrumb-invalid-category.out" 2>"$SCRATCH/breadcrumb-invalid-category.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-invalid-category.out")" "" "invalid category stdout"
+assert_file_contains "$SCRATCH/breadcrumb-invalid-category.err" "WARN unknown-category=bogus" "invalid category warning"
+if [[ -s "$SCRATCH/breadcrumb-invalid-category.ndjson" ]]; then
+    fail "invalid category should not write a stream record"
+fi
+
 printf 'PASS: test-lib-quiet.sh\n'

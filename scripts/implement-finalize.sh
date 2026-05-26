@@ -1389,8 +1389,9 @@ run_teardown() {
     # This handles stalled/failed runs where the ci-merge flush in ship-pr.sh
     # never ran. Root-cause prevention lives in ship-pr.sh (ci-merge flush) and
     # write_version_reasoning_fragment (correct run-id from state file).
-    local larch_flush_run_id manifest_path_teardown larch_recovery_ok
+    local larch_flush_run_id manifest_path_teardown larch_recovery_ok post_merge_sentinel
     larch_flush_run_id=$(read_state RUN_ID)
+    post_merge_sentinel="$IMPLEMENT_TMPDIR/post-merge-sentinel"
     flush_execution_issues_safety_net
     if [ -n "$larch_flush_run_id" ] && [ "$repo_unavailable" = "false" ]; then
         manifest_path_teardown="$IMPLEMENT_TMPDIR/larch-logs/implement/$larch_flush_run_id/manifest.json"
@@ -1430,6 +1431,12 @@ run_teardown() {
                 --skill implement --run-id "$larch_flush_run_id" \
                 --field "stalled_at_step=$stall_step" \
                 2>/dev/null || true
+        fi
+        if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ ! -e "$post_merge_sentinel" ]; then
+            "$SCRIPT_DIR/larch-log.sh" commit \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement --run-id "$larch_flush_run_id" \
+                2>/dev/null || warn_line '**⚠ 18: larch-log commit failed during teardown flush. Continuing.**'
         fi
     fi
 
