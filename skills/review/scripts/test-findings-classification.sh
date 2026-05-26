@@ -92,7 +92,7 @@ IMPLEMENT_TMPDIR="$TMP/ambient-impl" "$TALLY" --ballot-file "$B2/ballot.md" --re
 class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
 [[ "$class_file" == "$B2/findings-classification-round-2.tsv" ]] || fail "standalone session-env path should remain round-scoped: $class_file"
 
-echo "# Fixture B3: round-N tmpdir shape alone uses nested findings-classification.tsv"
+echo "# Fixture B3: standalone round-N tmpdir without IMPLEMENT_TMPDIR uses round-suffixed TSV"
 B3="$TMP/impl-shape/round-3"
 mkdir -p "$B3"
 write_ballot "$B3/ballot.md"
@@ -100,7 +100,7 @@ printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=fa
 out="$B3/out.env"
 IMPLEMENT_TMPDIR="" "$TALLY" --ballot-file "$B3/ballot.md" --review-tmpdir "$B3" --round-num 3 --voter-files "$B3/v1.txt" > "$out"
 class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
-[[ "$class_file" == "$B3/findings-classification.tsv" ]] || fail "round-N tmpdir should use nested classification filename: $class_file"
+[[ "$class_file" == "$B3/findings-classification-round-3.tsv" ]] || fail "standalone round-N tmpdir should keep round-suffixed TSV (no IMPLEMENT_TMPDIR binding): $class_file"
 
 echo "# Fixture C: 0-judge path emits rows with empty voter columns"
 C="$TMP/c"
