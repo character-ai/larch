@@ -171,7 +171,7 @@ for arg in "$@"; do
 done
 [[ -n "$output" ]] || exit 9
 printf 'codex review ok\n' > "$output"
-printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_CODEX
 chmod +x "$CODEX_DEFAULT_STUB"
 ln -sf "$CODEX_DEFAULT_STUB" "$STUB_BIN/codex"
@@ -557,7 +557,7 @@ for arg in "$@"; do
 done
 [[ -n "$output_path" ]] || exit 9
 printf 'stub codex review payload\n' > "$output_path"
-printf '{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
 STUB_EOF
     chmod +x "$LCR_BIN/codex"
 
@@ -615,7 +615,7 @@ for arg in "$@"; do
 done
 [[ -n "$output_path" ]] || exit 9
 printf 'stub codex review payload\n' > "$output_path"
-printf '{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
 STUB_EOF
     chmod +x "$LCR_STDOUT_BIN/codex"
 
@@ -714,6 +714,135 @@ elif [[ ! -s "$LCR_NOUSAGE_LEDGER" ]]; then
     pass
 else
     fail "codex-no-usage should not record a vendor row; ledger=$(cat "$LCR_NOUSAGE_LEDGER" 2>/dev/null) stderr=$(cat "$LCR_NOUSAGE_STDERR" 2>/dev/null)"
+fi
+
+# Usage parsing must stay disabled when the sidecar falls back to /dev/null.
+LCR_DEVNULL_BIN="$TMPDIR/lcr-devnull-bin"
+mkdir -p "$LCR_DEVNULL_BIN"
+cat > "$LCR_DEVNULL_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex review payload\n' > "$output_path"
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":21,"cached_input_tokens":1,"output_tokens":2}}}\n'
+STUB_EOF
+chmod +x "$LCR_DEVNULL_BIN/codex"
+
+LCR_DEVNULL_SESSION="lcr-codex-devnull-$$"
+LCR_DEVNULL_LEDGER="$TMPDIR/lcr-codex-devnull-ledger.jsonl"
+LCR_DEVNULL_OUT="$TMPDIR/lcr-codex-devnull-output.txt"
+mkdir -p "${LCR_DEVNULL_OUT}.sidecar"
+set +e
+LARCH_TOKEN_SESSION_ID="$LCR_DEVNULL_SESSION" \
+LARCH_TOKEN_LEDGER="$LCR_DEVNULL_LEDGER" \
+IMPLEMENT_TMPDIR='' \
+PATH="$LCR_DEVNULL_BIN:$PATH" \
+LARCH_CODEX_MODEL="stub-model" \
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --output "$LCR_DEVNULL_OUT" \
+        --timeout 30 \
+        --prompt "review" \
+        >/dev/null 2>"$TMPDIR/lcr-devnull.stderr"
+LCR_DEVNULL_RC=$?
+set -e
+if [[ "$LCR_DEVNULL_RC" -ne 0 ]]; then
+    fail "codex-/dev/null-sidecar smoke exited rc=$LCR_DEVNULL_RC; stderr=$(cat "$TMPDIR/lcr-devnull.stderr" 2>/dev/null)"
+elif [[ -e "$LCR_DEVNULL_LEDGER" ]]; then
+    fail "codex-/dev/null-sidecar should not record a vendor row; ledger=$(cat "$LCR_DEVNULL_LEDGER" 2>/dev/null)"
+elif [[ ! -e "${LCR_DEVNULL_OUT}.events.jsonl" ]]; then
+    pass
+else
+    fail "codex-/dev/null-sidecar should not capture events.jsonl"
+fi
+
+# Successful runs with non-token_usage events must surface the parser
+# diagnostic in the sidecar and avoid ledger rows.
+LCR_SCHEMA_BIN="$TMPDIR/lcr-schema-bin"
+mkdir -p "$LCR_SCHEMA_BIN"
+cat > "$LCR_SCHEMA_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex review payload\n' > "$output_path"
+printf '{"type":"task.completed","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
+STUB_EOF
+chmod +x "$LCR_SCHEMA_BIN/codex"
+
+LCR_SCHEMA_SESSION="lcr-codex-schema-$$"
+LCR_SCHEMA_LEDGER="$TMPDIR/lcr-codex-schema-ledger.jsonl"
+LCR_SCHEMA_OUT="$TMPDIR/lcr-codex-schema-output.txt"
+set +e
+LARCH_TOKEN_SESSION_ID="$LCR_SCHEMA_SESSION" \
+LARCH_TOKEN_LEDGER="$LCR_SCHEMA_LEDGER" \
+IMPLEMENT_TMPDIR='' \
+PATH="$LCR_SCHEMA_BIN:$PATH" \
+LARCH_CODEX_MODEL="stub-model" \
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --output "$LCR_SCHEMA_OUT" \
+        --timeout 30 \
+        --prompt "review" \
+        >/dev/null 2>"$TMPDIR/lcr-schema.stderr"
+LCR_SCHEMA_RC=$?
+set -e
+if [[ "$LCR_SCHEMA_RC" -ne 0 ]]; then
+    fail "codex-schema-drift smoke exited rc=$LCR_SCHEMA_RC; stderr=$(cat "$TMPDIR/lcr-schema.stderr" 2>/dev/null)"
+elif [[ -e "$LCR_SCHEMA_LEDGER" ]]; then
+    fail "codex-schema-drift should not record a vendor row; ledger=$(cat "$LCR_SCHEMA_LEDGER" 2>/dev/null)"
+elif grep -Fq 'parse-codex-usage.sh: no usage events' "${LCR_SCHEMA_OUT}.sidecar" 2>/dev/null; then
+    pass
+else
+    fail "codex-schema-drift should append parse-codex-usage diagnostic; sidecar=$(cat "${LCR_SCHEMA_OUT}.sidecar" 2>/dev/null)"
+fi
+
+# Failed runs must not parse usage-shaped stdout into the token ledger.
+LCR_FAIL_BIN="$TMPDIR/lcr-fail-bin"
+mkdir -p "$LCR_FAIL_BIN"
+cat > "$LCR_FAIL_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":31,"cached_input_tokens":1,"output_tokens":4}}}\n'
+printf 'codex failed\n' >&2
+exit 1
+STUB_EOF
+chmod +x "$LCR_FAIL_BIN/codex"
+
+LCR_FAIL_SESSION="lcr-codex-fail-$$"
+LCR_FAIL_LEDGER="$TMPDIR/lcr-codex-fail-ledger.jsonl"
+LCR_FAIL_OUT="$TMPDIR/lcr-codex-fail-output.txt"
+set +e
+LARCH_TOKEN_SESSION_ID="$LCR_FAIL_SESSION" \
+LARCH_TOKEN_LEDGER="$LCR_FAIL_LEDGER" \
+IMPLEMENT_TMPDIR='' \
+PATH="$LCR_FAIL_BIN:$PATH" \
+LARCH_CODEX_MODEL="stub-model" \
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --output "$LCR_FAIL_OUT" \
+        --timeout 30 \
+        --prompt "review" \
+        >/dev/null 2>"$TMPDIR/lcr-fail.stderr"
+LCR_FAIL_RC=$?
+set -e
+if [[ "$LCR_FAIL_RC" -ne 1 ]]; then
+    fail "codex-failed-run smoke should exit 1; got rc=$LCR_FAIL_RC stderr=$(cat "$TMPDIR/lcr-fail.stderr" 2>/dev/null)"
+elif [[ -e "$LCR_FAIL_LEDGER" ]]; then
+    fail "codex-failed-run should not record a vendor row; ledger=$(cat "$LCR_FAIL_LEDGER" 2>/dev/null)"
+else
+    pass
 fi
 
 # --token-budget-cap argv validation
@@ -846,7 +975,7 @@ for arg in "\$@"; do
     fi
     last="\$arg"
 done
-printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_TRANSIENT_CODEX7
 chmod +x "$STUB_BIN/codex-transient-7"
 ln -sf "$STUB_BIN/codex-transient-7" "$STUB_BIN/codex"
@@ -864,7 +993,7 @@ set -e
 assert_eq "SL-transient-retry-codex-7 exits 0 after transient retry" "0" "$RC_TRANSIENT_CODEX7"
 SL_TRANSIENT_CODEX7_ATTEMPTS=$(cat "$SL_TRANSIENT_CODEX7_COUNT" 2>/dev/null || echo "0")
 assert_eq "SL-transient-retry-codex-7 stub invoked exactly 2 times" "2" "$SL_TRANSIENT_CODEX7_ATTEMPTS"
-assert_eq "SL-transient-retry-codex-7 events sidecar contains exactly one usage event" "1" "$(grep -c '"usage"' "${OUT_TRANSIENT_CODEX7}.events.jsonl" 2>/dev/null | tr -d ' ')"
+assert_eq "SL-transient-retry-codex-7 events sidecar contains exactly one token_usage event" "1" "$(grep -c '"type":"token_usage"' "${OUT_TRANSIENT_CODEX7}.events.jsonl" 2>/dev/null | tr -d ' ')"
 assert_eq "SL-transient-retry-codex-7 ledger contains exactly one vendor row" "1" "$(wc -l < "$SL_TRANSIENT_CODEX7_LEDGER" 2>/dev/null | tr -d ' ')"
 assert_grep "SL-transient-retry-codex-7 ledger marks codex vendor" '"vendor":"codex"' "$SL_TRANSIENT_CODEX7_LEDGER"
 assert_grep "SL-transient-retry-codex-7 ledger marks codex_review raw bucket" '"raw":"codex_review"' "$SL_TRANSIENT_CODEX7_LEDGER"
@@ -925,7 +1054,7 @@ for arg in "\$@"; do
     fi
     last="\$arg"
 done
-printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_TRANSIENT_AUTH
 chmod +x "$STUB_BIN/codex-transient-auth"
 ln -sf "$STUB_BIN/codex-transient-auth" "$STUB_BIN/codex"
@@ -1060,7 +1189,7 @@ for arg in "\$@"; do
     fi
     last="\$arg"
 done
-printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
+printf '{"type":"token_usage","msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_OBS_FIRED
 chmod +x "$STUB_BIN/codex-obs-fired"
 ln -sf "$STUB_BIN/codex-obs-fired" "$STUB_BIN/codex"

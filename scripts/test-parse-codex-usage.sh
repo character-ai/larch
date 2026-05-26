@@ -53,24 +53,24 @@ run_fail() {
 }
 
 cat > "$TMP/sum.jsonl" <<'JSONL'
-{"msg":{"usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":5}}}
-{"msg":{"usage":{"input_tokens":50,"cached_input_tokens":5,"output_tokens":7}}}
+{"type":"token_usage","msg":{"usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":5}}}
+{"type":"token_usage","msg":{"usage":{"input_tokens":50,"cached_input_tokens":5,"output_tokens":7}}}
 JSONL
 run_ok "per-bucket-sum" "$TMP/sum.jsonl" $'INPUT=135\nCACHED_INPUT=15\nOUTPUT=12\nTOTAL=162'
 
 cat > "$TMP/cache-math.jsonl" <<'JSONL'
-{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
+{"type":"token_usage","msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
 JSONL
 run_ok "cache-math" "$TMP/cache-math.jsonl" $'INPUT=100\nCACHED_INPUT=900\nOUTPUT=50\nTOTAL=1050'
 
 cat > "$TMP/mixed-shapes.jsonl" <<'JSONL'
-{"usage":{"input_tokens":20,"cached_input_tokens":4,"output_tokens":6}}
-{"usage":{"input_tokens":30,"input_tokens_details":{"cached_tokens":10},"output_tokens":8}}
+{"type":"token_usage","usage":{"input_tokens":20,"cached_input_tokens":4,"output_tokens":6}}
+{"type":"token_usage","usage":{"input_tokens":30,"input_tokens_details":{"cached_tokens":10},"output_tokens":8}}
 JSONL
 run_ok "mixed-shapes" "$TMP/mixed-shapes.jsonl" $'INPUT=36\nCACHED_INPUT=14\nOUTPUT=14\nTOTAL=64'
 
 cat > "$TMP/coalesce.jsonl" <<'JSONL'
-{"msg":{"usage":{"input_tokens":100,"cached_input_tokens":25,"output_tokens":10}},"usage":{"input_tokens":999,"cached_input_tokens":999,"output_tokens":999}}
+{"type":"token_usage","msg":{"usage":{"input_tokens":100,"cached_input_tokens":25,"output_tokens":10}},"usage":{"input_tokens":999,"cached_input_tokens":999,"output_tokens":999}}
 JSONL
 run_ok "msg-coalesce" "$TMP/coalesce.jsonl" $'INPUT=75\nCACHED_INPUT=25\nOUTPUT=10\nTOTAL=110'
 
@@ -78,7 +78,7 @@ run_ok "msg-direct-usage" "$CODEX_MSG_FIXTURE" $'INPUT=100\nCACHED_INPUT=20\nOUT
 
 cat > "$TMP/noise.jsonl" <<'JSONL'
 wrapper noise
-{"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3},"output_tokens":2}}
+{"type":"token_usage","usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3},"output_tokens":2}}
 not json
 JSONL
 run_ok "wrapper-noise" "$TMP/noise.jsonl" $'INPUT=7\nCACHED_INPUT=3\nOUTPUT=2\nTOTAL=12'
@@ -93,12 +93,12 @@ JSONL
 run_fail "no-usage" 1 "$TMP/no-usage.jsonl" "no usage events"
 
 cat > "$TMP/zero-total.jsonl" <<'JSONL'
-{"usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0}}
+{"type":"token_usage","usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0}}
 JSONL
 run_fail "zero-total" 1 "$TMP/zero-total.jsonl" "no usage events"
 
 cat > "$TMP/cache-exceeds.jsonl" <<'JSONL'
-{"usage":{"input_tokens":5,"cached_input_tokens":6,"output_tokens":1}}
+{"type":"token_usage","usage":{"input_tokens":5,"cached_input_tokens":6,"output_tokens":1}}
 JSONL
 run_fail "cache-exceeds" 1 "$TMP/cache-exceeds.jsonl" "cached_tokens exceeds input_tokens"
 
@@ -113,10 +113,31 @@ eq "jq-missing stdout" "" "$out"
 contains "jq-missing stderr" "jq not found" "$(cat "$TMP/no-jq.err" 2>/dev/null)"
 
 cat > "$TMP/line-streaming.jsonl" <<'JSONL'
-{"usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":2}}
-{"usage":{"input_tokens":3,"cached_input_tokens":1,"output_tokens":4}}
+{"type":"token_usage","usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":2}}
+{"type":"token_usage","usage":{"input_tokens":3,"cached_input_tokens":1,"output_tokens":4}}
 JSONL
 run_ok "line-streaming" "$TMP/line-streaming.jsonl" $'INPUT=3\nCACHED_INPUT=1\nOUTPUT=6\nTOTAL=10'
+
+cat > "$TMP/wrong-type.jsonl" <<'JSONL'
+{"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
+JSONL
+run_fail "wrong-type-ignored" 1 "$TMP/wrong-type.jsonl" "no usage events"
+
+mkdir -p "$TMP/bin"
+cat > "$TMP/bin/jq" <<'EOF'
+#!/usr/bin/env bash
+printf 'stub jq failed\n' >&2
+exit 3
+EOF
+chmod +x "$TMP/bin/jq"
+set +e
+out=$(PATH="$TMP/bin:/bin:/usr/bin" "$SCRIPT" "$TMP/cache-math.jsonl" 2>"$TMP/jq-failed.err")
+rc=$?
+set -e
+eq "jq-failed rc" "1" "$rc"
+eq "jq-failed stdout" "" "$out"
+contains "jq-failed stderr keeps jq output" "stub jq failed" "$(cat "$TMP/jq-failed.err" 2>/dev/null)"
+contains "jq-failed stderr adds parser diagnostic" "jq failed" "$(cat "$TMP/jq-failed.err" 2>/dev/null)"
 
 run_ok "codex-cli-fixture" "$CODEX_FIXTURE" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
 
