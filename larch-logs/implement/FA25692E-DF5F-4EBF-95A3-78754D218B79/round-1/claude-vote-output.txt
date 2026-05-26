@@ -1,0 +1,25 @@
+FINDING_1: EXONERATE -- triplicated KV loop is real duplication but plan explicitly chose per-launcher implementations; extraction adds complexity without functional benefit
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- plan's fail-closed is about parse failure, not launcher exit code; recording tokens from partially-executed failed runs is defensible
+FINDING_5: NO -- case validation at lines 56-59 catches non-integer jq output (fractional or scientific notation) before bash arithmetic runs
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- stderr-only auth classification is the documented contract per plan; adding stdout scan goes beyond scope
+FINDING_14: EXONERATE -- plan documents Codex 0.125 native shape as top-level fields which is handled by $o.input_tokens; .msg.input_tokens-without-usage is an undocumented shape
+FINDING_15: YES
+FINDING_16: EXONERATE -- plan explicitly documents last-attempt-only semantics ("rm -f stale events from earlier attempt")
+FINDING_17: EXONERATE -- fail-closed on zero-total is the documented design; aggregate-only total_tokens is an undocumented shape
+FINDING_18: EXONERATE -- same failure mode regardless of empty vs missing; distinct messages add complexity without actionable debugging value
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES

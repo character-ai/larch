@@ -1,0 +1,35 @@
+Reviewing the branch diff and commit history against the plan's testing obligations.
+Diff is large (likely includes run logs). Searching for key implementation and test changes.
+Checking whether final-summary cost rendering has any harness coverage:
+Reviewed commits `fa1546e4` through `8aef0664` (feature: `ca1e71e8` + review rounds; plus unrelated breadcrumb/run-log commits). Test coverage is strong for the new parser and all three Codex launchers; a few gaps remain on the user-visible cost path and one documented edge branch.
+
+### In-Scope Findings
+
+1. **Latent** `scripts/test-render-run-summary-callsites.sh:11-19`, `scripts/test-render-cost-line-callsites.sh:28-32` — The DE-2622 callsite harnesses only grep for `--claude-input-tokens` in `render-final-summary.sh` and `write-final-report.sh`, not `--codex-input-tokens` / `--codex-cached-input-tokens`. Those scripts already forward Codex buckets (e.g. `skills/design/scripts/render-final-summary.sh:153-155`), but a future edit could drop Codex per-bucket flags while CI still passes, and `/design` or `/implement` final summaries would fall back to aggregate Codex pricing and `BLENDED_WARN` again. **Suggested fix:** Extend the callsite harnesses to require Codex per-bucket flags alongside Claude (count `render-run-summary.sh` invocations vs `--codex-input-tokens` / `--codex-cached-input-tokens`), or add a small fixture-driven test that feeds a synthetic `token-report-final.json` with non-zero `BUCKETS_codex.{input,cached_input,output}` through `render-final-summary.sh` / `write-final-report.sh` and asserts stderr from the cost path does not contain `blended rate`.
+
+2. **Latent** `scripts/test-launch-review.sh` (no matching case) — The plan documents that when `launch-review.sh` cannot open `${OUTPUT}.sidecar`, it sets `SIDECAR=/dev/null`, routes JSONL to `/dev/null`, and skips `parse-codex-usage.sh` / ledger writes (`scripts/launch-review.sh:476-480`, `560-580`). No harness forces an unwritable sidecar path, so regressions that parse or record tokens in that branch would not be caught. **Suggested fix:** Add a focused stub case with a read-only or uncreateable `.sidecar` parent and assert no `vendor==codex` ledger row and no `${OUTPUT}.events.jsonl` consumption (launcher exit behavior unchanged).
+
+3. **Nit** `scripts/test-parse-codex-usage.sh` — Unit fixtures cover `.msg.usage`, top-level `.usage`, OpenAI `input_tokens_details.cached_tokens`, and the checked-in `codex-events-0.125.jsonl` (`type":"token_usage"` with top-level counts), but not the nested `{"type":"token_usage","usage":{...}}` shape used by the `launch-codex-implement` smoke stub in `scripts/test-token-vendor-scrapers.sh:111`. A parser regression affecting only that wrapper would fail in shard 17’s scraper smoke, not in the dedicated parser harness. **Suggested fix:** Add one JSONL line with `type` + nested `.usage` to `test-parse-codex-usage.sh` so parser coverage matches all production stub shapes.
+
+### Plan / acceptance alignment (summary)
+
+| Plan testing obligation | Status |
+|-------------------------|--------|
+| New `test-parse-codex-usage.sh` + fixture + Makefile `test-harnesses-17` | Met |
+| Launcher updates: JSONL stubs, per-bucket ledger/token-record, fail-closed, stderr auth | Met (`test-launch-review.sh`, `test-launch-codex-ci.sh`, `test-codex-implementer.sh`) |
+| `test-token-vendor-scrapers.sh` E2E: `BUCKETS_codex` + no `BLENDED_WARN`; legacy aggregate warns | Met |
+| Sibling docs + `docs/linting.md` | Met |
+| Manual smoke before merge | Plan-only (not automatable here) |
+
+**CI / regression:** Harnesses are registered (`Makefile` shards 9, 10, 13, 17); no workflow changes required. `test-token-vendor-scrapers.sh` still no-ops the whole jq block when `jq` is absent (line 242–244); CI should keep `jq` installed per `docs/installation-and-setup.md`. Unrelated commits on the branch (`fa1546e4` breadcrumbs, `c47fb38a` run logs) add CI surface but are out of scope per review rules.
+
+### Out-of-Scope Observations
+
+1. **Nit** `scripts/test-token-report.sh:74` — Still asserts only `BUCKETS_codex.total` on an aggregate-only fixture (#1427). Per-bucket `BUCKETS_codex` fields are covered in `scripts/test-token-vendor-scrapers.sh:215-225`; extending `test-token-report.sh` would be optional consolidation, not introduced by this branch.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/test-render-run-summary-callsites.sh:11-19	Callsite harnesses grep only --claude-input-tokens, not Codex per-bucket flags in render-final-summary.sh / write-final-report.sh.	A refactor removes --codex-input-tokens/--codex-cached-input-tokens forwarding; launchers still record buckets but final-summary cost lines hit render-cost-line aggregate fallback and BLENDED_WARN returns.	Require --codex-input-tokens and --codex-cached-input-tokens in callsite tests, or add fixture-driven final-summary cost test with non-zero BUCKETS_codex and assert no blended-rate stderr.
+1	in_scope	latent	risk-integration	scripts/test-launch-review.sh	SIDECAR=/dev/null fail-closed branch from launch-review.sh is undocumented in tests.	Unwritable sidecar regressions could write vendor rows or read stale events when sidecar is /dev/null.	Add harness with unwritable .sidecar: assert no codex vendor row and no token parse on /dev/null events path.
+1	in_scope	nit	risk-integration	scripts/test-parse-codex-usage.sh	Nested type token_usage + .usage shape only exercised in test-token-vendor-scrapers smoke, not parser unit harness.	Parser break for that shape passes make test-parse-codex-usage but fails later in scraper smoke.	Add one JSONL fixture line matching launch-codex-implement stub shape to test-parse-codex-usage.sh.
+```

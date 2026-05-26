@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: NO -- the per-field coalesce chain falls through to $o.input_tokens which correctly captures N even when $o.usage={}, so the reviewer's "sums zero" premise is incorrect
+FINDING_3: EXONERATE -- asymmetry exists but is nit-level; FINDING_16 covers the more actionable version of the same gap
+FINDING_4: YES
+FINDING_5: EXONERATE -- PR-splitting concern is a process preference, not a concrete defect worth its own GitHub issue
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- plan explicitly designs for one-event-per-call model; smoke fixture covers real CLI shape; type filter adds complexity against documented intent
+FINDING_9: NO -- LCR_DEVNULL test at line 758-761 asserts no vendor row and no events file for this path
+FINDING_10: EXONERATE -- reviewer marks it nit/out-of-scope; too minor for a GitHub issue
+FINDING_11: YES
+FINDING_12: NO -- LCR_DEVNULL test exists and covers the /dev/null sidecar no-parse contract
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- functional fail-closed behavior is correct; only diagnostic message quality differs
+FINDING_18: EXONERATE -- helper computes TOTAL from the other buckets; the identity is definitionally guaranteed by the helper's own arithmetic, not a runtime assertion launchers need to re-verify
+FINDING_19: YES
+FINDING_20: EXONERATE -- pre-existing launcher exit-code behavior unrelated to this PR's Codex token capture changes
+FINDING_21: YES
+FINDING_22: EXONERATE -- launch-review.md already references scripts/parse-codex-usage.sh; adding a .md pointer is cosmetic polish that doesn't warrant a finding

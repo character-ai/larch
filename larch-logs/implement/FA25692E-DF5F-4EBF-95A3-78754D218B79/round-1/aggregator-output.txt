@@ -1,0 +1,3 @@
+Aggregating reviewer findings: verifying key code areas to merge duplicates accurately while staying read-only.
+Producing the aggregated structured finding list from merged reviewer inputs.
+
