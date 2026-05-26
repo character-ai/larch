@@ -346,6 +346,23 @@ out_pr=$(
 )
 [[ "$out_pr" == *"PUBLISH_OK=false"* ]] || fail "plan-review regular file should fail publish: $out_pr"
 
+echo "=== render-cache regular file is rejected ==="
+TMPRC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rendercache-file.XXXXXX")
+clone_rc=$(setup_clone_with_origin_head "$TMPRC")
+stub_rc="$TMPRC/stub"
+make_gh_stub "$stub_rc"
+export PATH="$stub_rc:$PATH"
+export TEST_CLONE_ROOT="$clone_rc"
+export TEST_MERGE_BRANCH="larch-log-design-RUNRCFILE1"
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPRC/design"
+printf 'r\n' >"$TMPRC/design/plan.txt"
+printf 'not a directory\n' >"$TMPRC/design/render-cache"
+out_rc=$(
+    (cd "$clone_rc" && bash "$PUBLISH" --design-tmpdir "$TMPRC/design" --run-id "RUNRCFILE1" --issue 9 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rc" == *"PUBLISH_OK=false"* ]] || fail "render-cache regular file should fail publish: $out_rc"
+
 echo "=== merge failure preserves PR lines and RECOVERY_BRANCH ==="
 TMPM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-merge.XXXXXX")
 clone_m=$(setup_clone_with_origin_head "$TMPM")
