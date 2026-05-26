@@ -12,7 +12,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: generate-code-flow-diagram.sh --implement-tmpdir PATH [--model claude-sonnet-4-6]"
+    larch_err "Usage: generate-code-flow-diagram.sh --implement-tmpdir PATH [--model claude-sonnet-4-6] [--base-remote NAME] [--base-ref BRANCH]"
 }
 
 fail_usage() {
@@ -25,10 +25,14 @@ fail_usage() {
 
 IMPLEMENT_TMPDIR=""
 MODEL="claude-sonnet-4-6"
+BASE_REMOTE=origin
+BASE_REF=main
 while [ $# -gt 0 ]; do
     case "$1" in
         --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
         --model) [ $# -ge 2 ] || fail_usage "--model requires a value"; MODEL=$2; shift 2 ;;
+        --base-remote) [ $# -ge 2 ] || fail_usage "--base-remote requires a value"; BASE_REMOTE=$2; shift 2 ;;
+        --base-ref) [ $# -ge 2 ] || fail_usage "--base-ref requires a value"; BASE_REF=$2; shift 2 ;;
         --help) usage; exit 0 ;;
         *) fail_usage "unknown option: $1" ;;
     esac
@@ -36,6 +40,9 @@ done
 
 [ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
 case "$IMPLEMENT_TMPDIR" in /*) ;; *) fail_usage "--implement-tmpdir must be absolute" ;; esac
+[[ "$BASE_REMOTE" =~ ^[A-Za-z0-9._/-]+$ ]] || fail_usage "--base-remote must match ^[A-Za-z0-9._/-]+$"
+[[ "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || fail_usage "--base-ref must match ^[A-Za-z0-9._/-]+$"
+BASE_TARGET="${BASE_REMOTE}/${BASE_REF}"
 
 mkdir -p "$IMPLEMENT_TMPDIR" || {
     emit_kv STATUS failed
@@ -55,7 +62,7 @@ sanitize_log="$IMPLEMENT_TMPDIR/code-flow-sanitizer.failure.log"
     printf '%s\n' 'Return markdown containing exactly one `## Code Flow Diagram` heading and one mermaid fence.'
     printf '%s\n' 'Focus on runtime calls, data flow, and control flow. Avoid structural architecture duplication.'
     printf '\nChanged files:\n'
-    git diff --name-only "$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || printf HEAD)"..HEAD 2>/dev/null || true
+    git diff --name-only "$(git merge-base HEAD "$BASE_TARGET" 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || printf HEAD)"..HEAD 2>/dev/null || true
 } > "$prompt"
 
 if ! "$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh" \

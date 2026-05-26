@@ -335,6 +335,48 @@ make_skip_repo() {
     git -C "$repo" commit -q -m docs
 }
 
+make_forked_skip_repo() {
+    local repo=$1
+    mkdir -p "$repo"
+    git -C "$repo" init -q
+    git -C "$repo" config user.email test@example.test
+    git -C "$repo" config user.name Test
+    mkdir -p "$repo/docs"
+    printf 'base\n' > "$repo/docs/X.md"
+    git -C "$repo" add docs/X.md
+    git -C "$repo" commit -q -m base
+    git -C "$repo" branch -M main
+    git -C "$repo" clone --bare . "$repo-upstream.git" >/dev/null 2>&1
+    git -C "$repo" remote add upstream "$repo-upstream.git"
+    git -C "$repo" fetch upstream main >/dev/null 2>&1
+    git -C "$repo" checkout -b feature >/dev/null 2>&1
+    printf 'feature\n' > "$repo/docs/X.md"
+    git -C "$repo" add docs/X.md
+    git -C "$repo" commit -q -m docs
+}
+
+make_forked_generate_repo() {
+    local repo=$1
+    mkdir -p "$repo"
+    git -C "$repo" init -q
+    git -C "$repo" config user.email test@example.test
+    git -C "$repo" config user.name Test
+    mkdir -p "$repo/docs"
+    printf 'base\n' > "$repo/docs/X.md"
+    git -C "$repo" add docs/X.md
+    git -C "$repo" commit -q -m base
+    git -C "$repo" branch -M main
+    git -C "$repo" clone --bare . "$repo-upstream.git" >/dev/null 2>&1
+    git -C "$repo" remote add upstream "$repo-upstream.git"
+    git -C "$repo" fetch upstream main >/dev/null 2>&1
+    git -C "$repo" checkout -b feature >/dev/null 2>&1
+    printf 'feature\n' > "$repo/docs/X.md"
+    printf 'feature\n' > "$repo/docs/Y.md"
+    printf 'feature\n' > "$repo/docs/Z.md"
+    git -C "$repo" add docs/X.md docs/Y.md docs/Z.md
+    git -C "$repo" commit -q -m docs
+}
+
 echo "=== test-step-7a ==="
 
 setup_plugin "$TMP_ROOT/plugin"
@@ -352,6 +394,8 @@ assert_contains "LOG_FLUSH_STATUS=ok" "$out" "green emits log flush ok"
 assert_contains "SESSION_TRANSCRIPT_STATUS=ok" "$out" "green relays transcript status"
 assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
+assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "green passes tmpdir to generator"
+assert_contains "--base-remote origin --base-ref main" "$(cat "$CASE_DIR/calls.log")" "green passes origin base args to generator"
 assert_call_order "$CASE_DIR/calls.log" "token-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "timing-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "compose-summary-diagrams" "green generate before compose"
@@ -372,6 +416,30 @@ assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "d
 assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip does not invoke generator"
 assert_file_contains "(Code Flow Diagram skipped — small/non-runtime change)" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-skip writes placeholder"
 assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip still posts comment"
+
+new_case diagram-skip-forked
+make_forked_skip_repo "$CASE_DIR/repo"
+set +e
+out=$(run_helper "$CASE_DIR/repo" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target true 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "diagram-skip-forked exits 0"
+assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip-forked emits skip"
+assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip-forked prints skip line"
+assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked does not invoke generator"
+assert_file_contains "(Code Flow Diagram skipped — small/non-runtime change)" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-skip-forked writes placeholder"
+assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked still posts comment"
+
+new_case diagram-generate-forked
+make_forked_generate_repo "$CASE_DIR/repo"
+set +e
+out=$(run_helper "$CASE_DIR/repo" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target true 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "diagram-generate-forked exits 0"
+assert_contains "DIAGRAM_STATUS=ok" "$out" "diagram-generate-forked emits diagram ok"
+assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes tmpdir to generator"
+assert_contains "--base-remote upstream --base-ref main" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes upstream base args to generator"
 
 new_case diagram-rejected
 set +e

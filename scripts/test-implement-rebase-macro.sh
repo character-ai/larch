@@ -84,7 +84,8 @@ step7a_wrapper_count=$(grep -cF '"$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.s
   || fail "(C) expected exactly 1 7a.r rebase-checkpoint-probe.sh invocation in step-7a.sh, found $step7a_wrapper_count"
 
 # ---------------------------------------------------------------------------
-# (C') forked_target BASE_ARGS guard within 10 lines above every wrapper line.
+# (C') forked_target BASE_ARGS guard near every wrapper line; step-7a derives
+#      BASE_ARGS from module-level base_remote/base_ref before its wrapper.
 # ---------------------------------------------------------------------------
 while IFS= read -r line_num; do
   start=$((line_num > 10 ? line_num - 10 : 1))
@@ -98,10 +99,13 @@ done < <(grep -nF '"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh"' "
 while IFS= read -r line_num; do
   start=$((line_num > 10 ? line_num - 10 : 1))
   window=$(sed -n "${start},$((line_num - 1))p" "$STEP7A_WRAPPER")
-  echo "$window" | grep -Fq 'if [ "${forked_target:-false}" = "true" ]' \
-    || fail "(C') missing forked_target guard within 10 lines above step-7a wrapper at line $line_num"
-  echo "$window" | grep -Fq 'BASE_ARGS=(--base-remote upstream --base-ref main)' \
-    || fail "(C') missing BASE_ARGS fork argv within 10 lines above step-7a wrapper at line $line_num"
+  before_wrapper=$(sed -n "1,$((line_num - 1))p" "$STEP7A_WRAPPER")
+  echo "$before_wrapper" | grep -Fq 'base_remote=' \
+    || fail "(C') missing base_remote assignment before step-7a wrapper at line $line_num"
+  echo "$before_wrapper" | grep -Fq 'base_ref=' \
+    || fail "(C') missing base_ref assignment before step-7a wrapper at line $line_num"
+  echo "$window" | grep -Fq 'BASE_ARGS=(--base-remote "$base_remote" --base-ref "$base_ref")' \
+    || fail "(C') missing derived BASE_ARGS within 10 lines above step-7a wrapper at line $line_num"
 done < <(grep -nF '"$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r' "$STEP7A_WRAPPER" | cut -d: -f1)
 
 # ---------------------------------------------------------------------------
