@@ -194,6 +194,25 @@ else
 fi
 unset GH_FAIL_STDERR_FILE
 
+T9="$TMPROOT/t9"
+mkdir -p "$T9"
+write_subject "$T9"
+write_gh_lines "$T9"
+printf '\001\002\003\nlint\n' > "$T9/lines.txt"
+GH_MODE=lines
+GH_LINES_FILE="$T9/lines.txt"
+rc=$(run_subject "$T9" "$T9/out" "$T9/err" "$T9/jobs.tsv")
+assert_rc "all-control job name is skipped exits 0" "$rc" 0
+assert_file_contains "all-control job name count excludes dropped row" "$T9/out" "FAILED_JOBS_COUNT=1"
+assert_file_contains "all-control job name fixable list is lint" "$T9/out" "FAILED_JOBS_FIXABLE=lint"
+assert_file_contains "all-control job name leaves lint TSV row" "$T9/jobs.tsv" $'lint\t\tfixable'
+tsv_rows=$(wc -l < "$T9/jobs.tsv" | tr -d ' ')
+if [ "$tsv_rows" = "1" ]; then
+    ok "all-control job name emits one TSV row"
+else
+    fail "all-control job name emitted $tsv_rows TSV rows"
+fi
+
 workflow_jobs=$(awk '
     /^jobs:$/ { in_jobs=1; next }
     in_jobs && /^[a-zA-Z_][a-zA-Z0-9_-]*:/ { exit }

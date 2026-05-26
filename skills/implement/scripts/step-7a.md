@@ -49,7 +49,7 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 - `LARCH_FORKED_TARGET` has no direct shell-environment fallback; only argv and the session-env file are honored.
 - `summary-diagrams.md` preserves the existing `larch:diagrams` content shape: Architecture Diagram content or placeholder, blank line, then Code Flow content or placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- Step 7a still upserts the `larch:diagrams` comment with the placeholder body when `generate-code-flow-diagram.sh` reports `STATUS=skipped` or `STATUS=failed`; only empty `ISSUE_NUMBER` gates the upsert.
+- Step 7a upserts the `larch:diagrams` comment with the generator-emitted `SKIP_REASON` value (e.g. `pipe-in-node-label fence=mermaid line=7`) when `generate-code-flow-diagram.sh` reports `STATUS=skipped` or `STATUS=failed` and a non-empty `SKIP_REASON` KV; falls back to the literal `Code flow diagram not available.` when `SKIP_REASON` is empty (e.g. generator crash, unknown `STATUS`). Only empty `ISSUE_NUMBER` gates the upsert.
 - `LARCH_QUIET_BREADCRUMBS=1` is exported for the 7a.r rebase checkpoint probe.
 - Only `REBASE_OUTCOME=ok|skipped` reaches the pre-bump flush phase.
 - The helper does not write a `diagrams` larch-log batch.

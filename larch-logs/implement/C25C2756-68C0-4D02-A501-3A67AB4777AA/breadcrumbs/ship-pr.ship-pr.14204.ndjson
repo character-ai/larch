@@ -1,0 +1,8 @@
+larch:bc t=2026-05-26T20:18:59Z d=0 p=27066 s=ship-pr.sh c=progress text=→ ship-pr: checks
+larch:bc t=2026-05-26T20:19:54Z d=0 p=27066 s=ship-pr.sh c=progress text=→ ship-pr: version bump
+larch:bc t=2026-05-26T20:19:58Z d=0 p=71310 s=apply-bump.sh c=retry text=apply-bump: retry 1/10 origin/main=42.5.25 new-version=42.5.26
+larch:bc t=2026-05-26T20:20:06Z d=0 p=74905 s=implement-finalize.sh c=progress text=✅ 8: larch-log status=complete elapsed=1s
+larch:bc t=2026-05-26T20:20:07Z d=0 p=74905 s=implement-finalize.sh c=progress text=✅ 8a: changelog status=complete to=v42.5.25 elapsed=1s
+larch:bc t=2026-05-26T20:20:07Z d=0 p=74905 s=implement-finalize.sh c=progress text=🔃 8b: rebase
+larch:bc t=2026-05-26T20:20:10Z d=0 p=74905 s=implement-finalize.sh c=escalate text=🔃 8b: rebase — conflict detected; handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)
+larch:bc t=2026-05-26T20:20:10Z d=0 p=27066 s=ship-pr.sh c=escalate text=⚠ ship-pr: postbump rebase conflict — handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)

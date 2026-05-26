@@ -365,12 +365,22 @@ else
         skipped)
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
-            CODE_FLOW_SKIP_REASON="Code flow diagram not available."
+            _skip_reason=$(kv_value SKIP_REASON "$gen_out")
+            if [ -n "$_skip_reason" ]; then
+                CODE_FLOW_SKIP_REASON="$_skip_reason"
+            else
+                CODE_FLOW_SKIP_REASON="Code flow diagram not available."
+            fi
             ;;
         failed)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
-            CODE_FLOW_SKIP_REASON="Code flow diagram not available."
+            _skip_reason=$(kv_value SKIP_REASON "$gen_out")
+            if [ -n "$_skip_reason" ]; then
+                CODE_FLOW_SKIP_REASON="$_skip_reason"
+            else
+                CODE_FLOW_SKIP_REASON="Code flow diagram not available."
+            fi
             append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
         *)

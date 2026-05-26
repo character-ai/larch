@@ -271,4 +271,10 @@ if find "$session_tmp/breadcrumbs" -name 'race.pid.tmp.*' -print -quit | grep -q
     fail "paired pid race left tmp files"
 fi
 
+# 23. sanitize_diagnostic_line strips C0 control bytes from one line.
+helper="$SCRATCH/sanitize.sh"
+write_helper "$helper" 'printf "before\x01\x02\x03after\x07.end\n" | sanitize_diagnostic_line'
+out=$("$helper" 2>/dev/null)
+[ "$out" = "beforeafter.end" ] || fail "sanitize_diagnostic_line did not strip controls: '$out'"
+
 printf 'PASS: test-lib-quiet.sh\n'
