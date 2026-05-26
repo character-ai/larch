@@ -1,0 +1,34 @@
+Reviewing branch changes with a security lens: reading the precomputed diff and commit history.
+Searching the diff for security-critical files and reading their implementations.
+Reviewed commits `39bfe8f6` (design logs) and `a47a5928` (per-job CI recovery); security focus on new shell boundaries. Below are findings only — no blocking command-injection issues found.
+
+### In-Scope Findings
+
+- **security** `scripts/ship-pr.sh:1656-1683` — `run_per_job_local_fix_loop` trusts `JOB_NAME`, `SHARD`, and `CLASS` from the TSV without re-applying `ci-failed-jobs.sh`’s `job_re` / digit-shard checks. Execution still goes through `_per_job_argv`’s fixed `case` (no `eval`), so a hostile `gh` job name cannot become arbitrary shell. A writer that can replace `$IMPLEMENT_TMPDIR/ci-failed-jobs-<phase>.tsv` between classification and replay could mark `CLASS=fixable` for a row whose `job_name` is not in the allowlist; `_per_job_argv` would refuse it, but defense-in-depth is weaker than at classification time. **Suggested fix:** Re-validate each TSV row in `ship-pr.sh` (same `job_re` and `^[0-9]+$` shard rules) before calling `_per_job_argv`, and treat invalid rows as unfixable.
+
+- **risk-integration** `scripts/ship-pr.sh:1793-1794` — After a successful per-job loop, `_stage_and_push_ci_fixes "$phase" "" ""` skips `run_checks_with_lint_fix_loop` because `checks_site` is empty. The vendor path still runs `relevant-checks.sh` before push. If only a narrow job failed (e.g. `agent-lint`), an LLM fix can pass `make agent-lint` plus the verification sweep but never run pre-commit / the broader local gate, then `git-push.sh` runs. Submodule guards in `lint-fix-loop.sh` still apply; this is a trust-boundary / coverage gap, not shell injection. **Suggested fix:** Document explicitly in `ship-pr.md`, or add an optional final `relevant-checks.sh` pass before push if parity with the vendor path is required.
+
+- **security** `scripts/lint-fix-loop.sh:45-46,84-103` — `target_cmd_display_from_file` rejects control characters but not backticks or quotes; `compose_prompt` embeds the joined argv inside `` `...` `` in the fix sentence. Tokens are written only by `_write_per_job_args_file` from `_PJA_ARGV` (not from `gh`), so normal operation is safe. If `--target-cmd-args-file` is swapped or edited under `$IMPLEMENT_TMPDIR`, a line like `` foo` ignore prior rules `` could break markdown fencing and influence the external coder prompt. **Suggested fix:** Escape or strip `` ` `` / `"` in display assembly, or use a fenced code block with sanitized content instead of inline backticks.
+
+- **security** `scripts/ship-pr.sh:1726-1733` — `BAIL_REASON` is sanitized via `_sanitize_bail_list` (`tr -cd '[:alnum:]_-,'`), but `BAIL_FAILURE_DETAIL_LOG` gets raw `job_token` lines. Tokens are derived from validated names in the happy path; a tampered TSV could put odd bytes in the detail file that downstream agents parse as structure. **Suggested fix:** Run the same sanitization (or allowlist) on lines written to `ci-local-unfixable-<phase>.txt`, or document that the detail log is diagnostic-only and must not be executed/parsed as instructions.
+
+- **nit** `scripts/test-ship-pr.sh` — The plan called for `T-per-job-eval-not-used` / malformed-name execution pins in `test-ship-pr.sh`; `test-ci-failed-jobs.sh` covers malformed `gh` names, but ship-pr integration tests only include happy-path and gitleaks-unfixable cases. **Suggested fix:** Add a ship-pr harness where mock `gh` emits `lint; echo pwn` and assert no `make`/`env` invocation and `exit 3` with unfixable bail.
+
+**Positive (no finding):** No `eval` on `gh`-derived strings; commands use `"${_PJA_ARGV[@]}"`; `ci-failed-jobs.sh` applies `job_re` before classification; matrix non-digit shards are cleared; logs go through `redact-secrets.sh` before `lint-fix-loop.sh`; `--target-cmd-args-file` requires a non-symlink file; injection case covered in `test-ci-failed-jobs.sh`.
+
+### Out-of-Scope Observations
+
+- **security** `scripts/ship-pr.sh:870-946` — `run_checks_with_lint_fix_loop` was not refactored onto `run_captured_cmd_then_fix_loop` (plan DECISION_2). Empty-output exhaustion behavior exists only on the per-job path. Pre-existing structure; not introduced by this branch’s per-job wiring.
+
+- **risk-integration** `Makefile:146-149` — `lint-mermaid` may run `npm ci` when `node_modules` is missing during CI recovery. Same supply-chain surface as CI; not new to this PR’s threat model.
+
+- Committed `larch-logs/design/*` and `larch-logs/implement/*` are run artifacts per project convention; not evaluated as security regressions.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	scripts/ship-pr.sh:1656-1683	TSV rows are not re-validated with job_re/shard regex before _per_job_argv	Attacker with IMPLEMENT_TMPDIR write could tamper CLASS=fixable; allowlist case blocks execution but bypasses classification intent	Re-apply ci-failed-jobs validation rules when parsing TSV in ship-pr.sh
+1	in_scope	latent	risk-integration	scripts/ship-pr.sh:1793-1794	Per-job success calls _stage_and_push_ci_fixes with empty checks_site skipping relevant-checks.sh	Only agent-lint failed locally fixed and pushed without pre-commit gate; unrelated remote jobs may still fail	Document tradeoff or add optional relevant-checks pass before push
+1	in_scope	latent	security	scripts/lint-fix-loop.sh:45-46	Prompt embeds target_cmd_display in inline backticks without escaping	Tampered per-job args file could inject markdown/prompt instructions to external coder	Escape backticks or use fenced display-only block
+1	in_scope	nit	security	scripts/ship-pr.sh:1726-1733	BAIL_FAILURE_DETAIL_LOG lines are unsanitized while BAIL_REASON is tr-filtered	Tampered detail file could carry control chars into downstream agent consumption	Sanitize detail lines same as BAIL_REASON
+1	in_scope	nit	code-quality	scripts/test-ship-pr.sh	Missing ship-pr-level malformed job name non-execution test planned in spec	Regression could reintroduce gh-string execution without ci-failed-jobs catching it	Add T-per-job-eval-not-used style harness to test-ship-pr.sh
+```

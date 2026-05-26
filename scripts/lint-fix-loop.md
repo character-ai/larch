@@ -7,8 +7,9 @@ repair helper for Step 3, Step 5 post-review fixes, Step 6, ship-pr
 Flags:
 
 - `--tmpdir IMPLEMENT_TMPDIR`
-- `--site step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge`
+- `--site step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job`
 - `--checks-log REDACTED_LOG_FILE`
+- `--target-cmd-args-file PATH` for `--site ship-pr-ci-per-job` only
 
 The checks log must be the redacted log emitted by
 `scripts/run-relevant-checks-captured.sh`, not the raw log.
@@ -16,7 +17,7 @@ The checks log must be the redacted log emitted by
 Output is `KEY=value` through `scripts/lib-quiet.sh`:
 
 - `LINT_FIX_STATUS=applied|main-agent-required|failed|no-changes`
-- `LINT_FIX_SITE=step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge`
+- `LINT_FIX_SITE=step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job`
 - `CODER_TOOL=codex|cursor` when an external coder ran
 - `CODER_LOG_FILE=<path>` when an external coder ran
 - `LINT_FIX_COMMIT_SHA=<sha>` when the helper committed fixes from a clean pre-dispatch baseline
@@ -36,6 +37,11 @@ Behavior:
    `scripts/relevant-checks.sh` to pass. The prompt forbids commits; the helper owns any
    allowed commit. Literal ````` fence lines in the log are sanitized before
    embedding.
+   For `--site ship-pr-ci-per-job`, the target command is displayed from
+   `--target-cmd-args-file`: one argv token per line, leading/trailing
+   whitespace stripped, control characters rejected. The joined display string
+   is informational only; `ship-pr.sh` executes commands from its fixed
+   case-statement dispatcher, not from this file.
 5. Dispatch Codex first via `scripts/run-external-agent.sh` when Codex is
    present; if Codex is absent or fails and Cursor is present, dispatch Cursor.
    Both `run_cursor()` and `run_codex()` acquire the
@@ -76,5 +82,8 @@ The `/implement` orchestrator consumes statuses as follows:
   `STALL_TRACKING=true` and route to Step 18 cleanup.
 
 Harness: `scripts/test-lint-fix-loop.sh`.
+
+`ship-pr.sh:run_per_job_local_fix_loop` is the caller for
+`--site ship-pr-ci-per-job`.
 
 The submodule-prohibition prompt block is extracted into `scripts/lib-submodule-prohibition.sh`; its harness is `scripts/test-lib-submodule-prohibition.sh`.

@@ -104,15 +104,19 @@ EOF
 }
 
 run_case() {
-    local fixture_scripts="$1" repo="$2" session="$3" checks_log="$4" wrapper="$5" site="${6:-step3}"
+    local fixture_scripts="$1" repo="$2" session="$3" checks_log="$4" wrapper="$5" site="${6:-step3}" target_args_file="${7:-}"
     local rc=0 out
+    local extra_args=()
+    if [[ -n "$target_args_file" ]]; then
+        extra_args=(--target-cmd-args-file "$target_args_file")
+    fi
     out=$(
         cd "$repo" && \
         unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG || true
         # shellcheck disable=SC2030,SC2031
         export IMPLEMENT_TMPDIR="$session"
         LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$wrapper" \
-        bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log"
+        bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log" ${extra_args[@]+"${extra_args[@]}"} 2>&1
     ) || rc=$?
     printf '%s\n%s\n' "$rc" "$out"
 }
@@ -233,5 +237,64 @@ case5_result=$(run_case "$SCRIPTS5" "$REPO5" "$SESSION5" "$CHECKS5" "$WRAPPER5" 
 assert_contains "$case5_result" 'LINT_FIX_STATUS=applied' "case5 status"
 assert_contains "$case5_result" 'LINT_FIX_SITE=ship-pr-ci-merge' "case5 site"
 assert_contains "$case5_result" 'LINT_FIX_DELTA_PATHS_FILE=' "case5 delta paths file"
+
+# Case 6: per-job site includes the display-only local argv in the prompt.
+CASE6="$TMPROOT/case6"
+REPO6="$CASE6/repo"
+SCRIPTS6="$CASE6/scripts"
+SESSION6="$CASE6/session"
+CHECKS6="$CASE6/checks.log"
+WRAPPER6="$CASE6/wrapper.sh"
+ARGS6="$CASE6/target-args.txt"
+make_repo "$REPO6"
+make_fixture_scripts "$SCRIPTS6"
+make_session "$SESSION6"
+printf 'synthetic per-job failure\n' > "$CHECKS6"
+printf '%s\n' env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only > "$ARGS6"
+write_wrapper_modify_only "$WRAPPER6"
+
+case6_result=$(run_case "$SCRIPTS6" "$REPO6" "$SESSION6" "$CHECKS6" "$WRAPPER6" ship-pr-ci-per-job "$ARGS6")
+assert_contains "$case6_result" 'LINT_FIX_STATUS=applied' "case6 status"
+assert_contains "$case6_result" 'LINT_FIX_SITE=ship-pr-ci-per-job' "case6 site"
+case6_prompt=$(find "$SESSION6/lint-fix-loop" -name prompt.md -print -quit)
+[[ -n "$case6_prompt" ]] || fail "case6 prompt was not written"
+assert_contains "$(cat "$case6_prompt")" "local command \`env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only\` passes" "case6 prompt local command"
+
+# Case 7: existing sites reject --target-cmd-args-file.
+CASE7="$TMPROOT/case7"
+REPO7="$CASE7/repo"
+SCRIPTS7="$CASE7/scripts"
+SESSION7="$CASE7/session"
+CHECKS7="$CASE7/checks.log"
+WRAPPER7="$CASE7/wrapper.sh"
+ARGS7="$CASE7/target-args.txt"
+make_repo "$REPO7"
+make_fixture_scripts "$SCRIPTS7"
+make_session "$SESSION7"
+printf 'synthetic checks failure\n' > "$CHECKS7"
+printf '%s\n' make lint-only > "$ARGS7"
+write_wrapper_modify_only "$WRAPPER7"
+case7_result=$(run_case "$SCRIPTS7" "$REPO7" "$SESSION7" "$CHECKS7" "$WRAPPER7" ship-pr-ci-initial "$ARGS7")
+case7_rc=$(printf '%s\n' "$case7_result" | sed -n '1p')
+[[ "$case7_rc" == "2" ]] || fail "case7 expected rc 2, got $case7_rc"
+
+# Case 8: per-job target argv files reject control characters.
+CASE8="$TMPROOT/case8"
+REPO8="$CASE8/repo"
+SCRIPTS8="$CASE8/scripts"
+SESSION8="$CASE8/session"
+CHECKS8="$CASE8/checks.log"
+WRAPPER8="$CASE8/wrapper.sh"
+ARGS8="$CASE8/target-args.txt"
+make_repo "$REPO8"
+make_fixture_scripts "$SCRIPTS8"
+make_session "$SESSION8"
+printf 'synthetic checks failure\n' > "$CHECKS8"
+printf 'make\ntest-harnesses-3\001\n' > "$ARGS8"
+write_wrapper_modify_only "$WRAPPER8"
+case8_result=$(run_case "$SCRIPTS8" "$REPO8" "$SESSION8" "$CHECKS8" "$WRAPPER8" ship-pr-ci-per-job "$ARGS8")
+case8_rc=$(printf '%s\n' "$case8_result" | sed -n '1p')
+[[ "$case8_rc" == "2" ]] || fail "case8 expected rc 2, got $case8_rc"
+assert_contains "$case8_result" '--target-cmd-args-file must not contain control characters' "case8 rejection message"
 
 echo "test-lint-fix-loop: ok"

@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: NO -- empty --input no-op is intentional per plan and documented
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- tmpdir TSV is session-local; allowlisted argv dispatch still blocks execution
+FINDING_13: YES
+FINDING_14: EXONERATE -- display-only prompt text; argv file already rejects control chars
+FINDING_15: YES
+FINDING_16: EXONERATE -- edge case requires empty staged diff yet dirty snapshots, unlikely in practice
+FINDING_17: EXONERATE -- cap is fixed at 3 everywhere; unused _RCC_MAX_ITER override is harmless
+FINDING_18: YES
+FINDING_19: EXONERATE -- drift pin plus mixed-job harness already cover mapping adequately
+FINDING_20: YES
+FINDING_21: NO -- describes intentional reachable fallback, not a defect
+FINDING_22: YES
+FINDING_23: EXONERATE -- separator mismatch is latent; current hyphenated bail tokens avoid shard loss
+FINDING_24: NO -- confirms correct TSV behavior, not a defect
+FINDING_25: NO -- confirms correct paste behavior, not a defect
+FINDING_26: NO -- current bail tokens do not use colons, so no active shard-loss risk

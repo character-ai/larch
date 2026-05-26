@@ -331,6 +331,16 @@ exclude = [
   # test-harnesses-18.
   "scripts/test-breadcrumb-monitor.sh",
   "scripts/test-breadcrumb-monitor.md",
+  # Makefile/ship-pr-only CI recovery helpers. ci-failed-jobs.sh is invoked
+  # by scripts/ship-pr.sh after gh-run-logs succeeds; check-focus-area-enum.sh
+  # is invoked by the Makefile's agent-sync target, which mirrors the CI job.
+  # Their harnesses are Makefile-only, so G004 cannot discover the edges.
+  "scripts/ci-failed-jobs.sh",
+  "scripts/ci-failed-jobs.md",
+  "scripts/test-ci-failed-jobs.sh",
+  "scripts/test-ci-failed-jobs.md",
+  "scripts/check-focus-area-enum.sh",
+  "scripts/check-focus-area-enum.md",
   # scripts/test-compose-collector-failure-log.sh is the Makefile-only
   # regression harness for scripts/compose-collector-failure-log.sh. The
   # helper is invoked from /design sketch collection paths; the harness is

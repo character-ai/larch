@@ -30,9 +30,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-[ -n "$INPUT" ] || die "--input is required"
 [ -n "$TMPDIR_ARG" ] || die "--tmpdir is required"
 [ -d "$TMPDIR_ARG" ] || die "--tmpdir must exist"
+
+if [ -z "$INPUT" ]; then
+    exit 0
+fi
 
 if [ ! -s "$INPUT" ]; then
     if [ ! -e "$TMPDIR_ARG/execution-issues.md" ]; then

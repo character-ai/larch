@@ -1,0 +1,23 @@
+Reviewing branch changes for Bash 3.2 portability. Reading the diff, commit log, and authoring rules.
+Checking whether `run_checks_with_lint_fix_loop` was refactored and scanning for edge-case Bash 3.2 pitfalls in the new helper paths.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+Reviewed branch commits (`a47a5928` — per-job CI local replay; plus log-only commits). New/modified shell under scope: [`scripts/ci-failed-jobs.sh`](scripts/ci-failed-jobs.sh), [`scripts/test-ci-failed-jobs.sh`](scripts/test-ci-failed-jobs.sh), [`scripts/check-focus-area-enum.sh`](scripts/check-focus-area-enum.sh), [`scripts/lint-fix-loop.sh`](scripts/lint-fix-loop.sh), [`scripts/ship-pr.sh`](scripts/ship-pr.sh).
+
+Against `BASH_AUTHORING.md` §3 and `scripts/lint-bash32.sh` rules:
+
+- No `declare -A` / `typeset -A`, `declare -n` / `local -n`, `mapfile` / `readarray`, `${var^^}` / `${var,,}`, `&>>`, or `coproc`.
+- `[[ … =~ … ]]` uses unquoted regex variables where required (`ci-failed-jobs.sh:108-116` — correct for Bash 3.2 ERE matching); capture groups via `BASH_REMATCH` are valid on macOS system bash.
+- `(( … ))`, indexed arrays, `+=`, `${!arr[@]}`, and `${extra_args[@]+"${extra_args[@]}"}` in `run_lint_fix_loop_capture` (`ship-pr.sh:102,2236`) follow existing repo Bash 3.2 patterns (same idiom as `test-collect-agent-bash32.sh`).
+- Process substitution in `_stage_and_push_ci_fixes` (`ship-pr.sh:1449`) matches pre-existing `ship-pr.sh` usage (`1371`, `1379`, `1390`); supported since Bash 3.0.
+- Drift-pin `awk` in `test-ci-failed-jobs.sh:139-143` uses only POSIX ERE/`sub`; compatible with BSD `awk` on macOS; `ci.yaml` `jobs:` block ends at EOF so the top-level exit rule does not truncate job enumeration early.
+- `check-focus-area-enum.sh` is straight arrays + `[[` + `while read`; no Bash 4+ surface.
+
+`make lint-bash32` is the expected gate for this class of change; no static Bash 4+ constructs appear in the new paths.
+
+### Out-of-Scope Observations
+
+- **architecture** `scripts/ship-pr.sh:870-946` — `run_checks_with_lint_fix_loop` still implements its own 3-attempt loop and does not call `run_captured_cmd_then_fix_loop` (`grep` shows `_RCC_RERUN_FN` only wired from `run_per_job_local_fix_loop`). That diverges from the #2757 plan’s “shared primitive” goal but is not a Bash 3.2 portability defect; it is duplicated control-flow / regression-surface risk.
+- The precomputed diff also contains unrelated `larch-logs/design/…` artifacts and an aggregate-findings plan chunk; those are outside the ship-pr CI bash32 surface reviewed here.

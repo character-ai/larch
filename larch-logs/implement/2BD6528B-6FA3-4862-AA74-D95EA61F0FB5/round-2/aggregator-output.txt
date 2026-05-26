@@ -1,0 +1,3 @@
+Normalizing reviewer findings into a merged structured list. Verifying a few code references for accurate titles, then producing the aggregator output via CreatePlan.
+Producing the normalized aggregator output from the 48 raw inputs.
+

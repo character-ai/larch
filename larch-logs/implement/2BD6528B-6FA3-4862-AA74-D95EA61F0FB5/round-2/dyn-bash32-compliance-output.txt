@@ -1,0 +1,11 @@
+Reviewing the branch diff for Bash 3.2 compliance. Reading the diff, commit log, and authoring rules.
+**Branch commits (since `main`):** `84c246ae` (per-job CI recovery), `671dc47f` (review round 1), plus design log flushes.
+
+**`make lint-bash32`:** clean for the repo (exit 0); no hits on `ci-failed-jobs.sh`, `check-focus-area-enum.sh`, `ship-pr.sh`, or `lint-fix-loop.sh`.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **architecture** `scripts/ship-pr.sh:873-950` — `run_checks_with_lint_fix_loop` still uses its own inline 3-attempt loop and does not call the new `run_captured_cmd_then_fix_loop` helper, though the issue plan called for that refactor. Not a Bash 3.2 problem; it is duplicated control-flow vs the new `_RCC_*` path.
+- **architecture** `scripts/ship-pr.sh:1448-1452` — `_stage_and_push_ci_fixes` keeps the pre-existing process-substitution read loop (`done < <(collect_ci_stage_paths …)`). That pattern is Bash 3.0+ and already used elsewhere in this script; it is outside the §3 forbidden list but worth knowing for macOS `/bin/bash` 3.2 environments.
