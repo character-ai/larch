@@ -237,7 +237,7 @@ refresh_issue_counts() {
           /^### External Reviewer Issues$/ { sec=1; next }
           /^### Warnings$/ { sec=2; next }
           /^### / { sec=0; next }
-          /^- \*\*Step / {
+          /^- \*\*[^*].*\*\*:?([[:space:]].*)?$/ {
             if (sec == 1) ex++
             if (sec == 2) wa++
             next
@@ -247,25 +247,58 @@ refresh_issue_counts() {
         EXEC_N=$md_exec
         WARN_N=$md_warn
     elif [ -f "$run_dir/execution-issues.ndjson" ] && command -v jq >/dev/null 2>&1; then
-        read -r nd_exec nd_warn < <(jq -r '.body // empty' "$run_dir/execution-issues.ndjson" 2>/dev/null | awk '
-          /^### Tool Failures$/ { sec=1; next }
-          /^### External Reviewer Issues$/ { sec=1; next }
-          /^### Warnings$/ { sec=2; next }
-          /^### / { sec=0; next }
-          /^- \*\*Step / {
-            if (sec == 1) ex++
-            if (sec == 2) wa++
-            next
-          }
-          END { print ex+0, wa+0 }
-        ')
-        EXEC_N=${nd_exec:-0}
-        WARN_N=${nd_warn:-0}
+        local ndjson_body nd_exec nd_warn
+        ndjson_body="$(mktemp "${TMPDIR:-/tmp}/wfr-execution-issues.XXXXXX")"
+        jq -r '.body // empty' "$run_dir/execution-issues.ndjson" 2>/dev/null >"$ndjson_body" || true
+        if grep -Eq '^### (Tool Failures|External Reviewer Issues|Warnings)$' "$ndjson_body"; then
+            read -r nd_exec nd_warn < <(awk '
+              /^### Tool Failures$/ { sec=1; next }
+              /^### External Reviewer Issues$/ { sec=1; next }
+              /^### Warnings$/ { sec=2; next }
+              /^### / { sec=0; next }
+              /^- \*\*[^*].*\*\*:?([[:space:]].*)?$/ {
+                if (sec == 1) ex++
+                if (sec == 2) wa++
+                next
+              }
+              END { print ex+0, wa+0 }
+            ' "$ndjson_body")
+            EXEC_N=${nd_exec:-0}
+            WARN_N=${nd_warn:-0}
+        else
+            read -r nd_exec nd_warn < <(jq -rs '
+              . as $rows
+              | [
+                  ($rows | map(select(.category == "Tool Failures" or .category == "External Reviewer Issues")) | length),
+                  ($rows | map(select(.category == "Warnings")) | length)
+                ] | @tsv
+            ' "$run_dir/execution-issues.ndjson" 2>/dev/null || printf '0\t0\n')
+            EXEC_N=${nd_exec:-0}
+            WARN_N=${nd_warn:-0}
+        fi
+        rm -f "$ndjson_body"
     elif [ -f "$run_dir/execution-issues.ndjson" ]; then
-        EXEC_N=$(grep -c '"category":"Tool Failures"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
+        EXEC_N=$(( \
+            $(grep -c '"category":"Tool Failures"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0) + \
+            $(grep -c '"category":"External Reviewer Issues"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0) \
+        ))
         WARN_N=$(grep -c '"category":"Warnings"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
         case "$EXEC_N" in *[!0-9]*) EXEC_N=0 ;; esac
         case "$WARN_N" in *[!0-9]*) WARN_N=0 ;; esac
+    fi
+}
+
+redact_output_file_in_place() {
+    local output_file=${1:-}
+    local redacted_tmp
+    [ -n "$output_file" ] || return 0
+    [ -f "$output_file" ] || return 0
+    [ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ] || return 0
+    redacted_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-redacted.XXXXXX")" || return 0
+    if "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$output_file" >"$redacted_tmp"; then
+        mv "$redacted_tmp" "$output_file"
+    else
+        rm -f "$redacted_tmp"
     fi
 }
 
@@ -444,8 +477,12 @@ if [ "$rr" -ne 0 ] || [ ! -s "$body_tmp" ]; then
     rr2=$?
     set -e
     if [ "$rr2" -ne 0 ] || [ ! -s "$body_tmp" ]; then
+        redact_output_file_in_place "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
         append_render_warning "implement final summary fallback" "render-run-summary.sh --cost-unavailable" "${rr2:-1}" "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
+        rm -f "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
         compose_self_fallback
+    else
+        rm -f "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
     fi
 fi
 

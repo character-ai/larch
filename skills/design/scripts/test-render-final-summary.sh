@@ -104,10 +104,69 @@ grep -Fq 'Claude $' "$D/final-summary.md" || fail 'per-agent cost line missing C
 grep -Fq 'Codex $' "$D/final-summary.md" || fail 'per-agent cost line missing Codex slot'
 grep -Fq 'Cursor $' "$D/final-summary.md" || fail 'per-agent cost line missing Cursor slot'
 grep -Fq 'Tokens: ' "$D/final-summary.md" || fail 'per-agent cost line missing token count'
+grep -Fq '💰 TOTAL' "$std_codex" || fail 'stdout per-agent cost line missing TOTAL marker'
+grep -Fq 'Claude $' "$std_codex" || fail 'stdout per-agent cost line missing Claude slot'
+grep -Fq 'Codex $' "$std_codex" || fail 'stdout per-agent cost line missing Codex slot'
+grep -Fq 'Cursor $' "$std_codex" || fail 'stdout per-agent cost line missing Cursor slot'
+grep -Fq 'Tokens: ' "$std_codex" || fail 'stdout per-agent cost line missing token count'
+cmp -s "$D/final-summary.md" "$std_codex" || fail 'codex buckets stdout/file mismatch'
 if grep -Eq 'BLENDED_WARN|blended rate' "$std_codex" "$D/final-summary.md" "$TMP/std-codex.err"; then
     fail 'codex per-bucket design summary must not surface blended-rate warnings'
 fi
 pass 'codex per-bucket summary omits blended warning'
+
+cat >"$PLUGIN_STUB/scripts/render-run-summary.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output-file) out=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[ -n "$out" ] || exit 2
+cat >"$out" <<'OUT'
+## /design run RUN-POSTNA — approved
+
+- **Mode**: SIMPLE
+- **Path**: SIMPLE
+- **Duration**: 3s
+- **Cost**: N/A
+- **Issue**: N/A
+- **Plan review**: N/A
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 0
+- **Run logs**: `larch-logs/design/RUN-POSTNA/`
+
+<!-- larch:run-summary v=1 -->
+OUT
+EOF
+chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
+cat >"$D/final-summary.md" <<'EOF'
+## /design run RUN-PREKEEP — approved
+
+- **Mode**: SIMPLE
+- **Path**: SIMPLE
+- **Duration**: 2s
+- **Cost**: 💰 TOTAL: $2.34 | Claude $1.00 | Codex $1.34 | Cursor $0.00 | Tokens: 2345
+- **Issue**: N/A
+- **Plan review**: N/A
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 0
+- **Run logs**: `larch-logs/design/RUN-PREKEEP/`
+
+<!-- larch:run-summary v=1 -->
+EOF
+std_post_na="$TMP/std-post-na.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-POSTNA" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_post_na" 2>/dev/null
+# shellcheck disable=SC2016
+grep -Fq '💰 TOTAL: $2.34' "$D/final-summary.md" || fail 'post success with N/A cost must preserve prior usable cost line'
+cmp -s "$D/final-summary.md" "$std_post_na" || fail 'post success preserved-cost stdout/file mismatch'
+pass 'post success preserves prior usable cost line'
 
 cp "$PLUGIN_STUB/scripts/render-run-summary.sh" "$TMP/render-run-summary.real"
 cat >"$PLUGIN_STUB/scripts/render-run-summary.sh" <<'EOF'

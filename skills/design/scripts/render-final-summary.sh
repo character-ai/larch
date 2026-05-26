@@ -381,6 +381,27 @@ summary_cost_line() {
     grep -F -- '- **Cost**:' "$file" 2>/dev/null | head -1
 }
 
+summary_cost_is_na_or_missing() {
+    local file=$1 cost_line
+    cost_line="$(summary_cost_line "$file" || true)"
+    [ -z "$cost_line" ] && return 0
+    [ "$cost_line" = '- **Cost**: N/A' ]
+}
+
+restore_preserved_cost_line() {
+    local summary_file=$1 preserved_cost_line=$2
+    [ -n "$preserved_cost_line" ] || return 0
+    awk -v cost_line="$preserved_cost_line" '
+        /^- \*\*Cost\*\*:/ && !done {
+            print cost_line
+            done = 1
+            next
+        }
+        { print }
+    ' "$summary_file" > "${summary_file}.tmp"
+    mv "${summary_file}.tmp" "$summary_file"
+}
+
 render_or_fallback() {
     local err_file="$DESIGN_TMPDIR/render-final-summary.stderr.log"
     local summary_file="$DESIGN_TMPDIR/final-summary.md"
@@ -395,17 +416,9 @@ render_or_fallback() {
     if [ "$rr" -ne 0 ] || [ ! -s "$summary_file" ]; then
         append_render_warning "${rr:-1}" "$err_file"
         compose_self_fallback
-        if [ -n "$preserved_cost_line" ]; then
-            awk -v cost_line="$preserved_cost_line" '
-                /^- \*\*Cost\*\*:/ && !done {
-                    print cost_line
-                    done = 1
-                    next
-                }
-                { print }
-            ' "$summary_file" > "${summary_file}.tmp"
-            mv "${summary_file}.tmp" "$summary_file"
-        fi
+        restore_preserved_cost_line "$summary_file" "$preserved_cost_line"
+    elif [ "$PHASE" = post ] && [ -n "$preserved_cost_line" ] && summary_cost_is_na_or_missing "$summary_file"; then
+        restore_preserved_cost_line "$summary_file" "$preserved_cost_line"
     fi
 }
 

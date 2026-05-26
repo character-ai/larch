@@ -14,6 +14,12 @@ pass(){ PASS=$((PASS+1)); printf 'PASS: %s\n' "$1"; }
 fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
 assert_not_contains(){ case "$2" in *"$1"*) fail "$3 (unexpected $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; *) pass "$3" ;; esac; }
+stdout_summary_block() {
+    printf '%s\n' "$1" | awk '
+        /^COMMENT_URL=|^STATUS=|^REASON=|^ERROR=/ { exit }
+        { print }
+    '
+}
 assert_schema_ordered() {
     local body=$1 label=$2 prev=0 current
     shift 2
@@ -218,6 +224,37 @@ assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain 
 assert_contains '- **Cost**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'missing token data renders cost N/A'
 assert_not_contains '- **PR**:' "$(cat "$TMP_ROOT/content-bl.md")" 'bailed path omits PR bullet when PR is N/A'
 
+impl_exec="$TMP_ROOT/impl-exec"; mkdir -p "$impl_exec/larch-logs/implement/run-exec"
+printf 'ISSUE_NUMBER=11\nRUN_ID=run-exec\nADOPTED=true\n' > "$impl_exec/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_exec/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_exec/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_exec/finalize-state.sh"
+cat > "$impl_exec/execution-issues.md" <<'EOF'
+### External Reviewer Issues
+- **findings aggregator**: ballot merge failed
+EOF
+cat > "$impl_exec/larch-logs/implement/run-exec/execution-issues.ndjson" <<'JSON'
+{"category":"Warnings","body":"- **Step design Step 5 — tracking failed (exit 1)**:\n  ```\nwarn\n  ```"}
+JSON
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-exec.md" \
+      "$HELPER" --implement-tmpdir "$impl_exec")
+assert_contains '- **Exec issues**: 1' "$(cat "$TMP_ROOT/content-exec.md")" 'aggregator-only execution issue counts as exec issue'
+assert_contains '- **Warnings**: 0' "$(cat "$TMP_ROOT/content-exec.md")" 'md execution-issues path remains authoritative over ndjson fallback'
+
+rm -f "$impl_exec/execution-issues.md"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-exec-ndjson.md" \
+      "$HELPER" --implement-tmpdir "$impl_exec")
+assert_contains '- **Exec issues**: 0' "$(cat "$TMP_ROOT/content-exec-ndjson.md")" 'ndjson fallback keeps exec issue count at zero without exec categories'
+assert_contains '- **Warnings**: 1' "$(cat "$TMP_ROOT/content-exec-ndjson.md")" 'ndjson fallback counts warning bodies without markdown headers'
+
 impl_cost="$TMP_ROOT/impl-cost"; mkdir -p "$impl_cost/larch-logs/implement/run-cost"
 printf 'ISSUE_NUMBER=12\nRUN_ID=run-cost\nADOPTED=true\n' > "$impl_cost/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$impl_cost/session-env.sh"
@@ -316,6 +353,7 @@ assert_contains '- **Cost**: N/A' "$fallback_stage1" 'renderer fallback stage1 p
 assert_contains '- **Warnings**: 1' "$fallback_stage1" 'renderer fallback stage1 refreshes warning count'
 assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage1" 'renderer fallback stage1 keeps sentinel'
 test "$(wc -l <"$stage1_calls" | tr -d ' ')" = "2" || fail 'renderer fallback stage1 must invoke renderer twice'
+[ ! -e "$impl_bl/wfr-fallback-stage1.log" ] || fail 'renderer fallback stage1 must not retain fallback stderr sidecar'
 
 cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -490,11 +528,17 @@ $outcome_case
 EOF
     matrix_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/matrix-${expected}.md" \
         "$HELPER" --implement-tmpdir "$fixture" --print-stdout)
-    cost_line=$(printf '%s\n' "$matrix_stdout" | grep -F -- '- **Cost**:' || true)
-    assert_contains "## /implement run " "$matrix_stdout" "matrix $expected prints summary title"
-    assert_contains "— $expected" "$matrix_stdout" "matrix $expected title outcome"
-    assert_contains '- **Cost**:' "$matrix_stdout" "matrix $expected prints cost line"
-    assert_contains '<!-- larch:run-summary v=1 -->' "$matrix_stdout" "matrix $expected keeps sentinel"
+    matrix_summary="$(stdout_summary_block "$matrix_stdout")"
+    cost_line=$(printf '%s\n' "$matrix_summary" | grep -F -- '- **Cost**:' || true)
+    assert_contains "## /implement run " "$matrix_summary" "matrix $expected prints summary title"
+    assert_contains "— $expected" "$matrix_summary" "matrix $expected title outcome"
+    assert_contains '- **Cost**:' "$matrix_summary" "matrix $expected prints cost line"
+    assert_contains '<!-- larch:run-summary v=1 -->' "$matrix_summary" "matrix $expected keeps sentinel"
+    cmp -s <(printf '%s\n' "$matrix_summary") "$fixture/summary-final.md" || fail "matrix $expected stdout summary/file mismatch"
+    assert_contains "## /implement run " "$(cat "$fixture/summary-final.md")" "matrix $expected file prints summary title"
+    assert_contains "— $expected" "$(cat "$fixture/summary-final.md")" "matrix $expected file title outcome"
+    assert_contains '- **Cost**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file prints cost line"
+    assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$fixture/summary-final.md")" "matrix $expected file keeps sentinel"
     if [ "$expected" = "merged" ] || [ "$expected" = "forked-dry-run" ] || [ "$expected" = "pr-created" ] || [ "$expected" = "pr-created-draft" ] || [ "$expected" = "force-merged-externally" ]; then
         assert_contains '💰 TOTAL' "$cost_line" "matrix $expected cost line has total"
         assert_contains 'Claude $' "$cost_line" "matrix $expected cost line has Claude"
@@ -503,14 +547,18 @@ EOF
         assert_contains 'Tokens: ' "$cost_line" "matrix $expected cost line has token count"
     fi
     if [ "$expect_outcome" = present ]; then
-        assert_contains "- **Outcome**: $expected" "$matrix_stdout" "matrix $expected emits Outcome bullet"
+        assert_contains "- **Outcome**: $expected" "$matrix_summary" "matrix $expected emits Outcome bullet"
+        assert_contains "- **Outcome**: $expected" "$(cat "$fixture/summary-final.md")" "matrix $expected file emits Outcome bullet"
     else
-        assert_not_contains '- **Outcome**:' "$matrix_stdout" "matrix $expected omits Outcome bullet"
+        assert_not_contains '- **Outcome**:' "$matrix_summary" "matrix $expected omits Outcome bullet"
+        assert_not_contains '- **Outcome**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file omits Outcome bullet"
     fi
     if [ "$expect_pr" = present ]; then
-        assert_contains '- **PR**:' "$matrix_stdout" "matrix $expected emits PR bullet"
+        assert_contains '- **PR**:' "$matrix_summary" "matrix $expected emits PR bullet"
+        assert_contains '- **PR**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file emits PR bullet"
     else
-        assert_not_contains '- **PR**:' "$matrix_stdout" "matrix $expected omits PR bullet"
+        assert_not_contains '- **PR**:' "$matrix_summary" "matrix $expected omits PR bullet"
+        assert_not_contains '- **PR**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file omits PR bullet"
     fi
 done
 
