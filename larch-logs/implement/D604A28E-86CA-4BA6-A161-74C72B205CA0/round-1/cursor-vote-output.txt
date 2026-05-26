@@ -1,0 +1,23 @@
+Reading the ballot and related context to verify each finding before voting.
+
+
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- cases p, q, v, and w already include assert_not_contains no-echo checks
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- header already documents ISSUE_NUMBER, RUN_ID, and argv --issue coverage
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate helpers are real but acceptable per plan; shared extraction adds more complexity than warranted now
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- get-issue-context rejects 0 while get-issue-state accepts all-digit 0
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- ADOPTED sentinel errors still echo malformed values unlike ISSUE_NUMBER/RUN_ID
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional defense-in-depth duplication by design, not a regression worth filing
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- cases v/w fixtures use literal backslash-t/r, not real tab/CR control bytes required by plan
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- case v fixture lacks a real embedded tab so tab-rejection regressions would not fail CI
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- case w fixture lacks a real embedded CR so CR-rejection regressions would not fail CI
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- failure cases a-f already assert FAILED=true in test-get-issue-state.sh
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- SECURITY.md already scopes fixed-token wording to ISSUE_NUMBER/RUN_ID only
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- ADOPTED invalid-path still echoes malformed values into KEY=VALUE stdout
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- line-oriented extractor cannot expose embedded-newline values to case validators
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- get-issue-state.sh echoes raw gh stderr into ERROR= without fixed-token/redaction discipline
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- get-issue-state.sh forwards unvalidated --repo to gh unlike sibling wrappers
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- cases p and q already assert stdout omits malformed ISSUE_NUMBER literals
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- harness header already mentions ISSUE_NUMBER, RUN_ID, argv validation, and three-line envelope
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- ADOPTED still echoes malformed values while ISSUE_NUMBER/RUN_ID use fixed-token errors
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- get-issue-context.sh already self-validates --issue as positive integer at entry
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan requires $'...'/printf control-byte fixtures; single-quoted printf only rejects backslash charset
