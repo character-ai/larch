@@ -1,0 +1,49 @@
+Reading the ballot and related context to verify each finding.
+
+
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- shared fallback helper adds more maintenance surface than the duplicate-schema drift it would remove
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- lib-cost-line-format output is constrained; safer splice is warranted only if arbitrary cost text becomes possible
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- triplication is real but extracting a helper for three small copies is not worth the churn
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- Step 17 touch is inside the write-final-report success branch, so upsert failure exits non-zero and does not set the sentinel
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same awk -v fragility as FINDING_4 with controlled cost-line sources today
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- prose-only orchestrator enforcement is an inherent model-attention limitation, not a new regression worth filing
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- all-zero totals without stderr is a policy edge case, not a clear functional defect
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- quiet-mode FD-3 routing is untested but adding harness coverage is broader than this diff warrants
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- cost-changed Step 18 branch lacks a harness but fixing stale callsite pins is the immediate blocker
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same-fence window grep is brittle lint complexity for marginal gain
+FINDING_20: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer acknowledges inherent prose-only limitation not amplified by this diff
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional tested enhancement, not a defect against plan policy
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- preserved cost lines come from trusted renderer output, not attacker-controlled input
+FINDING_23: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Cost line is script-generated summary content, not an untrusted injection channel
+FINDING_24: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sidecar log lives in session tmpdir until teardown; redaction before append already limits exposure
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_26: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- diagnostic stderr during render is expected operator output, not a new regression
+FINDING_27: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_29: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_30: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- empty-mode N/A default is covered; cancelled-title-filter naming mismatch is documentation-only
+FINDING_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_32: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_33: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_34: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate awk -v concern with controlled cost-line formatting in practice
+FINDING_35: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- external-reviewer bullet gap predates this branch and is explicitly longstanding
+FINDING_36: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing temp-file leak on abnormal exit is low-impact housekeeping
+FINDING_37: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding states the reviewed bash patterns are sound, not that a bug exists
+FINDING_38: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_39: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- empty-string duration via jq is rare and the renderer na() path covers the primary pipeline
+FINDING_40: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- missing design ordered-schema test is a minor parity gap, not a merge blocker
+FINDING_41: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- first-match awk substitution is correct for formatted cost lines; quote edge case is theoretical
+FINDING_42: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- orchestrator ordering risk is real but dual-marker refactor exceeds proportional fix for a best-effort prose contract
+FINDING_43: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_44: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Step 18 already sets _wfr_emit_cost when refreshed cost differs even if sentinel exists
+FINDING_45: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- worthwhile follow-up harness extension, not a regression in existing pre-merge behavior
+FINDING_46: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- inherent prose-only enforcement model, not a concrete defect introduced here
