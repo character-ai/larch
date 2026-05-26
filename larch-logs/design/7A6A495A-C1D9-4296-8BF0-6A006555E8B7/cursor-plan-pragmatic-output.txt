@@ -1,0 +1,18 @@
+Reading the implementation plan and exploring the referenced codebase paths.
+Checking one more integration detail: how dependency lines appear in panel output and whether the `seen` name collision is real.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/design/scripts/decompose-file-issues.sh:97-104	`re.findall(r"Piece\s+(\d+)", …)` scans the entire post-`blocked-by` remainder	Dependencies like `blocked-by Piece 1 (see also Piece 2)` or `blocked-by Piece 1, Piece 2 for context` can emit a spurious 1→N edge for an incidental `Piece 2` token, over-serializing the batch via `partition-deps.tsv`	Restrict extraction to delimiter-bounded segments (comma/`and`-separated list after the first `Piece N`) or document that the remainder must contain only blocker tokens; add a harness fixture with parenthetical `Piece N` that must not become an edge
+2	in_scope	nit	code-quality	skills/design/scripts/decompose-file-issues.sh:112	Proposed per-line dedupe uses local name `seen` in the same embedded Python function that already uses `seen` as the Kahn visit counter at line 112	Works today because `seen = 0` runs after the piece loop, but reusing the name invites a future edit-order regression if code is inserted between the loops	Rename the dedupe set to `seen_blockers` (or similar) in the proposed block
+3	in_scope	latent	correctness	skills/design/scripts/test-decompose-file-issues.sh:80-96	Proposed doc bullet promises `and`-separated multi-blockers; harness adds only the comma-list fixture	No regression if `and` handling regresses; gap is doc/test drift only	Add a minimal `p2e` fixture (`blocked-by Piece 1 and Piece 2`) asserting two edges, or narrow the doc bullet to comma-separated only
+
+1. **[correctness]** `skills/design/scripts/decompose-file-issues.sh:97-104` — The proposed anchor+`findall` parse treats every `Piece N` in the remainder as a blocker. Parenthetical or narrative text on the same `- Dependencies:` line can add false edges (behavior change vs today’s single `re.search`). **Suggested revision:** delimiter-bounded tokenization or an explicit doc constraint plus a negative/positive harness case.
+
+2. **[code-quality]** `skills/design/scripts/decompose-file-issues.sh:112` — Reusing `seen` for dedupe in the piece loop while line 112 uses `seen` for cycle counting is confusing and fragile. **Suggested revision:** use `seen_blockers` in the new loop.
+
+3. **[correctness]** `skills/design/scripts/test-decompose-file-issues.sh` — Doc/harness mismatch on `and` separators. **Suggested revision:** add a small `and` fixture or tighten the doc wording.
+
+[OUT_OF_SCOPE] **`skills/design/scripts/decompose-prompts/_common-tail.txt:27`** — Panel schema still documents only singular `blocked-by Piece N`; plural `blocked-by Pieces 1, 2, 3` remains silently ignored (plan defers). Worth a follow-on to extend prompts/parser together.
+
+[OUT_OF_SCOPE] **`skills/design/scripts/test-decompose-file-issues.md:1-5`** — Sibling harness contract is not updated for the two new `prepare` sections; optional doc-only follow-on.
+
+**Note:** Core approach (anchor + `findall`, per-blocker strict refs, shell cleanup on exit 2, TSV `a+1`/`b+1` assertions for pieces 1–5, artifact absence on `bad-dependency-ref`) aligns with existing `cmd_prepare` behavior at `skills/design/scripts/decompose-file-issues.sh:176-180` and current happy-path tests. No blocking gaps found in cycle handling, Makefile wiring, or security surface for this change.
