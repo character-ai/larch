@@ -1,0 +1,14 @@
+Reviewing branch changes for Bash 3.2 regex correctness; reading the diff and relevant files.
+Verifying hyphen placement in the character class against Bash 3.2 and sibling scripts.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND
+
+**Review notes (bash32-regex-validity / correctness):**
+
+- **Character class `/-` before `]`:** In `[A-Za-z0-9._/-]`, the `-` is the last member before the closing `]`. Under POSIX ERE and Bash 3.2 `[[ =~ ]]` rules, a hyphen in that position is a literal hyphen, not a range endpoint; it does not form a `/`–`]` range. The same class appears in [`scripts/rebase-push.sh`](scripts/rebase-push.sh) (102–108), [`scripts/ci-status.sh`](scripts/ci-status.sh) (64), and [`scripts/ci-wait.sh`](scripts/ci-wait.sh) (116).
+- **`[[ =~ ]]`:** Supported on macOS Bash 3.2 (Bash 3.0+). [`scripts/lint-bash32.sh`](scripts/lint-bash32.sh) does not flag `=~`; it only rejects Bash 4+ constructs listed in [`BASH_AUTHORING.md`](BASH_AUTHORING.md) (associative arrays, `mapfile`, `&>>`, etc.).
+- **Defaults:** `BASE_REMOTE=origin` and `BASE_REF=main` at [`skills/implement/scripts/generate-code-flow-diagram.sh`](skills/implement/scripts/generate-code-flow-diagram.sh):28–29 match `^[A-Za-z0-9._/-]+$`; callers that omit the new flags are not rejected by validation.
+- **Branch commits:** `ef3df272` (align Step 7a fork base selection), `6c3c24b2` (docs linting inventory), `fd3e3839` (larch-logs flush).

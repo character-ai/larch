@@ -45,6 +45,8 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 ## Invariants
 
 - Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, diagram generation, comment composition/upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
+- The classifier, diagram generator, and 7a.r rebase probe use module-level `base_remote` / `base_ref`, defaulting to `origin/main` and switching to `upstream/main` when `--forked-target true` is on argv or when `LARCH_FORKED_TARGET=true` is rehydrated from `$IMPLEMENT_TMPDIR/session-env.sh` during session-key lookup.
+- `LARCH_FORKED_TARGET` has no direct shell-environment fallback; only argv and the session-env file are honored.
 - `summary-diagrams.md` preserves the existing `larch:diagrams` content shape: Architecture Diagram content or placeholder, blank line, then Code Flow content or placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
 - Step 7a still upserts the `larch:diagrams` comment with the placeholder body when `generate-code-flow-diagram.sh` reports `STATUS=skipped` or `STATUS=failed`; only empty `ISSUE_NUMBER` gates the upsert.

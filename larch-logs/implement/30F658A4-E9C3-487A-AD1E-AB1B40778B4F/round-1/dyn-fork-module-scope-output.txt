@@ -1,0 +1,16 @@
+Reviewing the branch diff and verifying module-level variable scoping and test assertions.
+Checking whether non-fork `BASE_ARGS` behavior matches prior defaults and scanning for other correctness gaps.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+**Module-level `base_remote` / `base_ref` under `set -u`:** In [`skills/implement/scripts/step-7a.sh`](skills/implement/scripts/step-7a.sh), `is_small_non_runtime_change` is defined at lines 79–101 but only invoked once at line 343. `base_remote` and `base_ref` are assigned unconditionally at lines 334–338, after argv parsing and `forked_target` session rehydration (lines 329–331) and before that call. Bash resolves unqualified names inside the function at **call time**, not definition time, so there is no unbound-variable hazard on the sole path. The script uses `set -uo pipefail` (not `-e`), but `-u` still cannot fire here because both variables are always set first. There is no other call site or source-time invocation of the function.
+
+**`diagram-generate-forked` and `DIAGRAM_STATUS=ok`:** The case at [`skills/implement/scripts/test-step-7a.sh`](skills/implement/scripts/test-step-7a.sh):433-442 uses `make_forked_generate_repo`, which produces three docs-only paths vs `upstream/main`, so `changed_count > 2` forces the generator path. It does not set `STEP7A_GEN_MODE`, so the harness stub at lines 126–129 defaults to `ok` and prints `STATUS=ok`; `step-7a.sh` maps that to `DIAGRAM_STATUS=ok` (lines 359–363). That matches the existing `green` case (line 390). A `skipped` expectation would only apply with `STEP7A_GEN_MODE=rejected`, which this case does not use.
+
+**Non-fork rebase argv:** Replacing conditional empty `BASE_ARGS` with unconditional `BASE_ARGS=(--base-remote "$base_remote" --base-ref "$base_ref")` (line 405) makes non-fork runs pass `--base-remote origin --base-ref main` explicitly. [`scripts/rebase-checkpoint-probe.sh`](scripts/rebase-checkpoint-probe.sh) only forwards those flags when non-empty; [`scripts/rebase-push.sh`](scripts/rebase-push.sh) defaults to `origin`/`main` anyway (lines 88–89), so this is equivalent for non-fork behavior, not a regression.
+
+### Out-of-Scope Observations
+
+- The branch includes commit `fd3e3839` (larch-logs implement run artifacts) alongside `ef3df272` (the #2844 fix). That log flush is unrelated to classifier/base-ref correctness.
+- Scout notes referenced `set -euo pipefail` for `step-7a.sh`; the file has long used `set -uo pipefail` only (line 4). That predates this change and does not affect the `base_remote`/`base_ref` assignment analysis above.

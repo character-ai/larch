@@ -10,8 +10,13 @@ caller environment.
 Usage:
 
 ```bash
-generate-code-flow-diagram.sh --implement-tmpdir PATH [--model claude-sonnet-4-6]
+generate-code-flow-diagram.sh --implement-tmpdir PATH [--model claude-sonnet-4-6] [--base-remote NAME] [--base-ref BRANCH]
 ```
+
+The default base target is `origin/main`. `step-7a.sh` passes `upstream/main`
+when its `forked_target` is true, set via `--forked-target` argv or
+`LARCH_FORKED_TARGET` in `session-env.sh`, not via direct shell environment.
+`--base-remote` and `--base-ref` values must match `^[A-Za-z0-9._/-]+$`.
 
 Output:
 

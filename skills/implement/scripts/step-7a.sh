@@ -78,7 +78,7 @@ is_non_runtime_path() {
 
 is_small_non_runtime_change() {
     local merge_base changed_files changed_count path
-    merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || merge_base=""
+    merge_base=$(git merge-base HEAD "${base_remote}/${base_ref}" 2>/dev/null) || merge_base=""
     if [ -n "$merge_base" ]; then
         changed_files=$(git diff --name-only "${merge_base}..HEAD" 2>/dev/null)
     else
@@ -331,6 +331,12 @@ if [ "$FORKED_TARGET_SET" != "true" ]; then
 fi
 export ISSUE_NUMBER RUN_ID
 
+base_remote=origin
+base_ref=main
+if [ "${forked_target:-false}" = "true" ]; then
+    base_remote=upstream
+fi
+
 "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
 
@@ -343,7 +349,10 @@ else
     gen_out="$IMPLEMENT_TMPDIR/code-flow-diagram.stdout"
     gen_err="$IMPLEMENT_TMPDIR/code-flow-diagram.stderr"
     set +e
-    "$PLUGIN_ROOT/skills/implement/scripts/generate-code-flow-diagram.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$gen_out" 2>"$gen_err"
+    "$PLUGIN_ROOT/skills/implement/scripts/generate-code-flow-diagram.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+        --base-remote "$base_remote" \
+        --base-ref "$base_ref" >"$gen_out" 2>"$gen_err"
     gen_rc=$?
     set +e
     gen_status=$(kv_value STATUS "$gen_out")
@@ -393,10 +402,7 @@ if [ -n "$ISSUE_NUMBER" ]; then
     fi
 fi
 
-BASE_ARGS=()
-if [ "${forked_target:-false}" = "true" ]; then
-    BASE_ARGS=(--base-remote upstream --base-ref main)
-fi
+BASE_ARGS=(--base-remote "$base_remote" --base-ref "$base_ref")
 export LARCH_QUIET_BREADCRUMBS=1
 set +e
 rebase_out="$IMPLEMENT_TMPDIR/rebase-checkpoint-probe.stdout"
