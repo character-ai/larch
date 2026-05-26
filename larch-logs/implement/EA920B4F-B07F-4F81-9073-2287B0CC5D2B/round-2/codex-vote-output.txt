@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE -- The duplicated strip layers are real but serve separate validation/persistence phases, and refactoring or documenting them is more overhead than the latent risk warrants.
+FINDING_2: EXONERATE -- The gap is real, but the adjacent-suffix success fixture exercises the stricter `startswith` boundary, so adding a whitespace variant is low-value.
+FINDING_3: NO -- The prose drift is minor and the sibling stub still gives enough Makefile guidance, so it is not worth filing as a separate issue.
+FINDING_4: NO -- This is only a commit summary with no distinct behavioral defect.
+FINDING_5: NO -- This is only a run-log commit summary with no concrete defect.
+FINDING_6: EXONERATE -- Count-only success assertions are a real limitation, but the validator already checks required structure and richer content assertions would add brittleness.
+FINDING_7: YES
+FINDING_8: NO -- The omission follows the existing harness-stub style and does not create a concrete maintenance problem worth filing.
