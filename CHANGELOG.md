@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `scripts/dispatch-with-waterfall.sh` accepts `--require-result-pattern <regex>` so callers can require a `STATUS=OK` result file to match a structural ERE; misses route through the existing phase-1 → phase-2 → phase-3 fallback. The decomposition aggregator (`skills/design/scripts/decompose-aggregator.sh`) and 8-slot panel (`skills/design/scripts/decompose-panel-dispatch.sh`) opt in with `^[[:space:]]*## Recommendation`, the aggregator's single-slot primary tool switches from Cursor to Codex, and `panel-outputs.ndjson` rows now reflect the dispatcher's resolved final paths (`ALL_OUTPUT_FILES_PATH`) so phase-2/phase-3 fallback content reaches operator presentation. `STATUS=cap_hit` bypasses the gate (token-budget skip stays terminal); invalid ERE patterns exit **2** before any slot launches. Closes #2865.
 - Codex per-bucket token accounting now stays visible across launcher, `token-report`, and `/design` final-summary paths; per-bucket Codex cost rendering no longer emits misleading blended-rate warnings when `BUCKETS_codex` is populated.
 - test-aggregate-findings, test-launch-review, test-append-tool-failure: unset `LARCH_EXECUTION_ISSUES_LOG` and related vars at harness entry so synthetic aggregator warnings do not append to a parent `/implement` execution-issues log.
 - /implement — Create the feature branch at the start of Step 0 plan materialization (regression from #2588 / #2598; pre-existing dispatcher main-branch-prohibited guard exposed the gap).

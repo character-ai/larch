@@ -74,6 +74,20 @@ grep -Fq '## Recommendation' "$D/merged.md" || fail "merged output missing headi
 grep -Fq '## Panel output' "$D/decompose/aggregator-partition-merge.prompt" \
     || fail "merge prompt missing concatenated panel headers"
 
+# Aggregator's single-slot row is built with tool=codex (Fix 1) so the more
+# reliable vendor runs first on the safety-net slot.
+agg_tool=$(jq -r '.tool' "$D/decompose/aggregator-slots.ndjson")
+[[ "$agg_tool" == "codex" ]] || fail "expected aggregator slot tool=codex got '$agg_tool'"
+
+# Aggregator threads the recommendation-heading gate through the waterfall
+# (Fix 2 caller adoption). The stub logs `"$0 $*"` per invocation; both the
+# flag and its argument must appear so a future regression that drops either
+# half of the pair is caught.
+grep -Fq -- '--require-result-pattern' "$D/wf.log" \
+    || fail "expected --require-result-pattern threaded to waterfall"
+grep -Fq -- '^[[:space:]]*## Recommendation' "$D/wf.log" \
+    || fail "expected recommendation-heading regex threaded to waterfall"
+
 echo "=== AGGREGATOR_STATUS=failed when DISPATCH_OK path broken ==="
 D2="$TMP/b"
 mkdir -p "$D2"

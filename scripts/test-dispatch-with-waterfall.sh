@@ -29,7 +29,9 @@ done
 if [[ "${CODEX_STUB_FAIL:-false}" == "true" ]]; then
     exit 7
 fi
-printf 'codex ok\n' > "$out"
+# Default preserves prior `codex ok\n` byte-identically; callers can pass
+# CODEX_STUB_RESULT_CONTENT (no trailing newline) to inject other content.
+printf '%s\n' "${CODEX_STUB_RESULT_CONTENT:-codex ok}" > "$out"
 STUB
 cat > "$STUB_BIN/cursor" <<'STUB'
 #!/usr/bin/env bash
@@ -38,7 +40,11 @@ log="${CURSOR_STUB_LOG:-}"
 if [[ "${CURSOR_STUB_FAIL:-false}" == "true" ]]; then
     exit 8
 fi
-printf '{"result":"cursor ok","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+# Build the JSON envelope with jq so metacharacters in caller-supplied
+# CURSOR_STUB_RESULT_CONTENT are safely escaped. Default preserves the
+# prior `cursor ok` .result value byte-identically.
+jq -nc --arg r "${CURSOR_STUB_RESULT_CONTENT:-cursor ok}" \
+    '{result:$r,usage:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheWriteTokens:0}}'
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
@@ -290,5 +296,81 @@ rc_cr=$?
 set -e
 [[ "$rc_cr" -eq 2 ]] || { echo "FAIL: CR in output path exit=$rc_cr" >&2; exit 1; }
 grep -Fq 'newline or carriage return' "$TMPROOT/cr.stderr" || { echo "FAIL: CR-in-path stderr" >&2; exit 1; }
+
+# --- --require-result-pattern tests ---
+
+# Case A: pattern-mismatch on the primary tool falls through to phase 2.
+# Cursor's `STATUS=OK` returns narration only; codex (phase 2) returns a
+# valid `## Recommendation` heading. Final tool must be codex, no phase-3
+# Claude fallback fires, and the dispatcher reports DISPATCH_OK=true.
+manifest="$TMPROOT/slots-pattern-fallback.ndjson"
+printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/pattern-fallback-slot.txt" "$prompt" > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='narration only, no heading' \
+    CODEX_STUB_RESULT_CONTENT=$'## Recommendation\nsplit' \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+grep -Fq '## Recommendation' "$TMPROOT/pattern-fallback-slot-phase2.txt" \
+    || { echo "FAIL: phase2 codex did not produce Recommendation heading" >&2; exit 1; }
+
+# Case B: STATUS=cap_hit bypasses the pattern gate (token-budget skip is
+# terminal). Cursor returns `STATUS=cap_hit\n...` as its `.result`, which
+# collect-agent-results.sh promotes to STATUS=cap_hit. Slot settles on the
+# assigned primary tool; no phase-2 launch occurs.
+manifest="$TMPROOT/slots-pattern-caphit.ndjson"
+printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/pattern-caphit-slot.txt" "$prompt" > "$manifest"
+codex_caphit_log="$TMPROOT/codex-caphit.log"
+: >"$codex_caphit_log"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT=$'STATUS=cap_hit\nbudget exceeded' \
+    CODEX_STUB_LOG="$codex_caphit_log" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "ALL_OUTPUT_TOOLS=cursor" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+[[ ! -s "$codex_caphit_log" ]] || { echo "FAIL: cap_hit must not advance to phase 2 (codex stub ran)" >&2; cat "$codex_caphit_log" >&2; exit 1; }
+
+# Case C: invalid ERE exits 2 before any slot launches.
+manifest="$TMPROOT/slots-pattern-invalid.ndjson"
+printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/pattern-invalid-slot.txt" "$prompt" > "$manifest"
+codex_invalid_log="$TMPROOT/codex-invalid.log"
+cursor_invalid_log="$TMPROOT/cursor-invalid.log"
+: >"$codex_invalid_log"
+: >"$cursor_invalid_log"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_LOG="$codex_invalid_log" \
+    CURSOR_STUB_LOG="$cursor_invalid_log" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '[' \
+    --timeout 5 >/dev/null 2>"$TMPROOT/pattern-invalid.stderr"
+rc_pat=$?
+set -e
+[[ "$rc_pat" -eq 2 ]] || { echo "FAIL: invalid ERE pattern exit=$rc_pat" >&2; exit 1; }
+grep -Fq 'is not a valid ERE' "$TMPROOT/pattern-invalid.stderr" \
+    || { echo "FAIL: invalid ERE stderr message" >&2; cat "$TMPROOT/pattern-invalid.stderr" >&2; exit 1; }
+[[ ! -s "$codex_invalid_log" ]] || { echo "FAIL: invalid ERE must not launch codex" >&2; exit 1; }
+[[ ! -s "$cursor_invalid_log" ]] || { echo "FAIL: invalid ERE must not launch cursor" >&2; exit 1; }
 
 echo "PASS: test-dispatch-with-waterfall.sh"

@@ -155,6 +155,7 @@ _dispatch_out=$("$WATERFALL_SH" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
     --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
     "${_wf_extra[@]}")
 _wf_rc=$?
 set -e
@@ -211,6 +212,18 @@ usable=0
 _panel_rows="$DECOMP_DIR/panel-outputs.ndjson"
 : >"$_panel_rows"
 
+# Read the dispatcher's resolved paths (one per slot, manifest order) so panel
+# rows reflect phase-2/phase-3 fallback files instead of the original manifest
+# phase-1 path. Bash 3.2-compatible: no mapfile/readarray.
+_resolved_paths=()
+if [[ -n "$ALL_OUTPUT_FILES_PATH" && -f "$ALL_OUTPUT_FILES_PATH" ]]; then
+    while IFS= read -r _rp_line || [[ -n "$_rp_line" ]]; do
+        _resolved_paths+=("$_rp_line")
+    done <"$ALL_OUTPUT_FILES_PATH"
+fi
+
+_i=0
+_warned_missing_paths=false
 while IFS= read -r row || [[ -n "$row" ]]; do
     [[ -n "$row" ]] || continue
     _slot=$(printf '%s' "$row" | jq -r '.slot // empty')
@@ -218,19 +231,29 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     _outp=$(printf '%s' "$row" | jq -r '.output // empty')
     _arch="${_slot#decomp-cursor-}"
     _arch="${_arch#decomp-codex-}"
+    if (( ${#_resolved_paths[@]} > 0 )); then
+        _outp_resolved="${_resolved_paths[$_i]:-$_outp}"
+    else
+        if [[ "$_warned_missing_paths" != true ]]; then
+            larch_err "decompose-panel-dispatch.sh: ALL_OUTPUT_FILES_PATH empty or missing; falling back to manifest paths for panel-outputs rows"
+            _warned_missing_paths=true
+        fi
+        _outp_resolved="$_outp"
+    fi
     _status="missing"
-    if [[ -f "$_outp" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_outp"; then
+    if [[ -f "$_outp_resolved" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_outp_resolved"; then
         _status="ok"
         usable=$((usable + 1))
-    elif [[ -f "$_outp" ]]; then
+    elif [[ -f "$_outp_resolved" ]]; then
         _status="unparsed"
     fi
     jq -nc \
         --arg archetype "$_arch" \
         --arg vendor "$_tool" \
-        --arg output "$_outp" \
+        --arg output "$_outp_resolved" \
         --arg status "$_status" \
         '{archetype:$archetype,vendor:$vendor,output:$output,status:$status}' >>"$_panel_rows"
+    _i=$((_i + 1))
 done <"$_manifest"
 
 PANEL_STATUS="ok"
