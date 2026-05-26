@@ -1148,6 +1148,7 @@ wf_log="$impl/wf.log"
     export IMPLEMENT_TMPDIR="$impl"
     recovery_waterfall_paths_delta_revert "$btr" "$bun" "$wf_log"
 )
+# shellcheck disable=SC2031
 if grep -qxF 'orig' "$root/my file.txt" && grep -qxF 'g' "$root/x*y.txt"; then
     ok "recovery_waterfall_rollback_handles_paths_with_spaces_and_globs"
 else
@@ -1181,6 +1182,7 @@ wf_log="$impl/wf2.log"
     export IMPLEMENT_TMPDIR="$impl"
     recovery_waterfall_paths_delta_revert "$btr" "$bun" "$wf_log"
 )
+# shellcheck disable=SC2031
 if grep -qxF 'A' "$root/staged.txt"; then
     ok "recovery_waterfall_rollback_restores_staged_changes_via_git_restore_staged"
 else
