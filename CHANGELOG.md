@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Harden script issue-number boundaries with numeric self-validation before gh calls
 - Validate non-empty tracking sentinel ISSUE_NUMBER and RUN_ID values with fixed-token malformed-value errors
 - Add and wire offline regression coverage for the new validation contracts
+- Derive Step 7a base_remote/base_ref once from forked_target and use it for the small/non-runtime classifier, generator, and 7a.r rebase probe.
+- Add --base-remote/--base-ref support and validation to generate-code-flow-diagram.sh while preserving origin/main defaults.
+- Cover fork-mode classifier skip and generator invocation paths in the Step 7a harness, and update sibling docs plus structural lint guards.
 
 ## [42.5.14] - 2026-05-25
 
