@@ -1,0 +1,18 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplication exists, but a shared validator adds more complexity than this small role-specific drift risk warrants
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the wall-clock assertion is somewhat brittle, but the cited platform behavior is speculative and not worth prioritizing here
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- ship-pr installs the done trap before parsing and does not do long-running work before the paired PID write
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- broader integration coverage would be nice, but the concern is mostly a general test-depth gap
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the TOCTOU exists, but it is within the documented same-UID trust model and O_NOFOLLOW-style mitigation is disproportionate
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- leading-zero tampering is real but too low-impact to require churn
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the monitor has already crossed the timeout threshold, so preserving exit 4 is a defensible semantic
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- single-PID cleanup is a documented limitation, and process-group handling would add more complexity than warranted
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- writer and monitor warnings already exist; extra surfacing is optional polish
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- distinct warning tokens would help debugging but are not worth raising as a required finding
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the described issue is already consolidated and the item itself says no action is required
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- argv parsing is not long-running, and early exits are already coupled by the done trap
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is only a plan traceability note; implementation and primary contract docs are internally consistent

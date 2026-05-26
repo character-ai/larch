@@ -2,7 +2,7 @@
 
 Black-box regression harness for `scripts/lint-foreground-markers.sh`. It builds isolated fixture trees under `mktemp -d` (no `.git` so the linter exercises the non–git-worktree `find` enumeration path), writes synthetic `skills/*/SKILL.md` and `skills/shared/*.md` files, and asserts exit codes plus stderr needles. Case order and numbering match the `# N —` / `# Nb —` comments in `scripts/test-lint-foreground-markers.sh` (execution order).
 
-1. **Clean path** — banner immediately above a bash-tagged fenced block, canonical `# Foreground required…` comment on the line before `${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh`.
+1. **Clean path** — banner immediately above a bash-tagged fenced block, canonical background-pair comment, `run_in_background: true`, paired-PID allocation/export, and monitor `--paired-pid-file` for `${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh`.
 2. **Missing banner** — comment present, banner absent → `missing banner`.
 3. **Missing comment** — banner present, comment absent → `missing comment`.
 4. **Blockquoted banner** — same as (1) but the banner line is prefixed with a Markdown blockquote marker (greater-than as the first non-whitespace character, followed by a single ASCII space before the banner text).
@@ -32,6 +32,11 @@ Black-box regression harness for `scripts/lint-foreground-markers.sh`. It builds
 26. **`step-7a.sh` background flag forbidden** — marker pair present but fence also sets `run_in_background: true` → `foreground-only invocation must not set run_in_background: true for step-7a.sh`.
 27. **Heredoc negative** — denylist-shaped `${CLAUDE_PLUGIN_ROOT}/…collect-agent-results.sh` text inside a quoted `<<'…'` heredoc body → ignored (must not require markers above the fence).
 28. **Backslash-continued invocation** — markers satisfied while the `${CLAUDE_PLUGIN_ROOT}/…collect-agent-results.sh` path is split across two source lines with a trailing `\` continuation → passes.
+29. **Missing paired PID allocation** — top-level Family B monitor flag present but no `mktemp` allocation → `missing LARCH_PAIRED_PID_FILE allocation`.
+30. **Bare paired PID export** — `export LARCH_PAIRED_PID_FILE` without same-fence `mktemp` allocation → same allocation error.
+31. **Missing monitor flag** — allocation/export present but no `--paired-pid-file` → `missing --paired-pid-file monitor argument`.
+32. **Paired PID happy path** — top-level Family B allocation/export plus monitor flag → passes.
+33. **Nested-only carve-outs** — `ci-wait.sh`, `review-and-fix.sh`, `step2-implement.sh`, and `dispatch-with-waterfall.sh` still require the background pair when directly fenced, but do not require paired-PID tokens.
 16. **Family A baseline** — minimum `grep -cF 'run_in_background: true'` floors on `skills/design/references/sketch-launch.md`, `skills/design/references/dialectic-execution.md`, `skills/shared/voting-protocol.md`, and `skills/shared/dialectic-protocol.md` (count decreases fail; increases allowed).
 
 Wiring: Makefile targets `test-lint-foreground-markers`, `lint-foreground-markers`, and `lint-foreground` (alias), one `test-harnesses-16` shard entry, pre-commit hook `lint-foreground-markers`, and `agent-lint.toml` exclusions mirroring the `lint-bash32` Makefile-only pattern. Primary normative contract: `scripts/lint-foreground-markers.md`.

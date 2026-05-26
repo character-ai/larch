@@ -155,6 +155,18 @@ data in breadcrumbs. Operational `wait-ci` / `warn` breadcrumb text may still be
 committed after secrets-family redaction, so CI failure strings, check names,
 and similar diagnostics should also be treated as public-boundary content.
 
+**Paired breadcrumb monitor PID file**: paired Family B launches may allocate
+`LARCH_PAIRED_PID_FILE` and pass it to `breadcrumb-monitor.sh --paired-pid-file`
+so the foreground monitor can signal the background process on timeout. Both
+writer and monitor require absolute paths under the active session tmpdir
+breadcrumbs surface, reject `..` and symlinks, and fail open with warnings rather
+than aborting the caller. The monitor signals only the file-supplied PID
+(`SIGTERM`, then `SIGKILL` after a short grace period); it does not signal a
+process group, walk parents, or attempt cross-user authority. This relies on the
+same-UID operator trust model. A long-departed PID could theoretically be reused
+before timeout; that is a known limitation mitigated by the 1800-second timeout,
+same-UID scope, and per-launch `mktemp` paths.
+
 Mermaid diagram content is sanitized at diagram-write time, PR-body composition, and larch-log publication via `scripts/sanitize-mermaid-fragment.sh` so unsafe diagram content is dropped before it reaches public comments or PR bodies. The Mermaid parser lint introduces a Node toolchain surface through `@mermaid-js/mermaid-cli`; pin, audit, and bump expectations are documented in `skills/shared/mermaid-safe-content.md` "Node Toolchain Maintenance".
 
 **`ship-pr.sh` post-review publication path**: `scripts/ship-pr.sh` centralizes `/implement`'s post-review PR publication, CI-fix, merge, and teardown mechanics. It preserves the existing public-output guards: PR bodies embed only sanitized Mermaid files or placeholders, `create-pr.sh` still redacts session tmpdir paths before `gh pr create`, and tracking issue lifecycle writes still route through `tracking-issue-write.sh`. The new CI-fix launchers (`launch-cursor-ci.sh`, `launch-codex-ci.sh`) invoke external tools through `run-external-agent.sh`, so their `.meta` sidecars inherit the same argv visibility tradeoffs documented for Cursor/Codex launchers. For `--role resolve-conflict`, `--conflict-files` values are validated per path segment in `scripts/lib-external-launcher-common.sh` (`larch_validate_vendor_conflict_csv`: reject newlines, absolute paths, `..`, and characters outside a narrow repo-relative path alphabet) before the launcher embeds them, and the vendor prompt frames the list with `<<<CONFLICT_PATHS>>>` / `<<<END_CONFLICT_PATHS>>>` sentinels to reduce markdown-breakout steering from collaborator-controlled paths. CI-fix commit staging is now narrowed: after local verification passes, `ship-pr.sh` stages current tracked dirty paths plus only those current untracked paths that appear in the accumulated lint-fix delta manifests returned by `lint-fix-loop.sh`; arbitrary untracked byproducts from external fixers are not staged by default.

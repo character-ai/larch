@@ -1,0 +1,18 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicated validation is real but shared-helper extraction costs more than drift risk here.
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Fence linter covers markdown; mandating script-level writer grep is disproportionate.
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Harness doc omits required LARCH_BM_TEST_MODE=1 gate documented in breadcrumb-monitor.md.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Research collect fences document run_in_background while adjacent prose forbids it on the Bash call.
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Wall-clock KILL grace check can flake but matches intentional escalation coverage.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Missing nested-unset regression test is a gap, not a production defect.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Late ship-pr PID write is a documented slow-startup edge case with fail-open monitor behavior.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Integration harnesses omit paired-PID coverage but unit tests and fence lint already exercise the contract.
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- Validate-then-read TOCTOU is theoretical under the documented same-UID session-tmpdir trust model.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Leading-zero acceptance is edge-case hardening, not a demonstrated kill mis-signal.
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Timeout branch signals and exits 4 without re-checking a newly written done sentinel.
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Research collect fences never export RESEARCH_TMPDIR, so paired-PID path validation can fail-open in the background writer.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Single-PID signaling scope is an explicit documented limitation in SECURITY.md.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Fail-open writer warnings are intentional per the paired-PID security contract.
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Distinct paired-PID read failures all collapse to one WARN token, hindering timeout forensics.
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Breadcrumb publish duplication is already resolved; no actionable OOS issue remains.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Deferred collect PID write mirrors the accepted slow-startup race documented in the plan.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- LARCH_BM_TEST_MODE traceability gap is documentation-only, not a functional regression.

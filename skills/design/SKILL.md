@@ -420,6 +420,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-r
 export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -434,7 +435,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 **Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
@@ -452,6 +454,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-r
 export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -464,7 +467,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 Use `timeout: 1260000` on the Bash tool call. Set `run_in_background: true` on the long-script Bash tool call and pair with foreground `breadcrumb-monitor.sh`. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).

@@ -33,6 +33,43 @@ dispatch-with-waterfall.sh
 dispatch-plan-voters.sh
 DENYLIST_EOF
 
+family_b_pid_writer_required() {
+    case "$1" in
+        ship-pr.sh|run-step5-review.sh|run-step2-dispatch.sh|collect-agent-results.sh|dispatch-plan-voters.sh)
+            return 0
+            ;;
+        # Nested-only denylisted children are invoked synchronously by a
+        # top-level parent, which unsets LARCH_PAIRED_PID_FILE before exec.
+        ci-wait.sh|review-and-fix.sh|step2-implement.sh|dispatch-with-waterfall.sh)
+            return 1
+            ;;
+        # Foreground-only carve-out.
+        step-7a.sh)
+            return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+fence_has_paired_pid_allocation() {
+    local joined="$1"
+    # shellcheck disable=SC2016 # Literal shell variables are the lint tokens.
+    if ! printf '%s\n' "$joined" | LC_ALL=C grep -Eq 'LARCH_PAIRED_PID_FILE=.*mktemp.*(\$IMPLEMENT_TMPDIR|\$\{IMPLEMENT_TMPDIR\}|\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\}|\$REVIEW_TMPDIR|\$\{REVIEW_TMPDIR\}|\$RESEARCH_TMPDIR|\$\{RESEARCH_TMPDIR\})/breadcrumbs/'; then
+        return 1
+    fi
+    if ! printf '%s\n' "$joined" | LC_ALL=C grep -Eq '(^|[[:space:]])export[[:space:]]+LARCH_PAIRED_PID_FILE([[:space:]=]|$)'; then
+        return 1
+    fi
+    return 0
+}
+
+fence_has_paired_pid_flag() {
+    local joined="$1"
+    printf '%s\n' "$joined" | LC_ALL=C grep -Eq -- '--paired-pid-file([[:space:]]+[^[:space:]\\]+|=)'
+}
+
 usage() {
     printf 'Usage: %s [--root PATH]\n' "$(basename "$0")" >&2
 }
@@ -342,10 +379,16 @@ scan_fence_buffer_for_anchors() {
                 local joined="" win_txt=""
                 joined=$(printf '%s\n' "${FG_FENCE_LINES[@]}")
                 win_txt=$(printf '%s\n' "${pre_fence_window[@]}")
-                local has_rb=0 has_c=0
+                local has_rb=0 has_c=0 has_pid_alloc=0 has_pid_flag=0
                 [[ "$joined" == *"run_in_background: true"* ]] && has_rb=1
                 if [[ "$joined" == *"breadcrumb-monitor.sh"* ]] && [[ "$joined" == *"--stream"* ]]; then
                     has_c=1
+                fi
+                if fence_has_paired_pid_allocation "$joined"; then
+                    has_pid_alloc=1
+                fi
+                if fence_has_paired_pid_flag "$joined"; then
+                    has_pid_flag=1
                 fi
                 if [[ "$bn" == "step-7a.sh" ]]; then
                     if ! foreground_banner_ok_in_window "${pre_fence_window[@]}"; then
@@ -383,6 +426,16 @@ scan_fence_buffer_for_anchors() {
                 if ((has_c == 0)); then
                     printf '%s:%s: missing background-pair half (consumer) for %s\n' "$rel" "$abs_anchor" "$bn" >&2
                     VIOLATIONS=$((VIOLATIONS + 1))
+                fi
+                if family_b_pid_writer_required "$bn"; then
+                    if ((has_pid_alloc == 0)); then
+                        printf '%s:%s: missing LARCH_PAIRED_PID_FILE allocation for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                        VIOLATIONS=$((VIOLATIONS + 1))
+                    fi
+                    if ((has_pid_flag == 0)); then
+                        printf '%s:%s: missing --paired-pid-file monitor argument for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                        VIOLATIONS=$((VIOLATIONS + 1))
+                    fi
                 fi
             fi
         done <<<"$DENYLIST"

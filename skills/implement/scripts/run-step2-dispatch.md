@@ -7,6 +7,12 @@ context from session artifacts.
 
 Caller: `skills/implement/SKILL.md` Step 2.1 and Q/A redispatch in Step 2.3.
 
+`run-step2-dispatch.sh` is a top-level Family B writer for
+`LARCH_PAIRED_PID_FILE`. The helper call lives after
+`larch_quiet_append_done_trap`, preserving the no-`larch_quiet_init` contract,
+and the launcher unsets the env var before invoking nested
+`step2-implement.sh`.
+
 Arguments:
 
 - `--implement-tmpdir PATH` is required.

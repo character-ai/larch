@@ -18,6 +18,10 @@ Each slot is dispatched through the same three-phase waterfall used elsewhere:
 
 The script writes per-slot prompt files, builds a two-slot NDJSON manifest (Voters 2–3 only), and calls `dispatch-with-waterfall.sh` with `--mode description`. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each external slot.
 
+`dispatch-plan-voters.sh` is a top-level Family B writer for
+`LARCH_PAIRED_PID_FILE`; it writes its own PID after quiet/done-trap setup and
+unsets the env var before invoking nested `dispatch-with-waterfall.sh`.
+
 ## Parse-rate retries
 
 Sources `scripts/lib-voter-parse-rate.sh` with `LARCH_VPR_*` set for plan ballots (`finding-oos`, `plan` retry prefix). Runs `check_and_retry_voter_parse_rate` for all three voters when a slot is not already `failed`.

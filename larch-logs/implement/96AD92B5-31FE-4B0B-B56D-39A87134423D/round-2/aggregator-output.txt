@@ -1,0 +1,3 @@
+Aggregating the supplied reviewer findings: merging duplicates, preserving `[OUT_OF_SCOPE]` tags, and applying severity merge rules. Verifying a few overlap cases in the cited code (read-only).
+Confirming merge boundaries: FINDING_3+18 (identical doc gap), FINDING_7+19 (same late-write risk, different scripts/fixes). Producing the structured aggregator deliverable.
+

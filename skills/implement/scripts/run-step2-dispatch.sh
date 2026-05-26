@@ -84,6 +84,7 @@ export IMPLEMENT_TMPDIR
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_append_done_trap
+larch_quiet_write_paired_pid_file
 
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"
@@ -95,6 +96,7 @@ case "$WORKFLOW_PATH" in SIMPLE|HARD) ;; *) fail "WORKFLOW_PATH must be SIMPLE o
 
 DISPATCHER_SH="${RUN_STEP2_IMPLEMENT_SH:-$PLUGIN_ROOT/skills/implement/scripts/step2-implement.sh}"
 [[ -x "$DISPATCHER_SH" ]] || fail "step2-implement.sh not executable: $DISPATCHER_SH"
+unset LARCH_PAIRED_PID_FILE
 
 argv=(
     --tmpdir "$IMPLEMENT_TMPDIR"

@@ -184,12 +184,14 @@ Otherwise, after processing Claude findings, invoke the script with only the lau
 ```bash
 mkdir -p "$RESEARCH_TMPDIR/breadcrumbs"
 _launch_id="collect-agent-results.$$"
+export RESEARCH_TMPDIR
 export LARCH_BREADCRUMB_STREAM="$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
 : > "$LARCH_BREADCRUMB_STREAM"
 export LARCH_DONE_SENTINEL="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
 export LARCH_STATUS_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -200,7 +202,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substant
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 Use `timeout: 1860000` on the Bash tool call. Do NOT set `run_in_background: true`.

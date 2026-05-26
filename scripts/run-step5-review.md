@@ -6,6 +6,10 @@ derive review context from the implement tmpdir.
 
 Caller: `skills/implement/SKILL.md` Step 5.
 
+`run-step5-review.sh` is a top-level Family B writer for
+`LARCH_PAIRED_PID_FILE`; it writes its own PID after installing the done trap
+and unsets the env var before invoking nested `review-and-fix.sh`.
+
 **Issue-anchored note**: `/implement` consumes a positional GitHub issue for Preflight; the plan text for review is read from the conventional path `$IMPLEMENT_TMPDIR/plan.txt` (not from `session-env.sh`).
 
 Arguments:

@@ -21,7 +21,7 @@ Every Family B `# Background pair required` fence in:
 
 ## Wire contract
 
-Five env vars must be set by the caller before launching the monitor (the
+Six env vars are allocated by paired callers before launching the monitor (the
 launcher fences do this via `mktemp` under the calling skill's session
 tmpdir):
 
@@ -43,6 +43,10 @@ tmpdir):
   a freshly launched monitor exits 0 because the breadcrumbs are already
   being surfaced by the subprocess. `mktemp` may pre-create the file
   empty — that is treated as "not yet surfaced."
+- `LARCH_PAIRED_PID_FILE` — optional paired-process PID file. When the monitor
+  is invoked with `--paired-pid-file PATH`, the top-level Family B script writes
+  its own `$$` here via `larch_quiet_write_paired_pid_file`; no flag means no
+  timeout signaling and preserves the previous behavior.
 
 ## Invariants
 
@@ -59,13 +63,36 @@ tmpdir):
   failure mode).
 - **One physical process per launch.** Paths are unique per `mktemp`; the
   monitor does not coordinate across launches.
+- **Paired PID ownership is top-level only.** `ship-pr.sh`,
+  `run-step5-review.sh`, `run-step2-dispatch.sh`, `collect-agent-results.sh`,
+  and `dispatch-plan-voters.sh` write `LARCH_PAIRED_PID_FILE`. Nested children
+  (`ci-wait.sh`, `review-and-fix.sh`, `step2-implement.sh`, and
+  `dispatch-with-waterfall.sh`) do not write it; parents unset the env var
+  before invoking them.
+- **Timeout signaling is best-effort.** On timeout with `--paired-pid-file`,
+  the monitor reads at most 33 bytes, strips one final newline only, then
+  rejects any remaining CR/LF, non-digit, empty, zero, or post-strip overlong
+  value and warns with `WARN paired-pid-file-missing` before continuing to
+  `exit 4`. A valid PID gets `SIGTERM`, up to five one-second `kill -0` polls,
+  then `SIGKILL`; every `kill` is guarded so stale or inaccessible PIDs cannot
+  prevent `exit 4`.
+- **Paired PID reads re-validate the path.** Timeout handling does not trust the
+  startup argv check alone: immediately before reading `LARCH_PAIRED_PID_FILE`,
+  the monitor re-runs the same absolute/no-`..`/non-symlink/regular-file/
+  session-tmpdir validation and treats anything that no longer passes as missing.
+- **PID reuse caveat.** The monitor does not prove the PID is still the child
+  originally launched by the shell. A long-departed PID could theoretically be
+  reused; the 1800-second timeout and same-UID operator model keep this a known
+  limitation rather than a process-identity guarantee.
 
 ## Exit codes
 
 - `0` — done sentinel became non-empty within timeout; or the surfaced
   sentinel was already non-empty at startup (resume).
 - `2` — argv / path-validation failure.
-- `4` — timed out (default 1800s) waiting for the done sentinel.
+- `4` — timed out (default 1800s) waiting for the done sentinel. Tests may set
+  `LARCH_BM_TEST_MODE=1` plus a positive `LARCH_BM_TEST_TIMEOUT_SECONDS` to
+  shorten this branch.
 
 The monitor surfaces a "Failure tail (status=N)" block from
 `LARCH_QUIET_LOG_FILE` when `EXIT_CODE` is non-zero, but the monitor's own
@@ -74,11 +101,14 @@ file for the real exit code).
 
 ## Caller-side path allocation
 
-See `BASH_AUTHORING.md` §4 ("Pre-launch path allocation"). The five env
+See `BASH_AUTHORING.md` §4 ("Pre-launch path allocation"). The six env
 vars must live under the calling skill's session tmpdir
 (`$IMPLEMENT_TMPDIR` / `$DESIGN_TMPDIR` / `$REVIEW_TMPDIR` /
 `$RESEARCH_TMPDIR`); `larch_bm_validate_path` rejects anything outside
-that surface.
+that surface. Paths must be absolute, contain no `..`, and not be symlinks.
+When `LARCH_LOG_ROOT` is set, the helper deliberately disables the fallback
+acceptance for repo-root `larch-logs/...` paths and requires an explicit
+session tmpdir env instead.
 
 ## Harness
 
@@ -96,6 +126,10 @@ that surface.
 - live stream growth, truncation/reset handling, PEM-redacted failure tails,
   path-scope rejection, `RESEARCH_TMPDIR` acceptance, symlink rejection, and
   invalid-category dropping
+- timeout signaling through `--paired-pid-file`, TERM-to-KILL escalation,
+  missing/empty/malformed PID fallback warnings, stale PID kill failures, the
+  `LARCH_BM_TEST_MODE=1` / `LARCH_BM_TEST_TIMEOUT_SECONDS` hook, and the
+  nested-overwrite regression
 
 ## Edit-in-sync
 
@@ -106,4 +140,5 @@ that surface.
 - Adding a new Family B script to `scripts/lint-foreground-markers.sh`'s
   denylist requires that script to also `source lib-quiet.sh` and call
   `larch_quiet_append_done_trap` (`larch_quiet_init` is optional and
-  changes stdout/stderr semantics).
+  changes stdout/stderr semantics). Only top-level Family B entrypoints should
+  call `larch_quiet_write_paired_pid_file`; nested children must stay excluded.

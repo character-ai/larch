@@ -166,6 +166,7 @@ fi
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
+larch_quiet_write_paired_pid_file
 
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 CODEX_PRESENT="$(session_get "$SESSION_ENV_PATH" CODEX_PRESENT false)"
@@ -185,6 +186,7 @@ case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or
 
 REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scripts/review-and-fix.sh}"
 [[ -x "$REVIEW_AND_FIX_SH" ]] || fail "review-and-fix.sh not executable: $REVIEW_AND_FIX_SH"
+unset LARCH_PAIRED_PID_FILE
 
 # Fixed base Step 5 round cap (unified hard workflow contract); see scripts/run-step5-review.md.
 ROUND_CAP_BASE="5"

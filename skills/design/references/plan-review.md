@@ -102,6 +102,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-r
 export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -112,7 +113,8 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=plan-review-collection`.
@@ -148,6 +150,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-v
 export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -163,7 +166,8 @@ eval "$_plan_voter_dispatch"
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude fallback for that slot and `VOTER_2_PATH` contains the Claude output — do NOT launch a duplicate replacement. `VOTER_3_STATUS=fallback` is analogous for Voter 3. Include voter paths with `STATUS=launched` or `STATUS=fallback` in vote tallying; only exclude paths with `STATUS=failed`.
