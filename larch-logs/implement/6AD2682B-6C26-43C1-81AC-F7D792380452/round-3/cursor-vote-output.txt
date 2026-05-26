@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Duplicated allowlist is real but a shared helper is optional refactor, not a correctness gap for this PR.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Re-exec under Bash 3.2 is the repo’s standard parity pattern for this harness class.
+FINDING_6: EXONERATE -- stall and escalate carry different operator semantics; two breadcrumbs are intentional, not duplicate noise.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- Latent only when *_TMPDIR is unset; refresh-run-logs and normal commit paths export IMPLEMENT_TMPDIR.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- Symlink-ancestor escape is latent and needs canonicalization beyond a minimal publish guard.
+FINDING_14: EXONERATE -- Residual CI-text-in-logs risk is already documented in SECURITY.md; a run-logs cross-link is optional.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- Non-*/larch-logs log-root without LARCH_BREADCRUMB_SOURCE_DIR is an edge caller contract, not a silent bug in primary flows.
+FINDING_19: EXONERATE -- Concurrent-append torn lines are theoretical; gating or docs exceed warranted scope here.
+FINDING_20: EXONERATE -- Rate cap dropping bursts is documented backpressure, not a defect.
+FINDING_21: YES
+FINDING_22: EXONERATE -- 30m monitor timeout without killing the background job is known contract, not a concrete regression from this PR.
+FINDING_23: YES

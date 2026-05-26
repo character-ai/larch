@@ -14,6 +14,8 @@ LARCH_LOG_FLUSH="$SCRIPT_DIR/larch-log-flush.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-log.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 export LARCH_LOG_ROOT="$TMP/larch-logs"
+unset LARCH_BREADCRUMB_STREAM LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
+    LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG LARCH_BREADCRUMBS_SURFACED_FILE || true
 
 PASS=0
 FAIL=0
@@ -26,6 +28,12 @@ fail() {
 pass() {
     echo "  ok: $1"
     PASS=$((PASS + 1))
+}
+
+with_implement_tmpdir() {
+    local tmpdir="$1"
+    shift
+    IMPLEMENT_TMPDIR="$tmpdir" "$@"
 }
 
 assert_contains() {
@@ -73,7 +81,7 @@ Write a sectioned plan-goals-test payload that includes a token-like secret so
 the larch-log write path can prove redaction while still satisfying the
 plan-goals sanitizer contract.
 
-token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD
+token eyJfakeheadr12.fakepayload34.fakesign5678
 
 ## Test plan
 Run scripts/test-larch-log.sh.
@@ -184,6 +192,20 @@ Run scripts/test-larch-log.sh.
 EOF
 (cd "$_repo" && "$LARCH_LOG" init --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --issue 42) >/dev/null
 (cd "$_repo" && "$LARCH_LOG" write --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+mkdir -p "$_staging/breadcrumbs"
+PEM_BEGIN='-----BEGIN RSA PRIVATE ''KEY-----'
+PEM_END='-----END RSA PRIVATE ''KEY-----'
+{
+    printf '%s\n' "larch:bc t=now d=0 p=1 s=test c=progress text=tmpdir /tmp/larch-implement-demoABC"
+    printf '%s\n' "$PEM_BEGIN"
+    printf '%s\n' 'MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu'
+    printf '%s\n' "$PEM_END"
+} > "$_staging/breadcrumbs/foo.ndjson"
+printf 'quiet sidecar\n' > "$_staging/breadcrumbs/foo.quiet"
+printf 'EXIT_CODE=0\n' > "$_staging/breadcrumbs/foo.done"
+printf 'EXIT_CODE=0\n' > "$_staging/breadcrumbs/foo.status"
+printf 'surfaced\n' > "$_staging/breadcrumbs/foo.surfaced"
+printf '12\n' > "$_staging/breadcrumbs/foo.bc-offset"
 _mf_staging="$_staging/larch-logs/implement/$_rid/manifest.json"
 if command -v jq >/dev/null 2>&1; then
     _commit_ts_before="$(jq -r '.updated_at' "$_mf_staging")"
@@ -195,6 +217,23 @@ _commit_out="$(cd "$_repo" && "$LARCH_LOG" commit --log-root "$_staging/larch-lo
 assert_contains "$_commit_out" "LOG_WRITTEN=true" "commit reports written"
 _batch="$_repo/larch-logs/implement/$_rid/plan-goals-test.md"
 if [ -f "$_batch" ]; then pass "commit copies batch to repo under larch-logs/<skill>/<run-id>/"; else fail "commit copies batch to repo (missing $_batch)"; fi
+_breadcrumbs="$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.ndjson"
+if [ -f "$_breadcrumbs" ]; then pass "commit publishes breadcrumbs directory"; else fail "commit publishes breadcrumbs directory (missing $_breadcrumbs)"; fi
+if [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.quiet" ] && [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.done" ]; then
+    pass "commit publishes only ndjson breadcrumbs"
+else
+    fail "commit must not publish non-ndjson breadcrumb sidecars"
+fi
+if [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.status" ] \
+    && [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.surfaced" ] \
+    && [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.bc-offset" ]; then
+    pass "commit does not publish monitor breadcrumb sidecars"
+else
+    fail "commit must not publish monitor breadcrumb sidecars"
+fi
+if grep -q '<REDACTED-PRIVATE-KEY>' "$_breadcrumbs" 2>/dev/null; then pass "commit redacts breadcrumb PEM"; else fail "commit redacts breadcrumb PEM"; fi
+if grep -q 'MIIBOgIBAAJB' "$_breadcrumbs" 2>/dev/null; then fail "commit leaked raw breadcrumb PEM"; else pass "commit omits raw breadcrumb PEM"; fi
+if grep -q '<TMPDIR>' "$_breadcrumbs" 2>/dev/null; then pass "commit redacts breadcrumb tmpdir path"; else fail "commit redacts breadcrumb tmpdir path"; fi
 _mf="$_repo/larch-logs/implement/$_rid/manifest.json"
 if [ -f "$_mf" ]; then pass "commit copies manifest to repo"; else fail "commit copies manifest to repo (missing $_mf)"; fi
 if [ -n "$_commit_ts_before" ] && command -v jq >/dev/null 2>&1; then
@@ -203,6 +242,261 @@ if [ -n "$_commit_ts_before" ] && command -v jq >/dev/null 2>&1; then
 fi
 if git -C "$_repo" log -1 --format=%s | grep -qF "larch-logs"; then pass "commit creates git commit in repo"; else fail "commit creates git commit in repo"; fi
 export LARCH_LOG_ROOT="$_saved_log_root"
+
+echo "=== commit rejects breadcrumb source traversal under session tmpdir ==="
+_bc_traversal_repo="$TMP/breadcrumb-traversal-repo"
+_bc_traversal_staging="$TMP/breadcrumb-traversal-staging"
+_bc_traversal_run="breadcrumbtraversal123"
+mkdir -p "$_bc_traversal_staging/breadcrumbs" "$_bc_traversal_staging/../breadcrumb-traversal-outside"
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=outside\n' \
+    > "$_bc_traversal_staging/../breadcrumb-traversal-outside/outside.ndjson"
+git init "$_bc_traversal_repo" >/dev/null 2>&1
+git -C "$_bc_traversal_repo" config user.email "ci@test"
+git -C "$_bc_traversal_repo" config user.name "Test CI"
+touch "$_bc_traversal_repo/.gitkeep"
+git -C "$_bc_traversal_repo" add .
+git -C "$_bc_traversal_repo" commit -q -m "init"
+git -C "$_bc_traversal_repo" checkout -q -b feature-breadcrumb-traversal
+(cd "$_bc_traversal_repo" && "$LARCH_LOG" init --log-root "$_bc_traversal_staging/larch-logs" --skill implement --run-id "$_bc_traversal_run" --issue 42) >/dev/null
+(cd "$_bc_traversal_repo" && "$LARCH_LOG" write --log-root "$_bc_traversal_staging/larch-logs" --skill implement --run-id "$_bc_traversal_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+_bc_traversal_rc=0
+(cd "$_bc_traversal_repo" && LARCH_BREADCRUMB_SOURCE_DIR="$_bc_traversal_staging/../breadcrumb-traversal-outside" \
+    "$LARCH_LOG" commit --log-root "$_bc_traversal_staging/larch-logs" --skill implement --run-id "$_bc_traversal_run" >/dev/null 2>&1) || _bc_traversal_rc=$?
+if [ "$_bc_traversal_rc" -ne 0 ]; then pass "commit rejects breadcrumb source traversal"; else fail "commit should reject breadcrumb source traversal"; fi
+
+echo "=== commit fails closed on unsafe breadcrumb source ==="
+_bc_fail_repo="$TMP/breadcrumb-fail-repo"
+_bc_fail_staging="$TMP/breadcrumb-fail-staging"
+_bc_fail_run="breadcrumbfail123"
+mkdir -p "$_bc_fail_staging/breadcrumbs"
+git init "$_bc_fail_repo" >/dev/null 2>&1
+git -C "$_bc_fail_repo" config user.email "ci@test"
+git -C "$_bc_fail_repo" config user.name "Test CI"
+touch "$_bc_fail_repo/.gitkeep"
+git -C "$_bc_fail_repo" add .
+git -C "$_bc_fail_repo" commit -q -m "init"
+git -C "$_bc_fail_repo" checkout -q -b feature-breadcrumb-fail
+(cd "$_bc_fail_repo" && "$LARCH_LOG" init --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" --issue 42) >/dev/null
+(cd "$_bc_fail_repo" && "$LARCH_LOG" write --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'raw breadcrumb\n' > "$_bc_fail_staging/raw-breadcrumb.txt"
+ln -s "$_bc_fail_staging/raw-breadcrumb.txt" "$_bc_fail_staging/breadcrumbs/bad.ndjson"
+_bc_fail_rc=0
+(cd "$_bc_fail_repo" && with_implement_tmpdir "$_bc_fail_staging" "$LARCH_LOG" commit --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" >/dev/null 2>&1) || _bc_fail_rc=$?
+if [ "$_bc_fail_rc" -ne 0 ]; then pass "commit exits non-zero on symlinked breadcrumb"; else fail "commit should fail on symlinked breadcrumb"; fi
+if [ ! -e "$_bc_fail_repo/larch-logs/implement/$_bc_fail_run/breadcrumbs" ]; then
+    pass "failed breadcrumb commit leaves no breadcrumbs directory"
+else
+    fail "failed breadcrumb commit must not leave breadcrumbs directory"
+fi
+
+echo "=== commit fails closed on breadcrumb redactor failure ==="
+_bc_redact_repo="$TMP/breadcrumb-redact-repo"
+_bc_redact_staging="$TMP/breadcrumb-redact-staging"
+_bc_redact_run="breadcrumbredact123"
+mkdir -p "$_bc_redact_staging/breadcrumbs"
+git init "$_bc_redact_repo" >/dev/null 2>&1
+git -C "$_bc_redact_repo" config user.email "ci@test"
+git -C "$_bc_redact_repo" config user.name "Test CI"
+touch "$_bc_redact_repo/.gitkeep"
+git -C "$_bc_redact_repo" add .
+git -C "$_bc_redact_repo" commit -q -m "init"
+git -C "$_bc_redact_repo" checkout -q -b feature-breadcrumb-redact
+(cd "$_bc_redact_repo" && "$LARCH_LOG" init --log-root "$_bc_redact_staging/larch-logs" --skill implement --run-id "$_bc_redact_run" --issue 42) >/dev/null
+(cd "$_bc_redact_repo" && "$LARCH_LOG" write --log-root "$_bc_redact_staging/larch-logs" --skill implement --run-id "$_bc_redact_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'breadcrumb redactor failure fixture\n' > "$_bc_redact_staging/breadcrumbs/fail.ndjson"
+_orig_redact="$SCRIPT_DIR/redact-secrets.sh"
+_saved_redact="$TMP/redact-secrets.original.sh"
+cp "$_orig_redact" "$_saved_redact"
+cat >"$TMP/redact-secrets.fail.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+exit 1
+EOF
+chmod +x "$TMP/redact-secrets.fail.sh"
+cp "$TMP/redact-secrets.fail.sh" "$_orig_redact"
+_bc_redact_rc=0
+(cd "$_bc_redact_repo" && with_implement_tmpdir "$_bc_redact_staging" "$LARCH_LOG" commit --log-root "$_bc_redact_staging/larch-logs" --skill implement --run-id "$_bc_redact_run" >/dev/null 2>&1) || _bc_redact_rc=$?
+cp "$_saved_redact" "$_orig_redact"
+if [ "$_bc_redact_rc" -ne 0 ]; then pass "commit exits non-zero on breadcrumb redactor failure"; else fail "commit should fail on breadcrumb redactor failure"; fi
+if [ ! -e "$_bc_redact_repo/larch-logs/implement/$_bc_redact_run/breadcrumbs" ]; then
+    pass "redactor failure leaves no published breadcrumbs directory"
+else
+    fail "redactor failure must not leave published breadcrumbs directory"
+fi
+
+echo "=== commit fails closed on tmpdir breadcrumb redactor failure ==="
+_bc_tmpdir_repo="$TMP/breadcrumb-tmpdir-redact-repo"
+_bc_tmpdir_staging="$TMP/breadcrumb-tmpdir-redact-staging"
+_bc_tmpdir_run="breadcrumbtmpdirredact123"
+mkdir -p "$_bc_tmpdir_staging/breadcrumbs"
+git init "$_bc_tmpdir_repo" >/dev/null 2>&1
+git -C "$_bc_tmpdir_repo" config user.email "ci@test"
+git -C "$_bc_tmpdir_repo" config user.name "Test CI"
+touch "$_bc_tmpdir_repo/.gitkeep"
+git -C "$_bc_tmpdir_repo" add .
+git -C "$_bc_tmpdir_repo" commit -q -m "init"
+git -C "$_bc_tmpdir_repo" checkout -q -b feature-breadcrumb-tmpdir-redact
+(cd "$_bc_tmpdir_repo" && "$LARCH_LOG" init --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" --issue 42) >/dev/null
+(cd "$_bc_tmpdir_repo" && "$LARCH_LOG" write --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=/tmp/tmpdir-redact-fixture\n' > "$_bc_tmpdir_staging/breadcrumbs/fail.ndjson"
+_orig_tmpdir_redact="$SCRIPT_DIR/redact-tmpdir-paths.sh"
+_saved_tmpdir_redact="$TMP/redact-tmpdir-paths.original.sh"
+cp "$_orig_tmpdir_redact" "$_saved_tmpdir_redact"
+cat >"$TMP/redact-tmpdir-paths.fail.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+exit 1
+EOF
+chmod +x "$TMP/redact-tmpdir-paths.fail.sh"
+cp "$TMP/redact-tmpdir-paths.fail.sh" "$_orig_tmpdir_redact"
+_bc_tmpdir_rc=0
+(cd "$_bc_tmpdir_repo" && with_implement_tmpdir "$_bc_tmpdir_staging" "$LARCH_LOG" commit --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" >/dev/null 2>&1) || _bc_tmpdir_rc=$?
+cp "$_saved_tmpdir_redact" "$_orig_tmpdir_redact"
+if [ "$_bc_tmpdir_rc" -ne 0 ]; then pass "commit exits non-zero on tmpdir breadcrumb redactor failure"; else fail "commit should fail on tmpdir breadcrumb redactor failure"; fi
+if [ ! -e "$_bc_tmpdir_repo/larch-logs/implement/$_bc_tmpdir_run/breadcrumbs" ]; then
+    pass "tmpdir redactor failure leaves no published breadcrumbs directory"
+else
+    fail "tmpdir redactor failure must not leave published breadcrumbs directory"
+fi
+
+echo "=== breadcrumb redactor failure preserves previously committed breadcrumbs ==="
+_bc_redact_keep_repo="$TMP/breadcrumb-redact-keep-repo"
+_bc_redact_keep_staging="$TMP/breadcrumb-redact-keep-staging"
+_bc_redact_keep_run="breadcrumbredactkeep123"
+mkdir -p "$_bc_redact_keep_staging/breadcrumbs"
+git init "$_bc_redact_keep_repo" >/dev/null 2>&1
+git -C "$_bc_redact_keep_repo" config user.email "ci@test"
+git -C "$_bc_redact_keep_repo" config user.name "Test CI"
+touch "$_bc_redact_keep_repo/.gitkeep"
+git -C "$_bc_redact_keep_repo" add .
+git -C "$_bc_redact_keep_repo" commit -q -m "init"
+git -C "$_bc_redact_keep_repo" checkout -q -b feature-breadcrumb-redact-keep
+(cd "$_bc_redact_keep_repo" && "$LARCH_LOG" init --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run" --issue 42) >/dev/null
+(cd "$_bc_redact_keep_repo" && "$LARCH_LOG" write --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=keep-me\n' > "$_bc_redact_keep_staging/breadcrumbs/existing.ndjson"
+(cd "$_bc_redact_keep_repo" && with_implement_tmpdir "$_bc_redact_keep_staging" "$LARCH_LOG" commit --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run") >/dev/null
+printf 'breadcrumb redactor failure fixture\n' > "$_bc_redact_keep_staging/breadcrumbs/fail.ndjson"
+cp "$TMP/redact-secrets.fail.sh" "$_orig_redact"
+_bc_redact_keep_rc=0
+(cd "$_bc_redact_keep_repo" && with_implement_tmpdir "$_bc_redact_keep_staging" "$LARCH_LOG" commit --log-root "$_bc_redact_keep_staging/larch-logs" --skill implement --run-id "$_bc_redact_keep_run" >/dev/null 2>&1) || _bc_redact_keep_rc=$?
+cp "$_saved_redact" "$_orig_redact"
+if [ "$_bc_redact_keep_rc" -ne 0 ]; then pass "redactor failure on refresh exits non-zero"; else fail "redactor failure on refresh should fail"; fi
+if [ -f "$_bc_redact_keep_repo/larch-logs/implement/$_bc_redact_keep_run/breadcrumbs/existing.ndjson" ]; then
+    pass "redactor failure preserves previously committed breadcrumbs"
+else
+    fail "redactor failure must preserve previously committed breadcrumbs"
+fi
+
+echo "=== breadcrumb publish failure preserves previously committed breadcrumbs ==="
+_bc_mv_repo="$TMP/breadcrumb-mv-repo"
+_bc_mv_staging="$TMP/breadcrumb-mv-staging"
+_bc_mv_run="breadcrumbmvfail123"
+mkdir -p "$_bc_mv_staging/breadcrumbs"
+git init "$_bc_mv_repo" >/dev/null 2>&1
+git -C "$_bc_mv_repo" config user.email "ci@test"
+git -C "$_bc_mv_repo" config user.name "Test CI"
+touch "$_bc_mv_repo/.gitkeep"
+git -C "$_bc_mv_repo" add .
+git -C "$_bc_mv_repo" commit -q -m "init"
+git -C "$_bc_mv_repo" checkout -q -b feature-breadcrumb-mv-fail
+(cd "$_bc_mv_repo" && "$LARCH_LOG" init --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run" --issue 42) >/dev/null
+(cd "$_bc_mv_repo" && "$LARCH_LOG" write --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=first\n' > "$_bc_mv_staging/breadcrumbs/existing.ndjson"
+(cd "$_bc_mv_repo" && "$LARCH_LOG" commit --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=second\n' > "$_bc_mv_staging/breadcrumbs/existing.ndjson"
+mkdir -p "$TMP/mock-bin"
+_real_mv="$(command -v mv)"
+cat >"$TMP/mock-bin/mv" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "\${LARCH_TEST_FAIL_BREADCRUMB_PUBLISH:-0}" = "1" ] && [ \$# -ge 2 ]; then
+    last=\${!#}
+    marker="${TMP}/breadcrumb-mv-failed.once"
+    if [[ "\$last" == */larch-logs/implement/$_bc_mv_run/breadcrumbs ]] && [ ! -e "\$marker" ]; then
+        : >"\$marker"
+        exit 1
+    fi
+fi
+exec "$_real_mv" "\$@"
+EOF
+chmod +x "$TMP/mock-bin/mv"
+_bc_mv_rc=0
+(cd "$_bc_mv_repo" && PATH="$TMP/mock-bin:$PATH" LARCH_TEST_FAIL_BREADCRUMB_PUBLISH=1 \
+    "$LARCH_LOG" commit --log-root "$_bc_mv_staging/larch-logs" --skill implement --run-id "$_bc_mv_run" >/dev/null 2>&1) || _bc_mv_rc=$?
+if [ "$_bc_mv_rc" -ne 0 ]; then pass "publish failure exits non-zero"; else fail "publish failure should exit non-zero"; fi
+if grep -q 'text=first' "$_bc_mv_repo/larch-logs/implement/$_bc_mv_run/breadcrumbs/existing.ndjson"; then
+    pass "publish failure preserves previously committed breadcrumb payload"
+else
+    fail "publish failure must preserve previously committed breadcrumb payload"
+fi
+
+echo "=== commit rejects breadcrumb source outside session tmpdirs ==="
+_bc_scope_repo="$TMP/breadcrumb-scope-repo"
+_bc_scope_staging="$TMP/breadcrumb-scope-staging"
+_bc_scope_run="breadcrumbscope123"
+_outside_source="$TMP/outside-breadcrumbs"
+mkdir -p "$_outside_source"
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=outside\n' > "$_outside_source/outside.ndjson"
+git init "$_bc_scope_repo" >/dev/null 2>&1
+git -C "$_bc_scope_repo" config user.email "ci@test"
+git -C "$_bc_scope_repo" config user.name "Test CI"
+touch "$_bc_scope_repo/.gitkeep"
+git -C "$_bc_scope_repo" add .
+git -C "$_bc_scope_repo" commit -q -m "init"
+git -C "$_bc_scope_repo" checkout -q -b feature-breadcrumb-scope
+(cd "$_bc_scope_repo" && "$LARCH_LOG" init --log-root "$_bc_scope_staging/larch-logs" --skill implement --run-id "$_bc_scope_run" --issue 42) >/dev/null
+(cd "$_bc_scope_repo" && "$LARCH_LOG" write --log-root "$_bc_scope_staging/larch-logs" --skill implement --run-id "$_bc_scope_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+_bc_scope_rc=0
+(cd "$_bc_scope_repo" && LARCH_BREADCRUMB_SOURCE_DIR="$_outside_source" with_implement_tmpdir "$_bc_scope_staging" "$LARCH_LOG" commit --log-root "$_bc_scope_staging/larch-logs" --skill implement --run-id "$_bc_scope_run" >/dev/null 2>&1) || _bc_scope_rc=$?
+if [ "$_bc_scope_rc" -ne 0 ]; then pass "commit rejects breadcrumb source outside session tmpdirs"; else fail "commit should reject breadcrumb source outside session tmpdirs"; fi
+
+echo "=== missing breadcrumb source does not delete committed breadcrumbs ==="
+_bc_missing_repo="$TMP/breadcrumb-missing-repo"
+_bc_missing_staging="$TMP/breadcrumb-missing-staging"
+_bc_missing_run="breadcrumbmissing123"
+mkdir -p "$_bc_missing_staging/breadcrumbs"
+git init "$_bc_missing_repo" >/dev/null 2>&1
+git -C "$_bc_missing_repo" config user.email "ci@test"
+git -C "$_bc_missing_repo" config user.name "Test CI"
+touch "$_bc_missing_repo/.gitkeep"
+git -C "$_bc_missing_repo" add .
+git -C "$_bc_missing_repo" commit -q -m "init"
+git -C "$_bc_missing_repo" checkout -q -b feature-breadcrumb-missing
+(cd "$_bc_missing_repo" && "$LARCH_LOG" init --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run" --issue 42) >/dev/null
+(cd "$_bc_missing_repo" && "$LARCH_LOG" write --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=first\n' > "$_bc_missing_staging/breadcrumbs/existing.ndjson"
+(cd "$_bc_missing_repo" && with_implement_tmpdir "$_bc_missing_staging" "$LARCH_LOG" commit --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run") >/dev/null
+rm -rf "$_bc_missing_staging/breadcrumbs"
+(cd "$_bc_missing_repo" && with_implement_tmpdir "$_bc_missing_staging" "$LARCH_LOG" commit --log-root "$_bc_missing_staging/larch-logs" --skill implement --run-id "$_bc_missing_run") >/dev/null
+if [ -f "$_bc_missing_repo/larch-logs/implement/$_bc_missing_run/breadcrumbs/existing.ndjson" ]; then
+    pass "missing breadcrumb source leaves committed breadcrumbs intact"
+else
+    fail "missing breadcrumb source must not delete committed breadcrumbs"
+fi
+
+echo "=== empty breadcrumb source directory does not delete committed breadcrumbs ==="
+_bc_empty_repo="$TMP/breadcrumb-empty-repo"
+_bc_empty_staging="$TMP/breadcrumb-empty-staging"
+_bc_empty_run="breadcrumbempty123"
+mkdir -p "$_bc_empty_staging/breadcrumbs"
+git init "$_bc_empty_repo" >/dev/null 2>&1
+git -C "$_bc_empty_repo" config user.email "ci@test"
+git -C "$_bc_empty_repo" config user.name "Test CI"
+touch "$_bc_empty_repo/.gitkeep"
+git -C "$_bc_empty_repo" add .
+git -C "$_bc_empty_repo" commit -q -m "init"
+git -C "$_bc_empty_repo" checkout -q -b feature-breadcrumb-empty
+(cd "$_bc_empty_repo" && "$LARCH_LOG" init --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run" --issue 42) >/dev/null
+(cd "$_bc_empty_repo" && "$LARCH_LOG" write --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=first\n' > "$_bc_empty_staging/breadcrumbs/existing.ndjson"
+(cd "$_bc_empty_repo" && with_implement_tmpdir "$_bc_empty_staging" "$LARCH_LOG" commit --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run") >/dev/null
+rm -f "$_bc_empty_staging/breadcrumbs/"*.ndjson
+(cd "$_bc_empty_repo" && with_implement_tmpdir "$_bc_empty_staging" "$LARCH_LOG" commit --log-root "$_bc_empty_staging/larch-logs" --skill implement --run-id "$_bc_empty_run") >/dev/null
+if [ -f "$_bc_empty_repo/larch-logs/implement/$_bc_empty_run/breadcrumbs/existing.ndjson" ]; then
+    pass "empty breadcrumb source leaves committed breadcrumbs intact"
+else
+    fail "empty breadcrumb source must not delete committed breadcrumbs"
+fi
 
 echo "=== commit does not include orphan stale-run directories ==="
 _saved_log_root="$LARCH_LOG_ROOT"

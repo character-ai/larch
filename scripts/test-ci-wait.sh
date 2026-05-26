@@ -10,6 +10,8 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE="$(mktemp -d -t ci-wait-test.XXXXXX)"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+unset LARCH_BREADCRUMB_STREAM LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
+    LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG LARCH_BREADCRUMBS_SURFACED_FILE || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMP_BASE/execution-issues.md"
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -80,6 +82,16 @@ SH
     chmod +x "$root/scripts/ci-decide.sh"
 }
 
+write_noop_sleep_stub() {
+    local root=$1
+    cat > "$root/scripts/fake-sleep.sh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+    chmod +x "$root/scripts/fake-sleep.sh"
+    ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
+}
+
 run_subject() {
     local root=$1 rc_file=$2
     shift 2
@@ -110,6 +122,26 @@ assert_rc() {
     fi
 }
 
+assert_stream_contains() {
+    local file=$1 pattern=$2 label=$3
+    if grep -q "$pattern" "$file"; then
+        ok "$label"
+    else
+        fail "$label (pattern '$pattern' not found in stream)"
+        sed 's/^/    stream: /' "$file"
+    fi
+}
+
+assert_stderr_compact_matches() {
+    local root=$1 pattern=$2 label=$3 actual
+    actual=$(tr -d '\n' <"$root/.stderr")
+    if [[ "$actual" =~ $pattern ]]; then
+        ok "$label"
+    else
+        fail "$label (expected pattern [$pattern], got [$actual])"
+    fi
+}
+
 # --- Case 1: happy path — ci-status returns pass on first call ---
 root=$(make_env happy_path)
 write_ci_status_stub "$root"
@@ -123,16 +155,12 @@ root=$(make_env pending_then_pass)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
 # Override sleep to be instantaneous so the 3 pending polls don't take 30s real time
-cat > "$root/scripts/fake-sleep.sh" <<'SH'
-#!/usr/bin/env bash
-# no-op sleep stub
-exit 0
-SH
-chmod +x "$root/scripts/fake-sleep.sh"
-ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
+write_noop_sleep_stub "$root"
 STUB_STATUSES=pending:pending:pending:pass run_subject "$root" "$root/.rc" --timeout 120
 assert_rc "$root/.rc" 0 "pending-then-pass: exits 0"
 assert_stdout_contains "$root" "ACTION=merge" "pending-then-pass: ACTION=merge"
+assert_stderr_compact_matches "$root" '^⏳ CI: waiting\.\.\.✓ CI passed \([0-9]+s, 3 polls\)$' \
+    "pending-then-pass: stderr progress format"
 call_count=$(cat "$root/.ci-status-count" 2>/dev/null || echo 0)
 if [[ "$call_count" -eq 4 ]]; then
     ok "pending-then-pass: exactly 4 ci-status calls"
@@ -204,13 +232,7 @@ root=$(make_env genuine_timeout)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
 # Override sleep to be instantaneous so test completes quickly
-cat > "$root/scripts/fake-sleep.sh" <<'SH'
-#!/usr/bin/env bash
-# no-op sleep stub
-exit 0
-SH
-chmod +x "$root/scripts/fake-sleep.sh"
-ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
+write_noop_sleep_stub "$root"
 
 STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 30
 assert_rc "$root/.rc" 0 "genuine timeout: exits 0"
@@ -228,6 +250,58 @@ if [[ "$call_count" -le 4 ]]; then
     ok "genuine timeout: ci-status called at most 4 times (MAX_POLLS=3)"
 else
     fail "genuine timeout: expected ≤4 ci-status calls, got $call_count"
+fi
+
+# --- Case 5: breadcrumb stream captures wait-ci progress while stderr stays quiet ---
+root=$(make_env breadcrumb_stream)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+stream="$root/breadcrumbs.ndjson"
+LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pass run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "breadcrumb stream: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "breadcrumb stream: ACTION=merge"
+assert_stream_contains "$stream" "c=wait-ci" "breadcrumb stream: wait-ci category written"
+assert_stream_contains "$stream" "text=⏳ CI: waiting" "breadcrumb stream: waiting message written"
+assert_stream_contains "$stream" "text=✓ CI passed" "breadcrumb stream: success message written"
+if [[ ! -s "$root/.stderr" ]]; then
+    ok "breadcrumb stream: stderr has no progress output"
+else
+    fail "breadcrumb stream: expected quiet stderr, got [$(cat "$root/.stderr")]"
+fi
+
+# --- Case 6: breadcrumb stream captures dot progress across pending polls ---
+root=$(make_env breadcrumb_stream_pending_dots)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+write_noop_sleep_stub "$root"
+stream="$root/pending-dots.ndjson"
+LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pending:pending:pass run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "breadcrumb dots: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "breadcrumb dots: ACTION=merge"
+dot_count=$(grep -Fc 'text=.' "$stream" 2>/dev/null || echo 0)
+if [[ "$dot_count" -eq 2 ]]; then
+    ok "breadcrumb dots: writes one dot record per pending poll"
+else
+    fail "breadcrumb dots: expected 2 dot records, got $dot_count"
+    sed 's/^/    stream: /' "$stream"
+fi
+
+# --- Case 7: breadcrumb stream captures timeout bail warnings without stderr leakage ---
+root=$(make_env breadcrumb_stream_timeout_bail)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+write_noop_sleep_stub "$root"
+stream="$root/timeout-bail.ndjson"
+LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 20
+assert_rc "$root/.rc" 0 "breadcrumb timeout bail: exits 0"
+assert_stdout_contains "$root" "ACTION=bail" "breadcrumb timeout bail: ACTION=bail"
+assert_stream_contains "$stream" "c=warn" "breadcrumb timeout bail: warn category written"
+assert_stream_contains "$stream" "text= ⚠ CI wait timed out after 2 polls" "breadcrumb timeout bail: timeout warning written"
+stderr_no_newlines=$(tr -d '\n' <"$root/.stderr")
+if [[ -z "$stderr_no_newlines" ]]; then
+    ok "breadcrumb timeout bail: stderr remains quiet"
+else
+    fail "breadcrumb timeout bail: expected quiet stderr, got [$stderr_no_newlines]"
 fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then

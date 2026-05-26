@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- duplicate allowlist maintenance risk is real, but centralizing this path policy adds more coupling than the issue warrants.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- the wrapper's documented contract is to run the existing harness under Bash 3.2, which is sufficient parity coverage.
+FINDING_6: NO -- the stall and escalate breadcrumbs represent distinct state transitions, not duplicate warnings.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- the stale harness comment is real but too minor to file as a separate OOS issue.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- nonstandard log roots can use LARCH_BREADCRUMB_SOURCE_DIR, so failing or warning here is more policy than bug.
+FINDING_19: YES
+FINDING_20: NO -- rate limiting emits WARN lines and wait-ci dot output is not bursty enough to make this concrete.
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES

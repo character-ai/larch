@@ -93,6 +93,9 @@ that surface.
   surfacing
 - `lib-quiet.sh:larch_quiet_init` writes content (not just a touch) to
   the surfaced sentinel when FD-3 is visible
+- live stream growth, truncation/reset handling, PEM-redacted failure tails,
+  path-scope rejection, `RESEARCH_TMPDIR` acceptance, symlink rejection, and
+  invalid-category dropping
 
 ## Edit-in-sync
 

@@ -192,7 +192,7 @@ while true; do
     fi
     _bump_type=$(_infer_bump_type "$ORIGINAL_CURRENT_VERSION" "$INITIAL_NEW_VERSION")
     NEW_VERSION=$(_apply_bump_type "$ORIGIN_VERSION" "$_bump_type")
-    emit_breadcrumb "apply-bump: retry $((_retry_count+1))/$_max_retries origin/main=$ORIGIN_VERSION new-version=$NEW_VERSION"
+    emit_breadcrumb --category=retry "apply-bump: retry $((_retry_count+1))/$_max_retries origin/main=$ORIGIN_VERSION new-version=$NEW_VERSION"
     _retry_count=$((_retry_count+1))
     _backup_rewrite_stage
     continue

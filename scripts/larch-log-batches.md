@@ -34,6 +34,13 @@ these batches.
 Edit in sync with `scripts/larch-log.sh`, `scripts/larch-log.md`, and
 `scripts/test-larch-logs-batches.sh`.
 
+`breadcrumbs/` is intentionally not listed in this batch table. It is a
+commit-only directory artifact handled by `scripts/larch-log.sh commit`, because
+the four-field batch schema represents single files (`slug extension mode
+sanitizer`) and cannot express a directory plus the multi-stage streaming
+redaction pipeline. See `scripts/larch-log.md` for the breadcrumb commit
+contract.
+
 ## Tally record schema
 
 `plan-review-tally.json` and `code-review-tally.json` each contain one JSON

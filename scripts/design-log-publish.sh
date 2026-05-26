@@ -251,6 +251,16 @@ design_publish_stage_file() {
     return 0
 }
 
+design_publish_breadcrumbs() {
+    local source_dir="$1" dest_dir="$2"
+    larch_log_publish_breadcrumbs_shared "$source_dir" "$dest_dir" design_publish_breadcrumbs_error
+}
+
+# shellcheck disable=SC2317 # invoked indirectly via larch_log_publish_breadcrumbs_shared callback name
+design_publish_breadcrumbs_error() {
+    larch_err "design-log-publish: $1"
+}
+
 RUN_DEST="$WT_DIR/larch-logs/design/$RUN_ID"
 mkdir -p "$RUN_DEST/render-cache"
 
@@ -319,6 +329,11 @@ if [[ -e "$DESIGN_TMPDIR/render-cache" ]]; then
     done <"$_rc_files"
     rm -f "$_rc_files"
     ENUM_RC_TMP=""
+fi
+
+if ! design_publish_breadcrumbs "$DESIGN_TMPDIR/breadcrumbs" "$RUN_DEST/breadcrumbs"; then
+    emit_publish_result false
+    exit 0
 fi
 
 MF="$RUN_DEST/manifest.json"

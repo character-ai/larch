@@ -1,0 +1,33 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- minor duplication does not warrant another parsing abstraction here.
+FINDING_3: NO -- the fixture dependency is needed because breadcrumb-monitor sources lib-larch-log, which sources larch-log-batches.
+FINDING_4: NO -- the path immediately exits through the stall flow, so the stall category is not misleading.
+FINDING_5: NO -- suspend detection is not a network-flake event and warn matches the documented category routing.
+FINDING_6: NO -- extra harmless category annotations outside the narrow inventory are not a concrete issue worth filing.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- the current missing category should be fixed, but broad static enforcement is likely too brittle for the value.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- existing tests already cover no-newline stream-unset and stream-set behavior for emit_breadcrumb_stderr.
+FINDING_17: EXONERATE -- latency timing assertions would add flake risk for a low-value coverage gap.
+FINDING_18: NO -- this is an optional manual acceptance note, not a concrete issue worth filing.
+FINDING_19: NO -- bash32 full-suite re-exec is acceptable and no concrete divergence is shown.
+FINDING_20: YES
+FINDING_21: EXONERATE -- the TOCTOU concern is theoretically valid but the likely shell hardening complexity outweighs the same-user threat reduction.
+FINDING_22: YES
+FINDING_23: NO -- a sourced script that can install a malicious EXIT trap already has arbitrary shell execution in this trust model.
+FINDING_24: NO -- the cited call sites use fixed printf formats with external strings passed as %s arguments.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: NO -- preserving committed breadcrumbs on missing or empty source is intentional and already documented/tested.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: EXONERATE -- review/research breadcrumb publication parity is optional and not worth filing from this change.
+FINDING_32: YES
+FINDING_33: YES

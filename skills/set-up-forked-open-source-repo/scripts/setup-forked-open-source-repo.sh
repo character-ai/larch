@@ -306,7 +306,7 @@ phase_github() {
 
   if ! gh repo view "$FORK" --json nameWithOwner,parent,defaultBranchRef >"$gh_out" 2>"$gh_err"; then
     if grep -Eiq '404|not[_ -]?found|Could not resolve to a Repository' "$gh_err" "$gh_out"; then
-      emit_breadcrumb "Fork $FORK was not found. Create it at https://${GH_HOST:-github.com}/$UPSTREAM/fork, then rerun this skill."
+      emit_breadcrumb --category=warn "Fork $FORK was not found. Create it at https://${GH_HOST:-github.com}/$UPSTREAM/fork, then rerun this skill."
       emit_kv SETUP_FORKED_REPO_RESULT "fork_missing"
       rm -f "$gh_out" "$gh_err"
       exit 0
@@ -376,12 +376,12 @@ phase_github() {
     return 0
   fi
 
-  emit_breadcrumb "Fork main differs from upstream main: upstream=$upstream_sha fork=$fork_sha. Confirming will overwrite fork branches/tags to match upstream."
+  emit_breadcrumb --category=warn "Fork main differs from upstream main: upstream=$upstream_sha fork=$fork_sha. Confirming will overwrite fork branches/tags to match upstream."
   if [[ "$MIRROR_CONFIRMED" != "true" ]]; then
     if [[ ! -t 0 ]]; then
       die "mirror divergence detected; rerun with --mirror-confirmed"
     fi
-    emit_breadcrumb "Mirror-sync fork now? [y/N] "
+    emit_breadcrumb --category=progress "Mirror-sync fork now? [y/N] "
     read -r reply
     case "$reply" in
       y|Y|yes|YES) ;;
@@ -506,16 +506,16 @@ phase_verify() {
   case "${LARCH_FORKED_REPO_INJECT_FAILURE:-}" in
     in-verify) trigger_remote_failure ;;
   esac
-  emit_breadcrumb ""
-  emit_breadcrumb "Final remotes:"
+  emit_breadcrumb --category=progress ""
+  emit_breadcrumb --category=progress "Final remotes:"
   git remote -v
-  emit_breadcrumb ""
-  emit_breadcrumb "Disabled upstream push sentinel:"
+  emit_breadcrumb --category=progress ""
+  emit_breadcrumb --category=progress "Disabled upstream push sentinel:"
   git config --get-regexp '^remote\.upstream\.pushurl$'
   [[ "$(git config --get branch.main.remote)" == "origin" ]] || phase_die "branch.main.remote is not origin"
   [[ "$(git config --get branch.main.merge)" == "refs/heads/main" ]] || phase_die "branch.main.merge is not refs/heads/main"
-  emit_breadcrumb ""
-  emit_breadcrumb "Fork workflow: branch off origin/main, push topic branches to origin, and open PRs from $FORK:<branch> to $UPSTREAM:main."
+  emit_breadcrumb --category=progress ""
+  emit_breadcrumb --category=progress "Fork workflow: branch off origin/main, push topic branches to origin, and open PRs from $FORK:<branch> to $UPSTREAM:main."
   emit_kv SETUP_FORKED_REPO_RESULT "ok"
   # Now that all assertions and the success marker have been emitted, drop the
   # rollback flag so subsequent (non-existent) phases or post-main shutdown do

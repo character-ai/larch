@@ -28,6 +28,12 @@ Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocati
 
 `--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with a no-checks bail reason; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.
 
+Progress output uses `emit_breadcrumb_stderr --category=wait-ci`. With no
+`LARCH_BREADCRUMB_STREAM`, the helper falls back to `larch_errf` so the stderr
+contract remains byte-for-byte compatible, including no-newline dot progress.
+With a breadcrumb stream, the same progress becomes structured `c=wait-ci`
+records and the legacy stderr progress text is suppressed.
+
 ## Optional `--output-file <path>` mode
 
 When `--output-file <path>` is set, the trap behavior changes in three coordinated ways:

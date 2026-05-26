@@ -331,6 +331,8 @@ exclude = [
   # test-harnesses-18.
   "scripts/test-breadcrumb-monitor.sh",
   "scripts/test-breadcrumb-monitor.md",
+  "scripts/test-breadcrumb-monitor-bash32.sh",
+  "scripts/test-breadcrumb-monitor-bash32.md",
   # Makefile/ship-pr-only CI recovery helpers. ci-failed-jobs.sh is invoked
   # by scripts/ship-pr.sh after gh-run-logs succeeds; check-focus-area-enum.sh
   # is invoked by the Makefile's agent-sync target, which mirrors the CI job.
@@ -366,6 +368,11 @@ exclude = [
   # larch-log-batches.sh is sourced by lib-larch-log.sh; agent-lint does not
   # follow Bash source edges.
   "scripts/larch-log-batches.sh",
+  # lib-redact-streaming.sh is invoked by breadcrumb-monitor.sh via a sibling
+  # path lookup, and the sibling markdown contract is referenced only from that
+  # harness/documentation surface. agent-lint does not follow this runtime
+  # shell-to-sibling edge, so the markdown companion is dead-script excluded.
+  "scripts/lib-redact-streaming.md",
   "scripts/larch-log-batches.md",
   # read-claude-model.sh is retained as a diagnostic helper for operators; the
   # anchor assembler caller was removed by the larch-log migration.

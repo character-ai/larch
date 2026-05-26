@@ -390,7 +390,7 @@ static_cursor=${#cursor_specialists[@]}
 static_codex=0
 total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
 if (( total > 0 )); then
-    emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $DYNAMIC_SLOTS dynamic)"
+    emit_breadcrumb --category=progress "→ review: launching $total reviewers ($static_cursor Cursor static, $DYNAMIC_SLOTS dynamic)"
 fi
 
 codex_present_for_waterfall="false"

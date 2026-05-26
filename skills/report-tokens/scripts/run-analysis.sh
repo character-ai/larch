@@ -107,7 +107,7 @@ ANALYZER="$TMPROOT/analyze-token-reports.py"
 if [[ -z "$PLOT_FROM" ]]; then
     REPO_ROOT=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
     LOG_BASE="$REPO_ROOT/larch-logs/implement"
-    emit_breadcrumb "Scanning $LOG_BASE for larch run logs..."
+    emit_breadcrumb --category=progress "Scanning $LOG_BASE for larch run logs..."
 
     : > "$ISSUES_JSONL"
     run_count=0
@@ -142,7 +142,7 @@ if [[ -z "$PLOT_FROM" ]]; then
         fi
 
         combined_body="**Workflow path**: ${workflow_path}"
-        emit_breadcrumb "Processing run for issue #${issue_number}..."
+        emit_breadcrumb --category=progress "Processing run for issue #${issue_number}..."
         # Isolate jq failure per-run so a single invalid token-report.json
         # warns and is skipped rather than aborting the whole scan under
         # set -euo pipefail.
@@ -1085,7 +1085,7 @@ export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
 [ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
 
 if [[ -n "$PLOT_FROM" ]]; then
-    emit_breadcrumb "Fetching analysis report issue #$PLOT_FROM..."
+    emit_breadcrumb --category=progress "Fetching analysis report issue #$PLOT_FROM..."
     ISSUE_BODY_FILE="$TMPROOT/plot-from-body.txt"
     gh issue view "$PLOT_FROM" --repo "$REPO" --json body --jq '.body' > "$ISSUE_BODY_FILE"
     python3 "$ANALYZER" --plot-from "$ISSUE_BODY_FILE"

@@ -1,0 +1,2 @@
+Normalizing the reviewer inputs into a merged finding list: grouping by behavioral risk, applying severity merge rules, and separating in-scope vs `[OUT_OF_SCOPE]` items.
+

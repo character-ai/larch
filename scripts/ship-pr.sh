@@ -769,7 +769,7 @@ advance_phase() {
 }
 
 mark_stall() {
-    emit_breadcrumb "⛔ ship-pr: stalled at step $1"
+    emit_breadcrumb --category=stall "⛔ ship-pr: stalled at step $1"
     state_set_many STALL_TRACKING true STALL_STEP "$1"
 }
 
@@ -783,7 +783,7 @@ exit_stall() {
 }
 
 exit_transient_net() {
-    emit_breadcrumb "⚠ ship-pr: transient network failure"
+    emit_breadcrumb --category=network-flake "⚠ ship-pr: transient network failure"
     # Truncate to first line to keep BAIL_REASON a single KEY=value line in state.
     local reason
     reason=$(printf '%s' "$1" | head -1 | cut -c1-200)
@@ -864,7 +864,7 @@ commit_post_waterfall_checks_fix_or_stall() {
 run_checks_phase() {
     local out rc fail_file redacted_log fix_out fix_status fix_rc
     local lint_attempt
-    emit_breadcrumb "→ ship-pr: checks"
+    emit_breadcrumb --category=progress "→ ship-pr: checks"
     fail_file=$(failure_capture_path checks)
     capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
     rc=$?
@@ -1066,7 +1066,7 @@ run_bump_phase() {
         record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
         exit_stall bump-branch-guard
     fi
-    emit_breadcrumb "→ ship-pr: version bump"
+    emit_breadcrumb --category=progress "→ ship-pr: version bump"
     has_bump=$(read_state HAS_BUMP)
     if [ "$forked" = "true" ] || [ "$has_bump" = "false" ]; then
         state_set_many HAS_BUMP false BUMP_TYPE NONE NEW_VERSION "" BUMP_REASONING_FILE ""
@@ -1150,7 +1150,7 @@ run_bump_phase() {
             resume_phase=$(kv_value RESUME_PHASE "$finalize_out")
             if [ "$resume_phase" = "force-push-gate" ]; then
                 state_set_many RESUME_PHASE force-push-gate CALLER_KIND step8b_rebase
-                emit_breadcrumb "⚠ ship-pr: postbump rebase conflict — handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)"
+                emit_breadcrumb --category=escalate "⚠ ship-pr: postbump rebase conflict — handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)"
                 exit 5
             else
                 exit_stall 8b
@@ -1202,7 +1202,7 @@ sanitize_diagram_or_placeholder() {
 
 run_pr_prep_phase() {
     local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path
-    emit_breadcrumb "→ ship-pr: PR prep"
+    emit_breadcrumb --category=progress "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
         run_id=$(read_state RUN_ID)
@@ -1273,7 +1273,7 @@ run_pr_prep_phase() {
 
 run_pr_create_phase() {
     local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output issue_num
-    emit_breadcrumb "→ ship-pr: opening PR"
+    emit_breadcrumb --category=progress "→ ship-pr: opening PR"
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)
@@ -1355,7 +1355,7 @@ run_pr_create_phase() {
     pr_url=$(kv_value PR_URL "$out")
     pr_status=$(kv_value PR_STATUS "$out")
     state_set_many PR_NUMBER "$pr_number" PR_URL "$pr_url" PR_TITLE "$title"
-    emit_breadcrumb "→ ship-pr: PR #${pr_number} opened"
+    emit_breadcrumb --category=progress "→ ship-pr: PR #${pr_number} opened"
     # Re-run write-final-report.sh with the live PR_URL to refresh the
     # tracking-issue larch:final-summary comment and tmp summary-final.md for
     # the upsert. No extra git commit or second push happens here. Best-effort:
@@ -1578,7 +1578,7 @@ run_ci_fix_vendor() {
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
     local baseline_tracked_file baseline_untracked_file baseline_staged_file
 
-    emit_breadcrumb "⚠ ship-pr: CI failed; dispatching fix"
+    emit_breadcrumb --category=warn "⚠ ship-pr: CI failed; dispatching fix"
 
     baseline_tracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-tracked.txt"
     baseline_untracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-untracked.txt"
@@ -1648,7 +1648,7 @@ run_ci_fix_vendor() {
             local _lf_class
             _lf_class=$(ship_pr_read_launcher_failure_class "$fail_file")
             if [ "$_lf_class" = "other" ]; then
-                emit_breadcrumb "⚠ ship-pr: first fixer (cursor) failed non-health; skipping waterfall"
+                emit_breadcrumb --category=warn "⚠ ship-pr: first fixer (cursor) failed non-health; skipping waterfall"
                 state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$fail_file"
                 return 1
             fi
@@ -2086,7 +2086,7 @@ run_recovery_waterfall() {
     for tier in cursor codex claude; do
         cur_head=$(git rev-parse HEAD 2>/dev/null || true)
         if [ "$cur_head" != "$baseline_head" ]; then
-            emit_breadcrumb "ship-pr recovery-waterfall: head changed after dispatch (abort rollback tier=$tier)"
+            emit_breadcrumb --category=escalate "ship-pr recovery-waterfall: head changed after dispatch (abort rollback tier=$tier)"
             rm -rf "$baseline_dir"
             return 1
         fi
@@ -2266,7 +2266,7 @@ _run_rebase_rebump_verify_plain_no_push() {
     printf '%s\n' "$rebase_out" >> "$fail_file"
     if [ "$rebase_rc" -ne 0 ]; then
         record_failure rebase "rebase-push.sh --no-push" "$rebase_rc" "$fail_file" "CI Issues"
-        emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
+        emit_breadcrumb --category=warn "⚠ ship-pr: merge conflict on rebase"
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 }
@@ -2390,7 +2390,7 @@ run_rebase_rebump() {
     local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id
     local fail_file rc tool_label plan_file
     local plan_args=()
-    emit_breadcrumb "⚠ ship-pr: rebase + re-bump"
+    emit_breadcrumb --category=warn "⚠ ship-pr: rebase + re-bump"
 
     # Resume after prompt-side Conflict Resolution Procedure (Phase 1–4) for
     # non-bump conflicts: skip drop/rebase replay; verify tree then continue.
@@ -2448,7 +2448,7 @@ run_rebase_rebump() {
     rebase_out=$_WTR_OUT
     if [ "$rebase_rc" -eq 1 ]; then
         # Conflict — deterministic pre-pass, then Phase 1–4 (non-bump) or vendor resolve-conflict
-        emit_breadcrumb "⚠ ship-pr: rebase-push keep-on-conflict pause (exit 1); deterministic pre-pass / vendor / Phase 1–4 handoff follows"
+        emit_breadcrumb --category=escalate "⚠ ship-pr: rebase-push keep-on-conflict pause (exit 1); deterministic pre-pass / vendor / Phase 1–4 handoff follows"
         conflict_files_kv=$(kv_value CONFLICT_FILES "$rebase_out")
         _orchestrator_conflict_csv="$conflict_files_kv"
         skip_vendor=false
@@ -2544,8 +2544,8 @@ run_rebase_rebump() {
                     exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
                 fi
                 state_set_many RESUME_PHASE ship-pr-rrr-phase14 CALLER_KIND ship_pr_pre_push
-                emit_breadcrumb "⚠ ship-pr: recovery waterfall exhausted; legacy Phase 1–4 handoff (stall)"
-                emit_breadcrumb "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
+                emit_breadcrumb --category=warn "⚠ ship-pr: recovery waterfall exhausted; legacy Phase 1–4 handoff (stall)"
+                emit_breadcrumb --category=escalate "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
                 emit_kv CONFLICT_FILES "$vendor_conflict_csv"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
@@ -2587,7 +2587,7 @@ run_rebase_rebump() {
         if is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
             exit_transient_net "rebase: $rebase_out"
         fi
-        emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
+        emit_breadcrumb --category=warn "⚠ ship-pr: merge conflict on rebase"
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 
@@ -2610,7 +2610,7 @@ run_ci_phase() {
         advance_phase postmerge
         return 0
     fi
-    emit_breadcrumb "→ ship-pr: CI watch (${phase})"
+    emit_breadcrumb --category=progress "→ ship-pr: CI watch (${phase})"
 
     ci_args=()
     while IFS= read -r arg; do ci_args+=("$arg"); done <<EOF
@@ -2630,7 +2630,7 @@ EOF
         merge)
             if [ "$phase" = "ci-initial" ]; then
                 state_set CI_PASSED true
-                emit_breadcrumb "→ ship-pr: CI green"
+                emit_breadcrumb --category=progress "→ ship-pr: CI green"
                 advance_phase ci-merge
                 return 0
             fi
@@ -2649,7 +2649,7 @@ EOF
             case "$merge_result" in
                 merged|admin_merged)
                     state_set_many PR_CLOSED true MERGE_RESULT "$merge_result" BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
-                    emit_breadcrumb "→ ship-pr: merged"
+                    emit_breadcrumb --category=progress "→ ship-pr: merged"
                     rename_done_best_effort
                     write_post_merge_sentinel
                     advance_phase postmerge
@@ -2666,7 +2666,7 @@ EOF
                     fi
                     if [ "$pr_state" = "MERGED" ]; then
                         state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
-                        emit_breadcrumb "→ ship-pr: merged"
+                        emit_breadcrumb --category=progress "→ ship-pr: merged"
                         rename_done_best_effort
                         write_post_merge_sentinel
                         advance_phase postmerge
@@ -2713,7 +2713,7 @@ EOF
             ;;
         already_merged)
             state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
-            emit_breadcrumb "→ ship-pr: merged"
+            emit_breadcrumb --category=progress "→ ship-pr: merged"
             rename_done_best_effort
             write_post_merge_sentinel
             advance_phase postmerge
@@ -2741,7 +2741,7 @@ EOF
 
 run_postmerge_phase() {
     local rc fail_file final_report_output
-    emit_breadcrumb "→ ship-pr: postmerge"
+    emit_breadcrumb --category=progress "→ ship-pr: postmerge"
     write_finalize_state
     fail_file=$(failure_capture_path postmerge)
     "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt" > "$fail_file" 2>&1

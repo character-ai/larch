@@ -118,6 +118,7 @@ run_flush_helper() {
     git -C "$tmp" init -q
     git_test_repo_identity "$tmp"
     git -C "$tmp" commit -q --allow-empty -m "init"
+    git -C "$tmp" checkout -q -b feature-refresh-breadcrumbs
 
     # Build a state file that looks pre-merge (no MERGE_RESULT key).
     impl_tmpdir="$tmp/impl"
@@ -233,6 +234,7 @@ ISSUES
     git -C "$tmp" init -q
     git_test_repo_identity "$tmp"
     git -C "$tmp" commit -q --allow-empty -m "init"
+    git -C "$tmp" checkout -q -b feature-refresh-breadcrumbs
 
     impl_tmpdir="$tmp/impl"
     mkdir -p "$impl_tmpdir/larch-logs"
@@ -313,6 +315,85 @@ ISSUES
     fi
     rm -rf "$tmp"
 } || fail "step7a-skip refresh: exception"
+
+# ---------------------------------------------------------------------------
+# a3) Real larch-log commit publishes only ndjson breadcrumbs during refresh
+# ---------------------------------------------------------------------------
+{
+    tmp=$(mktemp -d)
+
+    git -C "$tmp" init -q
+    git_test_repo_identity "$tmp"
+    git -C "$tmp" commit -q --allow-empty -m "init"
+    git -C "$tmp" checkout -q -b feature-refresh-breadcrumbs
+
+    impl_tmpdir="$tmp/impl"
+    mkdir -p "$impl_tmpdir/larch-logs" "$impl_tmpdir/breadcrumbs"
+    state_file="$impl_tmpdir/ship-pr-state.sh"
+    run_id="TEST-RUN-BREADCRUMBS-$(date +%s)"
+    {
+        printf 'RUN_ID=%s\n' "$run_id"
+        printf 'NO_LOGS_COMMIT=false\n'
+        printf 'STALL_TRACKING=false\n'
+        printf 'FORKED_TARGET=false\n'
+        printf 'MERGE=false\n'
+        printf 'DRAFT=false\n'
+        printf 'PR_NUMBER=0\n'
+    } > "$state_file"
+    printf 'ISSUE_NUMBER=1\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
+    printf 'REPO=owner/repo\nREPO_UNAVAILABLE=false\n' > "$impl_tmpdir/session-env.sh"
+    printf 'DESIGN_ONLY_DONE=false\n' > "$impl_tmpdir/finalize-state.sh"
+
+    payload="$tmp/plan-goals-test.md"
+    cat > "$payload" <<'EOF'
+# Test payload
+EOF
+    (cd "$tmp" && "$SCRIPT_DIR/larch-log.sh" init --log-root "$impl_tmpdir/larch-logs" --skill implement --run-id "$run_id" --issue 42) >/dev/null
+    (cd "$tmp" && "$SCRIPT_DIR/larch-log.sh" write --log-root "$impl_tmpdir/larch-logs" --skill implement --run-id "$run_id" --batch plan-goals-test --input-file "$payload") >/dev/null
+    {
+        printf 'larch:bc t=now d=0 p=1 s=test c=progress text=tmpdir %s\n' "$impl_tmpdir"
+        printf '%s%s%s\n' '-----BEGIN RSA ' 'PRIVATE ' 'KEY-----'
+        printf '%s%s\n' 'MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeK' 'Ls1Pt8Qu'
+        printf '%s%s%s\n' '-----END RSA ' 'PRIVATE ' 'KEY-----'
+    } > "$impl_tmpdir/breadcrumbs/refresh.ndjson"
+    printf 'quiet sidecar\n' > "$impl_tmpdir/breadcrumbs/refresh.quiet"
+    printf 'EXIT_CODE=0\n' > "$impl_tmpdir/breadcrumbs/refresh.done"
+    printf 'EXIT_CODE=0\n' > "$impl_tmpdir/breadcrumbs/refresh.status"
+    printf 'surfaced\n' > "$impl_tmpdir/breadcrumbs/refresh.surfaced"
+    printf '5\n' > "$impl_tmpdir/breadcrumbs/refresh.bc-offset"
+
+    out=$(cd "$tmp" && CLAUDE_PLUGIN_ROOT="$SCRIPT_DIR/.." "$HELPER" \
+        --state-file "$state_file" \
+        --implement-tmpdir "$impl_tmpdir" 2>/dev/null || true)
+
+    if printf '%s\n' "$out" | grep -q '^REFRESH_COMMITTED=true$'; then
+        pass "refresh breadcrumbs: commit reported"
+    else
+        fail "refresh breadcrumbs: unexpected output — $out"
+    fi
+    committed="$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.ndjson"
+    if [ -f "$committed" ]; then
+        pass "refresh breadcrumbs: ndjson breadcrumb committed"
+    else
+        fail "refresh breadcrumbs: missing committed ndjson breadcrumb"
+    fi
+    if [ ! -e "$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.quiet" ] \
+        && [ ! -e "$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.done" ] \
+        && [ ! -e "$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.status" ] \
+        && [ ! -e "$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.surfaced" ] \
+        && [ ! -e "$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.bc-offset" ]; then
+        pass "refresh breadcrumbs: non-ndjson sidecars stay tmpdir-local"
+    else
+        fail "refresh breadcrumbs: sidecars must not be committed"
+    fi
+    if grep -Fq '<REDACTED-PRIVATE-KEY>' "$committed"; then
+        pass "refresh breadcrumbs: committed breadcrumb redacts PEM payload"
+    else
+        fail "refresh breadcrumbs: expected redacted PEM payload"
+    fi
+
+    rm -rf "$tmp"
+} || fail "refresh breadcrumbs: exception"
 
 # ---------------------------------------------------------------------------
 # b) Post-merge state: MERGE_RESULT=merged → exits 0, no commit

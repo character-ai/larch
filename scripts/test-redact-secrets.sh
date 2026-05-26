@@ -95,6 +95,25 @@ assert_contains "$out" '<REDACTED-PRIVATE-KEY>' 'PEM block → placeholder'
 assert_not_contains "$out" 'MIIBOgIBAAJB' 'PEM block → key material absent'
 assert_not_contains "$out" 'BEGIN RSA PRIVATE KEY' 'PEM block → BEGIN marker absent'
 
+stream_state=$(mktemp "${TMPDIR:-/tmp}/test-redact-stream-state.XXXXXX")
+printf 'in_pem=0\n' >"$stream_state"
+out=$(printf '%s\n' "$PEM_BLOCK" | "$HELPER" --streaming --state-file "$stream_state")
+assert_contains "$out" '<REDACTED-PRIVATE-KEY>' 'streaming PEM block → placeholder'
+assert_not_contains "$out" 'MIIBOgIBAAJB' 'streaming PEM block → key material absent'
+
+printf 'in_pem=0\n' >"$stream_state"
+part1=$(printf '%s\n%s\n' '-----BEGIN RSA PRIVATE KEY-----' 'MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX' | "$HELPER" --streaming --state-file "$stream_state" 2>/dev/null || true)
+part2=$(printf '%s\n%s\n' '6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu' '-----END RSA PRIVATE KEY-----' | "$HELPER" --streaming --state-file "$stream_state")
+out="${part1}${part2}"
+assert_contains "$out" '<REDACTED-PRIVATE-KEY>' 'streaming split PEM → placeholder'
+assert_not_contains "$out" 'MIIBOgIBAAJB' 'streaming split PEM → first body absent'
+assert_not_contains "$out" '6Ppy1tPf9' 'streaming split PEM → second body absent'
+
+printf 'in_pem=0\n' >"$stream_state"
+out=$(printf '%s\n' '-----END RSA PRIVATE KEY-----' | "$HELPER" --streaming --state-file "$stream_state")
+assert_contains "$out" '-----END RSA PRIVATE KEY-----' 'streaming fresh mid-PEM tail passes through'
+rm -f "$stream_state"
+
 echo ""
 echo "=== Section 2: Idempotency ==="
 

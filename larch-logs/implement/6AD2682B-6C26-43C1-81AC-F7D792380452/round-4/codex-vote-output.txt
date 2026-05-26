@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- the burst-memory concern is real but chunked tailing adds more complexity than this latent monitor risk warrants.
+FINDING_5: YES
+FINDING_6: EXONERATE -- the current callers use the expected log-root derivation, so explicit source exports are a hardening nicety rather than a necessary fix.
+FINDING_7: NO -- the swap publish path preserves existing breadcrumbs on failure, so this is not a concrete issue worth filing.
+FINDING_8: NO -- stream output already has record boundaries, so the missing legacy visual separator is not worth an issue.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- non-fatal pre-PR log flushing is a deliberate best-effort posture and missing breadcrumbs alone should not block PR creation.
+FINDING_12: NO -- this is explicitly only a plan/docs naming mismatch with no functional impact.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- the residual risk is real but already documented and broad URL/hostname scrubbing is likely too noisy for a required follow-up.
+FINDING_24: NO -- evaluating the previously installed EXIT trap does not create a distinct vulnerability beyond executing the trap that was already configured.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES

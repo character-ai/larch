@@ -124,6 +124,44 @@ stage_round_artifact() {
     )
 }
 
+larch_log_breadcrumb_source_dir() {
+    local root session_root
+    if [ -n "${LARCH_BREADCRUMB_SOURCE_DIR:-}" ]; then
+        printf '%s\n' "$LARCH_BREADCRUMB_SOURCE_DIR"
+        return 0
+    fi
+    root="$(larch_log_root)"
+    case "$root" in
+        */larch-logs)
+            session_root="${root%/larch-logs}"
+            printf '%s/breadcrumbs\n' "$session_root"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+larch_log_copy_run_tree_without_breadcrumbs() {
+    local src_path="$1" repo_path="$2" item base
+    mkdir -p "$repo_path" || larch_log_fail 3 "cannot create repo log directory"
+    for item in "$src_path"/*; do
+        [ -e "$item" ] || continue
+        base="$(basename "$item")"
+        [ "$base" != "breadcrumbs" ] || continue
+        cp -rp "$item" "$repo_path/" || larch_log_fail 3 "cannot copy logs from temp to repo"
+    done
+}
+
+larch_log_publish_breadcrumbs() {
+    local source_dir="$1" repo_path="$2"
+    larch_log_publish_breadcrumbs_shared "$source_dir" "$repo_path/breadcrumbs" larch_log_publish_breadcrumbs_error
+}
+
+larch_log_publish_breadcrumbs_error() {
+    larch_log_fail 3 "$1"
+}
+
 current_branch_is_default() {
     local current_branch default_branch
     current_branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
@@ -472,6 +510,7 @@ case "$cmd" in
         require_common
         src_path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
         repo_path="$(larch_log_repo_run_dir "$SKILL" "$RUN_ID")"
+        breadcrumbs_source="$(larch_log_breadcrumb_source_dir || true)"
         [ -d "$src_path" ] || larch_log_fail 1 "log directory not found: $src_path"
         if [ -f "$src_path/manifest.json" ]; then
             mf_commit_tmp="$(mktemp "$(dirname "$src_path/manifest.json")/.tmp.manifest-commit.XXXXXX")" || larch_log_fail 2 "cannot create manifest commit temp"
@@ -485,9 +524,9 @@ case "$cmd" in
             }
         fi
         if [ "$src_path" != "$repo_path" ]; then
-            mkdir -p "$repo_path" || larch_log_fail 3 "cannot create repo log directory"
-            cp -rp "$src_path/." "$repo_path/" || larch_log_fail 3 "cannot copy logs from temp to repo"
+            larch_log_copy_run_tree_without_breadcrumbs "$src_path" "$repo_path"
         fi
+        larch_log_publish_breadcrumbs "$breadcrumbs_source" "$repo_path"
         # Scope all git operations to exactly this run's directory, not the broader
         # skill parent. Building the pathspec explicitly hardens add/status/diff
         # against prefix math mistakes and untracked-file omissions.

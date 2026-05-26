@@ -175,6 +175,13 @@ When `LARCH_QUIET_BREADCRUMBS=1` is exported (set by the `/implement` Step 8+ in
 - `⚠ ship-pr: transient network failure` — on every `exit_transient_net` call
 - `⛔ ship-pr: stalled at step N` — on every `mark_stall` call (covers all `exit_stall` codes)
 
+When `LARCH_BREADCRUMB_STREAM` is inherited from a foreground-monitor pair,
+each breadcrumb carries an explicit category from the fixed vocabulary:
+`progress` for ordinary phase movement, `warn` for warnings, `stall` for stalled
+handoffs, `network-flake` for transient network exits, and `escalate` for
+rebase/conflict recovery handoffs. Sourced helpers must preserve the inherited
+stream and use the same vocabulary.
+
 ## Edit In Sync
 
 When changing phase names, exit-code meaning, helper stdout parsing, or state keys, update `skills/implement/SKILL.md`, `scripts/test-ship-pr.sh`, `scripts/test-restore-finalize-state.sh`, `scripts/test-implement-structure.sh`, and this file together.

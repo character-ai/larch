@@ -12,7 +12,9 @@ trap 'rm -rf "$SCRATCH"' EXIT
 # state); leaked LARCH_QUIET_LOG_FILE breaks default-log path assertions.
 unset IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR \
     LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
-    LARCH_QUIET_BREADCRUMBS LARCH_QUIET_DISABLE || true
+    LARCH_QUIET_BREADCRUMBS LARCH_QUIET_DISABLE LARCH_BREADCRUMB_STREAM \
+    LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_BREADCRUMBS_SURFACED_FILE \
+    LARCH_QUIET_BREADCRUMB_FD || true
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -22,6 +24,11 @@ fail() {
 assert_eq() {
     local got=$1 want=$2 label=$3
     [ "$got" = "$want" ] || fail "$label: got [$got], want [$want]"
+}
+
+assert_file_contains() {
+    local file=$1 needle=$2 label=$3
+    grep -Fq "$needle" "$file" || fail "$label: missing [$needle]"
 }
 
 write_helper() {
@@ -64,7 +71,7 @@ grep -q '^hidden$' "$log" || fail "nested log missing stdout"
 # 4. Breadcrumbs are quiet by default.
 helper="$SCRATCH/breadcrumb-quiet.sh"
 log="$SCRATCH/breadcrumb.log"
-write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; emit_breadcrumb "step done"; emit_kv STATUS ok'
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; emit_breadcrumb --category=progress "step done"; emit_kv STATUS ok'
 out=$("$helper" "$log")
 assert_eq "$out" "STATUS=ok" "breadcrumb quiet stdout"
 grep -q '^step done$' "$log" || fail "breadcrumb not logged"
@@ -72,14 +79,14 @@ grep -q '^step done$' "$log" || fail "breadcrumb not logged"
 # 5. Breadcrumbs can be surfaced explicitly.
 helper="$SCRATCH/breadcrumb-visible.sh"
 log="$SCRATCH/breadcrumb-visible.log"
-write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; emit_breadcrumb "step done"; emit_kv STATUS ok'
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; emit_breadcrumb --category=progress "step done"; emit_kv STATUS ok'
 out=$("$helper" "$log")
 assert_eq "$out" $'step done\nSTATUS=ok' "breadcrumb visible stdout"
 
 # 5b. Breadcrumbs can use an inherited alternate fd when stdout is captured.
 helper="$SCRATCH/breadcrumb-fd.sh"
 log="$SCRATCH/breadcrumb-fd.log"
-write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; exec 5>&3; export LARCH_QUIET_BREADCRUMB_FD=5; emit_breadcrumb "step done"; emit_kv STATUS ok'
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; exec 5>&3; export LARCH_QUIET_BREADCRUMB_FD=5; emit_breadcrumb --category=progress "step done"; emit_kv STATUS ok'
 "$helper" "$log" >"$SCRATCH/breadcrumb-fd.out"
 assert_eq "$(cat "$SCRATCH/breadcrumb-fd.out")" $'step done\nSTATUS=ok' "breadcrumb visible alternate fd"
 
@@ -130,5 +137,50 @@ write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; la
 assert_eq "$(cat "$SCRATCH/larch_err.out")" "STATUS=ok" "larch_err contract stdout"
 grep -q '^user-visible$' "$SCRATCH/larch_err.err" || fail "larch_err not on stderr"
 grep -q '^noisy$' "$log" || fail "larch_err noisy not logged"
+
+# 13. emit_breadcrumb_stderr preserves stderr semantics without a stream.
+helper="$SCRATCH/breadcrumb-stderr-unset.sh"
+write_helper "$helper" 'larch_quiet_init; emit_breadcrumb_stderr --category=wait-ci "wait:%s" "done"'
+"$helper" >"$SCRATCH/breadcrumb-stderr-unset.out" 2>"$SCRATCH/breadcrumb-stderr-unset.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-unset.out")" "" "emit_breadcrumb_stderr unset stdout"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-unset.err")" "wait:done" "emit_breadcrumb_stderr unset stderr bytes"
+
+# 14. emit_breadcrumb_stderr writes only to the breadcrumb stream when set.
+helper="$SCRATCH/breadcrumb-stderr-stream.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; export LARCH_BREADCRUMB_STREAM; larch_quiet_init; emit_breadcrumb_stderr --category=wait-ci "wait:%s" "done"'
+"$helper" "$SCRATCH/breadcrumb-stream.ndjson" >"$SCRATCH/breadcrumb-stderr-stream.out" 2>"$SCRATCH/breadcrumb-stderr-stream.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-stream.out")" "" "emit_breadcrumb_stderr stream stdout"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-stream.err")" "" "emit_breadcrumb_stderr stream stderr"
+assert_file_contains "$SCRATCH/breadcrumb-stream.ndjson" "c=wait-ci" "emit_breadcrumb_stderr stream category"
+assert_file_contains "$SCRATCH/breadcrumb-stream.ndjson" "text=wait:done" "emit_breadcrumb_stderr stream payload"
+
+# 15. emit_breadcrumb does not mirror raw text when the breadcrumb stream is set.
+helper="$SCRATCH/breadcrumb-stream-only.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_BREADCRUMB_STREAM LARCH_QUIET_BREADCRUMBS; larch_quiet_init; emit_breadcrumb --category=progress "secret token"; emit_kv STATUS ok'
+"$helper" "$SCRATCH/breadcrumb-only.ndjson" >"$SCRATCH/breadcrumb-stream-only.out" 2>"$SCRATCH/breadcrumb-stream-only.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stream-only.out")" "STATUS=ok" "emit_breadcrumb stream suppresses mirrored stdout"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stream-only.err")" "" "emit_breadcrumb stream suppresses mirrored stderr"
+assert_file_contains "$SCRATCH/breadcrumb-only.ndjson" "c=progress" "emit_breadcrumb stream-only category"
+assert_file_contains "$SCRATCH/breadcrumb-only.ndjson" "text=secret token" "emit_breadcrumb stream-only payload"
+
+# 16. Missing category with a stream warns and writes no record.
+helper="$SCRATCH/breadcrumb-missing-category.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; export LARCH_BREADCRUMB_STREAM; larch_quiet_init; emit_breadcrumb "missing category"'
+"$helper" "$SCRATCH/breadcrumb-missing-category.ndjson" >"$SCRATCH/breadcrumb-missing-category.out" 2>"$SCRATCH/breadcrumb-missing-category.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-missing-category.out")" "" "missing category stdout"
+assert_file_contains "$SCRATCH/breadcrumb-missing-category.err" "WARN unknown-category=<missing>" "missing category warning"
+if [[ -s "$SCRATCH/breadcrumb-missing-category.ndjson" ]]; then
+    fail "missing category should not write a stream record"
+fi
+
+# 17. Invalid category with a stream warns and writes no record.
+helper="$SCRATCH/breadcrumb-invalid-category.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; export LARCH_BREADCRUMB_STREAM; larch_quiet_init; emit_breadcrumb --category=bogus "invalid category"'
+"$helper" "$SCRATCH/breadcrumb-invalid-category.ndjson" >"$SCRATCH/breadcrumb-invalid-category.out" 2>"$SCRATCH/breadcrumb-invalid-category.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-invalid-category.out")" "" "invalid category stdout"
+assert_file_contains "$SCRATCH/breadcrumb-invalid-category.err" "WARN unknown-category=bogus" "invalid category warning"
+if [[ -s "$SCRATCH/breadcrumb-invalid-category.ndjson" ]]; then
+    fail "invalid category should not write a stream record"
+fi
 
 printf 'PASS: test-lib-quiet.sh\n'

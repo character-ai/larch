@@ -46,6 +46,10 @@ actual="$(larch_log_batch_list)"
     printf 'expected:\n%s\nactual:\n%s\n' "$expected" "$actual" >&2
     exit 1
 }
+if printf '%s\n' "$actual" | grep -qx 'breadcrumbs'; then
+    echo "FAIL: breadcrumbs must stay out of the batch table; larch-log.sh commit owns that directory" >&2
+    exit 1
+fi
 
 for slug in $actual; do
     ext="$(larch_log_batch_extension "$slug")"
