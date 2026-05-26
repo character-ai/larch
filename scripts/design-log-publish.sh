@@ -290,7 +290,7 @@ done <"$_top_files"
 rm -f "$_top_files"
 ENUM_TOP_TMP=""
 
-if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then
+if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; then
     if [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
         larch_err "design-log-publish: plan-review must not be a symlink"
         emit_publish_result false

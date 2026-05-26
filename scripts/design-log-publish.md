@@ -94,8 +94,9 @@ remote branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
 
 ## plan-review allowlist
 
-`$DESIGN_TMPDIR/plan-review/` is optional. A missing or empty directory is
-success and stages no files. When present, it is fail-closed:
+`$DESIGN_TMPDIR/plan-review/` is optional. A missing path is success and stages
+no files. When present, including as a symlink path caught by the `-L` guard,
+it is fail-closed:
 
 - `plan-review` must be a real directory, not a symlink and not a regular file.
 - Any symlink anywhere below the resolved physical `plan-review` root fails the
@@ -105,6 +106,11 @@ success and stages no files. When present, it is fail-closed:
   `-L`.
 - Each enumerated file must pass the under-root prefix guard against the
   resolved physical root, matching the `render-cache/` guard.
+- A per-file `[[ -L "$f" ]]` recheck immediately before staging closes the
+  find-to-stage race window at the leaf-component slot. Parent-directory
+  replacement races, where a parent dir is swapped for a symlink between
+  enumeration and stage, are not closed; this matches the residual race surface
+  in `render-cache/`.
 - The relativized path must match the anchored regex
   `^round-[1-9][0-9]*/findings-classification\.tsv$`. Round numbers are
   positive integers with no leading zero; `round-0` and `round-01` are rejected.
