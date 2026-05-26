@@ -250,6 +250,8 @@ STUB
 
     cat >"$SANDBOX/scripts/tracking-issue-write.sh" <<'STUB'
 #!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'tracking-issue-write %s\n' "$*" >>"$script_dir/../invoke-log.txt"
 if [ "${LARCH_TEST_RENAME_FAILED:-false}" = "true" ]; then
   echo FAILED=true
   echo "ERROR=rename failed"
@@ -350,6 +352,16 @@ assert_contains "FORKED_TARGET=false" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_not_contains 'token-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt no bootstrap token mark"
 assert_not_contains 'timing-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt no bootstrap timing mark"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- GP-adopt-session-id ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP-adopt-session-id exit 0"
+assert_contains "RUN_ID=sessstub" "$out" "GP-adopt-session-id run id"
+assert_contains "RUN_ID=sessstub" "$(cat "$SANDBOX_TMP/parent-issue.md")" "GP-adopt-session-id sentinel run id"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP2 sentinel resume ---
@@ -495,6 +507,8 @@ assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B4 branch"
 assert_contains "DEFERRED=true" "$out" "B4 deferred"
 assert_not_contains "STALL_TRACKING=true" "$out" "B4 no stall"
 assert_not_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B4 no tracking-init-failed bail"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4 no rename"
 if [ ! -f "$SANDBOX_TMP/parent-issue.md" ]; then
     PASS=$((PASS + 1))
     echo "PASS: B4 no sentinel"
@@ -502,6 +516,27 @@ else
     FAIL=$((FAIL + 1))
     echo "FAIL: B4 sentinel should not exist"
 fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B4-plan POSTED=false deferred guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase plan --issue-number 123 --run-id runD 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B4-plan exit 0"
+assert_contains "DEFERRED=true" "$out" "B4-plan deferred"
+assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B4-plan no phase-3 overwrite"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B4-all POSTED=false deferred guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B4-all exit 0"
+assert_contains "DEFERRED=true" "$out" "B4-all deferred"
+assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B4-all no phase-3 overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4" "$out" "B4-all no phase-4 overwrite"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5 larch-log init fail ---

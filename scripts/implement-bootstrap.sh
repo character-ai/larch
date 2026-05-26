@@ -143,6 +143,12 @@ emit_tracking_breadcrumb_if_enabled() {
     fi
 }
 
+should_run_post_tracking_phase() {
+    [ -z "${IMPLEMENT_BAIL_REASON:-}" ] \
+        && [ "${STALL_TRACKING:-false}" != "true" ] \
+        && [ "${DEFERRED:-false}" != "true" ]
+}
+
 tracking_init_failed() {
     IMPLEMENT_BAIL_REASON=tracking-init-failed
     STALL_TRACKING=true
@@ -647,25 +653,25 @@ main() {
             ;;
         plan)
             phase_tracking
-            if [ -z "${IMPLEMENT_BAIL_REASON:-}" ] && [ "${STALL_TRACKING:-false}" != "true" ]; then
+            if should_run_post_tracking_phase; then
                 phase_plan_materialize
             fi
             ;;
         coder)
             phase_tracking
-            if [ -z "${IMPLEMENT_BAIL_REASON:-}" ] && [ "${STALL_TRACKING:-false}" != "true" ]; then
+            if should_run_post_tracking_phase; then
                 phase_plan_materialize
             fi
-            if [ -z "${IMPLEMENT_BAIL_REASON:-}" ] && [ "${STALL_TRACKING:-false}" != "true" ]; then
+            if should_run_post_tracking_phase; then
                 phase_coder_select
             fi
             ;;
         all)
             phase_tracking
-            if [ -z "${IMPLEMENT_BAIL_REASON:-}" ] && [ "${STALL_TRACKING:-false}" != "true" ]; then
+            if should_run_post_tracking_phase; then
                 phase_plan_materialize
             fi
-            if [ -z "${IMPLEMENT_BAIL_REASON:-}" ] && [ "${STALL_TRACKING:-false}" != "true" ]; then
+            if should_run_post_tracking_phase; then
                 phase_coder_select
             fi
             ;;
