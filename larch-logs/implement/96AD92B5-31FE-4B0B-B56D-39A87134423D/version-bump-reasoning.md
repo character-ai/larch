@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `88b6a816` (Fixes #2853: Fix Step 5 starting-round resume handling (#2887))
-- **Current version**: `42.5.17`
+- **Base commit**: `1c6d7211` (Fixes #2872: decompose-file-issues parses multi-blocker dependency lists (#2891))
+- **Current version**: `42.5.18`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.5.18`
+- **New version**: `42.5.19`
 
 ### PATCH rationale
 
