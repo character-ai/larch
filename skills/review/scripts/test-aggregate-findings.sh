@@ -11,6 +11,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 AGG="$REPO_ROOT/skills/review/scripts/aggregate-findings.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-aggregate-findings.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
+EXPECTED_REQUIRE_PATTERN='^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)'
 
 fail() {
     echo "FAIL: $1" >&2
@@ -1193,7 +1194,7 @@ AGGREGATE_STUB_REQUIRE_PATTERN_LOG="$PAT/require-pattern.txt" \
     --cursor-present true \
     --mode diff >"$TMP/out-pattern-attest.env"
 grep -Fq 'REASON=validation-exhausted' "$TMP/out-pattern-attest.env" || fail "attestation should reach validator narrow-trigger path"
-grep -Fq '^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
+grep -Fq "$EXPECTED_REQUIRE_PATTERN" "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
 
 echo "=== codex_primary_narration_routes_to_phase2_cursor ==="
 WR="$TMP/codex-primary-phase2"

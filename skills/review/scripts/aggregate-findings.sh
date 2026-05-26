@@ -22,6 +22,8 @@ SESSION_ENV_PATH=""
 DIFF_FILE=""
 PLAN_FILE=""
 INPUT_MODE="code"
+EMPTY_MERGE_ATTESTATION="LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
+REQUIRE_RESULT_PATTERN="^(### FINDING_[0-9]+:|[[:space:]]*${EMPTY_MERGE_ATTESTATION}[[:space:]]*$)"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -66,6 +68,7 @@ source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "aggregate-findings.sh: --mode must be diff or description"; exit 2; }
 [[ "$INPUT_MODE" == "plan" || "$INPUT_MODE" == "code" ]] || { larch_err "aggregate-findings.sh: --input-mode must be plan or code"; exit 2; }
 export LARCH_AGGREGATE_INPUT_MODE="$INPUT_MODE"
+export EMPTY_MERGE_ATTESTATION
 
 kv_get() {
     local file="$1" key="$2"
@@ -234,7 +237,7 @@ def normalize_slot(sl):
     return re.sub(r"\s*\([^)]*\)\s*$", "", sl).strip()
 
 
-EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
+EMPTY_MERGE_ATTESTATION = os.environ["EMPTY_MERGE_ATTESTATION"]
 
 _STRICT_FINDING_HEADING = re.compile(r"^### FINDING_[0-9]+:")
 _SEVERITY_LINE = re.compile(
@@ -640,9 +643,10 @@ _agg_pipeline_for_candidate() {
 
     merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
     if ! python3 - "$cand" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
+import os
 import sys
 
-EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
+EMPTY_MERGE_ATTESTATION = os.environ["EMPTY_MERGE_ATTESTATION"]
 path = sys.argv[1]
 with open(path, encoding="utf-8") as f:
     for line in f:
@@ -684,7 +688,7 @@ dispatch_args=(
 )
 [[ -n "$DIFF_FILE" ]] && dispatch_args+=(--diff-file "$DIFF_FILE")
 [[ -n "$PLAN_FILE" ]] && dispatch_args+=(--plan-file "$PLAN_FILE")
-dispatch_args+=(--require-result-pattern '^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)')
+dispatch_args+=(--require-result-pattern "$REQUIRE_RESULT_PATTERN")
 
 set +e
 "$DISPATCH_SH" "${dispatch_args[@]}" > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
