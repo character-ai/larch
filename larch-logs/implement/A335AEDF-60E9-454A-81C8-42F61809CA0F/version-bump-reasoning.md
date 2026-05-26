@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `643a8bdc` (chore(larch-logs): flush design run CCC6D057-03EC-4E37-9D92-AAE8818A3CD2 [skip ci] (#2933))
-- **Current version**: `42.5.25`
+- **Base commit**: `ebc4045e` (Fixes #2897: Honor diagram SKIP_REASON and centralize diagnostic sanitization (#2938))
+- **Current version**: `42.5.26`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.5.26`
+- **New version**: `42.5.27`
 
 ### PATCH rationale
 
