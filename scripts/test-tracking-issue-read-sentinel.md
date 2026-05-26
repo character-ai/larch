@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.sh`. It pins the `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` field contracts, plus the usage-level numeric validation for argv `--issue`.
+Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.sh`. It pins the `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` field contracts, the usage-level numeric validation for argv `--issue`, and one stubbed issue-read case that proves stable `larch:diagrams` comments are filtered from `TASK_FILE`.
 
 ## Invariants
 
@@ -21,7 +21,7 @@ Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.s
 8. **Stdout shape on failure**: exactly two lines — `FAILED=true\n` followed by `ERROR=<single-line message>\n` — and exit 1.
 9. **Newline-injection scope**: the harness intentionally does not pin embedded-newline rejection for sentinel values. `extract_sentinel_key` is line-oriented (`grep -m1 ... | sed ...`), so a literal newline in the file becomes a separate physical line and is not exposed to the post-extraction case-pattern validator. Same-line invalid bytes (space, slash, tab, non-trailing CR) are pinned.
 
-## Test cases (28 total)
+## Test cases (29 total)
 
 | ID | Input | Expected |
 |---|---|---|
@@ -53,6 +53,7 @@ Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.s
 | y | missing `RUN_ID` | exit 0, empty pass-through |
 | z | `ISSUE_NUMBER=42`, `RUN_ID=run-1.0_test-abc`, `ADOPTED=true` | exit 0, exact three-line stdout |
 | aa | argv `--issue abc --out-dir <path>` | exit 1, `FAILED=true ERROR=usage: --issue must be numeric` before out-dir or `gh` work |
+| ab | stubbed `--issue 7 --out-dir <path> --repo owner/repo` with one stable `larch:diagrams` comment and one normal comment | exit 0, `TASK_FILE` contains the normal comment only; the stable diagrams marker comment is filtered |
 
 ## Makefile wiring
 
@@ -66,11 +67,11 @@ The harness is Makefile-only (not referenced from any `SKILL.md`), so agent-lint
 
 | File | Relationship |
 |---|---|
-| `scripts/tracking-issue-read.sh` | Script under test. Every behavioral change in its `--sentinel` branch or argv `--issue` validation must be mirrored here. |
+| `scripts/tracking-issue-read.sh` | Script under test. Every behavioral change in its `--sentinel` branch, stable summary-comment filter, or argv `--issue` validation must be mirrored here. |
 | `scripts/tracking-issue-read.md` | Canonical contract document. Any field-contract or parser behavior change requires updating the contract and harness in sync. |
 | `Makefile` | The `test-tracking-issue-read-sentinel` recipe and one `test-harnesses-N:` shard invoke this harness. Adding or removing targets must stay in sync with the `.PHONY` line. |
 | `agent-lint.toml` | Exclusion entry for this Makefile-only harness. |
 
 ## Conventions
 
-Bash 3.2-safe. No external `gh` stub needed for sentinel mode; the argv validation case exits before `gh`.
+Bash 3.2-safe. Most cases are pure sentinel-mode reads; the `ab` case adds a minimal local `gh` stub for the stable-marker filter path.

@@ -18,7 +18,7 @@ Anchor comments and PR bodies embed Mermaid diagrams that GitHub renders publicl
 
 ## Enforcement Layers
 
-- Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `scripts/sanitize-mermaid-fragment.sh`. Rejected diagrams are dropped and replaced with placeholders or omitted publish sections.
+- Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `scripts/sanitize-mermaid-fragment.sh`. Rejected diagrams are dropped; callers either omit the publish section so prior issue content is preserved or fall back to an explicit placeholder when that surface requires one.
 - Tracking-issue redaction: `/design` Step 5c.5 and `/implement` Step 7a publish through `scripts/upsert-diagrams-comment.sh`, which redacts secrets and tmpdir paths before delegating to `tracking-issue-summary.sh`. `tracking-issue-summary.sh` repeats the redaction chain as defense in depth.
 - CI Mermaid lint: `scripts/lint-mermaid-fences.sh` runs Mermaid CLI over changed Markdown fences and catches syntax outside the narrow sanitizer policy.
 
