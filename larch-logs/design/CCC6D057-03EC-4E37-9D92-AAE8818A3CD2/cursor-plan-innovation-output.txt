@@ -1,0 +1,33 @@
+Reading the plan and exploring cited codebase paths to validate the proposed changes.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/decompose-panel-dispatch.sh:131-142	Item C adds dispatcher dedup but no manifest producer sets fallback_group	The worked example names decomp-cursor/decomp-codex pairs yet the plan never updates NDJSON builders; after merge dispatch-with-waterfall still runs legacy per-slot phase-2 for every row and #2898 cost/duplicate work remains	Add fallback_group to each paired row in decompose-panel-dispatch.sh (and any other real fanout the issue targets); extend skills/design/scripts/test-decompose-panel-dispatch.sh to assert the field is emitted
+2	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:324-337	Plan assumes phase-2 is serialized; code launches all phase-2 slots in parallel then waits once	Slot B can start Codex before slot A writes an OK ledger row so dedup misses and two Codex processes still run despite fallback_group	Restructure phase-2: per-group sequential launch (launch/wait/ledger before next peer) or run collect_phase inside the phase-2 loop; document the invariant in scripts/dispatch-with-waterfall.md and test with a stub counter under parallel failure
+3	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:227-303	Plan says copy output and set ledger OK,reused but not how the slot settles in final_outputs/paths-file	Reused slots never enter pids/phase_outputs so collect_phase and final_outputs/final_tools may stay empty and downstream collectors read missing paths	On dedup hit set final_outputs[idx] and final_tools[idx] write ${output}.done skip launch_slot and exclude idx from phase2_failed/phase3_queue; add harness asserting ALL_OUTPUT_FILES_PATH includes reused paths
+4	in_scope	important	architecture	scripts/lint-foreground-markers.sh:212-244	New rule keys off basename in the invocation line; most callers invoke via "$WATERFALL_SH" / "$DISPATCH_SH" without the literal path	decompose-panel-dispatch dispatch-plan-review-panel dispatch-panel aggregate-findings get manual unset but regressions via indirection are invisible to CI	Extend is_anchor_for_basename (or the new scanner) to treat VAR=...dispatch-with-waterfall.sh on prior lines plus "$VAR" invocation as one anchor; add negative fixture in scripts/test-lint-foreground-markers.sh
+5	in_scope	important	architecture	scripts/dispatch-with-waterfall.sh:326-332	fallback_group dedup is described for paired vendor slots but phase-2 alternate is always the other tool (codex-primary fails to cursor not codex)	For the documented decomp-arch pair both slots rarely need the same phase-2 tool concurrently so group dedup may never fire in production; tests could pass while the issue persists	Trace the actual double-Codex timeline from #2898 before coding; if the duplicate is same prompt+tool use ledger key prompt_file+tool or collapse to one external slot per archetype instead of post-hoc copy
+6	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:275-288	--require-result-pattern gate not specified for reused phase-2 output	Reused file may lack ## Recommendation for slot B; slot should fall through but dedup short-circuit could mark OK and skip Claude	When reuse fails the ERE treat as phase-2 failure and continue normal phase-3 routing; cover in scripts/test-dispatch-with-waterfall.sh
+7	in_scope	nit	code-quality	skills/design/scripts/decompose-panel-dispatch.sh:171	is_anchor_for_basename may match --tool "dispatch-with-waterfall.sh" in append-tool-failure metadata	New parent-unset lint errors on failure-logging lines unless every site adds suppression or reorders unset	Exclude lines where basename appears only as a quoted --tool argument or require invocation patterns with "$(" or leading path; add regression fixture
+8	in_scope	nit	correctness	skills/design/scripts/decompose-panel-dispatch.sh:145-153	Plan cites two dispatch-with-waterfall callsites; file has one real invocation	Implementer may search for a nonexistent second callsite and miss the only one	Correct plan text to a single callsite (line ~153); keep unset immediately above "$WATERFALL_SH" invocation
+9	in_scope	latent	architecture	scripts/dispatch-with-waterfall.sh:48-54	Ledger path prose references RESEARCH_TMPDIR/DESIGN_TMPDIR but dispatcher has only slots-file/paths-file context	Ledger written to cwd or wrong tmp breaks dedup and pollutes repo	Anchor waterfall-group-results.tsv next to SLOTS_FILE or resolved --paths-file parent (same per-call tmp), document in scripts/dispatch-with-waterfall.md
+10	out_of_scope	latent	innovation	scripts/dispatch-with-waterfall.sh:1-20	[OUT_OF_SCOPE] Central unset at child entry vs N parent call sites	One unset LARCH_PAIRED_PID_FILE at top of dispatch-with-waterfall.sh would guarantee nested launch-review never inherits paired PID even if a caller forgets; pairs with optional linter Consider as simpler alternative if sweep+lint still miss indirect callers
+11	out_of_scope	nit	architecture	skills/shared/topology.tsv:1	[OUT_OF_SCOPE] New DEDUPE_REUSED KV and .dedup sidecar not projected in topology.tsv	Consumer docs drift from runtime contract	Regenerate or extend topology row for dispatch-with-waterfall when observability fields land
+
+**Summary**
+
+1. **correctness / architecture** — Item C is only half-delivered without manifest `fallback_group` wiring; the decomp panel example in the plan never reaches production manifests.
+
+2. **correctness** — Phase-2 is parallel today; dedup-before-launch races unless the loop is restructured or the “serialized phase-2” claim is implemented.
+
+3. **correctness** — Reuse must update `final_outputs`, `.done`, and queue routing, not only copy files and ledger rows.
+
+4. **architecture** — Shell linter matches literal basenames; `"$WATERFALL_SH"` call sites won’t be enforced.
+
+5. **architecture** — Paired cursor/codex slots usually get opposite phase-2 tools; validate the real double-Codex scenario before relying on `fallback_group`.
+
+6. **correctness** — `--require-result-pattern` behavior on reused output needs an explicit fail-through rule.
+
+7. **code-quality** — `--tool "dispatch-with-waterfall.sh"` metadata may false-positive the new lint rule.
+
+8. **nit** — Plan overstates decompose-panel-dispatch callsite count.
+
+9. **architecture** — Ledger location should derive from slots/paths-file paths, not skill tmpdir env vars the script does not own.

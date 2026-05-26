@@ -1,0 +1,53 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch	accepted	YES	true	blocker	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Cursor-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_3	Cursor-Arch	rejected	NO	false-positive	nit	adequate	false	Claude	NO	false-positive	nit	weak	false	Codex	EXONERATE	partially-true	minor	adequate	true	Cursor
+FINDING_4	Cursor-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_5	Cursor-Arch	accepted	EXONERATE	partially-true	minor	adequate	false	Claude	YES	partially-true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
+FINDING_6	Cursor-Arch	accepted	YES	true	nit	adequate	false	Claude	YES	true	nit	excellent	false	Codex	YES	true	nit	excellent	false	Cursor
+FINDING_7	Cursor-Arch	exonerated	EXONERATE	partially-true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	EXONERATE	partially-true	minor	adequate	false	Cursor
+FINDING_8	Codex-Arch, Codex-Pragmatic	accepted	YES	true	blocker	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_9	Codex-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_10	Codex-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_11	Codex-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_12	Codex-Arch	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	EXONERATE	true	minor	good	false	Cursor
+FINDING_13	Cursor-Edge	accepted	YES	true	blocker	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_14	Codex-Edge	accepted	YES	true	blocker	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_15	Codex-Edge	accepted	YES	true	blocker	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_16	Codex-Edge	accepted	YES	true	major	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_17	Codex-Edge	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	EXONERATE	true	minor	good	false	Cursor
+FINDING_18	Cursor-Innovation	accepted	YES	true	blocker	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_19	Codex-Innovation	accepted	YES	true	blocker	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_20	Codex-Innovation	accepted	YES	true	blocker	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_21	Codex-Innovation	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_22	Cursor-Pragmatic	accepted	YES	true	blocker	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_23	Codex-Pragmatic	accepted	YES	true	major	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_24	Codex-Pragmatic	accepted	YES	true	blocker	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_25	Codex-Pragmatic	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_26	Codex-Pragmatic	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	EXONERATE	true	minor	good	false	Cursor
+FINDING_27	Cursor-Requirements	accepted	YES	true	blocker	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_28	Codex-Requirements	accepted	YES	true	blocker	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_29	Codex-Requirements	accepted	YES	true	blocker	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_30	Codex-Requirements	accepted	YES	true	major	good	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_31	Codex-Requirements	accepted	YES	true	major	adequate	false	Claude					true	Codex	YES	true	minor	excellent	false	Cursor
+FINDING_32	Codex-Requirements	exonerated	YES	true	minor	good	false	Claude					true	Codex	EXONERATE	true	minor	good	false	Cursor
+FINDING_33	Cursor-dyn-caller-site-audit	accepted	YES	true	nit	adequate	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_34	Codex-dyn-caller-site-audit	accepted	YES	true	major	excellent	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_35	Codex-dyn-caller-site-audit	accepted	YES	true	nit	excellent	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_36	Cursor-dyn-bash32-ledger-design	accepted	YES	true	blocker	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_37	Cursor-dyn-bash32-ledger-design	accepted	YES	true	major	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_38	Cursor-dyn-bash32-ledger-design	accepted	YES	true	blocker	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_39	Cursor-dyn-bash32-ledger-design	accepted	YES	true	major	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_40	Cursor-dyn-bash32-ledger-design	accepted	YES	true	major	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_41	Cursor-dyn-bash32-ledger-design	exonerated	EXONERATE	partially-true	minor	adequate	false	Claude					true	Codex	EXONERATE	partially-true	nit	adequate	false	Cursor
+FINDING_42	Cursor-dyn-bash32-ledger-design	accepted	YES	true	nit	adequate	false	Claude					true	Codex	YES	true	nit	excellent	false	Cursor
+FINDING_43	Cursor-dyn-bash32-ledger-design	exonerated	YES	true	nit	adequate	false	Claude					true	Codex	EXONERATE	true	nit	adequate	false	Cursor
+FINDING_44	Cursor-dyn-bash32-ledger-design	exonerated	YES	true	nit	adequate	false	Claude					true	Codex	EXONERATE	true	nit	good	false	Cursor
+FINDING_45	Codex-dyn-bash32-ledger-design	accepted	YES	true	blocker	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_46	Codex-dyn-bash32-ledger-design	accepted	YES	true	blocker	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_47	Codex-dyn-bash32-ledger-design	exonerated	YES	true	minor	good	false	Claude					true	Codex	EXONERATE	true	minor	good	false	Cursor
+FINDING_48	Cursor-dyn-prose-fence-consistency	accepted	YES	true	minor	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+FINDING_49	Codex-dyn-prose-fence-consistency	accepted	YES	true	minor	good	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+OOS_1	Cursor-Arch	accepted	YES	true	major	adequate	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+OOS_2	Cursor-Arch	accepted	YES	true	minor	adequate	false	Claude					true	Codex	YES	true	major	excellent	false	Cursor
+OOS_3	Cursor-dyn-bash32-ledger-design	exonerated	YES	true	minor	adequate	false	Claude					true	Codex	EXONERATE	true	nit	adequate	false	Cursor

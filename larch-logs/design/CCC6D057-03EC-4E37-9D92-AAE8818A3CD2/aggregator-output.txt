@@ -1,0 +1,3 @@
+Normalizing the 49 raw findings into merged clusters with stable IDs, severity rules, and verbatim reviewer revisions. Verifying a few code locations for accurate concern text.
+Producing the normalized aggregator output from merged reviewer clusters.
+

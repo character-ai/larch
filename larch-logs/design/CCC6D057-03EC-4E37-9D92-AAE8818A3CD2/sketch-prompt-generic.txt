@@ -1,0 +1,42 @@
+Propose a high-level implementation approach for this feature: [DESIGNING] [OOS] #2848 paired-PID + dispatch-with-waterfall follow-ups (research/validation prose, defensive unset, vendor-slot waterfall doubling)
+
+## Out-of-Scope Observation — combined follow-up
+
+**Sources**: #2889, #2888, #2885
+**Phase**: review / design
+**Combination rationale**: All three are post-#2848 follow-ups on the paired-PID / dispatch-with-waterfall mechanism (sibling concerns about the same dispatch pathway). Combined per OOS triage rules 3/4 to save `/design` + `/implement` cycles.
+
+Each item below is independent and small (single-file edit or linter touch); they may be picked off as one PR or split as convenient.
+
+---
+
+**Item A — `skills/research/references/research-phase.md` (~line 214) and `validation-phase.md`: paired-PID fences conflict with foreground-only prose** (from #2889)
+
+- **Concern**: #2848 updated the paired-monitor fences in `research-phase.md` and `validation-phase.md` to include `LARCH_PAIRED_PID_FILE` allocation and `--paired-pid-file` on the monitor invocation, but the surrounding prose still instructs the orchestrator to run `collect-agent-results.sh` in the foreground (contradicting the background+monitor pattern). An orchestrator following the post-fence prose runs collect foreground-only; the monitor does not run concurrently, paired-PID timeout cleanup never applies, and live breadcrumb streaming during collect is lost.
+- **Fix**: reconcile `research-phase.md` and `validation-phase.md` — either update the prose to match the background+monitor contract so `collect-agent-results.sh` runs with `run_in_background: true`, OR explicitly carve out research collect from the paired-PID requirement and remove the `LARCH_PAIRED_PID_FILE` / `--paired-pid-file` lines from those fences.
+- **Surfaced by**: cursor-specialist-correctness-output.txt (FINDING_4 r2). Vote: YES=3 NO=0 EXON=0.
+
+**Item B — `skills/design/scripts/dispatch-plan-review-panel.sh` + other dispatch-with-waterfall callers: missing defensive `unset LARCH_PAIRED_PID_FILE`** (from #2888)
+
+- **Concern**: `dispatch-plan-review-panel.sh` and other scripts that synchronously invoke `dispatch-with-waterfall.sh` do not `unset LARCH_PAIRED_PID_FILE` before the call. If a top-level Family B script inherits the env var from its own `larch_quiet_write_paired_pid_file` call, nested children via these paths can clobber the file with a short-lived PID; the monitor would then signal a dead child while the long-running parent survives the timeout, defeating the pairing mechanism.
+- Additionally, `scripts/lint-foreground-markers.sh` (~lines 1379-1397) does not enforce parent `unset` before nested DENYLIST children, so future scripts can introduce the bug silently.
+- **Fix**:
+  - (a) Audit remaining callers of `dispatch-with-waterfall.sh` (e.g. `skills/design/scripts/dispatch-plan-review-panel.sh`) and add `unset LARCH_PAIRED_PID_FILE` immediately before each invocation;
+  - (b) extend `lint-foreground-markers.sh` or add a shell-level test that asserts top-level writers `unset` before nested exec paths;
+  - (c) update `lint-foreground-markers.md` with the new enforcement.
+- **Surfaced by**: cursor-specialist-security-output.txt FINDING_16 r1 (YES=3 NO=0 EXON=0); cursor-specialist-edge-cases-output.txt FINDING_21 r1 (YES=2 NO=0 EXON=1). Filed combined per OOS rule 3.
+
+**Item C — Dual vendor slots + per-slot waterfall can double Codex work in narration-only fallback** (from #2885)
+
+- **Concern**: Dual vendor slots combined with per-slot waterfall can double Codex work. Scenario: Cursor pattern miss reruns Codex on the cursor slot while the `decomp-codex-*` slot may already be OK — Codex runs twice for what is effectively one fallback need.
+- **Fix**: design-level — define a deduplication/coordination rule between the two vendor slots so a Codex fallback on the cursor slot does not duplicate concurrent Codex work on the decomp-codex slot. Likely a guard in the waterfall dispatcher or a shared "Codex already attempted" signal.
+- **Surfaced by**: Cursor-Innovation. Phase: design.
+
+---
+
+**Background — why one issue instead of three**: OOS triage rule 3 (multiple medium concerns in the same dispatch-with-waterfall pathway). Items A and B are doc/code reconciliation; Item C is a design-level dedup question. All three share the same call graph (`dispatch-with-waterfall.sh` + paired-PID monitor).
+
+*This issue is a combine-issues consolidation of #2889, #2888, #2885.*
+
+**Lineage** (pre-combination blocked-by parents, CLOSED — informational only):
+- Item C (#2885) was blocked by #2865 (closed). Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
