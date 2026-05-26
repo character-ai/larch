@@ -59,7 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Closed: #2822
+- Added a shared judge vote/rating parser and per-round findings-classification TSV emission with stable 21-column rows and vN_tool identity columns.
+- Updated plan-review voter dispatch, prompts, retry wording, docs, and design-log publishing so the new classification artifact is produced and safely staged.
+- Added regression coverage for parser edge cases, TSV row shape, fallback tool identity, MainAgent rules, and plan-review publish allowlisting.
 
 ## [42.5.4] - 2026-05-25
 
