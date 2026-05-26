@@ -811,6 +811,56 @@ STUB_EOF
     else
         fail 10 "codex fail-closed no-usage case should not append vendor row; ledger=$(cat "$RV_FAIL_LEDGER" 2>/dev/null)"
     fi
+
+    cat > "$RV_STUB_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || { echo "stub codex missing --output-last-message" >&2; exit 9; }
+printf 'stub codex transcript schema drift\n' > "$output_path"
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf '{"type":"token_usage","input_tokens":"abc","cached_input_tokens":0,"output_tokens":1}\n'
+STUB_EOF
+    chmod +x "$RV_STUB_BIN/codex"
+    RV_DRIFT_LEDGER="$SCRATCH/rv-codex-drift-token-ledger.jsonl"
+    RV_DRIFT_MANIFEST="$SCRATCH/rv-drift-manifest.json"
+    RV_DRIFT_SIDECAR="$SCRATCH/rv-drift-sidecar.log"
+    cd "$REPO_ROOT" && \
+        PATH="$RV_STUB_BIN:$PATH" \
+        STUB_MANIFEST_PATH="$RV_DRIFT_MANIFEST" \
+        LARCH_CODEX_MODEL="stub-codex-model" \
+        LARCH_TOKEN_SESSION_ID="rv-codex-drift-$$" \
+        LARCH_TOKEN_LEDGER="$RV_DRIFT_LEDGER" \
+        IMPLEMENT_TMPDIR='' \
+        CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        "$LAUNCHER" \
+            --transcript-path "$SCRATCH/rv-drift-transcript.txt" \
+            --sidecar-log "$RV_DRIFT_SIDECAR" \
+            --manifest-path "$RV_DRIFT_MANIFEST" \
+            --qa-pending-path "$SCRATCH/rv-drift-qa.json" \
+            --plan-file "$PLAN" \
+            --feature-file "$FEATURE" \
+            --agent-prompt "$AGENT_PROMPT" \
+            --timeout 30 >/dev/null
+    if grep -Fq 'parse-codex-usage.sh: jq failed' "$RV_DRIFT_SIDECAR" 2>/dev/null; then
+        pass
+    else
+        fail 10 "codex schema drift should append parse diagnostic to sidecar; sidecar=$(cat "$RV_DRIFT_SIDECAR" 2>/dev/null)"
+    fi
+    if [[ ! -e "$RV_DRIFT_LEDGER" ]] || ! jq -e 'select(.type=="vendor" and .vendor=="codex")' "$RV_DRIFT_LEDGER" >/dev/null 2>&1; then
+        pass
+    else
+        fail 10 "codex schema drift should not append vendor row; ledger=$(cat "$RV_DRIFT_LEDGER" 2>/dev/null)"
+    fi
 else
     pass  # jq absent — skip per launcher runtime guard parallel
 fi

@@ -70,9 +70,10 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   while stderr remains in `${OUTPUT}.sidecar`. Auth and transient
   classification intentionally inspect stderr only. Token capture is
   fail-closed through `scripts/parse-codex-usage.sh`: exit 0 records
-  per-bucket `token-ledger.sh record-vendor codex` fields; non-zero writes no
-  Codex token row. See [scripts/parse-codex-usage.md](parse-codex-usage.md)
-  for the KV contract and fail-closed validation semantics.
+  per-bucket `token-ledger.sh record-vendor codex` fields; non-zero appends
+  the parser diagnostic to `${OUTPUT}.sidecar` and writes no Codex token row.
+  See [scripts/parse-codex-usage.md](parse-codex-usage.md) for the KV
+  contract and fail-closed validation semantics.
 - `--commit-count <n>` (optional): passed through to `render-specialist-prompt.sh`
   on `--agent-file` paths; when `1 ≤ n ≤ 5`, the rendered specialist prompt omits
   the `git log` instruction from its diff preamble. Stored in the specialist prompt

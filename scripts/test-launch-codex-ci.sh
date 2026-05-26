@@ -213,6 +213,40 @@ fi
 
 cat > "$runtime_bin/codex" <<'EOF'
 #!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'ci fix transcript failed with usage\n' > "$output_path"
+printf '{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}\n'
+exit 1
+EOF
+chmod +x "$runtime_bin/codex"
+OUT_FAILED="$TMPDIR_BASE/ci-runtime-failed"
+set +e
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_FAILED" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+failed_rc=$?
+set -e
+if [[ "$failed_rc" == "0" ]] \
+    && grep -q '^TOOL=codex$' "${OUT_FAILED}.token-record" \
+    && grep -q '^INPUT=777$' "${OUT_FAILED}.token-record" \
+    && grep -q '^CACHE_READ=7000$' "${OUT_FAILED}.token-record" \
+    && grep -q '^OUTPUT=222$' "${OUT_FAILED}.token-record" \
+    && grep -q '^TOTAL=7999$' "${OUT_FAILED}.token-record" \
+    && grep -q '^RAW=codex_ci_fix$' "${OUT_FAILED}.token-record"; then
+    ok "failed runtime still writes per-bucket codex token-record when usage parses"
+else
+    fail "failed runtime should still write per-bucket codex token-record when usage parses: rc=$failed_rc token-record=$(cat "${OUT_FAILED}.token-record" 2>/dev/null)"
+fi
+
+cat > "$runtime_bin/codex" <<'EOF'
+#!/usr/bin/env bash
 printf 'Error: not logged in\n' >&2
 exit 7
 EOF
