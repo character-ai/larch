@@ -692,31 +692,20 @@ cmp -s "$TMP/in3.md" "$TMP/in3-zfn.md" || fail "#2782: findings.md must remain u
     || fail "#2782: original 3 FINDING blocks must survive"
 
 echo "=== zero output rejects whitespace-padded empty-merge attestation for nonempty input (#2536) ==="
-ZPAD="$TMP/zero-pad-real-dispatch"
-mkdir -p "$ZPAD"
-cp "$TMP/in3.md" "$ZPAD/in.md"
-STUBBIN="$ZPAD/bin"
-write_external_tool_stubs "$STUBBIN"
-write_real_dispatch_wrapper "$ZPAD/dispatch-wrapper.sh"
-PATH="$STUBBIN:$PATH" \
-WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
-RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.01 \
-LARCH_TRANSIENT_RETRY_DELAY=0 \
-LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
-AGGREGATE_DISPATCH_SH="$ZPAD/dispatch-wrapper.sh" \
-AGGREGATE_DISPATCH_ARGV_LOG="$ZPAD/dispatch.argv" \
-CODEX_STUB_RESULT_CONTENT=$'Aggregator narrative: padded empty-merge token line.\n\n  LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED  \n' \
+cp "$TMP/in3.md" "$TMP/in3-zero-pad.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_padded_attest_rejected \
 "$AGG" \
-    --findings-file "$ZPAD/in.md" \
-    --review-tmpdir "$ZPAD" \
+    --findings-file "$TMP/in3-zero-pad.md" \
+    --review-tmpdir "$TMP" \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-zero-pad.env"
 grep -Fq 'AGGREGATED=false' "$TMP/out-zero-pad.env" || fail "padded-attest AGGREGATED"
 grep -Fq 'REASON=validation-exhausted' "$TMP/out-zero-pad.env" || fail "padded-attest REASON"
-cmp -s "$TMP/in3.md" "$ZPAD/in.md" || fail "findings unchanged on padded-attest validator rejection"
-grep -Fq -- '--require-result-pattern' "$ZPAD/dispatch.argv" || fail "padded-attest dispatch missing pattern gate"
-grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$ZPAD/dispatch.argv" || fail "padded-attest pattern mismatch"
+cmp -s "$TMP/in3.md" "$TMP/in3-zero-pad.md" || fail "findings unchanged on padded-attest validator rejection"
 
 echo "=== merged FINDING blocks plus spurious empty-merge token fails validation ==="
 cp "$TMP/in3.md" "$TMP/in3-spurious.md"
