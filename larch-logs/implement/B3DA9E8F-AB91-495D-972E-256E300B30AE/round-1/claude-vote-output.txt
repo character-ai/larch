@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dedup logic is shared between explicit/implicit paths; implicit+explicit test already covers the same code branch
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- tee to known-good tmpdir is reliable; theoretical platform failure risk is negligible
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- process/PR-composition concern with no actionable code fix; CI already runs make lint
+FINDING_6: NO CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- speculative concern contingent on past CI flakiness that reviewer does not assert occurred
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing design intent; reviewer explicitly says no change required for this PR and treat as operator-trusted
+FINDING_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- already tracked and voted on as FINDING_20 in the lint-fix-loop review; duplicate issue filing not warranted
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- PR-composition observation with no actionable code fix; not a standalone issue worth filing
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly documents subprocess-only enforcement; the error is still surfaced to the caller
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing intentional asymmetry; aligning implicit and explicit strictness is a separate design decision
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- acknowledged out of scope; exit-code unification across all flags is a separate cleanup effort
