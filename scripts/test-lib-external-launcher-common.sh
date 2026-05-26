@@ -130,6 +130,76 @@ assert_classify_kv "parse sidecar" "other" "parse" \
 assert_classify_kv "generic non-zero" "other" "unknown" \
     external_classify_launch_failure 99 "/dev/null" "non-auth" 1 "cursor" "$NONEMPTY_OUTPUT"
 
+PLUGIN_ROOT="$TMPDIR_ROOT/plugin-root"
+mkdir -p "$PLUGIN_ROOT/scripts"
+cat > "$PLUGIN_ROOT/scripts/parse-codex-usage.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+mode="${LARCH_TEST_PARSE_MODE:-success}"
+case "$mode" in
+    success)
+        printf 'INPUT=7\nCACHED_INPUT=3\nOUTPUT=2\nTOTAL=12\n'
+        ;;
+    fail)
+        printf 'parse-codex-usage.sh: jq failed\n' >&2
+        exit 1
+        ;;
+    *)
+        exit 2
+        ;;
+esac
+EOF
+chmod +x "$PLUGIN_ROOT/scripts/parse-codex-usage.sh"
+cat > "$PLUGIN_ROOT/scripts/token-ledger.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${LARCH_TEST_LEDGER_CALLS:?}"
+EOF
+chmod +x "$PLUGIN_ROOT/scripts/token-ledger.sh"
+
+RECORD_SIDECAR="$TMPDIR_ROOT/usage.sidecar"
+RECORD_FILE="$TMPDIR_ROOT/usage.token-record"
+LEDGER_CALLS="$TMPDIR_ROOT/ledger-calls.txt"
+EVENTS_FILE="$TMPDIR_ROOT/events.jsonl"
+printf '{"type":"token_usage","input_tokens":10,"cached_input_tokens":3,"output_tokens":2}\n' > "$EVENTS_FILE"
+
+LARCH_TEST_PARSE_MODE=success \
+    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS_FILE" "$RECORD_SIDECAR" "codex_review" "$RECORD_FILE"
+if [[ "$(cat "$RECORD_FILE" 2>/dev/null)" == $'TOOL=codex\nINPUT=7\nOUTPUT=2\nCACHE_READ=3\nTOTAL=12\nRAW=codex_review' ]]; then
+    pass
+else
+    fail "token-record sidecar content mismatch: $(cat "$RECORD_FILE" 2>/dev/null)"
+fi
+
+LARCH_TEST_PARSE_MODE=success LARCH_TEST_LEDGER_CALLS="$LEDGER_CALLS" \
+    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS_FILE" "$RECORD_SIDECAR" "codex_ci_fix"
+if grep -Fqx 'record-vendor codex input=7 cache_read=3 output=2 total=12 raw=codex_ci_fix' "$LEDGER_CALLS" 2>/dev/null; then
+    pass
+else
+    fail "ledger mode args mismatch: $(cat "$LEDGER_CALLS" 2>/dev/null)"
+fi
+
+rm -f "$RECORD_FILE"
+LARCH_TEST_PARSE_MODE=fail \
+    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS_FILE" "$RECORD_SIDECAR" "codex_review" "$RECORD_FILE"
+if grep -Fq 'parse-codex-usage.sh: jq failed' "$RECORD_SIDECAR" 2>/dev/null && [[ ! -e "$RECORD_FILE" ]]; then
+    pass
+else
+    fail "fail-closed parse should append sidecar diagnostic without writing token-record"
+fi
+
+MISSING_EVENTS="$TMPDIR_ROOT/missing-events.jsonl"
+rm -f "$MISSING_EVENTS"
+MISSING_SIDECAR="$TMPDIR_ROOT/missing-events.sidecar"
+rm -f "$MISSING_SIDECAR"
+LARCH_TEST_PARSE_MODE=fail \
+    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$MISSING_EVENTS" "$MISSING_SIDECAR" "codex_review"
+if grep -Fq 'parse-codex-usage.sh: jq failed' "$MISSING_SIDECAR" 2>/dev/null; then
+    pass
+else
+    fail "missing/empty events parse should still append sidecar diagnostic"
+fi
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     for f in "${FAILURES[@]}"; do

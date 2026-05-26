@@ -1,0 +1,19 @@
+Reviewing the branch diff and commit history with a security lens.
+Diff is large (likely run logs). Focusing on security-relevant code changes.
+Reviewed commits from `fa1546e4` through `8aef0664` (plus earlier `#2790` breadcrumb work on the same branch). Security focus: new `parse-codex-usage.sh`, Codex launcher redirect/token paths, and adjacent breadcrumb publication hardening.
+
+## Summary
+
+The Codex per-bucket token capture change set follows sound trust-boundary practices: static `jq` filter with a quoted file operand (no shell interpolation of JSONL content), numeric-only KV output, `token-ledger.sh` `is_uint` validation on `record-vendor`, fail-closed ledger writes on parse failure, and stderr-only auth/transient classification preserved by the stdout/stderr split. Fixtures are anonymized token-count JSONL with no credential material. `${OUTPUT}.events.jsonl` / `${TRANSCRIPT_PATH}.events.jsonl` remain session-tmpdir artifacts and are not published to `larch-logs/` (same ephemeral-private class as existing sidecars per `SECURITY.md`).
+
+The breadcrumb publication path (`lib-larch-log.sh`) adds symlink/hardlink rejection, session-tmpdir containment, `*.ndjson`-only allowlisting, and redaction-before-publish — a security improvement, not a regression.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+### Out-of-Scope Observations
+
+1. **security** `scripts/lib-quiet.sh:176-181` (pre-existing) — EXIT-trap chaining uses `eval` on a captured trap body. Not introduced or amplified by this branch’s Codex work; noted only because `lib-quiet.sh` is touched for breadcrumb streaming. **Suggested fix:** (follow-up) replace `eval` with a direct trap restore pattern if trap injection ever becomes a concern.
+
+2. **risk-integration** `scripts/launch-review.sh` / `scripts/launch-codex-implement.sh` / `scripts/launch-codex-ci.sh` (documented contract) — Auth/transient classification is stderr-only after splitting Codex stdout to the events sidecar. This is intentional and tested; a future Codex CLI regression that routes auth/quota text only on stdout would weaken retry classification without exposing credentials. **Suggested fix:** monitor via launcher tests; tee non-JSON stdout lines into the sidecar only if Codex behavior changes (plan follow-up).

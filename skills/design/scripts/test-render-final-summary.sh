@@ -39,6 +39,58 @@ grep -Fq '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'missing
 cmp -s "$D/final-summary.md" "$std" || fail 'stdout vs final-summary.md byte mismatch'
 pass 'approved happy path + cmp'
 
+PLUGIN_STUB="$TMP/plugin"
+mkdir -p "$PLUGIN_STUB/scripts"
+cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
+cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
+cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_STUB/scripts/lib-cost-line-format.sh"
+cat >"$PLUGIN_STUB/scripts/token-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output) out=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[ -n "$out" ] || exit 2
+cat >"$out" <<'JSON'
+{
+  "claude": {"totals": {"total": 0}},
+  "codex": {"totals": {"total": 1050}},
+  "cursor": {"totals": {"total": 0}},
+  "BUCKETS_claude": {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0},
+  "BUCKETS_codex": {"input": 100, "cached_input": 900, "output": 50, "total": 1050},
+  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0}
+}
+JSON
+EOF
+cat >"$PLUGIN_STUB/scripts/timing-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --output) out=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"total_hms":"12s"}' >"$out"
+EOF
+chmod +x "$PLUGIN_STUB/scripts/token-report.sh" "$PLUGIN_STUB/scripts/timing-report.sh" \
+    "$PLUGIN_STUB/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
+
+std_codex="$TMP/std-codex.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_codex" 2>"$TMP/std-codex.err"
+grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'codex buckets run missing Cost bullet'
+if grep -Eq 'BLENDED_WARN|blended rate' "$std_codex" "$D/final-summary.md" "$TMP/std-codex.err"; then
+    fail 'codex per-bucket design summary must not surface blended-rate warnings'
+fi
+pass 'codex per-bucket summary omits blended warning'
+
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
     "$SUBJECT" --outcome cancelled-clarify --mode SIMPLE --post-publish-only >/dev/null 2>&1
 grep -Fq -- '- **Outcome**: cancelled-clarify' "$D/final-summary.md" || fail 'missing outcome bullet'

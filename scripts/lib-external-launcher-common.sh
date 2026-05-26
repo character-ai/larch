@@ -30,6 +30,46 @@ external_launcher_append_outer_meta() {
     } >> "$meta_path"
 }
 
+external_launcher_record_usage_from_events() {
+    local plugin_root="$1"
+    local events_file="$2"
+    local sidecar_path="$3"
+    local raw_label="$4"
+    local token_record_path="${5:-}"
+    local usage_err usage_blob key value
+    local input_tokens=0 cached_tokens=0 output_tokens=0 total_tokens=0
+
+    usage_err=$(mktemp "${TMPDIR:-/tmp}/external-launcher-usage.XXXXXX") || return 0
+    usage_blob=$("$plugin_root/scripts/parse-codex-usage.sh" "$events_file" 2>"$usage_err") || usage_blob=""
+    if [[ -z "$usage_blob" && -s "$usage_err" ]]; then
+        cat "$usage_err" >> "$sidecar_path" 2>/dev/null || true
+    fi
+    rm -f "$usage_err"
+    [[ -n "$usage_blob" ]] || return 0
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+            INPUT) input_tokens=$value ;;
+            CACHED_INPUT) cached_tokens=$value ;;
+            OUTPUT) output_tokens=$value ;;
+            TOTAL) total_tokens=$value ;;
+        esac
+    done <<< "$usage_blob"
+
+    if [[ -n "$token_record_path" ]]; then
+        printf 'TOOL=codex\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nTOTAL=%s\nRAW=%s\n' \
+            "$input_tokens" "$output_tokens" "$cached_tokens" "$total_tokens" "$raw_label" > "$token_record_path"
+        return 0
+    fi
+
+    "$plugin_root/scripts/token-ledger.sh" record-vendor codex \
+        input="$input_tokens" \
+        cache_read="$cached_tokens" \
+        output="$output_tokens" \
+        total="$total_tokens" \
+        raw="$raw_label" >/dev/null 2>&1 || true
+}
+
 external_serial_lock_acquire() {
     local _out_var="$1"
     local tool="$2"

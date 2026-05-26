@@ -1,0 +1,37 @@
+Reviewing branch changes against the plan: reading the precomputed diff and commit history.
+Searching the diff and reading key implementation files for plan fidelity.
+Checking whether `launch-review.md` references the contract doc and scanning for any remaining plan gaps.
+Plan fidelity review for issue **#2813** (per-bucket Codex token capture) against the supplied implementation plan. Commits on this branch since `main` include the feature commit `ca1e71e8`, review-fix rounds, unrelated `#2790` breadcrumb work, and implement run-log flushes.
+
+## Summary
+
+The core plan is **implemented end-to-end**: new `scripts/parse-codex-usage.sh` (+ contract doc, fixtures, harness), all three Codex launchers use `--json`, split stdout/stderr, fail-closed ledger/token-record writes, bucket math (`max(input - cached, 0)`), and the planned test harness updates (including `test-harnesses-17` registration and `docs/linting.md`). Legacy `tokens used` awk scraping is gone from production launchers.
+
+### In-Scope Findings
+
+- **architecture** `scripts/parse-codex-usage.md:47-58` — The documented per-field `input_tokens` / `cached_tokens` / `output_tokens` coalesce lists omit `.msg.input_tokens`, `.msg.cached_input_tokens`, and `.msg.output_tokens`, but `scripts/parse-codex-usage.sh:41-43` probes those paths (required for `scripts/fixtures/parse-codex-usage/codex-msg-token-usage.jsonl` and Codex 0.125 top-level `token_usage` events). A contributor aligning jq only to the markdown table could drop real CLI shapes and break the smoke fixture without noticing. **Suggested fix:** Extend the three coalesce blocks in `parse-codex-usage.md` to match the jq precedence in `parse-codex-usage.sh` (insert `.msg.input_tokens` / `.msg.cached_input_tokens` / `.msg.output_tokens` in the documented order).
+
+- **architecture** `scripts/launch-review.md:69-74` — The plan asked the Codex subsection to reference `scripts/parse-codex-usage.md`; the sibling doc only names `scripts/parse-codex-usage.sh`, so the contract doc is not discoverable from the launcher doc the plan singled out. **Suggested fix:** Add a sentence such as “See `scripts/parse-codex-usage.md` for argv/stdout grammar, bucket math, and schema probes.”
+
+### Out-of-Scope Observations
+
+- The branch also carries substantial non–#2813 diffs (e.g. `scripts/breadcrumb-monitor.sh`, `scripts/lib-larch-log.sh`, `scripts/ship-pr.sh` per `git diff main...HEAD --stat`), merged alongside the Codex token work; that is release/branch hygiene, not a gap in the #2813 plan items themselves.
+
+- Committed `larch-logs/implement/` trees are intentional per repo policy; not evaluated as plan drift.
+
+## Plan requirement checklist (complete)
+
+| Plan item | Status |
+|-----------|--------|
+| `scripts/parse-codex-usage.sh` + `.md` + `test-parse-codex-usage.sh` + `.md` + fixtures | Present |
+| `jq -nR` line-streaming (not slurp), fail-closed, four KV lines | Matches |
+| `launch-review.sh` / `launch-codex-implement.sh` / `launch-codex-ci.sh` `--json` + events sidecar + per-bucket record | Matches |
+| Sibling launcher `.md` updates (stderr-only auth contract) | Matches |
+| Harness updates + `Makefile` `test-harnesses-17` + `docs/linting.md` | Matches |
+| E2E: per-bucket → no `BLENDED_WARN`; legacy aggregate-only warning retained | In `test-token-vendor-scrapers.sh` |
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	architecture	scripts/parse-codex-usage.md:47-58	Per-field coalesce docs omit .msg.* token paths that jq uses.	Fixture codex-msg-token-usage.jsonl and 0.125 top-level token_usage events rely on .msg.input_tokens; doc-only edits could drop jq paths and fail smoke tests silently in CI.	Document .msg.input_tokens / .msg.cached_input_tokens / .msg.output_tokens in the coalesce lists to match parse-codex-usage.sh:41-43.
+1	in_scope	nit	architecture	scripts/launch-review.md:69-74	Plan-required reference to parse-codex-usage.md is missing.	Operators/contributors reading launch-review.md may not find the formal contract for KV output and fail-closed semantics.	Add an explicit pointer to scripts/parse-codex-usage.md next to the parse-codex-usage.sh mention.
+```

@@ -11,7 +11,7 @@ if git -C "$REPO" grep -rln 'render-cost-line\.sh' -- skills >/dev/null 2>&1; th
 fi
 pass 'zero render-cost-line references under skills/'
 
-allowed_re='^(scripts/render-cost-line\.sh|scripts/render-cost-line\.md|scripts/test-render-cost-line\.sh|scripts/test-render-cost-line\.md|scripts/test-render-cost-line-callsites\.sh|scripts/test-render-cost-line-callsites\.md|scripts/test-render-cost-line-realism\.sh|scripts/test-render-cost-line-realism\.md|scripts/test-design-structure\.sh)$'
+allowed_re='^(scripts/render-cost-line\.sh|scripts/render-cost-line\.md|scripts/test-render-cost-line\.sh|scripts/test-render-cost-line\.md|scripts/test-render-cost-line-callsites\.sh|scripts/test-render-cost-line-callsites\.md|scripts/test-render-cost-line-realism\.sh|scripts/test-render-cost-line-realism\.md|scripts/test-design-structure\.sh|scripts/test-token-vendor-scrapers\.sh|scripts/test-token-vendor-scrapers\.md)$'
 while IFS= read -r rel; do
     [[ -n "$rel" ]] || continue
     if ! printf '%s\n' "$rel" | grep -Eq "$allowed_re"; then

@@ -470,6 +470,7 @@ while IFS= read -r arg; do
 done < "$MODEL_ARGS_TMP"
 RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
 SIDECAR="${OUTPUT}.sidecar"
+CODEX_EVENTS="${OUTPUT}.events.jsonl"
 
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
@@ -490,6 +491,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     EXIT_CODE=0
     _ATTEMPT_START=$SECONDS
     if [[ "$SIDECAR" != "/dev/null" ]]; then
+        rm -f "$CODEX_EVENTS"
         CODEX_HOME="$CODEX_HOME_DIR" \
         RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
         "$RUN_EXTERNAL" \
@@ -502,9 +504,10 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
             --output-last-message "$OUTPUT" \
+            --json \
             -- \
             "$PROMPT" \
-            >>"$SIDECAR" 2>&1 || EXIT_CODE=$?
+            >"$CODEX_EVENTS" 2>"$SIDECAR" || EXIT_CODE=$?
     else
         CODEX_HOME="$CODEX_HOME_DIR" \
         RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
@@ -518,6 +521,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
             --output-last-message "$OUTPUT" \
+            --json \
             -- \
             "$PROMPT" \
             >/dev/null 2>&1 || EXIT_CODE=$?
@@ -553,9 +557,8 @@ fi
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
-N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR" 2>/dev/null || true)
-if [[ "$N" =~ ^[0-9]+$ ]]; then
-    "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex total="$N" raw="codex_review" >/dev/null 2>&1 || true
+if [[ "$SIDECAR" != "/dev/null" ]]; then
+    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR" "codex_review"
 fi
 
 exit "$EXIT_CODE"

@@ -1,0 +1,26 @@
+Reviewing branch changes against the plan: reading the precomputed diff, commit history, and key implementation files.
+Reviewed commits since `main` (feature work in `ca1e71e8` plus review rounds `7d492a2d`–`8aef0664`; branch also contains unrelated `#2790` breadcrumb work and `larch-logs` flush — findings below focus on issue **#2813** / per-bucket Codex capture).
+
+### In-Scope Findings
+
+1. **Latent** **correctness** (plan) `scripts/parse-codex-usage.sh:66-72` — The `cached_tokens > input_tokens` guard runs only on **stream-aggregated** sums after all events are added, not per event. **Concrete scenario:** JSONL line 1 has `input_tokens=5`, `cached_input_tokens=20`; line 2 has `input_tokens=1000`, `cached_input_tokens=0`, `output_tokens=10`. Aggregates pass (`20 ≤ 1005`), exit 0, emit `INPUT=985` / `CACHED_INPUT=20` / `TOTAL=1015`. Per-event bucket math (or fail-closed on line 1) would yield `INPUT=1000`, `CACHED_INPUT=5`, `TOTAL=1015` — wrong uncached/cached split and wrong per-bucket cost even though `TOTAL` matches. **Suggested fix:** In the jq `reduce`, skip or exit 1 when any event’s coalesced `input_tokens < cached_tokens` before accumulating; keep the aggregate check as a backstop.
+
+2. **Latent** **correctness** (plan, both) `scripts/parse-codex-usage.sh:36-44` — The parser sums **every** JSON object that exposes a usage marker (no `type == "token_usage"` filter; filter was added in `552eaa72` then removed in `8aef0664`). **Concrete scenario:** If a future (or current) Codex `--json` stream emits per-`responses` usage on turn events **and** a final `token_usage` summary with run totals, all lines are summed and ledger/totals are roughly **2×** real usage — cost lines overstate Codex spend (different failure mode than the old blended-rate warning). The checked-in smoke fixture (`scripts/fixtures/parse-codex-usage/codex-events-0.125.jsonl`) has a single `token_usage` line, so this is not exercised in CI. **Suggested fix:** Confirm against a real `codex exec --json` capture whether both shapes appear; if so, restrict to `type=="token_usage"` and/or dedupe by event id, and extend the smoke fixture.
+
+3. **Nit** **correctness** (plan) `scripts/test-launch-review.sh` (removed in `8aef0664`) — Round 2 dropped the harness case “usage parsing must stay disabled when the sidecar falls back to `/dev/null`.” Production code still skips parsing when `SIDECAR=/dev/null` (`scripts/launch-review.sh:560-582`), but there is no regression test for that plan contract. **Concrete scenario:** A future refactor always calls `parse-codex-usage.sh` and writes a ledger row in review-codex `/dev/null` mode, reintroducing unwanted accounting. **Suggested fix:** Restore a small stub test that forces `: > "$SIDECAR"` failure and asserts no vendor row / no parse call.
+
+### Out-of-Scope Observations
+
+1. **Nit** **architecture** `scripts/launch-review.sh:510` — Codex stdout redirect targets `run-external-agent.sh`, so `run-external-agent.sh` progress lines (`⏳` / `✓` / failure tails) land in `${OUTPUT}.events.jsonl` alongside JSONL. `fromjson?` skips them today; this predates the stream split pattern but is amplified by routing events through the wrapper. Not introduced as a functional regression by the jq parser.
+
+2. **code-quality** Branch scope — Several non-#2813 files changed on this branch (`scripts/breadcrumb-monitor.sh`, `scripts/lib-larch-log.sh`, `#2790` in `fa1546e4`, large `larch-logs/implement/` flush). Correctness review of those paths was not performed here.
+
+Overall the implementation matches the plan: shared `parse-codex-usage.sh`, `--json` + split redirects on all three launchers, fail-closed when parse fails, cache math `max(input−cached,0)`, harness coverage for cache-math / mixed shapes / BLENDED_WARN e2e / stderr auth / CI token-record. No blocking issues found for merging on the happy path Codex shapes covered by fixtures and stubs.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/parse-codex-usage.sh:66-72	cached>input validation uses aggregated sums only not per-event	Stream with one bad line (cached>input) plus valid lines passes aggregate check and emits wrong INPUT/CACHED_INPUT while TOTAL may look plausible	In jq reduce fail-closed when any event coalesced cached exceeds coalesced input before summing; keep aggregate guard as backstop
+1	in_scope	latent	correctness	scripts/parse-codex-usage.sh:36-44	Parser sums all usage-bearing JSON objects with no token_usage type filter	If Codex emits per-turn usage plus a final token_usage summary totals are double-counted and costs overstated	Verify real --json stream; filter or dedupe summary events; extend codex-events smoke fixture
+1	in_scope	nit	correctness	scripts/test-launch-review.sh	Harness for SIDECAR=/dev/null no-parse contract removed in 8aef0664	Future change could record Codex tokens when sidecar is /dev/null without test catching it	Restore stub test asserting no ledger row when sidecar init fails to /dev/null
+1	out_of_scope	nit	architecture	scripts/launch-review.sh:510	run-external progress lines append to events.jsonl	Bloat or rare parse confusion if progress text ever looks like JSON	Out of scope; optional tee filter later
+```

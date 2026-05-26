@@ -1,0 +1,33 @@
+FINDING_1: EXONERATE -- Duplication is real, but extracting a shared helper for three small parse loops adds more structure than this warrants.
+FINDING_2: YES
+FINDING_3: NO -- Implement and CI now append parse-codex-usage diagnostics to their sidecars on parse failure.
+FINDING_4: NO -- jq stderr is captured, replayed to stderr, and followed by a distinct jq-failed diagnostic.
+FINDING_5: EXONERATE -- The jq is dense, but moving it out or adding more structure is not justified for the current small parser.
+FINDING_6: EXONERATE -- Double-counting cumulative token_usage events is plausible but not demonstrated by the documented fixture/contract.
+FINDING_7: NO -- Implement and CI now mirror the review-side parse diagnostic append path.
+FINDING_8: NO -- jq stderr is no longer fully suppressed and jq failure is distinguished from no usage.
+FINDING_9: NO -- The described failure depends on hypothetical future JSON-shaped progress lines, not a concrete current bug.
+FINDING_10: NO -- launch-review now has schema-drift coverage asserting sidecar diagnostics and no ledger row.
+FINDING_11: NO -- The retry assertion now checks token_usage, not a generic literal "usage".
+FINDING_12: NO -- The new parse-codex-usage harness requires jq, so a jq-free environment would not get full green coverage.
+FINDING_13: NO -- The /dev/null sidecar branch now has harness coverage asserting no vendor row.
+FINDING_14: YES
+FINDING_15: NO -- Branch composition is not a concrete product bug worth filing as a follow-up issue.
+FINDING_16: EXONERATE -- A periodic real-Codex CI smoke could help, but it is optional operational coverage with nontrivial maintenance cost.
+FINDING_17: NO -- The parser now gates counted objects on type/msg.type == token_usage.
+FINDING_18: EXONERATE -- Tmpdir JSONL retention is a real sensitivity tradeoff, but deletion adds lifecycle complexity and reduces forensics.
+FINDING_19: NO -- The assignments validate digits before assignment and variable contents are not re-parsed as shell syntax.
+FINDING_20: YES
+FINDING_21: NO -- launch-review now gates parsing on EXIT_CODE == 0 and the parser requires token_usage type.
+FINDING_22: NO -- Implement and CI now append parse-codex-usage diagnostics to their sidecars.
+FINDING_23: NO -- jq failures now emit jq stderr plus a distinct "jq failed" diagnostic.
+FINDING_24: EXONERATE -- Retry under-billing is plausible but edge-case accounting, and accumulating failed-attempt usage would add complexity.
+FINDING_25: NO -- The transient retry test now asserts token_usage rather than a broad "usage" string.
+FINDING_26: YES
+FINDING_27: NO -- This item states implemented helper behavior rather than an actionable problem.
+FINDING_28: NO -- This item is a plan-fidelity summary, not a concrete review finding.
+FINDING_29: NO -- This item is a coverage/docs summary, not an actionable problem.
+FINDING_30: NO -- This item describes a completed round-1 fix rather than a defect.
+FINDING_31: NO -- The review-only diagnostic append is an intentional observability improvement, not a problem.
+FINDING_32: YES
+FINDING_33: NO -- The branch-noise note explicitly excludes those commits from fidelity findings and states no actionable defect.

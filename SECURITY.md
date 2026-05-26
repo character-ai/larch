@@ -31,6 +31,11 @@ files only. Session-local monitor sidecars such as `.quiet`, `.done`, `.status`,
 `larch-logs/.../breadcrumbs/`; attempted breadcrumb publication still fails
 closed on symlinks or redaction errors.
 
+Raw Codex `--json` event streams (`*.events.jsonl`) are session-local artifacts
+only. `scripts/design-log-publish.sh` and `scripts/larch-log.sh` exclude them
+from committed `larch-logs/` publication so prompt-bearing JSONL stays in the
+tmpdir and is not treated as a publishable design artifact.
+
 The external implementer prompts (`agents/codex-implementer.md`, `agents/cursor-implementer.md`) likewise prohibit folding security findings inline and prohibit emitting them in `oos_observations[]`. `/implement` Step 9a.1 defensively re-excludes any security-tagged OOS entries that slip through upstream filters before the `/issue` handoff.
 
 Malformed-manifest recovery in `/implement` Step 2 is intentionally narrower than ordinary `claude_fallback`. It only activates for a raw manifest that parses as a JSON object and represents either `status=complete` or the legacy `{status, summary, checks}` fingerprint, with an empty pre-launch index, a non-empty NUL-safe post-launch working-tree delta, and the same post-implementer safety gates as the normal external-implementer path. The recovery envelope preserves `ORCHESTRATOR_EDIT_AUTHORITY=allowed iff STATUS=claude_fallback`, but `RECOVERY_FROM=manifest-schema-invalid` means commit-only recovery: the orchestrator must not re-implement or sweep the index, and Step 4 commits only the dispatcher-provided NUL-delimited path list via `git commit --only --pathspec-from-file`.

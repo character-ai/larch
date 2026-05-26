@@ -49,11 +49,21 @@ if grep -q 'codex-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "tim
 
 cat > "$TMPDIR_BASE/token-record" <<'EOF'
 TOOL=codex
-TOTAL=99
+INPUT=10
+OUTPUT=5
+CACHE_READ=90
+TOTAL=105
 RAW=codex_ci_fix
 EOF
 "$REPO_ROOT/scripts/append-token-record.sh" --input "$TMPDIR_BASE/token-record" --tmpdir "$TMPDIR_BASE"
-if grep -q '"tool":"codex"' "$TMPDIR_BASE/token-report.ndjson"; then ok "append-token-record normalizes codex sidecar"; else fail "append-token-record normalizes codex sidecar"; fi
+if grep -q '"tool":"codex"' "$TMPDIR_BASE/token-report.ndjson" \
+    && grep -q '"input":10' "$TMPDIR_BASE/token-report.ndjson" \
+    && grep -q '"cache_read":90' "$TMPDIR_BASE/token-report.ndjson" \
+    && grep -q '"output":5' "$TMPDIR_BASE/token-report.ndjson"; then
+    ok "append-token-record normalizes codex per-bucket sidecar"
+else
+    fail "append-token-record normalizes codex per-bucket sidecar"
+fi
 
 stub_bin="$TMPDIR_BASE/ci-fix-stub-bin"
 mkdir -p "$stub_bin"
@@ -89,6 +99,170 @@ for role in resolve-conflict bump-classify changelog-draft; do
         ok "non-fix role $role omits topology.tsv"
     fi
 done
+
+runtime_bin="$TMPDIR_BASE/ci-runtime-bin"
+mkdir -p "$runtime_bin"
+runtime_argv="$TMPDIR_BASE/ci-runtime-argv.txt"
+
+cat > "$runtime_bin/codex" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+: > "$runtime_argv"
+for arg in "\$@"; do
+    printf '%s\n' "\$arg" >> "$runtime_argv"
+    if [[ "\$last" == "--output-last-message" ]]; then output_path="\$arg"; fi
+    last="\$arg"
+done
+[[ -n "\$output_path" ]] || exit 9
+printf 'ci fix transcript\n' > "\$output_path"
+printf '{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
+EOF
+chmod +x "$runtime_bin/codex"
+
+OUT_SUCCESS="$TMPDIR_BASE/ci-runtime-success"
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_SUCCESS" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+if grep -q '^TOOL=codex$' "${OUT_SUCCESS}.token-record" \
+    && grep -q '^INPUT=100$' "${OUT_SUCCESS}.token-record" \
+    && grep -q '^CACHE_READ=900$' "${OUT_SUCCESS}.token-record" \
+    && grep -q '^OUTPUT=50$' "${OUT_SUCCESS}.token-record" \
+    && grep -q '^TOTAL=1050$' "${OUT_SUCCESS}.token-record" \
+    && grep -q '^RAW=codex_ci_fix$' "${OUT_SUCCESS}.token-record"; then
+    ok "runtime success writes per-bucket codex token-record"
+else
+    fail "runtime success writes per-bucket codex token-record: $(cat "${OUT_SUCCESS}.token-record" 2>/dev/null)"
+fi
+rm -f "$TMPDIR_BASE/token-report.ndjson"
+"$REPO_ROOT/scripts/append-token-record.sh" --input "${OUT_SUCCESS}.token-record" --tmpdir "$TMPDIR_BASE"
+if grep -q '"tool":"codex"' "$TMPDIR_BASE/token-report.ndjson" \
+    && grep -q '"input":100' "$TMPDIR_BASE/token-report.ndjson" \
+    && grep -q '"cache_read":900' "$TMPDIR_BASE/token-report.ndjson" \
+    && grep -q '"output":50' "$TMPDIR_BASE/token-report.ndjson" \
+    && grep -q '"total":1050' "$TMPDIR_BASE/token-report.ndjson"; then
+    ok "runtime success appends per-bucket codex ledger row"
+else
+    fail "runtime success appends per-bucket codex ledger row: $(cat "$TMPDIR_BASE/token-report.ndjson" 2>/dev/null)"
+fi
+if grep -qx -- '--json' "$runtime_argv" 2>/dev/null; then
+    ok "runtime success argv includes --json"
+else
+    fail "runtime success argv includes --json: $(cat "$runtime_argv" 2>/dev/null)"
+fi
+
+cat > "$runtime_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'ci fix transcript without usage\n' > "$output_path"
+EOF
+chmod +x "$runtime_bin/codex"
+OUT_EMPTY="$TMPDIR_BASE/ci-runtime-empty"
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_EMPTY" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+if [[ ! -s "${OUT_EMPTY}.token-record" ]]; then
+    ok "runtime no-usage leaves codex token-record empty"
+else
+    fail "runtime no-usage leaves codex token-record empty: $(cat "${OUT_EMPTY}.token-record" 2>/dev/null)"
+fi
+rm -f "$TMPDIR_BASE/token-report.ndjson"
+"$REPO_ROOT/scripts/append-token-record.sh" --input "${OUT_EMPTY}.token-record" --tmpdir "$TMPDIR_BASE" >/dev/null 2>&1 || true
+if [[ ! -e "$TMPDIR_BASE/token-report.ndjson" ]] || ! grep -q '"tool":"codex"' "$TMPDIR_BASE/token-report.ndjson"; then
+    ok "empty codex token-record appends no ledger row"
+else
+    fail "empty codex token-record should append no ledger row: $(cat "$TMPDIR_BASE/token-report.ndjson" 2>/dev/null)"
+fi
+
+cat > "$runtime_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'ci fix transcript schema drift\n' > "$output_path"
+printf '{"type":"token_usage","input_tokens":"abc","cached_input_tokens":0,"output_tokens":1}\n'
+EOF
+chmod +x "$runtime_bin/codex"
+OUT_DRIFT="$TMPDIR_BASE/ci-runtime-drift"
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_DRIFT" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+if grep -q 'parse-codex-usage.sh: jq failed' "${OUT_DRIFT}.sidecar" 2>/dev/null; then
+    ok "runtime schema drift appends parse diagnostic to sidecar"
+else
+    fail "runtime schema drift appends parse diagnostic to sidecar: $(cat "${OUT_DRIFT}.sidecar" 2>/dev/null)"
+fi
+if [[ ! -s "${OUT_DRIFT}.token-record" ]]; then
+    ok "runtime schema drift leaves codex token-record empty"
+else
+    fail "runtime schema drift leaves codex token-record empty: $(cat "${OUT_DRIFT}.token-record" 2>/dev/null)"
+fi
+
+cat > "$runtime_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'ci fix transcript failed with usage\n' > "$output_path"
+printf '{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}\n'
+exit 1
+EOF
+chmod +x "$runtime_bin/codex"
+OUT_FAILED="$TMPDIR_BASE/ci-runtime-failed"
+set +e
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_FAILED" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+failed_rc=$?
+set -e
+if [[ "$failed_rc" == "0" ]] \
+    && grep -q '^TOOL=codex$' "${OUT_FAILED}.token-record" \
+    && grep -q '^INPUT=777$' "${OUT_FAILED}.token-record" \
+    && grep -q '^CACHE_READ=7000$' "${OUT_FAILED}.token-record" \
+    && grep -q '^OUTPUT=222$' "${OUT_FAILED}.token-record" \
+    && grep -q '^TOTAL=7999$' "${OUT_FAILED}.token-record" \
+    && grep -q '^RAW=codex_ci_fix$' "${OUT_FAILED}.token-record"; then
+    ok "failed runtime still writes per-bucket codex token-record when usage parses"
+else
+    fail "failed runtime should still write per-bucket codex token-record when usage parses: rc=$failed_rc token-record=$(cat "${OUT_FAILED}.token-record" 2>/dev/null)"
+fi
+
+cat > "$runtime_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+printf 'Error: not logged in\n' >&2
+exit 7
+EOF
+chmod +x "$runtime_bin/codex"
+OUT_AUTH="$TMPDIR_BASE/ci-runtime-auth"
+set +e
+auth_out=$(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_AUTH" --run-id r1 --repo owner/repo --timeout 60 2>/dev/null)
+auth_rc=$?
+set -e
+if [[ "$auth_rc" == "0" ]] && [[ "$auth_out" == *"LAUNCHER_FAILURE_REASON=auth"* ]] && grep -q 'not logged in' "${OUT_AUTH}.sidecar"; then
+    ok "stderr-routed auth failure remains classified from sidecar"
+else
+    fail "stderr-routed auth failure classification unexpected rc=$auth_rc out=$auth_out sidecar=$(cat "${OUT_AUTH}.sidecar" 2>/dev/null)"
+fi
 
 if [[ "$FAIL" -ne 0 ]]; then
     echo "test-launch-codex-ci: $FAIL failure(s), $PASS pass(es)" >&2

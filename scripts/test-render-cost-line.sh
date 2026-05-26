@@ -49,4 +49,29 @@ case "$want_line" in
 esac
 pass "byte-pin punctuation"
 
+# (f) per-bucket Codex flags route through token-cost without blended warning
+stderr_file=$(mktemp "${TMPDIR:-/tmp}/render-cost-line-stderr.XXXXXX")
+cost_kv=$("$SCRIPT_DIR/token-cost.sh" \
+    --codex-input-tokens 1000000 \
+    --codex-cached-input-tokens 9000000 \
+    --codex-output-tokens 500000)
+read_kv() {
+    local key=$1
+    printf '%s\n' "$cost_kv" | awk -F= -v k="$key" '$1==k{print $2; exit}'
+}
+total_cost=$(read_kv TOTAL_COST)
+claude_cost=$(read_kv CLAUDE_COST)
+codex_cost=$(read_kv CODEX_COST)
+cursor_cost=$(read_kv CURSOR_COST)
+total_tokens_k=$(($(read_kv TOTAL_TOKENS) / 1000))
+expected_line="💰 Cost: TOTAL ~\$$total_cost — Claude \$$claude_cost, Codex \$$codex_cost, Cursor \$$cursor_cost  |  Tokens: ${total_tokens_k}k"
+out=$("$RCL" --codex-input-tokens 1000000 --codex-cached-input-tokens 9000000 --codex-output-tokens 500000 2>"$stderr_file")
+test "$out" = "$expected_line" \
+    || fail "per-bucket codex flags line mismatch: got $out"
+if grep -Eq 'BLENDED_WARN|blended rate' "$stderr_file"; then
+    fail "per-bucket codex flags should not warn: $(cat "$stderr_file")"
+fi
+rm -f "$stderr_file"
+pass "per-bucket codex flags"
+
 printf 'PASS: test-render-cost-line.sh — %s checks\n' "$PASS"

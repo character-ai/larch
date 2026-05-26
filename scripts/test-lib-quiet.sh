@@ -183,4 +183,15 @@ if [[ -s "$SCRATCH/breadcrumb-invalid-category.ndjson" ]]; then
     fail "invalid category should not write a stream record"
 fi
 
+# 18. Overlong breadcrumb payloads are replaced instead of leaking a prefix.
+helper="$SCRATCH/breadcrumb-truncated.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; export LARCH_BREADCRUMB_STREAM; larch_quiet_init; emit_breadcrumb --category=progress "$(printf "%1100s" "" | tr " " "A")"'
+"$helper" "$SCRATCH/breadcrumb-truncated.ndjson" >"$SCRATCH/breadcrumb-truncated.out" 2>"$SCRATCH/breadcrumb-truncated.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-truncated.out")" "" "truncated breadcrumb stdout"
+assert_file_contains "$SCRATCH/breadcrumb-truncated.err" "WARN truncated breadcrumb record" "truncated breadcrumb warning"
+assert_file_contains "$SCRATCH/breadcrumb-truncated.ndjson" "text=[truncated]" "truncated breadcrumb sentinel"
+if grep -Eq 'text=A{20,}' "$SCRATCH/breadcrumb-truncated.ndjson"; then
+    fail "truncated breadcrumb should not keep a secret prefix"
+fi
+
 printf 'PASS: test-lib-quiet.sh\n'

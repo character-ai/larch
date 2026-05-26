@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Codex per-bucket token accounting now stays visible across launcher, `token-report`, and `/design` final-summary paths; per-bucket Codex cost rendering no longer emits misleading blended-rate warnings when `BUCKETS_codex` is populated.
 - test-aggregate-findings, test-launch-review, test-append-tool-failure: unset `LARCH_EXECUTION_ISSUES_LOG` and related vars at harness entry so synthetic aggregator warnings do not append to a parent `/implement` execution-issues log.
 - /implement — Create the feature branch at the start of Step 0 plan materialization (regression from #2588 / #2598; pre-existing dispatcher main-branch-prohibited guard exposed the gap).
 - `breadcrumb-monitor.sh` no longer exits immediately on a pre-created surfaced or done sentinel: both checks now require non-empty content (`[ -s ]`) so monitor blocks until Family B script actually exits, preventing step-jumping (e.g., `ship-pr.sh` starting before `review-and-fix.sh` finished). `lib-quiet.sh:larch_quiet__exit_write_done` writes `EXIT_CODE=N` content (not just a touch) atomically; the surfaced-file touch in `larch_quiet_init` also writes content. Every Family B script (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, `review-and-fix.sh`, `run-step2-dispatch.sh`, `step2-implement.sh`, `collect-agent-results.sh`, `dispatch-with-waterfall.sh`, `dispatch-plan-voters.sh`) now installs `larch_quiet_append_done_trap` after sourcing `lib-quiet.sh`, ensuring the EXIT trap writes the done sentinel. New `scripts/test-breadcrumb-monitor.sh` harness covers the empty/non-empty sentinel paths and end-to-end coupling (`test-harnesses-18`). Closes #2826.
@@ -22,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
+
+## [42.5.13] - 2026-05-25
+
+### Changed
+
+- Codex launchers now consume --json usage events and record uncached input, cached input, output, and total buckets instead of aggregate-only totals.
+- Added a shared fail-closed Codex usage parser with docs and offline coverage for schema variants, cache math, wrapper noise, and failure branches.
+- Updated launcher and token-report harnesses to assert per-bucket Codex accounting, empty records on parse failure, and stderr-only auth classification.
 
 ## [42.5.12] - 2026-05-25
 

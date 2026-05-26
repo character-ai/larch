@@ -1,0 +1,33 @@
+FINDING_1: EXONERATE -- Triplication is real but a shared helper is optional refactor, not a correctness gap.
+FINDING_2: NO -- parse-codex-usage.md now documents top-level/msg probes and token_usage filtering.
+FINDING_3: NO -- All three launchers capture parse stderr and append to the sidecar on failure.
+FINDING_4: NO -- Parser preserves jq stderr and emits a distinct jq-failed diagnostic.
+FINDING_5: EXONERATE -- Inline jq is dense but readable enough; external .jq file is optional polish.
+FINDING_6: EXONERATE -- token_usage gating and tests address the stated risk; multi-event double-count needs real CLI shapes first.
+FINDING_7: NO -- Implement and CI now mirror launch-review stderr capture on parse failure.
+FINDING_8: NO -- jq failures are no longer reported only as no usage events.
+FINDING_9: YES
+FINDING_10: NO -- test-launch-review.sh and test-launch-codex-ci.sh cover schema-drift parse-failure sidecar append.
+FINDING_11: NO -- Transient-retry test now greps for type token_usage, not literal usage.
+FINDING_12: EXONERATE -- jq-gated skip is a common harness pattern; requiring jq repo-wide is disproportionate.
+FINDING_13: NO -- codex-/dev/null-sidecar harness coverage exists in test-launch-review.sh.
+FINDING_14: NO -- test-launch-codex-ci.sh records argv and asserts --json is present.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- Parser requires type==token_usage and has a wrong-type negative harness case.
+FINDING_18: EXONERATE -- Events tmpdir retention is a known tradeoff; post-parse deletion is optional hardening.
+FINDING_19: NO -- Launchers validate KV values as digits before record-vendor.
+FINDING_20: EXONERATE -- Breadcrumb truncation predates #2813; fixing text= slicing is separate scope.
+FINDING_21: NO -- launch-review gates parse/record on EXIT_CODE==0 and has a failed-run harness case.
+FINDING_22: NO -- Implement/CI stderr handling is aligned with launch-review.
+FINDING_23: NO -- jq failed is a separate diagnostic from no usage events.
+FINDING_24: EXONERATE -- Last-attempt billing is inherent to rm -f per retry; worth documenting, not accumulating.
+FINDING_25: NO -- Assertion already uses token_usage, not bare usage.
+FINDING_26: YES
+FINDING_27: NO -- Describes implemented helper behavior, not a defect.
+FINDING_28: NO -- Describes implemented launcher behavior, not a defect.
+FINDING_29: NO -- Describes delivered tests/docs, not a defect.
+FINDING_30: NO -- Affirms round-1 fixes; not a problem finding.
+FINDING_31: NO -- Deliberate observability improvement; not worth an OOS issue.
+FINDING_32: YES
+FINDING_33: YES

@@ -136,7 +136,7 @@ larch_quiet_bc_valid_category() {
 }
 
 larch_quiet_write_breadcrumb_record() {
-    local _bc_cat="$1" _bc_text="$2" _rec _ts
+    local _bc_cat="$1" _bc_text="$2" _prefix _rec _ts
     if [ -z "$_bc_cat" ]; then
         larch_err "WARN unknown-category=<missing> emit_breadcrumb requires --category when LARCH_BREADCRUMB_STREAM is set"
         return 0
@@ -146,11 +146,11 @@ larch_quiet_write_breadcrumb_record() {
         return 0
     fi
     _ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'na')
-    _rec=$(printf 'larch:bc t=%s d=%s p=%s s=%s c=%s text=%s' \
-        "$_ts" "${LARCH_BC_DEPTH:-0}" "$$" "${0##*/}" "$_bc_cat" "$_bc_text")
+    _prefix=$(printf 'larch:bc t=%s d=%s p=%s s=%s c=%s text=' \
+        "$_ts" "${LARCH_BC_DEPTH:-0}" "$$" "${0##*/}" "$_bc_cat")
+    _rec="${_prefix}${_bc_text}"
     if [ "${#_rec}" -gt 1024 ]; then
-        _rec=$(printf '%s' "$_rec" | cut -c1-1020)
-        _rec="${_rec}..."
+        _rec="${_prefix}[truncated]"
         larch_err "WARN truncated breadcrumb record (>1KiB cap)"
     fi
     mkdir -p "$(dirname "$LARCH_BREADCRUMB_STREAM")" 2>/dev/null || true
