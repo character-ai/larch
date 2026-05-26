@@ -58,7 +58,7 @@ test-harnesses-7: test-agent-model-args test-body-file-title test-ci-wait test-c
 
 test-harnesses-8: test-aggregate-findings test-cache-key-discipline test-ci-wait-exit-trap test-compose-review-findings test-dispatch-plan-voters test-gather-context test-implement-fork-env test-launch-claude-subprocess test-merge-pr test-post-tracking-issue test-relevant-checks-validation test-review-relevant-checks-helper test-session-env-roundtrip test-tally-code-votes
 
-test-harnesses-9: test-alias-structure test-cache-root-validation test-clarify-comment test-create-pr test-dispatch-with-waterfall test-generate-code-flow-diagram test-launch-codex-ci test-mermaid-fragments test-preflight-args test-render-findings-batch test-review-structure test-session-setup-presence-defaults test-tally-plan-review test-findings-classification test-plan-review-loop
+test-harnesses-9: test-alias-structure test-cache-root-validation test-clarify-comment test-create-pr test-dispatch-with-waterfall test-generate-code-flow-diagram test-launch-codex-ci test-mermaid-fragments test-preflight-args test-render-findings-batch test-review-structure test-session-setup-presence-defaults test-tally-plan-review test-findings-classification test-review-findings-classification test-plan-review-loop
 
 test-harnesses-10: test-alias-target-resolution test-capture-session-transcript test-clarify-state test-cursor-implementer test-drop-bump-commit test-classify-bump test-commit-changelog test-generate-topology-docs test-implement-rebase-macro test-rebase-checkpoint-probe test-launch-review test-oos-disposition-gate test-render-lane-status test-session-setup-repo-fallback test-tally-vote
 

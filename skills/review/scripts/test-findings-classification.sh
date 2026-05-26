@@ -137,7 +137,7 @@ for round in 1 2; do
     [[ -f "$E/logs/review/run-e/review-findings-classification-round-${round}.tsv" ]] || fail "round $round review log TSV missing"
 done
 
-echo "# Fixture F: parser and vote_for_id parity"
+echo "# Fixture F: parser and vote_for_id parity, including missing-ID fallback shape"
 F="$TMP/f"
 mkdir -p "$F"
 cat > "$F/votes.txt" <<'EOF'
@@ -152,6 +152,30 @@ for id in FINDING_1 OOS_1; do
     lib_vote=$(vote_for_id "$id" "$F/votes.txt")
     [[ "$parser_vote" == "$lib_vote" ]] || fail "parser/vote_for_id parity failed for $id"
 done
+[[ "$("$PARSER" "$F/votes.txt" FINDING_2 | awk -F= '$1=="PARSED_VOTE"{print $2}')" == "" ]] \
+    || fail "missing ballot ID should stay empty before tally normalization"
+
+echo "# Fixture F2: missing ballot line records JUDGE_ERROR in TSV without changing tally semantics"
+F2="$TMP/f2"
+mkdir -p "$F2"
+write_ballot "$F2/ballot.md"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$F2/v1.txt"
+printf 'OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$F2/v2.txt"
+out="$F2/out.env"
+IMPLEMENT_TMPDIR="" "$TALLY" --ballot-file "$F2/ballot.md" --review-tmpdir "$F2" --round-num 1 --voter-files "$F2/v1.txt" "$F2/v2.txt" > "$out"
+class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
+python3 - "$class_file" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="") as fh:
+    rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
+r = rows["FINDING_1"]
+assert r["voting_result"] == "rejected", r
+assert r["v2_vote"] == "JUDGE_ERROR", r
+assert r["v2_correctness"] == "", r
+assert r["v2_severity"] == "", r
+assert r["v2_quality"] == "", r
+assert r["v2_uncertain"] == "true", r
+PY
 
 echo "# Fixture G: malicious rating tokens are sanitized to enum-only TSV cells"
 G="$TMP/g"
@@ -188,5 +212,15 @@ with open(sys.argv[1], newline="") as fh:
             assert row[f"v{idx}_quality"] in allowed["quality"], row
             assert row[f"v{idx}_uncertain"] in allowed["uncertain"], row
 PY
+
+echo "# Fixture H: quiet mode still emits a non-empty classification TSV contract"
+H="$TMP/h"
+mkdir -p "$H"
+write_ballot "$H/ballot.md"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$H/v1.txt"
+out="$H/out.env"
+env -u LARCH_QUIET_DISABLE IMPLEMENT_TMPDIR="" "$TALLY" --ballot-file "$H/ballot.md" --review-tmpdir "$H" --round-num 1 --voter-files "$H/v1.txt" > "$out"
+class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
+[[ -n "$class_file" && -s "$class_file" ]] || fail "quiet-mode tally should emit a non-empty classification TSV"
 
 echo "PASS: test-findings-classification.sh"

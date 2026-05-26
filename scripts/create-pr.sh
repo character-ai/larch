@@ -159,6 +159,43 @@ if [[ -n "$EXISTING_PR" ]]; then
     fi
 fi
 
+recover_existing_pr_after_create_conflict() {
+    local conflict_text="$1"
+    local pr_json pr_number pr_url pr_title
+
+    case "$conflict_text" in
+        *"pull request for branch"*"already exists"*) ;;
+        *) return 1 ;;
+    esac
+
+    pr_json=$(gh pr list \
+        ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} \
+        --head "$BRANCH" \
+        --state open \
+        --json number,url,title \
+        --limit 1 \
+        2>/dev/null || echo "")
+    pr_number=$(printf '%s\n' "$pr_json" | jq -r '.[0].number // empty' 2>/dev/null || echo "")
+    pr_url=$(printf '%s\n' "$pr_json" | jq -r '.[0].url // empty' 2>/dev/null || echo "")
+    pr_title=$(printf '%s\n' "$pr_json" | jq -r '.[0].title // empty' 2>/dev/null || echo "")
+
+    if [[ -z "$pr_number" || -z "$pr_url" ]]; then
+        pr_url=$(printf '%s\n' "$conflict_text" | grep -oE 'https?://[^[:space:]]+/pull/[0-9]+' | tail -1 || echo "")
+        pr_number=$(printf '%s\n' "$pr_url" | grep -oE '[0-9]+$' || echo "")
+        pr_title="$TITLE"
+    fi
+
+    if [[ -z "$pr_number" || -z "$pr_url" ]]; then
+        return 1
+    fi
+
+    emit_kv PR_NUMBER "$pr_number"
+    emit_kv PR_URL "$pr_url"
+    emit_kv PR_TITLE "$pr_title"
+    emit_kv PR_STATUS "existing"
+    return 0
+}
+
 # --- Push branch ---
 PUSH_STDERR=$(mktemp)
 if ! git push -u origin HEAD >"$PUSH_STDERR" 2>&1; then
@@ -206,6 +243,9 @@ printf '%s\n' "$PR_OUTPUT" > "$PR_STDOUT_FILE"
 if [[ $PR_EXIT -ne 0 ]]; then
     PR_STDERR=$(cat "$PR_STDERR_FILE" 2>/dev/null || true)
     PR_STDOUT_TAIL=$(tail -10 "$PR_STDOUT_FILE" 2>/dev/null || true)
+    if recover_existing_pr_after_create_conflict "$PR_STDERR"$'\n'"$PR_STDOUT_TAIL"; then
+        exit 0
+    fi
     if [[ -z "$PR_STDERR" && -z "$PR_STDOUT_TAIL" ]]; then
         larch_err "ERROR: Failed to create PR (exit $PR_EXIT): (no diagnostic captured; gh pr create exited $PR_EXIT with no output. Manual investigation required.) argv: $GH_CREATE_ARGV"
     else

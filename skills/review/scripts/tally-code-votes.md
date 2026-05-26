@@ -31,7 +31,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 - `rejected-findings.md` — non-accepted in-scope findings rendered under `### [rejected] FINDING_N` with a short **Rejected subtype** line, plus `Vote tally: YES=… NO=… EXON=… JUDGE_ERROR=…` appended.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
-- `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false`, `FINDING_N_OUTCOME=accepted|rejected`, optional `FINDING_N_REJECTED_SUBTYPE=<neutral|exonerated|true_rejected>` for non-accepted rows, plus summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
+- `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false`, `FINDING_N_OUTCOME=accepted|rejected`, optional `FINDING_N_REJECTED_SUBTYPE=<neutral|exonerated|true_rejected>` for non-accepted rows, plus the same `OOS_N_ACCEPTED` / `OOS_N_OUTCOME` / optional `OOS_N_REJECTED_SUBTYPE` key family for direct OOS headings, and summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
 - `scout-archetype-yield.tsv` — written when `--manifest-file` is provided. Schema: `archetype_name`, `focus_area`, `weight`, `findings_total`, `findings_accepted`, `findings_rejected`, `yield_ratio`.
 - Reviewer competition scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected`; rendered OOS columns are `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, and `OOS-Rejected`.
 
@@ -66,7 +66,9 @@ Manifest attribution maps output basenames, not slot IDs. Fallback basenames nor
 
 `finding_id` is the literal ballot ID (`FINDING_N` or `OOS_N`). `reviewer_slots` is the `|`-delimited reviewer attribution with delimiter whitespace stripped. `voting_result` is the same `classify_result` enum used by the tally (`accepted`, `rejected`, `exonerated`, `neutral`) for both in-scope and OOS rows.
 
-Each `vN_*` group is ordered by effective voter-file iteration order after parse-rate-degraded voters are removed. Votes are `YES`, `NO`, `EXONERATE`, `JUDGE_ERROR`, or empty when no recognized line exists for that item. Rating axes are enum-only; missing or unrecognized axis values are recorded as empty and force `vN_uncertain=true`.
+Each `vN_*` group is ordered by effective voter-file iteration order after parse-rate-degraded voters are removed. Votes are `YES`, `NO`, `EXONERATE`, or `JUDGE_ERROR`; missing or unparseable ballot lines are normalized to `JUDGE_ERROR` for effective voter slots. Rating axes are enum-only; missing or unrecognized axis values are recorded as empty and force `vN_uncertain=true`.
+
+Single-parse invariant: the TSV and markdown tally both derive each per-voter vote from a single call to `scripts/parse-judge-vote-and-rating.sh`. `vote_for_id` remains the legacy library helper, but the forensic TSV contract is keyed to the parser output so tally counts and `vN_vote` cells cannot drift under missing-line or malformed-line cases.
 
 ## Threshold (delegated to lib-vote-tally.sh)
 

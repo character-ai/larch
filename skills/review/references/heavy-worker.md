@@ -82,7 +82,7 @@ Before returning success, write `$REVIEW_TMPDIR/review-summary.json` with the Wr
 
 `accepted_count`, `rejected_count`, and `exonerated_count` are the canonical top-level counts. Mirror them under `finding_counts.total_accepted`, `finding_counts.total_rejected`, and `finding_counts.total_exonerated` for forward compatibility. `exonerated_count` is an informational sub-count of `rejected_count` (must satisfy `exonerated_count ≤ rejected_count`).
 
-On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_HEAVY=complete`. Optional additional `KEY=value` lines may follow; include `SCOUT_FAIL_REASON=<token>` when `SCOUT_STATUS=parse-failed`, for example:
+On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_HEAVY=complete`. Optional additional `KEY=value` lines may follow; include `SCOUT_FAIL_REASON=<token>` when `SCOUT_STATUS=parse-failed`. When multiple rounds emit classification TSVs, return a round-scoped mapping (`FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=...`, `FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_2=...`, etc.) instead of only the final round path. For example:
 
 ```text
 REVIEW_HEAVY=complete
@@ -92,6 +92,8 @@ DYNAMIC_SLOTS=2
 SCOUT_MANIFEST=$REVIEW_TMPDIR/scout-round1-manifest.json
 YIELD_TSV_FILE=$REVIEW_TMPDIR/scout-archetype-yield.tsv
 FINDINGS_CLASSIFICATION_TSV_FILE=$REVIEW_TMPDIR/findings-classification-round-1.tsv
+FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$REVIEW_TMPDIR/findings-classification-round-1.tsv
+FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_2=$REVIEW_TMPDIR/findings-classification-round-2.tsv
 ```
 
 No prose, no artifact content, and no blank lines between KV lines.

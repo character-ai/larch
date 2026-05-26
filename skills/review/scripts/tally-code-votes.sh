@@ -10,6 +10,11 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# Preserve a visible stream for WARN breadcrumbs even when quiet mode is
+# disabled and parse_vote_rating_for is called under command substitution.
+if ! (: >&3) 2>/dev/null; then
+    exec 3>&1
+fi
 # shellcheck source=scripts/lib-vote-tally.sh
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 # shellcheck source=scripts/lib-voter-parse-rate.sh
@@ -69,14 +74,22 @@ TALLY_ENV_FILE="$REVIEW_TMPDIR/review-tally.env"
 YIELD_TSV_FILE="$REVIEW_TMPDIR/scout-archetype-yield.tsv"
 
 nested_implement_round() {
-    [[ -n "${IMPLEMENT_TMPDIR:-}" && -n "$REVIEW_TMPDIR" ]] || return 1
-    local review_real impl_real
+    [[ -n "$REVIEW_TMPDIR" ]] || return 1
+    local review_real parent_real impl_real=""
     review_real="$(cd "$REVIEW_TMPDIR" 2>/dev/null && pwd -P)" || return 1
-    impl_real="$(cd "$IMPLEMENT_TMPDIR" 2>/dev/null && pwd -P)" || return 1
     case "$review_real" in
-        "$impl_real"/round-[0-9]*) return 0 ;;
+        */round-[0-9]*) parent_real="$(dirname "$review_real")" ;;
         *) return 1 ;;
     esac
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        impl_real="$(cd "$IMPLEMENT_TMPDIR" 2>/dev/null && pwd -P)" || return 1
+        [[ "$parent_real" == "$impl_real" ]] && return 0
+    fi
+    if [[ -n "$SESSION_ENV_PATH" ]]; then
+        impl_real="$(cd "$(dirname "$SESSION_ENV_PATH")" 2>/dev/null && pwd -P)" || return 1
+        [[ "$parent_real" == "$impl_real" ]] && return 0
+    fi
+    return 1
 }
 
 if nested_implement_round; then
@@ -197,7 +210,7 @@ parse_vote_rating_for() {
     rc=$?
     set -e
     if [[ "$rc" -ne 0 ]]; then
-        emit_kv WARN "judge vote/rating parser failed for $(basename "$voter_file") $ballot_id (rc=$rc); treating vote as JUDGE_ERROR"
+        printf 'WARN=%s\n' "judge vote/rating parser failed for $(basename "$voter_file") $ballot_id (rc=$rc); treating vote as JUDGE_ERROR" >&3
         printf 'PARSED_VOTE=JUDGE_ERROR\n'
         printf 'PARSED_CORRECTNESS=\n'
         printf 'PARSED_SEVERITY=\n'
@@ -212,14 +225,16 @@ write_classification_tsv_row() {
     local ballot_id="$1" reviewer_slots="$2" voting_result="$3"
     shift 3
     local row=("$ballot_id" "$(sanitize_classification_text_cell "$(reviewer_slots_for_tsv "$reviewer_slots")")" "$(sanitize_result_cell "$voting_result")")
-    local value vote correctness severity quality uncertain
+    local value vote correctness severity quality uncertain raw_vote
     for _ in 1 2 3; do
         if [[ $# -lt 5 ]]; then
             row+=("" "" "" "" "")
             continue
         fi
-        vote="${1:-}"; correctness="${2:-}"; severity="${3:-}"; quality="${4:-}"; uncertain="${5:-}"
+        raw_vote="${1:-}"; correctness="${2:-}"; severity="${3:-}"; quality="${4:-}"; uncertain="${5:-}"
         shift 5
+        vote="$raw_vote"
+        [[ -z "$vote" ]] && vote="JUDGE_ERROR"
         value=$(sanitize_vote_cell "$vote"); row+=("$value")
         value=$(sanitize_correctness_cell "$correctness")
         [[ -z "$value" ]] && uncertain=true

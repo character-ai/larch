@@ -2,10 +2,11 @@
 
 ## Purpose
 
-Push the current branch to `origin` and create or detect a GitHub pull request. Two paths:
+Push the current branch to `origin` and create or detect a GitHub pull request. Paths:
 
 - **Existing-PR fast-path**: when `gh pr view` reports an OPEN PR for the current branch, push any new local commits and emit `PR_STATUS=existing`. Used by `/implement` Step 9b on resumed runs and on every CI+rebase+merge iteration where the branch already has a PR.
 - **New-PR path**: no OPEN PR exists for the current branch. Push the branch (creates the upstream ref) and `gh pr create` with the supplied title/body. Emit `PR_STATUS=created`.
+- **Create-conflict recovery path**: if `gh pr create` reports that a pull request for the branch already exists, recover by querying `gh pr list --head <branch> --state open` and emit `PR_STATUS=existing` instead of stalling.
 
 Both paths emit the same four `PR_*` keys on stdout so downstream consumers parse one contract regardless of path.
 
@@ -50,7 +51,7 @@ Before any push attempt, `create-pr.sh` runs `git status --porcelain` and aborts
 |------|---------|
 | 0    | PR created or pre-existing PR detected; remote branch confirmed up-to-date with local. |
 | 1    | Push failed (includes dirty-tree abort). Either path: stderr carries the underlying git rejection or the list of uncommitted paths. |
-| 2    | Argument validation failed, branch detection failed (detached HEAD), working-tree inspection failed before any push attempt, `gh pr create` failed, or PR number/URL extraction failed. |
+| 2    | Argument validation failed, branch detection failed (detached HEAD), working-tree inspection failed before any push attempt, unrecoverable `gh pr create` failure, or PR number/URL extraction failed. |
 
 ## PR body redaction
 
@@ -68,6 +69,19 @@ Prior to the #837 fix, the fast-path's push line read `git push -u origin HEAD >
 
 The new-PR path uses plain `git push -u origin HEAD` (no force semantics) — the branch is freshly named and origin has no prior tip on it, so there is no lease scenario to consider. Push failure exits 1 with stderr surfaced.
 
+## PR-create conflict recovery
+
+`gh pr view` can fail to detect an already-open branch PR even though `gh pr create` later refuses with GitHub's "pull request for branch ... already exists" diagnostic. This can happen on resumed `/implement` runs after earlier partial PR creation or when GitHub's branch-to-PR lookup differs between the two commands. On that exact `gh pr create` failure shape, `create-pr.sh` queries `gh pr list --head "$BRANCH" --state open --json number,url,title --limit 1` and emits the normal existing-PR success contract:
+
+```
+PR_NUMBER=<integer>
+PR_URL=<full GitHub PR URL>
+PR_TITLE=<existing title, when available>
+PR_STATUS=existing
+```
+
+If the list query cannot recover the PR, the script falls back to the PR URL embedded in the `gh pr create` diagnostic. Other `gh pr create` failures still exit 2 with the diagnostic block.
+
 ## Exit-code parity invariant
 
 Both paths surface push failure as exit 1 with stderr, and both paths surface success as exit 0 with the four `PR_*` keys on stdout. Callers depend on this parity — `/implement` Step 9b runs the same parser regardless of `PR_STATUS=created|existing`.
@@ -83,7 +97,7 @@ On non-zero exit from `gh pr create`, the script always emits a diagnostic `ERRO
 
 ## Test harness
 
-`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback. It also covers explicit `--base`, detected default-branch base, fallback-to-`main` base selection on the new-PR path, the empty-stderr diagnostic case (asserts that the error block is non-empty when `gh pr create` exits with no output), and the pre-push clean-tree guard (clean tree proceeds; tracked-modified and untracked-file dirty trees exit non-zero with a descriptive error).
+`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill, create-conflict recovery via `gh pr list --head`, and PR-number fallback. It also covers explicit `--base`, detected default-branch base, fallback-to-`main` base selection on the new-PR path, the empty-stderr diagnostic case (asserts that the error block is non-empty when `gh pr create` exits with no output), and the pre-push clean-tree guard (clean tree proceeds; tracked-modified and untracked-file dirty trees exit non-zero with a descriptive error).
 
 ## Edit-in-sync rules
 

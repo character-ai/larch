@@ -122,6 +122,26 @@ classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}'
 grep -Fq $'OOS_1\tCursor-Testing\taccepted\tYES\ttrue\tminor\tadequate\tfalse\tYES\ttrue\tminor\tgood\tfalse\tNO\tpartially-true\tnit\tweak\tfalse' "$classification_file" \
     || { FAIL=1; printf '  FAIL classification TSV missing direct OOS_N row\n'; }
 
+echo "# Case: parser failure emits WARN breadcrumb and records JUDGE_ERROR in TSV"
+TMP="$WORKDIR/case_parser_failure_warn"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: parser failure fixture
+- **Reviewer**: Cursor-Testing
+- **Concern**: Parser can fail.
+- **Suggested revision**: Preserve WARN breadcrumb.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/good-vote-output.txt"
+out="$TMP/out.env"
+env -u LARCH_QUIET_DISABLE LARCH_BREADCRUMBS_SURFACED_FILE="$TMP/surfaced" "$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/good-vote-output.txt" "$TMP/missing-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq 'WARN=judge vote/rating parser failed' "$out" \
+    || { FAIL=1; printf '  FAIL parser failure WARN breadcrumb missing\n'; }
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'FINDING_1\tCursor-Testing\trejected\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL parser failure should record JUDGE_ERROR in TSV\n'; }
+
 echo "# Case: voter parse-rate diag emits degraded voter banner"
 TMP="$WORKDIR/case_voter_parse_banner"
 mkdir -p "$TMP"
