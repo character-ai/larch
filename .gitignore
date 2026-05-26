@@ -7,3 +7,6 @@ __pycache__/
 .agents/
 skills-lock.json
 node_modules/
+.parallel-tests-timings.json
+.parallel-tests-last-failures.txt
+.parallel-tests-last-output/

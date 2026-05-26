@@ -18,7 +18,7 @@ check "cursor input 1.25"         'LARCH_RATE_CURSOR_INPUT.*1\.25'
 check "cursor output 6.00"        'LARCH_RATE_CURSOR_OUTPUT.*6\.00'
 check "cursor aggregate 1.50"     'LARCH_RATE_CURSOR_AGGREGATE.*1\.50'
 
-TMPFILE=$(mktemp /tmp/test-rate-assertions.XXXXXX.py)
+TMPFILE=$(mktemp /tmp/test-rate-assertions.py.XXXXXX)
 trap 'rm -f "$TMPFILE"' EXIT
 
 # Extract the embedded Python from the heredoc, drop the __main__ guard (last 2 lines).

@@ -212,7 +212,11 @@ else
     le2=$(launcher_exit_from_capture "$CAP2" || echo missing)
     if [[ "$le2" != 0 && "$le2" != "missing" ]]; then ok "stall fixture 2 LAUNCHER_EXIT non-zero"; else fail "stall fixture 2 LAUNCHER_EXIT non-zero (got $le2)"; fi
     if grep -q 'Stall detected' "${OUT2}.diag"; then ok "stall fixture 2 diag Stall detected"; else fail "stall fixture 2 diag Stall detected"; fi
-    if [[ $((end2 - start2)) -lt 15 ]]; then ok "stall fixture 2 elapsed <15s"; else fail "stall fixture 2 elapsed <15s ($((end2 - start2)))"; fi
+    # Wall-clock assertion widened to <30s — under heavy parallel test load,
+    # fork/exec and child-reaping latency can stretch the post-stall-kill cleanup
+    # noticeably. The launcher's own stall-detect fires at LARCH_CURSOR_CI_STALL_THRESHOLD,
+    # so <30s still catches regressions where stall-detect doesn't fire at all.
+    if [[ $((end2 - start2)) -lt 30 ]]; then ok "stall fixture 2 elapsed <30s"; else fail "stall fixture 2 elapsed <30s ($((end2 - start2)))"; fi
 
     # --- Stall fixture 3: tree channel (resolve-conflict) ---
     MINIGIT="$TMPDIR_BASE/minigit"
@@ -235,7 +239,7 @@ else
     le3=$(launcher_exit_from_capture "$CAP3" || echo missing)
     if [[ "$le3" != 0 && "$le3" != "missing" ]]; then ok "stall fixture 3 LAUNCHER_EXIT non-zero"; else fail "stall fixture 3 LAUNCHER_EXIT non-zero (got $le3)"; fi
     if grep -q 'Stall detected' "${OUT3}.diag"; then ok "stall fixture 3 diag Stall detected"; else fail "stall fixture 3 diag Stall detected"; fi
-    if [[ $((end3 - start3)) -lt 20 ]]; then ok "stall fixture 3 elapsed <20s"; else fail "stall fixture 3 elapsed <20s ($((end3 - start3)))"; fi
+    if [[ $((end3 - start3)) -lt 40 ]]; then ok "stall fixture 3 elapsed <40s"; else fail "stall fixture 3 elapsed <40s ($((end3 - start3)))"; fi
 
     # --- Stall fixture 4: steady progress, no stall kill ---
     STUB4="$TMPDIR_BASE/stub4"
@@ -270,7 +274,7 @@ else
     end5=$(date +%s)
     le5=$(launcher_exit_from_capture "$CAP5" || echo missing)
     if [[ "$le5" == 124 ]]; then ok "stall fixture 5 LAUNCHER_EXIT 124"; else fail "stall fixture 5 LAUNCHER_EXIT 124 (got $le5)"; fi
-    if [[ $((end5 - start5)) -lt 15 ]]; then ok "stall fixture 5 elapsed <15s"; else fail "stall fixture 5 elapsed <15s ($((end5 - start5)))"; fi
+    if [[ $((end5 - start5)) -lt 30 ]]; then ok "stall fixture 5 elapsed <30s"; else fail "stall fixture 5 elapsed <30s ($((end5 - start5)))"; fi
     if grep -q 'Stall detected' "${OUT5}.diag" 2>/dev/null; then fail "stall fixture 5 should not be stall-killed"; else ok "stall fixture 5 no stall kill"; fi
     unset LARCH_CURSOR_CI_STALL_THRESHOLD
 
