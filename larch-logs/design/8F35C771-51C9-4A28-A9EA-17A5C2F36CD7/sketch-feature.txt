@@ -1,0 +1,33 @@
+ISSUE #2848: Breadcrumb publish pipeline duplication and monitor exit gap
+
+## Problem (paraphrased from issue body)
+
+(1) `scripts/design-log-publish.sh` and `scripts/larch-log.sh` previously duplicated breadcrumb staging/redaction/atomic-mv logic between `design_publish_breadcrumbs` and `larch_log_publish_breadcrumbs`. The duplication has since been resolved by #2790/#2849 — both now delegate to `larch_log_publish_breadcrumbs_shared` in `scripts/lib-larch-log.sh`. Confirm no residual copy-paste remains between the two scripts (manifest writers, file enumerators, error reporters, etc.) and consolidate any genuine remaining duplication in this PR.
+
+(2) `scripts/breadcrumb-monitor.sh:163-168` exits with code 4 after a 30-minute (1800s) timeout without signaling or stopping the paired background script. Plan-review collectors use `--timeout 1860` (31 minutes) which is LONGER than the monitor's timeout — so when monitor exits, the background script continues running with no breadcrumb consumer, leaking processes. Add cleanup so the monitor signals the paired background process on timeout exit.
+
+## User-resolved scope (Round 1 decisions)
+
+1. **Item (1) scope**: Audit + close any residual duplication via a quiet side-by-side sweep of `design-log-publish.sh` vs `larch-log.sh` / `lib-larch-log.sh`. Consolidate any genuine remaining duplication in this PR's diff (no separate audit report).
+
+2. **Pairing mechanism (item 2)**: Add a `--paired-pid-file <PATH>` flag to `breadcrumb-monitor.sh`. Callers allocate `$LARCH_PAIRED_PID_FILE` (mktemp under `$DESIGN_TMPDIR/breadcrumbs/` and analogous tmpdirs), export it before the background launch, and pass `--paired-pid-file` pointing at the same path to the monitor. Long-running scripts write their own `$$` to that file at startup when `LARCH_PAIRED_PID_FILE` is set in the environment. Backward-compatible (opt-in: if no flag, no signaling).
+
+3. **Signal strategy**: On monitor timeout — send SIGTERM to the paired PID, wait 5 seconds grace, then SIGKILL if still alive. Standard graceful-shutdown pattern.
+
+4. **Adoption scope**: Update ALL current paired callsites in one PR. This means: (a) every Family B long-running script (`collect-agent-results.sh`, `ship-pr.sh`, `run-step5-review.sh`, `ci-wait.sh`, etc.) writes `$$` to `$LARCH_PAIRED_PID_FILE` at startup; (b) every SKILL.md fenced block that pairs a background launch with `breadcrumb-monitor.sh` allocates the env var and passes `--paired-pid-file` to the monitor.
+
+5. **Lint enforcement**: Update `scripts/lint-foreground-markers.sh` (and its test harness) to enforce the new contract — every Family B fenced block must allocate `LARCH_PAIRED_PID_FILE` and pass `--paired-pid-file` to the paired monitor. Hard contract going forward (CI-blocking).
+
+6. **Missing pid-file fallback**: When the monitor times out and `--paired-pid-file` was provided but the file is missing/empty/malformed, log a `WARN paired-pid-file-missing` breadcrumb and proceed with the current exit code 4 (no escalation, no kill attempt). Most defensive.
+
+7. **Audit shape**: Quiet sweep folded into the PR diff. No separate audit report file.
+
+## Hard constraints (must not break)
+
+- Bash 3.2 portability (per `BASH_AUTHORING.md` §3): no associative arrays, no namerefs, no `mapfile`/`readarray`, no `${var^^}`/`${var,,}` case conversion, no `&>>`.
+- `set -euo pipefail` strict mode (per `.claude/rules/shell-strict-mode.md`).
+- Script-md siblings (per `.claude/rules/script-md-siblings.md`): every `.sh` script edited must have its sibling `.md` updated in the same PR.
+- Existing `breadcrumb-monitor.sh` flag contract: `--stream`, `--done-sentinel`, `--status-file`, `--quiet-log`, `--surfaced-sentinel`, `--poll-interval=`, `--rate-cap=`, `--final-tail-lines=`, `--mode=`. `--paired-pid-file` must be optional and backward-compatible.
+- The `lint-foreground-markers.sh` banner literal and per-anchor comment literal (per `BASH_AUTHORING.md` §4) are matched character-by-character by CI; do not paraphrase.
+- Path-validation invariant: any new path flag passed to `breadcrumb-monitor.sh` must pass through `larch_bm_validate_path` (absolute, no `..`, no symlinks, under session tmpdir).
+- Family B denylist (from BASH_AUTHORING.md §4): the nine entrypoints enforced by `lint-foreground-markers.sh` are `ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, `collect-agent-results.sh`, and 5 others. Update all in one PR.

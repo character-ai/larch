@@ -1,0 +1,35 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- concern legitimate but duplicated by FINDING_3
+FINDING_7: YES
+FINDING_8: EXONERATE -- concern legitimate (orphaned children) but duplicated by FINDING_4
+FINDING_9: EXONERATE -- concern legitimate but duplicated by FINDING_2
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- concern legitimate but duplicated by FINDING_4
+FINDING_14: YES
+FINDING_15: EXONERATE -- concern legitimate but duplicated by FINDING_2
+FINDING_16: EXONERATE -- concern legitimate (nested PID overwrites) but duplicated by FINDING_11
+FINDING_17: EXONERATE -- concern legitimate but duplicated by FINDING_2
+FINDING_18: EXONERATE -- concern legitimate but duplicated by FINDING_10
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- concern legitimate but duplicated by FINDING_2
+FINDING_22: EXONERATE -- concern legitimate but duplicated by FINDING_11
+FINDING_23: EXONERATE -- concern legitimate but duplicated by FINDING_4
+FINDING_24: EXONERATE -- concern legitimate but duplicated by FINDING_3
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- plan's "poll kill -0 once per second for up to 5 seconds" is directionally sufficient; loop body shape is implementation detail
+FINDING_29: YES
+FINDING_30: EXONERATE -- concern legitimate but duplicated by FINDING_11
+FINDING_31: EXONERATE -- concern legitimate but duplicated by FINDING_1
+FINDING_32: EXONERATE -- concern legitimate but duplicated by FINDING_10
+FINDING_33: EXONERATE -- concern legitimate but duplicated by FINDING_1
+FINDING_34: YES
+FINDING_35: EXONERATE -- plan already specifies documenting new tokens and step-7a carve-out; full rewrite scope is implementation detail

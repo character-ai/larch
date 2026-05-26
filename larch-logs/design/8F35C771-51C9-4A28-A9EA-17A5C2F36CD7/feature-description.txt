@@ -1,0 +1,16 @@
+[OOS] Breadcrumb publish pipeline duplication and monitor exit gap
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor specialist (structure) + Cursor specialist (architecture)
+**Phase**: review
+**Vote tally**: FINDING_18 YES=2, FINDING_22 YES=2 — filed combined per OOS rule 3
+
+## Description
+
+(1) `scripts/design-log-publish.sh:254-312` `design_publish_breadcrumbs` duplicates `larch_log_publish_breadcrumbs` in `scripts/larch-log.sh`. Both have the same staging/redaction/atomic-mv logic. Future edge-case fixes must be applied to both independently or they will diverge. Extract a single shared publish helper called by both paths.
+
+(2) `scripts/breadcrumb-monitor.sh:176-180` exits after 30 minutes (the monitor timeout) without signaling or stopping the background script it is paired with. A long `ship-pr.sh` run can outlive the monitor, leaving the background process running with no breadcrumb consumer. Add cleanup so the monitor kills or signals the paired background process on timeout exit.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
