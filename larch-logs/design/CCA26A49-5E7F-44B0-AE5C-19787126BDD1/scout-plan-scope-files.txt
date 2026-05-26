@@ -1,0 +1,2 @@
+scripts/git-commit.md
+scripts/test-implement-finalize.md

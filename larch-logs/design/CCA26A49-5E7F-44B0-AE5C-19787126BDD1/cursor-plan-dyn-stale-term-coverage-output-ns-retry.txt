@@ -1,0 +1,4 @@
+Reading the plan and scanning the bump/drop-bump/CHANGELOG pathway for residual "amend" references.
+Verifying the close-comment PR reference and whether any pathway docs still carry stale Step 8a amend wording.
+{"no_issues_found": true}
+

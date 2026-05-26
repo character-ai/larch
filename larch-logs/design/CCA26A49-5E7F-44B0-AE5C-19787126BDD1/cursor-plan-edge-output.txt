@@ -1,0 +1,17 @@
+Reading the implementation plan and exploring cited codebase paths.
+1. **[correctness]** `plan.txt:45-53` — Close comment uses `⟨replace with the new PR number⟩` but acceptance criteria only require posting a comment, not that the placeholder was substituted. **Concern:** `/implement` may post the template verbatim; issue #2899 would cite a non-existent PR. **Revision:** Add acceptance criterion: close comment must contain the merged follow-up PR number and must not include `⟨`/`⟩` or the substring `replace with`.
+
+2. **[risk-integration]** `plan.txt:77-86` — Acceptance greps only `scripts/git-commit.md` and `scripts/test-implement-finalize.md`; Items A–C from issue #2899 (`implement-finalize.sh`, `drop-bump-commit.md`, `apply-bump.md`) are assumed fixed via #2892 but not re-checked before close-as-stale. **Concern:** A branch that only lands the two `.md` edits could close #2899 while primary items regressed (e.g. reintroduced "amend" in `implement-finalize.sh:780-781`). **Revision:** Add pre-close check: `grep -i amend` on the three originally-cited paths (or `git merge-base --is-ancestor fdfacb21 HEAD`) before posting the close comment.
+
+3. **[architecture]** `scripts/git-commit.md:3` (post-edit) — Removing `on the path that doesn't amend` leaves Step 8a listed beside Steps 4/7/12c as if `/implement` calls `git-commit.sh` directly for 8a. **Concern:** Step 8a is orchestrated by `implement-finalize.sh` → `commit-changelog.sh` → `git-commit.sh`; operators may skip `commit-changelog.md` when debugging Step 8a failures. **Revision:** Phrase as ``Step 8a `CHANGELOG` commit (via `scripts/commit-changelog.sh`)`` in the same minimal edit.
+
+[OUT_OF_SCOPE] `scripts/test-implement-finalize.sh:275-281` — Dead `git-amend-add.sh` stub gated on never-set `STUB_AMEND_FAIL`; plan correctly defers cleanup.
+
+[OUT_OF_SCOPE] `skills/implement/scripts/test-step-8a-changelog.sh:86-93` — Sandbox still ships a `git commit --amend` stub labeled "legacy callers"; adjacent to harness docs but outside this plan's two-file scope.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:45-53	Close-comment PR placeholder not enforced in acceptance	Template posted verbatim leaves #2899 citing a fake PR	Add acceptance: merged PR number present; no ⟨⟩/replace-with placeholder in posted body
+2	in_scope	important	risk-integration	plan.txt:77-86	Close-as-stale lacks verification of issue Items A–C on main	Only adjacent .md files grep-checked; primary paths could regress while issue closes	Add pre-close grep -i amend (or fdfacb21 ancestry) on implement-finalize.sh drop-bump-commit.md apply-bump.md
+3	in_scope	latent	architecture	scripts/git-commit.md:3	Step 8a reads like a direct git-commit.sh call site after qualifier removal	Operators debug git-commit.sh instead of commit-changelog.sh for Step 8a	Wording: Step 8a CHANGELOG commit (via scripts/commit-changelog.sh)
+4	out_of_scope	latent	code-quality	scripts/test-implement-finalize.sh:275-281	Dead git-amend-add stub never exercised	STUB_AMEND_FAIL never set; stub misleads readers of harness .sh	Follow-up: remove stub or wire failure test to commit-changelog stub
+5	out_of_scope	latent	code-quality	skills/implement/scripts/test-step-8a-changelog.sh:86-93	Legacy amend stub in Step 8a harness	Sandbox still performs git commit --amend	Align stub with commit-changelog-only contract in a separate issue

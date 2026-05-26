@@ -1,0 +1,13 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-pragmatic-output.txt|TOOL=cursor|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=body too thin: 11/30 words after stripping fenced code
+
+## Reviewer output (<TMPDIR>/cursor-plan-pragmatic-output.txt)
+
+Reading the implementation plan and exploring referenced codebase paths.
+{"no_issues_found": true}
+
+## Reviewer stderr (<TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+
+(empty: <TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+

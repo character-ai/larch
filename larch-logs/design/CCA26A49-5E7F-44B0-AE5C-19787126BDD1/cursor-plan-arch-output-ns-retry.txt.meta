@@ -1,0 +1,10 @@
+TOOL=cursor
+TIMEOUT=1860
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=true
+OUTPUT_FILE=<TMPDIR>/cursor-plan-arch-output-ns-retry.txt
+OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.22/scripts/launch-review.sh
+OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/cursor-plan-arch-output-ns-retry.txt.prompt
+OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
+OUTER_LAUNCHER_RISK=high
+NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN

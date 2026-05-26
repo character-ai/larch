@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:7,48	Background and close-comment template say PR #2892/fdfacb21 closed source issues #2858/#2859/#2860	Those issues were closed with comment Combined into #2899, not by the runtime PR; the close narrative is factually wrong and misleads auditors	Rewrite both passages: #2892 landed Items A-C fixes on main; #2858-2860 were consolidated into #2899; this follow-up PR only cleans adjacent docs
