@@ -138,8 +138,9 @@ if [[ "$MERGE_STATE" == "BEHIND" ]]; then
     exit 0
 fi
 
-# Empty or UNKNOWN mergeStateStatus = could not determine merge state
-# (gh API/network failure on the empty path; GitHub itself unsure on UNKNOWN).
+# Empty or UNKNOWN mergeStateStatus = could not determine merge state yet.
+# Retry up to 4 times with 5-second sleeps before failing closed as error;
+# empty usually reflects gh API/network failure, UNKNOWN is GitHub uncertainty.
 # Routing through the admin-eligible gate below would mis-emit main_advanced
 # with a misleading "Branch mergeStateStatus is " (empty trailing) error and
 # nudge callers toward a useless rebase. Treat as the existing `error` outcome
