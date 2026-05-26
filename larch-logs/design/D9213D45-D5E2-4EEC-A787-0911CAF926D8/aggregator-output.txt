@@ -1,0 +1,3 @@
+Merging the 34 raw reviewer findings into a deduplicated structured list. Verifying a few key locations so merged concerns match the codebase.
+Confirmed harness allowlist, stall bullet, and loop cap logic against the repo. Producing the merged aggregator output.
+

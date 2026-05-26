@@ -1,0 +1,112 @@
+Propose a high-level implementation approach for this feature:
+
+[DESIGNING] [BUG] MAV loop re-invoke with --starting-round=base_cap produces starting-round-invalid stall instead of mav-resume-past-cap
+
+## Bug Report
+
+**RUN_ID**: `FA25692E-DF5F-4EBF-95A3-78754D218B79`
+**Related issue**: #2813 (the implement run that triggered this)
+**Symptom**: `STEP5_REVIEW_STATUS=stall STALL_REASON=starting-round-invalid` when re-invoking the Step 5 review loop wrapper after 4 rounds of MAV (main-agent-vote-required) at the round cap boundary.
+
+## Summary
+
+During `/implement #2813`, the Step 5 review panel (Cursor) consistently produced empty aggregator output, triggering `main-agent-vote-required` on every round. After 4 MAV rounds (rounds 1-4), the orchestrator re-invoked:
+
+```
+run-step5-review.sh --mode loop --starting-round 5
+```
+
+with `base_cap=5`. This produced `starting-round-invalid` stall with `STALL_TRACKING=true`, incorrectly marking the tracking issue as `[STALLED]` and preventing normal completion flow. The PR (#2850) was eventually opened manually, but the tracking issue rename was wrong and the run was recorded as stalled rather than cap-hit.
+
+## Expected Behavior
+
+With `STARTING_ROUND=5` and `base_cap=5`, the loop should either:
+1. Fire `mav-resume-past-cap` (since `round_num=5 ≤ effective_round_cap=5+prior_deg`) — correct cap-hit path, proceed as complete; OR
+2. Run round 5 normally if effective_round_cap > 5 (since MAV rounds may count as degraded rounds)
+
+**`STALL_TRACKING` should NOT be set to `true`** for a cap-hit situation.
+
+## Observed Behavior
+
+```
+STEP5_REVIEW_STATUS=stall
+STALL_TRACKING=true
+STALL_REASON=starting-round-invalid
+ROUNDS_COMPLETED=0
+FINAL_ROUND_NUM=5
+EFFECTIVE_ROUND_CAP=5
+--- Failure tail (status=2) ---
+```
+
+The `starting-round-invalid` stall fires in `review-implement-step5-loop.sh:82-84`:
+
+```bash
+if (( 10#$STARTING_ROUND > 1 )); then
+    if [[ ! -f "$IMPLEMENT_TMPDIR/round-$((10#$STARTING_ROUND - 1))/review-and-fix.env" ]]; then
+        step5_emit_final_envelope stall true starting-round-invalid 0 "$STARTING_ROUND" unknown "" "" "$base_cap"
+        exit 2
+    fi
+fi
+```
+
+For `STARTING_ROUND=5`, it checks for `round-4/review-and-fix.env`. **This file exists** (written by the round-4 MAV-apply, verified post-hoc):
+
+```
+$ cat round-4/review-and-fix.env
+REVIEW_AND_FIX_STATUS=fix-applied
+REVIEW_CORE_STATUS=fix-required
+IRF_LAST_ROUND_STATUS=fix-applied
+DEGRADED_ROUND=false
+...
+```
+
+The condition `[[ ! -f "round-4/review-and-fix.env" ]]` should evaluate to FALSE, meaning the stall should NOT fire. Yet it did.
+
+## Root Cause Analysis
+
+Two possible explanations:
+
+**Hypothesis A (most likely)**: The `starting-round-invalid` guard is the correct code path but fires due to a timing or filesystem issue. The round-4 MAV-apply wrote `review-and-fix.env` just before the loop5 invocation, but a macOS filesystem caching or sync delay caused the file to not be visible yet when the loop checked for it.
+
+**Hypothesis B**: The `IMPLEMENT_TMPDIR` resolved inside `review-implement-step5-loop.sh` (via `cd ... && pwd -P` in `run-step5-review.sh`) had a different physical path than what was used to write the file, making the check fail despite the file existing at the canonical path.
+
+**Secondary issue**: All 4 MAV rounds had `DEGRADED_ROUND=false` in their `review-and-fix.env`, so `count_prior_degraded_rounds` returned 0 and `effective_round_cap=5`. With `round_num=5` and `effective_round_cap=5`, the `mav-resume-past-cap` check (`round_num > effective_round_cap` = `5 > 5` = false) also does NOT fire. So even if the `starting-round-invalid` guard were bypassed, round 5 would simply run normally — which is correct behavior.
+
+## Impact
+
+1. `STALL_TRACKING=true` incorrectly set → tracking issue renamed `[STALLED]` for a successful 4-round review run
+2. PR must be created and continued manually after the stall
+3. Final report shows `outcome=stalled` instead of `outcome=pr-created` or `outcome=merged`
+
+## Context
+
+- MAV rounds: the Cursor aggregator consistently produced narration text but no `### FINDING_N:` blocks in every round, causing `aggregator-validation-exhausted → main-agent-vote-required` on all 4 rounds. This is a separate potential issue (aggregator never producing structured output), but the root cause here is the stall at the cap boundary.
+- All 4 MAV rounds: `DEGRADED_ROUND=false` (MAV-apply mode writes this value; the loop does not count MAV rounds as degraded).
+- Base cap: 5. Effective cap after 4 non-degraded MAV rounds: still 5.
+
+## Files
+
+- `skills/review-and-fix/scripts/review-implement-step5-loop.sh:82-87` — `starting-round-invalid` guard
+- `scripts/run-step5-review.sh:151` — `pwd -P` resolution of IMPLEMENT_TMPDIR
+
+## Suggested Fix
+
+Add defensive logging before the `starting-round-invalid` stall to surface the actual file existence check result. Additionally, consider whether MAV-apply rounds should set `DEGRADED_ROUND=true` in `review-and-fix.env` so `effective_round_cap` is inflated beyond 5 for MAV-apply runs, making `round_num=5 > effective_round_cap=9` fire `mav-resume-past-cap` cleanly instead of attempting (and potentially stalling) round 5.
+
+
+---
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
+
+Key files for this fix:
+- skills/review-and-fix/scripts/review-implement-step5-loop.sh (lines 82-87 starting-round-invalid guard; lines 107-115 mav-resume-past-cap; lines 140-174 loop body status switch)
+- scripts/run-step5-review.sh (line 151 IMPLEMENT_TMPDIR=$(cd "$IMPLEMENT_TMPDIR_ARG" && pwd -P); the wrapper passes --starting-round through)
+- scripts/lib-implement-round-cap.sh (count_prior_degraded_rounds; reads DEGRADED_ROUND from per-round review-and-fix.env)
+- skills/implement/SKILL.md line 1214 (stall-routing prose listing starting-round-invalid under Tracking Issues for STALL_TRACKING=true) and lines 1263-1265 (mav-resume-past-cap orchestrator handling — prints info line, treats as complete)
+- skills/review-and-fix/scripts/test-review-and-fix.sh (existing loop harness)
+
+Scope (per Round 1 discussion):
+- IN: (a) reorder — at cap-boundary MAV restart, fire mav-resume-past-cap before the starting-round-invalid guard; (b) reclassify — all starting-round-invalid stalls set STALL_TRACKING=false (no [STALLED] rename); (c) diagnostic logging when the file-existence check fails.
+- OUT: marking MAV-apply rounds as DEGRADED_ROUND=true (cap inflation) — deferred to separate issue; analysis shows it would BREAK the existing mav-resume-past-cap cap-hit MAV contract.
+- OUT: fixing the upstream "Cursor aggregator never produces structured output" issue.
+- HARD CONSTRAINT: must preserve existing mav-resume-past-cap behavior (MAV at round 5 + restart at round 6 → mav-resume-past-cap fires; orchestrator treats as complete).

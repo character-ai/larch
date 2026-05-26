@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:1214	Unconditional Set STALL_TRACKING=true contradicts envelope STALL_TRACKING=false	Envelope reclassification never prevents [STALLED] rename because stall branch still forces true	Replace with explicit rule: set STALL_TRACKING from parsed envelope; default true only for other stall reasons
