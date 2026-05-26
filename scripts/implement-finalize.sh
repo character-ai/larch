@@ -561,14 +561,14 @@ collect_changelog_bullets() {
 }
 
 write_changelog_entry() {
-    local version=$1 categories_file=$2 output=$3 today tmp
+    local version=$1 categories_file=$2 output=$3 replaces_version=${4:-} today tmp
     today=$(date +%Y-%m-%d)
     tmp="$output.entry.$$"
     {
         printf '## [%s] - %s\n\n' "$version" "$today"
         cat "$categories_file"
     } > "$tmp"
-    awk -v version="$version" -v entry="$tmp" '
+    awk -v version="$version" -v replaces_version="$replaces_version" -v entry="$tmp" '
         BEGIN {
             while ((getline line < entry) > 0) e[++en] = line
             close(entry)
@@ -583,7 +583,7 @@ write_changelog_entry() {
             if (/^## \[Unreleased\]/) has_unreleased = 1
             next
         }
-        $0 ~ "^## \\[" version "\\] - " {
+        ($0 ~ "^## \\[" version "\\] - ") || (replaces_version != "" && replaces_version != version && $0 ~ "^## \\[" replaces_version "\\] - ") {
             match_count++
             if (match_count > 1) exit 4
             if (in_unreleased) {
@@ -761,7 +761,7 @@ maybe_update_changelog() {
     out=$("$SCRIPT_DIR/commit-changelog.sh" --version "$new_version" 2>&1)
     rc=$?
     set +e
-    if [ "$rc" -ne 0 ]; then
+    if [ "$rc" -ne 0 ] || [ "$(kv_value COMMITTED "$out")" != "true" ]; then
         git checkout -- CHANGELOG.md 2>/dev/null || true
         CHANGELOG_STATUS=failed
         append_execution_issue "Step 8a changelog commit failed."

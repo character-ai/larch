@@ -140,6 +140,29 @@ else
     fail "missing replaces-version heading should insert a fresh section: $out"
 fi
 
+# Test 9: duplicate target headings fail closed.
+repo="$TMPDIR_BASE/test9"
+setup_repo "$repo"
+cat >> "$repo/CHANGELOG.md" <<'CHANGELOG'
+
+## [1.2.3] - 2026-01-02
+
+### Added
+
+- Duplicate heading.
+CHANGELOG
+git -C "$repo" add CHANGELOG.md
+git -C "$repo" commit -q -m "Add duplicate changelog heading"
+set +e
+out=$(cd "$repo" && run_subject --version 1.2.3)
+rc=$?
+set -e
+if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q 'ERROR=multiple existing'; then
+    ok
+else
+    fail "duplicate target headings should fail closed: $out"
+fi
+
 total=$((PASS + FAIL))
 echo "test-commit-changelog: $PASS/$total passed"
 if [ "$FAIL" -gt 0 ]; then

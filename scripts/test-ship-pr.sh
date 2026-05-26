@@ -29,6 +29,7 @@ write_subject() {
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     cp "$REPO_ROOT/scripts/lib-finalize-state-keys.sh" "$root/scripts/lib-finalize-state-keys.sh"
+    cp "$REPO_ROOT/scripts/lib-changelog.sh" "$root/scripts/lib-changelog.sh"
     cp "$REPO_ROOT/scripts/auto-resolve-changelog.sh" "$root/scripts/auto-resolve-changelog.sh"
     cp "$REPO_ROOT/scripts/oos-disposition-shared.inc.bash" "$root/scripts/oos-disposition-shared.inc.bash"
     cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
@@ -461,9 +462,20 @@ section_runs() {
 # them after the fix-loop section is skipped.
 _install_rebump_dep_stubs() {
     local root=$1
-    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh commit-changelog.sh; do
+    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh; do
         printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
     done
+    cat > "$root/scripts/commit-changelog.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -f CHANGELOG.md ]; then
+  echo "COMMITTED=true"
+  echo "COMMIT_SHA=stub-changelog"
+else
+  echo "COMMITTED=false"
+fi
+exit 0
+STUB
     chmod +x \
         "$root/scripts/drop-bump-commit.sh" \
         "$root/scripts/git-sync-local-main.sh" \
@@ -2540,7 +2552,9 @@ _make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-drop-false.XXXXXX)"
 cat > "$root/scripts/drop-bump-commit.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$*" > "${IMPLEMENT_TMPDIR:-/tmp}/drop-bump-argv.txt"
 echo "DROPPED=false"
+echo "WARN: found commit at HEAD~0 matches bump pattern but touches unexpected files" >&2
 exit 0
 STUB
 chmod +x "$root/scripts/drop-bump-commit.sh"
@@ -2552,6 +2566,71 @@ set +e
 printf '%s' "$?" > "$tmp/rc-rebump-drop-false"
 set -e
 assert_rc "$tmp/rc-rebump-drop-false" 4 "run_rebase_rebump stalls when drop-bump returns DROPPED=false"
+if grep -qxF -- '--allow-changelog-only --max-depth 20' "$tmp/drop-bump-argv.txt"; then
+    ok "run_rebase_rebump passes allow-changelog-only and max-depth 20 to drop-bump"
+else
+    fail "run_rebase_rebump should pass allow-changelog-only and max-depth 20 to drop-bump"
+fi
+
+root=$(make_repo rebump_drop_false_no_bump_continues)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-drop-false-nobump.XXXXXX)"
+cat > "$root/scripts/drop-bump-commit.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "DROPPED=false"
+echo "WARN: no bump commit found within 20 commits of HEAD; not dropping" >&2
+exit 0
+STUB
+chmod +x "$root/scripts/drop-bump-commit.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-drop-false-nobump" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-drop-false-nobump"
+set -e
+assert_rc "$tmp/rc-rebump-drop-false-nobump" 0 "run_rebase_rebump continues when drop-bump reports no bump found"
+
+root=$(make_repo rebump_commit_changelog_missing_committed_stalls)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-cm-missing.XXXXXX)"
+cat > "$root/scripts/commit-changelog.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+STUB
+chmod +x "$root/scripts/commit-changelog.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-cm-missing" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-cm-missing"
+set -e
+assert_rc "$tmp/rc-rebump-cm-missing" 4 "run_rebase_rebump stalls when commit-changelog omits COMMITTED state"
+
+root=$(make_repo rebump_commit_changelog_fail_stalls)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-cm-fail.XXXXXX)"
+cat > "$root/scripts/commit-changelog.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "COMMITTED=false"
+exit 1
+STUB
+chmod +x "$root/scripts/commit-changelog.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-cm-fail" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-cm-fail"
+set -e
+assert_rc "$tmp/rc-rebump-cm-fail" 4 "run_rebase_rebump stalls when commit-changelog fails after re-bump"
 
 root=$(make_repo rebump_reasoning_fallback_log)
 tmp=$(make_tmpdir)

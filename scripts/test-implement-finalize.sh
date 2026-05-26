@@ -156,6 +156,7 @@ CHANGELOG
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-finalize.sh"
     cp "$SCRIPT_DIR/lib-quiet.sh" "$SANDBOX/scripts/lib-quiet.sh"
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$SANDBOX/scripts/lib-execution-issues.sh"
+    cp "$SCRIPT_DIR/lib-changelog.sh" "$SANDBOX/scripts/lib-changelog.sh"
     chmod +x "$SANDBOX/scripts/implement-finalize.sh"
 
     cat > "$SANDBOX/scripts/local-cleanup.sh" <<'STUB'

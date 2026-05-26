@@ -119,6 +119,12 @@ if [ ! -f CHANGELOG.md ]; then
     exit 1
 fi
 
+dup_count=$(awk -v version="$VERSION" '$0 ~ "^## \\[" version "\\] - " { count++ } END { print count + 0 }' CHANGELOG.md)
+if [ "$dup_count" -gt 1 ]; then
+    emit_no_commit "multiple existing ## [$VERSION] - headings"
+    exit 1
+fi
+
 status_out=$(git status --porcelain --untracked-files=no 2>/dev/null || true)
 if [ -n "$status_out" ]; then
     while IFS= read -r line; do
@@ -139,26 +145,29 @@ if [ -n "$REPLACES_VERSION" ] && [ "$REPLACES_VERSION" != "$VERSION" ]; then
     today=$(date +%Y-%m-%d)
     set +e
     # Two-pass awk: first pass detects whether NEW heading already exists;
-    # second pass removes OLD section and inserts NEW heading only when absent.
-    # This prevents deleting existing NEW section bullets on 2nd+ CI re-bump.
+    # second pass retitles OLD heading in place, preserving its body, and only
+    # removes OLD when a NEW heading already exists on reruns.
     awk -v old="$REPLACES_VERSION" -v new="$VERSION" -v today="$today" '
-        BEGIN { replaced = 0; skipping_old = 0; has_new = 0 }
+        BEGIN { replaced = 0; dropping_old = 0; has_new = 0 }
         FNR == NR {
             if ($0 ~ "^## \\[" new "\\] - ") has_new = 1
             next
         }
         $0 ~ "^## \\[" old "\\] - " {
             if (!replaced) {
-                if (!has_new) print "## [" new "] - " today
+                if (!has_new) {
+                    print "## [" new "] - " today
+                } else {
+                    dropping_old = 1
+                }
                 replaced = 1
             }
-            skipping_old = 1
             next
         }
-        skipping_old && /^## \[/ {
-            skipping_old = 0
+        dropping_old && /^## \[/ {
+            dropping_old = 0
         }
-        skipping_old { next }
+        dropping_old { next }
         { print }
         END {
             if (!replaced) exit 3
