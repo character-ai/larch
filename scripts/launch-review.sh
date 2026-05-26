@@ -557,7 +557,7 @@ fi
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
-if [[ "$SIDECAR" != "/dev/null" && "$EXIT_CODE" -eq 0 ]]; then
+if [[ "$SIDECAR" != "/dev/null" ]]; then
     codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR" "codex_review"
 fi
 

@@ -848,10 +848,12 @@ LCR_FAILED_RC=$?
 set -e
 
 assert_eq "codex-failed-run exits non-zero" "1" "$LCR_FAILED_RC"
-if [[ ! -s "$LCR_FAILED_LEDGER" ]]; then
+if [[ -s "$LCR_FAILED_LEDGER" ]] \
+   && jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .input==777 and .cache_read==7000 and .output==222 and .total==7999)' \
+       "$LCR_FAILED_LEDGER" >/dev/null 2>&1; then
     pass
 else
-    fail "codex-failed-run should not record a vendor row; ledger=$(cat "$LCR_FAILED_LEDGER" 2>/dev/null)"
+    fail "codex-failed-run should still record a vendor row when usage parsing succeeds; ledger=$(cat "$LCR_FAILED_LEDGER" 2>/dev/null)"
 fi
 
 # --token-budget-cap argv validation

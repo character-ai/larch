@@ -76,17 +76,29 @@ run_ok "msg-coalesce" "$TMP/coalesce.jsonl" $'INPUT=75\nCACHED_INPUT=25\nOUTPUT=
 
 run_ok "msg-direct-usage" "$CODEX_MSG_FIXTURE" $'INPUT=100\nCACHED_INPUT=20\nOUTPUT=9\nTOTAL=129'
 
-cat > "$TMP/token-usage-rollup-precedence.jsonl" <<'JSONL'
+cat > "$TMP/token-usage-rollup-sums-with-other-usage.jsonl" <<'JSONL'
 {"msg":{"usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":5}}}
 {"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}
 {"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
 JSONL
-run_ok "token-usage-rollup-precedence" "$TMP/token-usage-rollup-precedence.jsonl" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
+run_ok "token-usage-rollup-sums-with-other-usage" "$TMP/token-usage-rollup-sums-with-other-usage.jsonl" $'INPUT=867\nCACHED_INPUT=7010\nOUTPUT=227\nTOTAL=8104'
 
 cat > "$TMP/token-usage-nested-usage.jsonl" <<'JSONL'
 {"type":"token_usage","usage":{"input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}}
 JSONL
 run_ok "token-usage-nested-usage" "$TMP/token-usage-nested-usage.jsonl" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
+
+cat > "$TMP/multiple-token-usage-events-sum.jsonl" <<'JSONL'
+{"type":"token_usage","input_tokens":100,"cached_input_tokens":20,"output_tokens":3}
+{"type":"token_usage","usage":{"input_tokens":50,"cached_input_tokens":5,"output_tokens":7}}
+JSONL
+run_ok "multiple-token-usage-events-sum" "$TMP/multiple-token-usage-events-sum.jsonl" $'INPUT=125\nCACHED_INPUT=25\nOUTPUT=10\nTOTAL=160'
+
+cat > "$TMP/trailing-zero-token-usage-does-not-discard-earlier-usage.jsonl" <<'JSONL'
+{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
+{"type":"token_usage","input_tokens":0,"cached_input_tokens":0,"output_tokens":0}
+JSONL
+run_ok "trailing-zero-token-usage-does-not-discard-earlier-usage" "$TMP/trailing-zero-token-usage-does-not-discard-earlier-usage.jsonl" $'INPUT=100\nCACHED_INPUT=900\nOUTPUT=50\nTOTAL=1050'
 
 cat > "$TMP/empty-usage-top-level-fallback.jsonl" <<'JSONL'
 {"type":"token_usage","usage":{},"input_tokens":5,"cached_input_tokens":2,"output_tokens":1}

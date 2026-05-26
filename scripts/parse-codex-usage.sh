@@ -75,21 +75,21 @@ usage_tsv=$(
         else
           $u
         end;
-      [inputs | fromjson? | select(type == "object")] as $events
-      | ([ $events[] | select(.type == "token_usage" and has_tokenish(.)) ] | last) as $rollup
-      | if $rollup != null then
-          (usage_row($rollup) | fail_if_cached_exceeds_input(.)) as $usage
-          | [1, $usage.input, $usage.cached, $usage.output] | @tsv
-        else
-          reduce ($events[] | select(has_tokenish(.msg.usage) or has_tokenish(.usage))) as $o
-            ({count:0, input:0, cached:0, output:0};
-              (usage_row($o) | fail_if_cached_exceeds_input(.)) as $usage
-              | .count += 1
-              | .input += $usage.input
-              | .cached += $usage.cached
-              | .output += $usage.output)
-          | [.count, .input, .cached, .output] | @tsv
-        end
+      def selected_usage_event($o):
+        ($o | type == "object")
+        and (
+          has_tokenish($o.msg.usage)
+          or has_tokenish($o.usage)
+          or ($o.type == "token_usage" and has_tokenish($o))
+        );
+      reduce (inputs | fromjson? | select(selected_usage_event(.))) as $o
+        ({count:0, input:0, cached:0, output:0};
+          (usage_row($o) | fail_if_cached_exceeds_input(.)) as $usage
+          | .count += 1
+          | .input += $usage.input
+          | .cached += $usage.cached
+          | .output += $usage.output)
+      | [.count, .input, .cached, .output] | @tsv
     ' "$EVENTS_FILE" 2>"$usage_err_file"
 ) || {
     if grep -Fq 'cached_tokens exceeds input_tokens; fail-closed' "$usage_err_file" 2>/dev/null; then
@@ -113,11 +113,6 @@ case "${output_tokens:-}" in ''|*[!0-9]*) output_tokens=0 ;; esac
 
 if [ "$usage_count" -eq 0 ]; then
     larch_err "parse-codex-usage.sh: no usage events"
-    exit 1
-fi
-
-if [ "$cached_tokens" -gt "$input_tokens" ]; then
-    larch_err "parse-codex-usage.sh: cached_tokens exceeds input_tokens; fail-closed"
     exit 1
 fi
 

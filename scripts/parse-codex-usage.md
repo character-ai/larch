@@ -34,14 +34,15 @@ OpenAI usage schemas report `input_tokens` as gross input, with cached tokens as
 Event selection happens in this order:
 
 ```text
-1. If the stream contains any `type=="token_usage"` event with token fields,
-   use only the last such event.
-2. Otherwise, sum every event whose `.msg.usage` or `.usage` object carries at
-   least one token field.
+Sum every JSON object event that carries usage in one of these shapes:
+- `.msg.usage`
+- `.usage`
+- top-level token fields on `type=="token_usage"` events
 ```
 
-The parser never treats arbitrary non-`token_usage` top-level token-shaped
-fields as usage.
+The parser is line-streaming (`jq -nR` + `inputs`) and never materializes the
+full JSONL file in memory. It also never treats arbitrary non-`token_usage`
+top-level token-shaped fields as usage.
 
 Each token field is then coalesced from the selected event(s), in this order:
 
@@ -61,7 +62,13 @@ output_tokens = .msg.usage.output_tokens // .msg.output_tokens
               // .usage.output_tokens // .output_tokens // 0
 ```
 
-This handles top-level Codex-native token fields on `token_usage` events, `.msg` top-level token fields, Responses-style `input_tokens_details.cached_tokens`, and wrappers that nest usage under `.msg.usage`. Empty usage objects do not block those fallbacks, and an all-zero `.msg.usage` payload falls through to `.usage` when the latter carries real counters. Non-JSON wrapper noise is skipped by `fromjson?`.
+This handles top-level Codex-native token fields on `token_usage` events, `.msg`
+top-level token fields, Responses-style `input_tokens_details.cached_tokens`,
+and wrappers that nest usage under `.msg.usage`. Empty usage objects do not
+block those fallbacks, and an all-zero `.msg.usage` payload falls through to
+`.usage` when the latter carries real counters. Multiple usage-bearing events
+in one run are summed across the stream. Non-JSON wrapper noise is skipped by
+`fromjson?`.
 
 Example JSONL:
 

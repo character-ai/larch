@@ -414,6 +414,66 @@ else
     fail 5b "Codex implementer should retry one auth failure; count=$(cat "$RETRY_COUNT" 2>/dev/null) out=$RETRY_OUT"
 fi
 
+FAIL_WITH_USAGE_BIN="$SCRATCH/fail-with-usage-bin"
+mkdir -p "$FAIL_WITH_USAGE_BIN"
+cat > "$FAIL_WITH_USAGE_BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'failed codex transcript\n' > "$output_path"
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-bailed"
+}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf '{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}\n'
+exit 1
+EOF
+chmod +x "$FAIL_WITH_USAGE_BIN/codex"
+
+FAIL_WITH_USAGE_LEDGER="$SCRATCH/fail-with-usage-ledger.jsonl"
+FAIL_WITH_USAGE_TRANSCRIPT="$SCRATCH/fail-with-usage-transcript.txt"
+FAIL_WITH_USAGE_SIDECAR="$SCRATCH/fail-with-usage-sidecar.log"
+FAIL_WITH_USAGE_MANIFEST="$SCRATCH/fail-with-usage-manifest.json"
+FAIL_WITH_USAGE_QA="$SCRATCH/fail-with-usage-qa.json"
+FAIL_WITH_USAGE_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$FAIL_WITH_USAGE_BIN:$PATH" \
+    STUB_MANIFEST_PATH="$FAIL_WITH_USAGE_MANIFEST" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_SESSION_ID="codex-fail-with-usage-$$" \
+    LARCH_TOKEN_LEDGER="$FAIL_WITH_USAGE_LEDGER" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --transcript-path "$FAIL_WITH_USAGE_TRANSCRIPT" \
+        --sidecar-log "$FAIL_WITH_USAGE_SIDECAR" \
+        --manifest-path "$FAIL_WITH_USAGE_MANIFEST" \
+        --qa-pending-path "$FAIL_WITH_USAGE_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$FAIL_WITH_USAGE_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+   && [[ -s "$FAIL_WITH_USAGE_LEDGER" ]] \
+   && jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_implement" and .input==777 and .cache_read==7000 and .output==222 and .total==7999)' \
+       "$FAIL_WITH_USAGE_LEDGER" >/dev/null 2>&1; then
+    pass
+else
+    fail 5c "failed implement run with parseable usage should still record codex vendor row; out=$FAIL_WITH_USAGE_OUT ledger=$(cat "$FAIL_WITH_USAGE_LEDGER" 2>/dev/null)"
+fi
+
 if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && [[ "$(sed -n '2p' "$ARGV_FILE")" == "--full-auto" ]] \
    && [[ "$(sed -n '3p' "$ARGV_FILE")" == "-C" ]] \

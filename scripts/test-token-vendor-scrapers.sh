@@ -47,7 +47,7 @@ cat > "$TMP/codex-rollup.events.jsonl" <<'JSONL'
 {"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
 JSONL
 codex_rollup=$("$REPO_ROOT/scripts/parse-codex-usage.sh" "$TMP/codex-rollup.events.jsonl" 2>/dev/null || true)
-eq "codex token_usage rollup wins over per-turn and lifecycle events" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999' "$codex_rollup"
+eq "codex token_usage sums with per-turn usage while ignoring non-token_usage top-level lifecycle fields" $'INPUT=877\nCACHED_INPUT=7900\nOUTPUT=272\nTOTAL=9049' "$codex_rollup"
 
 cat > "$TMP/cursor.json" <<'JSON'
 {"result":"plain reviewer prose","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}
@@ -238,6 +238,19 @@ JSONL
     eq "codex per-bucket cost rc" "0" "$cost_rc"
     if grep -Eq 'BLENDED_WARN|blended rate' "$TMP/cost.err"; then
         fail "codex per-bucket cost should not warn: $(cat "$TMP/cost.err")"
+    else
+        pass
+    fi
+    set +e
+    "$REPO_ROOT/scripts/render-cost-line.sh" \
+        --codex-input-tokens 100 \
+        --codex-cached-input-tokens 900 \
+        --codex-output-tokens 50 >"$TMP/render-cost.out" 2>"$TMP/render-cost.err"
+    render_cost_rc=$?
+    set -e
+    eq "codex per-bucket render-cost-line rc" "0" "$render_cost_rc"
+    if grep -Eq 'BLENDED_WARN|blended rate' "$TMP/render-cost.err"; then
+        fail "codex per-bucket render-cost-line should not warn: $(cat "$TMP/render-cost.err")"
     else
         pass
     fi
