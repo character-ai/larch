@@ -111,7 +111,7 @@ write_postbump_state() {
     shift
     reasoning_file=$(override_value BUMP_REASONING_FILE "$SANDBOX/tmp/larch-log-batches-input/version-bump-reasoning-sanitized.md" "$@")
     manifest_path=$(override_value MANIFEST_PATH "$SANDBOX/tmp/manifest.json" "$@")
-    mkdir -p "$SANDBOX/tmp/larch-log-batches-input"
+    mkdir -p "$(dirname "$reasoning_file")"
     [ -e "$reasoning_file" ] || printf 'Bump reasoning\n' > "$reasoning_file"
     if [ -n "$manifest_path" ] && [ ! -e "$manifest_path" ]; then
         printf '{"summary_bullets":["Ship postbump finalization"]}\n' > "$manifest_path"
@@ -924,8 +924,8 @@ cp "$SANDBOX/scripts/commit-changelog.sh" "$SANDBOX/scripts/commit-changelog.sh.
 cp "$SCRIPT_DIR/commit-changelog.sh" "$SANDBOX/scripts/commit-changelog.sh"
 cp "$SCRIPT_DIR/git-commit.sh" "$SANDBOX/scripts/git-commit.sh"
 chmod +x "$SANDBOX/scripts/commit-changelog.sh" "$SANDBOX/scripts/git-commit.sh"
-POSTBUMP_STATE_REAL="$SANDBOX/tmp/postbump-state-real.sh"
 mkdir -p "$SANDBOX/tmp-real"
+POSTBUMP_STATE_REAL="$SANDBOX/tmp-real/postbump-state-real.sh"
 write_postbump_state "$POSTBUMP_STATE_REAL" \
     "BUMP_REASONING_FILE=$SANDBOX/tmp-real/larch-log-batches-input/version-bump-reasoning-sanitized.md" \
     "MANIFEST_PATH=$SANDBOX/tmp-real/manifest.json"

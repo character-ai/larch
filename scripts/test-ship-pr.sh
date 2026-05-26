@@ -2596,6 +2596,13 @@ assert_rc "$tmp/rc-rebump-drop-false-nobump" 0 "run_rebase_rebump continues when
 root=$(make_repo rebump_commit_changelog_missing_committed_stalls)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-initial
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+## [1.0.0] - 2026-01-01
+### Fixed
+- Initial release.
+CHANGELOG
+git -C "$root" add CHANGELOG.md && git -C "$root" commit -q -m "Add CHANGELOG"
 _make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-cm-missing.XXXXXX)"
 cat > "$root/scripts/commit-changelog.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -2615,6 +2622,13 @@ assert_rc "$tmp/rc-rebump-cm-missing" 4 "run_rebase_rebump stalls when commit-ch
 root=$(make_repo rebump_commit_changelog_fail_stalls)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-initial
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+## [1.0.0] - 2026-01-01
+### Fixed
+- Initial release.
+CHANGELOG
+git -C "$root" add CHANGELOG.md && git -C "$root" commit -q -m "Add CHANGELOG"
 _make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-cm-fail.XXXXXX)"
 cat > "$root/scripts/commit-changelog.sh" <<'STUB'
 #!/usr/bin/env bash
