@@ -1,0 +1,7 @@
+Implement phase tracking bootstrap adoption
+
+Move Step 0 tracking issue adoption into implement-bootstrap.sh, including sentinel resume, fresh issue adoption, fork/repo skips, explicit deferred/stall flags, and branch-aware final output.
+
+Propagate fork mode through session-env and allow post-tracking-issue.sh callers to pin RUN_ID for sentinel writes.
+
+Expand the bootstrap harness and docs for the new tracking paths.

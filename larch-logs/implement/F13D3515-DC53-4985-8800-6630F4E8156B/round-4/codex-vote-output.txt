@@ -1,0 +1,28 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- The duplicated guards are real but extracting a helper is more churn than this stub-phase code warrants.
+FINDING_3: NO -- Omitting --issue-number is documented as no fresh Branch 2 adoption, so the empty tail is expected.
+FINDING_4: EXONERATE -- The duplicated harness stubs are real but minor enough that a helper is not worth requiring here.
+FINDING_5: NO -- write-session-env.sh is a bash script and the [[ usage is not a concrete defect.
+FINDING_6: NO -- The current harness already covers an unexpected non-OPEN/non-CLOSED issue state with B7.
+FINDING_7: EXONERATE -- The denylist omission is real but not worth filing absent a settled lint-policy requirement.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- The bootstrap harness stubbing is intentional; the useful coverage belongs in the real post-tracking-issue harness.
+FINDING_12: YES
+FINDING_13: NO -- This item states implemented argv hardening, not a defect.
+FINDING_14: NO -- This item states implemented fail-closed sentinel handling, not a defect.
+FINDING_15: NO -- This item states quoted shell/GitHub boundaries and no eval issue, not a defect.
+FINDING_16: NO -- This item states the upstream failure path is already redacted and recorded, not a defect.
+FINDING_17: NO -- This item states post-tracking-issue.sh already validates and writes the sentinel only after success.
+FINDING_18: NO -- This item states FORKED_TARGET validation is already implemented and no security issue was found.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: NO -- Re-running Branch 2 after a failed metadata post is an expected retry path and not a concrete defect.
+FINDING_24: EXONERATE -- DEFERRED is overloaded, but BRANCH_SELECTED already disambiguates the cases well enough.
+FINDING_25: EXONERATE -- The session-env anchoring predicate is conservative and not clearly worth a separate issue.
+FINDING_26: NO -- This is only a commit identifier, not a proposed finding.
+FINDING_27: NO -- This is only an out-of-scope log flush commit, not a proposed finding.
+FINDING_28: NO -- This is a plan-fidelity no-issues summary, not a defect.

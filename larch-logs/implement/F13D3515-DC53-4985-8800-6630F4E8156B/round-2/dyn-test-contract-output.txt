@@ -1,0 +1,16 @@
+Reviewing the branch diff and test harness contracts against the scout focus areas.
+### In-Scope Findings
+
+- **correctness** `skills/implement/scripts/test-implement-bootstrap.sh:471-485` — B4’s “no sentinel” check is vacuous on the current fixture: the run starts with no `parent-issue.md`, the `post-tracking-issue.sh` stub only writes the sentinel when `LARCH_TEST_POSTED=true`, and `phase_tracking`’s `rm -f "$sentinel"` (see `scripts/implement-bootstrap.sh:484-486`) is therefore never exercised. A regression that dropped the `rm -f` while leaving the stub unchanged would still pass B4. The sentinel path (`$IMPLEMENT_TMPDIR/parent-issue.md`, i.e. `$SANDBOX_TMP/parent-issue.md`) matches production, but the case does not prove cleanup of a stale sentinel after `POSTED=false`. **Suggested fix:** Seed a deliberately wrong `parent-issue.md` before invoking B4 (e.g. `ISSUE_NUMBER=999` / `RUN_ID=stale`), keep `LARCH_TEST_POSTED=false`, and assert the file is absent afterward (or replaced only after a later successful post). Optionally add `assert_contains "DEFERRED=true"` plus `assert_not_contains "STALL_TRACKING=true"` and `assert_not_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed"` to lock the deferred (non-stall) path.
+
+- **correctness** `skills/implement/scripts/test-implement-bootstrap.sh:238-242,475-478` — The `post-tracking-issue.sh` stub’s failure mode (`exit 1` plus `POSTED=false` on stdout) aligns with `phase_tracking`’s `if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]` branch (`scripts/implement-bootstrap.sh:482-488`): command substitution still captures stdout on non-zero exit, so B4 correctly exercises DECISION_1 deferred behavior rather than `tracking-init-failed`. No change required for that pairing; the gap above is missing negative setup, not stub/production divergence on exit code.
+
+### Out-of-Scope Observations
+
+- **Stub / production alignment (scout checks, no defect):** `larch-log.sh` stub `LARCH_TEST_LARCH_LOG_FAIL=true` → `exit 1` is exercised by `run_larch_log_init` via `init_rc -ne 0` (`scripts/implement-bootstrap.sh:165-166`); B5/B5-branch1/B5-all/B5-plan assertions match `tracking-init-failed` + `STALL_TRACKING=true`, not the deferred path.
+
+- **Stub / production alignment (scout checks, no defect):** `Edge-breadcrumb-count` (`skills/implement/scripts/test-implement-bootstrap.sh:660-678`) sets `LARCH_QUIET_DISABLE=1` (harness line 6, mirrored in `implement-bootstrap.sh`), `LARCH_QUIET_BREADCRUMBS=1`, and `LARCH_QUIET_BREADCRUMB_FD=1`. Under disable mode, `emit_breadcrumb` in `scripts/lib-quiet.sh:204-214` writes to FD 1 when breadcrumbs are enabled, so counting `→ step0: infra ready` in `$out` is valid.
+
+- **Doc drift:** The harness includes cases not listed in `skills/implement/scripts/test-implement-bootstrap.md` (e.g. `B2-plan`, `B5-all`, `B5-plan`, `B5-branch1`, `B-sentinel-invalid-run-id`, `B-empty-run-id-derivation`, `GP-adopt-rename-fail`).
+
+- **Commits on branch:** `fc4d783b` (implement phase tracking), `6d635cd2` (larch-logs flush), `438ab338` (round-1 review feedback).

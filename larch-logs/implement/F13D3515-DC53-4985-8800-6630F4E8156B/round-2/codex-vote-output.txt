@@ -1,0 +1,42 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- The issue-number dependency is a minor documentation clarity gap and current caller wiring already supplies the target issue when available.
+FINDING_7: EXONERATE -- Real if ledger ownership moves, but this is a small same-PR test pin update, not worth separate OOS filing.
+FINDING_8: NO -- `$1 == key` with `-F=` is already an exact whole-key match, not a prefix-fragile parse.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- The missing fork no-issue case is a narrow doc/test gap and current intended invocation passes the issue number.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- Legitimate optional coverage gap, but too small to warrant a separate OOS issue.
+FINDING_20: EXONERATE -- Silent missing fork context is a real risk, but fail-closed behavior conflicts with the explicit best-effort design.
+FINDING_21: NO -- With no argv issue, the sentinel is the resume source of truth; the stated mismatch scenario is not established.
+FINDING_22: NO -- `rm -f` on a symlink removes the link itself, so the arbitrary-target deletion claim is not real as stated.
+FINDING_23: EXONERATE -- Missing upstream repo can skip context, but requiring a hard argv failure overcomplicates the documented best-effort fork path.
+FINDING_24: NO -- Direct callers choosing `--implement-tmpdir` can already choose the output directory; no concrete privilege or path-boundary bug is shown.
+FINDING_25: NO -- Branch 1 resume without an argv issue intentionally trusts the sentinel; no concrete wrong-target invocation is demonstrated.
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- The input dependency is real, but warning/failing fork mode is heavier than warranted for a best-effort context fetch.
+FINDING_30: EXONERATE -- `DEFERRED=true` already disambiguates the partial adoption path; adding a new branch token is more complexity than needed.
+FINDING_31: NO -- The concern is speculative about a future edit, not a current concrete defect.
+FINDING_32: EXONERATE -- Real prompt-enforcement weakness, but it should be handled inline with the accepted routing findings, not filed as OOS.
+FINDING_33: EXONERATE -- These are small harness additions and not worth a separate OOS issue.
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: NO -- The item explicitly states there is no defect and no change required.
+FINDING_39: NO -- The item describes a verified alignment check, not a defect.
+FINDING_40: NO -- The item describes valid existing breadcrumb counting behavior, not a defect.
+FINDING_41: EXONERATE -- The doc drift is real but should be folded into the current PR, not filed as a separate OOS issue.
+FINDING_42: NO -- Listing branch commits is not a concrete code-review defect.

@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- trivial triplication is readable enough; helper would add abstraction without clarity gain
+FINDING_3: EXONERATE -- two-line local utility; sharing with ship-pr adds coupling cost that outweighs nit
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- style inconsistency too trivial to warrant a standalone OOS issue
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- sentinel-based resume is a deliberate design decision documented in the plan; re-verifying breaks idempotency
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES

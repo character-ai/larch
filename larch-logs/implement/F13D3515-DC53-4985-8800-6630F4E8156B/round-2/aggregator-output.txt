@@ -1,0 +1,4 @@
+Aggregating reviewer findings: reading key code regions to validate merges and line references (read-only).
+Checking harness doc and test gaps referenced by reviewers.
+Creating the aggregated finding list from merged reviewer inputs.
+

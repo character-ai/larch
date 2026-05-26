@@ -7,6 +7,7 @@
 #                        [--codex-present <true|false>] [--cursor-present <true|false>] \
 #                        [--codex-binary-found <true|false>] [--cursor-binary-found <true|false>] \
 #                        [--auto-mode <true|false>] \
+#                        [--forked-target <true|false>] \
 #                        [--timing-ledger <path>] [--token-session-id <id>] \
 #                        [--claude-source-file <path>] [--prev-implement-tmpdir <path>]
 #
@@ -15,6 +16,7 @@
 #   --codex-present/--cursor-present are optional (runtime probe result from setup).
 #   --codex-binary-found/--cursor-binary-found are optional (command -v before probe/skip).
 #   --auto-mode is optional (`true|false` for downstream implement routing).
+#   --forked-target is optional (`true|false` for downstream fork routing).
 #   --timing-ledger is optional (shared timing ledger path for nested skills).
 #   --token-session-id is optional (token ledger session id for nested skills).
 #   --claude-source-file is optional (Claude transcript snapshot for token reports).
@@ -42,6 +44,7 @@ CURSOR_PRESENT=""
 CODEX_BINARY_FOUND=""
 CURSOR_BINARY_FOUND=""
 AUTO_MODE=""
+FORKED_TARGET_ARG="false"
 TIMING_LEDGER=""
 TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
@@ -59,6 +62,7 @@ while [[ $# -gt 0 ]]; do
     --codex-binary-found)  CODEX_BINARY_FOUND="$2"; shift 2 ;;
     --cursor-binary-found) CURSOR_BINARY_FOUND="$2"; shift 2 ;;
     --auto-mode)        AUTO_MODE="$2"; shift 2 ;;
+    --forked-target)    FORKED_TARGET_ARG="$2"; shift 2 ;;
     --timing-ledger)    TIMING_LEDGER="$2"; shift 2 ;;
     --token-session-id) TOKEN_SESSION_ID="$2"; shift 2 ;;
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
@@ -95,6 +99,11 @@ fi
 
 if [[ -n "$AUTO_MODE" && "$AUTO_MODE" != "true" && "$AUTO_MODE" != "false" ]]; then
   larch_err "ERROR=Invalid --auto-mode: must be true or false"
+  exit 1
+fi
+
+if [[ "$FORKED_TARGET_ARG" != "true" && "$FORKED_TARGET_ARG" != "false" ]]; then
+  larch_err "ERROR=Invalid --forked-target: must be true or false"
   exit 1
 fi
 
@@ -144,7 +153,8 @@ fi
 
 # Build the content
 CONTENT="REPO=$REPO
-REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
+REPO_UNAVAILABLE=$REPO_UNAVAILABLE
+FORKED_TARGET=$FORKED_TARGET_ARG"
 [[ -n "$CODEX_PRESENT" ]] && CONTENT="$CONTENT
 CODEX_PRESENT=$CODEX_PRESENT
 CODEX_AVAILABLE=$CODEX_PRESENT"

@@ -1,0 +1,42 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- comment-only routing is the standard SKILL.md orchestration pattern, not a code bug
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- awk $1==k with -F= is equivalent to anchored /^KEY=/ for well-formed output from these helpers
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- same as FINDING_4; comment-directed routing is the pre-existing SKILL.md pattern
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- nit level; validators are straightforward and covered by the positive cases
+FINDING_17: EXONERATE -- nit level; rename_to_implementing is the same helper tested by GP-adopt-rename-fail
+FINDING_18: EXONERATE -- nit level; tracking breadcrumb uses same emission mechanism already validated by Edge-breadcrumb-count
+FINDING_19: YES
+FINDING_20: EXONERATE -- deliberately changed to best-effort by binding decision F4; not a regression
+FINDING_21: YES
+FINDING_22: EXONERATE -- IMPLEMENT_TMPDIR is mktemp-allocated per process; symlink substitution attack is theoretical
+FINDING_23: EXONERATE -- SKILL validates UPSTREAM_REPO before passing to bootstrap; bootstrap need not re-police what callers already enforce
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- same as FINDING_4/FINDING_11
+FINDING_29: YES
+FINDING_30: EXONERATE -- DEFERRED=true with BRANCH_SELECTED=branch-2-adopt is intentional per DECISION_1; ISSUE_NUMBER is preserved for deferred tracking
+FINDING_31: EXONERATE -- speculative future-edit concern; current behavior is correct
+FINDING_32: NO -- agent-prescribed routing is the pre-existing SKILL.md architecture; not worth a GitHub issue
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: EXONERATE -- doc clarity issue already covered by the correctness findings on duplicate marks
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: NO -- finding confirms correct behavior exists; no defect described
+FINDING_39: NO -- scout check confirming correct alignment; no defect
+FINDING_40: NO -- scout check confirming correct behavior; no defect
+FINDING_41: YES
+FINDING_42: NO -- commit list, not a problem worth filing

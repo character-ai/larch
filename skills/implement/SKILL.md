@@ -9,9 +9,9 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: preflight-gated plan from the GitHub issue body (`larch:plan`), materialize artifacts, implement, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification, and (inside `ship-pr.sh` before exit) a post-merge `larch-log.sh manifest` flush to `status=done` plus `write-final-report.sh` so tmpdir `final-summary.md` / tracking-issue `larch:final-summary` can match `MERGE_RESULT` — **without** any post-merge `git commit` (see NEVER #19). Step 18 still performs teardown, token/timing refresh, and the remaining terminal safety-net.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) When `forked_target=true`, run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` once and parse `UPSTREAM_REPO` (and sibling fork KV lines) from stdout — **before** Preflight `gh` / helper calls so every upstream issue read uses explicit `--repo "$UPSTREAM_REPO"` (fork clones default `gh` to `origin`, which is wrong for the positional upstream design issue). (2) **Preflight — issue-anchored plan** (admission gate + GitHub issue state + `larch:plan` block + plan-adequacy audit + semantic materiality) on the positional `<issue-N>`; when `forked_target=true`, pass `--repo "$UPSTREAM_REPO"` to `implement-admission.sh`, `gh issue view`, `plan-block-read.sh`, `clarify-state.sh`, `clarify-comment-post.sh`, and `clarify-label.sh` as each supports it. (3) **Step 0 infrastructure** — run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase infra` (foreground) as the Step 0 entrypoint that performs `create-branch.sh --check`, `session-entry-gate.sh`, `session-setup.sh` (with `--skip-branch-check` toggled by the entry gate), session-env materialization, and the Step 0 ledger marks in one subprocess (see the numbered Step 0 section for KV parsing and continuation). When `forked_target=true`, **do not** re-run `implement-fork-env.sh` if `UPSTREAM_REPO` is already set from (1) — reuse the same fork metadata (avoids a second bootstrap tmpdir).
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) When `forked_target=true`, run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` once and parse `UPSTREAM_REPO` (and sibling fork KV lines) from stdout — **before** Preflight `gh` / helper calls so every upstream issue read uses explicit `--repo "$UPSTREAM_REPO"` (fork clones default `gh` to `origin`, which is wrong for the positional upstream design issue). (2) **Preflight — issue-anchored plan** (admission gate + GitHub issue state + `larch:plan` block + plan-adequacy audit + semantic materiality) on the positional `<issue-N>`; when `forked_target=true`, pass `--repo "$UPSTREAM_REPO"` to `implement-admission.sh`, `gh issue view`, `plan-block-read.sh`, `clarify-state.sh`, `clarify-comment-post.sh`, and `clarify-label.sh` as each supports it. (3) **Step 0 bootstrap** — run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase tracking` (foreground) as the Step 0 entrypoint that performs infrastructure plus tracking issue adoption in one subprocess (see the numbered Step 0 section for KV parsing and continuation). When `forked_target=true`, **do not** re-run `implement-fork-env.sh` if `UPSTREAM_REPO` is already set from (1) — reuse the same fork metadata (avoids a second bootstrap tmpdir).
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Preflight through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after `ship-pr.sh` exits (any exit code), do NOT print `✅ 8: version bump`, `⏩ 8: version bump`, or any other Step 8 breadcrumb as orchestrator text output — `ship-pr.sh` emits these lines to its own stdout (issue #1944). Parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table. See NEVER #11.** **Critical boundary: after preflight audit passes (`AUDIT=pass` envelope written), IMMEDIATELY continue through Preflight items 6–7 (semantic materiality when applicable, then pass gate), then run Step 0 `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase infra` and the Step 0 tracking + plan materialization blocks per the numbered Step 0 section — do NOT end the turn on the audit-pass envelope.** → shared/subskill-invocation.md#anti-halt
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Preflight through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after `ship-pr.sh` exits (any exit code), do NOT print `✅ 8: version bump`, `⏩ 8: version bump`, or any other Step 8 breadcrumb as orchestrator text output — `ship-pr.sh` emits these lines to its own stdout (issue #1944). Parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table. See NEVER #11.** **Critical boundary: after preflight audit passes (`AUDIT=pass` envelope written), IMMEDIATELY continue through Preflight items 6–7 (semantic materiality when applicable, then pass gate), then run Step 0 `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase tracking` and continue to plan materialization per the numbered Step 0 section — do NOT end the turn on the audit-pass envelope.** → shared/subskill-invocation.md#anti-halt
 
 **Skill-name fallback reminder.** When invoking a child skill via the Skill tool from this file, ALWAYS try the bare name first (`"bump-version"`, `"design"`, `"review"`, `"issue"`, `"implement"`). Only fall back to the fully-qualified `larch:` form (`"larch:design"`, etc.) when the bare-name lookup returns `Unknown skill` — and conversely, in a consumer repo that installs the plugin under a non-`larch` namespace the bare name may miss and the fully-qualified form (with that repo's actual namespace) becomes the working fallback. `/implement` does not invoke the relevant-checks flow through the Skill tool on the green path; it uses the captured Bash helper so success returns one bounded machine line (or `RELEVANT_CHECKS_SKIPPED=true` when the consumer repo omits `scripts/relevant-checks.sh`). **`/bump-version` is intentionally project-local under `.claude/skills/` and is NOT shipped with the plugin** — `larch:bump-version` does not resolve, so a `larch:`-first attempt fails outright. Do NOT mirror this skill's own namespaced invocation (`larch:implement`) onto child Skill calls. → shared/subskill-invocation.md#bare-name-fallback
 
@@ -27,7 +27,7 @@ Four invariants enforced across multiple steps. Anchor cross-step questions here
 
 3. **Degraded-Git Fail-Closed** — `check-bump-version.sh STATUS != ok` MUST force `VERIFIED=false` at Step 12 regardless of `COMMITS_AFTER`. **Enforcement**: STATUS-first evaluation ordering in the Rebase + Re-bump Sub-procedure step 4 (see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bump-verification.md` Block β); Step 8 permissive, Step 12 strict (bail to 12d). **Why**: a coerced 0 baseline from a transient git error routes to a bogus "wrong commit count" mis-diagnosis — the fail-closed rule prevents silently wrong merged versions.
 
-4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-adopt the wrong issue or corrupt `RUN_ID`. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0 tracking adoption entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so Branch 2 adoption + `larch-log.sh init` + `post-tracking-issue.sh` do not run twice for the same session. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully on the adopt path. If `larch-log.sh init` fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the issue to `[STALLED]` when applicable. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to plan materialization within Step 0. **Why**: `tracking-issue-summary.sh` searches by marker literals for the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double work on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
+4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-adopt the wrong issue or corrupt `RUN_ID`. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0 tracking adoption entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so Branch 2 adoption + `larch-log.sh init` + `post-tracking-issue.sh` do not run twice for the same session. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully on the adopt path. If `larch-log.sh init` fails: `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the issue to `[STALLED]` when applicable. `DEFERRED=true` is reserved for the non-stalled metadata-publication defer path (`POSTED=false` / no sentinel, then continue within Step 0). **Why**: `tracking-issue-summary.sh` searches by marker literals for the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double work on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
 
 ## NEVER List
 
@@ -289,14 +289,16 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh
 ```
 
-Check the current branch before any setup side effects. Run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase infra` (foreground) to perform the former Step 0 calls #1–#5 (`create-branch.sh --check`, `session-entry-gate.sh`, `session-setup.sh`, the inline session-env composite, and the three-key `read-session-env-key.sh` rehydrate) in one subprocess. Regression harness: `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`). Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, `ENTRY_GATE`, `SKIP_BRANCH_CHECK`, `IMPLEMENT_TMPDIR`, `SESSION_ID`, reviewer-availability keys, `REPO`, `REPO_UNAVAILABLE`, `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `codex_available`, and `cursor_available` from the script's stdout (KV lines; token-aware scan — each output line may carry multiple `KEY=value` tokens separated by whitespace). On the clean-main entry path, `/implement` creates the feature branch later in Step 0 (after `feature-description.txt` is composed); see § Create feature branch. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging before `implement-bootstrap.sh` succeeds.
+Check the current branch before any setup side effects. Run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase tracking` (foreground) to perform the former Step 0 calls #1–#9 (`create-branch.sh --check`, `session-entry-gate.sh`, `session-setup.sh`, session-env materialization, tracking adoption, metadata summary, and best-effort implementing rename) in one subprocess. Regression harness: `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`). Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, `ENTRY_GATE`, `SKIP_BRANCH_CHECK`, `IMPLEMENT_TMPDIR`, `SESSION_ID`, reviewer-availability keys, `REPO`, `REPO_UNAVAILABLE`, `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `ISSUE_NUMBER`, `RUN_ID`, `BRANCH_SELECTED`, `DEFERRED`, `STALL_TRACKING`, `IMPLEMENT_BAIL_REASON`, `codex_available`, and `cursor_available` from the script's stdout (KV lines; token-aware scan — each output line may carry multiple `KEY=value` tokens separated by whitespace). On the clean-main entry path, `/implement` creates the feature branch later in Step 0 (after `feature-description.txt` is composed); see § Create feature branch. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging before `implement-bootstrap.sh` succeeds.
 
 The shared entry gate contract remains `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.md` (now invoked from `implement-bootstrap.sh`).
 
-On `implement-bootstrap.sh` exit **2**, print the raw diagnostic lines from its stdout first (`GATE_ERROR=...` when `STEP_FAILED=session-entry-gate`, or `PREFLIGHT_ERROR=...` when `STEP_FAILED=session-setup`), then print the normalized operator message for that failure class and abort:
+On `implement-bootstrap.sh` exit **2**, print the raw diagnostic lines from its stdout first (`GATE_ERROR=...` when `STEP_FAILED=session-entry-gate`, `PREFLIGHT_ERROR=...` when `STEP_FAILED=session-setup`, or `STEP_FAILED=get-issue-state` when tracking state could not be verified), then print the normalized operator message for that failure class and abort:
 
 - When `STEP_FAILED=session-entry-gate`: **⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.** Do NOT print the clean-main banner for `GATE_ERROR`; that banner is reserved for `session-setup.sh` `PREFLIGHT_ERROR`.
 - When `STEP_FAILED=session-setup`: **⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
+- When `STEP_FAILED=get-issue-state`: **⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**
+- When `STEP_FAILED=issue-number-required-for-resume`: **⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel's issue.**
 
 Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
 
@@ -317,11 +319,19 @@ if [ -n "${CALLER_ENV_PATH:-}" ]; then
 elif [ -n "${SESSION_ENV_PATH:-}" ]; then
   _ib_caller_env+=(--caller-env "$SESSION_ENV_PATH")
 fi
+_ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
 _ib_issue=()
-[ -n "${ISSUE_NUMBER:-}" ] && _ib_issue+=(--issue-number "$ISSUE_NUMBER")
+[ -n "$_ib_target_issue" ] && _ib_issue+=(--issue-number "$_ib_target_issue")
+_ib_fork=()
+if [ "${forked_target:-false}" = "true" ]; then
+  _ib_fork+=(--forked-target true)
+  [ -n "${UPSTREAM_REPO:-}" ] && _ib_fork+=(--upstream-repo "$UPSTREAM_REPO")
+fi
+_ib_run_id=()
+[ -n "${RUN_ID:-}" ] && _ib_run_id+=(--run-id "$RUN_ID")
 # Foreground required: see BASH_AUTHORING.md §4
 set +e
-_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase infra "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}")
+_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase tracking "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}")
 _ib_rc=$?
 set -e
 if [ "$_ib_rc" -eq 2 ]; then
@@ -334,6 +344,16 @@ if [ "$_ib_rc" -eq 2 ]; then
   if [ "$_ib_sf" = "session-setup" ]; then
     printf '%s\n' "$_ib_out" | grep '^PREFLIGHT_ERROR=' || true
     printf '%s\n' '**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**'
+    exit 2
+  fi
+  if [ "$_ib_sf" = "get-issue-state" ]; then
+    printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true
+    printf '%s\n' '**⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**'
+    exit 2
+  fi
+  if [ "$_ib_sf" = "issue-number-required-for-resume" ]; then
+    printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true
+    printf '%s\n' '**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel'\''s issue.**'
     exit 2
   fi
   exit 2
@@ -372,6 +392,12 @@ _ib_kv_scan() {
       LARCH_TOKEN_SESSION_ID=*) LARCH_TOKEN_SESSION_ID=${_ib_tok#LARCH_TOKEN_SESSION_ID=} ;;
       LARCH_CLAUDE_SOURCE_FILE=*) LARCH_CLAUDE_SOURCE_FILE=${_ib_tok#LARCH_CLAUDE_SOURCE_FILE=} ;;
       LARCH_TIMING_LEDGER=*) LARCH_TIMING_LEDGER=${_ib_tok#LARCH_TIMING_LEDGER=} ;;
+      ISSUE_NUMBER=*) ISSUE_NUMBER=${_ib_tok#ISSUE_NUMBER=} ;;
+      RUN_ID=*) RUN_ID=${_ib_tok#RUN_ID=} ;;
+      BRANCH_SELECTED=*) BRANCH_SELECTED=${_ib_tok#BRANCH_SELECTED=} ;;
+      DEFERRED=*) DEFERRED=${_ib_tok#DEFERRED=} ;;
+      STALL_TRACKING=*) STALL_TRACKING=${_ib_tok#STALL_TRACKING=} ;;
+      IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;;
       codex_available=*) codex_available=${_ib_tok#codex_available=} ;;
       cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
     esac
@@ -385,8 +411,20 @@ EOF
 export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
 export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
 export CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING IMPLEMENT_BAIL_REASON
 export codex_available cursor_available
 ```
+
+Mandatory Step 0 routing guard: immediately after parsing/exporting the bootstrap KVs above, branch on the parsed values. If `IMPLEMENT_BAIL_REASON` is `adopted-issue-closed`, `adopted-issue-is-pr`, or `tracking-init-failed`, skip the remaining Step 0 materialization blocks and jump to Step 18 cleanup. Independently, if `STALL_TRACKING=true`, skip the remaining Step 0 materialization blocks and jump to Step 18 cleanup even when `IMPLEMENT_BAIL_REASON` is empty.
+
+Bootstrap tracking bail routing:
+
+| `IMPLEMENT_BAIL_REASON` | Routing |
+|---|---|
+| *(empty)* | Continue through Step 0. `DEFERRED=true` means metadata publication or tracking adoption was intentionally deferred but the run may continue. |
+| `adopted-issue-closed` | Skip to Step 18 cleanup. |
+| `adopted-issue-is-pr` | Skip to Step 18 cleanup. |
+| `tracking-init-failed` | `STALL_TRACKING=true`; skip Phase 3/4 bootstrap stubs and route to Step 18 cleanup. |
 
 - If `REPO_UNAVAILABLE=true`: the script prints `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` to stderr; set `repo_unavailable=true` from the parsed KV.
 - If `CODEX_BINARY_FOUND=false` (from parsed stdout / `session-env.sh` after the script writes it): the script prints `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` to stderr; else if `CODEX_PRESENT=false`, the script prints `**⚠ Codex not healthy for this session (runtime probe failed, skipped probe, auth error, or timeout). Using Claude replacement.**` Mirror the same two-tier pattern for Cursor. Derive mental flags `codex_available` / `cursor_available` from parsed `codex_available=` / `cursor_available=` stdout lines (`true` only when **both** the corresponding `*_BINARY_FOUND` and `*_PRESENT` keys are `true`).
@@ -525,6 +563,10 @@ If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If
 
 ### Step 0 — tracking issue adoption
 
+Tracking adoption calls 6-9 are owned by the single foreground `implement-bootstrap.sh --up-to-phase tracking` call above. Do not run separate prompt-side `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh init`, `post-tracking-issue.sh`, or `tracking-issue-write.sh rename` blocks for Step 0 adoption. The prompt still owns the single post-bootstrap token/timing ledger mark block immediately below.
+
+Resolve a stable `ISSUE_NUMBER` and `RUN_ID` from bootstrap stdout. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
+
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
@@ -536,126 +578,33 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+if [ "${IMPLEMENT_BAIL_REASON:-}" = "" ] && [ "${DEFERRED:-false}" != "true" ] && { [ "${BRANCH_SELECTED:-}" = "branch-1-resume" ] || [ "${BRANCH_SELECTED:-}" = "branch-2-adopt" ]; }; then
+  "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue" || true
+  "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+fi
 # token-mark Step 0 — tracking issue
 # timing-mark Step 0 — tracking issue
 ```
 
-Resolve a stable `ISSUE_NUMBER` and `RUN_ID` for the session. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
-
 **MANDATORY — READ ENTIRE FILE** before composing any tracking-issue summary comment at Step 0 (tracking + plan materialization), 9a.1, 11, 18, or the ship-pr post-merge `write-final-report.sh` pass (merged runs): `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. It defines the four allowed marker literals (`larch:metadata`, `larch:diagrams`, `larch:plan`, `larch:final-summary`) and the rule that bulky payloads live in `larch-logs/`, not in GitHub comments.
 
-**`RUN_ID` initialization**: if `--run-id <ID>` was provided at flag-parse time, use that value unchanged. Otherwise derive from the session ID file written at Step 0:
+Bootstrap behavior map:
 
-```bash
-RUN_ID=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
-# intentionally non-stable: without --run-id, fallbacks below use uuidgen(1) and date(1) when session-id is empty (identifiers for this run; not literal-stable).
-[ -n "$RUN_ID" ] || RUN_ID=$(uuidgen 2>/dev/null | tr -d '\r\n' || true)
-[ -n "$RUN_ID" ] || RUN_ID=$(od -vAn -N16 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' || true)
-[ -n "$RUN_ID" ] || RUN_ID="unknown-$(date +%s)"
-```
+| Branch / condition | Bootstrap behavior | Orchestrator routing |
+|---|---|---|
+| `repo_unavailable=true` | `BRANCH_SELECTED=repo-unavailable-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`. | Continue local-only; downstream GitHub operations stay skipped. |
+| `forked_target=true` | `BRANCH_SELECTED=forked-target-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`, best-effort upstream context fetch only when both `--repo "$UPSTREAM_REPO"` and `--issue "$ISSUE_NUMBER"` are present. | Continue fork flow; no local tracking issue is adopted and Step 9a cannot inject `Closes #N`. |
+| Branch 1 resume | Usable `parent-issue.md` with matching argv `ISSUE_NUMBER`, numeric `ISSUE_NUMBER`, valid `RUN_ID` (`^[A-Za-z0-9._-]+$`), and `ADOPTED=true`; idempotent `larch-log.sh init`; best-effort implementing rename. If the sentinel exists but argv omits `ISSUE_NUMBER`, bootstrap refuses resume. | Continue with sentinel `ISSUE_NUMBER` / `RUN_ID`. |
+| Branch 1 mismatch or malformed sentinel | Remove only `parent-issue.md`, preserve `larch-logs/`, then fall through to Branch 2. Treat non-numeric `ISSUE_NUMBER` or invalid `RUN_ID` the same as any other malformed sentinel. | Continue according to Branch 2 result. |
+| Branch 2 open issue | `get-issue-state.sh`, derive `RUN_ID` (`--run-id` > `session-id` > `LARCH_TOKEN_SESSION_ID`), `larch-log.sh init`, `post-tracking-issue.sh --run-id "$RUN_ID"`, best-effort implementing rename. | Continue with `BRANCH_SELECTED=branch-2-adopt`. |
+| Branch 2 metadata post returns `POSTED=false` | No sentinel, no rename, `DEFERRED=true`, exit 0. | Continue to plan materialization; summary publication is deferred by construction. |
+| Branch 2 issue is closed | `IMPLEMENT_BAIL_REASON=adopted-issue-closed`. | Skip to Step 18 cleanup. |
+| Branch 2 target is PR | `IMPLEMENT_BAIL_REASON=adopted-issue-is-pr`. | Skip to Step 18 cleanup. |
+| `RUN_ID` derivation or `larch-log.sh init` fails | `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `STALL_TRACKING=true`. | Skip to Step 18 cleanup; preserve `ISSUE_NUMBER` when resolved so stalled rename can apply. |
+| `get-issue-state.sh` fails or returns an unexpected non-`OPEN` state | `STEP_FAILED=get-issue-state`, exit 2. | Abort as an infra-class Step 0 failure. |
+| Resume sentinel exists but argv omitted `--issue-number` | `STEP_FAILED=issue-number-required-for-resume`, exit 2. | Abort with the dedicated resume-required operator message. |
 
-This sets the canonical `RUN_ID` for new runs (Branch 2 adopt path). Branch 1 (resume) overrides this by reading `RUN_ID` from `parent-issue.md` — the sentinel's value is authoritative for resumed runs because larch-logs were already committed under that ID. Branch 2 MUST NOT independently invent a `RUN_ID` value; it uses the value initialized here.
-
-**Decision order** (top-to-bottom; first match wins):
-
-**Step 0 tracking adoption entry default**: set `deferred=false`. Branch 1 / Branch 2 success → `deferred` stays `false`. Branch 2 failure routing: `larch-log.sh init` (manifest write) fails → `deferred=true`, `STALL_TRACKING=true`, skip to Step 18 (do NOT clear `$ISSUE_NUMBER`); metadata summary upsert fails → `deferred=true`, proceed to plan materialization below; sentinel write fails → `deferred=true`, proceed to plan materialization below. This establishes a clean binary state for Steps 2 / 5 / 7a / 8 / 9a / 9a.1 / 11 / 18 — there is no tri-state "unset" to handle.
-
-**Branch 1 — sentinel exists** (`$IMPLEMENT_TMPDIR/parent-issue.md` present):
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-read.sh --sentinel "$IMPLEMENT_TMPDIR/parent-issue.md"
-```
-
-Parse stdout for `ISSUE_NUMBER`, `RUN_ID`, `ADOPTED`.
-
-- **Mismatch guard**: if `ISSUE_NUMBER_in_sentinel != TARGET_ISSUE_NUMBER`: print `**⚠ Step 0 tracking: tracking issue — sentinel mismatch (sentinel has #$ISSUE_NUMBER_in_sentinel, argv requested #$TARGET_ISSUE_NUMBER). Clearing sentinel and re-adopting.**`, remove the sentinel file, preserve any existing `larch-logs/` files, and fall through to Branch 2.
-- **Reuse**: set `ISSUE_NUMBER` and `RUN_ID` from sentinel. Ensure the manifest still exists with `larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"`; this is idempotent and emits `UNCHANGED=true` on an existing manifest.
-- **No hydration step**: marker-keyed summary comments are projections only. Never fetch GitHub comment bodies to reconstruct run state; resume state comes from the committed `larch-logs/implement/<RUN_ID>/` tree plus session tmpdir artifacts.
-
-  ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
-  ```
-
-- **Resume rename safety net**: if `ISSUE_NUMBER` is set, run a best-effort idempotent rename to `[IMPLEMENTING]`. This recovers from the case where a prior session wrote the sentinel but its Branch 2 rename failed (best-effort, logged but non-blocking) — without this, a resumed run could complete with merge/Step 18 renames while the GitHub title never received `[IMPLEMENTING]`:
-
-  ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state implementing
-  ```
-
-  Best-effort: on `FAILED=true` or non-zero exit, log `Step 0 tracking adoption — Branch 1 resume rename to implementing failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix; see `scripts/tracking-issue-write.md`), so the common resume case is a single cheap `gh issue view` with no edit.
-
-Continue Step 0 (follow through in the subsections below—still part of Step 0).
-
-**Branch 2 — adopt positional issue** (`TARGET_ISSUE_NUMBER` from argv parse; no usable sentinel after Branch 1 mismatch-clear):
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-state.sh --issue "$TARGET_ISSUE_NUMBER"
-```
-
-Parse `STATE`, `URL`, `IS_PR` (or `FAILED=true` + `ERROR=` on `gh` failure). On `FAILED=true`, print `**⚠ Step 0 tracking: tracking issue — get-issue-state failed: $ERROR. Aborting.**` and skip to Step 18.
-
-Detect PR-vs-issue: if `IS_PR=true`, print `**⚠ Step 0 tracking: tracking issue — #$TARGET_ISSUE_NUMBER is a pull request, not an issue. Aborting.**` and skip to Step 18.
-
-If `STATE=CLOSED`: print `**⚠ Step 0 tracking: adopted issue #$TARGET_ISSUE_NUMBER is CLOSED. Aborting.**`, emit `IMPLEMENT_BAIL_REASON=adopted-issue-closed` on stdout, skip to Step 18. Operators see the bail token in the transcript and handle cleanup directly.
-
-Else (`STATE=OPEN`): adopt the issue, initialize the run manifest, and publish the metadata summary comment. No existing tracking-issue comment is read or hydrated; marker-keyed summary comments are projections and `tracking-issue-summary.sh` is responsible for upserting the one comment matching the marker literal.
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$TARGET_ISSUE_NUMBER"
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "$TARGET_ISSUE_NUMBER" --adopted true
-```
-
-On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ Step 0 tracking: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
-
-`post-tracking-issue.sh` writes `$IMPLEMENT_TMPDIR/parent-issue.md` (with `ISSUE_NUMBER=$TARGET_ISSUE_NUMBER`, `RUN_ID=$RUN_ID`, `ADOPTED=true`) after the metadata post succeeds. Set `ISSUE_NUMBER=$TARGET_ISSUE_NUMBER`.
-
-On either sub-branch, **rename the adopted issue to `[IMPLEMENTING]`** so the title reflects the active run (see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $TARGET_ISSUE_NUMBER --state implementing
-```
-
-Best-effort: on `FAILED=true` or non-zero exit, log `Step 0 tracking adoption — Branch 2 rename to implementing failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix; see `scripts/tracking-issue-write.md`); failure does not affect adoption correctness — it only loses the visual-indicator benefit. Step 12a/12b's terminal rename to `[DONE]` and Step 18's stalled-rename apply to adopted issues uniformly (no `ADOPTED=` guard).
-
-Continue Step 0 (follow through in the subsections below—still part of Step 0).
-
-### repo_unavailable=true
-
-If `repo_unavailable=true`: skip all Step 0 tracking adoption branches, do NOT invoke `gh issue view` / `tracking-issue-write.sh`. No tracking issue is created, no sentinel is written, and `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18). Print `⏩ Step 0 tracking: status=skip reason=repo-unavailable elapsed=<elapsed>`.
-
-### forked_target=true
-
-If `forked_target=true`: skip Branch 1 (sentinel resume) entirely; no local tracking-issue sentinel is written. Set `deferred=true`, leave `ISSUE_NUMBER` unset for fork PR semantics, and keep fork metadata in orchestrator-local variables (`FORK_REPO`, `UPSTREAM_REPO`, `FORK_OWNER`).
-
-When `TARGET_ISSUE_NUMBER` is set, do not adopt it as a local tracking issue. Instead set `UPSTREAM_DESIGN_ISSUE=$TARGET_ISSUE_NUMBER`, then fetch upstream context:
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/get-issue-context.sh --issue "$TARGET_ISSUE_NUMBER" --repo "$UPSTREAM_REPO" --tmpdir "$IMPLEMENT_TMPDIR"
-```
-
-Parse `TITLE_FILE` and `BODY_FILE`. Use `$BODY_FILE` as the operator-visible feature context for fork dry-runs when needed. On helper failure, print `**⚠ Step 0 tracking: tracking issue — upstream issue context fetch failed: $ERROR. Aborting.**` and skip to Step 18. `ISSUE_NUMBER` MUST remain unset under fork mode so Step 9a cannot inject `Closes #N` into the fork PR body. Print `⏩ Step 0 tracking: tracking issue status=skip reason=forked-dry-run elapsed=<elapsed>`.
+Resume safety net: Branch 1 always re-runs `larch-log.sh init` and the best-effort implementing rename, so a previous run that wrote the sentinel but missed the visual title transition can recover without re-posting metadata.
 
 ### Larch-log Batches and Summary Comments
 
@@ -702,6 +651,8 @@ would misclassify pre-existing untracked files as phantoms on later probes.
 
 ### Plan materialization from issue body
 
+Skip this section entirely when `REPO_UNAVAILABLE=true`, `STALL_TRACKING=true`, or `IMPLEMENT_BAIL_REASON` is one of `adopted-issue-closed`, `adopted-issue-is-pr`, or `tracking-init-failed`. `repo_unavailable=true` keeps the run local-only and leaves `ISSUE_NUMBER` empty by contract.
+
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
@@ -743,7 +694,9 @@ After Preflight passed (`AUDIT=pass`) and Step 0 tracking adoption resolved the 
 
 2. **Compose `feature-description.txt`** from the GitHub issue title + body (full issue body, not only the plan block):
    ```bash
-   gh issue view "$ISSUE_NUMBER" --json title,body --template "{{.title}}\n\n{{.body}}" > "$IMPLEMENT_TMPDIR/feature-description.txt"
+   if [ "${REPO_UNAVAILABLE:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ]; then
+     gh issue view "$ISSUE_NUMBER" --json title,body --template "{{.title}}\n\n{{.body}}" > "$IMPLEMENT_TMPDIR/feature-description.txt"
+   fi
    ```
    (Under `forked_target=true`, substitute `"$TARGET_ISSUE_NUMBER"` for `"$ISSUE_NUMBER"` when fetching upstream design context if `ISSUE_NUMBER` is unset, and append `--repo "$UPSTREAM_REPO"` so `gh` targets the upstream canonical repo — the file still lands at the conventional path.)
 

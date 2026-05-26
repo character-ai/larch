@@ -1,0 +1,16 @@
+Reviewing branch changes for shell-idiom correctness in `phase_tracking`, starting with the diff and the implementation file.
+Checking whether `kv_value_from_block` pipeline failures can leave `state_failed` stale when `state_rc=0`:
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+Reviewed branch commits `fc4d783b`, `6d635cd2`, and `438ab338` against `main`, with focus on [`scripts/implement-bootstrap.sh`](scripts/implement-bootstrap.sh) `phase_tracking()` (lines 380–495) and its helpers.
+
+- **`set -uo pipefail` + `|| return 0`:** Errexit is intentionally off (lines 4–7). `run_larch_log_init` signals init failure with `return 1` after `tracking_init_failed`; `run_larch_log_init … || return 0` in `phase_tracking` (425, 475) turns that into a controlled phase exit without aborting the script. A `set -u` trip inside `run_larch_log_init` would still yield a non-zero function status caught by `|| return 0`, but would skip `tracking_init_failed`—not reachable on the normal path because `phase_infra` always sets `IMPLEMENT_TMPDIR` before `phase_tracking` runs.
+- **`emit_kv STEP_FAILED get-issue-state; exit 2`:** The guard uses `state_rc` first (442–444), so a non-zero `get-issue-state.sh` rc still exits 2 even if `kv_value_from_block` returns empty. Unknown/non-OPEN `STATE` values hit the second exit-2 branch (457–459). This matches SKILL exit-2 handling (grep `STEP_FAILED` only).
+- **`LARCH_QUIET_DISABLE`:** Exported at line 13 before sourcing `lib-quiet.sh`; `phase_tracking` does not start subshells that unset it. `emit_kv` / breadcrumbs use the file-level export as intended.
+- **New globals on early paths:** `BRANCH_SELECTED`, `DEFERRED`, `STALL_TRACKING`, `ISSUE_NUMBER_RESOLVED`, and `RUN_ID` are initialized at lines 59–63; carve-outs and bail paths use explicit assignments or `${…:-}` in `emit_final_tail` (530–551).
+- **`kv_value_from_block` + pipefail:** Single `printf` feeding `awk` does not produce the classic producer-after-`head` SIGPIPE pattern; empty/missing keys yield empty strings and do not block `state_rc`-based failure detection.
+- **Harness:** `make test-implement-bootstrap` reports `PASS=99 FAIL=0`, including B5/B5-branch1 init-fail, B6 exit-2, and B-empty-run-id-derivation cases for the paths above.
+
+**Note (not a shell-idiom defect):** Line 437 (`[ -n "$ISSUE_NUMBER_OPT" ] || return 0`) can return success with no tracking work when there is no valid sentinel and no `--issue-number`; the SKILL always passes an issue on the production path.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# implement-bootstrap.sh — /implement Step 0 phase dispatcher (Phase 1: phase_infra).
+# implement-bootstrap.sh — /implement Step 0 phase dispatcher (infra + tracking phases).
 
 set -uo pipefail
 # Intentional: best-effort failure model. Errexit is OFF file-wide. Each leaf
@@ -27,6 +27,9 @@ export CLAUDE_PLUGIN_ROOT
 UP_TO_PHASE=""
 CALLER_ENV_OPT=""
 ISSUE_NUMBER_OPT=""
+FORKED_TARGET=false
+UPSTREAM_REPO_OPT=""
+RUN_ID_OPT=""
 IMPLEMENT_BAIL_REASON=""
 SKIP_CODEX_PROBE_FLAG=false
 SKIP_CURSOR_PROBE_FLAG=false
@@ -53,9 +56,14 @@ LARCH_CLAUDE_SOURCE_FILE=""
 LARCH_TIMING_LEDGER=""
 codex_available=""
 cursor_available=""
+ISSUE_NUMBER_RESOLVED=""
+RUN_ID=""
+BRANCH_SELECTED=""
+DEFERRED=false
+STALL_TRACKING=false
 
 usage() {
-    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N]"
+    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID]"
 }
 
 die_usage() {
@@ -99,6 +107,97 @@ ingest_kv_block() {
     while IFS= read -r line || [ -n "$line" ]; do
         ingest_kv_line "$line"
     done < <(printf '%s\n' "$data")
+}
+
+kv_value_from_block() {
+    local key=$1 data=$2
+    printf '%s\n' "$data" | awk -F= -v k="$key" 'BEGIN{e=""} $1 == k {e=substr($0,index($0,"=")+1); exit} END{print e}'
+}
+
+valid_run_id() {
+    local value=$1
+    case "$value" in
+        ""|*[!A-Za-z0-9._-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+valid_issue_number() {
+    local value=$1
+    case "$value" in
+        ""|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+emit_skip_breadcrumb_if_enabled() {
+    local reason=$1
+    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
+        emit_breadcrumb "⏩ step0: tracking — skip ($reason)"
+    fi
+}
+
+emit_tracking_breadcrumb_if_enabled() {
+    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
+        emit_breadcrumb "→ step0: tracking adopted #${ISSUE_NUMBER_RESOLVED:-} (run=${RUN_ID:-} branch=${BRANCH_SELECTED:-})"
+    fi
+}
+
+should_run_post_tracking_phase() {
+    [ -z "${IMPLEMENT_BAIL_REASON:-}" ] \
+        && [ "${STALL_TRACKING:-false}" != "true" ] \
+        && [ "${DEFERRED:-false}" != "true" ]
+}
+
+tracking_init_failed() {
+    IMPLEMENT_BAIL_REASON=tracking-init-failed
+    STALL_TRACKING=true
+}
+
+run_larch_log_init() {
+    local issue=$1 run_id=$2 site=$3
+    local init_out init_rc init_err
+    init_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-log-init.XXXXXX")
+    init_out=$("$SCRIPT_DIR/larch-log.sh" init \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --skill implement \
+        --run-id "$run_id" \
+        --issue "$issue" 2>"$init_err")
+    init_rc=$?
+    if [ "$init_rc" -ne 0 ]; then
+        cp "$init_err" "$IMPLEMENT_TMPDIR/tracking-larch-log-init.stderr.log" 2>/dev/null || true
+        if [ -n "${init_out:-}" ]; then
+            printf '%s\n' "$init_out" >>"$IMPLEMENT_TMPDIR/tracking-larch-log-init.stderr.log" 2>/dev/null || true
+        fi
+        larch_err "**⚠ Step 0 tracking: larch-log init failed during $site.**"
+        rm -f "$init_err"
+        tracking_init_failed
+        return 1
+    fi
+    rm -f "$init_err"
+    return 0
+}
+
+rename_to_implementing() {
+    local issue=$1 site=$2
+    local rename_out rename_rc rename_failed rename_log
+    [ -n "$issue" ] || return 0
+    rename_log="$IMPLEMENT_TMPDIR/tracking-rename.stderr.log"
+    rename_out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state implementing 2>&1)
+    rename_rc=$?
+    printf '%s\n' "$rename_out" >"$rename_log" 2>/dev/null || true
+    rename_failed=$(kv_value_from_block FAILED "$rename_out")
+    if [ "$rename_rc" -ne 0 ] || [ "$rename_failed" = "true" ]; then
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "Step 0 tracking adoption — $site rename to implementing" \
+            --tool "tracking-issue-write.sh rename" \
+            --exit-code "$rename_rc" \
+            --category "Tool Failures" \
+            --output-file "$rename_log" \
+            --redact || true
+    fi
+    return 0
 }
 
 phase_infra() {
@@ -223,6 +322,7 @@ phase_infra() {
         --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
         --token-session-id "$LARCH_TOKEN_SESSION_ID"
         --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
+        --forked-target "$FORKED_TARGET"
     )
     [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
     [ -n "${dynamic_archetypes_value:-}" ] && session_env_args+=(--dynamic-archetypes "$dynamic_archetypes_value")
@@ -279,7 +379,134 @@ phase_infra() {
 }
 
 phase_tracking() {
-    IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-2
+    local sentinel read_out read_rc read_failed sentinel_issue sentinel_run_id sentinel_adopted
+    local state_out state_rc state_failed issue_state issue_is_pr
+    local post_out post_rc posted
+
+    if [ "${REPO_UNAVAILABLE:-}" = "true" ]; then
+        BRANCH_SELECTED=repo-unavailable-skip
+        DEFERRED=true
+        emit_skip_breadcrumb_if_enabled repo-unavailable
+        return 0
+    fi
+
+    if [ "$FORKED_TARGET" = "true" ]; then
+        BRANCH_SELECTED=forked-target-skip
+        DEFERRED=true
+        local upstream_context_rc
+        if [ -n "$UPSTREAM_REPO_OPT" ] && [ -n "$ISSUE_NUMBER_OPT" ]; then
+            if "$SCRIPT_DIR/get-issue-context.sh" \
+                --issue "$ISSUE_NUMBER_OPT" \
+                --repo "$UPSTREAM_REPO_OPT" \
+                --tmpdir "$IMPLEMENT_TMPDIR" \
+                >"$IMPLEMENT_TMPDIR/upstream-context.out" \
+                2>"$IMPLEMENT_TMPDIR/upstream-context.log"; then
+                :
+            else
+                upstream_context_rc=$?
+                "$SCRIPT_DIR/append-tool-failure.sh" \
+                    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                    --site "Step 0 tracking adoption — forked target upstream context" \
+                    --tool "get-issue-context.sh" \
+                    --exit-code "$upstream_context_rc" \
+                    --category "Warnings" \
+                    --output-file "$IMPLEMENT_TMPDIR/upstream-context.log" \
+                    --redact || true
+            fi
+        fi
+        emit_skip_breadcrumb_if_enabled forked-target
+        return 0
+    fi
+
+    sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
+    if [ -f "$sentinel" ]; then
+        if [ -z "$ISSUE_NUMBER_OPT" ]; then
+            larch_err "**⚠ Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel.**"
+            emit_kv STEP_FAILED issue-number-required-for-resume
+            exit 2
+        fi
+        read_out=$("$SCRIPT_DIR/tracking-issue-read.sh" --sentinel "$sentinel" 2>"$IMPLEMENT_TMPDIR/tracking-issue-read.stderr.log")
+        read_rc=$?
+        read_failed=$(kv_value_from_block FAILED "$read_out")
+        sentinel_issue=$(kv_value_from_block ISSUE_NUMBER "$read_out")
+        sentinel_run_id=$(kv_value_from_block RUN_ID "$read_out")
+        sentinel_adopted=$(kv_value_from_block ADOPTED "$read_out")
+
+        if [ "$read_rc" -eq 0 ] && [ "$read_failed" != "true" ] && [ "$sentinel_adopted" = "true" ] \
+            && valid_issue_number "$sentinel_issue" && valid_run_id "$sentinel_run_id"; then
+            if [ -n "$ISSUE_NUMBER_OPT" ] && [ "$sentinel_issue" != "$ISSUE_NUMBER_OPT" ]; then
+                larch_err "**⚠ Step 0 tracking: sentinel mismatch (sentinel has #$sentinel_issue, argv requested #$ISSUE_NUMBER_OPT). Clearing sentinel and re-adopting.**"
+                rm -f "$sentinel"
+            else
+                BRANCH_SELECTED=branch-1-resume
+                ISSUE_NUMBER_RESOLVED=$sentinel_issue
+                RUN_ID=$sentinel_run_id
+                run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
+                rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
+                emit_tracking_breadcrumb_if_enabled
+                return 0
+            fi
+        else
+            larch_err "**⚠ Step 0 tracking: malformed tracking sentinel. Clearing sentinel and re-adopting.**"
+            rm -f "$sentinel"
+        fi
+    fi
+
+    [ -n "$ISSUE_NUMBER_OPT" ] || return 0
+
+    state_out=$("$SCRIPT_DIR/get-issue-state.sh" --issue "$ISSUE_NUMBER_OPT" 2>"$IMPLEMENT_TMPDIR/get-issue-state.stderr.log")
+    state_rc=$?
+    state_failed=$(kv_value_from_block FAILED "$state_out")
+    if [ "$state_rc" -ne 0 ] || [ "$state_failed" = "true" ]; then
+        emit_kv STEP_FAILED get-issue-state
+        exit 2
+    fi
+
+    issue_is_pr=$(kv_value_from_block IS_PR "$state_out")
+    issue_state=$(kv_value_from_block STATE "$state_out")
+    if [ "$issue_is_pr" = "true" ]; then
+        IMPLEMENT_BAIL_REASON=adopted-issue-is-pr
+        return 0
+    fi
+    if [ "$issue_state" = "CLOSED" ]; then
+        IMPLEMENT_BAIL_REASON=adopted-issue-closed
+        return 0
+    fi
+    if [ "$issue_state" != "OPEN" ]; then
+        emit_kv STEP_FAILED get-issue-state
+        exit 2
+    fi
+
+    BRANCH_SELECTED=branch-2-adopt
+    ISSUE_NUMBER_RESOLVED=$ISSUE_NUMBER_OPT
+    if [ -n "$RUN_ID_OPT" ]; then
+        RUN_ID=$RUN_ID_OPT
+    else
+        RUN_ID=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+        [ -n "$RUN_ID" ] || RUN_ID=${LARCH_TOKEN_SESSION_ID:-}
+    fi
+    if ! valid_run_id "$RUN_ID"; then
+        tracking_init_failed
+        return 0
+    fi
+
+    run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 2 adopt" || return 0
+
+    post_out=$("$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/post-tracking-issue.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+        --issue-number "$ISSUE_NUMBER_RESOLVED" \
+        --run-id "$RUN_ID" \
+        --adopted true 2>"$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log")
+    post_rc=$?
+    posted=$(kv_value_from_block POSTED "$post_out")
+    if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
+        DEFERRED=true
+        rm -f "$sentinel"
+        return 0
+    fi
+
+    rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 2 adopt"
+    emit_tracking_breadcrumb_if_enabled
     return 0
 }
 
@@ -317,9 +544,27 @@ emit_infra_kv_block() {
 }
 
 emit_final_tail() {
+    local issue_tail
     emit_infra_kv_block
-    emit_kv ISSUE_NUMBER "${ISSUE_NUMBER_OPT:-}"
-    emit_kv RUN_ID ""
+    case "${BRANCH_SELECTED:-}" in
+        forked-target-skip|repo-unavailable-skip)
+            issue_tail=""
+            ;;
+        branch-1-resume|branch-2-adopt)
+            issue_tail="${ISSUE_NUMBER_RESOLVED:-}"
+            ;;
+        *)
+            case "${IMPLEMENT_BAIL_REASON:-}" in
+                adopted-issue-closed|adopted-issue-is-pr) issue_tail="" ;;
+                *) issue_tail="${ISSUE_NUMBER_RESOLVED:-${ISSUE_NUMBER_OPT:-}}" ;;
+            esac
+            ;;
+    esac
+    emit_kv ISSUE_NUMBER "$issue_tail"
+    emit_kv RUN_ID "${RUN_ID:-}"
+    emit_kv BRANCH_SELECTED "${BRANCH_SELECTED:-}"
+    emit_kv DEFERRED "${DEFERRED:-false}"
+    emit_kv STALL_TRACKING "${STALL_TRACKING:-false}"
     emit_kv BRANCH_NAME ""
     emit_kv PLAN_FILE ""
     emit_kv coder ""
@@ -345,6 +590,24 @@ main() {
                 ISSUE_NUMBER_OPT=$2
                 shift 2
                 ;;
+            --forked-target)
+                [ $# -ge 2 ] || die_usage "--forked-target requires a value"
+                case "$2" in
+                    true|false) FORKED_TARGET=$2 ;;
+                    *) die_usage "--forked-target must be true or false" ;;
+                esac
+                shift 2
+                ;;
+            --upstream-repo)
+                [ $# -ge 2 ] || die_usage "--upstream-repo requires a value"
+                UPSTREAM_REPO_OPT=$2
+                shift 2
+                ;;
+            --run-id)
+                [ $# -ge 2 ] || die_usage "--run-id requires a value"
+                RUN_ID_OPT=$2
+                shift 2
+                ;;
             --skip-codex-probe)
                 SKIP_CODEX_PROBE_FLAG=true
                 shift
@@ -364,6 +627,22 @@ main() {
     done
 
     [ -n "$UP_TO_PHASE" ] || die_usage "--up-to-phase is required"
+    if [ -n "$ISSUE_NUMBER_OPT" ]; then
+        case "$ISSUE_NUMBER_OPT" in
+            *[!0-9]*|"") die_usage "--issue-number must be numeric" ;;
+        esac
+    fi
+    if [ -n "$RUN_ID_OPT" ] && ! valid_run_id "$RUN_ID_OPT"; then
+        die_usage "--run-id must match ^[A-Za-z0-9._-]+$"
+    fi
+    if [ -n "$UPSTREAM_REPO_OPT" ]; then
+        if [[ ! "$UPSTREAM_REPO_OPT" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+            die_usage "--upstream-repo must be OWNER/REPO"
+        fi
+    fi
+    if [ "$FORKED_TARGET" = "true" ] && [ -n "$UPSTREAM_REPO_OPT" ] && [ -z "$ISSUE_NUMBER_OPT" ]; then
+        die_usage "--issue-number is required with --upstream-repo"
+    fi
 
     phase_infra
 
@@ -374,17 +653,27 @@ main() {
             ;;
         plan)
             phase_tracking
-            phase_plan_materialize
+            if should_run_post_tracking_phase; then
+                phase_plan_materialize
+            fi
             ;;
         coder)
             phase_tracking
-            phase_plan_materialize
-            phase_coder_select
+            if should_run_post_tracking_phase; then
+                phase_plan_materialize
+            fi
+            if should_run_post_tracking_phase; then
+                phase_coder_select
+            fi
             ;;
         all)
             phase_tracking
-            phase_plan_materialize
-            phase_coder_select
+            if should_run_post_tracking_phase; then
+                phase_plan_materialize
+            fi
+            if should_run_post_tracking_phase; then
+                phase_coder_select
+            fi
             ;;
         *)
             die_usage "invalid --up-to-phase: $UP_TO_PHASE (expected infra|tracking|plan|coder|all)"

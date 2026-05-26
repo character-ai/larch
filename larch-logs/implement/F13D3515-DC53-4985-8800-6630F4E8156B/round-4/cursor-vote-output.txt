@@ -1,0 +1,28 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate nit but extracting a helper adds little value for two identical guards.
+FINDING_3: EXONERATE -- Real edge case at line 449 but low impact; documenting is enough for now.
+FINDING_4: EXONERATE -- Duplicated stubs are real but a shared helper is optional harness cleanup.
+FINDING_5: EXONERATE -- Pre-existing bashisms; not worth a separate issue for this PR.
+FINDING_6: NO -- B7 already exercises non-OPEN STATE (e.g. MERGED) and exit-2 path.
+FINDING_7: YES -- Concrete follow-up: implement-bootstrap.sh is still absent from the Family B denylist.
+FINDING_8: YES -- test-post-tracking-issue.sh lacks --run-id override, invalid-flag, and precedence cases.
+FINDING_9: YES -- GP-adopt always passes --run-id so default RUN_ID derivation is untested in bootstrap harness.
+FINDING_10: YES -- B4 does not assert rename is skipped when POSTED=false on the deferred path.
+FINDING_11: YES -- Bootstrap stubs post-tracking-issue.sh so real-script regressions need dedicated harness coverage.
+FINDING_12: YES -- linting.md still documents calls 1-5 only while harness covers many more cases.
+FINDING_13: NO -- Describes implemented argv hardening, not a defect to fix.
+FINDING_14: NO -- Describes implemented sentinel fail-closed behavior, not a defect.
+FINDING_15: NO -- Describes correct quoting boundaries, not a security gap.
+FINDING_16: NO -- Describes implemented redacted fork failure handling, not a problem.
+FINDING_17: NO -- Describes correct post-tracking-issue ordering, not a regression.
+FINDING_18: NO -- Describes implemented FORKED_TARGET validation, not an open issue.
+FINDING_19: YES -- REPO= in write-session-env.sh still lacks OWNER/REPO validation worth tracking separately.
+FINDING_20: YES -- Upstream issue title/body files lack the data-not-instructions envelope used elsewhere.
+FINDING_21: YES -- --caller-env path confinement is a real pre-existing Phase 1 security gap worth filing.
+FINDING_22: YES -- main() runs phase 3/4 stubs when DEFERRED=true because guards omit that flag.
+FINDING_23: YES -- Post failure clears sentinel so same-tmpdir re-bootstrap repeats full Branch 2 adopt.
+FINDING_24: EXONERATE -- DEFERRED overload is a minor docs/clarity nit, not a blocking defect.
+FINDING_25: YES -- Pre-existing step2 anchoring on session-env alone without parent-issue is a real edge case.
+FINDING_26: NO -- Commit traceability note, not an actionable code defect.
+FINDING_27: NO -- Out-of-scope log flush note, not a code review finding.
+FINDING_28: NO -- Plan-fidelity summary with NO_ISSUES_FOUND is not a defect to accept.
