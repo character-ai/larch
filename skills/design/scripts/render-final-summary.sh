@@ -29,6 +29,10 @@ done
 
 [ -n "${DESIGN_TMPDIR:-}" ] || { printf '%s\n' "render-final-summary.sh: DESIGN_TMPDIR unset" >&2; exit 2; }
 [ -d "$DESIGN_TMPDIR" ] || { printf '%s\n' "render-final-summary.sh: DESIGN_TMPDIR not a directory" >&2; exit 2; }
+# shellcheck source=scripts/lib-quiet.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
 [ -n "$OUTCOME" ] || { usage; exit 2; }
 if [ "$OUTCOME" = "cancelled-title-filter" ]; then
     MODE_STR="Refused (title-filter)"
@@ -39,7 +43,7 @@ fi
 case "$OUTCOME" in
     approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
     *)
-        printf '%s\n' "render-final-summary.sh: outcome not in enumeration: $OUTCOME" >&2
+        larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
         ;;
 esac
@@ -128,19 +132,28 @@ if [ "$jq_ok" = true ]; then
         read -r U_IN U_CR U_OUT < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$tok_json" 2>/dev/null || printf '0\t0\t0\n')
     fi
     sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT))
-    if [ "$sum_b" -eq 0 ] && [ "$stderr_nonempty" = true ]; then
+    total_t=$((CLAUDE_T + CODEX_T + CURSOR_T))
+    if [ "$sum_b" -eq 0 ] && [ "$total_t" -eq 0 ]; then
         _cost_unavailable=true
-        if [ ! -f "$DESIGN_TMPDIR/token-report-final.failure.log" ]; then
+        if [ "$stderr_nonempty" = true ] && [ ! -f "$DESIGN_TMPDIR/token-report-final.failure.log" ]; then
             cp "$DESIGN_TMPDIR/token-report-final.stderr.log" "$DESIGN_TMPDIR/token-report-final.failure.log" 2>/dev/null || true
         fi
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-            --log "$DESIGN_TMPDIR/execution-issues.md" \
-            --site "design final summary" \
-            --tool "token-report.sh" \
-            --exit-code "${trc:-1}" \
-            --category Warnings \
-            --output-file "$DESIGN_TMPDIR/token-report-final.failure.log" \
-            >/dev/null 2>&1 || true
+        if [ "$stderr_nonempty" = true ]; then
+            "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+                --log "$DESIGN_TMPDIR/execution-issues.md" \
+                --site "design final summary" \
+                --tool "token-report.sh" \
+                --exit-code "${trc:-1}" \
+                --category Warnings \
+                --output-file "$DESIGN_TMPDIR/token-report-final.failure.log" \
+                >/dev/null 2>&1 || true
+        fi
+    elif [ "$sum_b" -eq 0 ]; then
+        COST_ARGS=(
+            --claude-tokens "$CLAUDE_T"
+            --codex-tokens "$CODEX_T"
+            --cursor-tokens "$CURSOR_T"
+        )
     else
         COST_ARGS=(
             --claude-tokens "$CLAUDE_T"
@@ -339,7 +352,7 @@ compose_self_fallback() {
             printf -- '- **Issue**: N/A\n'
         fi
         printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
-        if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ]; then
+        if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then
             printf -- '- **OOS filed**: %s — %s\n' "$OOS_COUNT" "$OOS_URLS"
         else
             printf -- '- **OOS filed**: %s\n' "${OOS_COUNT:-0}"
@@ -352,6 +365,7 @@ compose_self_fallback() {
 }
 
 render_or_fallback() {
+    local allow_fallback=${1:-true}
     local err_file="$DESIGN_TMPDIR/render-final-summary.stderr.log"
     set +e
     invoke_render 2>"$err_file"
@@ -359,17 +373,21 @@ render_or_fallback() {
     set -e
     if [ "$rr" -ne 0 ] || [ ! -s "$DESIGN_TMPDIR/final-summary.md" ]; then
         append_render_warning "${rr:-1}" "$err_file"
+        if [ "$allow_fallback" != true ]; then
+            rm -f "$DESIGN_TMPDIR/final-summary.md"
+            return 1
+        fi
         compose_self_fallback
     fi
 }
 
 if [ "$PHASE" = pre ]; then
-    render_or_fallback
+    render_or_fallback false
     exit 0
 fi
 
 # post phase: render to file, then print the resolved file exactly once.
-render_or_fallback
+render_or_fallback true
 while IFS= read -r line || [ -n "$line" ]; do
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         printf '%s\n' "$line" >&3

@@ -1749,13 +1749,15 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 if "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout; then
-  touch "$IMPLEMENT_TMPDIR/.step17-printed"
+  if grep -Fq -- '- **Cost**:' "$IMPLEMENT_TMPDIR/summary-final.md" 2>/dev/null; then
+    touch "$IMPLEMENT_TMPDIR/.step17-printed"
+  fi
 fi
 ```
 
 The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/scripts/token-cost.sh`).
 
-Immediately after the Step 17 Bash block returns, the orchestrator MUST emit one line of plain chat text containing the cost line verbatim from `$IMPLEMENT_TMPDIR/summary-final.md`. Mechanism: read `summary-final.md` (via Read, or via Bash `grep` whose output is then re-emitted as orchestrator text), find the line beginning with `- **Cost**:`, and emit that exact line as plain markdown chat text. This makes the per-agent cost breakdown visible even when the Bash output is collapsed. Do NOT emit any other summary content as plain text; title, mode, duration, and other bullets stay inside the rendered block. The cost line is the sole exception under NEVER #20.
+Immediately after the Step 17 Bash block returns, if the script succeeded and `summary-final.md` contains a line beginning with `- **Cost**:`, the orchestrator MUST emit that line verbatim as one line of plain chat text. Mechanism: read `summary-final.md` (via Read, or via Bash `grep` whose output is then re-emitted as orchestrator text), find the line beginning with `- **Cost**:`, and emit that exact line as plain markdown chat text. This makes the per-agent cost breakdown visible even when the Bash output is collapsed. Do NOT emit any other summary content as plain text; title, mode, duration, and other bullets stay inside the rendered block. The cost line is the sole exception under NEVER #20.
 
 On non-zero exit or `STATUS=failed` on the script envelope, capture stdout/stderr to `$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log` (or split `.stdout.log` / `.stderr.log`) and append with `append-tool-failure.sh` under `Tool Failures` per the Step 18 pattern, then continue. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`) and `repo-unavailable`, not for GitHub upsert failures.
 
@@ -1809,13 +1811,14 @@ if [ ! -f "$IMPLEMENT_TMPDIR/.step17-printed" ]; then
   _wfr_args+=(--print-stdout)
   _wfr_printed=true
 fi
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" "${_wfr_args[@]}" || true
-if [ "$_wfr_printed" = true ]; then
-  touch "$IMPLEMENT_TMPDIR/.step17-printed" 2>/dev/null || true
+if "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" "${_wfr_args[@]}"; then
+  if [ "$_wfr_printed" = true ] && grep -Fq -- '- **Cost**:' "$IMPLEMENT_TMPDIR/summary-final.md" 2>/dev/null; then
+    touch "$IMPLEMENT_TMPDIR/.step17-printed" 2>/dev/null || true
+  fi
 fi
 ```
 
-When Step 18 passed `--print-stdout` because `$IMPLEMENT_TMPDIR/.step17-printed` was absent, the orchestrator MUST also emit the single verbatim `- **Cost**:` line from `$IMPLEMENT_TMPDIR/summary-final.md` as plain chat text, using the same collapse-resistant rule as Step 17. Do not emit that line when Step 18 only refreshed the file/comment after a Step 17 print.
+When Step 18 passed `--print-stdout` because `$IMPLEMENT_TMPDIR/.step17-printed` was absent, and `write-final-report.sh` succeeded with a present `- **Cost**:` line in `$IMPLEMENT_TMPDIR/summary-final.md`, the orchestrator MUST also emit that single verbatim `- **Cost**:` line as plain chat text, using the same collapse-resistant rule as Step 17. Do not emit that line when Step 18 only refreshed the file/comment after a Step 17 print, or when the Step 18 render failed.
 
 For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
 

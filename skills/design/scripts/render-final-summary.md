@@ -20,18 +20,20 @@ plan-block-write failure (`--outcome failed-plan-write`).
 Step 2b.5 Split-path calls this helper on **`SUMMARY_OUTCOME=approved-partition`** and **`SUMMARY_OUTCOME=cancelled-decompose`** terminal exits (same `### Final summary block` fence as other single-phase cancels). Other Split-path branches preserve `$DESIGN_TMPDIR` without invoking `render-final-summary.sh` until a terminal outcome is chosen.
 Pre–Step 0a aborts have no `$DESIGN_TMPDIR`.
 
-## Two-phase drift trade-off
+## Two-phase render behavior
 
 Phase 1 writes `final-summary.md` before `design-log-publish.sh` so the design
 log commit can bundle it. Phase 2 re-renders after publish (success or failure) so
 GitHub upsert and chat match post-publish warnings. The committed Phase-1 file
 may differ slightly from the Phase-2 body when publish appends warnings; a
-second commit to refresh the log bundle is intentionally not required.
+second commit to refresh the log bundle is intentionally not required. If the
+Phase-1 renderer fails, the helper now returns non-zero instead of committing a
+self-composed fallback with `- **Cost**: N/A`.
 
 ## Cost unavailable (FINDING_12)
 
-When token JSON is missing/unparseable, or all per-bucket counts are zero **and**
-`token-report-final.stderr.log` is non-empty, the helper passes
+When token JSON is missing/unparseable, or all parsed token counts are zero, the
+helper passes
 `--cost-unavailable` into `render-run-summary.sh`, yielding `- **Cost**: N/A`
 (not a misleading `$0.00`). Passing no token flags is not sufficient because the
 shared renderer defaults omitted counts to zero.

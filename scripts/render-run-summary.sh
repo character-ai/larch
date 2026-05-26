@@ -26,7 +26,7 @@ emit_body_line() {
 }
 
 usage() {
-    emit_diag "Usage: render-run-summary.sh --skill {implement|design} ... (see render-run-summary.md)"
+    emit_diag "Usage: render-run-summary.sh --skill {implement|design} [--cost-unavailable] ... (see render-run-summary.md)"
 }
 
 SKILL=""

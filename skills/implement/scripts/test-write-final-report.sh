@@ -181,6 +181,7 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bl.md
 assert_contains 'STATUS=ok' "$out" 'bailed path status ok'
 assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain bailed outcome in summary'
 assert_contains '- **Cost**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'missing token data renders cost N/A'
+assert_not_contains '- **PR**:' "$(cat "$TMP_ROOT/content-bl.md")" 'bailed path omits PR bullet when PR is N/A'
 
 impl_cost="$TMP_ROOT/impl-cost"; mkdir -p "$impl_cost/larch-logs/implement/run-cost"
 printf 'ISSUE_NUMBER=12\nRUN_ID=run-cost\nADOPTED=true\n' > "$impl_cost/parent-issue.md"
@@ -273,7 +274,33 @@ fallback_stage2=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/c
       "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
 assert_contains '- **Cost**: N/A' "$fallback_stage2" 'renderer fallback stage2 self-compose cost N/A'
 assert_contains '- **Code review**: N/A' "$fallback_stage2" 'renderer fallback stage2 keeps implement schema'
+assert_contains '- **Outcome**: bailed' "$fallback_stage2" 'renderer fallback stage2 keeps bailed outcome'
+assert_not_contains '- **PR**:' "$fallback_stage2" 'renderer fallback stage2 omits PR when N/A'
 assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage2" 'renderer fallback stage2 keeps sentinel'
+cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
+chmod +x "$plugin/scripts/render-run-summary.sh"
+
+impl_fork_fb="$TMP_ROOT/impl-fork-fb"; mkdir -p "$impl_fork_fb"
+printf 'ISSUE_NUMBER=18\nRUN_ID=run-fork-fb\nADOPTED=true\n' > "$impl_fork_fb/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_fork_fb/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/18\n'
+    printf 'PR_NUMBER=18\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=true\n'
+} > "$impl_fork_fb/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_fork_fb/finalize-state.sh"
+cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$plugin/scripts/render-run-summary.sh"
+fork_fb=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fork-fb.md" \
+      "$HELPER" --implement-tmpdir "$impl_fork_fb" --print-stdout 2>/dev/null)
+assert_contains '## Fork CI Dry-Run Complete' "$fork_fb" 'renderer fallback stage2 preserves fork notes after sentinel'
 cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh"
 
@@ -329,5 +356,78 @@ set -e
 if [ "$rc_mf" -eq 1 ]; then pass 'manifest update failure exits non-zero'; else fail 'manifest update failure exits non-zero'; fi
 assert_contains 'STATUS=failed' "$out_mf_fail" 'manifest failure status failed'
 assert_contains 'larch-log.sh manifest steps_ran update failed' "$out_mf_fail" 'manifest failure error text'
+
+impl_badjson="$TMP_ROOT/impl-badjson"; mkdir -p "$impl_badjson/larch-logs/implement/run-badjson"
+printf 'ISSUE_NUMBER=21\nRUN_ID=run-badjson\nADOPTED=true\n' > "$impl_badjson/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_badjson/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_badjson/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_badjson/finalize-state.sh"
+printf '{not-json\n' > "$impl_badjson/larch-logs/implement/run-badjson/token-report.json"
+badjson_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-badjson.md" \
+      "$HELPER" --implement-tmpdir "$impl_badjson" --print-stdout)
+assert_contains '- **Cost**: N/A' "$badjson_stdout" 'malformed token-report renders cost N/A'
+assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$badjson_stdout" 'malformed token-report omits misleading zero-dollar breakdown'
+
+make_impl_fixture() {
+    local dir=$1 issue=$2 run=$3 pr_url=$4 pr_number=$5 stall=$6 merge_result=$7 merge=$8 draft=$9 forked=${10} design_only=${11} bail_user=${12}
+    mkdir -p "$dir"
+    printf 'ISSUE_NUMBER=%s\nRUN_ID=%s\nADOPTED=true\n' "$issue" "$run" > "$dir/parent-issue.md"
+    printf 'REPO=owner/repo\n' > "$dir/session-env.sh"
+    {
+        printf 'PR_URL=%s\n' "$pr_url"
+        printf 'PR_NUMBER=%s\n' "$pr_number"
+        printf 'STALL_TRACKING=%s\n' "$stall"
+        printf 'MERGE_RESULT=%s\n' "$merge_result"
+        printf 'MERGE=%s\n' "$merge"
+        printf 'DRAFT=%s\n' "$draft"
+        printf 'FORKED_TARGET=%s\n' "$forked"
+    } > "$dir/ship-pr-state.sh"
+    printf 'DESIGN_ONLY_DONE=%s\nBAIL_NEEDS_USER_INPUT=%s\n' "$design_only" "$bail_user" > "$dir/finalize-state.sh"
+}
+
+make_impl_fixture "$TMP_ROOT/impl-pr-created" 30 run-pr-created https://example.test/pr/30 30 false "" false false false false false
+make_impl_fixture "$TMP_ROOT/impl-pr-created-draft" 31 run-pr-created-draft https://example.test/pr/31 31 false "" false true false false false
+make_impl_fixture "$TMP_ROOT/impl-forked" 32 run-forked https://example.test/pr/32 32 false "" false false true false false
+make_impl_fixture "$TMP_ROOT/impl-force-merged" 33 run-force-merged https://example.test/pr/33 33 false already_merged true false false false false
+
+for outcome_case in \
+    "merged:$impl_dir:absent:present" \
+    "stalled:$impl_st:present:present" \
+    "design-only:$impl_do:absent:absent" \
+    "bailed-needs-user-input:$impl_bu:present:absent" \
+    "bailed:$impl_bl:present:absent" \
+    "forked-dry-run:$TMP_ROOT/impl-forked:absent:present" \
+    "pr-created:$TMP_ROOT/impl-pr-created:absent:present" \
+    "pr-created-draft:$TMP_ROOT/impl-pr-created-draft:absent:present" \
+    "force-merged-externally:$TMP_ROOT/impl-force-merged:absent:present"
+do
+    IFS=: read -r expected fixture expect_outcome expect_pr <<EOF
+$outcome_case
+EOF
+    matrix_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/matrix-${expected}.md" \
+        "$HELPER" --implement-tmpdir "$fixture" --print-stdout)
+    assert_contains "## /implement run " "$matrix_stdout" "matrix $expected prints summary title"
+    assert_contains "— $expected" "$matrix_stdout" "matrix $expected title outcome"
+    assert_contains '- **Cost**:' "$matrix_stdout" "matrix $expected prints cost line"
+    assert_contains '<!-- larch:run-summary v=1 -->' "$matrix_stdout" "matrix $expected keeps sentinel"
+    if [ "$expect_outcome" = present ]; then
+        assert_contains "- **Outcome**: $expected" "$matrix_stdout" "matrix $expected emits Outcome bullet"
+    else
+        assert_not_contains '- **Outcome**:' "$matrix_stdout" "matrix $expected omits Outcome bullet"
+    fi
+    if [ "$expect_pr" = present ]; then
+        assert_contains '- **PR**:' "$matrix_stdout" "matrix $expected emits PR bullet"
+    else
+        assert_not_contains '- **PR**:' "$matrix_stdout" "matrix $expected omits PR bullet"
+    fi
+done
 
 finish

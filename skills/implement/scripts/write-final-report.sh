@@ -233,12 +233,6 @@ RUN_LOGS_DISP="larch-logs/implement/${RUN_ID}/"
 refresh_issue_counts() {
     EXEC_N=0
     WARN_N=0
-    if [ -f "$run_dir/execution-issues.ndjson" ]; then
-        EXEC_N=$(grep -c '"category":"Tool Failures"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
-        WARN_N=$(grep -c '"category":"Warnings"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
-        case "$EXEC_N" in *[!0-9]*) EXEC_N=0 ;; esac
-        case "$WARN_N" in *[!0-9]*) WARN_N=0 ;; esac
-    fi
     if [ -f "$IMPLEMENT_TMPDIR/execution-issues.md" ] && [ -s "$IMPLEMENT_TMPDIR/execution-issues.md" ]; then
         read -r md_exec md_warn < <(awk '
           /^### Tool Failures$/ { sec=1; next }
@@ -252,8 +246,28 @@ refresh_issue_counts() {
           }
           END { print ex+0, wa+0 }
         ' "$IMPLEMENT_TMPDIR/execution-issues.md")
-        EXEC_N=$((EXEC_N + md_exec))
-        WARN_N=$((WARN_N + md_warn))
+        EXEC_N=$md_exec
+        WARN_N=$md_warn
+    elif [ -f "$run_dir/execution-issues.ndjson" ] && command -v jq >/dev/null 2>&1; then
+        read -r nd_exec nd_warn < <(jq -r '.body // empty' "$run_dir/execution-issues.ndjson" 2>/dev/null | awk '
+          /^### Tool Failures$/ { sec=1; next }
+          /^### External Reviewer Issues$/ { sec=1; next }
+          /^### Warnings$/ { sec=2; next }
+          /^### / { sec=0; next }
+          /^- \*\*Step / {
+            if (sec == 1) ex++
+            if (sec == 2) wa++
+            next
+          }
+          END { print ex+0, wa+0 }
+        ')
+        EXEC_N=${nd_exec:-0}
+        WARN_N=${nd_warn:-0}
+    elif [ -f "$run_dir/execution-issues.ndjson" ]; then
+        EXEC_N=$(grep -c '"category":"Tool Failures"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
+        WARN_N=$(grep -c '"category":"Warnings"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
+        case "$EXEC_N" in *[!0-9]*) EXEC_N=0 ;; esac
+        case "$WARN_N" in *[!0-9]*) WARN_N=0 ;; esac
     fi
 }
 
@@ -401,7 +415,7 @@ compose_self_fallback() {
         fi
         printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
         printf -- '- **Code review**: %s\n' "${CODE_LINE:-N/A}"
-        if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ]; then
+        if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then
             printf -- '- **OOS filed**: %s — %s\n' "$OOS_COUNT" "$OOS_URLS"
         else
             printf -- '- **OOS filed**: %s\n' "${OOS_COUNT:-0}"

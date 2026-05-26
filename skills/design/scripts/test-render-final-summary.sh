@@ -44,6 +44,7 @@ mkdir -p "$PLUGIN_STUB/scripts"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_STUB/scripts/lib-cost-line-format.sh"
+cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/lib-quiet.sh"
 cat >"$PLUGIN_STUB/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -106,8 +107,14 @@ std_fb="$TMP/std-fallback.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb" 2>/dev/null
 grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'renderer-fail fallback missing Cost N/A'
+if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail fallback must not emit PR bullet'; fi
+if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail fallback must not emit Code review bullet'; fi
 cmp -s "$D/final-summary.md" "$std_fb" || fail 'renderer-fail fallback stdout/file mismatch'
 pass 'renderer-fail fallback prints final file once'
+std_fb_cancel="$TMP/std-fallback-cancelled.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CANCELLED" \
+    "$SUBJECT" --outcome cancelled-clarify --mode SIMPLE --post-publish-only >"$std_fb_cancel" 2>/dev/null
+grep -Fq -- '- **Outcome**: cancelled-clarify' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Outcome bullet'
 cp "$TMP/render-run-summary.real" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 
@@ -116,6 +123,7 @@ mkdir -p "$PLUGIN_FAILTOK/scripts"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_FAILTOK/scripts/render-run-summary.sh"
 cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_FAILTOK/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_FAILTOK/scripts/lib-cost-line-format.sh"
+cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAILTOK/scripts/lib-quiet.sh"
 cat >"$PLUGIN_FAILTOK/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 printf 'token report unavailable\n' >&2
@@ -131,13 +139,40 @@ done
 printf '%s\n' '{"total_hms":"1s"}' >"$out"
 EOF
 chmod +x "$PLUGIN_FAILTOK/scripts/"*.sh
+FAILTOK_RENDER_STUB="$PLUGIN_FAILTOK/scripts/render-run-summary.sh"
+mv "$FAILTOK_RENDER_STUB" "$PLUGIN_FAILTOK/scripts/render-run-summary.real"
+cat >"$FAILTOK_RENDER_STUB" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >"${RENDER_ARGS_LOG:?}"
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-file) out=$2; shift 2 ;;
+    *)
+      if [ "$#" -ge 2 ] && [[ "$2" != --* ]]; then
+        shift 2
+      else
+        shift
+      fi
+      ;;
+  esac
+done
+printf '%s\n' '## /design run RUN-FAILTOK — approved' >"$out"
+printf '%s\n' '' >>"$out"
+printf '%s\n' '- **Cost**: N/A' >>"$out"
+printf '%s\n' '' >>"$out"
+printf '%s\n' '<!-- larch:run-summary v=1 -->' >>"$out"
+EOF
+chmod +x "$FAILTOK_RENDER_STUB"
 std_failtok="$TMP/std-failtok.log"
-CLAUDE_PLUGIN_ROOT="$PLUGIN_FAILTOK" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FAILTOK" \
+RENDER_ARGS_LOG="$TMP/render-args.log" CLAUDE_PLUGIN_ROOT="$PLUGIN_FAILTOK" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FAILTOK" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_failtok" 2>/dev/null
 grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'token-data-missing path missing Cost N/A'
 if grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$D/final-summary.md"; then
     fail 'token-data-missing path rendered misleading zero-dollar cost'
 fi
+grep -Fq -- '--cost-unavailable' "$TMP/render-args.log" || fail 'token-data-missing path must pass --cost-unavailable to renderer'
 pass 'token-data-missing path renders Cost N/A'
 
 EMPTY_MODE_D="$TMP/design-empty-mode"
@@ -177,6 +212,34 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
 grep -Fq '## /design run RUN-FIX — cancelled-decompose' "$D/final-summary.md" || fail 'cancelled-decompose title missing'
 grep -Fq -- '- **Outcome**: cancelled-decompose' "$D/final-summary.md" || fail 'missing cancelled-decompose outcome bullet'
 pass 'cancelled-decompose outcome'
+
+for summary_outcome in \
+    approved \
+    approved-partition \
+    cancelled-clarify \
+    cancelled-already-planned \
+    cancelled-tier-gate \
+    cancelled-title-filter \
+    cancelled-sprawl \
+    cancelled-plan-size-hard \
+    cancelled-decompose \
+    failed-plan-write
+do
+    session="RUN-MATRIX-${summary_outcome}"
+    DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="$session" \
+        "$SUBJECT" --outcome "$summary_outcome" --mode SIMPLE --post-publish-only >/dev/null 2>&1
+    grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail "matrix $summary_outcome missing Cost bullet"
+    grep -Fq "<!-- larch:run-summary v=1 -->" "$D/final-summary.md" || fail "matrix $summary_outcome missing sentinel"
+    grep -Fq "## /design run $session — $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing title"
+    if [[ "$summary_outcome" == approved || "$summary_outcome" == approved-partition ]]; then
+        if grep -Fq -- '- **Outcome**:' "$D/final-summary.md"; then
+            fail "matrix $summary_outcome must omit Outcome bullet"
+        fi
+    else
+        grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
+    fi
+done
+pass 'ten-outcome post-publish matrix'
 
 set +e
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \

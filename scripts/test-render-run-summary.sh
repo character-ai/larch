@@ -15,7 +15,8 @@ TMP_DES_STD=""
 TMP_CU_OUT=""
 TMP_CU_STD=""
 TMP_ZERO_OUT=""
-trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT"' EXIT
+TMP_CU_NZ_OUT=""
+trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT" "$TMP_CU_NZ_OUT"' EXIT
 PASS=0
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; PASS=$((PASS+1)); }
@@ -245,6 +246,44 @@ grep -Fxq -- '- **Cost**: N/A' "$TMP_CU_OUT" || fail '--cost-unavailable output 
 grep -Fxq -- '- **Cost**: N/A' "$TMP_CU_STD" || fail '--cost-unavailable stdout cost'
 cmp -s "$TMP_CU_OUT" "$TMP_CU_STD" || fail '--cost-unavailable stdout/file identity'
 pass '--cost-unavailable renders N/A'
+
+TMP_CU_NZ_OUT="$(mktemp "${TMPDIR:-/tmp}/trs-cu-nz-out.XXXXXX")"
+"$HELPER" \
+    --skill implement \
+    --outcome merged \
+    --run-id RUN-CU-NZ \
+    --mode N/A \
+    --workflow-path N/A \
+    --duration N/A \
+    --cost-unavailable \
+    --claude-tokens 111 \
+    --codex-tokens 222 \
+    --cursor-tokens 333 \
+    --claude-input-tokens 1 \
+    --claude-cache-read-tokens 2 \
+    --claude-cache-write-5m-tokens 3 \
+    --claude-cache-write-1h-tokens 4 \
+    --claude-output-tokens 5 \
+    --codex-input-tokens 6 \
+    --codex-cached-input-tokens 7 \
+    --codex-output-tokens 8 \
+    --cursor-input-tokens 9 \
+    --cursor-cache-read-tokens 10 \
+    --cursor-output-tokens 11 \
+    --issue-number 0 \
+    --issue-url N/A \
+    --pr-number 0 \
+    --pr-url N/A \
+    --plan-review-line N/A \
+    --code-review-line N/A \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path N/A \
+    --output-file "$TMP_CU_NZ_OUT" >/dev/null 2>/dev/null
+grep -Fxq -- '- **Cost**: N/A' "$TMP_CU_NZ_OUT" || fail '--cost-unavailable must override explicit token args'
+pass '--cost-unavailable overrides explicit non-zero token args'
 
 # --- --skill design ---
 LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
