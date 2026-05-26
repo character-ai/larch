@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.5.13] - 2026-05-25
+
+### Changed
+
+- Codex launchers now consume --json usage events and record uncached input, cached input, output, and total buckets instead of aggregate-only totals.
+- Added a shared fail-closed Codex usage parser with docs and offline coverage for schema variants, cache math, wrapper noise, and failure branches.
+- Updated launcher and token-report harnesses to assert per-bucket Codex accounting, empty records on parse failure, and stderr-only auth classification.
+
 ## [42.5.12] - 2026-05-25
 
 ### Changed
