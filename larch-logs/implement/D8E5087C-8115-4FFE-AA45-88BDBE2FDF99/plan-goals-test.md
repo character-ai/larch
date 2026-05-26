@@ -1,0 +1,275 @@
+## Goal
+Harden render-cache staging in design-log-publish.sh with symmetric symlink defenses matching plan-review (outer guard, tree-wide find reject, per-file recheck) plus 5 new test cases
+
+## Implementation Plan
+## Plan
+
+
+Harden the render-cache staging block in `scripts/design-log-publish.sh` so it carries the same symlink defenses as the plan-review staging block, and mirror the plan-review symlink test cases (including the leaf file-symlink case) into the render-cache harness. No filename allowlist is added (render-cache is variable-content); the existing suffix denylist inside `design_publish_stage_file` is preserved. Documentation surfaces (`SECURITY.md`, `scripts/design-log-publish.md`, `scripts/test-design-log-publish.md`) are updated in the same PR per the AGENTS.md security-change invariant.
+
+### Files to modify/create
+
+### UPDATED: `scripts/design-log-publish.sh`
+
+Three changes to the existing render-cache staging block (currently between the `if [[ -e "$DESIGN_TMPDIR/render-cache" ]]` guard and the `done <"$_rc_files"` loop terminator). These mirror plan-review's pattern with two extensions called out by the review panel.
+
+**Change 1 — Broaden the outer guard to also catch dangling root symlinks.**
+
+Replace the outer guard from `[[ -e "$DESIGN_TMPDIR/render-cache" ]]` to `[[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]`. The existing `-L` and `-d` checks immediately inside the block then reject a dangling root symlink (`-e` returns false on a broken symlink, so without this change the new `-L` check is never reached and a dangling root symlink silently bypasses staging). This matches plan-review's outer guard semantics: plan-review uses the same pattern at its `if [[ -e "$DESIGN_TMPDIR/plan-review" ]]` line and is internally consistent because plan-review's directory itself is always created in normal flow; for the OOS-flagged hardening, render-cache needs the explicit `-L` fallback.
+
+**Change 2 — Tree-wide symlink reject after `pwd -P` canonicalization.**
+
+Insert immediately after the `rc_root || { ... }` error-handler block closes and before the `_rc_files=$(mktemp ...)` allocation. The new stanza:
+
+```bash
+_sym_check=$(find "$rc_root" -type l -print -quit 2>/dev/null || true)
+if [[ -n "$_sym_check" ]]; then
+    larch_err "design-log-publish: render-cache tree must not contain symlinks (found: $_sym_check)"
+    emit_publish_result false
+    exit 0
+fi
+```
+
+Symbol anchor (not a raw line number): after the closing `}` of the `rc_root` resolution `cd ... && pwd -P || { larch_err ...; emit_publish_result false; exit 0; }` block, before the `_rc_files=$(mktemp ...)` allocation. This is the exact analog of plan-review's identical stanza, which immediately follows plan-review's `pr_root || { ... }` block. `find -type l -print -quit` short-circuits on the first symlink anywhere under the physical root and rejects the entire publish. Symbolic links pointing to either intermediate directories or files are both caught (per `design-log-publish.md`: `find -type f -not -type l` is insufficient because `find` does not traverse symlinked directories without `-L`).
+
+**Change 3 — Per-file symlink recheck immediately before `design_publish_stage_file`.**
+
+Insert inside the file loop, after `rel=${f#"$rc_root/"}` and before `design_publish_stage_file "$f" "$RUN_DEST/render-cache/$rel"`. The new stanza:
+
+```bash
+if [[ -L "$f" ]]; then
+    larch_err "design-log-publish: render-cache file became a symlink before staging: $f"
+    emit_publish_result false
+    exit 0
+fi
+```
+
+This is the exact analog of plan-review's identical stanza inside its file loop. Closes the find→stage race window where a regular file passes the tree-wide check but is replaced with a symlink between enumeration and staging — at the leaf-component slot only. See **Failure modes** for the residual race scope.
+
+**Not in scope**: changing `design_publish_stage_file`'s symlink-skip semantics. That function silently returns 0 on a symlink source, which is load-bearing for the top-level enumeration path (top-level symlinks in `$DESIGN_TMPDIR` like sentinel sidecars are intentionally skipped). The hardened subtree path achieves fail-closed behavior via the new `larch_err` + `emit_publish_result false` reject before reaching `design_publish_stage_file`. Doc claims about race closure (see **Failure modes**) are kept honest about what the leaf-only recheck actually covers.
+
+### UPDATED: `scripts/design-log-publish.md`
+
+Add a new section "render-cache symlink rejection" after the existing "plan-review allowlist" section. The new section mirrors the plan-review section's structure but omits the filename-regex bullet and explicitly narrows the race-closure claim. Approximate text:
+
+```markdown
+### render-cache symlink rejection
+
+`$DESIGN_TMPDIR/render-cache/` is optional. A missing directory is success
+and stages no files. When present (including as a symlink — `-L`-only paths
+are caught by the outer guard), it is fail-closed against symlinks:
+
+- `render-cache` must be a real directory, not a symlink (including dangling)
+  and not a regular file.
+- Any symlink anywhere below the resolved physical `render-cache` root fails
+  the publish before regular-file enumeration. Same rationale as plan-review:
+  catches both symlinked files (which `find -type f` would silently skip) and
+  symlinked intermediate directories (which `find` does not traverse without
+  `-L`).
+- Each enumerated file must pass the under-root prefix `case` guard against
+  the resolved physical root.
+- A per-file `[[ -L "$f" ]]` recheck immediately before staging closes the
+  find→stage race window at the leaf-component slot. Parent-directory
+  replacement races (where a parent dir is swapped for a symlink between
+  enumeration and stage) are NOT closed; same residual race surface as
+  plan-review.
+- No filename allowlist is enforced — render-cache content schema is open;
+  the suffix denylist inside `design_publish_stage_file` (`.sidecar`,
+  `.events.jsonl`, etc.) is preserved unchanged.
+
+Allowed files are staged through the same trim/redact pipeline at
+`larch-logs/design/<RUN_ID>/render-cache/<relpath>`.
+```
+
+Also update the brief mention in the script-purpose paragraph (currently around the "render-cache/" sentence early in the file). Preserve the "Top-level symlinks are skipped" sentence — top-level behavior is unchanged. Add a single new clause alongside it: `Top-level symlinks are skipped; plan-review/ and render-cache/ subtrees fail closed on any symlink anywhere in them.`
+
+### UPDATED: `scripts/test-design-log-publish.md`
+
+Extend the coverage paragraph (the bullet list near the top of the file) so the harness contract describes render-cache symlink rejection alongside plan-review:
+
+```markdown
+Coverage includes dry-run preflight, invalid args, trim/redact fail-closed
+paths, PR create/list/view/merge recovery behavior, render-cache recursive
+staging, render-cache symlink rejection (root, dangling root, intermediate
+directory, leaf file, find→stage race), suffix deny-list exclusions, and the
+strict `plan-review/` allowlist for `round-<N>/findings-classification.tsv`
+(including unexpected-path and symlink rejection).
+```
+
+The Tests section pointer at the bottom of `design-log-publish.md` (`Offline harness: scripts/test-design-log-publish.sh (Makefile target test-design-log-publish)`) stays as-is.
+
+### UPDATED: `SECURITY.md`
+
+Extend the existing `/design` design-log publish paragraph to document render-cache fail-closed symlink behavior. The current paragraph reads "The plan-review/ subtree is stricter than top-level design artifacts: only round-<N>/findings-classification.tsv is staged, the root must be a real directory, and any symlink under the subtree fails publish before staging." Replace this sentence with text that documents both subtrees explicitly:
+
+```markdown
+Both `plan-review/` and `render-cache/` subtrees are stricter than top-level
+design artifacts. `plan-review/` enforces a `round-<N>/findings-classification.tsv`
+allowlist, requires the root to be a real directory, and fails publish on any
+symlink anywhere under the resolved physical root. `render-cache/` requires the
+root to be a real directory (a dangling root symlink also fails publish), fails
+on any symlink anywhere under the resolved physical root, applies the same
+per-file recheck immediately before staging, and has no filename allowlist
+(content schema is open; the suffix denylist inside `design_publish_stage_file`
+remains the only basename filter). Parent-directory replacement races between
+enumeration and stage are not fully closed in either subtree; the per-file
+recheck closes the leaf slot only.
+```
+
+Preserve the rest of the paragraph unchanged.
+
+### UPDATED: `scripts/test-design-log-publish.sh`
+
+Add **five** new test cases immediately after the existing "plan-review symlink race should fail publish" assertion. Mirror plan-review patterns (root, leaf file, intermediate, race) for render-cache plus the dangling-root case opened by Change 1 above. Use unique temp roots and RUN_IDs; unset `RACE_FIND_*` between cases.
+
+**Case A — render-cache root symlink (existing posture; regression coverage)**
+
+Mirror plan-review's `TMPPRROOT` block. Creates a `real-render-cache/nested/c.txt`, symlinks `design/render-cache` to it, asserts `PUBLISH_OK=false`. Per FINDING_3, this case is dir-level regression — it re-exercises the pre-existing `[[ -L "$DESIGN_TMPDIR/render-cache" ]]` guard. The new tree-wide and per-file guards are validated by Cases B, C, D below.
+
+**Case B — render-cache dangling root symlink (new posture; validates Change 1)**
+
+```bash
+echo "=== render-cache dangling root symlink rejection ==="
+TMPRCDANGLE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-dangle.XXXXXX")
+clone_rcdangle=$(setup_clone_with_origin_head "$TMPRCDANGLE")
+stub_rcdangle="$TMPRCDANGLE/stub"
+make_gh_stub "$stub_rcdangle"
+export PATH="$stub_rcdangle:$PATH"
+mkdir -p "$TMPRCDANGLE/design"
+printf 'body\n' >"$TMPRCDANGLE/design/plan.txt"
+ln -s "$TMPRCDANGLE/does-not-exist" "$TMPRCDANGLE/design/render-cache"
+out_rcdangle=$(
+    (cd "$clone_rcdangle" && bash "$PUBLISH" --design-tmpdir "$TMPRCDANGLE/design" --run-id "RUNRCDANGLE1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rcdangle" == *"PUBLISH_OK=false"* ]] || fail "render-cache dangling root symlink should fail publish: $out_rcdangle"
+```
+
+**Case C — render-cache leaf file-symlink (mirrors plan-review's `TMPPRS`; validates Change 2's `find -type l`)**
+
+```bash
+echo "=== render-cache leaf file-symlink rejection ==="
+TMPRCLEAF=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-leaf.XXXXXX")
+clone_rcleaf=$(setup_clone_with_origin_head "$TMPRCLEAF")
+stub_rcleaf="$TMPRCLEAF/stub"
+make_gh_stub "$stub_rcleaf"
+export PATH="$stub_rcleaf:$PATH"
+mkdir -p "$TMPRCLEAF/design/render-cache"
+printf 'body\n' >"$TMPRCLEAF/design/plan.txt"
+ln -s "$TMPRCLEAF/design/plan.txt" "$TMPRCLEAF/design/render-cache/linked.txt"
+out_rcleaf=$(
+    (cd "$clone_rcleaf" && bash "$PUBLISH" --design-tmpdir "$TMPRCLEAF/design" --run-id "RUNRCLEAF1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rcleaf" == *"PUBLISH_OK=false"* ]] || fail "render-cache leaf file-symlink should fail publish: $out_rcleaf"
+```
+
+**Case D — render-cache intermediate-directory symlink**
+
+```bash
+echo "=== render-cache intermediate symlink rejection ==="
+TMPRCMID=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-midsym.XXXXXX")
+clone_rcmid=$(setup_clone_with_origin_head "$TMPRCMID")
+stub_rcmid="$TMPRCMID/stub"
+make_gh_stub "$stub_rcmid"
+export PATH="$stub_rcmid:$PATH"
+mkdir -p "$TMPRCMID/real-nested"
+mkdir -p "$TMPRCMID/design/render-cache"
+printf 'body\n' >"$TMPRCMID/design/plan.txt"
+printf 'ok\n' >"$TMPRCMID/real-nested/c.txt"
+ln -s "$TMPRCMID/real-nested" "$TMPRCMID/design/render-cache/nested"
+out_rcmid=$(
+    (cd "$clone_rcmid" && bash "$PUBLISH" --design-tmpdir "$TMPRCMID/design" --run-id "RUNRCMID1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rcmid" == *"PUBLISH_OK=false"* ]] || fail "render-cache intermediate symlink should fail publish: $out_rcmid"
+```
+
+**Case E — render-cache find→stage symlink race (validates Change 3)**
+
+```bash
+echo "=== render-cache symlink race rejection ==="
+TMPRCRACE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-race.XXXXXX")
+clone_rcrace=$(setup_clone_with_origin_head "$TMPRCRACE")
+stub_rcrace="$TMPRCRACE/stub"
+make_gh_stub "$stub_rcrace"
+REAL_FIND=$(command -v find)
+make_find_symlink_race_stub "$TMPRCRACE/findstub" "$REAL_FIND"
+export PATH="$TMPRCRACE/findstub:$stub_rcrace:$PATH"
+mkdir -p "$TMPRCRACE/design/render-cache"
+printf 'body\n' >"$TMPRCRACE/design/plan.txt"
+printf 'ok\n' >"$TMPRCRACE/design/render-cache/cached-output.txt"
+RACE_FIND_ROOT="$(cd "$TMPRCRACE/design/render-cache" && pwd -P)"
+export RACE_FIND_ROOT
+export RACE_FIND_PATH="$TMPRCRACE/design/render-cache/cached-output.txt"
+export RACE_FIND_TARGET="$TMPRCRACE/design/plan.txt"
+out_rcrace=$(
+    (cd "$clone_rcrace" && bash "$PUBLISH" --design-tmpdir "$TMPRCRACE/design" --run-id "RUNRCRACE1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+unset RACE_FIND_ROOT RACE_FIND_PATH RACE_FIND_TARGET
+[[ "$out_rcrace" == *"PUBLISH_OK=false"* ]] || fail "render-cache symlink race should fail publish: $out_rcrace"
+```
+
+Do not modify the existing happy-path test (creates `render-cache/nested/c.txt` with no symlinks) — it must still pass after the hardening.
+
+### Approach
+
+The plan-review and render-cache staging blocks in `scripts/design-log-publish.sh` already share most defensive checks: directory-not-symlink, is-directory, `pwd -P` physical-root canonicalization, and `case`-statement path-escape guards. The plan-review block adds two more layers that render-cache lacks: a tree-wide `find -type l -print -quit` reject right after canonicalization, and a per-file `[[ -L "$f" ]]` recheck just before staging. Both are missing from render-cache and that asymmetry is what the OOS reviewer flagged.
+
+The implementation copies both patterns verbatim and adds two reviewer-flagged improvements: (i) broaden the outer guard to also catch dangling root symlinks (F9), and (ii) keep documentation honest about which races are closed and which are not (F11, F14, F17). The leaf-component slot is fully covered by the per-file recheck; parent-directory replacement races and microsecond-gap swaps between the recheck and `design_publish_stage_file`'s own internal `-L` skip are NOT closed — the same residual race surface as plan-review. Closing those everywhere is tracked separately (OOS_2, OOS_4).
+
+No filename allowlist is added — render-cache holds variable-content prompt caches with no fixed schema, unlike plan-review's `round-<N>/findings-classification.tsv`. The existing suffix denylist (`.sidecar`, `.events.jsonl`) lives in `design_publish_stage_file` and is unaffected. `design_publish_stage_file` itself is also unchanged: its `[[ -L "$src" ]] → return 0` behavior is load-bearing for the top-level enumeration path where `*.dirty-tree`-class sidecars are skipped silently; the hardened subtree path achieves fail-closed semantics via the explicit `larch_err` + `emit_publish_result false` + `exit 0` reject before reaching the stage helper.
+
+Tests mirror the plan-review symlink suite: five cases (root, dangling-root, leaf file, intermediate directory, find→stage race using `make_find_symlink_race_stub`). Documentation (`design-log-publish.md`, `test-design-log-publish.md`, `SECURITY.md`) is updated in the same PR per AGENTS.md's "update SECURITY.md when security-relevant behavior changes" invariant.
+
+### Edge cases
+
+- **Missing render-cache directory**: the outer `[[ -e ... || -L ... ]]` guard wraps the block, so an absent directory remains a no-op success. The new symlink-reject runs only when the directory (or a dangling root symlink) exists.
+- **Empty render-cache directory**: existing happy-path stays happy. `find -type l -print -quit` on an empty tree prints nothing, so `_sym_check` is empty and the publish proceeds.
+- **Dangling root symlink**: `-e` returns false on a broken symlink, but the broadened `[[ -e ... || -L ... ]]` outer guard enters the block, and the existing `[[ -L "$DESIGN_TMPDIR/render-cache" ]]` reject fires immediately. Validated by Case B.
+- **Symlink at root vs symlink mid-tree vs leaf file-symlink**: root caught by existing dir-level check; mid-tree and leaf file caught by the new tree-wide `find -type l`. All three are exercised in the harness.
+- **Race window (file becomes symlink between find and stage)**: per-file `[[ -L "$f" ]]` recheck catches the leaf-slot replacement. The race-stub test exercises it.
+- **Parent-directory swap (TOCTOU)**: a parent dir replaced with a symlink between enumeration and stage is NOT caught. Same residual race as plan-review; tracked via OOS_2 and OOS_4. Documentation explicitly narrows the race-closure claim.
+- **Microsecond gap between per-file recheck and `design_publish_stage_file`'s internal `[[ -L "$src" ]]`**: if a swap occurs in that tiny window, `design_publish_stage_file` silently returns 0 and the file is skipped. Same residual race surface; tracked separately.
+- **find return code on macOS vs Linux**: `find -type l -print -quit` is portable across BSD and GNU `find` (already in use by plan-review). `2>/dev/null || true` discards permission errors; the `$_sym_check` empty-string check is the gating predicate.
+- **Bash 3.2 portability**: `[[ -L ... ]]`, `[[ -e ... || -L ... ]]`, and `find -type l -print -quit` are 3.2-compatible (already used in plan-review).
+
+### Failure modes
+
+1. **Test infrastructure leak between cases**: race-stub env vars (`RACE_FIND_ROOT` / `RACE_FIND_PATH` / `RACE_FIND_TARGET`) are global within the harness; if a new render-cache race test leaves them set, the next case misbehaves. *Earliest warning*: a downstream test that does not export these vars fails with `PUBLISH_OK=true` where false was expected. *Mitigation*: explicit `unset` immediately after each race test (matches plan-review pattern).
+2. **find stub PATH ordering**: `make_find_symlink_race_stub` writes a `find` wrapper into a directory that must come first on `PATH`. If a new case forgets to prepend the stub dir, real `find` runs and the race window doesn't open. *Earliest warning*: race test passes too quickly with `PUBLISH_OK=true`. *Mitigation*: copy the exact `export PATH="$TMPRCRACE/findstub:$stub_rcrace:$PATH"` line from the plan-review race-test pattern.
+3. **Doc/behavior drift on partial race closure**: the per-file `-L` recheck closes ONLY the leaf-component slot; if documentation overclaims full race closure, future contributors may assume parent-directory replacement is also covered and skip independent verification. *Earliest warning*: a reviewer or implementer reads `design-log-publish.md` and treats the subtree as fully race-safe when triaging unrelated TOCTOU bugs. *Mitigation*: the documentation explicitly states "Parent-directory replacement races between enumeration and stage are not fully closed in either subtree" in both `design-log-publish.md` and `SECURITY.md`; OOS_2 and OOS_4 carry the deeper hardening as separate tracked items.
+
+### Testing strategy
+
+- Add Cases A-E above to `scripts/test-design-log-publish.sh`, immediately after the existing "plan-review symlink race should fail publish" assertion.
+- Run `bash scripts/test-design-log-publish.sh` locally; all 5 new cases plus all existing plan-review symlink cases and the render-cache happy-path case must pass.
+- Run `bash scripts/relevant-checks.sh` (or `make lint`) — the harness is on the relevant-checks shortlist via the existing `test-design-log-publish` Makefile target.
+- Verify the happy-path test ("happy path + sidecar trim + render-cache + suffix deny-list", which creates real `render-cache/nested/c.txt`) still produces `PUBLISH_OK=true` — confirms the new symlink guards do not regress the legitimate-file case.
+- Verify the existing plan-review symlink suite still passes — confirms the new render-cache stanzas do not regress neighboring code paths.
+
+### Diff size estimate
+
+- `design-log-publish.sh`: ~14 lines added (broaden outer guard +1, tree-wide reject ~6 lines, per-file recheck ~5 lines).
+- `design-log-publish.md`: ~25 lines added (new section + top-level sentence preservation update).
+- `test-design-log-publish.sh`: ~110 lines added (5 case blocks, ~22 lines each).
+- `test-design-log-publish.md`: ~3 lines changed (extend coverage bullet).
+- `SECURITY.md`: ~10 lines changed (extend the `/design` design-log publish paragraph).
+
+Total estimate: ~162 changed lines.
+
+
+## Acceptance
+
+The hardening lands when:
+
+1. `scripts/design-log-publish.sh` render-cache staging block carries the three changes described in the plan: broadened outer guard (`[[ -e ... || -L ... ]]`), tree-wide `find -type l -print -quit` reject, and per-file `[[ -L "$f" ]]` recheck immediately before `design_publish_stage_file`. `design_publish_stage_file` itself is unchanged (its silent symlink-skip remains load-bearing for top-level staging).
+2. `scripts/test-design-log-publish.sh` carries Cases A-E (root, dangling-root, leaf file-symlink, intermediate-directory, find→stage race). All five new assertions plus all existing plan-review symlink + render-cache happy-path assertions pass on `bash scripts/test-design-log-publish.sh`.
+3. `scripts/design-log-publish.md` carries the new "render-cache symlink rejection" section and preserves the "Top-level symlinks are skipped" sentence in the script-purpose paragraph.
+4. `scripts/test-design-log-publish.md` coverage paragraph extends to mention render-cache symlink rejection cases (root, dangling root, intermediate, leaf file, race).
+5. `SECURITY.md` `/design` design-log publish paragraph documents render-cache fail-closed symlink behavior alongside plan-review (per AGENTS.md "update SECURITY.md when security-relevant behavior changes" invariant).
+6. `make lint` is clean; `bash scripts/relevant-checks.sh` is clean.
+7. Doc claims about race closure are honest: the per-file `-L` recheck closes only the leaf slot; parent-directory replacement races remain open (same residual surface as plan-review; tracked separately via OOS issues #2905 and #2907).
+8. Tracked OOS items (#2904, #2905, #2906, #2907) are filed and blocked-by #2823 per the tracking protocol.
+
+diff_lines: 162
+
+## Test plan
+(no test plan section in plan-file)
