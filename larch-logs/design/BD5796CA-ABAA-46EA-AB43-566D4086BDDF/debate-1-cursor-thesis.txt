@@ -1,0 +1,4 @@
+Reading the debate task description and gathering the context it requires.
+Gathering codebase evidence for the debate from the cited files.
+Producing the thesis debate output from the codebase evidence (read-only).
+

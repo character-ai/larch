@@ -1,0 +1,38 @@
+Reading the implementation plan and exploring the referenced codebase paths.
+Checking how Step 5c items are structured and whether the orchestrator treats rename failures as fatal:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:23,82,975	Step 5c item 11 ties marker write to the same PUBLISH_OK/rename gate as item 10	When plan-block-write succeeds but PUBLISH_OK=false (item 8 continues) or rename is skipped, no marker is written; a same-session re-fire sees no [DESIGNED] title and passes sub-step 2.6 — the gap the plan cites is only partially closed	Gate design_reentry_marker_write on Step 5c step-4 success (PLAN_WRITE_OK=true) only; keep rename/publish semantics separate
+2	in_scope	important	correctness	skills/design/SKILL.md:975,plan.txt:82	Step 5c item 10 lacks the best-effort non-zero continue pattern used at Step 0b 5.5	tracking-issue-write.sh can exit 1/2 on gh failure; prose does not require log-and-continue, so the orchestrator may never reach new item 11 after a rename failure — no marker even when publish succeeded	Add explicit non-zero handling for item 10 (append Warnings, continue) or write the marker immediately after item 4/PLAN_WRITE_OK=true before item 10
+3	in_scope	important	correctness	plan.txt:49,scripts/session-setup.sh:234-236	Marker path hardcodes ${HOME}/.cache/larch/sessions while session-setup uses ${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions	Operators with XDG_CACHE_HOME set get session tmpdirs under XDG but markers under ~/.cache; write/read stay internally consistent but diverge from the rest of the cache layout and cleanup.sh sweep path	Share session_cache_root() (or equivalent) in lib-design-reentry-guard.sh for path construction; document in lib-design-reentry-guard.md
+4	in_scope	important	correctness	plan.txt:51,scripts/lib-external-launcher-common.sh:103-106	Proposed stat order tries macOS -f before Linux -c	On Linux, GNU stat -f is not mtime format; wrong output can yield bogus ages, stale sweeps, or admit/ refuse incorrectly	Try stat -c %Y then stat -f %m with ^[0-9]+$ validation (match lib-external-launcher-common.sh); treat unparseable mtime as miss + best-effort rm
+5	in_scope	important	architecture	skills/design/SKILL.md:189-190,plan.txt:80	Step 0b sub-step 2.6 plans exit 1 on hit without SUMMARY_OUTCOME or Final summary block	Unlike lifecycle/archival rejects (cancelled-title-filter + summary), a guard hit leaves no machine summary/final-summary hygiene and weaker operator forensics	Align 2.6 with 2.5: export a dedicated SUMMARY_OUTCOME, run Final summary block, then print the spurious re-entry banner and exit 1
+6	in_scope	important	correctness	scripts/test-design-structure.sh:761-767,plan.txt:86-93	New sub-step 2.6 is not added to structural ordering check (20)	Implementer can insert 2.6 after sub-step 3 or omit it while checks 21/22 still pass via grep elsewhere	Extend check (20) to require 2 → 2.5 → 2.6 → 3 line ordering (and optional 2.6 anchor grep), not only literal-presence checks 21/22
+7	in_scope	nit	correctness	plan.txt:50-51,scripts/write-design-current-env.sh:139	design_reentry_marker_write is touch-only with no mkdir -p	If ~/.cache/larch/sessions is missing (fresh account, partial cache wipe), marker write fails → Warnings only → guard never arms on the failure path the plan targets	mkdir -p "$(dirname "$marker_path")" before touch (same pattern as write-design-current-env.sh)
+8	in_scope	nit	correctness	plan.txt:118,62-68	Failure mode 1 claims F2 pins banner format; F2 only asserts design_reentry_marker_hit KV lines	No regression catches a SKILL.md banner typo or missing MARKER_AGE/TTL substitution	Add a structural grep for the banner literal in SKILL.md or a harness fixture that asserts the printed refuse line
+9	in_scope	latent	correctness	plan.txt:111,62-68	Edge case invalid-mtime (REASON=invalid-mtime) has no harness fixture	Regressions in future-mtime handling could re-admit spurious runs or refuse legitimate ones	Add F6 (or extend F3) setting mtime in the future and asserting REASON=invalid-mtime + admit + cleanup
+10	in_scope	nit	correctness	plan.txt:80,51	Return code 2 for invalid-input is specified in the library but not in SKILL.md 2.6	If ISSUE_NUMBER/PPID are unset or non-numeric, behavior (proceed vs abort) is undefined for the orchestrator	Specify in 2.6: treat exit 2 as non-hit (proceed) with optional Warnings, or hard-abort with explicit banner
+11	out_of_scope	nit	security	SECURITY.md:51,plan.txt	Plan does not mention SECURITY.md for a new ~/.cache marker artifact	Same-user trust boundary for design-completed-* files is undocumented alongside current-design-env symlink	[OUT_OF_SCOPE] Add a short SECURITY.md bullet on marker trust model in a follow-up if operators share cache roots
+
+**Findings (numbered)**
+
+1. **[correctness]** `plan.txt` (marker write gating) — Step 5c item 11 reuses the item-10 gate (`PUBLISH_OK=true` + rename), so the marker is not written when the plan is on the issue but publish failed or rename was skipped. A same-session spurious re-fire still has no `[DESIGNED]` title and no marker. **Suggested revision:** Write the marker on `PLAN_WRITE_OK=true` (step 4 success) only; decouple from publish/rename.
+
+2. **[correctness]** `skills/design/SKILL.md:975` / `plan.txt` — Item 10 has no “on non-zero, log Warnings and continue” (unlike Step 0b 5.5). A `tracking-issue-write.sh` failure can prevent item 11 from running, leaving no marker after an otherwise successful publish. **Suggested revision:** Best-effort continue after rename failure, or write the marker before item 10.
+
+3. **[correctness]** `plan.txt` / `scripts/session-setup.sh:234-236` — Marker paths use `$HOME/.cache` while sessions use `XDG_CACHE_HOME`. **Suggested revision:** Reuse `session_cache_root()` for marker paths.
+
+4. **[correctness]** `plan.txt:51` / `scripts/lib-external-launcher-common.sh:103-106` — Proposed `stat -f` before `stat -c` is unsafe on Linux. **Suggested revision:** GNU `-c` first, then BSD `-f`, with numeric validation.
+
+5. **[architecture]** `skills/design/SKILL.md:189-190` / `plan.txt:80` — Sub-step 2.6 `exit 1` omits `SUMMARY_OUTCOME` and the Final summary block used by 2.5 rejects. **Suggested revision:** Add a cancelled/spurious-reentry outcome and run the Final summary block before exit.
+
+6. **[correctness]** `scripts/test-design-structure.sh:761-767` / `plan.txt:86-93` — Check (20) still enforces `2 → 2.5 → 3` only; checks 21–22 are grep-only. **Suggested revision:** Extend (20) for `2.6` ordering.
+
+7. **[correctness]** `plan.txt:50-51` — `touch` without `mkdir -p` can fail on a missing sessions directory. **Suggested revision:** `mkdir -p` parent before `touch`.
+
+8. **[correctness]** `plan.txt:118` — F2 does not test the refuse banner. **Suggested revision:** Structural banner grep or a dedicated fixture.
+
+9. **[latent]** `plan.txt:111` — No test for future mtime / `REASON=invalid-mtime`. **Suggested revision:** Add harness fixture F6.
+
+10. **[correctness]** `plan.txt:51,80` — Return code 2 for invalid input is not specified in SKILL 2.6. **Suggested revision:** Document proceed-vs-abort behavior.
+
+11. **[OUT_OF_SCOPE] [security]** `SECURITY.md:51` — New cache markers are not documented under the same-user trust model. Track in a follow-up if needed.

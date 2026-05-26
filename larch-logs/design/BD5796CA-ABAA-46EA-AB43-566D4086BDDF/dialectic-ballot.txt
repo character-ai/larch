@@ -1,0 +1,101 @@
+## Dialectic Ballot
+
+You are a judge on a 3-panel adjudicating contested design decisions. For each `DECISION_N` below, read both Defense A and Defense B, then cast exactly one binary vote: `THESIS` or `ANTI_THESIS`. THESIS means the side labeled as defending the synthesis's chosen option wins; ANTI_THESIS means the side defending the alternative option wins. Judge on argument quality — not on which defense "sounds more confident." Vote on every decision. Do not modify files.
+
+The tool that produced each defense is hidden (Defense A / Defense B labels are anonymous). Which side defends the chosen option vs. the alternative is disclosed on each decision's header because that information is semantic, not tool-attributive.
+
+### DECISION_1: Step 6 prompt-contract clarification — include in this fix or defer?
+
+The synthesis chose **DEFER** (no Step 6 prompt clarification unless code audit produces textual evidence of a specific mis-trigger). The alternative is **ALWAYS-INCLUDE** (proactively clarify Step 6 as an explicit terminal boundary in `skills/design/SKILL.md`). The synthesis decision's primary justification is that the anti-halt reminder is paired with `proceed to Step N+1` directives and the local Step 6 prose lacks any "continue to Step 7" instruction — so prompt-text edits cannot stop runtime causes (stray wakeups, delayed agent replies). Round 1 user decision forbids loosening anti-halt machinery without clear evidence.
+
+Defense A (defends DEFER):
+<defense_content>
+<steelman>
+A proactive Step 6 terminal-boundary clarification is attractive because the incident is a re-entry bug and the cheapest prompt-side fix is to state unambiguously that cleanup ends /design. It could also reduce ambiguity for future agents reading the anti-halt reminder's "Step 0 through Step 6" language.
+</steelman>
+<claim>
+Defer Step 6 prompt-contract clarification unless the audit finds textual evidence that SKILL.md anti-halt or Step 6 prose specifically instructs or plausibly triggers re-entry.
+</claim>
+<evidence>
+skills/design/SKILL.md:30 defines anti-halt continuation as moving to the "NEXT numbered step" and enumerates the final transition as "5c.8→6," not "6→0" or any post-cleanup loop. skills/design/SKILL.md:1021 explicitly says to continue from Step 5 to Step 6, while skills/design/SKILL.md:1032 describes conditional cleanup behavior without a subsequent continuation directive. scripts/test-design-structure.sh:584 and scripts/test-design-structure.sh:590 pin the required boundary as "5c.8→6," reinforcing that the intended terminal continuation is into cleanup only.
+</evidence>
+<strongest_concession>
+The opposing side's best point is that "This applies to ALL step boundaries from Step 0 through Step 6" in skills/design/SKILL.md:30 can be read by an over-literal agent as implying something must happen after Step 6, so an explicit terminal sentence might prevent misinterpretation.
+</strongest_concession>
+<counter_to_opposition>
+That ambiguity is weaker than the runtime alternatives because the same paragraph subordinates itself to explicit control-flow directives and only names "proceed to Step N+1" as the normal sequential case; there is no Step 7 or Step 0 directive after cleanup. Adding terminal prose without a smoking-gun phrase risks treating the symptom as prompt wording when the defect may be an unsanctioned wakeup, delayed message, or external re-invocation path that prompt clarification would not block.
+</counter_to_opposition>
+<risk_if_wrong>
+If this defer stance is wrong, /design may still self-reinvoke after Step 6, causing duplicate work on the same issue and forcing a follow-up prompt-contract patch that could have shipped in the first fix.
+</risk_if_wrong>
+</defense_content>
+
+Defense B (defends ALWAYS-INCLUDE):
+<defense_content>
+<steelman>
+DEFER has a real discipline advantage: avoid changing prompt contracts unless the audit identifies a concrete mis-trigger, because runtime re-entry might come from delayed tool behavior rather than Step 6 prose. It also respects the existing anti-halt machinery, which intentionally keeps /design moving through cleanup.
+</steelman>
+<claim>
+ALWAYS-INCLUDE is the lower-complexity fix because the current contract explicitly covers Step 6 as a continuation boundary but provides no equally explicit terminal boundary after cleanup.
+</claim>
+<evidence>
+`skills/design/SKILL.md:30` says the anti-halt rule applies "from Step 0 through Step 6" and enumerates `5c.8→6`, while `skills/design/SKILL.md:1025` starts cleanup and `skills/design/SKILL.md:1035` runs `cleanup-tmpdir.sh` with no terminal "stop here" instruction afterward. `scripts/test-design-structure.sh:584-585` pins the `5c.8→6` continuation boundary, and `skills/shared/orchestrator-never.md:5` separately says single-iteration skills end at their terminal cleanup step, so making Step 6 say that locally is clarification, not new behavior.
+</evidence>
+<strongest_concession>
+The best DEFER point is that `skills/design/SKILL.md:1021` only says to continue from Step 5 to Step 6, not from Step 6 back to Step 0, so proactive text may not address a stray wakeup or external delayed message.
+</strongest_concession>
+<counter_to_opposition>
+That concession proves the clarification belongs here: the codebase already has global "terminal cleanup step" doctrine, but the hot local prompt has a strong continuation rule and no local stop rule, so the smallest reliable repair is one explicit Step 6 terminal boundary plus a structural pin.
+</counter_to_opposition>
+<risk_if_wrong>
+If ALWAYS-INCLUDE loses, /design keeps relying on an implicit end-of-skill inference exactly where the observed failure occurs, forcing a broader runtime audit to compensate for one missing sentence in the prompt contract.
+</risk_if_wrong>
+</defense_content>
+
+### DECISION_2: Invocation telemetry — add it or rely on code audit only?
+
+The synthesis chose **CODE-AUDIT-ONLY** (no new telemetry in /design). The alternative is **ADD-TELEMETRY** (lightweight invocation telemetry at Step 0 + Step 6 plus an audit helper grouping manifest.json by issue+time). The synthesis decision's primary justification is that the reporter explicitly confirmed run logs are flushed before any spurious re-fire, so telemetry committed to `larch-logs/design/<RUN_ID>/` would not capture the re-fire window. Adding telemetry also expands /design's own footprint, which is the opposite of what the reporter is asking for.
+
+Defense A (defends ADD-TELEMETRY):
+<defense_content>
+<steelman>
+CODE-AUDIT-ONLY correctly prioritizes stopping spurious re-invocations over instrumentation: a Pre-Step-0 defensive guard plus targeted reads of anti-halt and wakeup touchpoints attack the re-fire mechanism directly, without adding bash to every future /design entry, and the first run's committed `larch-logs` are already flushed before a second entry could be forensically correlated on disk alone.
+</steelman>
+<claim>
+The synthesis is disproportionately austere: two boundary hooks reusing existing `timing-ledger.sh` and `larch-log.sh` manifest machinery, plus a small audit helper over `larch-logs/design/*/manifest.json`, buy repeatable re-entry forensics at far lower cost than another manual SKILL.md archaeology pass when this bug or a variant recurs.
+</claim>
+<evidence>
+`skills/design/SKILL.md` already pairs Step 0 and Step 6 with `timing-ledger.sh` marks (lines 125 and 1029) and mandates immediate Step 6 after the Step 5 footer when `PLAN_WRITE_OK=true` (line 1021: "tmpdir removal is not optional on the happy path"), while `scripts/larch-log.sh` already seeds manifests with `issue_number`, `parent_skill`, `attempt`, and `superseded_by` (lines 217–227) and supports `manifest --field` updates—so recording argv hash, PID/PPID, and `SUMMARY_OUTCOME` at those two boundaries extends existing infrastructure rather than inventing a new logging subsystem.
+</evidence>
+<strongest_concession>
+The synthesis is right that one committed `larch-logs/design/<RUN_ID>/` tree cannot witness the sub-second window between happy-path Step 6 `cleanup-tmpdir.sh` and a spurious second Step 0 in the same process, because publish and tmpdir removal precede re-entry.
+</strongest_concession>
+<counter_to_opposition>
+That gap is why telemetry must land at Step 0 of run N+1 and terminal outcome at Step 6 of run N: grouping manifests—or a tiny append-only record under `~/.cache/larch/sessions/` written before cleanup—makes back-to-back same-issue invocations machine-queryable without re-grepping anti-halt prose, and the defensive guard stays orthogonal because telemetry diagnoses recurrence while the guard prevents it.
+</counter_to_opposition>
+<risk_if_wrong>
+If we ship CODE-AUDIT-ONLY and the guard misses an edge path, the next incident again burns hours re-reading Step 0b/5/6 control flow with no argv/PID/outcome correlation across runs.
+</risk_if_wrong>
+</defense_content>
+
+Defense B (defends CODE-AUDIT-ONLY):
+<defense_content>
+<steelman>
+Telemetry would give future investigators a durable correlation key across issue, argv hash, parent skill, PID lineage, and terminal outcome, which is valuable if the spurious second /design entry cannot be reproduced during code review. It also makes recurrence measurable instead of relying on operator reports.
+</steelman>
+<claim>
+Ship the code audit plus the defensive Pre-Step-0 guard without adding new /design telemetry, because the bug is an invocation-control failure and the proposed telemetry adds persistent lifecycle writes that do not cover the confirmed re-fire window.
+</claim>
+<evidence>
+`skills/design/SKILL.md:10` states that plan and acceptance are written to the issue body with "no design manifest export," while `skills/design/SKILL.md:125` and `skills/design/SKILL.md:155-156` show Step 0 already has timing/token ledger side effects before issue flow is fully established. The happy path publishes only after plan write via `skills/design/SKILL.md:972-975`, then Step 6 removes `$DESIGN_TMPDIR` at `skills/design/SKILL.md:1032-1035`; `scripts/design-log-publish.md:3-4` and `scripts/design-log-publish.md:21-22` confirm committed `larch-logs/design/<RUN_ID>/manifest.json` is created by flushing a completed session, not by observing the moment that triggers a second entry.
+</evidence>
+<strongest_concession>
+The best opposing point is that without telemetry, a future recurrence may again lack a compact, machine-readable timeline tying the first /design invocation to the second.
+</strongest_concession>
+<counter_to_opposition>
+That concession does not justify Step 0 and Step 6 instrumentation here: the reporter's confirmed failure mode occurs after logs are flushed, so committed design telemetry would mostly describe the completed first run while increasing the exact /design footprint we are trying to keep quiet and non-recursive.
+</counter_to_opposition>
+<risk_if_wrong>
+If code audit and the defensive guard are insufficient, the project may spend another incident cycle reconstructing a spurious re-invocation from chat/session traces instead of a purpose-built manifest timeline.
+</risk_if_wrong>
+</defense_content>
