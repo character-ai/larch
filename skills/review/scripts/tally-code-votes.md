@@ -10,8 +10,8 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 | Flag | Type | Required | Description |
 |---|---|---|---|
-| `--ballot-file FILE` | path | yes | Markdown file containing one `### FINDING_N:` block per finding. OOS items are indicated by `[OUT_OF_SCOPE]` in the title heading line — same convention `collect-findings.sh` already emits. |
-| `--voter-files FILE...` | path list | no | Vote-output files (typically `cursor-vote-output.txt`, `codex-vote-output.txt`, `claude-vote-output.txt`). Each voter file contains lines like `FINDING_N: YES`, `FINDING_N: NO — reason`, `FINDING_N: EXONERATE — reason`. Zero files triggers `TALLY_STATUS=main-agent-vote-required`. |
+| `--ballot-file FILE` | path | yes | Markdown file containing ballot blocks keyed by `### FINDING_N:` and, for OOS items, either legacy `[OUT_OF_SCOPE]` `FINDING_N` headings or direct `### OOS_N:` headings. |
+| `--voter-files FILE...` | path list | no | Vote-output files (typically `cursor-vote-output.txt`, `codex-vote-output.txt`, `claude-vote-output.txt`). Each voter file contains lines like `FINDING_N: YES`, `FINDING_N: NO — reason`, `FINDING_N: EXONERATE — reason`, or `OOS_N: ...` when the ballot uses direct `OOS_N` headings. Zero files triggers `TALLY_STATUS=main-agent-vote-required`. |
 | `--review-tmpdir DIR` | path | yes | Output directory for all artifacts. |
 | `--session-env-path FILE` | path | no | When non-empty, OOS-accepted is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md` so `/implement` Step 9a.1 can find it. |
 | `--scope-files FILE` | path | no | File containing changed file names (one per line, from `git diff --name-only`). When non-empty, enables the scope-fit gate on the block heading line (first line of each `### FINDING_N:` block): tokens matching the extended-regex pattern `[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+:[0-9]+` yield file paths after stripping the trailing `:line` suffix. If the heading has no such token, the gate skips (keeps in-scope). If every extracted path is absent from both this file and (when provided) `--plan-file`, the finding is reclassified as OOS (`OUT_OF_SCOPE_DRIFT`). When absent or empty, the gate is a no-op (backward compatible). |
@@ -26,7 +26,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 ## Output artifacts
 
 - `voting-tally.md` — per-item table (`Item | YES | NO | EXON | JERR | Result`) plus reviewer competition scoreboard.
-- `findings-classification.tsv` for nested `/implement` review rounds, or `findings-classification-round-N.tsv` for standalone `/review --diff` rounds. Schema: `finding_id`, `reviewer_slots`, `voting_result`, then `v1_vote`, `v1_correctness`, `v1_severity`, `v1_quality`, `v1_uncertain` through `v3_*`. Voter columns follow compact `EFFECTIVE_VOTER_FILES` order, so failed slots do not leave positional holes.
+- `findings-classification.tsv` when `REVIEW_TMPDIR` is nested under `$IMPLEMENT_TMPDIR/round-N`, or `findings-classification-round-N.tsv` for standalone `/review --diff` rounds. Schema: `finding_id`, `reviewer_slots`, `voting_result`, then `v1_vote`, `v1_correctness`, `v1_severity`, `v1_quality`, `v1_uncertain` through `v3_*`. Voter columns follow compact `EFFECTIVE_VOTER_FILES` order, so failed slots do not leave positional holes.
 - `accepted-findings.md` — accepted FINDING_N blocks (in-scope only; OOS items go to a separate file).
 - `rejected-findings.md` — non-accepted in-scope findings rendered under `### [rejected] FINDING_N` with a short **Rejected subtype** line, plus `Vote tally: YES=… NO=… EXON=… JUDGE_ERROR=…` appended.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).

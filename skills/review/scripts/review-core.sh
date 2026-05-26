@@ -441,8 +441,10 @@ if [[ "$findings_count" == "0" ]]; then
         --review-tmpdir "$REVIEW_TMPDIR"
         --cursor-available "$CURSOR_AVAILABLE"
         --codex-available "$CODEX_AVAILABLE"
+        --round-num "$ROUND_NUM"
         --voter-files "$zero_findings_voter"
     )
+    [[ -n "$SESSION_ENV_PATH" ]] && zero_tally_args+=(--session-env-path "$SESSION_ENV_PATH")
     [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && zero_tally_args+=(--manifest-file "$panel_manifest")
     [[ -f "$collector_results_file" ]] && zero_tally_args+=(--collector-results-file "$collector_results_file")
     [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")

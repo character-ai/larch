@@ -43,21 +43,21 @@ HEADER=$'finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_
 
 echo "# Fixture A: nested /implement path, 2 effective voters, OOS_N rows, write-round publish"
 A="$TMP/a"
-mkdir -p "$A"
-write_ballot "$A/ballot.md"
-printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$A/v1.txt"
-printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false\nOOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false\n' > "$A/v2.txt"
-out="$A/out.env"
-IMPLEMENT_TMPDIR="$A/impl-parent" "$TALLY" --ballot-file "$A/ballot.md" --review-tmpdir "$A" --session-env-path "$A/session-env.sh" --voter-files "$A/v1.txt" "$A/v2.txt" > "$out"
+mkdir -p "$A/impl-parent/round-1"
+write_ballot "$A/impl-parent/round-1/ballot.md"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$A/impl-parent/round-1/v1.txt"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false\nOOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false\n' > "$A/impl-parent/round-1/v2.txt"
+out="$A/impl-parent/round-1/out.env"
+IMPLEMENT_TMPDIR="$A/impl-parent" "$TALLY" --ballot-file "$A/impl-parent/round-1/ballot.md" --review-tmpdir "$A/impl-parent/round-1" --session-env-path "$A/impl-parent/session-env.sh" --voter-files "$A/impl-parent/round-1/v1.txt" "$A/impl-parent/round-1/v2.txt" > "$out"
 class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
-[[ "$class_file" == "$A/findings-classification.tsv" ]] || fail "nested classification path drifted: $class_file"
+[[ "$class_file" == "$A/impl-parent/round-1/findings-classification.tsv" ]] || fail "nested classification path drifted: $class_file"
 read -r header < "$class_file"
 [[ "$header" == "$HEADER" ]] || fail "classification header drifted"
 grep -Fq $'FINDING_1\tcursor-a-output.txt|codex-b-output.txt\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tYES\ttrue\tmajor\tadequate\tfalse\t\t\t\t\t' "$class_file" \
     || fail "nested compact 2-voter row missing"
 grep -Fq $'OOS_1\tcursor-oos-output.txt\tneutral' "$class_file" || fail "OOS_N classification row missing"
 log_root="$A/logs"
-"$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run-a --round 1 --source-dir "$A" >/dev/null
+"$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run-a --round 1 --source-dir "$A/impl-parent/round-1" >/dev/null
 [[ -f "$log_root/implement/run-a/round-1/findings-classification.tsv" ]] || fail "write-round did not publish findings-classification.tsv"
 
 echo "# Fixture B: standalone lenient missing rating handling does not change vote result"
@@ -81,6 +81,16 @@ assert r["v2_vote"] == "YES", r
 assert r["v2_correctness"] == "", r
 assert r["v2_uncertain"] == "true", r
 PY
+
+echo "# Fixture B2: standalone --session-env plus ambient IMPLEMENT_TMPDIR still uses round-scoped TSV"
+B2="$TMP/b2"
+mkdir -p "$B2" "$TMP/ambient-impl"
+write_ballot "$B2/ballot.md"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$B2/v1.txt"
+out="$B2/out.env"
+IMPLEMENT_TMPDIR="$TMP/ambient-impl" "$TALLY" --ballot-file "$B2/ballot.md" --review-tmpdir "$B2" --session-env-path "$B2/session-env.sh" --round-num 2 --voter-files "$B2/v1.txt" > "$out"
+class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
+[[ "$class_file" == "$B2/findings-classification-round-2.tsv" ]] || fail "standalone session-env path should remain round-scoped: $class_file"
 
 echo "# Fixture C: 0-judge path emits rows with empty voter columns"
 C="$TMP/c"
@@ -142,5 +152,41 @@ for id in FINDING_1 OOS_1; do
     lib_vote=$(vote_for_id "$id" "$F/votes.txt")
     [[ "$parser_vote" == "$lib_vote" ]] || fail "parser/vote_for_id parity failed for $id"
 done
+
+echo "# Fixture G: malicious rating tokens are sanitized to enum-only TSV cells"
+G="$TMP/g"
+mkdir -p "$G"
+write_ballot "$G/ballot.md"
+cat > "$G/v1.txt" <<'EOF'
+FINDING_1: YES CORRECTNESS=true|owned SEVERITY=critical QUALITY=great UNCERTAIN=maybe
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+EOF
+cat > "$G/v2.txt" <<'EOF'
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+EOF
+out="$G/out.env"
+IMPLEMENT_TMPDIR="" "$TALLY" --ballot-file "$G/ballot.md" --review-tmpdir "$G" --round-num 1 --voter-files "$G/v1.txt" "$G/v2.txt" > "$out"
+class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
+python3 - "$class_file" <<'PY'
+import csv, sys
+allowed = {
+    "voting_result": {"accepted", "rejected", "exonerated", "neutral"},
+    "vote": {"", "YES", "NO", "EXONERATE", "JUDGE_ERROR"},
+    "correctness": {"", "true", "partially-true", "false-positive", "uncertain"},
+    "severity": {"", "blocker", "major", "minor", "nit", "uncertain"},
+    "quality": {"", "excellent", "good", "adequate", "weak", "no-fix", "uncertain"},
+    "uncertain": {"", "true", "false"},
+}
+with open(sys.argv[1], newline="") as fh:
+    for row in csv.DictReader(fh, delimiter="\t"):
+        assert row["voting_result"] in allowed["voting_result"], row
+        for idx in (1, 2, 3):
+            assert row[f"v{idx}_vote"] in allowed["vote"], row
+            assert row[f"v{idx}_correctness"] in allowed["correctness"], row
+            assert row[f"v{idx}_severity"] in allowed["severity"], row
+            assert row[f"v{idx}_quality"] in allowed["quality"], row
+            assert row[f"v{idx}_uncertain"] in allowed["uncertain"], row
+PY
 
 echo "PASS: test-findings-classification.sh"

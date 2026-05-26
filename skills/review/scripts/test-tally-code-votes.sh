@@ -100,6 +100,28 @@ grep -Fq '| cursor-a |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL score
 grep -Fq '| cursor-b |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-b row\n'; }
 grep -Fq '| cursor-c |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-c row\n'; }
 
+echo "# Case: direct OOS_N ballot IDs tally and classify without legacy FINDING_N aliases"
+TMP="$WORKDIR/case_oos_n_ids"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### OOS_1: Future cleanup
+- **Reviewer**: Cursor-Testing
+- **Concern**: Pre-existing issue.
+- **Suggested revision**: Track later.
+EOF
+printf 'OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$TMP/cursor-vote-output.txt"
+printf 'OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$TMP/codex-vote-output.txt"
+printf 'OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "direct OOS_N accepted count" "$got" "1"
+got=$(awk -F= '$1=="OOS_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records direct OOS_N outcome" "$got" "accepted"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'OOS_1\tCursor-Testing\taccepted\tYES\ttrue\tminor\tadequate\tfalse\tYES\ttrue\tminor\tgood\tfalse\tNO\tpartially-true\tnit\tweak\tfalse' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing direct OOS_N row\n'; }
+
 echo "# Case: voter parse-rate diag emits degraded voter banner"
 TMP="$WORKDIR/case_voter_parse_banner"
 mkdir -p "$TMP"
@@ -327,14 +349,16 @@ TMP="$WORKDIR/case4f"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
-: > "$TMP/codex-vote-output.txt"
-: > "$TMP/claude-vote-output.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
-    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-missing.txt" "$TMP/claude-vote-missing.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "3 voters, 1 YES 2 JUDGE_ERROR → no accepted" "$got" "0"
 grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected row with 2 JERR votes missing\n'; }
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+[[ "$classification_file" == "$TMP/findings-classification-round-1.tsv" ]] || { FAIL=1; printf '  FAIL JUDGE_ERROR case did not emit standalone classification TSV path\n'; }
+grep -Fq $'FINDING_1\tCodex-Structure\trejected\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing JUDGE_ERROR columns for rejected row\n'; }
 
 echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"

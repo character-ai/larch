@@ -237,7 +237,7 @@ The ballot format for OOS items depends on the skill:
   - **Concern**: <description of pre-existing issue>
   ```
 
-- **`/review` code review** (`ballot-parse.sh` / `tally-vote.sh`): `collect-findings.sh` writes OOS items using sequential `FINDING_N` IDs with `[OUT_OF_SCOPE]` (or `[OOS]`) in the title (e.g., `### FINDING_N: [OUT_OF_SCOPE] <title>`). Voters vote with `FINDING_N:` lines, not `OOS_N:` lines — `tally-vote.sh` only matches `FINDING_<n>` patterns.
+- **`/review` code review** (`collect-findings.sh` / `tally-code-votes.sh`): ballots may contain legacy `### FINDING_N: [OUT_OF_SCOPE] <title>` blocks or direct `### OOS_N:` blocks. Voters must use the matching ballot ID (`FINDING_N:` for legacy OOS headings, `OOS_N:` for direct OOS headings), and `tally-code-votes.sh` accepts both forms.
 
 ### OOS Vote Semantics
 

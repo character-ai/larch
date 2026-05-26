@@ -67,7 +67,19 @@ OOS_FILE="$REVIEW_TMPDIR/oos.md"
 VOTING_TALLY_FILE="$REVIEW_TMPDIR/voting-tally.md"
 TALLY_ENV_FILE="$REVIEW_TMPDIR/review-tally.env"
 YIELD_TSV_FILE="$REVIEW_TMPDIR/scout-archetype-yield.tsv"
-if [[ -n "$SESSION_ENV_PATH" || -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+
+nested_implement_round() {
+    [[ -n "${IMPLEMENT_TMPDIR:-}" && -n "$REVIEW_TMPDIR" ]] || return 1
+    local review_real impl_real
+    review_real="$(cd "$REVIEW_TMPDIR" 2>/dev/null && pwd -P)" || return 1
+    impl_real="$(cd "$IMPLEMENT_TMPDIR" 2>/dev/null && pwd -P)" || return 1
+    case "$review_real" in
+        "$impl_real"/round-[0-9]*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+if nested_implement_round; then
     CLASSIFICATION_TSV="$REVIEW_TMPDIR/findings-classification.tsv"
 else
     CLASSIFICATION_TSV="$REVIEW_TMPDIR/findings-classification-round-${ROUND_NUM}.tsv"
