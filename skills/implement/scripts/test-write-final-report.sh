@@ -41,7 +41,12 @@ cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
 cp "$REPO_ROOT/scripts/token-cost.sh" "$plugin/scripts/token-cost.sh"
 cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$plugin/scripts/lib-cost-line-format.sh"
-chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh"
+cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
+cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$plugin/scripts/append-execution-issue.sh"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$plugin/scripts/redact-secrets.sh"
+chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh" \
+    "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/append-execution-issue.sh" \
+    "$plugin/scripts/redact-secrets.sh"
 cat > "$plugin/scripts/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -304,9 +309,11 @@ STUB
 chmod +x "$plugin/scripts/render-run-summary.sh"
 stage1_calls="$TMP_ROOT/wfr-stage1.calls"
 : >"$stage1_calls"
+rm -f "$impl_bl/execution-issues.md"
 fallback_stage1=$(WFR_STAGE1_CALLS_FILE="$stage1_calls" CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage1.md" \
       "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
 assert_contains '- **Cost**: N/A' "$fallback_stage1" 'renderer fallback stage1 prints cost N/A'
+assert_contains '- **Warnings**: 1' "$fallback_stage1" 'renderer fallback stage1 refreshes warning count'
 assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage1" 'renderer fallback stage1 keeps sentinel'
 test "$(wc -l <"$stage1_calls" | tr -d ' ')" = "2" || fail 'renderer fallback stage1 must invoke renderer twice'
 
@@ -315,6 +322,7 @@ cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
 exit 1
 STUB
 chmod +x "$plugin/scripts/render-run-summary.sh"
+rm -f "$impl_bl/execution-issues.md"
 fallback_stage2=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage2.md" \
       "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
 assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered implement schema' \
@@ -329,10 +337,11 @@ assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered
     '- **Code review**: N/A' \
     '- **OOS filed**: 0' \
     '- **Exec issues**: 0' \
-    '- **Warnings**: 0' \
+    '- **Warnings**: 2' \
     "- **Run logs**: \`larch-logs/implement/run-bl/\`" \
     '<!-- larch:run-summary v=1 -->'
 assert_not_contains '- **PR**:' "$fallback_stage2" 'renderer fallback stage2 omits PR when N/A'
+assert_contains '### Warnings' "$(cat "$impl_bl/execution-issues.md")" 'renderer fallback stage2 records warning section'
 cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh"
 

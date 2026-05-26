@@ -145,6 +145,7 @@ if [ "$jq_ok" = true ]; then
                 --tool "token-report.sh" \
                 --exit-code "${trc:-1}" \
                 --category Warnings \
+                --redact \
                 --output-file "$DESIGN_TMPDIR/token-report-final.failure.log" \
                 >/dev/null 2>&1 || true
         fi
@@ -185,6 +186,7 @@ else
             --tool "token-report.sh" \
             --exit-code "${trc:-1}" \
             --category Warnings \
+            --redact \
             --output-file "$DESIGN_TMPDIR/token-report-final.failure.log" \
             >/dev/null 2>&1 || true
     fi
@@ -202,6 +204,7 @@ if [ -z "$DURATION" ]; then
             --tool "timing-report.sh" \
             --exit-code "${tmrc:-1}" \
             --category Warnings \
+            --redact \
             --output-file "$DESIGN_TMPDIR/timing-report-final.failure.log" \
             >/dev/null 2>&1 || true
     fi
@@ -372,19 +375,37 @@ summary_has_usable_cost() {
     ! grep -Fq -- '- **Cost**: N/A' "$file" 2>/dev/null
 }
 
+summary_cost_line() {
+    local file=$1
+    [ -f "$file" ] || return 1
+    grep -F -- '- **Cost**:' "$file" 2>/dev/null | head -1
+}
+
 render_or_fallback() {
     local err_file="$DESIGN_TMPDIR/render-final-summary.stderr.log"
     local summary_file="$DESIGN_TMPDIR/final-summary.md"
+    local preserved_cost_line=""
+    if [ "$PHASE" = post ] && summary_has_usable_cost "$summary_file"; then
+        preserved_cost_line="$(summary_cost_line "$summary_file" || true)"
+    fi
     set +e
     invoke_render 2>"$err_file"
     local rr=$?
     set -e
     if [ "$rr" -ne 0 ] || [ ! -s "$summary_file" ]; then
         append_render_warning "${rr:-1}" "$err_file"
-        if [ "$PHASE" = post ] && { [ -s "$summary_file" ] || summary_has_usable_cost "$summary_file"; }; then
-            return 0
-        fi
         compose_self_fallback
+        if [ -n "$preserved_cost_line" ]; then
+            awk -v cost_line="$preserved_cost_line" '
+                /^- \*\*Cost\*\*:/ && !done {
+                    print cost_line
+                    done = 1
+                    next
+                }
+                { print }
+            ' "$summary_file" > "${summary_file}.tmp"
+            mv "${summary_file}.tmp" "$summary_file"
+        fi
     fi
 }
 
@@ -428,6 +449,7 @@ if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ] && [ -s "$DESIGN_TMPDIR/final-summary.
             --tool "tracking-issue-summary.sh upsert-summary" \
             --exit-code "$ups_rc" \
             --category Warnings \
+            --redact \
             --output-file "$ups_err" \
             >/dev/null 2>&1 || true
     fi

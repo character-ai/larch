@@ -26,10 +26,12 @@ Phase 1 writes `final-summary.md` before `design-log-publish.sh` so the design
 log commit can bundle it. Phase 2 re-renders after publish (success or failure) so
 GitHub upsert and chat match post-publish warnings. The committed Phase-1 file
 may differ slightly from the Phase-2 body when publish appends warnings; a
-second commit to refresh the log bundle is intentionally not required. If the
-Phase-1 renderer fails or leaves the file empty, the helper appends a Warning,
-writes the same self-composed fallback schema with `- **Cost**: N/A`, and still
-returns success so publish can continue with a durable summary artifact.
+second commit to refresh the log bundle is intentionally not required. If either
+phase render fails or leaves the file empty, the helper appends a Warning and
+writes the self-composed fallback schema. On post-phase failures it refreshes
+`Exec issues` / `Warnings` from `execution-issues.md` and only carries forward
+the prior non-`N/A` `- **Cost**:` line when one already existed; it does not
+preserve the rest of the stale Phase-1 body.
 
 ## Cost unavailable (FINDING_12)
 
@@ -45,8 +47,10 @@ shared renderer defaults omitted counts to zero.
 non-zero or leaves the file empty, this helper appends a Warning to
 `execution-issues.md`, refreshes counts, and writes a self-composed `/design`
 schema body: conditional `- **Outcome**:` for cancelled/failed outcomes, no PR
-bullet, no Code review bullet, `- **Cost**: N/A`, and the
-`<!-- larch:run-summary v=1 -->` sentinel.
+bullet, no Code review bullet, and the
+`<!-- larch:run-summary v=1 -->` sentinel. The fallback uses `- **Cost**: N/A`
+unless post phase already had a usable cost line, in which case only that line
+is preserved.
 
 ## PHASE=post print path
 

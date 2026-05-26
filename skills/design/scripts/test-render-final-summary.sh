@@ -52,6 +52,9 @@ cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summar
 cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_STUB/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/lib-quiet.sh"
+cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-tool-failure.sh"
+cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh"
+cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/redact-secrets.sh"
 cat >"$PLUGIN_STUB/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -88,7 +91,9 @@ done
 printf '%s\n' '{"total_hms":"12s"}' >"$out"
 EOF
 chmod +x "$PLUGIN_STUB/scripts/token-report.sh" "$PLUGIN_STUB/scripts/timing-report.sh" \
-    "$PLUGIN_STUB/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/token-cost.sh"
+    "$PLUGIN_STUB/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/token-cost.sh" \
+    "$PLUGIN_STUB/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh" \
+    "$PLUGIN_STUB/scripts/redact-secrets.sh"
 
 std_codex="$TMP/std-codex.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
@@ -130,6 +135,9 @@ std_fb="$TMP/std-fallback.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb" 2>/dev/null
 grep -Fq -- '💰 TOTAL' "$D/final-summary.md" || fail 'renderer-fail post path must preserve prior usable cost line'
+grep -Fq -- '## /design run RUN-FB — approved' "$D/final-summary.md" || fail 'renderer-fail post path must refresh title/run id'
+grep -Fq -- '- **Exec issues**: 0' "$D/final-summary.md" || fail 'renderer-fail post path must refresh exec issue count'
+grep -Fq -- '- **Warnings**: 1' "$D/final-summary.md" || fail 'renderer-fail post path must refresh warning count'
 if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit PR bullet'; fi
 if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit Code review bullet'; fi
 cmp -s "$D/final-summary.md" "$std_fb" || fail 'renderer-fail fallback stdout/file mismatch'
@@ -139,6 +147,8 @@ std_fb_cancel="$TMP/std-fallback-cancelled.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CANCELLED" \
     "$SUBJECT" --outcome cancelled-clarify --mode SIMPLE --post-publish-only >"$std_fb_cancel" 2>/dev/null
 grep -Fq -- '- **Outcome**: cancelled-clarify' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Outcome bullet'
+grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Cost N/A'
+grep -Fq -- '- **Cost**: N/A' "$std_fb_cancel" || fail 'renderer-fail cancelled stdout missing Cost N/A'
 cp "$TMP/render-run-summary.real" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 
@@ -148,6 +158,9 @@ cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_FAILTOK/scripts/render-run-sum
 cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_FAILTOK/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_FAILTOK/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAILTOK/scripts/lib-quiet.sh"
+cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_FAILTOK/scripts/append-tool-failure.sh"
+cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_FAILTOK/scripts/append-execution-issue.sh"
+cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_FAILTOK/scripts/redact-secrets.sh"
 cat >"$PLUGIN_FAILTOK/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 printf 'token report unavailable\n' >&2
@@ -205,6 +218,9 @@ cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_BADJSON/scripts/render-run-sum
 cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_BADJSON/scripts/token-cost.sh"
 cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_BADJSON/scripts/lib-cost-line-format.sh"
 cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_BADJSON/scripts/lib-quiet.sh"
+cp "$ROOT/scripts/append-tool-failure.sh" "$PLUGIN_BADJSON/scripts/append-tool-failure.sh"
+cp "$ROOT/scripts/append-execution-issue.sh" "$PLUGIN_BADJSON/scripts/append-execution-issue.sh"
+cp "$ROOT/scripts/redact-secrets.sh" "$PLUGIN_BADJSON/scripts/redact-secrets.sh"
 cat >"$PLUGIN_BADJSON/scripts/token-report.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

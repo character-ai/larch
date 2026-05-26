@@ -225,12 +225,6 @@ fi
 
 # --- Execution issues / warnings ---
 EXEC_N=0 WARN_N=0
-if [ -f "$run_dir/execution-issues.ndjson" ]; then
-    EXEC_N=$(grep -c '"category":"Tool Failures"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
-    WARN_N=$(grep -c '"category":"Warnings"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
-    case "$EXEC_N" in *[!0-9]*) EXEC_N=0 ;; esac
-    case "$WARN_N" in *[!0-9]*) WARN_N=0 ;; esac
-fi
 
 RUN_LOGS_DISP="larch-logs/implement/${RUN_ID}/"
 
@@ -436,6 +430,7 @@ compose_self_fallback() {
 }
 
 set +e
+refresh_issue_counts
 run_body_render "${notes_tmp}"
 rr=$?
 set -e
