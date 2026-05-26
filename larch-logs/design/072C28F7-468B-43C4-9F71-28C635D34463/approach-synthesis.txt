@@ -1,0 +1,34 @@
+# Approach Synthesis
+
+## Sketch attribution
+- **Cursor-Generic**: non-substantive (returned only status-update lines: "Exploring...", "Creating the implementation plan..." — no architectural content). Treated as no-position contributor.
+- **Codex-Generic**: substantive sketch with concrete file:line references.
+
+## Agreement
+Codex's sketch is the sole substantive proposal and is adopted (no contradicting view from Cursor):
+
+1. Modify `scripts/design-log-publish.sh` render-cache staging block (lines 352-396) to mirror plan-review's hardening pattern:
+   - After `pwd -P` canonicalization of `rc_root`, add a tree-wide `find "$rc_root" -type l -print -quit` symlink-reject step (mirrors plan-review line 305).
+   - Inside the file loop, before `design_publish_stage_file`, add a per-file `[[ -L "$f" ]]` recheck (mirrors plan-review line 336).
+2. Render-cache stays variable-schema — no filename allowlist. The existing suffix denylist (`.sidecar`, `.events.jsonl`) lives in `design_publish_stage_file` and is preserved.
+3. Mirror 3 plan-review symlink tests into `scripts/test-design-log-publish.sh` near line 492:
+   - Render-cache root symlink rejection
+   - Render-cache intermediate-directory symlink rejection
+   - Render-cache `find → stage` symlink race (reuses `make_find_symlink_race_stub` at line 92)
+
+## Divergence
+None substantive. Cursor produced no architectural content to contradict.
+
+## Tradeoff
+Tree-wide symlink ban will reject any future cache layout depending on intentional symlinks. Acceptable per the issue body (the explicit goal is symmetric posture with plan-review's fail-closed staging).
+
+## Risks
+- PATH/env mutation between race tests: use unique temp roots and RUN_IDs per case, unset `RACE_FIND_ROOT` / `RACE_FIND_PATH` / `RACE_FIND_TARGET` between tests.
+- Race-stub assertions: copy plan-review's pattern verbatim — `PUBLISH_OK=false` plus check that no render-cache files leaked into the clone destination.
+
+## Files to modify
+- `scripts/design-log-publish.sh` (render-cache block, ~10-15 LOC of additions; symmetric with plan-review)
+- `scripts/test-design-log-publish.sh` (3 new test cases mirroring plan-review symlink suite, ~70-100 LOC)
+
+## Sketch agent count
+2 (Cursor-Generic: non-substantive; Codex-Generic: substantive)
