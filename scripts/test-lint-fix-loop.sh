@@ -19,6 +19,11 @@ assert_contains() {
     [[ "$haystack" == *"$needle"* ]] || fail "$label missing '$needle' in: $haystack"
 }
 
+kv_value() {
+    local key="$1" text="$2"
+    printf '%s\n' "$text" | awk -F= -v key="$key" '$1 == key { print substr($0, index($0,"=")+1); exit }'
+}
+
 make_repo() {
     local dir="$1"
     mkdir -p "$dir"
@@ -30,6 +35,22 @@ make_repo() {
         printf 'base\n' > tracked.txt
         git add tracked.txt
         git commit -q -m "baseline"
+    )
+}
+
+add_forbidden_submodule_fixture() {
+    local dir="$1"
+    (
+        cd "$dir"
+        cat > .gitmodules <<'EOF'
+[submodule "submod"]
+	path = submod
+	url = https://example.invalid/submod.git
+EOF
+        mkdir -p submod
+        printf 'base\n' > submod/file
+        git add .gitmodules submod/file
+        git commit -q -m "add synthetic submodule path"
     )
 }
 
@@ -103,6 +124,100 @@ EOF
     chmod +x "$path"
 }
 
+write_wrapper_commit_forbidden_path() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+printf 'stub forbidden commit\n' > "$output"
+printf 'forbidden-change\n' > submod/file
+git add submod/file
+git commit -q -m "stub forbidden commit"
+EOF
+    chmod +x "$path"
+}
+
+write_wrapper_detached_commit() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+printf 'stub detached commit\n' > "$output"
+git checkout -q --detach
+printf 'detached-change\n' > tracked.txt
+git add tracked.txt
+git commit -q -m "stub detached commit"
+EOF
+    chmod +x "$path"
+}
+
+write_wrapper_branch_switch_commit() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+printf 'stub branch switch commit\n' > "$output"
+git checkout -q -b sibling
+printf 'sibling-change\n' > tracked.txt
+git add tracked.txt
+git commit -q -m "stub sibling commit"
+EOF
+    chmod +x "$path"
+}
+
+write_wrapper_commit_other_file() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+printf 'stub dirty baseline commit\n' > "$output"
+printf 'new committed file\n' > committed.txt
+git add committed.txt
+git commit -q -m "stub dirty baseline commit"
+EOF
+    chmod +x "$path"
+}
+
 run_case() {
     local fixture_scripts="$1" repo="$2" session="$3" checks_log="$4" wrapper="$5" site="${6:-step3}" target_args_file="${7:-}"
     local rc=0 out
@@ -121,7 +236,7 @@ run_case() {
     printf '%s\n%s\n' "$rc" "$out"
 }
 
-# Case 1: external coder commits; lint-fix-loop must fail closed on HEAD drift.
+# Case 1: external coder commits on the same clean branch; lint-fix-loop accepts it.
 CASE1="$TMPROOT/case1"
 REPO1="$CASE1/repo"
 SCRIPTS1="$CASE1/scripts"
@@ -137,9 +252,101 @@ write_wrapper_commit_head "$WRAPPER1"
 case1_result=$(run_case "$SCRIPTS1" "$REPO1" "$SESSION1" "$CHECKS1" "$WRAPPER1")
 case1_rc=$(printf '%s\n' "$case1_result" | sed -n '1p')
 case1_out=$(printf '%s\n' "$case1_result" | sed -n '2,$p')
-[[ "$case1_rc" == "1" ]] || fail "case1 expected rc 1, got $case1_rc"
-assert_contains "$case1_out" 'LINT_FIX_STATUS=failed' "case1 status"
-assert_contains "$case1_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1 reason"
+[[ "$case1_rc" == "0" ]] || fail "case1 expected rc 0, got $case1_rc"
+assert_contains "$case1_out" 'LINT_FIX_STATUS=applied' "case1 status"
+case1_commit_sha=$(kv_value LINT_FIX_COMMIT_SHA "$case1_out")
+[[ -n "$case1_commit_sha" ]] || fail "case1 expected non-empty LINT_FIX_COMMIT_SHA"
+assert_contains "$case1_out" 'LINT_FIX_HEAD_CHANGED=true' "case1 head changed"
+case1_delta_file=$(kv_value LINT_FIX_DELTA_PATHS_FILE "$case1_out")
+[[ -n "$case1_delta_file" && -f "$case1_delta_file" ]] || fail "case1 expected readable delta paths file"
+grep -Fxq 'tracked.txt' "$case1_delta_file" || fail "case1 expected tracked.txt in delta paths"
+
+# Case 1b: coder commits a forbidden submodule path; lint-fix-loop resets to baseline.
+CASE1B="$TMPROOT/case1b"
+REPO1B="$CASE1B/repo"
+SCRIPTS1B="$CASE1B/scripts"
+SESSION1B="$CASE1B/session"
+CHECKS1B="$CASE1B/checks.log"
+WRAPPER1B="$CASE1B/wrapper.sh"
+make_repo "$REPO1B"
+add_forbidden_submodule_fixture "$REPO1B"
+make_fixture_scripts "$SCRIPTS1B"
+make_session "$SESSION1B"
+printf 'synthetic checks failure\n' > "$CHECKS1B"
+write_wrapper_commit_forbidden_path "$WRAPPER1B"
+case1b_baseline=$(cd "$REPO1B" && git rev-parse HEAD)
+
+case1b_result=$(run_case "$SCRIPTS1B" "$REPO1B" "$SESSION1B" "$CHECKS1B" "$WRAPPER1B")
+case1b_rc=$(printf '%s\n' "$case1b_result" | sed -n '1p')
+case1b_out=$(printf '%s\n' "$case1b_result" | sed -n '2,$p')
+[[ "$case1b_rc" == "1" ]] || fail "case1b expected rc 1, got $case1b_rc"
+assert_contains "$case1b_out" 'LINT_FIX_STATUS=failed' "case1b status"
+assert_contains "$case1b_out" 'FAILURE_REASON=forbidden-path-violation' "case1b reason"
+case1b_head=$(cd "$REPO1B" && git rev-parse HEAD)
+[[ "$case1b_head" == "$case1b_baseline" ]] || fail "case1b expected reset to $case1b_baseline, got $case1b_head"
+
+# Case 1c: detached HEAD after dispatch still fails closed.
+CASE1C="$TMPROOT/case1c"
+REPO1C="$CASE1C/repo"
+SCRIPTS1C="$CASE1C/scripts"
+SESSION1C="$CASE1C/session"
+CHECKS1C="$CASE1C/checks.log"
+WRAPPER1C="$CASE1C/wrapper.sh"
+make_repo "$REPO1C"
+make_fixture_scripts "$SCRIPTS1C"
+make_session "$SESSION1C"
+printf 'synthetic checks failure\n' > "$CHECKS1C"
+write_wrapper_detached_commit "$WRAPPER1C"
+
+case1c_result=$(run_case "$SCRIPTS1C" "$REPO1C" "$SESSION1C" "$CHECKS1C" "$WRAPPER1C")
+case1c_rc=$(printf '%s\n' "$case1c_result" | sed -n '1p')
+case1c_out=$(printf '%s\n' "$case1c_result" | sed -n '2,$p')
+[[ "$case1c_rc" == "1" ]] || fail "case1c expected rc 1, got $case1c_rc"
+assert_contains "$case1c_out" 'LINT_FIX_STATUS=failed' "case1c status"
+assert_contains "$case1c_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1c reason"
+
+# Case 1d: branch switch after dispatch still fails closed.
+CASE1D="$TMPROOT/case1d"
+REPO1D="$CASE1D/repo"
+SCRIPTS1D="$CASE1D/scripts"
+SESSION1D="$CASE1D/session"
+CHECKS1D="$CASE1D/checks.log"
+WRAPPER1D="$CASE1D/wrapper.sh"
+make_repo "$REPO1D"
+make_fixture_scripts "$SCRIPTS1D"
+make_session "$SESSION1D"
+printf 'synthetic checks failure\n' > "$CHECKS1D"
+write_wrapper_branch_switch_commit "$WRAPPER1D"
+
+case1d_result=$(run_case "$SCRIPTS1D" "$REPO1D" "$SESSION1D" "$CHECKS1D" "$WRAPPER1D")
+case1d_rc=$(printf '%s\n' "$case1d_result" | sed -n '1p')
+case1d_out=$(printf '%s\n' "$case1d_result" | sed -n '2,$p')
+[[ "$case1d_rc" == "1" ]] || fail "case1d expected rc 1, got $case1d_rc"
+assert_contains "$case1d_out" 'LINT_FIX_STATUS=failed' "case1d status"
+assert_contains "$case1d_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1d reason"
+
+# Case 1e: dirty baseline plus HEAD movement still fails closed without reset.
+CASE1E="$TMPROOT/case1e"
+REPO1E="$CASE1E/repo"
+SCRIPTS1E="$CASE1E/scripts"
+SESSION1E="$CASE1E/session"
+CHECKS1E="$CASE1E/checks.log"
+WRAPPER1E="$CASE1E/wrapper.sh"
+make_repo "$REPO1E"
+make_fixture_scripts "$SCRIPTS1E"
+make_session "$SESSION1E"
+printf 'synthetic checks failure\n' > "$CHECKS1E"
+printf 'preexisting dirty work\n' > "$REPO1E/tracked.txt"
+write_wrapper_commit_other_file "$WRAPPER1E"
+
+case1e_result=$(run_case "$SCRIPTS1E" "$REPO1E" "$SESSION1E" "$CHECKS1E" "$WRAPPER1E")
+case1e_rc=$(printf '%s\n' "$case1e_result" | sed -n '1p')
+case1e_out=$(printf '%s\n' "$case1e_result" | sed -n '2,$p')
+[[ "$case1e_rc" == "1" ]] || fail "case1e expected rc 1, got $case1e_rc"
+assert_contains "$case1e_out" 'LINT_FIX_STATUS=failed' "case1e status"
+assert_contains "$case1e_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1e reason"
+case1e_dirty=$(cd "$REPO1E" && git diff --name-only)
+[[ "$case1e_dirty" == "tracked.txt" ]] || fail "case1e expected dirty tracked.txt to survive, got: $case1e_dirty"
 
 # Case 2: helper-owned commit fails; staged delta paths must be reset.
 CASE2="$TMPROOT/case2"

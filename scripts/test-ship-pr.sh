@@ -266,6 +266,12 @@ fi
 if [[ -n "${STUB_LINT_FIX_DELTA_PATHS_FILE:-}" ]]; then
   echo "LINT_FIX_DELTA_PATHS_FILE=${STUB_LINT_FIX_DELTA_PATHS_FILE}"
 fi
+if [[ -n "${STUB_LINT_FIX_COMMIT_SHA:-}" ]]; then
+  echo "LINT_FIX_COMMIT_SHA=${STUB_LINT_FIX_COMMIT_SHA}"
+fi
+if [[ -n "${STUB_LINT_FIX_HEAD_CHANGED:-}" ]]; then
+  echo "LINT_FIX_HEAD_CHANGED=${STUB_LINT_FIX_HEAD_CHANGED}"
+fi
 SH
     cat > "$root/scripts/read-session-env-key.sh" <<'SH'
 #!/usr/bin/env bash
@@ -3258,13 +3264,21 @@ else
 fi
 rm -rf "$call_dir"
 
-# Per-job local head drift stalls instead of collapsing into ci-local-unfixable.
+# Per-job local coder commit is treated as applied, pushed, and re-enters CI.
 root=$(make_repo ci_per_job_head_changed)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/per-job-head-changed.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<'STUB'
+cat > "$root/scripts/ci-wait.sh" <<STUB
 #!/usr/bin/env bash
-printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
 STUB
 cat > "$root/scripts/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -3279,27 +3293,63 @@ cat > "$root/scripts/env" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
-printf 'mock lint failure\n'
-exit 1
+count_file="$call_dir/env-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'mock lint failure\n'
+  exit 1
+fi
+shift
+exec "\$@"
 STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env"
+cat > "$root/scripts/make" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "make \$*" >> "$call_dir/make-calls.txt"
+exit 0
+STUB
+cat > "$root/scripts/git-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'push\n' >> "$call_dir/push-calls.txt"
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/make" "$root/scripts/git-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     /^MERGE=/ {print "MERGE=false"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 set +e
 (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-  STUB_LINT_FIX_STATUS=failed STUB_LINT_FIX_FAILURE_REASON=head-changed-after-dispatch \
+  SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" \
+  STUB_LINT_FIX_STATUS=applied STUB_LINT_FIX_COMMIT_SHA=abc123 STUB_LINT_FIX_HEAD_CHANGED=true \
   "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+  --merge false --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 4 "per-job head-changed exits through stall recovery"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "per-job head-changed marks stall"
-if grep -q '^BAIL_REASON=ci-local-unfixable:' "$tmp/ship-pr-state.sh"; then
-    fail "per-job head-changed should not set ci-local-unfixable bail reason"
+assert_rc "$tmp/rc" 0 "per-job coder-committed fix exits 0"
+if [ -s "$call_dir/push-calls.txt" ]; then
+    ok "per-job coder-committed fix pushes before CI replay"
 else
-    ok "per-job head-changed avoids ci-local-unfixable bail reason"
+    fail "per-job coder-committed fix should push before CI replay"
+fi
+if grep -qxF 'STALL_TRACKING=true' "$tmp/ship-pr-state.sh"; then
+    fail "per-job coder-committed fix should not mark stall"
+else
+    ok "per-job coder-committed fix avoids stall tracking"
+fi
+ci_wait_calls=$(cat "$call_dir/ci-wait-count" 2>/dev/null || echo 0)
+if [ "$ci_wait_calls" = "2" ]; then
+    ok "per-job coder-committed fix re-enters CI monitoring"
+else
+    fail "per-job coder-committed fix expected two ci-wait calls, got $ci_wait_calls"
+fi
+if grep -Fxq 'ship-pr-ci-per-job' "$call_dir/lint-fix-sites.txt" 2>/dev/null; then
+    ok "per-job coder-committed fix uses ship-pr-ci-per-job lint-fix site"
+else
+    fail "per-job coder-committed fix should use ship-pr-ci-per-job lint-fix site"
+    sed 's/^/    site: /' "$call_dir/lint-fix-sites.txt" 2>/dev/null || true
 fi
 rm -rf "$call_dir"
 
