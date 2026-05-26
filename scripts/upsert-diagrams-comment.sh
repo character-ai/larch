@@ -111,13 +111,27 @@ canonical_path() {
     )
 }
 
+validate_repo() {
+    local repo=$1
+    if [[ ! "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+        fail 1 "invalid repo: expected OWNER/REPO"
+    fi
+}
+
 assert_tmp_scoped_input() {
-    local label=$1 path=$2 resolved tmp_root canonical_root
+    local label=$1 path=$2 resolved tmp_root canonical_root session_cache_root
     [ -n "$path" ] || return 0
     [ "$ALLOW_EXTERNAL_PATHS" = "true" ] && return 0
-    [ -r "$path" ] || fail 1 "$label file not readable: $path"
-    resolved="$(canonical_path "$path")" || fail 1 "$label file path is invalid: $path"
-    for tmp_root in "${TMPDIR:-}" /tmp /private/tmp /var/folders; do
+    if [ ! -r "$path" ]; then
+        larch_err "$label file not readable: $path"
+        fail 1 "$label file not readable"
+    fi
+    resolved="$(canonical_path "$path")" || {
+        larch_err "$label file path is invalid: $path"
+        fail 1 "$label file path is invalid"
+    }
+    session_cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions"
+    for tmp_root in "${TMPDIR:-}" /tmp /private/tmp /var/folders "$session_cache_root"; do
         [ -n "$tmp_root" ] || continue
         canonical_root="$(canonical_path "$tmp_root" 2>/dev/null || printf '%s' "$tmp_root")"
         case "$resolved" in
@@ -126,7 +140,8 @@ assert_tmp_scoped_input() {
                 ;;
         esac
     done
-    fail 1 "$label file must be under a temporary directory (or pass --allow-external-paths)"
+    larch_err "$label file path rejected: $resolved"
+    fail 1 "$label file must be under an allowed temporary root (or pass --allow-external-paths)"
 }
 
 sanitize_section_file() {
@@ -142,53 +157,69 @@ sanitize_section_file() {
     fi
 }
 
-extract_section() {
-    local body_file=$1 wanted=$2 out_file=$3
-    awk -v wanted="$wanted" '
+extract_sections() {
+    local body_file=$1 arch_out=$2 code_out=$3
+    : >"$arch_out"
+    : >"$code_out"
+    awk -v arch_out="$arch_out" -v code_out="$code_out" '
         function trim(line) {
             sub(/^[[:space:]]+/, "", line)
             sub(/[[:space:]]+$/, "", line)
             return line
         }
-        function is_target(line) {
-            return line == ("## " wanted " Diagram")
+        function section_name(line) {
+            if (line == "## Architecture Diagram") return "Architecture"
+            if (line == "## Code Flow Diagram") return "Code Flow"
+            return ""
         }
-        function is_section_heading(line) {
-            return line == "## Architecture Diagram" || line == "## Code Flow Diagram"
-        }
-        function is_section_start(idx,    j, probe) {
-            if (!is_section_heading(lines[idx])) return 0
-            for (j = idx + 1; j <= count && j <= idx + 3; j++) {
-                probe = trim(lines[j])
-                if (probe == "") continue
-                return probe ~ /^(```|~~~)/
+        function fence_token(line,    trimmed) {
+            trimmed = trim(line)
+            if (match(trimmed, /^(```+|~~~+)/)) {
+                return substr(trimmed, RSTART, RLENGTH)
             }
-            return 0
+            return ""
+        }
+        function append_line(line) {
+            if (current == "Architecture") {
+                print line >> arch_out
+            } else if (current == "Code Flow") {
+                print line >> code_out
+            }
+        }
+        function advance_fence(token,    chars, width) {
+            chars = substr(token, 1, 1)
+            width = length(token)
+            if (fence_depth == 0) {
+                fence_depth = 1
+                fence_char = chars
+                fence_width = width
+                return
+            }
+            if (chars == fence_char && width >= fence_width) {
+                fence_depth = 0
+                fence_char = ""
+                fence_width = 0
+            }
         }
         {
-            lines[++count] = $0
+            token = fence_token($0)
+            if (fence_depth == 0) {
+                next_section = section_name($0)
+                if (next_section != "") {
+                    current = next_section
+                }
+            }
+            append_line($0)
+            if (token != "") {
+                advance_fence(token)
+            }
         }
         END {
-            start = 0
-            end = 0
-            for (i = 1; i <= count; i++) {
-                if (!is_section_start(i)) continue
-                if (start == 0 && is_target(lines[i])) {
-                    start = i
-                    continue
-                }
-                if (start != 0) {
-                    end = i - 1
-                    break
-                }
-            }
-            if (start == 0) exit 0
-            if (end == 0) end = count
-            for (i = start; i <= end; i++) {
-                print lines[i]
+            if (fence_depth != 0) {
+                exit 4
             }
         }
-    ' "$body_file" >"$out_file"
+    ' "$body_file"
 }
 
 append_nonempty_section() {
@@ -276,6 +307,7 @@ if [ "$DRY_RUN" != "true" ]; then
         REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
         [ -n "$REPO" ] || fail 2 "could not determine repo"
     fi
+    validate_repo "$REPO"
     list_err="$(tmp_file)"
     list_out="$(gh api "/repos/${REPO}/issues/${ISSUE}/comments" --paginate --jq '.[] | (.id|tostring) + "\t" + ((.body // "") | split("\n")[0])' 2>"$list_err")" || {
         err="$(cat "$list_err" 2>/dev/null || true)"
@@ -303,8 +335,7 @@ if [ "$DRY_RUN" != "true" ]; then
     fi
 fi
 
-extract_section "$body_existing" Architecture "$arch_existing"
-extract_section "$body_existing" "Code Flow" "$code_existing"
+extract_sections "$body_existing" "$arch_existing" "$code_existing" || fail 1 "existing diagrams comment is malformed: unclosed code fence"
 
 arch_final="$(tmp_file)"
 code_final="$(tmp_file)"

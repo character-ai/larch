@@ -39,6 +39,11 @@ normalize_first_line() {
     printf '%s' "$line"
 }
 
+validate_repo() {
+    local repo="$1"
+    [[ "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 1 "invalid repo: expected OWNER/REPO"
+}
+
 cmd="${1:-}"
 [ -n "$cmd" ] || { usage; exit 1; }
 shift
@@ -66,6 +71,7 @@ case "$cmd" in
             REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
             [ -n "$REPO" ] || fail 2 "could not determine repo"
         fi
+        validate_repo "$REPO"
         content="$(cat "$CONTENT_FILE")"
         body="$MARKER"$'\n\n'"$content"
         if [ -x "$REDACT_PATHS" ]; then

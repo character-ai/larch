@@ -143,4 +143,17 @@ set -e
 [ "$rc" = "2" ] || { echo "FAIL: multi exit $rc" >&2; exit 1; }
 [[ "$out" == *"multiple summary comments found"* ]] || { echo "FAIL: multi error missing: $out" >&2; exit 1; }
 
+echo "=== invalid repo is rejected before gh ==="
+build_stub "$TMP/stub-invalid-repo" zero
+set +e
+out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:plan v1 runid=abc123 -->' --content-file "$content" --repo owner/repo/extra 2>&1)"
+rc=$?
+set -e
+[ "$rc" = "1" ] || { echo "FAIL: invalid repo exit $rc" >&2; exit 1; }
+[[ "$out" == *"invalid repo: expected OWNER/REPO"* ]] || { echo "FAIL: invalid repo error missing: $out" >&2; exit 1; }
+if [[ -s "$GH_CALLS" ]]; then
+    echo "FAIL: invalid repo should not call gh" >&2
+    exit 1
+fi
+
 echo "All assertions passed."

@@ -598,6 +598,8 @@ grep -Fq 'architecture-diagram.skipped' <<<"$step3b_between" \
 step5c_between=$(sed -n "$((step5c_line + 1)),$((step5c_line + 90))p" "$SKILL_MD")
 grep -Fq 'architecture-diagram.skipped' <<<"$step5c_between" \
   || fail "(15b) Step 5c.5 must document architecture-diagram.skipped sentinel handling"
+grep -Fq -- '--clear-architecture' <<<"$step5c_between" \
+  || fail "(15b) Step 5c.5 must invoke --clear-architecture when the skipped sentinel is present"
 
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"

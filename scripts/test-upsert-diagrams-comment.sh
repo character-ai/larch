@@ -9,7 +9,8 @@ HELPER="$SCRIPT_DIR/upsert-diagrams-comment.sh"
 [ -x "$HELPER" ] || { echo "FAIL: $HELPER not executable" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-upsert-diagrams-comment.XXXXXX")"
-trap 'rm -rf "$TMP"' EXIT
+CACHE_ARCH=""
+trap 'rm -rf "$TMP"; [ -n "$CACHE_ARCH" ] && rm -f "$CACHE_ARCH"' EXIT
 
 ORIG_PATH="$PATH"
 PASS=0
@@ -212,6 +213,28 @@ graph TD
 EOF
 }
 
+write_existing_both_with_standalone_heading_in_fence() {
+    cat >"$EXISTING_BODY" <<'EOF'
+<!-- larch:diagrams v1 -->
+
+## Architecture Diagram
+
+```mermaid
+graph TD
+  A --> B
+## Code Flow Diagram
+  B --> C
+```
+
+## Code Flow Diagram
+
+```mermaid
+graph TD
+  C --> D
+```
+EOF
+}
+
 write_existing_arch_plain_fence_heading() {
     cat >"$EXISTING_BODY" <<'EOF'
 <!-- larch:diagrams v1 -->
@@ -337,6 +360,15 @@ assert_contains "ARCHITECTURE_SOURCE=preserved" "$out" "empty architecture file 
 assert_file_contains "## Architecture Diagram" "$BODY_CAPTURE" "empty file keeps architecture"
 assert_file_contains "## Code Flow Diagram" "$BODY_CAPTURE" "empty file keeps code"
 
+new_case empty-code-file-preserve both
+write_existing_both_with_fence_heading
+empty="$CASE/empty-code.md"
+: >"$empty"
+out="$("$HELPER" --issue 7 --repo owner/repo --code-flow-file "$empty")"
+assert_contains "CODE_FLOW_SOURCE=preserved" "$out" "empty code file preserves"
+assert_file_contains "## Architecture Diagram" "$BODY_CAPTURE" "empty code file keeps architecture"
+assert_file_contains "## Code Flow Diagram" "$BODY_CAPTURE" "empty code file keeps code"
+
 new_case fence both
 write_existing_both_with_fence_heading
 arch="$CASE/arch.md"
@@ -344,6 +376,14 @@ write_arch "$arch" "Replacement"
 out="$("$HELPER" --issue 7 --repo owner/repo --architecture-file "$arch")"
 assert_contains "CODE_FLOW_SOURCE=preserved" "$out" "fence preserves code"
 assert_file_contains '## Architecture Diagram inside label' "$BODY_CAPTURE" "fence parser ignores heading inside mermaid"
+
+new_case fence-standalone-heading both
+write_existing_both_with_standalone_heading_in_fence
+arch="$CASE/arch.md"
+write_arch "$arch" "Replacement"
+out="$("$HELPER" --issue 7 --repo owner/repo --architecture-file "$arch")"
+assert_contains "CODE_FLOW_SOURCE=preserved" "$out" "standalone fence heading preserves code"
+assert_file_contains $'## Code Flow Diagram\n\n```mermaid\ngraph TD\n  C --> D\n```' "$BODY_CAPTURE" "standalone fence heading preserves code byte-for-byte"
 
 new_case plain-fence arch
 write_existing_arch_plain_fence_heading
@@ -358,12 +398,13 @@ new_case unclosed-fence arch
 write_existing_arch_unclosed_fence
 code="$CASE/code.md"
 write_code "$code" "Replacement code"
-out="$("$HELPER" --issue 7 --repo owner/repo --code-flow-file "$code")"
-assert_contains "ARCHITECTURE_SOURCE=preserved" "$out" "unclosed fence preserves architecture section"
-assert_file_contains "## Architecture Diagram" "$BODY_CAPTURE" "unclosed fence keeps architecture heading"
-assert_file_contains "## Code Flow Diagram" "$BODY_CAPTURE" "unclosed fence keeps code heading"
-assert_file_contains "Replacement code" "$BODY_CAPTURE" "unclosed fence replaces code section"
-assert_file_not_contains "A->>B: preserved" "$BODY_CAPTURE" "unclosed fence drops malformed preserved tail"
+set +e
+out="$("$HELPER" --issue 7 --repo owner/repo --code-flow-file "$code" 2>&1)"
+rc=$?
+set -e
+assert_equals 1 "$rc" "unclosed fence exits 1"
+assert_contains "existing diagrams comment is malformed: unclosed code fence" "$out" "unclosed fence fails closed"
+assert_not_contains "PATCH" "$(cat "$GH_CALLS")" "unclosed fence skips patch"
 
 new_case bom-crlf-marker bom-crlf
 write_existing_arch
@@ -397,6 +438,10 @@ arch="$CASE/arch.md"
 write_arch "$arch" 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD'
 out="$("$HELPER" --issue 7 --repo owner/repo --architecture-file "$arch" --dry-run)"
 assert_contains "--- content-file ---" "$out" "dry run emits second preview"
+preview_before_content="${out%%--- content-file ---*}"
+preview_after_content="${out#*--- content-file ---}"
+assert_contains "<!-- larch:diagrams v1 -->" "$preview_before_content" "dry run preview includes marker before content-file block"
+assert_not_contains "<!-- larch:diagrams v1 -->" "$preview_after_content" "dry run content-file preview omits marker"
 assert_contains "<REDACTED-TOKEN>" "$out" "dry run redacts secrets"
 assert_not_contains "gh " "$(cat "$GH_CALLS")" "dry run performs no gh calls"
 
@@ -433,6 +478,24 @@ out="$("$HELPER" --issue 7 --repo owner/repo --architecture-file "$SCRIPT_DIR/up
 rc=$?
 set -e
 assert_equals 1 "$rc" "external path denied exits 1"
-assert_contains "architecture file must be under a temporary directory" "$out" "external path denied reports tmpdir restriction"
+assert_contains "architecture file must be under an allowed temporary root" "$out" "external path denied reports tmpdir restriction"
+
+new_case session-cache-allowed none
+CACHE_ARCH="${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/test-upsert-arch.md"
+mkdir -p "$(dirname "$CACHE_ARCH")"
+write_arch "$CACHE_ARCH" "Session cache"
+out="$("$HELPER" --issue 7 --repo owner/repo --architecture-file "$CACHE_ARCH" --dry-run)"
+assert_contains "ARCHITECTURE_SOURCE=new" "$out" "session cache path accepted"
+assert_contains "Session cache" "$out" "session cache dry run includes architecture body"
+
+new_case invalid-repo none
+arch="$CASE/arch.md"
+write_arch "$arch"
+set +e
+out="$("$HELPER" --issue 7 --repo 'owner/repo/extra' --architecture-file "$arch" 2>&1)"
+rc=$?
+set -e
+assert_equals 1 "$rc" "invalid repo exits 1"
+assert_contains "invalid repo: expected OWNER/REPO" "$out" "invalid repo rejected"
 
 finish
