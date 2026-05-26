@@ -1,0 +1,35 @@
+v1	mark	1779821476	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1779821866	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779821917	design	design Step 1e — gate A	-	-	-	-	-	-	-	-
+v1	mark	1779821982	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779822078	implement	-	codex	codex-sketch-generic	1779822038	1779822078	40	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779822166	implement	-	cursor	cursor-sketch-generic	1779822035	1779822166	131	cursor-sketch-generic-output.txt	0	complete
+v1	mark	1779822406	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1779822422	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779822527	design	design Step 2b.5 — plan size	-	-	-	-	-	-	-	-
+v1	mark	1779822538	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779822823	implement	-	codex	codex-phase1-codex-plan-arch	1779822729	1779822823	94	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779822824	implement	-	codex	codex-phase1-dyn-codex-plan-caller-resolution-gap	1779822730	1779822824	94	codex-primary-plan-dyn-caller-resolution-gap-output.txt	0	complete
+v1	vendor	1779822833	implement	-	codex	codex-phase1-codex-plan-requirements	1779822730	1779822833	103	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779822835	implement	-	codex	codex-phase1-dyn-codex-plan-test-observation-surface	1779822730	1779822835	105	codex-primary-plan-dyn-test-observation-surface-output.txt	0	complete
+v1	vendor	1779822842	implement	-	codex	codex-phase1-dyn-codex-plan-sibling-doc-sync	1779822730	1779822842	112	codex-primary-plan-dyn-sibling-doc-sync-output.txt	0	complete
+v1	vendor	1779822851	implement	-	cursor	cursor-phase1-dyn-cursor-plan-caller-resolution-gap	1779822730	1779822851	121	cursor-plan-dyn-caller-resolution-gap-output.txt	0	complete
+v1	vendor	1779822861	implement	-	codex	codex-phase1-codex-plan-edge	1779822729	1779822861	132	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779822861	implement	-	codex	codex-phase1-codex-plan-innovation	1779822729	1779822861	132	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779822862	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779822729	1779822862	133	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779822871	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779822729	1779822871	142	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779822883	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779822729	1779822883	154	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779822884	implement	-	cursor	cursor-phase1-dyn-cursor-plan-test-observation-surface	1779822730	1779822884	154	cursor-plan-dyn-test-observation-surface-output.txt	0	complete
+v1	vendor	1779822895	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779822729	1779822895	166	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779822896	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sibling-doc-sync	1779822730	1779822896	166	cursor-plan-dyn-sibling-doc-sync-output.txt	0	complete
+v1	vendor	1779822912	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779822729	1779822912	183	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779822923	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779822729	1779822923	194	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779823089	implement	-	cursor	cursor-review	1779822928	1779823089	161	cursor-plan-dyn-test-observation-surface-output-ns-retry.txt	0	complete
+v1	vendor	1779823161	implement	-	cursor	cursor-phase1-aggregator	1779823096	1779823161	65	aggregator-output.txt	0	complete
+v1	vendor	1779823509	implement	-	cursor	cursor-phase1-voter-3	1779823449	1779823509	60	cursor-vote-output.txt	0	complete
+v1	vendor	1779823539	implement	-	codex	codex-phase1-voter-2	1779823449	1779823539	90	codex-vote-output.txt	0	complete
+v1	mark	1779823833	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779824307	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779824339	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779824357	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779825196	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

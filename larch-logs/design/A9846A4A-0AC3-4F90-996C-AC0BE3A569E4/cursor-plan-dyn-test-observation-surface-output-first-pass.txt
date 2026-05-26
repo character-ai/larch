@@ -1,0 +1,5 @@
+Reviewing the plan against the codebase, focusing on test observability for cases 3 and 5.
+Checking how `${2:?}` behaves on exit codes and whether similar tests exist:
+Verifying subprocess invocation and whether `CMD_JSON` or meta could observe context files:
+Compiling findings from the plan and code paths.
+
