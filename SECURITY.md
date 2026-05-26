@@ -142,21 +142,6 @@ The local sentinel reader validates non-empty `ISSUE_NUMBER` values as digits on
 
 **`larch-logs/` as durable run store**: reviewer findings, tallies, diagrams, version-bump reasoning, OOS links, execution issues, run statistics, token reports, and timing reports are written through `scripts/larch-log.sh` into `larch-logs/<skill>/<run-id>/` and committed by explicit lifecycle log-flush paths before the business PR merges. After a merge-success result, `scripts/ship-pr.sh` writes `$IMPLEMENT_TMPDIR/post-merge-sentinel`; `scripts/larch-log-flush.sh` no-ops on that sentinel and `scripts/larch-log.sh commit` refuses, so prompt-side teardown cannot create or push new log-only commits to `main`. The sentinel check therefore depends on `IMPLEMENT_TMPDIR` being exported into subprocesses that may call `larch-log.sh commit`; Step 7a and `scripts/refresh-run-logs.sh` provide that export before their transcript/log refresh paths run. Defense-in-depth commit refusal lives at `scripts/larch-log.sh commit`; `scripts/refresh-run-logs.sh` also short-circuits entirely when `MERGE_RESULT` already reports a merged terminal state, so post-merge retry refreshes do not attempt transcript/log writes. `capture-session-transcript.sh` itself no longer owns an independent default-branch refusal policy; it delegates commit enforcement to `larch-log.sh commit` (or to its caller when `--defer-commit` is used). Callers pass the staging root explicitly with `--log-root`; the helper no longer falls back to `$IMPLEMENT_TMPDIR` or the repository root when the root is omitted. `larch-logs/ export-ignore` keeps those audit files out of plugin release archives. Payload batches are redacted before writing; diagram batches additionally run the Mermaid sanitizer and fail closed on rejection. Tool-failure captures routed through `scripts/append-tool-failure.sh` preserve command stdout/stderr verbatim for debugging and use `scripts/redact-secrets.sh` when callers pass `--redact`; this is a secrets-family backstop only, so internal URLs, private hostnames, PII, and domain-specific sensitive content still require prompt-level/operator discipline before logs are pushed. `manifest.json` schema version 2 records `operator_cwd` and `operator_repo_root` as local absolute paths for provenance; these fields are JSON-escaped but not path-redacted, so public repositories may expose local username/workspace path components in committed run logs. Slim marker-keyed tracking comments contain summaries and links only; operators should still treat committed log files as public once pushed to a public repository.
 
-**Breadcrumb stream redaction**: live breadcrumb streams are session-tmpdir-only
-runtime files under `$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
-`$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`. The foreground
-monitor redacts streamed lines before surfacing them and drops a line if the
-streaming redactor exits non-zero. When run logs are committed, `larch-log.sh
-commit` and `design-log-publish.sh` stage `breadcrumbs/` through
-`redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>` and
-publish the directory only after every regular non-symlink file redacts
-successfully. This is fail-closed for covered secret families and session paths;
-it is not a comprehensive classifier for private hostnames, PII, or
-domain-specific sensitive content, so operators must still avoid placing such
-data in breadcrumbs. Operational `wait-ci` / `warn` breadcrumb text may still be
-committed after secrets-family redaction, so CI failure strings, check names,
-and similar diagnostics should also be treated as public-boundary content.
-
 **Paired breadcrumb monitor PID file**: paired Family B launches may allocate
 `LARCH_PAIRED_PID_FILE` and pass it to `breadcrumb-monitor.sh --paired-pid-file`
 so the foreground monitor can signal the background process on timeout. Both
@@ -210,6 +195,69 @@ By default, `/research` creates a GitHub issue at the end of each successful run
 **Transitive callers**: `scripts/eval-research.sh` passes `--no-issue` to suppress auto-issue when `/research` is invoked as an intermediate step rather than a user-facing research task.
 
 **`implement-finalize.sh postbump` session-local inputs**: `/implement` Step 8 passes `BUMP_REASONING_FILE` and, on Claude-fallback runs, `--changelog-bullets-file` to `scripts/implement-finalize.sh postbump`. These are session-local trusted inputs under `$IMPLEMENT_TMPDIR`, not public or cross-session trust boundaries. Anchor-fragment content read by `postbump` is pre-sanitized by the orchestrator before the postbump state file is written; `postbump` is not itself the sanitization boundary for secrets, internal URLs, or PII. The script applies defense-in-depth guards before reading these files: paths must live under accepted tmp roots, must be regular non-symlink files, and must be no larger than 65536 bytes. `BUMP_REASONING_FILE` additionally requires a basename matching `bump-version-reasoning*.md` or exactly `version-bump-reasoning-sanitized.md`. Invalid reasoning input falls back to placeholder anchor text and records a warning; invalid fallback changelog bullets fail the changelog phase closed before rebase/push.
+
+## Breadcrumb stream redaction
+
+Breadcrumb streams cross from session-local runtime state into durable logs only
+through the redaction and publication path described here.
+
+1. **Live streams are session-tmpdir-only**: raw breadcrumb stream files live
+   under `$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
+   `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`; never
+   committed without redaction.
+2. **Monitor-side per-line drop-on-fail for covered patterns**: the foreground
+   `breadcrumb-monitor.sh` runs each streamed line through the streaming redactor
+   and drops the entire line when the redactor exits non-zero. For its covered
+   families (recognized full-line PEM blocks and the token shapes the streaming
+   redactor matches), partial blocks never reach operator-visible output.
+   Incomplete or non-pattern fragments fall under the residual-risk bullet below.
+3. **Committed copies are routed through `larch-log.sh commit` and
+   `design-log-publish.sh`**: both entrypoints invoke the shared
+   `larch_log_publish_breadcrumbs_shared` helper in `scripts/lib-larch-log.sh`.
+   The helper stages each accepted source file through
+   `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`
+   into a temp staging directory, then atomically moves the staging directory
+   into place under `larch-logs/<skill>/<run-id>/breadcrumbs/`. Same-basename
+   publication is depth 1: a source file `foo.ndjson` becomes
+   `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson`. Source-directory
+   resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (must still pass
+   session-tmpdir containment), else the log-root parent's `breadcrumbs/`.
+4. **What the helper enforces vs. silently skips**: publication is
+   directory-level fail-closed on enforced triggers; no partial publication occurs
+   on any enforced reject.
+   - **Rejected** (whole helper returns 1; staging removed; destination not
+     created or replaced): source directory not absolute, source directory or any
+     candidate file outside `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
+     `larch_log_breadcrumbs_under_session_tmp`, source directory itself a
+     symlink, an existing file entry is a symlink, an entry has hardlink count
+     greater than 1, an accepted `*.ndjson` basename contains `/` / `..` /
+     leading dot, or the redactor pipe exits non-zero on any accepted file.
+   - **Silently ignored** (not rejected, not committed): hidden entries
+     (`"$source_dir"/*` does not match dotfiles such as `.bc-offset`, `.quiet`,
+     `.done`, `.status`, `.surfaced`, `.pid`; they remain session-local because
+     the glob skips them, not via an active rejection), non-existent entries from
+     race-condition globs (including dangling symlinks the `-e` test rejects),
+     non-regular files, and regular files whose basename does not end in
+     `.ndjson`.
+   - **Note**: this is intentionally not the per-file skip-and-warn semantics
+     described in the originating OOS issue scope. That variant was never landed;
+     the current implementation favors directory-level fail-closed safety on
+     enforced triggers and explicit-skip semantics on non-`*.ndjson` siblings.
+5. **Residual sensitive-content risk**: redaction is pattern-based (recognized
+   PEM blocks, common token shapes like `sk-*`, `ghp_`, JWTs, session-tmpdir
+   paths). Reviewer-supplied non-pattern secrets, partial token fragments that
+   fall outside recognized patterns, internal hostnames, PII, and domain-specific
+   sensitive strings can still survive into committed logs. Operational
+   `wait-ci` / `warn` breadcrumb text may still be committed after secrets-family
+   redaction, so CI failure strings, check names, and similar diagnostics should
+   also be treated as public-boundary content. Operators must avoid placing such
+   content in breadcrumb messages; redaction is a backstop, not a comprehensive
+   classifier.
+
+See [docs/run-logs.md § breadcrumbs/](docs/run-logs.md#breadcrumbs) for the
+operator-facing directory contract; the same helper applies to every skill
+(`/implement`, `/design`, `/review`, `/research`) that publishes via
+`larch_log_publish_breadcrumbs_shared`.
 
 ## Fixed-string matching for interpolated values (issue #775 unified grep -F doctrine)
 

@@ -93,24 +93,20 @@ to all git operations is built explicitly as `larch-logs/<skill>/<run-id>` (not 
 by stripping the repo root prefix from `repo_path`) so the commit is always scoped to
 exactly the current run's directory regardless of symlink resolution differences.
 
-**Breadcrumb commit artifact**: runtime breadcrumb streams live beside the log
-root in the session tmpdir (`dirname("$LARCH_LOG_ROOT")/breadcrumbs/` when the
-root is `$SESSION_TMPDIR/larch-logs`, or `LARCH_BREADCRUMB_SOURCE_DIR` when a
-caller exports it explicitly). `commit` excludes any `breadcrumbs/` entry from
-the broad run-tree copy, stages only regular non-symlink files from the source
-directory, and runs each file through:
-
-```bash
-redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>
-```
-
-The redacted files are first written under a temporary staging directory and
-then moved into `larch-logs/<skill>/<run-id>/breadcrumbs/` only after every file
-redacts successfully. If a source file is a symlink or redaction fails, commit
-exits non-zero without replacing any previously committed `breadcrumbs/`
-directory, so raw stream bytes are not committed and earlier published
-breadcrumbs remain intact. Missing or empty source directories are skipped and
-do not create an empty committed `breadcrumbs/` directory.
+**Breadcrumb commit artifact**: `commit` treats `breadcrumbs/` as a commit-only
+artifact class owned by the shared `larch_log_publish_breadcrumbs_shared` helper
+in `scripts/lib-larch-log.sh`, not by the batch table. Runtime streams are
+sourced from `LARCH_BREADCRUMB_SOURCE_DIR` when set, else from the log-root
+parent's `breadcrumbs/`, and the helper stages only depth-1 regular `*.ndjson`
+files through
+`redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`
+before atomically publishing `larch-logs/<skill>/<run-id>/breadcrumbs/`.
+Enforced triggers such as non-session-tmpdir paths, symlinks, hardlinks, invalid
+accepted basenames, or redaction failures fail closed for the whole directory;
+hidden entries, non-regular files, and non-`*.ndjson` regular files are silently
+ignored. See [SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction)
+for the security posture and [docs/run-logs.md § breadcrumbs/](../docs/run-logs.md#breadcrumbs)
+for the operator-facing directory contract.
 
 **Batch registry**: all slugs, extensions, modes, and sanitizer hooks live in
 `scripts/larch-log-batches.sh`. See `scripts/larch-log-batches.md` for the full
