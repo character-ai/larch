@@ -71,7 +71,7 @@ with_timeout() {
     elif command -v gtimeout >/dev/null 2>&1; then
         gtimeout "$sec" "$@"
     elif command -v perl >/dev/null 2>&1; then
-        perl -e '$SIG{ALRM} = sub { exit 124 }; alarm shift; exec @ARGV' "$sec" "$@"
+        PERL_BADLANG=0 perl -e '$SIG{ALRM} = sub { exit 124 }; alarm shift; exec @ARGV' "$sec" "$@"
     else
         larch_err "validate-plan-commands.sh: need timeout, gtimeout, or perl for bounded --help/dry-run probes"
         exit 2

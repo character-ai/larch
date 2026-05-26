@@ -5,16 +5,22 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 TMPROOT="$(mktemp -d /tmp/larch-test-launch-claude-review-XXXXXX)"
-trap 'rm -rf "$TMPROOT"' EXIT
+OUTSIDE_CONTEXT_ROOT=""
+trap 'rm -rf "$TMPROOT"; [[ -z "${OUTSIDE_CONTEXT_ROOT:-}" ]] || rm -rf "$OUTSIDE_CONTEXT_ROOT"' EXIT
 
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
-cat >/dev/null
+if [[ -n "${LARCH_TEST_CLAUDE_STDIN_LOG:-}" ]]; then
+    tee "$LARCH_TEST_CLAUDE_STDIN_LOG" >/dev/null
+else
+    cat >/dev/null
+fi
 printf 'claude review ok\n'
 STUB
 chmod +x "$STUB_BIN/claude"
+export LARCH_TEST_CLAUDE_STDIN_LOG="$TMPROOT/claude-stdin.log"
 
 prompt="$TMPROOT/prompt.txt"
 output="$TMPROOT/out.txt"
@@ -145,5 +151,145 @@ set -e
 [[ "$bad_role_rc" -eq 2 ]] || { echo "FAIL: invalid --role should yield exit 2" >&2; exit 1; }
 grep -Fq 'reviewer or voter' "$TMPROOT/bad-role.stderr" \
     || { echo "FAIL: invalid --role missing expected validation message" >&2; exit 1; }
+
+ctx_a="$TMPROOT/context-a.txt"
+ctx_b="$TMPROOT/context-b.txt"
+printf 'EXPLICIT_CONTEXT_A reviewer visible\n' > "$ctx_a"
+printf 'EXPLICIT_CONTEXT_B reviewer visible\n' > "$ctx_b"
+: > "$LARCH_TEST_CLAUDE_STDIN_LOG"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-reviewer-out.txt" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --role reviewer \
+    --context-files "$ctx_a" \
+    --context-files "$ctx_b" \
+    --timeout 5 >/dev/null
+[[ "$(cat "$TMPROOT/context-reviewer-out.txt")" == "claude review ok" ]] \
+    || { echo "FAIL: reviewer --context-files output passthrough" >&2; exit 1; }
+grep -Fq 'EXPLICIT_CONTEXT_A reviewer visible' "$LARCH_TEST_CLAUDE_STDIN_LOG" \
+    || { echo "FAIL: reviewer --context-files missing first context content" >&2; exit 1; }
+grep -Fq 'EXPLICIT_CONTEXT_B reviewer visible' "$LARCH_TEST_CLAUDE_STDIN_LOG" \
+    || { echo "FAIL: reviewer --context-files missing second context content" >&2; exit 1; }
+
+printf 'EXPLICIT_CONTEXT_A voter visible\n' > "$ctx_a"
+printf 'EXPLICIT_CONTEXT_B voter visible\n' > "$ctx_b"
+: > "$LARCH_TEST_CLAUDE_STDIN_LOG"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-voter-out.txt" \
+    --prompt-file "$voter_prompt" \
+    --mode description \
+    --role voter \
+    --context-files "$ctx_a" \
+    --context-files "$ctx_b" \
+    --timeout 5 >/dev/null
+[[ "$(cat "$TMPROOT/context-voter-out.txt")" == "claude review ok" ]] \
+    || { echo "FAIL: voter --context-files output passthrough" >&2; exit 1; }
+grep -Fq 'EXPLICIT_CONTEXT_A voter visible' "$LARCH_TEST_CLAUDE_STDIN_LOG" \
+    || { echo "FAIL: voter --context-files missing first context content" >&2; exit 1; }
+grep -Fq 'EXPLICIT_CONTEXT_B voter visible' "$LARCH_TEST_CLAUDE_STDIN_LOG" \
+    || { echo "FAIL: voter --context-files missing second context content" >&2; exit 1; }
+
+set +e
+"$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-missing-value-out.txt" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --context-files >/dev/null 2>"$TMPROOT/context-missing-value.stderr"
+ctx_missing_value_rc=$?
+"$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-flag-value-out.txt" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --context-files --timeout 5 >/dev/null 2>"$TMPROOT/context-flag-value.stderr"
+ctx_flag_value_rc=$?
+set -e
+[[ "$ctx_missing_value_rc" -eq 2 ]] \
+    || { echo "FAIL: trailing --context-files should yield exit 2 (got $ctx_missing_value_rc)" >&2; exit 1; }
+[[ "$ctx_flag_value_rc" -eq 2 ]] \
+    || { echo "FAIL: flag-like --context-files value should yield exit 2 (got $ctx_flag_value_rc)" >&2; exit 1; }
+grep -Fq 'launch-claude-review.sh: --context-files requires a value' "$TMPROOT/context-missing-value.stderr" \
+    || { echo "FAIL: trailing --context-files missing expected stderr" >&2; exit 1; }
+grep -Fq 'launch-claude-review.sh: --context-files requires a value' "$TMPROOT/context-flag-value.stderr" \
+    || { echo "FAIL: flag-like --context-files value missing expected stderr" >&2; exit 1; }
+
+set +e
+"$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-nonexistent-out.txt" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --context-files "$TMPROOT/does-not-exist.txt" \
+    --timeout 5 >/dev/null 2>"$TMPROOT/context-nonexistent.stderr"
+ctx_nonexistent_rc=$?
+set -e
+[[ "$ctx_nonexistent_rc" -eq 2 ]] \
+    || { echo "FAIL: nonexistent --context-files should yield exit 2 (got $ctx_nonexistent_rc)" >&2; exit 1; }
+grep -Fq 'launch-claude-review.sh: --context-files path missing or unreadable' "$TMPROOT/context-nonexistent.stderr" \
+    || { echo "FAIL: nonexistent --context-files missing expected stderr" >&2; exit 1; }
+
+dedup_file="$TMPROOT/dedup-context.txt"
+printf 'DEDUP_CONTEXT_UNIQUE\n' > "$dedup_file"
+: > "$LARCH_TEST_CLAUDE_STDIN_LOG"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-dedup-out.txt" \
+    --prompt-file "$prompt" \
+    --mode diff \
+    --diff-file "$dedup_file" \
+    --context-files "$dedup_file" \
+    --timeout 5 >/dev/null
+dedup_count=$(grep -Fc 'DEDUP_CONTEXT_UNIQUE' "$LARCH_TEST_CLAUDE_STDIN_LOG" || true)
+[[ "$dedup_count" -eq 1 ]] \
+    || { echo "FAIL: duplicate implicit/explicit context rendered $dedup_count times" >&2; exit 1; }
+
+OUTSIDE_CONTEXT_ROOT="$(mktemp -d /tmp/larch-test-launch-context-outside-XXXXXX)"
+outside_context="$OUTSIDE_CONTEXT_ROOT/outside-context.txt"
+printf 'OUTSIDE_CONTEXT_ALLOWED\n' > "$outside_context"
+: > "$LARCH_TEST_CLAUDE_STDIN_LOG"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-outside-out.txt" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --context-files "$outside_context" \
+    --timeout 5 >/dev/null
+[[ "$(cat "$TMPROOT/context-outside-out.txt")" == "claude review ok" ]] \
+    || { echo "FAIL: outside --context-files output passthrough" >&2; exit 1; }
+grep -Fq 'OUTSIDE_CONTEXT_ALLOWED' "$LARCH_TEST_CLAUDE_STDIN_LOG" \
+    || { echo "FAIL: outside --context-files content missing" >&2; exit 1; }
+
+symlink_context="$TMPROOT/symlink-ctx.txt"
+ln -s "$prompt" "$symlink_context"
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-symlink-out.txt" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --context-files "$symlink_context" \
+    --timeout 5 >/dev/null 2>"$TMPROOT/context-symlink.stderr"
+ctx_symlink_rc=$?
+set -e
+[[ "$ctx_symlink_rc" -eq 2 ]] \
+    || { echo "FAIL: symlink --context-files should yield exit 2 (got $ctx_symlink_rc)" >&2; exit 1; }
+grep -Fq 'invalid context file' "$TMPROOT/context-symlink.stderr" \
+    || { echo "FAIL: symlink --context-files missing subprocess stderr" >&2; exit 1; }
+
+unreadable_context="$TMPROOT/unreadable.txt"
+printf 'UNREADABLE_CONTEXT\n' > "$unreadable_context"
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    chmod 000 "$unreadable_context"
+    set +e
+    "$REPO_ROOT/scripts/launch-claude-review.sh" \
+        --output "$TMPROOT/context-unreadable-out.txt" \
+        --prompt-file "$prompt" \
+        --mode description \
+        --context-files "$unreadable_context" \
+        --timeout 5 >/dev/null 2>"$TMPROOT/context-unreadable.stderr"
+    ctx_unreadable_rc=$?
+    set -e
+    chmod 644 "$unreadable_context"
+    [[ "$ctx_unreadable_rc" -eq 2 ]] \
+        || { echo "FAIL: unreadable --context-files should yield exit 2 (got $ctx_unreadable_rc)" >&2; exit 1; }
+    grep -Fq 'launch-claude-review.sh: --context-files path missing or unreadable' "$TMPROOT/context-unreadable.stderr" \
+        || { echo "FAIL: unreadable --context-files missing expected stderr" >&2; exit 1; }
+fi
 
 echo "PASS: test-launch-claude-review.sh"

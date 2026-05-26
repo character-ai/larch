@@ -104,7 +104,10 @@ rm -f "$allow_plan"
 launch_want='DEFECT script=scripts/launch-claude-review.sh kind=unknown-flag flag=context-files'
 "$SCRIPT_DIR/parse-plan-commands.sh" --plan-file "$SCRIPT_DIR/fixtures/validate-plan-commands/launch-context-plan.md" --output "$tsv" --repo-root "$REPO_ROOT"
 "$SCRIPT_DIR/validate-plan-commands.sh" --tsv-file "$tsv" --log-file "$log" --source-kind plan >/dev/null
-grep -Fq "$launch_want" "$log" || fail "missing launch-claude-review --context-files DEFECT line"
+if grep -Fq "$launch_want" "$log"; then
+    fail "launch-claude-review --context-files should be recognized"
+fi
+tail -n1 "$log" | grep -q '^VALIDATE_STATUS=ok' || fail "launch-context plan should validate ok"
 
 # ./script prefix must not skip Tier 2 repo-prefix detection
 dotslash_plan=$(mktemp "${TMPDIR:-/tmp}/larch-dotslash-validate.XXXXXX")
