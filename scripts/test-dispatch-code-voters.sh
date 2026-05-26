@@ -196,15 +196,14 @@ grep -Fq 'You may read the ballot file and any provided diff/plan context files 
 grep -Fq 'Output ONLY vote lines' "$prompt" || { echo "FAIL: $(basename "$prompt") missing Output ONLY vote lines directive" >&2; exit 1; }
 grep -Fq 'fix proposals are informational; the coder decides the exact change' "$prompt" || { echo "FAIL: $(basename "$prompt") missing informational-fix voter guardrail" >&2; exit 1; }
 grep -Fq 'dislike or distrust the proposed fix' "$prompt" || { echo "FAIL: $(basename "$prompt") missing dislike/distrust NO-vote guardrail" >&2; exit 1; }
-grep -Fq "For items prefixed with \`[OUT_OF_SCOPE]\`:" "$prompt" \
-    || { echo "FAIL: $(basename "$prompt") missing canonical finding-only OOS clause" >&2; exit 1; }
+grep -Fq "For \`OOS_N:\` items" "$prompt" \
+    || { echo "FAIL: $(basename "$prompt") missing canonical OOS_N clause" >&2; exit 1; }
 grep -Fq 'vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue.' "$prompt" \
     || { echo "FAIL: $(basename "$prompt") missing OOS problem-vs-solution body" >&2; exit 1; }
-grep -Fq 'FINDING_N: YES' "$prompt" || { echo "FAIL: $(basename "$prompt") missing FINDING_N example" >&2; exit 1; }
-if grep -Fq 'OOS_N' "$prompt"; then
-    echo "FAIL: $(basename "$prompt") must not contain OOS_N under finding-only grammar" >&2
-    exit 1
-fi
+grep -Fq 'FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain>' "$prompt" || { echo "FAIL: $(basename "$prompt") missing rated FINDING_N example" >&2; exit 1; }
+grep -Fq 'OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain>' "$prompt" || { echo "FAIL: $(basename "$prompt") missing rated OOS_N example" >&2; exit 1; }
+grep -Fq 'Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES, NO, or EXONERATE are silently ignored.' "$prompt" \
+    || { echo "FAIL: $(basename "$prompt") missing dual-prefix ignore rule" >&2; exit 1; }
 done
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
@@ -310,6 +309,28 @@ grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
 grep -Fq 'FINDING_1: YES' "$big_review_tmpdir/claude-vote-output.txt" \
     || { echo "FAIL: 2MB-diff scenario expected FINDING_1: YES in voter output" >&2; exit 1; }
 require_voter_paths_file_nonempty "edge-big-diff" "$out"
+
+oos_only_ballot="$TMP/oos-only-ballot.md"
+cat > "$oos_only_ballot" <<'EOF'
+### OOS_1: OOS-only observation
+- **Reviewer**: stub
+- **Concern**: c1
+- **Suggested revision**: r1
+EOF
+oos_retry_tmp="$TMP/oos-retry"
+oos_retry_count="$TMP/oos-retry-count.txt"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_success CLAUDE_STUB_COUNT_FILE="$oos_retry_count" "$SCRIPT" \
+    --ballot-file "$oos_only_ballot" \
+    --review-tmpdir "$oos_retry_tmp" \
+    --codex-available true \
+    --cursor-available true)
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+    || { echo "FAIL: OOS-only ballot should trigger parse-rate retry when voter omits OOS_N" >&2; exit 1; }
+grep -Fq 'same ballot ID from the ballot (FINDING_N: or OOS_N:)' "$oos_retry_tmp/claude-vote-prompt-retry.txt" \
+    || { echo "FAIL: code voter retry prefix missing dual FINDING/OOS instruction" >&2; exit 1; }
+grep -Fq 'Four-axis ratings are required on the same line as every vote.' "$oos_retry_tmp/claude-vote-prompt-retry.txt" \
+    || { echo "FAIL: code voter retry prefix missing ratings reminder" >&2; exit 1; }
+require_voter_paths_file_nonempty "edge-oos-retry" "$out"
 
 # Regression 3 (claude case): production-shape — review tmpdir outside any harness ancestry,
 # so local diag files and the explicit issues-log must be written with tool-specific labels.

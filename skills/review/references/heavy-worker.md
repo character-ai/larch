@@ -33,7 +33,7 @@ Run the same mechanics documented in `/review` Steps 1-3:
 
 1. **Step 1**: gather branch context via `gather-context.sh`.
 2. **Step 2**: launch the full reviewer panel in parallel per the launch procedure and fallback matrix in `SKILL.md`.
-3. **Step 3**: collect, deduplicate, vote (rounds 1-3), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (3 rounds) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"` to each `review-core.sh` round, preserve the emitted scout KVs (`SCOUT_STATUS`, `SCOUT_FAIL_REASON`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`) for the parent Step 4 log batches, return those KVs explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
+3. **Step 3**: collect, deduplicate, vote (rounds 1-3), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (3 rounds) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"` to each `review-core.sh` round, preserve the emitted scout/artifact KVs (`SCOUT_STATUS`, `SCOUT_FAIL_REASON`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, `FINDINGS_CLASSIFICATION_TSV_FILE`) for the parent Step 4 log batches, keep a per-round mapping for every non-empty classification TSV, read or update `$REVIEW_TMPDIR/findings-classification-round-map.env` as the stable round→path registry, return those round-scoped bindings explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
 
 Stop after Step 3 (do NOT run Steps 4 or 5 — those belong to the parent).
 
@@ -82,7 +82,7 @@ Before returning success, write `$REVIEW_TMPDIR/review-summary.json` with the Wr
 
 `accepted_count`, `rejected_count`, and `exonerated_count` are the canonical top-level counts. Mirror them under `finding_counts.total_accepted`, `finding_counts.total_rejected`, and `finding_counts.total_exonerated` for forward compatibility. `exonerated_count` is an informational sub-count of `rejected_count` (must satisfy `exonerated_count ≤ rejected_count`).
 
-On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_HEAVY=complete`. Optional additional `KEY=value` lines may follow; include `SCOUT_FAIL_REASON=<token>` when `SCOUT_STATUS=parse-failed`, for example:
+On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_HEAVY=complete`. Optional additional `KEY=value` lines may follow; include `SCOUT_FAIL_REASON=<token>` when `SCOUT_STATUS=parse-failed`. When multiple rounds emit classification TSVs, return a round-scoped mapping (`FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=...`, `FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_2=...`, etc.) instead of only the final round path. For example:
 
 ```text
 REVIEW_HEAVY=complete
@@ -91,6 +91,9 @@ SCOUT_STATUS=ok
 DYNAMIC_SLOTS=2
 SCOUT_MANIFEST=$REVIEW_TMPDIR/scout-round1-manifest.json
 YIELD_TSV_FILE=$REVIEW_TMPDIR/scout-archetype-yield.tsv
+FINDINGS_CLASSIFICATION_TSV_FILE=$REVIEW_TMPDIR/findings-classification-round-1.tsv
+FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$REVIEW_TMPDIR/findings-classification-round-1.tsv
+FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_2=$REVIEW_TMPDIR/findings-classification-round-2.tsv
 ```
 
 No prose, no artifact content, and no blank lines between KV lines.

@@ -38,7 +38,7 @@ cat > "$stub_dir/gh" <<'GH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${GH_LOG:?}"
-if [[ "$1 $2" != "pr view" && "$1 $2" != "pr create" && "$1 $2" != "repo view" ]]; then
+if [[ "$1 $2" != "pr view" && "$1 $2" != "pr create" && "$1 $2" != "pr list" && "$1 $2" != "repo view" ]]; then
     echo "unexpected gh command: $*" >&2
     exit 2
 fi
@@ -76,6 +76,17 @@ case "${GH_MODE:-create}" in
             echo "https://github.com/fork/repo/pull/456"
         fi
         ;;
+    create_exists)
+        if [[ "$1 $2" == "pr view" ]]; then
+            exit 1
+        elif [[ "$1 $2" == "pr list" ]]; then
+            printf '[{"number":789,"url":"https://github.com/fork/repo/pull/789","title":"Existing branch PR"}]\n'
+        else
+            echo 'a pull request for branch "feature" into branch "develop" already exists:' >&2
+            echo 'https://github.com/fork/repo/pull/789' >&2
+            exit 1
+        fi
+        ;;
 esac
 GH
 chmod +x "$stub_dir/gh"
@@ -101,6 +112,12 @@ repo=$(setup_repo fallback-base)
 out=$(cd "$repo" && GH_LOG="$TMPROOT/base-fallback-gh.log" GH_MODE=create GH_DEFAULT_BRANCH_MODE=fallback PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo)
 grep -Fxq 'PR_STATUS=created' <<<"$out" || fail "base fallback path did not report created"
 grep -Fq -- '--base main' "$TMPROOT/base-fallback-gh.log" || fail "base fallback path did not fall back to main"
+
+repo=$(setup_repo create-exists)
+out=$(cd "$repo" && GH_LOG="$TMPROOT/create-exists-gh.log" GH_MODE=create_exists PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo)
+grep -Fxq 'PR_STATUS=existing' <<<"$out" || fail "create-exists recovery path did not report existing"
+grep -Fxq 'PR_NUMBER=789' <<<"$out" || fail "create-exists recovery path did not emit recovered PR number"
+grep -Fq -- 'pr list --repo fork/repo --head feature --state open --json number,url,title --limit 1' "$TMPROOT/create-exists-gh.log" || fail "create-exists recovery path did not query by head branch"
 
 repo=$(setup_repo existing)
 out=$(cd "$repo" && GH_LOG="$TMPROOT/existing-gh.log" GH_MODE=existing PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo)

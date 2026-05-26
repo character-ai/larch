@@ -7,10 +7,7 @@
 SCRIPT_DIR_VPR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 # Retry preambles (code-review vs plan-review ballots).
-# CODE ballots are FINDING-only by design (no OOS ids); PLAN ballots accept
-# both FINDING_N and OOS_N. If CODE ballots ever grow OOS support, update
-# VOTER_PARSE_RATE_RETRY_PREFIX_CODE to mirror the PLAN preamble wording.
-VOTER_PARSE_RATE_RETRY_PREFIX_CODE='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with FINDING_N: followed by exactly one of YES, NO, or EXONERATE, then CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>. Axis tokens must be lowercase and must precede any optional -- reason; axis-looking tokens after -- are ignored. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
+VOTER_PARSE_RATE_RETRY_PREFIX_CODE='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) followed by exactly one of YES, NO, or EXONERATE, then CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>. Four-axis ratings are required on the same line as every vote. Axis tokens must be lowercase and must precede any optional -- reason; axis-looking tokens after -- are ignored. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
 
 VOTER_PARSE_RATE_RETRY_PREFIX_PLAN='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) followed by exactly one of YES, NO, or EXONERATE, then CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>. Axis tokens must be lowercase and must precede any optional -- reason; axis-looking tokens after -- are ignored. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
 
@@ -117,25 +114,12 @@ check_voter_parse_rate() {
     ids_count="${ids_count:-0}"
     [[ "$ids_count" -gt 0 ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     judge_error_count=0
-    local id_line one
+    local id_line parsed one
     while IFS= read -r id_line || [[ -n "$id_line" ]]; do
         [[ -z "$id_line" ]] && continue
-        one=$(
-            awk -v id="$id_line" '
-              BEGIN { result="JUDGE_ERROR" }
-              {
-                upper=toupper($0)
-                prefix="^" toupper(id) ":[[:space:]]*"
-                if (upper ~ (prefix "(YES|NO|EXONERATE)([[:space:]-]|$)")) {
-                    rest=upper; sub(prefix, "", rest)
-                    if (rest ~ /^YES([[:space:]-]|$)/) result="YES"
-                    else if (rest ~ /^NO([[:space:]-]|$)/) result="NO"
-                    else if (rest ~ /^EXONERATE([[:space:]-]|$)/) result="EXONERATE"
-                }
-              }
-              END { print result }
-            ' "$voter_path"
-        )
+        parsed=$("$SCRIPT_DIR_VPR/parse-judge-vote-and-rating.sh" "$voter_path" "$id_line" 2>/dev/null || true)
+        one=$(printf '%s\n' "$parsed" | awk -F= '$1=="PARSED_VOTE"{print $2; exit}')
+        [[ -n "$one" ]] || one="JUDGE_ERROR"
         [[ "$one" == "JUDGE_ERROR" ]] && judge_error_count=$((judge_error_count + 1))
     done <<< "$ids_list"
     # >=80% JUDGE_ERROR threshold
@@ -145,6 +129,7 @@ check_voter_parse_rate() {
             printf 'voter_tool=%s\n' "$voter_tool"
             printf 'judge_error_count=%s\n' "$judge_error_count"
             printf 'total_findings=%s\n' "$ids_count"
+            printf 'total_ballot_items=%s\n' "$ids_count"
             printf 'voter_file=%s\n' "$voter_path"
             printf 'voter_sha256=%s\n' "$(voter_output_sha256 "$voter_path")"
             printf -- '--- first 200 bytes of voter output ---\n'
@@ -152,7 +137,7 @@ check_voter_parse_rate() {
             printf '\n'
         } > "$diag_file" || true
         if [[ "$log_mode" == "log" ]]; then
-            larch_err "**⚠ Voter ${voter_tool}: ${judge_error_count}/${ids_count} findings returned JUDGE_ERROR — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
+            larch_err "**⚠ Voter ${voter_tool}: ${judge_error_count}/${ids_count} ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at ${voter_path}.**"
             _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
             [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]] && _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
             [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]] && _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"

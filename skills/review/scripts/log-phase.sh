@@ -34,7 +34,7 @@ done
 [[ -f "$PAYLOAD_FILE" ]] || { larch_err "log-phase.sh: --payload-file must name a file"; exit 2; }
 
 case "$BATCH" in
-    review-context|review-panel-manifest|review-findings|review-tally|review-scout-manifest|review-round-summary) ;;
+    review-context|review-panel-manifest|review-findings|review-tally|review-scout-manifest|review-round-summary|review-findings-classification-round-[1-5]) ;;
     *) larch_err "log-phase.sh: unregistered review batch: $BATCH"; exit 2 ;;
 esac
 

@@ -10,8 +10,8 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 | Flag | Type | Required | Description |
 |---|---|---|---|
-| `--ballot-file FILE` | path | yes | Markdown file containing one `### FINDING_N:` block per finding. OOS items are indicated by `[OUT_OF_SCOPE]` in the title heading line — same convention `collect-findings.sh` already emits. |
-| `--voter-files FILE...` | path list | no | Vote-output files (typically `cursor-vote-output.txt`, `codex-vote-output.txt`, `claude-vote-output.txt`). Each voter file contains lines like `FINDING_N: YES`, `FINDING_N: NO — reason`, `FINDING_N: EXONERATE — reason`. Zero files triggers `TALLY_STATUS=main-agent-vote-required`. |
+| `--ballot-file FILE` | path | yes | Markdown file containing ballot blocks keyed by `### FINDING_N:` and, for OOS items, either legacy `[OUT_OF_SCOPE]` `FINDING_N` headings or direct `### OOS_N:` headings. |
+| `--voter-files FILE...` | path list | no | Vote-output files (typically `cursor-vote-output.txt`, `codex-vote-output.txt`, `claude-vote-output.txt`). Each voter file contains lines like `FINDING_N: YES`, `FINDING_N: NO — reason`, `FINDING_N: EXONERATE — reason`, or `OOS_N: ...` when the ballot uses direct `OOS_N` headings. Zero files triggers `TALLY_STATUS=main-agent-vote-required`. |
 | `--review-tmpdir DIR` | path | yes | Output directory for all artifacts. |
 | `--session-env-path FILE` | path | no | When non-empty, OOS-accepted is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-review.md` so `/implement` Step 9a.1 can find it. |
 | `--scope-files FILE` | path | no | File containing changed file names (one per line, from `git diff --name-only`). When non-empty, enables the scope-fit gate on the block heading line (first line of each `### FINDING_N:` block): tokens matching the extended-regex pattern `[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+:[0-9]+` yield file paths after stripping the trailing `:line` suffix. If the heading has no such token, the gate skips (keeps in-scope). If every extracted path is absent from both this file and (when provided) `--plan-file`, the finding is reclassified as OOS (`OUT_OF_SCOPE_DRIFT`). When absent or empty, the gate is a no-op (backward compatible). |
@@ -26,11 +26,12 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 ## Output artifacts
 
 - `voting-tally.md` — per-item table (`Item | YES | NO | EXON | JERR | Result`) plus reviewer competition scoreboard.
+- `findings-classification.tsv` when `REVIEW_TMPDIR` is nested under `$IMPLEMENT_TMPDIR/round-N`, or `findings-classification-round-N.tsv` for standalone `/review --diff` rounds. Schema: `finding_id`, `reviewer_slots`, `voting_result`, then `v1_vote`, `v1_correctness`, `v1_severity`, `v1_quality`, `v1_uncertain` through `v3_*`. Voter columns follow compact `EFFECTIVE_VOTER_FILES` order, so failed slots do not leave positional holes.
 - `accepted-findings.md` — accepted FINDING_N blocks (in-scope only; OOS items go to a separate file).
 - `rejected-findings.md` — non-accepted in-scope findings rendered under `### [rejected] FINDING_N` with a short **Rejected subtype** line, plus `Vote tally: YES=… NO=… EXON=… JUDGE_ERROR=…` appended.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
-- `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false`, `FINDING_N_OUTCOME=accepted|rejected`, optional `FINDING_N_REJECTED_SUBTYPE=<neutral|exonerated|true_rejected>` for non-accepted rows, plus summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
+- `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false`, `FINDING_N_OUTCOME=accepted|rejected`, optional `FINDING_N_REJECTED_SUBTYPE=<neutral|exonerated|true_rejected>` for non-accepted rows, plus the same `OOS_N_ACCEPTED` / `OOS_N_OUTCOME` / optional `OOS_N_REJECTED_SUBTYPE` key family for direct OOS headings, and summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
 - `scout-archetype-yield.tsv` — written when `--manifest-file` is provided. Schema: `archetype_name`, `focus_area`, `weight`, `findings_total`, `findings_accepted`, `findings_rejected`, `yield_ratio`.
 - Reviewer competition scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected`; rendered OOS columns are `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, and `OOS-Rejected`.
 
@@ -59,6 +60,21 @@ Manifest attribution maps output basenames, not slot IDs. Fallback basenames nor
 | `VOTER_COUNT` | Effective quorum count after removing parse-rate-degraded narrative-only voter slots. |
 | `VOTING_SKIPPED_WARNING` | Present on the 0-judge main-agent path. |
 | `YIELD_TSV_FILE` | Present when `--manifest-file` produces `scout-archetype-yield.tsv`. |
+| `FINDINGS_CLASSIFICATION_TSV_FILE` | Present whenever the forensic vote/rating TSV is written, including 0-judge and zero-finding paths. |
+
+## Findings Classification TSV
+
+`finding_id` is the literal ballot ID (`FINDING_N` or `OOS_N`). `reviewer_slots` is the `|`-delimited reviewer attribution with delimiter whitespace stripped. `voting_result` is the same `classify_result` enum used by the tally (`accepted`, `rejected`, `exonerated`, `neutral`) for both in-scope and OOS rows.
+
+Each `vN_*` group is ordered by effective voter-file iteration order after parse-rate-degraded voters are removed. Votes are `YES`, `NO`, `EXONERATE`, or `JUDGE_ERROR`; missing or unparseable ballot lines are normalized to `JUDGE_ERROR` for effective voter slots. Rating axes are enum-only; missing or unrecognized axis values are recorded as empty and force `vN_uncertain=true`.
+
+When `TALLY_STATUS=main-agent-vote-required` (0 effective judges), data rows keep
+`voting_result=rejected` only as a placeholder TSV sentinel so the forensic
+export has a stable enum. The actual adjudication outcome is deferred to the
+main-agent path and is reflected in the accepted/rejected/OOS artifact files
+rather than this degraded-round TSV.
+
+Single-parse invariant: the TSV and markdown tally both derive each per-voter vote from a single call to `scripts/parse-judge-vote-and-rating.sh`. `vote_for_id` remains the legacy library helper, but the forensic TSV contract is keyed to the parser output so tally counts and `vN_vote` cells cannot drift under missing-line or malformed-line cases.
 
 ## Threshold (delegated to lib-vote-tally.sh)
 

@@ -47,9 +47,9 @@ echo "# Case: 3 voters, 2 YES on FINDING_1, 1 YES on FINDING_2, 2 YES on FINDING
 TMP="$WORKDIR/case1"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
-printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
-printf 'FINDING_1: YES\nFINDING_2: NO -- low priority\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
-printf 'FINDING_1: NO -- already handled elsewhere\nFINDING_2: NO -- not actionable\nFINDING_3: NO -- not worth filing\n' > "$TMP/claude-vote-output.txt"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nFINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\nFINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nFINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- low priority\nFINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- already handled elsewhere\nFINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- not actionable\nFINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- not worth filing\n' > "$TMP/claude-vote-output.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -62,6 +62,12 @@ got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); asse
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env stores accepted count summary" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "OOS_ACCEPTED_COUNT=1 (FINDING_3 has 2 YES, accepted)" "$got" "1"
 got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJECTED_COUNT=0" "$got" "0"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+[[ -f "$classification_file" ]] || { FAIL=1; printf '  FAIL classification TSV not emitted\n'; }
+read -r classification_header < "$classification_file"
+assert_eq "classification TSV header" "$classification_header" $'finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain'
+grep -Fq $'FINDING_1\tCodex-Structure\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tYES\ttrue\tmajor\tgood\tfalse\tNO\tpartially-true\tminor\tweak\tfalse' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing rated FINDING_1 row\n'; }
 # Spot-check the artifacts.
 grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL accepted-findings missing FINDING_1\n'; }
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
@@ -93,6 +99,48 @@ out="$TMP/out.env"
 grep -Fq '| cursor-a |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-a row for comma-split Reviewer(s)\n'; }
 grep -Fq '| cursor-b |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-b row\n'; }
 grep -Fq '| cursor-c |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-c row\n'; }
+
+echo "# Case: direct OOS_N ballot IDs tally and classify without legacy FINDING_N aliases"
+TMP="$WORKDIR/case_oos_n_ids"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### OOS_1: Future cleanup
+- **Reviewer**: Cursor-Testing
+- **Concern**: Pre-existing issue.
+- **Suggested revision**: Track later.
+EOF
+printf 'OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$TMP/cursor-vote-output.txt"
+printf 'OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$TMP/codex-vote-output.txt"
+printf 'OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "direct OOS_N accepted count" "$got" "1"
+got=$(awk -F= '$1=="OOS_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records direct OOS_N outcome" "$got" "accepted"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'OOS_1\tCursor-Testing\taccepted\tYES\ttrue\tminor\tadequate\tfalse\tYES\ttrue\tminor\tgood\tfalse\tNO\tpartially-true\tnit\tweak\tfalse' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing direct OOS_N row\n'; }
+
+echo "# Case: parser failure emits WARN breadcrumb and records JUDGE_ERROR in TSV"
+TMP="$WORKDIR/case_parser_failure_warn"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: parser failure fixture
+- **Reviewer**: Cursor-Testing
+- **Concern**: Parser can fail.
+- **Suggested revision**: Preserve WARN breadcrumb.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/good-vote-output.txt"
+out="$TMP/out.env"
+env -u LARCH_QUIET_DISABLE LARCH_BREADCRUMBS_SURFACED_FILE="$TMP/surfaced" "$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/good-vote-output.txt" "$TMP/missing-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq 'WARN=judge vote/rating parser failed' "$out" \
+    || { FAIL=1; printf '  FAIL parser failure WARN breadcrumb missing\n'; }
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'FINDING_1\tCursor-Testing\trejected\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL parser failure should record JUDGE_ERROR in TSV\n'; }
 
 echo "# Case: voter parse-rate diag emits degraded voter banner"
 TMP="$WORKDIR/case_voter_parse_banner"
@@ -224,6 +272,9 @@ got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "NEUTRAL_COUNT=
 got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome" "$got" "rejected"
 got=$(awk -F= '$1=="FINDING_2_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records split-panel subtype" "$got" "neutral"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_3 unanimous YES → OOS accepted" "$got" "1"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'FINDING_2\tCursor-Security\tneutral\tYES\t\t\t\ttrue\tNO\t\t\t\ttrue\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing neutral voting_result row\n'; }
 
 echo "# Case: round 2 expected 3-voter panel does not emit degraded banner when all three judges arrive"
 TMP="$WORKDIR/case2_round2_clean"
@@ -296,6 +347,9 @@ got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXO
 got=$(awk -F= '$1=="FINDING_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome" "$got" "rejected"
 got=$(awk -F= '$1=="FINDING_1_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records exonerated subtype" "$got" "exonerated"
 grep -Fq '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL single EXONERATE not labeled exonerated\n'; }
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'FINDING_1\tCodex-Structure\texonerated\tEXONERATE\t\t\t\ttrue\t\t\t\t\t\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing exonerated voting_result row\n'; }
 
 echo "# Case: 0 voters → main-agent-vote-required"
 TMP="$WORKDIR/case4d"
@@ -305,6 +359,25 @@ out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="TALLY_STATUS"{print $2}' "$out"); assert_eq "0 voters status" "$got" "main-agent-vote-required"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "0 voters accepted count" "$got" "0"
+
+echo "# Case: standalone round-N tmpdir keeps round-scoped classification filename without implement/session binding"
+TMP="$WORKDIR/case4d_round_shape_only/round-3"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" --review-tmpdir "$TMP" --round-num 3 > "$out"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+assert_eq "round-shape-only standalone path keeps round-suffixed TSV" "$classification_file" "$TMP/findings-classification-round-3.tsv"
+
+echo "# Case: session-bound nested implement round uses flat classification filename"
+TMP="$WORKDIR/case4d_session_bound"
+mkdir -p "$TMP/round-2"
+mk_ballot "$TMP/round-2/ballot.md"
+: > "$TMP/session.env"
+out="$TMP/round-2/out.env"
+"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+assert_eq "session-bound nested round uses flat TSV" "$classification_file" "$TMP/round-2/findings-classification.tsv"
 
 echo "# Case: --both-down true → main-agent-vote-required"
 TMP="$WORKDIR/case4e"
@@ -321,14 +394,16 @@ TMP="$WORKDIR/case4f"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
-: > "$TMP/codex-vote-output.txt"
-: > "$TMP/claude-vote-output.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
-    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-missing.txt" "$TMP/claude-vote-missing.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "3 voters, 1 YES 2 JUDGE_ERROR → no accepted" "$got" "0"
 grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected row with 2 JERR votes missing\n'; }
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+[[ "$classification_file" == "$TMP/findings-classification-round-1.tsv" ]] || { FAIL=1; printf '  FAIL JUDGE_ERROR case did not emit standalone classification TSV path\n'; }
+grep -Fq $'FINDING_1\tCodex-Structure\trejected\tYES\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue\tJUDGE_ERROR\t\t\t\ttrue' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing JUDGE_ERROR columns for rejected row\n'; }
 
 echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"

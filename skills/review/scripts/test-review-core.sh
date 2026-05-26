@@ -165,6 +165,8 @@ done
 accepted="${TEST_ACCEPTED:-0}"
 rejected="${TEST_REJECTED:-0}"
 status="${TEST_TALLY_STATUS:-ok}"
+round_num="${TEST_ROUND_NUM:-1}"
+emit_classification="${TEST_TALLY_EMIT_CLASSIFICATION:-true}"
 if [[ "$voter_count" -eq 0 ]]; then
   status="main-agent-vote-required"
   accepted=0
@@ -183,7 +185,14 @@ else
   : > "$tmp/accepted-findings.md"
 fi
 : > "$tmp/rejected-findings.md"
-printf 'TALLY_STATUS=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nVOTING_TALLY_FILE=%s/voting-tally.md\nTALLY_OK=true\n' "$status" "$accepted" "$rejected" "$tmp" "$tmp" "$tmp" "$tmp"
+if [[ "$emit_classification" == "true" ]]; then
+  printf 'finding_id\treviewer_slots\tvoting_result\n' > "$tmp/findings-classification-round-${round_num}.tsv"
+fi
+printf 'TALLY_STATUS=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nVOTING_TALLY_FILE=%s/voting-tally.md\n' "$status" "$accepted" "$rejected" "$tmp" "$tmp" "$tmp" "$tmp"
+if [[ "$emit_classification" == "true" ]]; then
+  printf 'FINDINGS_CLASSIFICATION_TSV_FILE=%s/findings-classification-round-%s.tsv\n' "$tmp" "$round_num"
+fi
+printf 'TALLY_OK=true\n'
 STUB
     cat > "$TMP/emit.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -398,8 +407,17 @@ assert_contains "$out" 'PANEL_SHAPE=simple'
 assert_contains "$out" 'SCOUT_STATUS=na'
 assert_contains "$out" 'DYNAMIC_SLOTS=0'
 assert_contains "$out" "VOTING_TALLY_FILE=$TMP/zero/voting-tally.md"
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE=$TMP/zero/findings-classification-round-1.tsv"
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classification-round-1.tsv"
 [[ -f "$TMP/zero/review-dirty-tree-summary.env" ]] || { echo "FAIL: missing review-dirty-tree-summary.env" >&2; exit 1; }
 [[ -f "$TMP/zero/voting-tally.md" ]] || { echo "FAIL: missing zero-findings voting-tally.md" >&2; exit 1; }
+[[ -f "$TMP/zero/findings-classification-round-map.env" ]] || { echo "FAIL: missing zero-findings classification round map" >&2; exit 1; }
+read -r zero_classification_header < "$TMP/zero/findings-classification-round-1.tsv"
+[[ "$zero_classification_header" == $'finding_id\treviewer_slots\tvoting_result' ]] || { echo "FAIL: zero-findings classification TSV should be header-only" >&2; exit 1; }
+grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classification-round-1.tsv" "$TMP/zero/findings-classification-round-map.env" || {
+    echo "FAIL: zero-findings round map missing round-1 binding" >&2
+    exit 1
+}
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 0 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 0' \
     "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
 
@@ -423,6 +441,11 @@ grep -Fq 'not_substantive=2' "$TMP/zero-degraded/voting-tally.md" || { echo "FAI
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 assert_contains "$out" "ACCEPTED_FINDINGS_FILE=$TMP/fix/accepted-findings.md"
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/fix/findings-classification-round-1.tsv"
+grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/fix/findings-classification-round-1.tsv" "$TMP/fix/findings-classification-round-map.env" || {
+    echo "FAIL: missing round map binding for fix round" >&2
+    exit 1
+}
 
 fix_breadcrumbs_out="$TMP/fix-breadcrumbs.out"
 LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs" >"$fix_breadcrumbs_out"
@@ -431,6 +454,17 @@ grep -Fq '→ review: consolidating findings' "$fix_breadcrumbs_out" || { echo "
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
+
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 TEST_TALLY_EMIT_CLASSIFICATION=false run_core "$TMP/rejected-no-classification")
+assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
+if grep -Fq 'FINDINGS_CLASSIFICATION_TSV_FILE=' <<< "$out"; then
+    echo "FAIL: rejected-no-classification should not emit classification kv" >&2
+    exit 1
+fi
+[[ ! -e "$TMP/rejected-no-classification/findings-classification-round-map.env" ]] || {
+    echo "FAIL: rejected-no-classification should not write round map" >&2
+    exit 1
+}
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_PANEL_MODE=both-down run_core "$TMP/both")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
@@ -461,12 +495,25 @@ if [[ "$rc" -ne 2 ]]; then
     exit 1
 fi
 assert_contains "$out" 'REVIEW_CORE_STATUS=aggregator-validation-exhausted'
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-exhaust-core/findings-classification-round-1.tsv"
+[[ -f "$TMP/agg-exhaust-core/findings-classification-round-map.env" ]] || {
+    echo "FAIL: aggregator exhaustion should persist round classification map" >&2
+    exit 1
+}
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
     "$TMP/agg-exhaust-core/review-summary.json" >/dev/null || { echo "FAIL: agg-exhaust review-summary.json" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core "$TMP/main-agent")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'ACCEPTED_COUNT=0'
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE=$TMP/main-agent/findings-classification-round-1.tsv"
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/main-agent/findings-classification-round-1.tsv"
+read -r main_agent_classification_header < "$TMP/main-agent/findings-classification-round-1.tsv"
+[[ "$main_agent_classification_header" == $'finding_id\treviewer_slots\tvoting_result' ]] || { echo "FAIL: main-agent classification TSV should be header-only" >&2; exit 1; }
+grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/main-agent/findings-classification-round-1.tsv" "$TMP/main-agent/findings-classification-round-map.env" || {
+    echo "FAIL: main-agent round map missing round-1 binding" >&2
+    exit 1
+}
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
     "$TMP/main-agent/review-summary.json" >/dev/null || { echo "FAIL: main-agent review-summary.json missing summary output" >&2; exit 1; }
 
