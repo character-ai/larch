@@ -209,25 +209,97 @@ larch_log_emit_success() {
 larch_log_session_tmp_contains() {
     local root="$1" path="$2"
     case "$path" in
+        "$root") return 0 ;;
         "$root"/*) return 0 ;;
         *) return 1 ;;
     esac
 }
 
-larch_log_breadcrumbs_under_session_tmp() {
+larch_log_path_has_dotdot_component() {
+    case "$1" in
+        ../*|*/../*|*/..|..)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+larch_log_canonical_dir() {
     local path="$1"
-    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && larch_log_session_tmp_contains "$IMPLEMENT_TMPDIR" "$path"; then
+    (
+        cd "$path" 2>/dev/null && pwd -P
+    )
+}
+
+larch_log_breadcrumbs_under_session_tmp() {
+    local path="$1" path_canon root_canon log_root
+    if larch_log_path_has_dotdot_component "$path"; then
+        return 1
+    fi
+    path_canon="$(larch_log_canonical_dir "$path")" || return 1
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
+        root_canon="$(larch_log_canonical_dir "$IMPLEMENT_TMPDIR")" || return 1
+        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+    fi
+    if [ -n "${DESIGN_TMPDIR:-}" ]; then
+        root_canon="$(larch_log_canonical_dir "$DESIGN_TMPDIR")" || return 1
+        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+    fi
+    if [ -n "${REVIEW_TMPDIR:-}" ]; then
+        root_canon="$(larch_log_canonical_dir "$REVIEW_TMPDIR")" || return 1
+        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+    fi
+    if [ -n "${RESEARCH_TMPDIR:-}" ]; then
+        root_canon="$(larch_log_canonical_dir "$RESEARCH_TMPDIR")" || return 1
+        larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+    fi
+    log_root="$(larch_log_root)"
+    case "$log_root" in
+        */larch-logs)
+            root_canon="$(larch_log_canonical_dir "${log_root%/larch-logs}")" || return 1
+            larch_log_session_tmp_contains "$root_canon" "$path_canon" && return 0
+            ;;
+    esac
+    return 1
+}
+
+larch_log_cleanup_breadcrumb_staging() {
+    rm -rf "$1" "$2"
+}
+
+larch_log_publish_breadcrumbs_swap() {
+    local staging_dir="$1" dest_dir="$2" on_error="$3"
+    local parent new_dir backup_dir
+    parent="$(dirname "$dest_dir")"
+    mkdir -p "$parent" || {
+        "$on_error" "cannot create breadcrumbs parent directory"
+        return 1
+    }
+    new_dir="$parent/.breadcrumbs.new.$$"
+    backup_dir="$parent/.breadcrumbs.old.$$"
+    rm -rf "$new_dir" "$backup_dir" 2>/dev/null || true
+    mv "$staging_dir" "$new_dir" || {
+        "$on_error" "cannot prepare breadcrumbs directory"
+        return 1
+    }
+    if [ -e "$dest_dir" ]; then
+        mv "$dest_dir" "$backup_dir" || {
+            rm -rf "$new_dir" 2>/dev/null || true
+            "$on_error" "cannot replace breadcrumbs directory"
+            return 1
+        }
+    fi
+    if mv "$new_dir" "$dest_dir"; then
+        rm -rf "$backup_dir" 2>/dev/null || true
         return 0
     fi
-    if [ -n "${DESIGN_TMPDIR:-}" ] && larch_log_session_tmp_contains "$DESIGN_TMPDIR" "$path"; then
-        return 0
+    if [ -e "$backup_dir" ]; then
+        mv "$backup_dir" "$dest_dir" 2>/dev/null || true
     fi
-    if [ -n "${REVIEW_TMPDIR:-}" ] && larch_log_session_tmp_contains "$REVIEW_TMPDIR" "$path"; then
-        return 0
-    fi
-    if [ -n "${RESEARCH_TMPDIR:-}" ] && larch_log_session_tmp_contains "$RESEARCH_TMPDIR" "$path"; then
-        return 0
-    fi
+    rm -rf "$new_dir" "$backup_dir" 2>/dev/null || true
+    "$on_error" "cannot publish breadcrumbs directory"
     return 1
 }
 
@@ -302,17 +374,9 @@ larch_log_publish_breadcrumbs_shared() {
         rm -rf "$staging_parent"
         return 0
     fi
-    if [ -e "$dest_dir" ]; then
-        rm -rf "$dest_dir" || {
-            rm -rf "$staging_parent"
-            "$on_error" "cannot replace breadcrumbs directory"
-            return 1
-        }
-    fi
-    mv "$staging_dir" "$dest_dir" || {
-        rm -rf "$staging_parent"
-        "$on_error" "cannot publish breadcrumbs directory"
+    larch_log_publish_breadcrumbs_swap "$staging_dir" "$dest_dir" "$on_error" || {
+        larch_log_cleanup_breadcrumb_staging "$staging_parent" "$staging_dir"
         return 1
     }
-    rm -rf "$staging_parent"
+    rm -rf "$staging_parent" 2>/dev/null || true
 }

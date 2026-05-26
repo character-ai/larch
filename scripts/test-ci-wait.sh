@@ -122,6 +122,16 @@ assert_stream_contains() {
     fi
 }
 
+assert_stderr_compact_matches() {
+    local root=$1 pattern=$2 label=$3 actual
+    actual=$(tr -d '\n' <"$root/.stderr")
+    if [[ "$actual" =~ $pattern ]]; then
+        ok "$label"
+    else
+        fail "$label (expected pattern [$pattern], got [$actual])"
+    fi
+}
+
 # --- Case 1: happy path — ci-status returns pass on first call ---
 root=$(make_env happy_path)
 write_ci_status_stub "$root"
@@ -145,6 +155,8 @@ ln -sf "$root/scripts/fake-sleep.sh" "$root/scripts/sleep"
 STUB_STATUSES=pending:pending:pending:pass run_subject "$root" "$root/.rc" --timeout 120
 assert_rc "$root/.rc" 0 "pending-then-pass: exits 0"
 assert_stdout_contains "$root" "ACTION=merge" "pending-then-pass: ACTION=merge"
+assert_stderr_compact_matches "$root" '^⏳ CI: waiting\.\.\.✓ CI passed \([0-9]+s, 3 polls\)$' \
+    "pending-then-pass: stderr progress format"
 call_count=$(cat "$root/.ci-status-count" 2>/dev/null || echo 0)
 if [[ "$call_count" -eq 4 ]]; then
     ok "pending-then-pass: exactly 4 ci-status calls"

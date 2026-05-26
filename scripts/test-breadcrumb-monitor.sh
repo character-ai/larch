@@ -451,7 +451,7 @@ fi
 unset ec
 
 # ---------------------------------------------------------------------------
-# Test 13: invalid breadcrumb categories are dropped.
+# Test 14: invalid breadcrumb categories are dropped.
 # ---------------------------------------------------------------------------
 alloc_sentinels t13
 {
@@ -468,13 +468,13 @@ out=$("$MON" \
     --surfaced-sentinel "$SURFACED" 2>&1) || ec=$?
 ec=${ec:-0}
 if [ "$ec" -ne 0 ]; then
-    fail "test 13: monitor exit was $ec, expected 0"
+    fail "test 14: monitor exit was $ec, expected 0"
 fi
 if printf '%s' "$out" | grep -q "must-not-print"; then
-    fail "test 13: invalid category was emitted"
+    fail "test 14: invalid category was emitted"
 fi
 if ! printf '%s' "$out" | grep -q "must-print"; then
-    fail "test 13: valid category was not emitted"
+    fail "test 14: valid category was not emitted"
 fi
 unset ec
 

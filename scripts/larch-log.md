@@ -107,9 +107,10 @@ redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>
 The redacted files are first written under a temporary staging directory and
 then moved into `larch-logs/<skill>/<run-id>/breadcrumbs/` only after every file
 redacts successfully. If a source file is a symlink or redaction fails, commit
-exits non-zero and removes the destination breadcrumbs directory so raw stream
-bytes are not committed. Missing or empty source directories are skipped and do
-not create an empty committed `breadcrumbs/` directory.
+exits non-zero without replacing any previously committed `breadcrumbs/`
+directory, so raw stream bytes are not committed and earlier published
+breadcrumbs remain intact. Missing or empty source directories are skipped and
+do not create an empty committed `breadcrumbs/` directory.
 
 **Batch registry**: all slugs, extensions, modes, and sanitizer hooks live in
 `scripts/larch-log-batches.sh`. See `scripts/larch-log-batches.md` for the full

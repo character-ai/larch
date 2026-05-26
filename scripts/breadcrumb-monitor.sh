@@ -136,10 +136,7 @@ larch_bm_emit_line() {
               for (i = 1; i <= NF; i++)
                 if ($i ~ /^c=/) { sub(/^c=/, "", $i); print $i; exit }
             }')
-            case "$_cval" in
-                progress|warn|stall|retry|escalate|wait-ci|network-flake) ;;
-                *) return 0 ;;
-            esac
+            larch_quiet_bc_valid_category "$_cval" || return 0
             ;;
     esac
     local out
