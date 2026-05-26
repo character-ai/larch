@@ -101,6 +101,9 @@ parent's `breadcrumbs/`, and the helper stages only depth-1 regular `*.ndjson`
 files through
 `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`
 before atomically publishing `larch-logs/<skill>/<run-id>/breadcrumbs/`.
+A missing source directory or a source tree with zero accepted `*.ndjson`
+entries is a successful no-op and leaves any previously committed
+`breadcrumbs/` directory untouched.
 Enforced triggers such as non-session-tmpdir paths, symlinks, hardlinks, invalid
 accepted basenames, or redaction failures fail closed for the whole directory;
 hidden entries, non-regular files, and non-`*.ndjson` regular files are silently

@@ -222,6 +222,9 @@ through the redaction and publication path described here.
    `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson`. Source-directory
    resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (must still pass
    session-tmpdir containment), else the log-root parent's `breadcrumbs/`.
+   Missing sources, empty sources, or sources whose entries are all silently
+   skipped are successful no-ops and do not create, replace, or clear an
+   existing committed `breadcrumbs/` destination.
 4. **What the helper enforces vs. silently skips**: publication is
    directory-level fail-closed on enforced triggers; no partial publication occurs
    on any enforced reject.
@@ -229,9 +232,10 @@ through the redaction and publication path described here.
      created or replaced): source directory not absolute, source directory or any
      candidate file outside `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
      `larch_log_breadcrumbs_under_session_tmp`, source directory itself a
-     symlink, an existing file entry is a symlink, an entry has hardlink count
-     greater than 1, an accepted `*.ndjson` basename contains `/` / `..` /
-     leading dot, or the redactor pipe exits non-zero on any accepted file.
+     symlink, source path exists but is not a directory, an existing file entry
+     is a symlink, an entry has hardlink count greater than 1, an accepted
+     `*.ndjson` basename contains `/` / `..` / leading dot, or the redactor pipe
+     exits non-zero on any accepted file.
    - **Silently ignored** (not rejected, not committed): hidden entries
      (`"$source_dir"/*` does not match dotfiles such as `.bc-offset`, `.quiet`,
      `.done`, `.status`, `.surfaced`, `.pid`; they remain session-local because

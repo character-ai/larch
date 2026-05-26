@@ -71,14 +71,17 @@ larch-logs/
 ### breadcrumbs/
 
 The tree above shows `implement/<RUN_ID>/breadcrumbs/` as a representative
-example; the same directory artifact can appear under any publishing skill root:
-`design/<RUN_ID>/breadcrumbs/`, `review/<RUN_ID>/breadcrumbs/`, or
-`research/<RUN_ID>/breadcrumbs/`.
+example. The committed path shape is shared across publishing skill roots, so
+the same directory artifact may exist as `design/<RUN_ID>/breadcrumbs/`,
+`review/<RUN_ID>/breadcrumbs/`, or `research/<RUN_ID>/breadcrumbs/` when a
+publisher wires that helper for that skill. Today the landed callers are
+`scripts/larch-log.sh commit` (`/implement`) and `scripts/design-log-publish.sh`
+(`design` publish).
 
 `breadcrumbs/` is a commit-only directory artifact, not a larch-log batch.
 `scripts/larch-log.sh commit` and `scripts/design-log-publish.sh` invoke the
-shared `larch_log_publish_breadcrumbs_shared` helper; other skill log-flush paths
-use the same helper. Live streams remain under the session tmpdir
+shared `larch_log_publish_breadcrumbs_shared` helper. Live streams remain under
+the session tmpdir
 (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
 `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`).
 
@@ -92,7 +95,11 @@ Only regular `*.ndjson` files at depth 1 are staged. Each `foo.ndjson` is
 redacted through
 `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>` and
 committed as `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson` after an
-atomic mktemp-plus-move of the staging directory.
+atomic mktemp-plus-move of the staging directory. A missing source directory, a
+source path that exists but yields zero accepted `*.ndjson` files, or a source
+tree containing only silently skipped entries is a successful no-op: the helper
+returns 0 and does not create, replace, or clear an existing committed
+`breadcrumbs/` destination.
 
 The enforced-reject and silent-skip split is documented in
 [SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction):
