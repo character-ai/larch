@@ -360,6 +360,25 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="TALLY_STATUS"{print $2}' "$out"); assert_eq "0 voters status" "$got" "main-agent-vote-required"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "0 voters accepted count" "$got" "0"
 
+echo "# Case: standalone round-N tmpdir keeps round-scoped classification filename without implement/session binding"
+TMP="$WORKDIR/case4d_round_shape_only/round-3"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" --review-tmpdir "$TMP" --round-num 3 > "$out"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+assert_eq "round-shape-only standalone path keeps round-suffixed TSV" "$classification_file" "$TMP/findings-classification-round-3.tsv"
+
+echo "# Case: session-bound nested implement round uses flat classification filename"
+TMP="$WORKDIR/case4d_session_bound"
+mkdir -p "$TMP/round-2"
+mk_ballot "$TMP/round-2/ballot.md"
+: > "$TMP/session.env"
+out="$TMP/round-2/out.env"
+"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+assert_eq "session-bound nested round uses flat TSV" "$classification_file" "$TMP/round-2/findings-classification.tsv"
+
 echo "# Case: --both-down true → main-agent-vote-required"
 TMP="$WORKDIR/case4e"
 mkdir -p "$TMP"

@@ -44,7 +44,8 @@ Emitted keys:
 - `DYNAMIC_SLOTS=N` — queued dynamic reviewer slots; emitted on every post-dispatch exit path.
 - `SCOUT_MANIFEST=PATH` — present when a scout manifest exists.
 - `YIELD_TSV_FILE=PATH` — present when `tally-code-votes.sh --manifest-file` writes per-archetype yield metrics.
-- `FINDINGS_CLASSIFICATION_TSV_FILE=PATH` — present when `tally-code-votes.sh` writes the per-finding forensic vote/rating TSV, including zero-findings and 0-judge paths.
+- `FINDINGS_CLASSIFICATION_TSV_FILE=PATH` — present when `tally-code-votes.sh` writes the current round's per-finding forensic vote/rating TSV, including zero-findings and 0-judge paths.
+- `FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_N=PATH` — round-scoped aliases emitted by `review-core.sh` for every recorded round so wrappers can enumerate all forensic TSVs instead of only the latest path.
 - `VOTING_TALLY_FILE=PATH` — present when `tally-code-votes.sh` emitted `voting-tally.md`, including zero-findings rounds that still need degraded-slot visibility.
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only on the 0-judge main-agent-required path; callers should parse and display it as a user-visible warning
 - `OUT_OF_SCOPE_DRIFT_COUNT=N` — number of in-scope findings reclassified to OOS by the scope-fit gate in `tally-code-votes.sh`; copied from tally stdout when voting runs; `0` on early exits that skip tally (description zero-scope, `panel-failed`, `aggregator-validation-exhausted`, or before the tally stage).
@@ -74,6 +75,7 @@ Artifact paths under `$REVIEW_TMPDIR`:
 - `scout-round<N>-status.env`
 - `scout-archetype-yield.tsv` when a panel manifest was available for yield attribution
 - `findings-classification.tsv` for nested `/implement` rounds, or `findings-classification-round-N.tsv` for standalone review rounds
+- `findings-classification-round-map.env` — accumulates `FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_N=...` bindings across rounds for log wrappers
 
 When `SESSION_ENV_PATH` is set, `emit-tally.sh` copies `review-round-summary.md` and `review-summary.json` to `$(dirname "$SESSION_ENV_PATH")`. `review-core.sh` copies `rejected-findings.md`, `oos-accepted-review.md`, and `review-dirty-tree-summary.env` there.
 
@@ -86,7 +88,7 @@ later `larch-log.sh commit` flush owns committing those files.
 
 Dirty-tree recovery runs after collection. It scans every launched reviewer output sidecar `${output}.dirty-tree`; missing sidecars count as `unknown`. Any `STATUS=dirty` or `STATUS=unknown` marks `ANY_DIRTY=true`, records the output basename in `LAUNCHERS_DIRTY`, runs `scripts/check-mid-run-dirty-tree.sh --mode checkpoint`, and discards reviewer-introduced paths named by sidecar path streams (`TRACKED_PATHS_FILE`, `NEW_UNTRACKED_PATHS_FILE`) when a recovery checkpoint reports dirty or unknown. The summary file contains `ANY_DIRTY`, `LAUNCHERS_DIRTY`, `RECOVERY_TAKEN`, and any per-launcher path stream keys.
 
-Run-log batches are not written here. The `/review` wrapper owns `log-phase.sh` calls after summary artifacts are complete; `review-core.sh` only emits `SCOUT_MANIFEST`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `YIELD_TSV_FILE`, and `FINDINGS_CLASSIFICATION_TSV_FILE` for the wrapper to consume. Description-mode zero-scope exits still emit `SCOUT_STATUS=na`, `DYNAMIC_SLOTS=0`, and an empty `SCOUT_MANIFEST` so wrappers can parse a stable KV contract.
+Run-log batches are not written here. The `/review` wrapper owns `log-phase.sh` calls after summary artifacts are complete; `review-core.sh` emits `SCOUT_MANIFEST`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `YIELD_TSV_FILE`, `FINDINGS_CLASSIFICATION_TSV_FILE`, every `FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_N`, and `findings-classification-round-map.env` for the wrapper to consume. Wrappers that persist forensic vote/rating TSVs must iterate the recorded round keys (or the round-map file) rather than copying only the latest `FINDINGS_CLASSIFICATION_TSV_FILE`. Description-mode zero-scope exits still emit `SCOUT_STATUS=na`, `DYNAMIC_SLOTS=0`, and an empty `SCOUT_MANIFEST` so wrappers can parse a stable KV contract.
 
 Known gap deferred to Part 2: `skills/review/references/heavy-worker.md` still documents heavy-worker Step 1 as `gather-branch-context.sh`, while inline `review-core.sh` uses `gather-context.sh` to match the current inline path. This PR documents the divergence rather than changing heavy-worker behavior.
 

@@ -80,9 +80,6 @@ nested_implement_round() {
     case "$review_real" in
         */round-[0-9]*)
             parent_real="$(dirname "$review_real")"
-            if [[ ! "$parent_real" =~ /round-[0-9]+$ ]]; then
-                return 0
-            fi
             ;;
         *) return 1 ;;
     esac
