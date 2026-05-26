@@ -1,0 +1,23 @@
+### External Reviewer Issues
+
+- **Step design Step 3 — collect-agent-results.sh cursor NOT_SUBSTANTIVE failed (exit 0)**:
+  ```
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-dyn-call-count-arithmetic-output.txt|TOOL=cursor|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=no provenance marker found
+
+## Reviewer output (<TMPDIR>/cursor-plan-dyn-call-count-arithmetic-output.txt)
+
+Reviewing the plan and tracing `gh pr view` call sequences in the proposed and current code.
+Verifying post-force-push control flow and whether the plan's G3 fixture matches the stub counter semantics.
+Call-count arithmetic for G1/G2/G3/Q/R matches the proposed helper: same sleep-then-`refresh_pr_info` ordering as the inline `for _retry in 1 2 3` loop, with one pre-loop `refresh_pr_info` on the post-force-push path unchanged.
+
+{"no_issues_found": true}
+
+## Reviewer stderr (<TMPDIR>/cursor-plan-dyn-call-count-arithmetic-output.txt.diag)
+
+(empty: <TMPDIR>/cursor-plan-dyn-call-count-arithmetic-output.txt.diag)
+
+  ```
+
+- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. See <TMPDIR>/aggregator-validate.stderr.

@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/merge-pr.sh:121-145	Initial UNKNOWN retry plan does not re-run the BEHIND gate after recovery	If the initial mergeStateStatus is UNKNOWN and a retry resolves to BEHIND, the script skips the early BEHIND exit and checks CI first; with pending CI it emits ci_not_ready instead of main_advanced, and with passing CI it emits main_advanced with a misleading ERROR string	After the initial retry exhaustion check, handle BEHIND before refresh_ci_state, or move the UNKNOWN retry block before the single BEHIND gate; add a G case for UNKNOWN resolving to BEHIND with non-pass CI
+1	out_of_scope	latent	correctness	scripts/merge-pr.sh:210-240	[OUT_OF_SCOPE] Post-force-push UNKNOWN retry has the same missing BEHIND re-check	If post-force-push UNKNOWN resolves to BEHIND, CI is checked before branch staleness is reported, so pending CI can mask main advancement	Track a follow-up to re-check BEHIND immediately after post-force-push UNKNOWN recovery and cover it with a Q/R-adjacent harness case
+
+1. [correctness] `scripts/merge-pr.sh:121-145`: The proposed initial retry block still leaves `BEHIND` checked only before recovery. A retry can turn `UNKNOWN` into `BEHIND`; that must short-circuit before CI.
+
+2. [OUT_OF_SCOPE] [correctness] `scripts/merge-pr.sh:210-240`: The existing post-force-push recovery block has the same edge case. The plan says not to change BEHIND handling, so this is worth tracking separately.

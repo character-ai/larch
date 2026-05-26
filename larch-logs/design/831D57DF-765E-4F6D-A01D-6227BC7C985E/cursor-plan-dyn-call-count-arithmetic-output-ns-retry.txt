@@ -1,0 +1,2 @@
+Reading the plan and tracing `gh pr view` / `refresh_pr_info` call paths in the codebase.
+{"no_issues_found": true}

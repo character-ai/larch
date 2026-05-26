@@ -1,0 +1,55 @@
+[DESIGNING] [BUG] merge-pr.sh initial mergeStateStatus=UNKNOWN check has no retry, causing spurious stalls after force-push
+
+## Summary
+
+`scripts/merge-pr.sh` immediately bails on `mergeStateStatus=UNKNOWN` from the initial `refresh_pr_info` call with no retry. GitHub transiently returns `UNKNOWN` while recomputing merge state after a force-push, causing the CI+merge loop to stall needlessly even when CI passed and the PR is fully mergeable.
+
+## Root cause
+
+`refresh_pr_info` (lines 79–83) calls `gh pr view --json mergeStateStatus,headRefOid` once. At lines 133–136:
+
+```bash
+if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
+    MERGE_RESULT="error"
+    ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\")"
+    exit 0
+fi
+```
+
+There is **zero retry** on this path. The post-force-push path (~lines 215–240) already retries 3 times with 5-second sleeps — but the initial check has none.
+
+## Evidence
+
+From a live `/implement --merge` run on PR #2880 (run 30F658A4-E9C3-487A-AD1E-AB1B40778B4F):
+
+- `CI_PASSED=true` at the time of stall
+- `BAIL_REASON=could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state="UNKNOWN")`
+- `STALL_STEP=12d`
+- After manually re-pushing and re-running `gh pr view`, `mergeable=MERGEABLE` — the PR was perfectly fine.
+
+## Proposed fix
+
+Add 4 retries with 5-second waits between them around the initial `UNKNOWN`/empty check in `merge-pr.sh`, mirroring the existing post-force-push retry pattern. Pseudocode:
+
+```bash
+# After initial refresh_pr_info call:
+_retry=0
+while [[ $_retry -lt 4 ]] && { [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; }; do
+    sleep 5
+    refresh_pr_info
+    _retry=$((_retry + 1))
+done
+if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
+    MERGE_RESULT="error"
+    ERROR="could not read mergeStateStatus ... (state=\"$MERGE_STATE\") after $_retry retries"
+    exit 0
+fi
+```
+
+This matches the user's explicit request: 4 retries, 5-second waits. Update `scripts/test-merge-pr.sh` sub-test G to assert the new retry count (currently asserts immediate error; new assertion: 5 total `gh pr view` calls on UNKNOWN).
+
+## Files affected
+
+- `scripts/merge-pr.sh` — add retry loop (~lines 119–136)
+- `scripts/test-merge-pr.sh` — update sub-test G (empty/UNKNOWN mergeStateStatus) to cover retry behavior; update the "5x" call-count assertions (sub-tests Q2, R3 already pin 5 calls for post-force-push; initial-check retries add up to 5 calls on that path too if initial check also retries)
+- `scripts/test-merge-pr.md` — update the case description for sub-test G

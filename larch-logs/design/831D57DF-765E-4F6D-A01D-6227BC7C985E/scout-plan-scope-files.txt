@@ -1,0 +1,3 @@
+scripts/merge-pr.sh
+scripts/test-merge-pr.sh
+scripts/test-merge-pr.md
