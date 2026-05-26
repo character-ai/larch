@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: launch-claude-review.sh --output <file> (--agent-file <file>|--prompt-file <file>|--prompt <text>) --mode diff|description [--role reviewer|voter] [context flags]"
+    larch_err "Usage: launch-claude-review.sh --output <file> (--agent-file <file>|--prompt-file <file>|--prompt <text>) --mode diff|description [--role reviewer|voter] [--context-files <file>...] [context flags]"
 }
 
 OUTPUT=""
@@ -23,6 +23,7 @@ DIFF_FILE=""
 COMMIT_COUNT=""
 PLAN_FILE=""
 FEATURE_FILE=""
+EXPLICIT_CONTEXT_FILES=()
 TIMEOUT="1800"
 TIMING_TASK_KIND="claude-review"
 ROLE="reviewer"
@@ -41,6 +42,14 @@ while [[ $# -gt 0 ]]; do
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
+        --context-files)
+            [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]] || {
+                larch_err "launch-claude-review.sh: --context-files requires a value"
+                exit 2
+            }
+            EXPLICIT_CONTEXT_FILES+=("$2")
+            shift 2
+            ;;
         --timeout) TIMEOUT="${2:?--timeout requires a value}"; shift 2 ;;
         --timing-task-kind) TIMING_TASK_KIND="${2:?--timing-task-kind requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -91,21 +100,56 @@ fi
 
 ctx_args=()
 allow_root_args=()
-seen_allow_roots=""
-append_context_file() {
-    local path="$1" dir
-    [[ -n "$path" && -f "$path" ]] || return 0
-    ctx_args+=(--context-files "$path")
-    dir="$(dirname "$path")"
-    case ":$seen_allow_roots:" in
-        *":$dir:"*) ;;
-        *) allow_root_args+=(--allow-root "$dir"); seen_allow_roots="${seen_allow_roots}:$dir" ;;
-    esac
+seen_allow_roots=()
+seen_canonical_paths=()
+# strict=1: --context-files hard-errors on missing/empty/unreadable; strict=0: implicit flags silent-skip (callers may pass empty).
+array_contains() {
+    local needle="$1"
+    shift || true
+    local value
+    for value in "$@"; do
+        [[ "$value" == "$needle" ]] && return 0
+    done
+    return 1
 }
-append_context_file "$DIFF_FILE"
-append_context_file "$SCOPE_FILES"
-append_context_file "$PLAN_FILE"
-append_context_file "$FEATURE_FILE"
+
+append_context_file() {
+    local path="$1" strict="${2:-0}" dir base canonical
+    if [[ "$strict" == "1" ]]; then
+        [[ -n "$path" && -f "$path" && -r "$path" ]] || {
+            larch_err "launch-claude-review.sh: --context-files path missing or unreadable: $path"
+            exit 2
+        }
+    else
+        [[ -n "$path" && -f "$path" ]] || return 0
+    fi
+    dir=$(cd "$(dirname "$path")" && pwd -P) || dir=""
+    base=$(basename "$path")
+    if [[ -z "$dir" || -z "$base" ]]; then
+        if [[ "$strict" == "1" ]]; then
+            larch_err "launch-claude-review.sh: --context-files path missing or unreadable: $path"
+            exit 2
+        fi
+        ctx_args+=(--context-files "$path")
+        return 0
+    fi
+    canonical="$dir/$base"
+    array_contains "$canonical" "${seen_canonical_paths[@]+"${seen_canonical_paths[@]}"}" && return 0
+    seen_canonical_paths+=("$canonical")
+    ctx_args+=(--context-files "$path")
+    if ! array_contains "$dir" "${seen_allow_roots[@]+"${seen_allow_roots[@]}"}"; then
+        allow_root_args+=(--allow-root "$dir")
+        seen_allow_roots+=("$dir")
+    fi
+}
+append_context_file "$DIFF_FILE" 0
+append_context_file "$SCOPE_FILES" 0
+append_context_file "$PLAN_FILE" 0
+append_context_file "$FEATURE_FILE" 0
+for explicit_context_file in "${EXPLICIT_CONTEXT_FILES[@]+"${EXPLICIT_CONTEXT_FILES[@]}"}"; do
+    append_context_file "$explicit_context_file" 1
+done
+unset explicit_context_file
 
 SUBPROCESS_STDERR=$(mktemp "$(dirname "$OUTPUT")/claude-subprocess-stderr.XXXXXX")
 set +e

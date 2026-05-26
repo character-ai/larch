@@ -1,0 +1,3 @@
+Reviewing the cited code paths to verify merge groupings and produce accurate normalized findings.
+Confirmed merge groups against the launcher code. Producing the normalized aggregator output.
+

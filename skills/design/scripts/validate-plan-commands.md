@@ -16,7 +16,7 @@ validate-plan-commands.sh --tsv-file FILE --log-file FILE \
 
 ## Time bounds
 
-`--help` and Tier 3 dry-run probes require a wall-clock cap: use GNU `timeout` / `gtimeout` when present, otherwise **`perl` with `alarm`** (same exit code **124** semantics as GNU timeout when the alarm fires). If none of these are available, the script exits **2** during startup instead of running unbounded children.
+`--help` and Tier 3 dry-run probes require a wall-clock cap: use GNU `timeout` / `gtimeout` when present, otherwise **`perl` with `alarm`** (same exit code **124** semantics as GNU timeout when the alarm fires). The Perl fallback sets `PERL_BADLANG=0` so locale warnings cannot contaminate merged `--help` captures. If none of these are available, the script exits **2** during startup instead of running unbounded children.
 
 ## Tier 3
 

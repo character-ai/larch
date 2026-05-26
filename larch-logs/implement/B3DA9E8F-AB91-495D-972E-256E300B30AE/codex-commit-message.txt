@@ -1,0 +1,5 @@
+Add context-files support to Claude review launcher
+
+Expose repeatable --context-files on launch-claude-review.sh, validate explicit paths early, deduplicate context paths canonically, and forward allow-root entries for accepted context parents.
+
+Cover reviewer and voter roles, missing and unreadable paths, dedup, allow-root propagation, and subprocess symlink rejection in the launcher harness. Update docs, security notes, and the plan-command validator regression.

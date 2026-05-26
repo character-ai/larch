@@ -1,0 +1,464 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 1,
+          "cache_read": 107486,
+          "cache_create": 971,
+          "cache_create_5m": 971,
+          "cache_create_1h": 0,
+          "output": 1889,
+          "total": 110347
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 1,
+              "cache_read": 107486,
+              "cache_create": 971,
+              "cache_create_5m": 971,
+              "cache_create_1h": 0,
+              "output": 1889,
+              "total": 110347
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 0 — plan materialization",
+        "totals": {
+          "input": 10,
+          "cache_read": 1124502,
+          "cache_create": 7965,
+          "cache_create_5m": 7965,
+          "cache_create_1h": 0,
+          "output": 6236,
+          "total": 1138713
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 10,
+              "cache_read": 1124502,
+              "cache_create": 7965,
+              "cache_create_5m": 7965,
+              "cache_create_1h": 0,
+              "output": 6236,
+              "total": 1138713
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 7,
+          "cache_read": 592699,
+          "cache_create": 4281,
+          "cache_create_5m": 4281,
+          "cache_create_1h": 0,
+          "output": 3667,
+          "total": 600654
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 2 — implementation",
+            "totals": {
+              "input": 5,
+              "cache_read": 358820,
+              "cache_create": 1526,
+              "cache_create_5m": 1526,
+              "cache_create_1h": 0,
+              "output": 1777,
+              "total": 362128
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 2,
+              "cache_read": 233879,
+              "cache_create": 2755,
+              "cache_create_5m": 2755,
+              "cache_create_1h": 0,
+              "output": 1890,
+              "total": 238526
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 2,
+          "cache_read": 242641,
+          "cache_create": 1667,
+          "cache_create_5m": 1667,
+          "cache_create_1h": 0,
+          "output": 2253,
+          "total": 246563
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 3 — checks first pass",
+            "totals": {
+              "input": 2,
+              "cache_read": 242641,
+              "cache_create": 1667,
+              "cache_create_5m": 1667,
+              "cache_create_1h": 0,
+              "output": 2253,
+              "total": 246563
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 50,
+          "cache_read": 7145300,
+          "cache_create": 56350,
+          "cache_create_5m": 56350,
+          "cache_create_1h": 0,
+          "output": 34470,
+          "total": 7236170
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 5 — code review",
+            "totals": {
+              "input": 50,
+              "cache_read": 7145300,
+              "cache_create": 56350,
+              "cache_create_5m": 56350,
+              "cache_create_1h": 0,
+              "output": 34470,
+              "total": 7236170
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 2,
+          "cache_read": 358247,
+          "cache_create": 830,
+          "cache_create_5m": 830,
+          "cache_create_1h": 0,
+          "output": 1360,
+          "total": 360439
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 2,
+              "cache_read": 358247,
+              "cache_create": 830,
+              "cache_create_5m": 830,
+              "cache_create_1h": 0,
+              "output": 1360,
+              "total": 360439
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 3,
+          "cache_read": 542470,
+          "cache_create": 3338,
+          "cache_create_5m": 3338,
+          "cache_create_1h": 0,
+          "output": 2918,
+          "total": 548729
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 3,
+              "cache_read": 542470,
+              "cache_create": 3338,
+              "cache_create_5m": 3338,
+              "cache_create_1h": 0,
+              "output": 2918,
+              "total": 548729
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 1,
+          "cache_read": 183080,
+          "cache_create": 1419,
+          "cache_create_5m": 1419,
+          "cache_create_1h": 0,
+          "output": 28,
+          "total": 184528
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 1,
+              "cache_read": 183080,
+              "cache_create": 1419,
+              "cache_create_5m": 1419,
+              "cache_create_1h": 0,
+              "output": 28,
+              "total": 184528
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 76,
+      "cache_read": 10296425,
+      "cache_create": 76821,
+      "cache_create_5m": 76821,
+      "cache_create_1h": 0,
+      "output": 52821,
+      "total": 10426143
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0 — plan materialization",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 218640,
+          "output": 16243,
+          "total": 3450371
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 77368,
+          "output": 6217,
+          "total": 549761
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "input": 296008,
+      "output": 22460,
+      "total": 4000132
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0 — plan materialization",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 481391,
+          "output": 59974,
+          "total": 3605505
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "input": 481391,
+      "output": 59974,
+      "total": 3605505
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 76,
+    "cache_read": 10296425,
+    "cache_create_5m": 76821,
+    "cache_create_1h": 0,
+    "output": 52821,
+    "total": 10426143
+  },
+  "BUCKETS_codex": {
+    "input": 296008,
+    "cached_input": 3681664,
+    "output": 22460,
+    "total": 4000132
+  },
+  "BUCKETS_cursor": {
+    "input": 481391,
+    "cache_read": 3064140,
+    "output": 59974,
+    "total": 3605505
+  }
+}

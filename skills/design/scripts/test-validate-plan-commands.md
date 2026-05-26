@@ -8,4 +8,4 @@ Offline regression harness for `validate-plan-commands.sh` + `validate-plan.sh` 
 
 ## Contract
 
-Uses committed plan fixtures under `skills/design/scripts/fixtures/validate-plan-commands/`.
+Uses committed plan fixtures under `skills/design/scripts/fixtures/validate-plan-commands/`, including the `launch-context-plan.md` positive regression that `scripts/launch-claude-review.sh --context-files` is recognized by the launcher's help surface.
