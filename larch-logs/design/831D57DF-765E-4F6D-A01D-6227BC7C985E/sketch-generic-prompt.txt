@@ -1,0 +1,44 @@
+Propose a high-level implementation approach for this feature.
+
+## Feature description
+
+GitHub issue #2882: scripts/merge-pr.sh initial mergeStateStatus=UNKNOWN check has no retry, causing spurious stalls after force-push.
+
+### Bug summary
+`scripts/merge-pr.sh` immediately bails on `mergeStateStatus=UNKNOWN` (or empty `MERGE_STATE`) from the very first `refresh_pr_info` call with zero retry. GitHub transiently returns `UNKNOWN` while recomputing merge state after a force-push (issue #2342 covered this for the post-force-push path), causing the CI+merge loop to stall needlessly even when CI passed and the PR is fully mergeable.
+
+### Root cause
+In `scripts/merge-pr.sh`:
+- The initial-check block tests `[[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]` and immediately exits with `MERGE_RESULT=error` and `ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\")"`.
+- The post-force-push recovery path already retries 3 times with 5-second sleeps (introduced for #2342), with error wording "mergeStateStatus still UNKNOWN after 3 retries post-force-push". The initial check is the missing parallel.
+
+### Fix shape (resolved decisions from clarification round)
+1. Extract a small shared helper inside `scripts/merge-pr.sh` (e.g. `retry_pr_info_unknown_recovery <max_retries>`) that sleeps 5 seconds then calls `refresh_pr_info`, looping until `MERGE_STATE` is non-empty and not `UNKNOWN` or the retry budget is exhausted.
+2. Initial check calls the helper with `4` retries (per user's explicit request: "4 retries, 5-second waits"). Total wall-clock: ~20s on persistent UNKNOWN.
+3. The existing post-force-push retry block is refactored to call the same helper with `3` retries (unchanged behavior; existing error wording "mergeStateStatus still UNKNOWN after 3 retries post-force-push" must remain stable because `scripts/test-merge-pr.sh` sub-test R2 pins that prose with `^ERROR=mergeStateStatus still UNKNOWN after 3 retries post-force-push`).
+4. The initial-check failure error message becomes (suggestion): `"could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\") after 4 retries"`.
+5. Empty `MERGE_STATE` and `UNKNOWN` are treated identically by the retry helper (both signal "unknown state" — matches the existing post-force-push condition and the user's issue-body pseudocode).
+
+### Test changes
+- `scripts/test-merge-pr.sh` sub-test G must:
+  - G1 (empty persistent → error after 4 retries): assert `MERGE_RESULT=error`, error message wording (substring match), and `gh pr view` called 5 times.
+  - G2 (UNKNOWN persistent → error after 4 retries): same as above for `GH_MERGE_STATE=UNKNOWN`.
+  - G3 (NEW: UNKNOWN resolves on retry → admin_merged): use the existing stub's `GH_VIEW_FLIP_AT_CALL` / `GH_VIEW_FLIP_MERGE_STATE` mechanism (already used by sub-test Q for the post-force-push success-on-retry path) to flip from UNKNOWN to CLEAN at call N, assert `MERGE_RESULT=admin_merged` and `gh pr view` called N times.
+- Sub-tests Q (post-force-push UNKNOWN resolves) and R (post-force-push UNKNOWN persists) MUST continue to pass unchanged — their fixtures start with `GH_MERGE_STATE=CLEAN` so the new initial-check retry does not fire on those paths. The "5x" call count assertion in Q2/R3 stays valid.
+- The test harness already stubs `sleep` to a no-op (per existing `git-force-push.sh` retry tests), so the new 4-retry helper does not slow tests.
+- `scripts/test-merge-pr.md` sub-test G description updated to reflect the new retry behavior and added G3 case.
+
+### Files in scope
+- `scripts/merge-pr.sh` — add helper, refactor both call sites.
+- `scripts/test-merge-pr.sh` — sub-test G expansion (G1/G2 update + G3 new).
+- `scripts/test-merge-pr.md` — sub-test G description update.
+
+### Out of scope
+- `scripts/merge-pr.md` MERGE_RESULT enum table (enum unchanged; `error` row already documents empty/UNKNOWN).
+- Sub-tests Q/R fixture or assertion changes (post-force-push retry count unchanged at 3).
+- `skills/implement/SKILL.md` Step 12b parse table (error branch behavior unchanged).
+- Configurability via env vars for retry count or delay (user did not request; existing post-force-push retry is also hard-coded).
+
+## Your task
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach (helper signature, where it goes inside merge-pr.sh, how the two call sites are restructured), (2) Which files/modules to modify and why (call out any subtle dependencies you find — e.g. other callers of `refresh_pr_info`, downstream parsers of the error message, prose in `CHANGELOG.md` / `docs/`), (3) Main tradeoffs and risks (e.g. the asymmetric retry count between initial and post-force-push call sites, Bash 3.2 portability of the helper's loop construct per `BASH_AUTHORING.md` §3, idempotency of the retry on persistent failures, possible interactions with `set -e` / `errexit` if the helper uses an arithmetic-evaluation loop, whether the existing R2 error-message prose pin is at risk if the helper accidentally rewrites that wording). Do NOT modify files.

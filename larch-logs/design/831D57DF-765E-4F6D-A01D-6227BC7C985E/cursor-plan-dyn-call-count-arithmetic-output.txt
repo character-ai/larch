@@ -1,0 +1,5 @@
+Reviewing the plan and tracing `gh pr view` call sequences in the proposed and current code.
+Verifying post-force-push control flow and whether the plan's G3 fixture matches the stub counter semantics.
+Call-count arithmetic for G1/G2/G3/Q/R matches the proposed helper: same sleep-then-`refresh_pr_info` ordering as the inline `for _retry in 1 2 3` loop, with one pre-loop `refresh_pr_info` on the post-force-push path unchanged.
+
+{"no_issues_found": true}

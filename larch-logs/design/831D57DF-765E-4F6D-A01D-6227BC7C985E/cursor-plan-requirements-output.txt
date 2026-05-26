@@ -1,0 +1,14 @@
+Reviewing the implementation plan against stated requirements; reading the plan and referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:96-101	Testing strategy claims `bash scripts/relevant-checks.sh` exercises `make lint-bash32`	`docs/linting.md` documents `relevant-checks.sh` as scoped `pre-commit` plus `agent-lint` only; Bash 3.2 portability runs via `make lint-bash32` / full `make lint`. A helper using forbidden Bash 4+ syntax could ship if implementer trusts the plan alone.	Add explicit `make lint-bash32` (or `make lint`) to Testing strategy and Failure modes; keep `relevant-checks.sh` for shellcheck/pre-commit only.
+2	in_scope	nit	correctness	plan.txt:56-59	G3 cites a generic "standard merge-command assertion" without naming the harness helper	Sub-test A/Q pin admin success with `assert_command_count ... "pr merge 123 --repo owner/repo --squash --admin" "1"`. Ambiguous G3 may omit the assertion and still pass on `MERGE_RESULT` alone.	Specify `assert_command_count` for the `--admin` merge line (mirror sub-test A) in the G3 fixture plan.
+3	out_of_scope	important	architecture	scripts/merge-pr.md:24,58,64	Plan excludes `merge-pr.md` while startup retry behavior changes	`error` row and "Batched discovery" still describe immediate empty/UNKNOWN fail-closed with no initial retry; post-push retries are documented separately. Operators reading the contract miss up to ~20s of initial backoff.	[OUT_OF_SCOPE] Extend `merge-pr.md` (and the script header if kept byte-aligned) to document initial 4×5s retries parallel to the post-force-push paragraph.
+4	out_of_scope	latent	correctness	plan.txt:48-59	G3 covers UNKNOWN→CLEAN recovery only, not empty→CLEAN	Helper treats empty and UNKNOWN identically; a transient empty→CLEAN path has no harness pin (G1/G2 only cover persistence).	Low priority: add a G4 case with `GH_MERGE_STATE=__EMPTY__` and a flip to `CLEAN`, or document intentional omission in the plan.
+
+**1. [correctness]** `plan.txt` Testing strategy / Failure mode #2 — `relevant-checks.sh` does not run `lint-bash32` ([docs/linting.md](docs/linting.md) lines 25–26). Add `make lint-bash32` explicitly alongside `bash scripts/test-merge-pr.sh`.
+
+**2. [correctness]** `plan.txt` G3 — Name `assert_command_count` for `pr merge ... --squash --admin` (as in sub-test A at `scripts/test-merge-pr.sh:320`) so the success path is fully pinned.
+
+**3. [OUT_OF_SCOPE] [architecture]** [scripts/merge-pr.md](scripts/merge-pr.md) — After landing, lines 24 and 64 will under-document initial retries (line 58 already covers post-force-push only). Worth a follow-up doc sync per `scripts/test-merge-pr.md` edit-in-sync rules.
+
+**4. [OUT_OF_SCOPE] [correctness]** `plan.txt` G matrix — Optional empty→CLEAN recovery case; not required by issue #2882’s evidence (UNKNOWN-only stall) but would close symmetry with G1/G2.
