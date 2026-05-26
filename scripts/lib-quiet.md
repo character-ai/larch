@@ -17,9 +17,11 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   stdout/stderr to the quiet log.
 - `emit TEXT` writes one line of contract output to the caller-visible stream.
 - `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream.
-- `emit_breadcrumb TEXT` writes progress text to the quiet log by default.
-  Set `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout.
-  When `LARCH_QUIET_BREADCRUMB_FD` is set to an inherited numeric file
+- `emit_breadcrumb --category=NAME TEXT` writes progress text to the quiet log
+  by default and requires the fixed breadcrumb category vocabulary. Set
+  `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout. When
+  `LARCH_BREADCRUMB_STREAM` is set, it writes only the structured breadcrumb
+  record. When `LARCH_QUIET_BREADCRUMB_FD` is set to an inherited numeric file
   descriptor, surfaced breadcrumbs write there instead of FD 3 so nested
   scripts can stay operator-visible even when their stdout is redirected into
   capture files.

@@ -247,6 +247,7 @@ emit_breadcrumb() {
 
     if [ -n "${LARCH_BREADCRUMB_STREAM:-}" ]; then
         larch_quiet_write_breadcrumb_record "$_bc_cat" "$_bc_text"
+        return 0
     fi
 
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then

@@ -12,7 +12,9 @@ trap 'rm -rf "$SCRATCH"' EXIT
 # state); leaked LARCH_QUIET_LOG_FILE breaks default-log path assertions.
 unset IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR \
     LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
-    LARCH_QUIET_BREADCRUMBS LARCH_QUIET_DISABLE || true
+    LARCH_QUIET_BREADCRUMBS LARCH_QUIET_DISABLE LARCH_BREADCRUMB_STREAM \
+    LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_BREADCRUMBS_SURFACED_FILE \
+    LARCH_QUIET_BREADCRUMB_FD || true
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -151,5 +153,14 @@ assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-stream.out")" "" "emit_breadcrumb_s
 assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-stream.err")" "" "emit_breadcrumb_stderr stream stderr"
 assert_file_contains "$SCRATCH/breadcrumb-stream.ndjson" "c=wait-ci" "emit_breadcrumb_stderr stream category"
 assert_file_contains "$SCRATCH/breadcrumb-stream.ndjson" "text=wait:done" "emit_breadcrumb_stderr stream payload"
+
+# 15. emit_breadcrumb does not mirror raw text when the breadcrumb stream is set.
+helper="$SCRATCH/breadcrumb-stream-only.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_BREADCRUMB_STREAM LARCH_QUIET_BREADCRUMBS; larch_quiet_init; emit_breadcrumb --category=progress "secret token"; emit_kv STATUS ok'
+"$helper" "$SCRATCH/breadcrumb-only.ndjson" >"$SCRATCH/breadcrumb-stream-only.out" 2>"$SCRATCH/breadcrumb-stream-only.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stream-only.out")" "STATUS=ok" "emit_breadcrumb stream suppresses mirrored stdout"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stream-only.err")" "" "emit_breadcrumb stream suppresses mirrored stderr"
+assert_file_contains "$SCRATCH/breadcrumb-only.ndjson" "c=progress" "emit_breadcrumb stream-only category"
+assert_file_contains "$SCRATCH/breadcrumb-only.ndjson" "text=secret token" "emit_breadcrumb stream-only payload"
 
 printf 'PASS: test-lib-quiet.sh\n'

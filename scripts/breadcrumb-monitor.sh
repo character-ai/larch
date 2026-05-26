@@ -207,7 +207,8 @@ while true; do
 done
 
 if [[ -n "$buf" ]]; then
-    :
+    larch_bm_emit_line "$buf" "$(date +%s)"
+    buf=""
 fi
 
 if [[ -f "$STREAM" ]]; then
@@ -218,7 +219,8 @@ if [[ -f "$STREAM" ]]; then
         larch_bm_read_chunk "$STREAM" "$last_off" "$delta"
         larch_bm_process_chunk "$chunk" "$(date +%s)"
         if [[ -n "$buf" ]]; then
-            :
+            larch_bm_emit_line "$buf" "$(date +%s)"
+            buf=""
         fi
     fi
 fi

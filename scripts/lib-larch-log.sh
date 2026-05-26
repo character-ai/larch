@@ -291,7 +291,7 @@ larch_log_publish_breadcrumbs_shared() {
             return 1
         }
         if ! "$LARCH_LOG_LIB_DIR/redact-tmpdir-paths.sh" <"$f" | "$LARCH_LOG_LIB_DIR/redact-secrets.sh" --streaming --state-file "$state_file" >"$tmp_out"; then
-            rm -rf "$staging_parent" "$dest_dir" 2>/dev/null || true
+            rm -rf "$staging_parent" 2>/dev/null || true
             "$on_error" "breadcrumbs redaction failed for $f"
             return 1
         fi
@@ -300,12 +300,6 @@ larch_log_publish_breadcrumbs_shared() {
 
     if [ "$found_any" != "true" ]; then
         rm -rf "$staging_parent"
-        if [ -e "$dest_dir" ]; then
-            rm -rf "$dest_dir" || {
-                "$on_error" "cannot replace breadcrumbs directory"
-                return 1
-            }
-        fi
         return 0
     fi
     if [ -e "$dest_dir" ]; then

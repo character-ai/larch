@@ -375,7 +375,35 @@ fi
 unset ec
 
 # ---------------------------------------------------------------------------
-# Test 11: RESEARCH_TMPDIR is an accepted session root.
+# Test 11: final partial line is flushed after the done sentinel.
+# ---------------------------------------------------------------------------
+alloc_sentinels t11
+(
+    sleep 1
+    printf 'larch:bc t=now d=0 p=1 s=test c=progress text=tail-without-newline' >>"$STREAM"
+    printf 'EXIT_CODE=0\n' >"$STATUS"
+    printf 'EXIT_CODE=0\n' >"$DONE"
+) &
+WRITER_PID=$!
+out=$("$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --poll-interval=1 2>&1) || ec=$?
+ec=${ec:-0}
+wait "$WRITER_PID" 2>/dev/null || true
+if [ "$ec" -ne 0 ]; then
+    fail "test 11: monitor exit was $ec, expected 0"
+fi
+if ! printf '%s' "$out" | grep -q "tail-without-newline"; then
+    fail "test 11: final partial line was not flushed (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 12: RESEARCH_TMPDIR is an accepted session root.
 # ---------------------------------------------------------------------------
 RESEARCH_TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/test-bm-research.XXXXXX")"
 export RESEARCH_TMPDIR
@@ -396,15 +424,15 @@ ec=${ec:-0}
 rm -rf "$RESEARCH_TMPDIR"
 unset RESEARCH_TMPDIR
 if [ "$ec" -ne 0 ]; then
-    fail "test 11: RESEARCH_TMPDIR path should be accepted, got $ec (out=$out)"
+    fail "test 12: RESEARCH_TMPDIR path should be accepted, got $ec (out=$out)"
 fi
 unset ec
 
 # ---------------------------------------------------------------------------
-# Test 12: symlink stream paths are rejected.
+# Test 13: symlink stream paths are rejected.
 # ---------------------------------------------------------------------------
-alloc_sentinels t12
-link_stream="$IMPLEMENT_TMPDIR/t12.symlink"
+alloc_sentinels t13
+link_stream="$IMPLEMENT_TMPDIR/t13.symlink"
 ln -s "$STREAM" "$link_stream"
 set +e
 out=$("$MON" \
@@ -418,7 +446,7 @@ set -e
 if [ "$ec" -eq 2 ]; then
     :
 else
-    fail "test 12: symlink stream path should exit 2, got $ec (out=$out)"
+    fail "test 13: symlink stream path should exit 2, got $ec (out=$out)"
 fi
 unset ec
 
