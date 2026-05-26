@@ -290,7 +290,6 @@ append_render_warning() {
         >/dev/null 2>&1 || true
     refresh_issue_counts
 }
-refresh_issue_counts
 
 # --- Note lines (after sentinel in body — appended by render via note file) ---
 notes_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-notes.XXXXXX")"

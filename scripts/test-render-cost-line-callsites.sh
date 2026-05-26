@@ -40,6 +40,7 @@ grep -Fq '_wfr_args+=(--print-stdout)' "$REPO/skills/implement/SKILL.md" || fail
 grep -Fq 'if [ "$_wfr_printed" = true ] && grep -Fq -- '\''- **Cost**:'\'' "$IMPLEMENT_TMPDIR/summary-final.md" 2>/dev/null; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must gate .step17-printed on success plus cost line presence'
 # shellcheck disable=SC2016
 grep -Fq 'Immediately after the Step 17 Bash block returns, if the script succeeded and `summary-final.md` contains a line beginning with `- **Cost**:`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 verbatim cost-line emit prose'
+grep -Fq "When Step 18 passed \`--print-stdout\` because \`\$IMPLEMENT_TMPDIR/.step17-printed\` was absent, and \`write-final-report.sh\` succeeded with a present \`- **Cost**:\` line in \`\$IMPLEMENT_TMPDIR/summary-final.md\`, the orchestrator MUST also emit that single verbatim \`- **Cost**:\` line as plain chat text" "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 18 verbatim cost-line emit prose'
 grep -Fq 'The cost line is the sole exception under NEVER #20.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 cost-line exception prose'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'
 grep -Fq 'SUMMARY_MODE_STRING=N/A' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must default SUMMARY_MODE_STRING to N/A'

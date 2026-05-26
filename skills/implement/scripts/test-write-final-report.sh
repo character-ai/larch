@@ -14,6 +14,25 @@ pass(){ PASS=$((PASS+1)); printf 'PASS: %s\n' "$1"; }
 fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
 assert_not_contains(){ case "$2" in *"$1"*) fail "$3 (unexpected $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; *) pass "$3" ;; esac; }
+assert_schema_ordered() {
+    local body=$1 label=$2 prev=0 current
+    shift 2
+    for needle in "$@"; do
+        current=$(printf '%s\n' "$body" | awk -v needle="$needle" 'index($0, needle) { print NR; exit }')
+        if [ -z "$current" ]; then
+            fail "$label (missing $needle)"
+            printf 'ACTUAL: %s\n' "$body" >&2
+            return
+        fi
+        if [ "$current" -le "$prev" ]; then
+            fail "$label (out of order at $needle)"
+            printf 'ACTUAL: %s\n' "$body" >&2
+            return
+        fi
+        prev=$current
+    done
+    pass "$label"
+}
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
@@ -63,6 +82,17 @@ printf 'REPO=owner/repo\n' > "$impl_dir/session-env.sh"
     printf 'FORKED_TARGET=false\n'
 } > "$impl_dir/ship-pr-state.sh"
 printf 'DESIGN_ONLY_DONE=false\n' > "$impl_dir/finalize-state.sh"
+mkdir -p "$impl_dir/larch-logs/implement/run-5"
+cat > "$impl_dir/larch-logs/implement/run-5/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 2000}},
+  "cursor": {"totals": {"total": 3000}},
+  "BUCKETS_claude": {"input": 500, "cache_read": 100, "cache_create_5m": 50, "cache_create_1h": 50, "output": 300},
+  "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+  "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000}
+}
+JSON
 
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content.md" \
       "$HELPER" --implement-tmpdir "$impl_dir")
@@ -287,11 +317,22 @@ STUB
 chmod +x "$plugin/scripts/render-run-summary.sh"
 fallback_stage2=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage2.md" \
       "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
-assert_contains '- **Cost**: N/A' "$fallback_stage2" 'renderer fallback stage2 self-compose cost N/A'
-assert_contains '- **Code review**: N/A' "$fallback_stage2" 'renderer fallback stage2 keeps implement schema'
-assert_contains '- **Outcome**: bailed' "$fallback_stage2" 'renderer fallback stage2 keeps bailed outcome'
+assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered implement schema' \
+    '## /implement run run-bl — bailed' \
+    '- **Outcome**: bailed' \
+    '- **Mode**: N/A' \
+    '- **Path**: N/A' \
+    '- **Duration**: N/A' \
+    '- **Cost**: N/A' \
+    '- **Issue**: #9 — https://github.com/owner/repo/issues/9' \
+    '- **Plan review**: N/A' \
+    '- **Code review**: N/A' \
+    '- **OOS filed**: 0' \
+    '- **Exec issues**: 0' \
+    '- **Warnings**: 0' \
+    "- **Run logs**: \`larch-logs/implement/run-bl/\`" \
+    '<!-- larch:run-summary v=1 -->'
 assert_not_contains '- **PR**:' "$fallback_stage2" 'renderer fallback stage2 omits PR when N/A'
-assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage2" 'renderer fallback stage2 keeps sentinel'
 cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh"
 
@@ -333,6 +374,7 @@ step18_suppressed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT
   "$2" "${_wfr_args[@]}" || true
 ' bash "$impl_bl" "$HELPER" 2>/dev/null)
 assert_not_contains '## /implement run run-bl — bailed' "$step18_suppressed" 'Step 18 sentinel suppresses summary body'
+assert_not_contains '- **Cost**:' "$step18_suppressed" 'Step 18 sentinel suppresses summary cost line'
 
 # Bail + manifest.json: larch-log manifest stamps steps_ran.* and hard-fails on manifest error
 impl_mfb="$TMP_ROOT/impl-mfb"; mkdir -p "$impl_mfb/larch-logs/implement/run-mfb"
@@ -393,7 +435,7 @@ assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$badjson_stdou
 
 make_impl_fixture() {
     local dir=$1 issue=$2 run=$3 pr_url=$4 pr_number=$5 stall=$6 merge_result=$7 merge=$8 draft=$9 forked=${10} design_only=${11} bail_user=${12}
-    mkdir -p "$dir"
+    mkdir -p "$dir/larch-logs/implement/$run"
     printf 'ISSUE_NUMBER=%s\nRUN_ID=%s\nADOPTED=true\n' "$issue" "$run" > "$dir/parent-issue.md"
     printf 'REPO=owner/repo\n' > "$dir/session-env.sh"
     {
@@ -406,6 +448,16 @@ make_impl_fixture() {
         printf 'FORKED_TARGET=%s\n' "$forked"
     } > "$dir/ship-pr-state.sh"
     printf 'DESIGN_ONLY_DONE=%s\nBAIL_NEEDS_USER_INPUT=%s\n' "$design_only" "$bail_user" > "$dir/finalize-state.sh"
+    cat > "$dir/larch-logs/implement/$run/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 2000}},
+  "cursor": {"totals": {"total": 3000}},
+  "BUCKETS_claude": {"input": 500, "cache_read": 100, "cache_create_5m": 50, "cache_create_1h": 50, "output": 300},
+  "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+  "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000}
+}
+JSON
 }
 
 make_impl_fixture "$TMP_ROOT/impl-pr-created" 30 run-pr-created https://example.test/pr/30 30 false "" false false false false false
@@ -429,10 +481,18 @@ $outcome_case
 EOF
     matrix_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/matrix-${expected}.md" \
         "$HELPER" --implement-tmpdir "$fixture" --print-stdout)
+    cost_line=$(printf '%s\n' "$matrix_stdout" | grep -F -- '- **Cost**:' || true)
     assert_contains "## /implement run " "$matrix_stdout" "matrix $expected prints summary title"
     assert_contains "— $expected" "$matrix_stdout" "matrix $expected title outcome"
     assert_contains '- **Cost**:' "$matrix_stdout" "matrix $expected prints cost line"
     assert_contains '<!-- larch:run-summary v=1 -->' "$matrix_stdout" "matrix $expected keeps sentinel"
+    if [ "$expected" = "merged" ] || [ "$expected" = "forked-dry-run" ] || [ "$expected" = "pr-created" ] || [ "$expected" = "pr-created-draft" ] || [ "$expected" = "force-merged-externally" ]; then
+        assert_contains '💰 TOTAL' "$cost_line" "matrix $expected cost line has total"
+        assert_contains 'Claude $' "$cost_line" "matrix $expected cost line has Claude"
+        assert_contains 'Codex $' "$cost_line" "matrix $expected cost line has Codex"
+        assert_contains 'Cursor $' "$cost_line" "matrix $expected cost line has Cursor"
+        assert_contains 'Tokens: ' "$cost_line" "matrix $expected cost line has token count"
+    fi
     if [ "$expect_outcome" = present ]; then
         assert_contains "- **Outcome**: $expected" "$matrix_stdout" "matrix $expected emits Outcome bullet"
     else

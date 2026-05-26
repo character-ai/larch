@@ -110,15 +110,32 @@ cat >"$PLUGIN_STUB/scripts/render-run-summary.sh" <<'EOF'
 exit 1
 EOF
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
+cat >"$D/final-summary.md" <<'EOF'
+## /design run RUN-PREGOOD — approved
+
+- **Mode**: SIMPLE
+- **Path**: SIMPLE
+- **Duration**: 9s
+- **Cost**: 💰 TOTAL: $1.23 | Claude $0.50 | Codex $0.73 | Cursor $0.00 | Tokens: 1234
+- **Issue**: N/A
+- **Plan review**: 1 finding
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 0
+- **Run logs**: `larch-logs/design/RUN-PREGOOD/`
+
+<!-- larch:run-summary v=1 -->
+EOF
 std_fb="$TMP/std-fallback.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb" 2>/dev/null
-grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'renderer-fail fallback missing Cost N/A'
-if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail fallback must not emit PR bullet'; fi
-if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail fallback must not emit Code review bullet'; fi
+grep -Fq -- '💰 TOTAL' "$D/final-summary.md" || fail 'renderer-fail post path must preserve prior usable cost line'
+if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit PR bullet'; fi
+if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit Code review bullet'; fi
 cmp -s "$D/final-summary.md" "$std_fb" || fail 'renderer-fail fallback stdout/file mismatch'
 pass 'renderer-fail fallback prints final file once'
 std_fb_cancel="$TMP/std-fallback-cancelled.log"
+: >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CANCELLED" \
     "$SUBJECT" --outcome cancelled-clarify --mode SIMPLE --post-publish-only >"$std_fb_cancel" 2>/dev/null
 grep -Fq -- '- **Outcome**: cancelled-clarify' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Outcome bullet'
@@ -296,11 +313,15 @@ for summary_outcome in \
     failed-plan-write
 do
     session="RUN-MATRIX-${summary_outcome}"
+    matrix_stdout="$TMP/std-matrix-${summary_outcome}.log"
     DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="$session" \
-        "$SUBJECT" --outcome "$summary_outcome" --mode SIMPLE --post-publish-only >/dev/null 2>&1
+        "$SUBJECT" --outcome "$summary_outcome" --mode SIMPLE --post-publish-only >"$matrix_stdout" 2>/dev/null
     grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail "matrix $summary_outcome missing Cost bullet"
     grep -Fq "<!-- larch:run-summary v=1 -->" "$D/final-summary.md" || fail "matrix $summary_outcome missing sentinel"
     grep -Fq "## /design run $session — $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing title"
+    grep -Fq -- '- **Cost**:' "$matrix_stdout" || fail "matrix $summary_outcome stdout missing Cost bullet"
+    grep -Fq "<!-- larch:run-summary v=1 -->" "$matrix_stdout" || fail "matrix $summary_outcome stdout missing sentinel"
+    cmp -s "$D/final-summary.md" "$matrix_stdout" || fail "matrix $summary_outcome stdout/file mismatch"
     if [[ "$summary_outcome" == approved || "$summary_outcome" == approved-partition ]]; then
         if grep -Fq -- '- **Outcome**:' "$D/final-summary.md"; then
             fail "matrix $summary_outcome must omit Outcome bullet"
@@ -310,6 +331,9 @@ do
     fi
 done
 pass 'ten-outcome post-publish matrix'
+
+grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
+pass 'render-final-summary append warning redacts stderr'
 
 set +e
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \

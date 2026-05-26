@@ -328,6 +328,7 @@ append_render_warning() {
         --tool "render-run-summary.sh" \
         --exit-code "$rc" \
         --category Warnings \
+        --redact \
         --output-file "$output_file" \
         >/dev/null 2>&1 || true
     refresh_issue_counts
@@ -364,30 +365,36 @@ compose_self_fallback() {
     } > "$out_file"
 }
 
+summary_has_usable_cost() {
+    local file=$1
+    [ -s "$file" ] || return 1
+    grep -Fq -- '- **Cost**:' "$file" 2>/dev/null || return 1
+    ! grep -Fq -- '- **Cost**: N/A' "$file" 2>/dev/null
+}
+
 render_or_fallback() {
-    local allow_fallback=${1:-true}
     local err_file="$DESIGN_TMPDIR/render-final-summary.stderr.log"
+    local summary_file="$DESIGN_TMPDIR/final-summary.md"
     set +e
     invoke_render 2>"$err_file"
     local rr=$?
     set -e
-    if [ "$rr" -ne 0 ] || [ ! -s "$DESIGN_TMPDIR/final-summary.md" ]; then
+    if [ "$rr" -ne 0 ] || [ ! -s "$summary_file" ]; then
         append_render_warning "${rr:-1}" "$err_file"
-        if [ "$allow_fallback" != true ]; then
-            rm -f "$DESIGN_TMPDIR/final-summary.md"
-            return 1
+        if [ "$PHASE" = post ] && { [ -s "$summary_file" ] || summary_has_usable_cost "$summary_file"; }; then
+            return 0
         fi
         compose_self_fallback
     fi
 }
 
 if [ "$PHASE" = pre ]; then
-    render_or_fallback true
+    render_or_fallback
     exit 0
 fi
 
 # post phase: render to file, then print the resolved file exactly once.
-render_or_fallback true
+render_or_fallback
 while IFS= read -r line || [ -n "$line" ]; do
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         printf '%s\n' "$line" >&3
