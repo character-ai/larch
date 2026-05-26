@@ -473,6 +473,13 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-check-main-sync.sh",
   "scripts/test-check-main-sync.md",
+  # Recovery/helper harnesses introduced for manifest-schema recovery are
+  # Makefile-only regression tests. They are documented in docs/linting.md and
+  # their sibling contracts, but not invoked by skill runtime prose.
+  "scripts/test-extract-plan-scope-paths.sh",
+  "scripts/test-extract-plan-scope-paths.md",
+  "scripts/test-git-commit-only.sh",
+  "scripts/test-git-commit-only.md",
   # Issue-anchored plan helpers (#2484): runtime scripts + harnesses are
   # listed under "## Issue-anchored plan helpers (machine reachability)"
   # in skills/implement/SKILL.md for agent-lint G004 reachability.

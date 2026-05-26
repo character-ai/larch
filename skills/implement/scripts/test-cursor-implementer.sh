@@ -46,6 +46,39 @@ FAIL_COUNT=0
 fail() { echo "FAIL [$1]: $2" >&2; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 
+assert_manifest_template_present() {
+    local test_id="$1"
+    local json_file="$SCRATCH/${test_id}-manifest-template.json"
+    if grep -Fq "## Manifest JSON template" "$AGENT_PROMPT" \
+       && grep -Fq "## Self-validate before atomic rename" "$AGENT_PROMPT"; then
+        pass
+    else
+        fail "$test_id" "generated prompt missing manifest template/self-validation headings"
+    fi
+    awk '
+        /^## Manifest JSON template$/ { in_section=1; next }
+        in_section && /^```json$/ { in_json=1; next }
+        in_json && /^```$/ { exit }
+        in_json { print }
+    ' "$AGENT_PROMPT" > "$json_file"
+    if jq -e '
+        has("schema_version") and
+        has("status") and
+        (.files_touched[0] | has("path") and has("lines_added") and has("lines_removed")) and
+        has("tests_added_or_modified") and
+        has("summary_bullets") and
+        has("commit_message") and
+        has("todos_left") and
+        has("oos_observations") and
+        has("bail_reason") and
+        (.needs_qa.questions[0] | has("id") and has("text"))
+    ' "$json_file" >/dev/null 2>&1; then
+        pass
+    else
+        fail "$test_id" "inline manifest JSON template is missing canonical fields: $(cat "$json_file" 2>/dev/null)"
+    fi
+}
+
 SCRATCH=$(mktemp -d -t cursor-implementer-test.XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
@@ -63,6 +96,8 @@ ANSWERS="$SCRATCH/answers.json"
 printf 'fake plan\n' > "$PLAN"
 printf 'fake feature\n' > "$FEATURE"
 printf '{"answers":[{"id":"q1","text":"yes"}]}\n' > "$ANSWERS"
+
+assert_manifest_template_present "manifest-template"
 
 # Test 1: missing required flags exits 2.
 EXIT=0

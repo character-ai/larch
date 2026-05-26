@@ -36,13 +36,21 @@
 19. Scratch git repo on `main` with `--coder cursor --cursor-present true`, a PATH-stubbed `cursor` that would fail if invoked, and issue-anchored tmpdir state: **19** — `session-env.sh` with `ISSUE_NUMBER=…` and `FORKED_TARGET=false` (session `ISSUE_NUMBER` path); **19a** — default branch `master` with the same session-env; **19b** — `parent-issue.md` carries `ISSUE_NUMBER` while `session-env.sh` omits it (parent-issue-only path, `test-step2-dispatch.sh`); **19c** — `FORKED_TARGET=true` with `ISSUE_NUMBER` on `main`: dispatcher must **not** emit `main-branch-prohibited` and must attempt the Cursor launcher (`REASON=cursor-runtime-failure` with `TOOL=cursor` in harness). Cases 19/19a/19b must emit `STATUS=bailed REASON=main-branch-prohibited TOOL=cursor` (and `ORCHESTRATOR_EDIT_AUTHORITY=forbidden`) without reaching the launcher. **19d** — same `main` repo with neither `session-env.sh` nor `parent-issue.md`: must **not** emit `main-branch-prohibited` (narrow harness scope; ship-time bump guard is the production backstop). **19e** — detached `HEAD` with issue-anchored `session-env.sh`: `REASON=detached-head-prohibited` before the stub launcher.
 20. Scratch git repo on `main` with `origin/main`, after `scripts/create-branch.sh --branch "$USER_PREFIX/test-feature-42"` (user.name `Test` → `test/…`), pre-seeded `step2-spawn-branch.txt`, `parent-issue.md` with `ISSUE_NUMBER=42`, and `--coder cursor --cursor-present true`: must **not** emit `STATUS=bailed REASON=main-branch-prohibited` (stub may still yield `cursor-runtime-failure`).
 21. Scratch git repo checked out on `test/existing-feature-42` without calling `create-branch.sh --branch`, same issue-anchor tmpdir wiring and Cursor stub: must **not** emit `main-branch-prohibited`.
+M1. Legacy malformed `{"status":"complete","summary":"...","checks":"..."}` manifest plus a post-launch tracked-file edit emits `STATUS=claude_fallback`, `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, `RECOVERY_FROM=manifest-schema-invalid`, `RECOVERY_PRIOR_TOOL=codex`, and a NUL-delimited `RECOVERY_PATHS_FILE` containing the edited path. Also asserts manifest quarantine metadata exists.
+M1b. The same malformed-manifest recovery path on Cursor preserves `RECOVERY_PRIOR_TOOL=cursor` and the edited path list.
+M2. The same malformed manifest with an otherwise empty post-launch working tree stays `STATUS=bailed REASON=manifest-schema-invalid` and emits no `RECOVERY_FROM`.
+M12. Truncated/non-JSON manifest plus post-launch edits stays `STATUS=bailed REASON=manifest-schema-invalid` and emits no `RECOVERY_FROM`.
+M16. A non-empty pre-launch index writes `PRELAUNCH_INDEX_NONEMPTY=true` and blocks recovery even when a malformed manifest and post-launch edit are present.
+M17. Rename/copy porcelain rows use the destination path when recomputing recovery pathspecs, so a recovered rename records `new-path` rather than the deleted source path.
+M18. Recovery baseline files are write-once per tmpdir: a `needs_qa` first pass followed by a malformed-manifest `--answers` resume still recovers both the earlier and later uncommitted edits.
+M19. `schema_version` values other than `1` hard-bail with `manifest-schema-invalid` and do not enter malformed-manifest recovery.
 
 **Out of scope**:
 - Manifest schema validation for real implementer output.
 - Path normalization (`..` / leading `/` / `.claude-plugin/plugin.json` / submodule paths).
 - Sanitization via `scripts/redact-secrets.sh`.
 - Single-retry on transient launcher failure with clean-state guard.
-- `branch-changed` / `submodule-dirty` / `cursor-modified-history` post-implementer checks. (Test 13 covers only the Step 6b absent-`plugin.json` sentinel case from issue #1475; Step 7a path-validation `protected-path-modified` paths and the other Step 6 post-implementer rejections remain out of scope here.)
+- `branch-changed` / `submodule-dirty` / `cursor-modified-history` post-implementer checks. (This harness now pins malformed-manifest recovery, resume-baseline persistence, and rename pathspec semantics; the remaining Step 6 / Step 7a post-implementer rejections still need separate coverage.)
 - `commit-failed` recovery on the dispatcher-side commit. (Tests 13 and 18 exercise the happy path of `git add -A && git commit -F …` end-to-end via stub Codex; failure-recovery branches remain out of scope.)
 
 **Invariants**:

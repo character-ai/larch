@@ -1,0 +1,2 @@
+Merging the 26 raw findings by behavioral risk and first-seen order, preserving verbatim suggested revisions per reviewer slot.
+
