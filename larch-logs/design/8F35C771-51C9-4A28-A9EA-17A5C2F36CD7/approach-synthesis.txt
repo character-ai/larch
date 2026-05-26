@@ -1,0 +1,54 @@
+## Approach Synthesis (quick mode, 2 sketches)
+
+### Inputs
+- **Cursor-Generic**: returned EXIT_CODE=0 but produced only 195 bytes of status lines — non-substantive. Logged under External Reviewer Issues in execution-issues.md. Excluded from synthesis below.
+- **Codex-Generic**: returned a substantive 5.4KB sketch with concrete file paths, line anchors, and a complete edit list.
+
+### Where the approaches agree (one substantive sketch only)
+Only the Codex sketch contributes architectural direction. Its proposed approach aligns 1-to-1 with the user-resolved scope from Round 1 (sidecar PID file convention; SIGTERM-then-5s-grace-then-SIGKILL; opt-in via env var; all current paired callsites updated; lint-enforced; WARN on missing pid file). No re-litigation of architectural choices is implied.
+
+### Where the approaches diverge
+N/A — only one substantive sketch. No contested decisions.
+
+### Ideas incorporated from Codex sketch
+1. **Monitor-side flag**: Add `PAIRED_PID_FILE` variable in `breadcrumb-monitor.sh:17` area, parser case in the `while` block near lines 56-68, and `larch_bm_validate_path --paired-pid-file "$PAIRED_PID_FILE"` alongside lines 77-81.
+2. **Timeout-branch helper**: Insert kill helper call before `exit 4` at lines 165-168. Read single PID from file, validate non-empty positive digits, warn-and-skip on missing/empty/malformed, otherwise `kill -TERM`, wait up to 5 seconds polling `kill -0`, then `kill -KILL`.
+3. **Caller-side helper in `lib-quiet.sh`**: New Bash-3.2-safe function `larch_quiet_write_paired_pid_file` that does atomic `printf "$$"` to `$LARCH_PAIRED_PID_FILE` when set. Insert near line 185 (next to `larch_quiet_append_done_trap`).
+4. **Per-callsite insertion**: Call `larch_quiet_write_paired_pid_file` immediately after each Family B script's `larch_quiet_init` / `larch_quiet_append_done_trap` pair:
+   - `scripts/ci-wait.sh:67` (after `larch_quiet_init` + `larch_quiet_append_done_trap`)
+   - `scripts/run-step5-review.sh:13` (after `larch_quiet_append_done_trap`)
+   - `scripts/collect-agent-results.sh:184` (after `larch_quiet_init` + `larch_quiet_append_done_trap`)
+   - `scripts/dispatch-with-waterfall.sh:10`
+   - `scripts/dispatch-plan-voters.sh:11`
+   - `scripts/ship-pr.sh:2833` (after `larch_quiet_init` + `larch_quiet_append_done_trap` in `main()`)
+   - `skills/review-and-fix/scripts/review-and-fix.sh:10`
+   - `skills/implement/scripts/run-step2-dispatch.sh:85`
+   - `skills/implement/scripts/step2-implement.sh:76`
+   - Note: `scripts/step-7a.sh` is intentionally on the foreground-only branch of the linter — exclude from updates.
+5. **Linter update**: Extend `scripts/lint-foreground-markers.sh:345` (the existing `has_rb` / `has_c` block) to require both an allocation/export of `LARCH_PAIRED_PID_FILE` in the same fenced block AND a `--paired-pid-file` argument on the paired `breadcrumb-monitor.sh` invocation. Add fixtures in `scripts/test-lint-foreground-markers.sh` (~line 100 region) for missing-allocation and missing-flag cases.
+6. **SKILL.md / reference fence updates** (each paired block):
+   - `skills/implement/SKILL.md:913` (run-step2-dispatch), `:1175` and `:1232` (run-step5-review), `:1466` (ship-pr).
+   - `skills/design/SKILL.md:412` and `:444` (collect-agent-results).
+   - `skills/shared/external-reviewers.md:46`, `skills/shared/dialectic-protocol.md:262`.
+   - `skills/design/references/brainstorm.md:84` and `:113`.
+   - `skills/design/references/dialectic-execution.md:71` and `:207`.
+   - `skills/design/references/plan-review.md:93` and `:142`.
+   - `skills/research/references/research-phase.md:190`, `skills/research/references/validation-phase.md:184`.
+7. **Sibling .md updates** (per `.claude/rules/script-md-siblings.md`): `breadcrumb-monitor.md`, `lib-quiet.md`, `lint-foreground-markers.md`, and each touched `.sh` script's sibling `.md`. Codex specifically flagged `scripts/ci-wait.md:7` as currently saying "synchronous-only" — needs reconciliation with the newer Family B monitor contract.
+8. **Tests**: Add cases in `scripts/test-breadcrumb-monitor.sh` (~line 520 region) for TERM-signal-on-timeout, KILL-after-5s-grace, and missing/malformed pid-file fallback. New cases in `scripts/test-lib-quiet.sh` for the `larch_quiet_write_paired_pid_file` helper.
+
+### Item (1) — duplication audit
+Codex confirms the duplication in the OOS issue body is largely resolved: both `design_publish_breadcrumbs` and `larch_log_publish_breadcrumbs` delegate to `larch_log_publish_breadcrumbs_shared` in `lib-larch-log.sh`. Codex's reservation: do the requested quiet sweep but only consolidate exact shared behavior. The remaining manifest-writer and file-enumerator code paths in `design-log-publish.sh` appear domain-specific enough that over-sharing them would be a bigger risk than the residual duplication. Apply that judgement: re-read both scripts side-by-side, flag any line-for-line copy-paste in the plan body, but do not force-share domain-specific code.
+
+### Hard-constraint reminders (carry forward to plan)
+- Bash 3.2 portability (per `BASH_AUTHORING.md` §3).
+- `set -euo pipefail` strict mode for new helpers.
+- Every edited `.sh` has its sibling `.md` updated in the same PR (per `.claude/rules/script-md-siblings.md`).
+- New path flag must pass through `larch_bm_validate_path` (absolute, no `..`, no symlinks, under session tmpdir).
+- Linter banner literal + per-anchor comment literal are matched character-by-character; do not paraphrase.
+- All edits respect the existing `--paired-pid-file` opt-in: scripts must not fail when `LARCH_PAIRED_PID_FILE` is unset.
+
+### Failure-mode highlights
+- **PID race on slow startup**: if monitor times out before the background script reaches `larch_quiet_write_paired_pid_file`, the pid file is empty/missing. WARN-and-skip path handles this gracefully; no kill attempted.
+- **PID reuse**: a long-departed PID could be reused by another process by the time monitor sends SIGTERM. Mitigation: validate PID is a positive integer and ideally a child of the calling shell — but cross-Bash-3.2 child-process check is awkward; accept the small reuse risk as a known limitation and document it.
+- **Hang during 5-second grace**: kill-loop must use `kill -0 "$pid"` polling, not blocking `wait` (wait can't be used on non-child PIDs). 5 retries × 1s sleep.

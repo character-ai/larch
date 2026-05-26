@@ -1,0 +1,39 @@
+Reviewing the plan and codebase for the signal-lifecycle audit.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:88-89	Proposed KILL-escalation test uses `trap '' TERM; sleep 1860 &` in the test harness parent	Bash traps are not inherited by background children; `sleep` still exits on SIGTERM, so the test passes when TERM alone kills the child and never exercises the 5× `kill -0` loop or SIGKILL	Launch a TERM-ignoring child in the test body, e.g. `bash -c 'trap "" TERM; while sleep 1; do :; done' &`, write its PID to the paired file, then assert the process is gone only after ~5s (or use `kill -0` polling in the test)
+2	in_scope	important	correctness	plan.txt:10	32-byte PID read mechanism is unspecified; plan only says strip trailing newline/whitespace	Using `read` with default IFS strips leading/trailing whitespace and can mishandle values like ` 123\n`; multi-line files may be partially accepted if only trailing bytes are stripped	Specify `raw=$(head -c 32 "$PAIRED_PID_FILE" 2>/dev/null || true)` (or `dd bs=1 count=32`), then strip only trailing CR/LF/space/tab; require the full residue match `^[0-9]+$` and `(( pid > 0 ))`
+3	in_scope	important	correctness	plan.txt:10	Positive-integer rule is stated but not operationalized alongside digit-only validation	`0` or `000` matches `^[0-9]+$` but is not a positive PID; `kill -TERM 0` is dangerous/wrong on some platforms	After digit validation, require `(( pid > 0 ))` (Bash 3.2-safe); treat failure like missing/malformed file (WARN + return 0)
+4	in_scope	important	correctness	plan.txt:10	Kill-loop body is described as “poll up to 5 seconds” without a counted loop contract	An unbounded `while kill -0` loop would hang forever on a TERM-ignoring process; a sleep-then-check loop can add an extra second beyond the intended grace window	Specify exactly: `kill -TERM "$pid"`; `for _ in 1 2 3 4 5; do kill -0 "$pid" 2>/dev/null || return 0; sleep 1; done`; `kill -KILL "$pid" 2>/dev/null || true` (no namerefs/mapfile)
+5	in_scope	nit	correctness	plan.txt:10 / plan.txt:144	WARN breadcrumb text uses non-wire `larch:bc category=warn msg=...` phrasing	Implementers may print an invalid line or only `larch_err` text, so tests grepping `c=warn` on the stream fail and operators lose structured signal	Specify `emit_breadcrumb_stderr --category=warn 'paired-pid-file-missing'` when `LARCH_BREADCRUMB_STREAM` is set, else `larch_err 'WARN paired-pid-file-missing'` (category `warn` is in `larch_quiet_bc_valid_category` at scripts/lib-quiet.sh:131-135)
+6	in_scope	nit	correctness	plan.txt:144-145 vs plan.txt:16	Edge cases promise CR/LF stripping on read; helper spec says only trailing newline/whitespace	Windows-style `123\r\n` can leave a trailing `\r` that fails digit checks or mis-parses the PID	Align helper and edge-case text: strip trailing `\r`, `\n`, space, and tab in a loop or via `tr -d '\r\n'` on the 32-byte slice before validation
+7	in_scope	nit	correctness	plan.txt:16 / scripts/lib-quiet.sh:170-173	`larch_quiet_write_paired_pid_file` uses `${path}.tmp.$$` + `mv -f`, not `mktemp`	Behavior is still same-directory atomic rename (consistent with existing quiet helpers), but the plan’s “mktemp + mv” wording is misleading for implementers/docs	Keep `.tmp.$$` + `mv -f` (matches existing pattern) and fix plan/edge-case/docs to say “PID-suffixed temp + atomic mv”, not mktemp
+8	in_scope	latent	security	plan.txt:10 / scripts/breadcrumb-monitor.sh:31-54 (proposed call site)	`larch_bm_validate_path` runs at argv parse when the paired file may not exist; no re-check at signal time	TOCTOU: a symlink swapped in after validation could make `kill` target an unexpected path/PID outside the session tmpdir	Re-run `larch_bm_validate_path --paired-pid-file "$PAIRED_PID_FILE"` (or at least `[[ ! -L "$PAIRED_PID_FILE" ]] && [[ -f "$PAIRED_PID_FILE" ]]`) immediately before read/kill in `larch_bm_signal_paired_pid`
+9	in_scope	latent	integration	plan.txt:10	Grace-period signaling targets only the recorded bash PID, not a process group	Family B scripts that spawn long-lived children (e.g. `gh`, `npm`, agent CLIs) may survive monitor timeout SIGTERM to the parent shell	Document limitation in breadcrumb-monitor.md; optionally note follow-up to use `kill -TERM -"$pid"` only when same-session process-group semantics are verified safe on macOS/Linux
+10	in_scope	nit	correctness	plan.txt:88-89	TERM-on-timeout test asserts “no longer alive” but not that SIGKILL ran after grace	With a fast-exiting stand-in, the test passes even if the 5-iteration loop is broken or skipped	For test (b), use a TERM-ignoring child (finding 1) and assert wall-clock delay ≥4s before exit, or wrap the child to record signal delivery
+11	in_scope	latent	correctness	plan.txt:88	`LARCH_BM_TEST_TIMEOUT_SECONDS` is documented test-only but not scoped in the plan’s hook	Production monitor invocations could shorten the 1800s timeout if the env var leaks from a polluted environment	Consume the override only when `[[ -n "${LARCH_BM_TEST_TIMEOUT_SECONDS:-}" ]]` and an explicit companion flag is set in test harnesses, or unset the var in test setup/teardown
+
+**1. [correctness]** `plan.txt:88-89` — Proposed KILL-escalation test uses `trap '' TERM; sleep 1860 &` in the harness parent. Bash traps are not inherited by background children, so `sleep` still dies on SIGTERM and the SIGKILL path is never exercised. Revise test (b) to launch a TERM-ignoring child (e.g. `bash -c 'trap "" TERM; while sleep 1; do :; done' &`) and assert ~5s grace before the process disappears.
+
+**2. [correctness]** `plan.txt:10` — 32-byte PID read mechanism is unspecified. Specify `head -c 32` (or `dd`), strip trailing CR/LF/whitespace only, require `^[0-9]+$` and `(( pid > 0 ))`; avoid bare `read`, which strips IFS whitespace.
+
+**3. [correctness]** `plan.txt:10` — Positive-integer validation must reject `0`/`000` after digit match, not only non-empty digits.
+
+**4. [correctness]** `plan.txt:10` — Kill loop needs an explicit 5-iteration `for` with `kill -0` then `sleep 1` before SIGKILL; do not use an unbounded `while kill -0` loop.
+
+**5. [correctness]** `plan.txt:10` / `scripts/lib-quiet.sh:131-135` — WARN fallback should use `emit_breadcrumb_stderr --category=warn` (or `larch_err`), not the non-wire `larch:bc category=warn msg=...` string.
+
+**6. [correctness]** `plan.txt:144-145` vs `plan.txt:16` — Align CR/LF stripping between helper spec and edge cases for `\r\n` PID files.
+
+**7. [correctness]** `plan.txt:16` — Atomic write is `.tmp.$$` + `mv -f` (like existing quiet helpers), not `mktemp`; fix plan wording accordingly.
+
+**8. [security]** `plan.txt:10` — Re-validate paired-pid-file path (no symlink, regular file) immediately before read/kill to close TOCTOU after non-existent path passes initial validation.
+
+**9. [integration]** `plan.txt:10` — Document that SIGTERM targets only the recorded PID; child processes may orphan.
+
+**10. [correctness]** `plan.txt:88-89` — TERM test should assert grace-period timing or signal path, not only “process dead.”
+
+**11. [correctness]** `plan.txt:88` — Scope `LARCH_BM_TEST_TIMEOUT_SECONDS` to harness-only or guard it so production monitors cannot inherit a shortened timeout.
+
+**Family B `trap` audit (no finding):** Grep across denylisted scripts (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, `review-and-fix.sh`, dispatch/collect scripts) found no `trap '' TERM` / `trap - TERM`; only EXIT traps (e.g. `ci-wait.sh:171`, `collect-agent-results.sh:308`). SIGTERM should still deliver EXIT cleanup and terminate default-disposition children — it does not block the proposed grace-period poll.
+
+**[OUT_OF_SCOPE]** `scripts/ci-wait.md:7` still says synchronous-only; the plan already lists reconciling this with Family B pairing in the `ci-wait.md` update — track only if that doc edit is dropped from the PR.
