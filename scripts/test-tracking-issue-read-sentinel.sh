@@ -2,11 +2,13 @@
 # test-tracking-issue-read-sentinel.sh — regression harness for
 # scripts/tracking-issue-read.sh's --sentinel branch.
 #
-# Pins the ADOPTED= field contract defined by issue #359 for Phase 3
-# consumption: allowed values (true|false), absence semantics (empty ==
-# unusable, NEVER false), parser behavior (column-0 keys only, first
+# Pins the ISSUE_NUMBER=, RUN_ID=, and ADOPTED= field contracts defined
+# by issue #359 for Phase 3 consumption, including --issue argv
+# validation. Coverage includes allowed values, absence semantics (empty
+# == unusable, NEVER false), parser behavior (column-0 keys only, first
 # match wins, BOM stripping, trailing \r stripping, other trailing
-# whitespace preserved), and exact stdout shape on all paths.
+# whitespace preserved), and exact three-line success / failure stdout
+# envelopes on all paths.
 #
 # Structure mirrors the shared-helpers pattern of
 # scripts/test-tracking-issue-write.sh (set -euo pipefail, REPO_ROOT,
@@ -279,6 +281,7 @@ run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(p) exit 1"
 assert_contains "$LAST_STDOUT" "FAILED=true" "(p) stdout FAILED"
 assert_contains "$LAST_STDOUT" "ERROR=invalid ISSUE_NUMBER in sentinel: ISSUE_NUMBER: 'malformed-value-omitted'" "(p) stdout fixed-token error"
+assert_not_contains "$LAST_STDOUT" "abc" "(p) stdout omits malformed value"
 
 # (q) ISSUE_NUMBER=12.3 — decimal rejected
 echo "(q) ISSUE_NUMBER=12.3 — decimal reject"
@@ -286,7 +289,9 @@ F="$TMPROOT/q.md"
 printf 'ISSUE_NUMBER=12.3\nADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(q) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(q) stdout FAILED"
 assert_contains "$LAST_STDOUT" "ERROR=invalid ISSUE_NUMBER in sentinel: ISSUE_NUMBER: 'malformed-value-omitted'" "(q) stdout fixed-token error"
+assert_not_contains "$LAST_STDOUT" "12.3" "(q) stdout omits malformed value"
 
 # (r) ISSUE_NUMBER= explicit empty — pass-through remains empty
 echo "(r) ISSUE_NUMBER= explicit empty — pass-through"
@@ -329,6 +334,7 @@ printf 'ISSUE_NUMBER=42\nRUN_ID=tab\there\nADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(v) exit 1"
 assert_contains "$LAST_STDOUT" "ERROR=invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'" "(v) stdout fixed-token error"
+assert_not_contains "$LAST_STDOUT" $'tab\there' "(v) stdout omits malformed value"
 
 # (w) RUN_ID with non-trailing CR — invalid same-line byte
 echo "(w) RUN_ID with non-trailing CR — charset reject"
@@ -337,6 +343,7 @@ printf 'ISSUE_NUMBER=42\nRUN_ID=cr\rinjected\nADOPTED=true\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(w) exit 1"
 assert_contains "$LAST_STDOUT" "ERROR=invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'" "(w) stdout fixed-token error"
+assert_not_contains "$LAST_STDOUT" $'cr\rinjected' "(w) stdout omits malformed value"
 
 # (x) RUN_ID= explicit empty — pass-through remains empty
 echo "(x) RUN_ID= explicit empty — pass-through"

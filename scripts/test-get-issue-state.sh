@@ -86,32 +86,38 @@ run_script() {
 echo "(a) missing --issue"
 run_script missing --repo upstream/repo
 assert_exit "$LAST_EXIT" "1" "(a) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(a) FAILED envelope"
 assert_contains "$LAST_STDOUT" "ERROR=--issue is required" "(a) preserved missing-arg error"
 
 echo "(b) non-numeric --issue"
 run_script alpha --issue abc --repo upstream/repo
 assert_exit "$LAST_EXIT" "1" "(b) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(b) FAILED envelope"
 assert_contains "$LAST_STDOUT" "ERROR=--issue must be numeric" "(b) numeric validation"
 
 echo "(c) embedded space in --issue"
 run_script space --issue "1 2" --repo upstream/repo
 assert_exit "$LAST_EXIT" "1" "(c) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(c) FAILED envelope"
 assert_contains "$LAST_STDOUT" "ERROR=--issue must be numeric" "(c) numeric validation"
 
 echo "(d) embedded dash in --issue"
 run_script dash --issue "1-2" --repo upstream/repo
 assert_exit "$LAST_EXIT" "1" "(d) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(d) FAILED envelope"
 assert_contains "$LAST_STDOUT" "ERROR=--issue must be numeric" "(d) numeric validation"
 
 echo "(e) numeric zero reaches gh"
 run_script zero --issue 0 --repo upstream/repo
 assert_exit "$LAST_EXIT" "1" "(e) exit 1 from gh stub"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(e) FAILED envelope"
 assert_contains "$LAST_STDOUT" "ERROR=gh issue view failed: stub issue view failed" "(e) numeric zero passed validator"
 assert_not_contains "$LAST_STDOUT" "--issue must be numeric" "(e) no numeric-validation failure"
 
 echo "(f) numeric issue with gh failure"
 run_script gh_fail --issue 12 --repo upstream/repo
 assert_exit "$LAST_EXIT" "1" "(f) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(f) FAILED envelope"
 assert_contains "$LAST_STDOUT" "ERROR=gh issue view failed: stub issue view failed" "(f) gh failure envelope"
 
 echo "(g) numeric issue with gh success"
