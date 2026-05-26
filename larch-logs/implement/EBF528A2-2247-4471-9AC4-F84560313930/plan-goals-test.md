@@ -1,0 +1,223 @@
+## Goal
+Add 4-retry recovery for initial UNKNOWN mergeStateStatus in merge-pr.sh, mirroring the existing post-force-push retry pattern, with a BEHIND re-route on resolution
+
+## Implementation Plan
+## Plan
+
+
+Fix `scripts/merge-pr.sh` initial `mergeStateStatus=UNKNOWN`/empty check so it retries before bailing, mirroring (and partially sharing) the existing post-force-push retry block introduced for #2342. The fix extracts a small Bash 3.2-safe helper and refactors both call sites to use it with intentionally asymmetric retry counts (4 initial / 3 post-force-push). After the new initial retry, the code re-routes BEHIND through the early `main_advanced` exit so a transient UNKNOWN that resolves to BEHIND still produces the same outcome as a first-shot BEHIND. The sibling contract doc `scripts/merge-pr.md` is updated in the same PR to keep the script ↔ doc invariant.
+
+## Files to modify/create
+
+### UPDATED: `scripts/merge-pr.sh`
+
+Add a small private helper `retry_pr_info_unknown_recovery <max_retries>` immediately after the `refresh_pr_info()` definition (around the existing function block near line 79). The helper does not compose any user-visible error string — error wording remains owned by each call site so the byte-stable post-force-push error pinned by `scripts/test-merge-pr.sh` R2 (`^ERROR=mergeStateStatus still UNKNOWN after 3 retries post-force-push`) is unaffected by the refactor.
+
+Helper contract:
+
+- Read `max_retries` from `$1` (positional integer).
+- Loop up to `max_retries` times: `sleep 5`, then call `refresh_pr_info`. Break when `MERGE_STATE` is non-empty and not `UNKNOWN`.
+- Bash 3.2-safe positional `while` loop (no `for ((..))`, no `local -i`, no namerefs, no arrays, no `mapfile`). Pattern:
+
+  ```sh
+  retry_pr_info_unknown_recovery() {
+      local max_retries="$1"
+      local attempt=0
+      while [ "$attempt" -lt "$max_retries" ]; do
+          sleep 5
+          refresh_pr_info
+          if [ -n "$MERGE_STATE" ] && [ "$MERGE_STATE" != "UNKNOWN" ]; then
+              return 0
+          fi
+          attempt=$((attempt + 1))
+      done
+  }
+  ```
+
+- Callers MUST re-check `MERGE_STATE` after the helper returns; do NOT use `$?` to decide whether retries exhausted. The helper falls through to its implicit `return 0` on exhaustion (the last loop statement is `attempt=$((attempt + 1))` which always succeeds). Add a one-line comment above the helper noting "callers must re-check `MERGE_STATE`, not `$?`".
+
+Refactor the **initial-check** block (the existing `if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then MERGE_RESULT="error" … exit 0; fi` block immediately after the initial `refresh_pr_info` call near line 119):
+
+- Replace it with a three-stage pattern: (1) if `MERGE_STATE` is empty/UNKNOWN, call the helper with `4`; (2) if `MERGE_STATE == BEHIND` after recovery, take the same fast path as the existing first-shot BEHIND check at lines 121-124 (`MERGE_RESULT="main_advanced"; ERROR=""; exit 0`); (3) otherwise, if still empty/UNKNOWN, set `MERGE_RESULT=error` and exit. The exhaustion error string becomes `"could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\") after 4 retries"` (suffix `after 4 retries` added — the rest of the string is byte-identical to the prior wording so prose-based searches for the existing prefix continue to match).
+
+Refactor the **post-force-push** retry block (the existing `for _retry in 1 2 3; do sleep 5; refresh_pr_info; … done` block near line 219):
+
+- Replace the inline `for` loop with a single call to `retry_pr_info_unknown_recovery 3`. The surrounding `if [[ -z … || == UNKNOWN ]]; then … fi` outer guard and the subsequent re-check + error composition stay verbatim. Critical invariant: the final `ERROR="mergeStateStatus still UNKNOWN after 3 retries post-force-push (state=\"$MERGE_STATE\")"` line is unchanged byte-for-byte so sub-test R2 continues to pass. **Do not** add a parallel post-retry BEHIND re-route at this call site in this PR (OOS_1 tracks it).
+
+Do not touch other parts of `scripts/merge-pr.sh`. Do not modify `refresh_pr_info` itself (the helper relies on its globals-mutation contract). Do not change the same-version gate or the flush-recovery path — those are out of scope.
+
+### UPDATED: `scripts/merge-pr.md`
+
+Update the sibling contract doc so it reflects the new initial-path behavior (script-md-siblings rule and `merge-pr.md` edit-in-sync rule both require this in the same PR as the script change):
+
+- Enum table `error` row (~line 24): change "short-circuits with `error`" wording to describe the new retry-then-fail semantics: initial empty/UNKNOWN `mergeStateStatus` is retried 4 times with 5-second sleeps before emitting `MERGE_RESULT=error`; transient resolution continues through normal routing.
+- "Batched Discovery" section: add an initial-path subsection (parallel to the existing post-force-push UNKNOWN retry subsection at line ~58) documenting 4 retries × 5s sleeps and the new `after 4 retries` error suffix; document that a transient UNKNOWN/empty that resolves to BEHIND on retry takes the same early `main_advanced` / empty-`ERROR` exit as a first-shot BEHIND.
+- "Failure handling is unchanged" claim (~line 64): drop or qualify — initial empty/UNKNOWN startup behavior is now retry-then-fail, not immediate short-circuit. Post-force-push retry behavior remains 3 retries, unchanged.
+
+Do not modify the enum itself (the `error` token still exists), and do not add new MERGE_RESULT values.
+
+### UPDATED: `scripts/test-merge-pr.sh`
+
+Modify sub-test G (around the existing `echo "Sub-test G: empty / UNKNOWN mergeStateStatus short-circuits to error"` block near line 386) to cover the new retry behavior. Replace the existing G description line with `echo "Sub-test G: initial empty / UNKNOWN mergeStateStatus retries before treating as error"`.
+
+Four cases (replacing the existing G1/G2 immediate-error cases and adding G3/G4):
+
+- **G1 (empty persists across 5 calls → error after 4 retries)**: keep `GH_MERGE_STATE=__EMPTY__`, set `STUB_PR_HEAD_OID=aaaa1111` and `GH_VIEW_SECOND_HEAD_OID=aaaa1111` (both **literals** — do NOT use `"$STUB_PR_HEAD_OID"` because that variable has no default in the outer harness shell and the `set -euo pipefail` mode at the top of `test-merge-pr.sh` would abort on an unbound variable expansion before merge-pr.sh ever runs; the `aaaa1111` value matches the stub-internal default but is now bound in the parent shell). Also set `GH_VIEW_SECOND_MERGE_STATE=__EMPTY__` so calls 2..5 also return empty. Assertions:
+  - `MERGE_RESULT=error`
+  - `assert_stdout_matches` against `^ERROR=could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid \(state=""\) after 4 retries$` (mirror sub-test R2's anchored-regex form)
+  - `assert_command_count` `pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid` equals `5` (1 initial + 4 retries)
+  - `assert_no_merge_commands`
+- **G2 (UNKNOWN persists across 5 calls → error after 4 retries)**: same shape with `GH_MERGE_STATE=UNKNOWN` and `GH_VIEW_SECOND_MERGE_STATE=UNKNOWN`. Same four assertions; error regex becomes `^ERROR=could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid \(state="UNKNOWN"\) after 4 retries$`.
+- **G3 (UNKNOWN resolves to CLEAN on retry → admin_merged)**: parallel to existing Q sub-test. Set `GH_MERGE_STATE=UNKNOWN`, `STUB_PR_HEAD_OID=aaaa1111`, `GH_VIEW_SECOND_HEAD_OID=aaaa1111`, `GH_VIEW_SECOND_MERGE_STATE=UNKNOWN`, `GH_VIEW_FLIP_AT_CALL=3`, `GH_VIEW_FLIP_MERGE_STATE=CLEAN` so call 3 returns CLEAN. Assertions:
+  - `MERGE_RESULT=admin_merged`
+  - `assert_command_count` for `pr view …` equals `3` (1 initial + 2 retries before flip)
+  - Standard merge-command assertion that admin merge ran.
+- **G4 (UNKNOWN resolves to BEHIND on retry → main_advanced with empty ERROR)**: covers the new post-retry BEHIND re-route. Set `GH_MERGE_STATE=UNKNOWN`, `STUB_PR_HEAD_OID=aaaa1111`, `GH_VIEW_SECOND_HEAD_OID=aaaa1111`, `GH_VIEW_SECOND_MERGE_STATE=UNKNOWN`, `GH_VIEW_FLIP_AT_CALL=3`, `GH_VIEW_FLIP_MERGE_STATE=BEHIND`, plus `GH_CHECKS_JSON='[{"name":"ci","bucket":"pending"}]'` so CI is non-pass. Assertions:
+  - `MERGE_RESULT=main_advanced`
+  - `assert_stdout_contains` exactly `ERROR=` (empty `ERROR`, identical to the first-shot BEHIND fast path's emit) — substring match against `^ERROR=$` or via grep `-F` equivalent to whatever pattern is already used elsewhere in the harness for empty-ERROR assertions.
+  - `assert_no_merge_commands` (BEHIND triggers the early exit before CI re-verification reaches the merge attempt).
+  - `assert_command_count` for `pr view …` equals `3` (1 initial + 2 retries before flip; CI checks not consulted because the post-retry BEHIND guard exits first).
+
+**Why `GH_VIEW_SECOND_HEAD_OID` is set in the G fixtures**: it enables the fake-gh stub's counter-gated SECOND_MERGE_STATE and FLIP_AT_CALL response (lines 57-67 of the stub). `gh.log` records every `gh` invocation unconditionally above that gate (line 39), so `assert_command_count` does not itself depend on `GH_VIEW_SECOND_HEAD_OID` — it depends only on the calls actually happening. The head-OID variable is required strictly because G2/G3/G4 need the second-state/flip-state response paths to fire on calls 2+.
+
+Sub-tests Q (post-force-push UNKNOWN resolves) and R (post-force-push UNKNOWN persists) MUST continue to pass without modification. Their fixtures start with `GH_MERGE_STATE=CLEAN`, so the new initial-check retry helper never fires on calls 1 and 2 — the existing "5x" assertion in Q2/R3 stays correct. Do not alter Q or R.
+
+Other sub-tests (A–F, H–P) are unaffected; do not modify them.
+
+### UPDATED: `scripts/test-merge-pr.md`
+
+Update the Coverage bullet that currently reads `Empty or `UNKNOWN` merge state fails closed as `MERGE_RESULT=error`.` (around the bullet list near "Coverage"). Replace with: initial empty or `UNKNOWN` merge state retries 4 times with 5-second sleeps before failing closed as `MERGE_RESULT=error`; a transient UNKNOWN that resolves to CLEAN on retry continues to `admin_merged`; a transient UNKNOWN that resolves to BEHIND on retry takes the early `main_advanced` exit with empty `ERROR`, matching the first-shot BEHIND fast path.
+
+Adjacent prose adjusted only if needed for grammar.
+
+## Approach
+
+Minimum-scope refactor: one helper function inside `scripts/merge-pr.sh`, both call sites updated to call it with their distinct retry counts (4 initial / 3 post-force-push). The helper deliberately has no error-composition responsibility so the byte-stable R2 prose pin survives unchanged.
+
+The initial-check call site adds a post-retry BEHIND re-route so a transient UNKNOWN that resolves to BEHIND still produces the same `main_advanced` / empty-`ERROR` outcome as a first-shot BEHIND. The post-force-push call site is NOT given the parallel re-route in this PR (OOS_1 tracks that follow-up).
+
+Test harness coverage extends sub-test G with four cases that parallel and extend the existing post-force-push Q/R sub-test pair (persistent-empty + persistent-UNKNOWN failures, plus UNKNOWN→CLEAN and UNKNOWN→BEHIND recoveries), reusing the fake-gh stub's already-present `GH_VIEW_FLIP_AT_CALL` / `GH_VIEW_FLIP_MERGE_STATE` counter mechanism. Each G fixture sets `STUB_PR_HEAD_OID=aaaa1111` and `GH_VIEW_SECOND_HEAD_OID=aaaa1111` (both literals) to enable counter-gated state transitions without referencing the stub-internal default in the outer harness shell (which `set -u` at the top of `test-merge-pr.sh` would reject).
+
+The sibling contract doc `scripts/merge-pr.md` is updated in the same PR per the `.claude/rules/script-md-siblings.md` and `merge-pr.md` edit-in-sync rules. The enum itself is unchanged; only the prose describing the initial-path retry behavior is rewritten.
+
+The existing test-harness `sleep` no-op stub (`bin/sleep` written into each `case_dir` per `run_case`) keeps the new 4-retry tests fast — no real wall-clock waits.
+
+## Edge cases
+
+- **Empty vs. UNKNOWN equivalence**: The helper treats `""` (from `gh` non-zero exit, jq parse failure, or `null` mergeStateStatus per the `__EMPTY__` sentinel path) identically to `UNKNOWN`. This matches the existing post-force-push condition and the issue body's pseudocode. Either condition triggers the retry; either persisting across all retries triggers the error exit.
+- **UNKNOWN → BEHIND on retry**: handled by the new post-retry BEHIND re-route at the initial call site. Same `MERGE_RESULT=main_advanced`, empty `ERROR`, `exit 0` as a first-shot BEHIND. Test G4 covers this.
+- **UNKNOWN → CLEAN on retry**: handled by the existing flow (`MERGE_STATE` after recovery falls through to the CI re-verify + admin-eligible gate). Test G3 covers this.
+- **Helper called when `MERGE_STATE` is already valid**: The outer call-site guard (`if [[ -z … || == UNKNOWN ]]`) prevents this; the helper's first action is `sleep 5`, so an unconditional call would waste 5s on the first iteration. Callers must keep the outer guard.
+- **`max_retries=0`**: Helper is a no-op (loop body never executes). Not currently triggered by any call site, but the loop predicate handles it cleanly.
+- **`refresh_pr_info` itself fails inside the helper**: After the `gh` failure path, `MERGE_STATE` is set to `""` by `jq // ""` (line 81). The helper loop sees the empty state and keeps retrying. If all retries see the same failure, the caller composes the appropriate "after N retries" error string. The helper never aborts on inner failure.
+- **R2 prose pin**: The post-force-push call site composes its own `ERROR="mergeStateStatus still UNKNOWN after 3 retries post-force-push (state=\"$MERGE_STATE\")"`. The helper does not touch this string. Sub-test R2 (`assert_stdout_matches "^ERROR=mergeStateStatus still UNKNOWN after 3 retries post-force-push"`) continues to pass.
+- **Q/R stub-fixture stability**: Sub-tests Q and R use `GH_MERGE_STATE=CLEAN` for the first 2 calls; the new initial-check retry never fires (initial check sees CLEAN, passes through). Total call count remains 5 for both Q and R. No change required.
+- **Helper exit status**: Helper always returns 0 (the last loop statement `attempt=$((attempt + 1))` always succeeds). Callers MUST re-check `MERGE_STATE` to decide whether retries exhausted. A one-line comment above the helper documents this contract.
+
+## Failure modes
+
+1. **R2 prose drift** — accidentally rewriting the post-force-push error string while restructuring the inline loop. Earliest signal: `bash scripts/test-merge-pr.sh` fails on R2 with a regex mismatch. Mitigation: keep the existing `ERROR=…` line unchanged byte-for-byte; verify by `diff`-ing the pre/post block bodies during the edit; run the harness immediately after editing `merge-pr.sh`.
+
+2. **Bash 3.2 portability regression** — using a forbidden construct like `for ((..))` or `local -i` in the helper. Earliest signal: `make lint-bash32` flags the helper body during pre-commit. Mitigation: use the positional `while` loop pattern shown in the Approach section; run `make lint-bash32` (the canonical Bash 3.2 lint target — distinct from `relevant-checks.sh`, which `docs/linting.md` describes as `pre-commit` + `agent-lint` only) before commit.
+
+3. **G fixture `set -u` abort** — the existing harness runs under `set -euo pipefail` (line 35 of `test-merge-pr.sh`); referencing `$STUB_PR_HEAD_OID` in an outer-shell env assignment would expand to empty under `set -u` and abort the test before merge-pr.sh runs. Earliest signal: harness aborts with `STUB_PR_HEAD_OID: unbound variable` before any G case asserts. Mitigation: G1/G2/G3/G4 fixtures use literal `aaaa1111` for both `STUB_PR_HEAD_OID` and `GH_VIEW_SECOND_HEAD_OID`, matching the stub-internal default but binding them in the parent shell.
+
+4. **Missing BEHIND re-route after retry** — without the new post-retry BEHIND guard, a transient UNKNOWN that resolves to BEHIND on call 2-5 would fall through to `refresh_ci_state` and either emit `ci_not_ready` (pending CI) or pass through to the generic non-admin-eligible branch with a misleading "Branch mergeStateStatus is BEHIND" error. Earliest signal: G4 test case fails with `MERGE_RESULT=ci_not_ready` or `main_advanced` with a non-empty `ERROR`. Mitigation: include the BEHIND re-route as part of the initial-check refactor, not as a follow-up.
+
+## Testing strategy
+
+- Modify `scripts/test-merge-pr.sh` sub-test G per the per-file plan above (G1 empty persistent, G2 UNKNOWN persistent, G3 UNKNOWN→CLEAN, G4 UNKNOWN→BEHIND with pending CI).
+- Verify Q and R sub-tests continue to pass unmodified (existing 5x assertion).
+- Run `bash scripts/test-merge-pr.sh` once locally to confirm all assertions pass and `FAIL_COUNT=0`.
+- Run `make lint-bash32` to exercise the Bash 3.2 portability lint (the canonical target — `relevant-checks.sh` does NOT cover it per `docs/linting.md`).
+- Run `bash scripts/relevant-checks.sh` to cover `pre-commit` (shellcheck etc.) and `agent-lint`.
+- A full `make lint` exercises both `lint-bash32` and the harness shard that contains `test-merge-pr.sh`.
+
+## Diff size estimate
+
+- `scripts/merge-pr.sh`: helper function ~14 lines added (function body + one comment line); initial-check block restructure +8/-1 (retry call + BEHIND re-route + error-msg suffix); post-force-push block inline-loop → helper call +1/-7. Net ~30 lines changed.
+- `scripts/merge-pr.md`: enum row update ~3 lines; Batched Discovery initial-path subsection ~6 lines; "Failure handling is unchanged" wording fix ~2 lines. Net ~10 lines changed.
+- `scripts/test-merge-pr.sh`: G1/G2 update ~18 lines (literal head-OID, anchored-regex error assertions, command-count assertion); G3 new case ~20 lines; G4 new case ~22 lines. Net ~60 lines changed.
+- `scripts/test-merge-pr.md`: one-bullet coverage update ~3 lines changed.
+
+
+## Architecture Diagram
+
+```mermaid
+flowchart TD
+    subgraph mergePr["scripts/merge-pr.sh"]
+        rpi["refresh_pr_info()<br/>sets MERGE_STATE, PR_HEAD_OID"]
+        helper["retry_pr_info_unknown_recovery max_retries<br/>NEW helper<br/>sleep 5; refresh_pr_info<br/>loop until MERGE_STATE valid or budget done"]
+
+        initialCheck["Initial check<br/>after first refresh_pr_info"]
+        initialRetry["Call helper with 4"]
+        behindReroute["Post-retry BEHIND re-route<br/>NEW guard"]
+        initialError["error after 4 retries"]
+        fallThrough["fall through to CI re-verify<br/>then admin-eligible gate"]
+
+        forceCheck["Post-force-push check<br/>existing path"]
+        forceRetry["Call helper with 3"]
+        forceError["error after 3 retries<br/>R2 prose pin"]
+
+        rpi --> initialCheck
+        initialCheck -->|empty or UNKNOWN| initialRetry
+        initialCheck -->|CLEAN UNSTABLE BLOCKED HAS_HOOKS| fallThrough
+        initialCheck -->|BEHIND first shot| mainAdvancedFast["main_advanced<br/>empty ERROR"]
+        initialRetry --> helper
+        helper -. mutates MERGE_STATE .-> initialRetry
+        initialRetry --> behindReroute
+        behindReroute -->|MERGE_STATE = BEHIND| mainAdvancedFast
+        behindReroute -->|still empty or UNKNOWN| initialError
+        behindReroute -->|other valid state| fallThrough
+
+        forceCheck -->|empty or UNKNOWN| forceRetry
+        forceRetry --> helper
+        forceRetry --> forceError
+    end
+
+    subgraph tests["scripts/test-merge-pr.sh"]
+        g1["G1 empty persists -> error"]
+        g2["G2 UNKNOWN persists -> error"]
+        g3["G3 UNKNOWN -> CLEAN -> admin_merged"]
+        g4["G4 UNKNOWN -> BEHIND -> main_advanced<br/>NEW post-retry guard coverage"]
+        qr["Q R existing post-force-push<br/>unchanged"]
+    end
+
+    subgraph docs["sibling contract docs"]
+        mergePrMd["scripts/merge-pr.md<br/>enum error row<br/>Batched Discovery initial subsection"]
+        testMd["scripts/test-merge-pr.md<br/>Coverage bullet"]
+    end
+
+    mergePr -. validated by .-> tests
+    mergePr -. documented by .-> mergePrMd
+    tests -. documented by .-> testMd
+
+    classDef new fill:#fff4cc,stroke:#b48a00,color:#3b2c00
+    class helper,behindReroute,g3,g4 new
+```
+
+## Acceptance
+
+- `scripts/merge-pr.sh` defines a new helper `retry_pr_info_unknown_recovery <max_retries>` placed after `refresh_pr_info()`; both the initial check (4 retries) and the existing post-force-push check (3 retries) call the helper. The helper uses a Bash 3.2-safe positional `while` loop (no `for ((..))`, no `local -i`, no namerefs, no arrays, no `mapfile`).
+- Initial-check failure error string contains the suffix `after 4 retries` and matches the prefix `could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state="..."`).
+- Post-force-push failure error string remains byte-identical to the existing `mergeStateStatus still UNKNOWN after 3 retries post-force-push (state="...")` — sub-test R2 anchored-regex assertion continues to match.
+- After a successful initial retry recovery, if `MERGE_STATE == BEHIND`, the script exits early with `MERGE_RESULT=main_advanced` and empty `ERROR`, matching the first-shot BEHIND fast path.
+- `scripts/merge-pr.md` enum-table `error` row and Batched Discovery prose are updated to describe the new initial 4×5s retry behavior; the "Failure handling is unchanged" claim is dropped or qualified.
+- `scripts/test-merge-pr.sh` sub-test G now has four cases (G1 empty persistent, G2 UNKNOWN persistent, G3 UNKNOWN→CLEAN, G4 UNKNOWN→BEHIND); each G fixture sets both `STUB_PR_HEAD_OID=aaaa1111` and `GH_VIEW_SECOND_HEAD_OID=aaaa1111` as literals (no `$STUB_PR_HEAD_OID` expansion under `set -u`).
+- G1/G2 use anchored-regex assertions (`assert_stdout_matches`) mirroring sub-test R2 for the new error suffix; G1/G2 assert `gh pr view` call count equals 5; G3 asserts call count equals 3 with `MERGE_RESULT=admin_merged`; G4 asserts call count equals 3 with `MERGE_RESULT=main_advanced` and empty `ERROR`.
+- Sub-tests Q and R continue to pass unmodified (their fixtures start with `GH_MERGE_STATE=CLEAN`; existing "5x" assertion remains valid).
+- `scripts/test-merge-pr.md` Coverage bullet is updated to describe the new retry behavior including UNKNOWN→CLEAN and UNKNOWN→BEHIND recovery cases.
+- `bash scripts/test-merge-pr.sh` passes with `FAIL_COUNT=0`.
+- `make lint-bash32` passes (Bash 3.2 portability target — distinct from `relevant-checks.sh`).
+- `bash scripts/relevant-checks.sh` passes (covers `pre-commit` + `agent-lint`).
+
+## Out-of-scope follow-ups (filed)
+
+- [OOS_1] [Post-force-push UNKNOWN retry has the same missing BEHIND re-check](https://github.com/character-ai/larch/issues/2911) — symmetric correctness gap for the other call site; deferred to a separate PR to keep this one minimal.
+- [OOS_2] [Retry counts (4 vs 3) hard-coded without named constants](https://github.com/character-ai/larch/issues/2912) — readability/maintenance nit.
+- [OOS_3] [test-merge-pr.sh missing G case for transient empty resolving to CLEAN](https://github.com/character-ai/larch/issues/2913) — symmetric coverage to G3 (UNKNOWN→CLEAN).
+
+diff_lines: 105
+
+## Test plan
+(no test plan section in plan-file)
