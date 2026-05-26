@@ -448,6 +448,12 @@ run_subject_raw_rc() {
     set -e
 }
 
+run_subject_in_repo_real_git() {
+    local repo=$1
+    shift
+    (cd "$repo" && PATH="/usr/bin:/bin:$SANDBOX/bin:$PATH" "$SANDBOX/scripts/implement-finalize.sh" "$@") 2>&1 | normalize_elapsed
+}
+
 build_sandbox
 trap 'rm -rf "$SANDBOX"' EXIT
 
@@ -896,6 +902,47 @@ assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: flat 
 awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
     "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/blank-check.txt"
 assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check.txt" "postbump: changelog has no consecutive blank lines"
+
+real_repo="$SANDBOX/real-postbump-repo"
+mkdir -p "$real_repo/.claude-plugin"
+git -C "$real_repo" init -q -b main
+git -C "$real_repo" config user.email test@test.com
+git -C "$real_repo" config user.name Test
+cat > "$real_repo/.claude-plugin/plugin.json" <<'JSON'
+{"version":"17.0.3"}
+JSON
+cp "$SANDBOX/original-CHANGELOG.md" "$real_repo/CHANGELOG.md"
+git -C "$real_repo" add .claude-plugin/plugin.json CHANGELOG.md
+git -C "$real_repo" commit -q -m "Initial commit"
+cat > "$real_repo/.claude-plugin/plugin.json" <<'JSON'
+{"version":"17.0.4"}
+JSON
+git -C "$real_repo" add .claude-plugin/plugin.json
+git -C "$real_repo" commit -q -m "Bump version to 17.0.4"
+cp "$SANDBOX/scripts/commit-changelog.sh" "$SANDBOX/scripts/commit-changelog.sh.stub"
+cp "$SCRIPT_DIR/commit-changelog.sh" "$SANDBOX/scripts/commit-changelog.sh"
+cp "$SCRIPT_DIR/git-commit.sh" "$SANDBOX/scripts/git-commit.sh"
+chmod +x "$SANDBOX/scripts/commit-changelog.sh" "$SANDBOX/scripts/git-commit.sh"
+POSTBUMP_STATE_REAL="$SANDBOX/tmp/postbump-state-real.sh"
+mkdir -p "$SANDBOX/tmp-real"
+write_postbump_state "$POSTBUMP_STATE_REAL" \
+    "BUMP_REASONING_FILE=$SANDBOX/tmp-real/larch-log-batches-input/version-bump-reasoning-sanitized.md" \
+    "MANIFEST_PATH=$SANDBOX/tmp-real/manifest.json"
+OUT=$(run_subject_in_repo_real_git "$real_repo" postbump --state-file "$POSTBUMP_STATE_REAL" --implement-tmpdir "$SANDBOX/tmp-real")
+assert_contains "STATUS=ok" "$OUT" "postbump: real git happy path status ok"
+real_log_subject_1=$(git -C "$real_repo" log -1 --format=%s)
+real_log_subject_2=$(git -C "$real_repo" log -2 --format=%s | sed -n '2p')
+if [ "$real_log_subject_1" = "Update CHANGELOG for 17.0.4" ] &&
+   [ "$real_log_subject_2" = "Bump version to 17.0.4" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: real git leaves separate CHANGELOG-over-bump commits"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: postbump: expected separate CHANGELOG-over-bump commits"
+    git -C "$real_repo" log --oneline --max-count=5 | sed 's/^/    /'
+fi
+mv "$SANDBOX/scripts/commit-changelog.sh.stub" "$SANDBOX/scripts/commit-changelog.sh"
+rm -f "$SANDBOX/scripts/git-commit.sh"
 
 # Double-blank-line regression: a reasoning file with consecutive blank lines
 # must produce a batch input file with no consecutive blank lines (MD012 guard).

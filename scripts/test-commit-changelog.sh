@@ -46,6 +46,7 @@ setup_repo "$repo"
 printf '\n- New fix.\n' >> "$repo/CHANGELOG.md"
 out=$(cd "$repo" && run_subject --version 1.2.3)
 if printf '%s\n' "$out" | grep -q '^COMMITTED=true$' &&
+    printf '%s\n' "$out" | grep -q '^COMMIT_SHA=[0-9a-f]\{7,40\}$' &&
     [ "$(git -C "$repo" log -1 --format=%s)" = "Update CHANGELOG for 1.2.3" ] &&
     [ "$(git -C "$repo" diff-tree --no-commit-id --name-only -r HEAD)" = "CHANGELOG.md" ]; then
     ok
@@ -112,6 +113,31 @@ if printf '%s\n' "$out" | grep -q '^COMMITTED=true$' &&
     ok
 else
     fail "replaces-version did not retitle stale entry: $out"
+fi
+
+# Test 8: --replaces-version missing old heading inserts a fresh section.
+repo="$TMPDIR_BASE/test8"
+setup_repo "$repo"
+cat > "$repo/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [Unreleased]
+
+## [1.2.1] - 2025-12-31
+
+### Fixed
+
+- Older fix.
+CHANGELOG
+git -C "$repo" add CHANGELOG.md
+git -C "$repo" commit -q -m "Resolve changelog conflict"
+out=$(cd "$repo" && run_subject --version 1.2.3 --replaces-version 9.9.9)
+if printf '%s\n' "$out" | grep -q '^COMMITTED=true$' &&
+    grep -q '^## \[1.2.3\] - ' "$repo/CHANGELOG.md" &&
+    ! grep -q '^## \[9.9.9\] - ' "$repo/CHANGELOG.md"; then
+    ok
+else
+    fail "missing replaces-version heading should insert a fresh section: $out"
 fi
 
 total=$((PASS + FAIL))

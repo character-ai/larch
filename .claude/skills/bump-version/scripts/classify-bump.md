@@ -4,7 +4,7 @@
 
 ## Idempotency
 
-The classifier treats the branch as already bumped when the idempotency head is a `Bump version to X.Y.Z` commit. Before checking that subject, it walks past up to three transparent `Update CHANGELOG for X.Y.Z` commits so the new separate CHANGELOG commit shape still reports `BUMP_TYPE=NONE` instead of attempting a duplicate bump.
+The classifier treats the branch as already bumped when the idempotency head is a `Bump version to X.Y.Z` commit. Before checking that subject, it walks past up to three transparent commits from the bump pipeline: `Update CHANGELOG for X.Y.Z` commits that touch only `CHANGELOG.md`, and `chore(larch-logs): ...` commits that touch only `larch-logs/**`. Subject matches alone are not trusted.
 
 ## Edit-in-sync
 

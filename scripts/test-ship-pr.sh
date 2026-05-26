@@ -2533,6 +2533,26 @@ printf '%s' "$?" > "$tmp/rc-rebump-invalid"
 set -e
 assert_rc "$tmp/rc-rebump-invalid" 4 "run_rebase_rebump rejects invalid classify-bump semver output"
 
+root=$(make_repo rebump_drop_false_stalls)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-drop-false.XXXXXX)"
+cat > "$root/scripts/drop-bump-commit.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "DROPPED=false"
+exit 0
+STUB
+chmod +x "$root/scripts/drop-bump-commit.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-drop-false" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-drop-false"
+set -e
+assert_rc "$tmp/rc-rebump-drop-false" 4 "run_rebase_rebump stalls when drop-bump returns DROPPED=false"
+
 root=$(make_repo rebump_reasoning_fallback_log)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-fallback.XXXXXX)
@@ -4191,6 +4211,133 @@ if [[ ! -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
 else
     fail "resume flag should be removed after successful run_rebase_rebump"
 fi
+
+# phase14 resume with real commit-changelog.sh: verifies separate bump+CHANGELOG commit shape
+# after resume (acceptance criterion #5 for issue #2852).
+root=$(make_repo ship_pr_phase14_changelog_shape)
+tmp=$(make_tmpdir)
+# Seed bump+CHANGELOG history on the feature branch.
+mkdir -p "$root/.claude-plugin"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.2"}
+JSON
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add .claude-plugin/plugin.json CHANGELOG.md
+git -C "$root" commit -q -m "Prepare version fixtures"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.3"}
+JSON
+git -C "$root" add .claude-plugin/plugin.json
+git -C "$root" commit -q -m "Bump version to 1.2.3"
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.3] - 2026-01-01
+
+### Fixed
+
+- Feature change.
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add CHANGELOG.md
+git -C "$root" commit -q -m "Update CHANGELOG for 1.2.3"
+# Install real helpers for the bump commit shape path.
+_install_rebump_dep_stubs "$root"
+cp "$REPO_ROOT/scripts/drop-bump-commit.sh" "$root/scripts/drop-bump-commit.sh"
+cp "$REPO_ROOT/scripts/commit-changelog.sh" "$root/scripts/commit-changelog.sh"
+cp "$REPO_ROOT/scripts/git-commit.sh" "$root/scripts/git-commit.sh"
+chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/commit-changelog.sh" "$root/scripts/git-commit.sh"
+# Stub classify-bump and apply-bump to produce deterministic fresh commits.
+mkdir -p "$root/.claude/skills/bump-version/scripts"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+printf '# reasoning\n' > "$reasoning_file"
+echo "CURRENT_VERSION=1.2.3"
+echo "NEW_VERSION=1.2.4"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+new_version=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in --new-version) new_version=$2; shift 2 ;; *) shift ;; esac
+done
+printf '{"version":"%s"}\n' "$new_version" > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to $new_version"
+echo "APPLIED=true"
+echo "COMMIT_SHA=$(git rev-parse HEAD)"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
+         "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+# Stubs for rebase and CI sequencing.
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in *--keep-on-conflict*) printf 'CONFLICT_FILES=Makefile\n'; exit 1 ;; *) exit 0 ;; esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/git-sync-local-main.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$root/scripts/git-sync-local-main.sh"
+cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$root/scripts/refresh-run-logs.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$tmp/ci-wait-phase14-changelog-shape.seq"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+: >"$tmp/execution-issues.md"
+rm -f "$tmp/ci-wait-phase14-changelog-shape.seq"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-cls-first"
+assert_rc "$tmp/rc-cls-first" 4 "phase14 changelog-shape: first leg stalls (rc 4)"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-cls-second" --resume-phase ship-pr-rrr-phase14
+assert_rc "$tmp/rc-cls-second" 0 "phase14 changelog-shape: resume leg exits 0"
+cls_subjects=$(git -C "$root" log --format=%s)
+if [[ "$cls_subjects"$'\n' == *$'Bump version to 1.2.4\n'* ]] &&
+   [[ "$cls_subjects"$'\n' == *$'Update CHANGELOG for 1.2.4\n'* ]] &&
+   ! grep -q '^## \[1.2.3\] - ' "$root/CHANGELOG.md" &&
+   grep -q '^## \[1.2.4\] - ' "$root/CHANGELOG.md"; then
+    ok "phase14 changelog-shape: fresh bump+CHANGELOG commits after resume, stale entry removed"
+else
+    fail "phase14 changelog-shape: missing fresh bump or CHANGELOG entry after resume"
+    git -C "$root" log --oneline --max-count=8 | sed 's/^/    log: /' || true
+    sed 's/^/    changelog: /' "$root/CHANGELOG.md" | head -n 20 || true
+fi
+
 fi  # end section: phase14
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then

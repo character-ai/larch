@@ -23,6 +23,64 @@ larch_quiet_init
 VERSION=""
 REPLACES_VERSION=""
 
+insert_version_heading() {
+    local version=$1 tmp=$2 today
+    today=$(date +%Y-%m-%d)
+    awk -v version="$version" -v today="$today" '
+        BEGIN {
+            inserted = 0
+            has_unreleased = 0
+            in_unreleased = 0
+        }
+        FNR == NR {
+            if (/^## \[Unreleased\]/) has_unreleased = 1
+            next
+        }
+        /^## \[Unreleased\]/ {
+            print
+            in_unreleased = 1
+            next
+        }
+        in_unreleased && /^## \[/ {
+            in_unreleased = 0
+            if (!inserted) {
+                print ""
+                print "## [" version "] - " today
+                inserted = 1
+            }
+            print
+            next
+        }
+        in_unreleased {
+            print
+            next
+        }
+        !has_unreleased && /and this project adheres to \[Semantic Versioning\]/ {
+            print
+            if (!inserted) {
+                print ""
+                print "## [" version "] - " today
+                inserted = 1
+            }
+            next
+        }
+        !inserted && /^## \[/ {
+            print "## [" version "] - " today
+            print ""
+            inserted = 1
+        }
+        { print }
+        END {
+            if (in_unreleased && !inserted) {
+                print ""
+                print "## [" version "] - " today
+                inserted = 1
+            }
+            if (!inserted) exit 3
+        }
+    ' CHANGELOG.md CHANGELOG.md > "$tmp"
+}
+
 emit_no_commit() {
     emit_kv COMMITTED false
     [ $# -gt 0 ] && emit_kv ERROR "$1"
@@ -108,14 +166,21 @@ if [ -n "$REPLACES_VERSION" ] && [ "$REPLACES_VERSION" != "$VERSION" ]; then
     set -e
     if [ "$rc" -eq 0 ]; then
         mv "$tmp" CHANGELOG.md
+    elif [ "$rc" -eq 3 ]; then
+        insert_version_heading "$VERSION" "$tmp"
+        mv "$tmp" CHANGELOG.md
     else
         rm -f "$tmp"
         emit_no_commit "replaces-version not found: $REPLACES_VERSION"
-        exit 0
+        exit 1
     fi
 fi
 
 if git diff --quiet -- CHANGELOG.md && git diff --cached --quiet -- CHANGELOG.md; then
+    if [ -n "$REPLACES_VERSION" ] && [ "$REPLACES_VERSION" != "$VERSION" ]; then
+        emit_no_commit "no changelog changes produced for replaces-version path"
+        exit 1
+    fi
     emit_kv COMMITTED false
     exit 0
 fi

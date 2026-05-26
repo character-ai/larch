@@ -561,27 +561,14 @@ collect_changelog_bullets() {
 }
 
 write_changelog_entry() {
-    local version=$1 categories_file=$2 output=$3 today tmp replaces_version=""
-    shift 3
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            --replaces-version)
-                [ "$#" -ge 2 ] || return 2
-                replaces_version=$2
-                shift 2
-                ;;
-            *)
-                return 2
-                ;;
-        esac
-    done
+    local version=$1 categories_file=$2 output=$3 today tmp
     today=$(date +%Y-%m-%d)
     tmp="$output.entry.$$"
     {
         printf '## [%s] - %s\n\n' "$version" "$today"
         cat "$categories_file"
     } > "$tmp"
-    awk -v version="$version" -v entry="$tmp" -v replaces_version="$replaces_version" '
+    awk -v version="$version" -v entry="$tmp" '
         BEGIN {
             while ((getline line < entry) > 0) e[++en] = line
             close(entry)
@@ -591,7 +578,6 @@ write_changelog_entry() {
             in_unreleased = 0
             match_count = 0
             entry_from_version_match = 0
-            stale_skipping = 0
         }
         FNR == NR {
             if (/^## \[Unreleased\]/) has_unreleased = 1
@@ -609,16 +595,6 @@ write_changelog_entry() {
                 entry_from_version_match = 1
             }
             skipping = 1
-            next
-        }
-        replaces_version != "" && $0 ~ "^## \\[" replaces_version "\\] - " {
-            stale_skipping = 1
-            next
-        }
-        stale_skipping && /^## \[/ {
-            stale_skipping = 0
-        }
-        stale_skipping {
             next
         }
         skipping && /^## \[/ {

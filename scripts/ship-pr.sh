@@ -527,10 +527,13 @@ ship_pr_commit_changelog_after_rebump() {
     set +e
     printf '%s\n' "$commit_out" >> "$fail_file"
     if [ "$commit_rc" -ne 0 ]; then
-        printf 'WARN: run_rebase_rebump: commit-changelog.sh failed; continuing without blocking re-bump push\n' >> "$fail_file"
+        printf 'ERROR: run_rebase_rebump: commit-changelog.sh failed after re-bump\n' >> "$fail_file"
+        return 1
     elif [ "$(kv_value COMMITTED "$commit_out")" = "false" ]; then
-        printf 'WARN: run_rebase_rebump: commit-changelog.sh made no CHANGELOG commit after re-bump\n' >> "$fail_file"
+        printf 'ERROR: run_rebase_rebump: commit-changelog.sh made no CHANGELOG commit after re-bump\n' >> "$fail_file"
+        return 1
     fi
+    return 0
 }
 
 capture_command_output() {
@@ -2387,7 +2390,10 @@ _run_rebase_rebump_from_step3() {
                 record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
-            ship_pr_commit_changelog_after_rebump "$new_version" "$fail_file"
+            if ! ship_pr_commit_changelog_after_rebump "$new_version" "$fail_file"; then
+                record_failure rebase "commit-changelog.sh" 1 "$fail_file" "CI Issues"
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
             pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
             if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
                 gh pr edit "$pr_n" --repo "$repo_r" \
@@ -2479,7 +2485,17 @@ run_rebase_rebump() {
     rc=$?
     printf '%s\n' "$drop_out" >> "$fail_file"
     ship_pr_record_old_bump_version "$(kv_value OLD_BUMP_SHA "$drop_out")"
-    [ "$rc" -eq 0 ] || record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
+    if [ "$rc" -ne 0 ]; then
+        record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
+    elif [ "$(kv_value DROPPED "$drop_out")" = "false" ]; then
+        # drop-bump was a no-op: a stale bump commit may still be on the branch.
+        # Continuing would let classify-bump return NONE and force-push without
+        # a fresh bump — the silent #2852 failure class. Stall so the operator
+        # can inspect and manually reset the bump commit.
+        printf 'run_rebase_rebump: drop-bump-commit returned DROPPED=false; stalling to prevent silent stale-bump push\n' > "$fail_file"
+        record_failure rebase "drop-bump-commit.sh DROPPED=false" 1 "$fail_file" "CI Issues"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fi
 
     run_id=$(read_state RUN_ID)
 

@@ -750,6 +750,15 @@ exclude = [
   "scripts/commit-changelog.md",
   "scripts/test-commit-changelog.sh",
   "scripts/test-commit-changelog.md",
+  # scripts/test-classify-bump.sh is a thin wrapper that delegates to the
+  # actual harness at .claude/skills/bump-version/scripts/test-classify-bump.sh.
+  # Referenced from Makefile (test-classify-bump target in test-harnesses-10)
+  # and its sibling docs. Covers classify-bump.sh CHANGELOG idempotency walk
+  # (acceptance criterion #6, issue #2852).
+  "scripts/test-classify-bump.sh",
+  "scripts/test-classify-bump.md",
+  ".claude/skills/bump-version/scripts/test-classify-bump.sh",
+  ".claude/skills/bump-version/scripts/test-classify-bump.md",
   # scripts/test-ci-wait-exit-trap.sh is the regression harness for
   # scripts/ci-wait.sh's EXIT-trap-writes-.done behavior under SIGTERM and
   # the backward-compat default-mode (stdout) contract. Closes #842 (leaked

@@ -7,7 +7,7 @@
 - Requires `--version X.Y.Z`; accepts optional `--replaces-version X.Y.Z`.
 - The commit subject MUST NOT match `^Bump version to [0-9]+\.[0-9]+\.[0-9]+$`.
 - The tracked worktree may be clean or dirty only for `CHANGELOG.md`; untracked files are ignored.
-- If `--replaces-version` is present, the helper rewrites the matching old version heading to the new version before committing. If the old heading is absent, it emits `COMMITTED=false` and exits 0.
+- If `--replaces-version` is present, the helper rewrites the matching old version heading to the new version before committing. If the old heading is absent because a conflict resolver dropped the stale section, the helper inserts a fresh `## [<version>] - <today>` heading in the normal release-entry slot and still commits. Other rewrite failures still emit `COMMITTED=false` plus `ERROR=...` and exit 1.
 - If `CHANGELOG.md` has no staged or unstaged delta, it emits `COMMITTED=false` and exits 0.
 - Commits are created through `scripts/git-commit.sh -m "Update CHANGELOG for <version>" --only CHANGELOG.md`.
 
