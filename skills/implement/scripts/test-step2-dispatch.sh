@@ -1339,6 +1339,59 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test M1b: same malformed-manifest recovery path on cursor preserves
+# RECOVERY_PRIOR_TOOL=cursor.
+# ---------------------------------------------------------------------------
+TMPM1B="$SCRATCH/testM1b"; mkdir -p "$TMPM1B"
+SCRATCH_REPOM1B="$SCRATCH/scratch-repo-M1b"
+mkdir -p "$SCRATCH_REPOM1B"
+git -C "$SCRATCH_REPOM1B" init -q -b main
+git -C "$SCRATCH_REPOM1B" config user.email "test@example.com"
+git -C "$SCRATCH_REPOM1B" config user.name "Test"
+printf 'initial\n' > "$SCRATCH_REPOM1B/README.md"
+git -C "$SCRATCH_REPOM1B" add README.md
+git -C "$SCRATCH_REPOM1B" commit -q -m "init"
+
+STUBM1B="$SCRATCH/stub-bin-M1b"; mkdir -p "$STUBM1B"
+cat > "$STUBM1B/cursor" <<'STUBM1B_CURSOR'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+printf 'recovered edit\n' >> "$PWD/README.md"
+cat > "$STUB_MANIFEST_PATH.tmp" <<'JSON'
+{"status":"complete","summary":"done","checks":"ok"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf 'stub cursor stdout\n'
+STUBM1B_CURSOR
+chmod +x "$STUBM1B/cursor"
+
+OUT_M1B=$(cd "$SCRATCH_REPOM1B" && \
+    PATH="$STUBM1B:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STUB_MANIFEST_PATH="$TMPM1B/manifest.json" \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMPM1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+RECOVERY_FILE_M1B=$(printf '%s\n' "$OUT_M1B" | awk -F= '$1=="RECOVERY_PATHS_FILE"{print $2; exit}')
+if assert_recovery_envelope "$OUT_M1B" cursor \
+   && [[ -s "$RECOVERY_FILE_M1B" ]] \
+   && python3 - "$RECOVERY_FILE_M1B" <<'PY'
+import sys
+paths = [p.decode() for p in open(sys.argv[1], "rb").read().split(b"\0") if p]
+sys.exit(0 if paths == ["README.md"] else 1)
+PY
+then
+    pass
+else
+    fail M1b "cursor malformed manifest with edit should recover; out=$OUT_M1B recovery_file=$RECOVERY_FILE_M1B"
+fi
+
+# ---------------------------------------------------------------------------
 # Test M2: same malformed manifest with no post-launch delta stays bailed.
 # ---------------------------------------------------------------------------
 TMPM2="$SCRATCH/testM2"; mkdir -p "$TMPM2"
@@ -1448,6 +1501,174 @@ if [[ "$OUT_M16" == *"STATUS=bailed"* ]] \
     pass
 else
     fail M16 "prelaunch staged content should block recovery; out=$OUT_M16 flag=$(cat "$TMPM16/step2-prelaunch-index.env" 2>/dev/null)"
+fi
+
+# ---------------------------------------------------------------------------
+# Test M17: rename/copy porcelain rows recover the destination path, not the
+# deleted source path.
+# ---------------------------------------------------------------------------
+TMPM17="$SCRATCH/testM17"; mkdir -p "$TMPM17"
+SCRATCH_REPOM17="$SCRATCH/scratch-repo-M17"
+mkdir -p "$SCRATCH_REPOM17"
+git -C "$SCRATCH_REPOM17" init -q -b main
+git -C "$SCRATCH_REPOM17" config user.email "test@example.com"
+git -C "$SCRATCH_REPOM17" config user.name "Test"
+printf 'initial\n' > "$SCRATCH_REPOM17/README.md"
+git -C "$SCRATCH_REPOM17" add README.md
+git -C "$SCRATCH_REPOM17" commit -q -m "init"
+
+STUBM17="$SCRATCH/stub-bin-M17"; mkdir -p "$STUBM17"
+cat > "$STUBM17/codex" <<'STUBM17_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+git mv README.md RENAMED.md
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{"status":"complete","summary":"done","checks":"ok"}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUBM17_CODEX
+chmod +x "$STUBM17/codex"
+
+OUT_M17=$(cd "$SCRATCH_REPOM17" && \
+    PATH="$STUBM17:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMPM17/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMPM17" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+RECOVERY_FILE_M17=$(printf '%s\n' "$OUT_M17" | awk -F= '$1=="RECOVERY_PATHS_FILE"{print $2; exit}')
+if assert_recovery_envelope "$OUT_M17" codex \
+   && [[ -s "$RECOVERY_FILE_M17" ]] \
+   && python3 - "$RECOVERY_FILE_M17" <<'PY'
+import sys
+paths = [p.decode() for p in open(sys.argv[1], "rb").read().split(b"\0") if p]
+sys.exit(0 if paths == ["RENAMED.md"] else 1)
+PY
+then
+    pass
+else
+    fail M17 "rename recovery should preserve destination path; out=$OUT_M17 recovery_file=$RECOVERY_FILE_M17"
+fi
+
+# ---------------------------------------------------------------------------
+# Test M18: prelaunch recovery baseline persists across --answers resumes so a
+# later malformed-manifest recovery still includes earlier uncommitted edits.
+# ---------------------------------------------------------------------------
+TMPM18="$SCRATCH/testM18"; mkdir -p "$TMPM18"
+SCRATCH_REPOM18="$SCRATCH/scratch-repo-M18"
+mkdir -p "$SCRATCH_REPOM18"
+git -C "$SCRATCH_REPOM18" init -q -b main
+git -C "$SCRATCH_REPOM18" config user.email "test@example.com"
+git -C "$SCRATCH_REPOM18" config user.name "Test"
+printf 'initial\n' > "$SCRATCH_REPOM18/README.md"
+git -C "$SCRATCH_REPOM18" add README.md
+git -C "$SCRATCH_REPOM18" commit -q -m "init"
+
+STUBM18="$SCRATCH/stub-bin-M18"; mkdir -p "$STUBM18"
+cat > "$STUBM18/codex" <<'STUBM18_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+: "${STEP2_STATE_FILE:?}"
+prompt="${!#}"
+qa_path=$(printf '%s\n' "$prompt" | awk '/Write qa-pending.json \(atomically, only if status=needs_qa\) at: /{sub(/^.* at: /,""); print; exit}')
+if [[ ! -f "$STEP2_STATE_FILE" ]]; then
+    printf 'round1\n' > "$PWD/A.txt"
+    cat > "$qa_path.tmp" <<'JSON'
+{"questions":[{"id":"q1","text":"continue?"}]}
+JSON
+    mv "$qa_path.tmp" "$qa_path"
+    cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{"schema_version":1,"status":"needs_qa","needs_qa":{"questions":[{"id":"q1","text":"continue?"}]}}
+JSON
+    mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+    touch "$STEP2_STATE_FILE"
+else
+    printf 'round2\n' > "$PWD/B.txt"
+    cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{"status":"complete","summary":"done","checks":"ok"}
+JSON
+    mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+fi
+printf 'stub codex stdout\n'
+STUBM18_CODEX
+chmod +x "$STUBM18/codex"
+
+OUT_M18_QA=$(cd "$SCRATCH_REPOM18" && \
+    PATH="$STUBM18:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMPM18/manifest.json" \
+    STEP2_STATE_FILE="$TMPM18/state" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMPM18" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+printf '{"answers":[{"id":"q1","text":"yes"}]}\n' > "$TMPM18/answers.json"
+OUT_M18_RECOVERY=$(cd "$SCRATCH_REPOM18" && \
+    PATH="$STUBM18:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMPM18/manifest.json" \
+    STEP2_STATE_FILE="$TMPM18/state" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMPM18" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex --answers "$TMPM18/answers.json" 2>&1)
+RECOVERY_FILE_M18=$(printf '%s\n' "$OUT_M18_RECOVERY" | awk -F= '$1=="RECOVERY_PATHS_FILE"{print $2; exit}')
+if [[ "$OUT_M18_QA" == *"STATUS=needs_qa"* ]] \
+   && assert_recovery_envelope "$OUT_M18_RECOVERY" codex \
+   && [[ -s "$RECOVERY_FILE_M18" ]] \
+   && python3 - "$RECOVERY_FILE_M18" <<'PY'
+import sys
+paths = [p.decode() for p in open(sys.argv[1], "rb").read().split(b"\0") if p]
+sys.exit(0 if paths == ["A.txt", "B.txt"] else 1)
+PY
+then
+    pass
+else
+    fail M18 "answers resume should preserve round-1 recovery baseline; qa=$OUT_M18_QA recovery=$OUT_M18_RECOVERY recovery_file=$RECOVERY_FILE_M18"
+fi
+
+# ---------------------------------------------------------------------------
+# Test M19: non-v1 schema_version must hard-bail instead of entering malformed
+# manifest recovery, even when post-launch edits exist.
+# ---------------------------------------------------------------------------
+TMPM19="$SCRATCH/testM19"; mkdir -p "$TMPM19"
+SCRATCH_REPOM19="$SCRATCH/scratch-repo-M19"
+mkdir -p "$SCRATCH_REPOM19"
+git -C "$SCRATCH_REPOM19" init -q -b main
+git -C "$SCRATCH_REPOM19" config user.email "test@example.com"
+git -C "$SCRATCH_REPOM19" config user.name "Test"
+printf 'initial\n' > "$SCRATCH_REPOM19/README.md"
+git -C "$SCRATCH_REPOM19" add README.md
+git -C "$SCRATCH_REPOM19" commit -q -m "init"
+
+STUBM19="$SCRATCH/stub-bin-M19"; mkdir -p "$STUBM19"
+cat > "$STUBM19/codex" <<'STUBM19_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+printf 'edit\n' >> "$PWD/README.md"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{"schema_version":2,"status":"complete","summary":"done","checks":"ok"}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUBM19_CODEX
+chmod +x "$STUBM19/codex"
+
+OUT_M19=$(cd "$SCRATCH_REPOM19" && \
+    PATH="$STUBM19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMPM19/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMPM19" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+if [[ "$OUT_M19" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_M19" == *"REASON=manifest-schema-invalid"* ]] \
+   && [[ "$OUT_M19" != *"RECOVERY_FROM="* ]]; then
+    pass
+else
+    fail M19 "schema_version 2 should not recover; out=$OUT_M19"
 fi
 
 # ---------------------------------------------------------------------------

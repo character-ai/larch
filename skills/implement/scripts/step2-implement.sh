@@ -365,6 +365,9 @@ PY
 }
 
 write_prelaunch_recovery_baseline() {
+    if [[ -n "$ANSWERS_FILE" || -f "$PRELAUNCH_PORCELAIN_FILE" ]]; then
+        return 0
+    fi
     git -C "$REPO_ROOT" status --porcelain=v1 -z --untracked-files=all > "$PRELAUNCH_PORCELAIN_FILE"
     if git -C "$REPO_ROOT" diff --cached --quiet --no-ext-diff; then
         printf 'PRELAUNCH_INDEX_NONEMPTY=false\n' > "$PRELAUNCH_INDEX_FLAG_FILE.tmp"
@@ -408,86 +411,13 @@ PY
 
 compute_recovery_paths() {
     git -C "$REPO_ROOT" status --porcelain=v1 -z --untracked-files=all > "$POSTLAUNCH_PORCELAIN_FILE"
-    python3 - "$REPO_ROOT" "$TMPDIR_ARG" "$PRELAUNCH_PORCELAIN_FILE" "$POSTLAUNCH_PORCELAIN_FILE" "$PRELAUNCH_CONTENT_DIGESTS_FILE" "$RECOVERY_PATHS_FILE" <<'PY'
-import hashlib
-import os
-import sys
-
-repo, tmpdir, pre_file, post_file, digest_file, out_file = sys.argv[1:7]
-
-def parse(path):
-    raw = open(path, "rb").read() if os.path.exists(path) else b""
-    items = raw.split(b"\0")
-    tuples = set()
-    paths = set()
-    i = 0
-    while i < len(items):
-        rec = items[i]
-        i += 1
-        if not rec:
-            continue
-        status = rec[:2].decode("ascii", "replace")
-        rel = rec[3:].decode("utf-8", "surrogateescape")
-        if "R" in status or "C" in status:
-            if i < len(items):
-                i += 1
-        tuples.add((status, rel))
-        paths.add(rel)
-    return tuples, paths
-
-pre_tuples, pre_paths = parse(pre_file)
-post_tuples, post_paths = parse(post_file)
-digests = {}
-if os.path.exists(digest_file):
-    with open(digest_file, encoding="utf-8", errors="surrogateescape") as fh:
-        for line in fh:
-            line = line.rstrip("\n")
-            if "\t" in line:
-                digest, rel = line.split("\t", 1)
-                digests[rel] = digest
-
-tmp_rel = None
-try:
-    repo_real = os.path.realpath(repo)
-    tmp_real = os.path.realpath(tmpdir)
-    if tmp_real == repo_real:
-        tmp_rel = "."
-    elif tmp_real.startswith(repo_real + os.sep):
-        tmp_rel = os.path.relpath(tmp_real, repo_real)
-except OSError:
-    tmp_rel = None
-
-def under_tmp(rel):
-    if tmp_rel is None:
-        return False
-    return rel == tmp_rel or rel.startswith(tmp_rel.rstrip("/") + "/")
-
-def current_digest(rel):
-    full = os.path.join(repo, rel)
-    try:
-        with open(full, "rb") as fh:
-            return hashlib.sha256(fh.read()).hexdigest()
-    except OSError:
-        return "missing"
-
-candidates = []
-for status, rel in sorted(post_tuples, key=lambda item: item[1]):
-    if under_tmp(rel):
-        continue
-    include = False
-    if (status, rel) not in pre_tuples:
-        include = True
-    elif rel in pre_paths:
-        include = current_digest(rel) != digests.get(rel, "")
-    if include and rel not in candidates:
-        candidates.append(rel)
-
-with open(out_file, "wb") as fh:
-    for rel in candidates:
-        fh.write(rel.encode("utf-8", "surrogateescape") + b"\0")
-
-sys.exit(0 if candidates else 1)
-PY
+    "$SCRIPT_DIR/compute-step2-recovery-paths.sh" \
+        --repo-root "$REPO_ROOT" \
+        --tmpdir "$TMPDIR_ARG" \
+        --prelaunch-porcelain "$PRELAUNCH_PORCELAIN_FILE" \
+        --postlaunch-porcelain "$POSTLAUNCH_PORCELAIN_FILE" \
+        --prelaunch-digests "$PRELAUNCH_CONTENT_DIGESTS_FILE" \
+        --out-file "$RECOVERY_PATHS_FILE"
 }
 
 manifest_has_legacy_fingerprint() {
@@ -794,6 +724,9 @@ cp "$MANIFEST_PATH" "$MANIFEST_RAW_PATH"
 STATUS=$(jq -r 'if type=="object" then .status // "" else "" end' "$MANIFEST_RAW_PATH" 2>/dev/null || true)
 SCHEMA_VERSION=$(jq -r 'if type=="object" then .schema_version // "" else "" end' "$MANIFEST_RAW_PATH" 2>/dev/null || true)
 
+if [[ -n "$SCHEMA_VERSION" && "$SCHEMA_VERSION" != "1" ]]; then
+    emit_bailed "manifest-schema-invalid"
+fi
 if [[ "$SCHEMA_VERSION" != "1" ]]; then
     emit_manifest_invalid_or_recover
 fi
