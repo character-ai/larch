@@ -177,12 +177,16 @@ if [ -z "$TOKEN_JSON" ] || [ ! -f "$TOKEN_JSON" ]; then
     fi
 fi
 if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1 && jq -e '.claude.totals' "$TOKEN_JSON" >/dev/null 2>&1; then
-    TOKEN_DATA_AVAILABLE=true
     read -r CLAUDE_T CODEX_T CURSOR_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0)] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
     if jq -e '.BUCKETS_claude' "$TOKEN_JSON" >/dev/null 2>&1; then
         read -r C_IN C_CR C_CW5 C_CW1 C_OUT < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
         read -r D_IN D_CACHED D_OUT < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
         read -r U_IN U_CR U_OUT < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+    fi
+    sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT))
+    total_t=$((CLAUDE_T + CODEX_T + CURSOR_T))
+    if [ "$sum_b" -ne 0 ] || [ "$total_t" -ne 0 ]; then
+        TOKEN_DATA_AVAILABLE=true
     fi
 fi
 
@@ -281,6 +285,7 @@ append_render_warning() {
         --tool "$tool" \
         --exit-code "$rc" \
         --category Warnings \
+        --redact \
         --output-file "$output_file" \
         >/dev/null 2>&1 || true
     refresh_issue_counts

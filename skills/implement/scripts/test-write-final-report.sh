@@ -216,6 +216,16 @@ assert_contains 'Cursor $' "$cost_line" 'per-agent stdout cost has Cursor'
 assert_contains 'Tokens: ' "$cost_line" 'per-agent stdout cost has token count'
 
 cp "$plugin/scripts/render-run-summary.sh" "$TMP_ROOT/render-run-summary.real"
+cat > "$impl_bl/larch-logs/implement/run-bl/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 0}},
+  "cursor": {"totals": {"total": 0}},
+  "BUCKETS_claude": {"input": 700, "cache_read": 100, "cache_create_5m": 0, "cache_create_1h": 0, "output": 200},
+  "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0},
+  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0}
+}
+JSON
 cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -223,6 +233,7 @@ out=""
 run="RUN"
 outcome="bailed"
 cost_unavailable=false
+calls_file="${WFR_STAGE1_CALLS_FILE:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --output-file) out=$2; shift 2 ;;
@@ -238,6 +249,7 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+[ -n "$calls_file" ] && printf 'call\n' >>"$calls_file"
 [ "$cost_unavailable" = true ] || exit 1
 [ -n "$out" ] || exit 2
 cat >"$out" <<EOF
@@ -260,10 +272,13 @@ cat >"$out" <<EOF
 EOF
 STUB
 chmod +x "$plugin/scripts/render-run-summary.sh"
-fallback_stage1=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage1.md" \
+stage1_calls="$TMP_ROOT/wfr-stage1.calls"
+: >"$stage1_calls"
+fallback_stage1=$(WFR_STAGE1_CALLS_FILE="$stage1_calls" CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage1.md" \
       "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
 assert_contains '- **Cost**: N/A' "$fallback_stage1" 'renderer fallback stage1 prints cost N/A'
 assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage1" 'renderer fallback stage1 keeps sentinel'
+test "$(wc -l <"$stage1_calls" | tr -d ' ')" = "2" || fail 'renderer fallback stage1 must invoke renderer twice'
 
 cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
 #!/usr/bin/env bash

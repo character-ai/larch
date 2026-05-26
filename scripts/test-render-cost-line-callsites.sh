@@ -33,14 +33,20 @@ pass 'render-final-summary per-bucket argv shape'
 
 # shellcheck disable=SC2016
 grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
+# shellcheck disable=SC2016
+grep -Fq 'if grep -Fq -- '\''- **Cost**:'\'' "$IMPLEMENT_TMPDIR/summary-final.md" 2>/dev/null; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on cost line presence'
 grep -Fq '_wfr_args+=(--print-stdout)' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must only request --print-stdout when .step17-printed is absent'
 # shellcheck disable=SC2016
 grep -Fq 'if [ "$_wfr_printed" = true ] && grep -Fq -- '\''- **Cost**:'\'' "$IMPLEMENT_TMPDIR/summary-final.md" 2>/dev/null; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must gate .step17-printed on success plus cost line presence'
+# shellcheck disable=SC2016
+grep -Fq 'Immediately after the Step 17 Bash block returns, if the script succeeded and `summary-final.md` contains a line beginning with `- **Cost**:`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 verbatim cost-line emit prose'
 grep -Fq 'The cost line is the sole exception under NEVER #20.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 cost-line exception prose'
+grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'
 grep -Fq 'SUMMARY_MODE_STRING=N/A' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must default SUMMARY_MODE_STRING to N/A'
 grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
 grep -Fq 'After every `render-final-summary.sh --post-publish-only` invocation in `/design`' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish cost-line emit prose'
+grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-recap prose'
 pass 'SKILL.md cost-line callsite contracts pinned'
 
 printf 'PASS: test-render-cost-line-callsites.sh\n'

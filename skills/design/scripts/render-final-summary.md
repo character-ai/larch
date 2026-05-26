@@ -27,8 +27,9 @@ log commit can bundle it. Phase 2 re-renders after publish (success or failure) 
 GitHub upsert and chat match post-publish warnings. The committed Phase-1 file
 may differ slightly from the Phase-2 body when publish appends warnings; a
 second commit to refresh the log bundle is intentionally not required. If the
-Phase-1 renderer fails, the helper now returns non-zero instead of committing a
-self-composed fallback with `- **Cost**: N/A`.
+Phase-1 renderer fails or leaves the file empty, the helper appends a Warning,
+writes the same self-composed fallback schema with `- **Cost**: N/A`, and still
+returns success so publish can continue with a durable summary artifact.
 
 ## Cost unavailable (FINDING_12)
 
@@ -55,7 +56,7 @@ body share one source and fallback bodies are printed through the same path.
 
 ## Exec issues / warnings (FINDING_13)
 
-Counts `**Step` lines under `### Tool Failures`, `### External Reviewer Issues`
+Counts `- **Step` lines under `### Tool Failures`, `### External Reviewer Issues`
 (combined into `--exec-issues`), and `### Warnings` separately.
 
 ## Upsert gate

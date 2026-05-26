@@ -382,7 +382,7 @@ render_or_fallback() {
 }
 
 if [ "$PHASE" = pre ]; then
-    render_or_fallback false
+    render_or_fallback true
     exit 0
 fi
 

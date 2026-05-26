@@ -39,6 +39,13 @@ grep -Fq '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'missing
 cmp -s "$D/final-summary.md" "$std" || fail 'stdout vs final-summary.md byte mismatch'
 pass 'approved happy path + cmp'
 
+pre_std="$TMP/std-pre.log"
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-PRE" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --pre-publish-only >"$pre_std" 2>/dev/null
+[ ! -s "$pre_std" ] || fail 'pre-publish path must not print summary to stdout'
+grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'pre-publish path missing Cost bullet'
+pass 'pre-publish writes file without chat output'
+
 PLUGIN_STUB="$TMP/plugin"
 mkdir -p "$PLUGIN_STUB/scripts"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
@@ -174,6 +181,69 @@ if grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$D/final-summary.md"; 
 fi
 grep -Fq -- '--cost-unavailable' "$TMP/render-args.log" || fail 'token-data-missing path must pass --cost-unavailable to renderer'
 pass 'token-data-missing path renders Cost N/A'
+
+PLUGIN_BADJSON="$TMP/plugin-badjson"
+mkdir -p "$PLUGIN_BADJSON/scripts"
+cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_BADJSON/scripts/render-run-summary.sh"
+cp "$ROOT/scripts/token-cost.sh" "$PLUGIN_BADJSON/scripts/token-cost.sh"
+cp "$ROOT/scripts/lib-cost-line-format.sh" "$PLUGIN_BADJSON/scripts/lib-cost-line-format.sh"
+cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_BADJSON/scripts/lib-quiet.sh"
+cat >"$PLUGIN_BADJSON/scripts/token-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{not-json' >"$out"
+EOF
+cat >"$PLUGIN_BADJSON/scripts/timing-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"total_hms":"2s"}' >"$out"
+EOF
+chmod +x "$PLUGIN_BADJSON/scripts/"*.sh
+BADJSON_RENDER_STUB="$PLUGIN_BADJSON/scripts/render-run-summary.sh"
+mv "$BADJSON_RENDER_STUB" "$PLUGIN_BADJSON/scripts/render-run-summary.real"
+cat >"$BADJSON_RENDER_STUB" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >"${BADJSON_RENDER_ARGS_LOG:?}"
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-file) out=$2; shift 2 ;;
+    *)
+      if [ "$#" -ge 2 ] && [[ "$2" != --* ]]; then
+        shift 2
+      else
+        shift
+      fi
+      ;;
+  esac
+done
+printf '%s\n' '## /design run RUN-BADJSON — approved' >"$out"
+printf '%s\n' '' >>"$out"
+printf '%s\n' '- **Cost**: N/A' >>"$out"
+printf '%s\n' '' >>"$out"
+printf '%s\n' '<!-- larch:run-summary v=1 -->' >>"$out"
+EOF
+chmod +x "$BADJSON_RENDER_STUB"
+std_badjson="$TMP/std-badjson.log"
+BADJSON_RENDER_ARGS_LOG="$TMP/render-badjson-args.log" CLAUDE_PLUGIN_ROOT="$PLUGIN_BADJSON" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-BADJSON" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_badjson" 2>/dev/null
+grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'malformed token JSON path missing Cost N/A'
+if grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$D/final-summary.md"; then
+    fail 'malformed token JSON path rendered misleading zero-dollar cost'
+fi
+grep -Fq -- '--cost-unavailable' "$TMP/render-badjson-args.log" || fail 'malformed token JSON path must pass --cost-unavailable to renderer'
+pass 'malformed token JSON renders Cost N/A'
 
 EMPTY_MODE_D="$TMP/design-empty-mode"
 mkdir -p "$EMPTY_MODE_D"
