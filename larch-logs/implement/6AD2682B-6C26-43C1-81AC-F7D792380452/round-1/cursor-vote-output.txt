@@ -1,0 +1,38 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- non-standard log-root mis-resolution is rare; standard IMPLEMENT_TMPDIR callers are unaffected
+FINDING_7: EXONERATE -- lib-quiet.md already documents LARCH_BREADCRUMB_STREAM and category requirement on emit_breadcrumb_stderr
+FINDING_8: YES
+FINDING_9: EXONERATE -- stall and escalate are distinct categories for the same handoff by design
+FINDING_10: YES
+FINDING_11: EXONERATE -- dual redaction paths are equivalent today; consolidation is optional follow-up
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- operational CI strings in wait-ci records are residual risk already noted in SECURITY.md scope
+FINDING_24: YES
+FINDING_25: EXONERATE -- pre-existing eval trap pattern, not introduced by this branch
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES

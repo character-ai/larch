@@ -1,0 +1,30 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- duplication is real but both implementations are currently correct; refactor complexity outweighs the drift risk for a latent concern
+FINDING_4: YES
+FINDING_5: EXONERATE -- adding --category= to cleanup.sh is correct behavior if cleanup runs under an inherited stream; outside plan scope is not a reason to remove correct code
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- latent gap in test coverage for an unusual path; concern is legitimate but complexity of adding the test exceeds the risk for this PR
+FINDING_12: EXONERATE -- golden stderr baseline tests add brittleness; grep-based assertions are sufficient for the functional contract
+FINDING_13: EXONERATE -- lib-quiet already emits WARN on missing category; adding a redundant producer test is low value
+FINDING_14: EXONERATE -- polling with capped timeout adds meaningful complexity; timing-based test flakiness is a real risk but better handled as a separate improvement
+FINDING_15: EXONERATE -- test-larch-log.sh already covers the two-stage redaction pipeline; design-specific integration test is nice-to-have but not load-bearing
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- breadcrumb text originates from trusted internal scripts, not user input; the injection scenario requires a crafted internal emit_breadcrumb call which is not a realistic attack vector
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- the done-sentinel coupling in the caller invariant is the designed mitigation; documenting the invariant is appropriate but the race is not a bug in the publish code itself
+FINDING_25: EXONERATE -- failing closed when env vars are missing is the correct and safe behavior; deriving the path from LARCH_LOG_ROOT would silently accept misconfigured callers
+FINDING_26: EXONERATE -- REFRESH_COMMITTED=false communicates the failure; propagating stderr adds complexity for a nit-level observability gap
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: EXONERATE -- the stall category accurately describes the semantic state (recovery waterfall exhausted, entering stall); the ⚠ emoji-prefix rule is a heuristic default, not a strict override

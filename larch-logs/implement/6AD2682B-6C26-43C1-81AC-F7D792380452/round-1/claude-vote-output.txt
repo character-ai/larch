@@ -1,0 +1,38 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- silent skip on missing/mis-shaped source is acceptable per plan "if absent, log a warning and skip"; the || true behavior is benign for the standard call path
+FINDING_7: EXONERATE -- docs-only nit with no behavioral impact; behavior is enforced by larch_quiet_bc_valid_category in lib-quiet.sh
+FINDING_8: EXONERATE -- run-or-skip is sufficient for bash32 compatibility; byte-for-byte parity assertion would be overspecified and fragile across bash versions
+FINDING_9: EXONERATE -- two records for one event is a minor UX issue with no correctness impact
+FINDING_10: YES
+FINDING_11: EXONERATE -- both redaction call styles are independently correct; divergence risk is theoretical and low
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- stall category is semantically accurate for a recovery-waterfall-exhausted event; category choice here is a judgment call
+FINDING_18: YES
+FINDING_19: EXONERATE -- edge case does not affect standard IMPLEMENT_TMPDIR/larch-logs callers; documentation fix only
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- pre-existing eval pattern, attacker-controlled trap body is not a realistic threat model for this local dev tool
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES

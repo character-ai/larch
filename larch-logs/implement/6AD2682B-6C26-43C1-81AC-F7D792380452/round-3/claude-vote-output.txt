@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- sharing requires cross-importing between monitor (sources lib-quiet) and lib-larch-log (sources larch-log-batches); both currently in sync; complexity not warranted
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- re-executing the full harness under /bin/bash constitutes the parity check; separate byte-for-byte comparison adds complexity beyond plan intent
+FINDING_6: EXONERATE -- the two breadcrumbs carry semantically distinct content (stall state vs escalation routing with aggregator-dispatch); not redundant
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- stale harness header comment omitting RESEARCH_TMPDIR is too minor to warrant a dedicated GitHub issue
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- IMPLEMENT_TMPDIR being a symlink is unrealistic in larch's mktemp-based runtime; fix adds disproportionate complexity for a scenario that doesn't occur in practice
+FINDING_14: EXONERATE -- risk is already documented in SECURITY.md; cross-linking to run-logs.md is optional polish
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- non-standard log-root is an edge case; LARCH_BREADCRUMB_SOURCE_DIR env override handles legitimate non-standard paths; silent skip is acceptable
+FINDING_19: EXONERATE -- inherent race in commit-time snapshots of live streams; gating on done-sentinel changes the contract significantly; practical harm is minimal
+FINDING_20: EXONERATE -- designed rate-limiting behavior; UX improvement only; not a correctness defect
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES

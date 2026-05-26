@@ -1,0 +1,3 @@
+Aggregating reviewer findings: merging duplicates, preserving out-of-scope tags, and applying severity rules. Verifying a few key references in the codebase for accurate normalization.
+Confirmed key merge targets in the repo. Delivering the aggregated structured finding list.
+

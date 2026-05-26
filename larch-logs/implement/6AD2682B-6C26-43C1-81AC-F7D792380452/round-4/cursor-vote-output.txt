@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- ndjson-only matches the stream file contract; non-ndjson drops are expected
+FINDING_4: EXONERATE -- per-poll deltas are small; 10MB soft-cap already warns on bursts
+FINDING_5: YES
+FINDING_6: EXONERATE -- implicit derivation from `*/larch-logs` works for normal refresh/commit callers
+FINDING_7: EXONERATE -- swap-based publish is a reasonable atomic directory replacement pattern
+FINDING_8: EXONERATE -- plan keeps the terminating newline on larch_errf by design
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- pre-PR-create breadcrumb commit failure is intentionally best-effort/non-blocking
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- Test 7 already proves growth surfaces before done; strict latency bound is optional
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- optional harness coverage; refresh already calls larch-log commit
+FINDING_21: EXONERATE -- session-tmpdir trust boundary makes post-startup TOCTOU low value
+FINDING_22: EXONERATE -- hardlink ingestion requires local control of session breadcrumbs dir
+FINDING_23: NO -- SECURITY.md already documents this as accepted residual operational risk
+FINDING_24: EXONERATE -- pre-existing theoretical eval pattern, not introduced by this change
+FINDING_25: EXONERATE -- plan explicitly keeps bail/timeout paths on larch_err, not the stream
+FINDING_26: YES
+FINDING_27: YES
