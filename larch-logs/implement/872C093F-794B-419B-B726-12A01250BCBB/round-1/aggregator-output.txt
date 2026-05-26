@@ -1,0 +1,3 @@
+Reviewing the cited code to normalize and merge reviewer findings accurately.
+Merging overlapping reviewer inputs and producing the normalized structured finding list (production plain text, no code fences).
+

@@ -1,0 +1,42 @@
+Reviewing branch changes vs main: reading the precomputed diff, commit history, and key changed files for edge-case analysis.
+Diff is large (likely run logs). Focusing on implementation files and excluding `larch-logs`.
+Checking one more edge case: whether `parse_vote_rating_for` maps empty votes to `JUDGE_ERROR` for tally vs TSV.
+**Branch commits** (since `main`):
+
+- `c8599546` — Add code-review forensic finding classification TSVs (L6 core)
+- `2fe0e3aa` — chore(larch-logs) flush (intentional run-log commit; not reviewed for product logic)
+- `5ed07901` — ADOPTED sentinel redaction (#2878; out of scope for L6)
+
+The implementation largely matches the plan: voter prompts, shared parser reuse, per-round TSV emission, log-batch registration, and a solid integration harness. The issues below are edge-case / failure-recovery gaps that can lose forensic data or mislead downstream consumers.
+
+### In-Scope Findings
+
+1. **Important** — **risk-integration** `skills/review/SKILL.md:61-63` — Step 4 runs once after the multi-round Step 3 loop, but line 61 only binds `FINDINGS_CLASSIFICATION_TSV_FILE` from the final `review-core.sh` return. Line 63 says “for each round,” yet nothing in Step 3 persists per-round classification paths for Step 4 to iterate. A literal Step 4 run publishes at most the last round’s TSV to `larch-logs/review/<RUN_ID>/`, while earlier `findings-classification-round-1.tsv` … `round-(N-1).tsv` files remain only in `$REVIEW_TMPDIR`. That breaks the acceptance criterion for multi-round standalone `/review --diff` even though Fixture E proves tally + `log-phase` work in isolation. **Suggested fix:** Log inside the Step 3 loop (or at Step 4 loop `r=1..round_num`) with `--batch review-findings-classification-round-${r}` and `--payload-file "$REVIEW_TMPDIR/findings-classification-round-${r}.tsv"`; mirror the same in `heavy-worker.md` (return per-round paths or instruct the parent to scan tmpdir).
+
+2. **Important** — **correctness** `skills/review/scripts/tally-code-votes.sh:70-74` — Path selection uses `[[ -n "$SESSION_ENV_PATH" || -n "${IMPLEMENT_TMPDIR:-}" ]]` to pick the flat `findings-classification.tsv` name. That is correct when `$REVIEW_TMPDIR` is an `/implement` per-round directory, but wrong when a standalone `/review` session inherits `IMPLEMENT_TMPDIR` or `SESSION_ENV_PATH` while reusing one `$REVIEW_TMPDIR` across rounds: every round overwrites the same flat file instead of writing `findings-classification-round-${ROUND_NUM}.tsv`. Harnesses avoid this with `IMPLEMENT_TMPDIR=""`; production agents often do not. **Suggested fix:** Key off nested layout (e.g. `SESSION_ENV_PATH` set *and* `$REVIEW_TMPDIR` under `$(dirname "$SESSION_ENV_PATH")/round-*`) or add an explicit `--classification-tsv-mode implement|standalone` flag from `review-core.sh` instead of inferring from ambient env.
+
+3. **Important** — **correctness** `skills/review/scripts/tally-code-votes.sh:440-446` + `skills/review/scripts/test-findings-classification.sh:130-144` — Tally counts empty `PARSED_VOTE` as `JUDGE_ERROR` in the scoreboard (`case "$vote" in … *) judge_error`), but `sanitize_vote_cell` writes `vN_vote=""` for the same cases. `vote_for_id` returns `JUDGE_ERROR` for missing/unparseable lines; Fixture F only checks well-formed lines, so parser/`vote_for_id` tally parity is guarded but TSV semantics are not. Downstream forensic tooling can read blank votes while `voting-tally.md` shows JERR > 0. **Suggested fix:** Map empty parser votes to `JUDGE_ERROR` in TSV when the voter file is non-empty and the ballot id exists, or document that `""` means “contributed to JERR” and add a harness case with a prose-only voter line.
+
+4. **Latent** — **architecture** `skills/review/scripts/tally-code-votes.sh:373-377` — On `EFFECTIVE_VOTERS==0`, every ballot row is written with `voting_result=rejected` and empty `vN_*` columns (Fixture C codifies this). No judges voted, so “rejected” is a placeholder, not an outcome; this can skew offline analytics that treat `voting_result` as ground truth. **Suggested fix:** Use a sentinel such as `main-agent-required` / empty `voting_result`, or document in `docs/run-logs.md` and `tally-code-votes.md` that 0-judge rows are schema placeholders only.
+
+5. **Latent** — **risk-integration** `skills/review/references/heavy-worker.md:94` — The example footer exposes a single `FINDINGS_CLASSIFICATION_TSV_FILE=…round-1.tsv`. Combined with the Step 4 gap, `--subagent` multi-round runs are especially likely to drop round ≥2 classification artifacts from committed logs. **Suggested fix:** Extend the heavy-worker contract to list all per-round TSV paths (or require the parent to glob `$REVIEW_TMPDIR/findings-classification-round-*.tsv` before Step 4 logging).
+
+6. **Nit** — **architecture** `skills/review/scripts/tally-code-votes.sh:333-337` — `record_tally_outcome` now emits `OOS_N_ACCEPTED` / `OOS_N_OUTCOME` keys, but `skills/review/scripts/tally-code-votes.md:34` still documents only `FINDING_N_*`. **Suggested fix:** Update the sibling `.md` so env-file consumers know OOS ids use the `OOS_` prefix.
+
+### Out-of-Scope Observations
+
+1. **risk-integration** `skills/review/scripts/emit-tally.sh:77` — Fallback `exonerated` counting still greps `^FINDING_[0-9]+_REJECTED_SUBTYPE=exonerated$`; if summary counters are ever missing, exonerated `OOS_N` rows would be under-counted. Pre-existing pattern; only matters if `REJECTED_COUNT`/`EXONERATED_COUNT` emission regresses.
+
+2. **code-quality** `scripts/parse-judge-vote-and-rating.md:42-44` — Doc points regression coverage at `skills/design/scripts/test-findings-classification.sh`; code-review coverage lives under `skills/review/scripts/`. Unrelated to L6 behavior but confusing for maintainers.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/review/SKILL.md:61-63	Step 4 runs after the multi-round loop but only binds the last round's FINDINGS_CLASSIFICATION_TSV_FILE, so earlier per-round TSVs are not published to larch-logs.	A 3-round /review --diff run writes findings-classification-round-1/2/3.tsv in tmpdir but Step 4 log-phase only commits round 3 (or none) under larch-logs/review/RUN_ID/.	Log classification inside the Step 3 per-round loop or at Step 4 iterate r=1..round_num with explicit payload paths per round; update heavy-worker parent binding the same way.
+2	in_scope	important	correctness	skills/review/scripts/tally-code-votes.sh:70-74	CLASSIFICATION_TSV path keys off ambient IMPLEMENT_TMPDIR or SESSION_ENV_PATH, not actual nested round tmpdir layout.	Standalone /review with inherited IMPLEMENT_TMPDIR reuses one REVIEW_TMPDIR; each round overwrites findings-classification.tsv instead of round-suffixed files.	Use explicit mode from review-core or detect round-* subdirs; stop using bare IMPLEMENT_TMPDIR as the sole standalone vs implement switch.
+3	in_scope	important	correctness	skills/review/scripts/tally-code-votes.sh:440-446	Empty PARSED_VOTE increments JERR in tally but sanitize_vote_cell writes vN_vote as empty string.	Forensic TSV shows blank votes while voting-tally.md shows JERR counts for the same judges, confusing downstream analysis.	Coerce empty parser votes to JUDGE_ERROR in TSV when appropriate, or add harness coverage and document the JERR vs empty distinction.
+4	in_scope	latent	architecture	skills/review/scripts/tally-code-votes.sh:373-377	0-judge early exit writes voting_result=rejected for all ballot rows with no voter data.	Analytics treating voting_result as literal outcomes will count findings as panel-rejected when no panel voted.	Use a non-outcome sentinel or document that 0-judge rows are placeholders in run-logs.md and tally-code-votes.md.
+5	in_scope	latent	risk-integration	skills/review/references/heavy-worker.md:94	Heavy-worker example returns one FINDINGS_CLASSIFICATION_TSV_FILE for round 1 only.	Subagent multi-round /review parents follow the example and omit round 2+ classification batches from committed logs.	Document glob-all-round TSV paths or return multiple KVs; align with per-round Step 4 logging.
+6	in_scope	nit	architecture	skills/review/scripts/tally-code-votes.md:34	Sibling doc still describes FINDING_N_* env keys only after OOS_N_* emission change.	Operators grep FINDING_* in review-tally.env and miss OOS outcomes.	Update tally-code-votes.md to document OOS_N_ACCEPTED and OOS_N_OUTCOME keys.
+```
