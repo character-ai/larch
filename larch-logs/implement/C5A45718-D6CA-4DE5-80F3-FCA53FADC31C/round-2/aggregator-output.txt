@@ -1,0 +1,3 @@
+Reviewing key source locations to normalize merged findings and verify in-scope vs out-of-scope boundaries.
+Producing the normalized aggregator output from the supplied reviewer slots. Excluding security slots 11–13 (positive attestations, not actionable risks). Merging duplicates per behavioral risk; preserving `[OUT_OF_SCOPE]` on merged OOS headings.
+
