@@ -452,7 +452,7 @@ assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diag
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-rejected emits comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
 assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
-assert_file_equals "$(placeholder_expected_summary "Code flow diagram not available.")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected writes expected summary diagrams"
+assert_file_equals "$(placeholder_expected_summary "pipe-in-node-label fence=mermaid line=7")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected writes expected summary diagrams with generator SKIP_REASON"
 
 for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclosed-frontmatter; do
     new_case "diagram-rejected-$sanitizer_token"
@@ -464,7 +464,7 @@ for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclo
     assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected-$sanitizer_token emits skipped"
     assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token still posts comment"
     assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-rejected-$sanitizer_token emits comment URL"
-    assert_file_equals "$(placeholder_expected_summary "Code flow diagram not available.")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected-$sanitizer_token writes expected summary diagrams"
+    assert_file_equals "$(placeholder_expected_summary "${sanitizer_token} fence=mermaid line=7")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected-$sanitizer_token writes expected summary diagrams with token SKIP_REASON"
 done
 
 new_case diagram-failure
@@ -475,7 +475,7 @@ set -e
 assert_equals 0 "$rc" "diagram-generation-failure exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-generation-failure emits failed"
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-generation-failure still posts comment"
-assert_file_contains "Code flow diagram not available." "$CASE_DIR/tmp/summary-diagrams.md" "diagram-generation-failure writes unavailable placeholder"
+assert_file_contains "helper-error" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-failure writes generator SKIP_REASON helper-error"
 assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-generation-failure appends warning"
 
 new_case diagram-failure-sanitizer
@@ -487,7 +487,7 @@ assert_equals 0 "$rc" "diagram-failure-sanitizer exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-failure-sanitizer emits failed"
 assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer still posts comment"
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-failure-sanitizer emits comment URL"
-assert_file_equals "$(placeholder_expected_summary "Code flow diagram not available.")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-failure-sanitizer writes expected summary diagrams"
+assert_file_equals "$(placeholder_expected_summary "pipe-in-node-label fence=mermaid line=7")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-failure-sanitizer writes expected summary diagrams with fixture SKIP_REASON"
 
 new_case upsert-failure
 set +e
@@ -555,6 +555,7 @@ set -e
 assert_equals 0 "$rc" "generator-crash exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "generator-crash emits failed"
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "generator-crash still posts comment"
+assert_file_contains "Code flow diagram not available." "$CASE_DIR/tmp/summary-diagrams.md" "generator-crash writes unavailable placeholder"
 assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "generator-crash appends warning"
 
 new_case rebase-conflict

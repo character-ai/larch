@@ -93,6 +93,15 @@ larch_quiet_init() {
     fi
 }
 
+# Strip C0 control bytes and DEL from a single diagnostic line (stdin).
+# LC_ALL=C keeps tr byte-oriented on BSD/macOS with malformed input.
+# Callers that forward EXTERNAL content into larch_err / larch_errf
+# MUST pipe through this helper explicitly before doing so. Multi-line
+# callers should pipe per line so LF boundaries survive.
+sanitize_diagnostic_line() {
+    LC_ALL=C tr -d '[:cntrl:]'
+}
+
 # User-visible diagnostics (argv validation, fatals): still go to the process's
 # original stderr after larch_quiet_init redirects FD 1/2 to the quiet log.
 larch_err() {

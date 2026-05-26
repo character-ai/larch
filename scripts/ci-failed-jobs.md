@@ -49,15 +49,19 @@ transient network failures.
 ## Diagnostic Sanitization
 
 When `gh run view` fails, stderr is relayed line-by-line through
-`sanitize_diagnostic_line()` before `larch_err`. The helper strips C0 control
+`sanitize_diagnostic_line()` before `larch_err`. Successful `gh` job-name rows
+are also sanitized at the parse boundary before counting, TSV emission, KV
+emission, and fixable/unfixable classification. The helper strips C0 control
 bytes and DEL while preserving printable ASCII prose and punctuation. It uses
 `LC_ALL=C` so `tr` runs byte-wise on BSD/macOS even if `gh` emits malformed
 UTF-8.
 
-This protects the stderr passthrough from intra-line control-byte injection,
-including BEL and ANSI escape sequences. Newline-driven log-line splitting is
-outside this helper's scope: the existing `while IFS= read -r` loop is the
-diagnostic line boundary for `gh` stderr.
+This protects stderr passthrough and job-name-derived TSV/KV output from
+intra-line control-byte injection, including BEL and ANSI escape sequences.
+All-control-byte job names sanitize to empty and are skipped before
+`FAILED_JOBS_COUNT` increments. Newline-driven log-line splitting is outside
+this helper's scope: the existing `while IFS= read -r` loops are the line
+boundaries for `gh` stderr and stdout.
 
 ## Mapping
 

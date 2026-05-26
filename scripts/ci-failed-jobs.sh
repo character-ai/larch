@@ -26,12 +26,6 @@ sanitize_list() {
     tr -cd '[:alnum:]_,=:-'
 }
 
-sanitize_diagnostic_line() {
-    # Strip C0 control bytes and DEL from one gh diagnostic line.
-    # LC_ALL=C keeps tr byte-oriented on BSD/macOS with malformed input.
-    LC_ALL=C tr -d '[:cntrl:]'
-}
-
 job_class() {
     case "$1" in
         lint|lint-mermaid|shellcheck|test-harnesses|agent-lint|agnix|smoke-dialectic|agent-sync)
@@ -104,6 +98,7 @@ matrix_any_re='^([A-Za-z][A-Za-z0-9_-]*)[[:space:]]+\(([^)]*)\)$'
 job_re='^[A-Za-z][A-Za-z0-9_-]*$'
 
 while IFS= read -r raw_name || [ -n "$raw_name" ]; do
+    raw_name=$(printf '%s' "$raw_name" | sanitize_diagnostic_line)
     [ -n "$raw_name" ] || continue
     count=$((count + 1))
 

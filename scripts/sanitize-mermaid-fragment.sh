@@ -280,7 +280,7 @@ if [ -s "$reasons" ]; then
         done
     fi
     if [ -n "$WARNINGS_LOG" ] && [ -x "$APPEND_ISSUE" ]; then
-        tokens="$(awk -F'[ =]' '/^REASON_TOKEN=/{print $2}' "$reasons" | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+        tokens="$(awk '/^REASON_TOKEN=/{sub(/^REASON_TOKEN=/, ""); sub(/[[:space:]].*$/, ""); print}' "$reasons" | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
         "$APPEND_ISSUE" --log "$WARNINGS_LOG" --category "Warnings" \
             --entry "- **Step $WARNINGS_STEP — mermaid sanitizer rejected:** $tokens" >/dev/null 2>&1 || true
     fi
