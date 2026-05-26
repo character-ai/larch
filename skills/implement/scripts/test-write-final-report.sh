@@ -180,6 +180,117 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bl.md
       "$HELPER" --implement-tmpdir "$impl_bl")
 assert_contains 'STATUS=ok' "$out" 'bailed path status ok'
 assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain bailed outcome in summary'
+assert_contains '- **Cost**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'missing token data renders cost N/A'
+
+impl_cost="$TMP_ROOT/impl-cost"; mkdir -p "$impl_cost/larch-logs/implement/run-cost"
+printf 'ISSUE_NUMBER=12\nRUN_ID=run-cost\nADOPTED=true\n' > "$impl_cost/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_cost/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/12\n'
+    printf 'PR_NUMBER=12\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_cost/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_cost/finalize-state.sh"
+cat > "$impl_cost/larch-logs/implement/run-cost/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 2000}},
+  "cursor": {"totals": {"total": 3000}},
+  "BUCKETS_claude": {"input": 500, "cache_read": 100, "cache_create_5m": 50, "cache_create_1h": 50, "output": 300},
+  "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+  "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000}
+}
+JSON
+cost_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-cost.md" \
+      "$HELPER" --implement-tmpdir "$impl_cost" --print-stdout)
+cost_line=$(printf '%s\n' "$cost_stdout" | grep -F -- '- **Cost**:' || true)
+assert_contains '💰 TOTAL' "$cost_line" 'per-agent stdout cost has total'
+assert_contains 'Claude $' "$cost_line" 'per-agent stdout cost has Claude'
+assert_contains 'Codex $' "$cost_line" 'per-agent stdout cost has Codex'
+assert_contains 'Cursor $' "$cost_line" 'per-agent stdout cost has Cursor'
+assert_contains 'Tokens: ' "$cost_line" 'per-agent stdout cost has token count'
+
+cp "$plugin/scripts/render-run-summary.sh" "$TMP_ROOT/render-run-summary.real"
+cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+run="RUN"
+outcome="bailed"
+cost_unavailable=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-file) out=$2; shift 2 ;;
+    --run-id) run=$2; shift 2 ;;
+    --outcome) outcome=$2; shift 2 ;;
+    --cost-unavailable) cost_unavailable=true; shift ;;
+    *)
+      if [ "$#" -ge 2 ] && [[ "$2" != --* ]]; then
+        shift 2
+      else
+        shift
+      fi
+      ;;
+  esac
+done
+[ "$cost_unavailable" = true ] || exit 1
+[ -n "$out" ] || exit 2
+cat >"$out" <<EOF
+## /implement run $run — $outcome
+
+- **Outcome**: $outcome
+- **Mode**: N/A
+- **Path**: N/A
+- **Duration**: N/A
+- **Cost**: N/A
+- **Issue**: N/A
+- **Plan review**: N/A
+- **Code review**: N/A
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 1
+- **Run logs**: \`larch-logs/implement/$run/\`
+
+<!-- larch:run-summary v=1 -->
+EOF
+STUB
+chmod +x "$plugin/scripts/render-run-summary.sh"
+fallback_stage1=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage1.md" \
+      "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
+assert_contains '- **Cost**: N/A' "$fallback_stage1" 'renderer fallback stage1 prints cost N/A'
+assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage1" 'renderer fallback stage1 keeps sentinel'
+
+cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$plugin/scripts/render-run-summary.sh"
+fallback_stage2=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage2.md" \
+      "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
+assert_contains '- **Cost**: N/A' "$fallback_stage2" 'renderer fallback stage2 self-compose cost N/A'
+assert_contains '- **Code review**: N/A' "$fallback_stage2" 'renderer fallback stage2 keeps implement schema'
+assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage2" 'renderer fallback stage2 keeps sentinel'
+cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
+chmod +x "$plugin/scripts/render-run-summary.sh"
+
+rm -f "$impl_bl/.step17-printed"
+step18_printed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-print.md" bash -c '
+  _wfr_args=(--implement-tmpdir "$1")
+  [ ! -f "$1/.step17-printed" ] && _wfr_args+=(--print-stdout)
+  "$2" "${_wfr_args[@]}" || true
+' bash "$impl_bl" "$HELPER" 2>/dev/null)
+assert_contains '## /implement run run-bl — bailed' "$step18_printed" 'Step 18 absent sentinel prints summary body'
+touch "$impl_bl/.step17-printed"
+step18_suppressed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-suppressed.md" bash -c '
+  _wfr_args=(--implement-tmpdir "$1")
+  [ ! -f "$1/.step17-printed" ] && _wfr_args+=(--print-stdout)
+  "$2" "${_wfr_args[@]}" || true
+' bash "$impl_bl" "$HELPER" 2>/dev/null)
+assert_not_contains '## /implement run run-bl — bailed' "$step18_suppressed" 'Step 18 sentinel suppresses summary body'
 
 # Bail + manifest.json: larch-log manifest stamps steps_ran.* and hard-fails on manifest error
 impl_mfb="$TMP_ROOT/impl-mfb"; mkdir -p "$impl_mfb/larch-logs/implement/run-mfb"

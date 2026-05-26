@@ -70,6 +70,18 @@ This script shells to `scripts/token-cost.sh` for per-vendor costs (per-bucket f
 
 See `scripts/token-cost.md` for env vars and blended-fallback warning semantics.
 
+## Cost unavailable mode
+
+`--cost-unavailable` is an explicit boolean mode for callers that know token data
+is unavailable or unreliable. When set, the renderer skips `token-cost.sh`
+entirely and emits exactly `- **Cost**: N/A`.
+
+Callers should use this flag instead of omitting token flags or passing explicit
+zero counts: omitting flags preserves the default zero-token pricing path and
+therefore yields `💰 TOTAL ~$0.00 — Claude $0.00, Codex $0.00, Cursor $0.00`.
+The flag is compatible with token flags; when both are present,
+`--cost-unavailable` wins and cost computation is skipped.
+
 ## Outcome strings (normative)
 
 | Skill | Outcome values with `- **Outcome**:` bullet |

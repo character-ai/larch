@@ -31,9 +31,25 @@ second commit to refresh the log bundle is intentionally not required.
 ## Cost unavailable (FINDING_12)
 
 When token JSON is missing/unparseable, or all per-bucket counts are zero **and**
-`token-report-final.stderr.log` is non-empty, the helper passes **no** token
-flags into `render-run-summary.sh`, yielding `- **Cost**: N/A` (not a misleading
-`$0.00`).
+`token-report-final.stderr.log` is non-empty, the helper passes
+`--cost-unavailable` into `render-run-summary.sh`, yielding `- **Cost**: N/A`
+(not a misleading `$0.00`). Passing no token flags is not sufficient because the
+shared renderer defaults omitted counts to zero.
+
+## Degraded render — fallback
+
+`render-run-summary.sh` is invoked to write `final-summary.md` only. If it exits
+non-zero or leaves the file empty, this helper appends a Warning to
+`execution-issues.md`, refreshes counts, and writes a self-composed `/design`
+schema body: conditional `- **Outcome**:` for cancelled/failed outcomes, no PR
+bullet, no Code review bullet, `- **Cost**: N/A`, and the
+`<!-- larch:run-summary v=1 -->` sentinel.
+
+## PHASE=post print path
+
+Post phase prints `final-summary.md` exactly once via the FD-3-aware chat loop.
+The renderer itself is not called with `--print-stdout`, so the file and chat
+body share one source and fallback bodies are printed through the same path.
 
 ## Exec issues / warnings (FINDING_13)
 
