@@ -1,0 +1,456 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:38-43
+- **Concern**: `.msg.usage` vs `.usage` probe semantics are contradictory. Scenario: Implementation may sum both paths per event and double-count when a single JSONL line carries usage under both keys (inflated ledger totals)
+- **Proposed resolution**: Specify per-field coalesce in `parse-codex-usage.sh` jq only, e.g. `(.msg.usage.input_tokens // .usage.input_tokens // 0)` per event, then sum; remove stream-level whichever wins wording
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-667
+- **Concern**: Plan omits the offline implementer harness. Scenario: Test 10 stub still prints `tokens used\n7,777\n` to the sidecar; after stdout→events.jsonl split the ledger smoke will miss `total=7777` and fail `test-harnesses-13` / `make lint`
+- **Proposed resolution**: Add `skills/implement/scripts/test-codex-implementer.sh` (and sibling `.md` if present) to Files to modify: JSONL on stub stdout, assert per-bucket `record-vendor` fields
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-token-vendor-scrapers.sh:100-194
+- **Concern**: Plan extends the harness but not the codex implement stub. Scenario: The `LCI_BIN/codex` stub at line 116 still emits `tokens used`; the launch-codex-implement smoke expecting `total=7777` will produce an empty ledger post-change
+- **Proposed resolution**: Explicitly update the codex stub to emit JSONL usage events and assert `input`/`cache_read`/`output`/`total` on the ledger row (not only the new synthetic ledger block)
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/launch-review.md:69-71
+- **Concern**: Launcher sibling contracts are out of sync with the proposed redirect model. Scenario: `.claude/rules/script-md-siblings.md` requires behavior/docs parity; stale combined-stream scrape docs will mislead reviewers and break edit-in-sync checks
+- **Proposed resolution**: Add `scripts/launch-review.md`, `scripts/launch-codex-implement.md`, and `scripts/launch-codex-ci.md` (and `scripts/test-token-vendor-scrapers.md`) to Files to modify with `--json`, `${OUTPUT|TRANSCRIPT}.events.jsonl`, stderr-only sidecar, and fail-closed scrape rules
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:130-136
+- **Concern**: Makefile wiring target is underspecified. Scenario: Adding only a leaf `test-parse-codex-usage:` target without a `test-harnesses-N` dependency leaves the helper off `make lint` / `scripts/relevant-checks.sh`
+- **Proposed resolution**: Register `test-parse-codex-usage` in `.PHONY`, add the harness-timer target, and include it in `test-harnesses-17` (with `test-token-vendor-scrapers`) or the shard that owns token launcher tests
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: plan.txt:149-151
+- **Concern**: Stdout auth-classification regression test is review-only. Scenario: `launch-codex-implement.sh` also classifies auth from `SIDECAR_LOG` after the same stderr split; a Codex regression there would not be caught by `test-launch-review.sh` alone
+- **Proposed resolution**: Add a stub case to `test-codex-implementer.sh` or document why implement auth patterns are identical and covered indirectly
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: plan.txt:77-105
+- **Concern**: Three launchers will duplicate KV parsing from helper stdout. Scenario: Drift risk across `launch-review.sh`, `launch-codex-implement.sh`, and `launch-codex-ci.sh` (wrong `cache_read` mapping or dropped fields)
+- **Proposed resolution**: Extract a tiny sourced helper (e.g. `scripts/lib-parse-codex-kv.sh`) or document one canonical awk/`while read` block reused by all three launchers
+
+### OOS_1:
+- **Description**: Other `codex exec` sites still use combined `2>&1` without JSONL capture. Scenario: Step 5 coder Codex runs keep aggregate-only or missing per-bucket telemetry outside the three launchers
+- **Reviewer**: Cursor-Arch
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: skills/review-and-fix/scripts/review-and-fix.sh:257
+- **Phase**: design
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/test-token-vendor-scrapers.sh:26-47
+- **Concern**: Top-of-file `codex_scrape` awk tests target the removed scrape path. Scenario: After launchers drop `tokens used` awk, these unit tests only exercise dead logic unless removed
+- **Proposed resolution**: Keep them only if labeled legacy scrape documentation; otherwise replace with fixtures calling `parse-codex-usage.sh` directly
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/parse-codex-usage.sh (proposed; plan.txt:38-42), scripts/token-cost.sh:194-199
+- **Concern**: 1. Proposed parser double-counts cached Codex input as both input and cache_read. Scenario: Codex usage's cached_tokens is a detail bucket within input_tokens; recording INPUT=input_tokens and CACHED_INPUT=cached_tokens makes token-cost.sh price cached tokens once at uncached input rate and again at cached rate, and inflates CODEX_T and BUCKETS_codex.total.
+- **Proposed resolution**: Compute uncached input as max(input_tokens - cached_tokens, 0), record cache_read=cached_tokens and output=output_tokens, set total=uncached_input+cache_read+output, and add a fixture where input_tokens includes cached_tokens.
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/launch-review.sh:526-551, scripts/launch-codex-ci.sh:202-234
+- **Concern**: 2. Plan splits stdout away from the auth classifier while also requiring stdout auth failures to classify. Scenario: The proposed redirects put Codex stdout in .events.jsonl, but existing retry/verdict paths only inspect SIDECAR/SIDECAR_LOG. A Codex auth or transient error emitted on stdout under --json will be invisible to external_is_auth_failure/external_auth_verdict, despite the plan requiring stdout-auth stub coverage.
+- **Proposed resolution**: Define a single failure-log input that includes stderr plus non-usage stdout diagnostics, or explicitly pass both SIDECAR_LOG and events sidecar through a classifier that can ignore JSON events and inspect text/error events before retry/verdict decisions.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:608-666, scripts/test-token-vendor-scrapers.sh:107-116
+- **Concern**: 3. Plan updates launch-codex-implement.sh but omits its existing contract harness stubs. Scenario: The launcher will stop scraping tokens used from SIDECAR_LOG, but test-codex-implementer and the launch-codex-implement smoke in test-token-vendor-scrapers still emit tokens used and assert aggregate total=7777, so make lint will fail or stop covering the new per-bucket implementation path.
+- **Proposed resolution**: Update these existing Codex implementer stubs to emit --json usage events, assert --json in argv shape where appropriate, and assert record-vendor codex input/cache_read/output/total fields instead of aggregate-only total.
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: docs/linting.md:190-204, docs/linting.md:272
+- **Concern**: 4. New Makefile harness is not added to the canonical linting documentation. Scenario: The plan registers test-parse-codex-usage in Makefile, but docs/linting.md is the repository's Makefile-target catalog and already documents adjacent token and launcher harnesses; leaving it stale weakens discoverability and standards consistency.
+- **Proposed resolution**: Add a docs/linting.md row for make test-parse-codex-usage and update adjacent token/launcher harness descriptions to mention per-bucket Codex JSONL coverage.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-667
+- **Concern**: Missing harness update for JSONL stdout redirect. Scenario: Stub still prints tokens used to stdout; after launch-codex-implement.sh splits stdout to TRANSCRIPT_PATH.events.jsonl the record-vendor smoke expects total=7777 and will fail or silently skip ledger rows
+- **Proposed resolution**: Add UPDATED section for test-codex-implementer.sh: emit JSONL usage on stdout, assert per-bucket ledger fields; wire Makefile test-codex-implementer if needed
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:38
+- **Concern**: 1. Helper parser is specified as jq -nsR with inputs, which produces no input rows under jq slurp mode. Scenario: The proposed helper would fail closed for every valid JSONL events file, so all three Codex launchers silently stop recording Codex costs
+- **Proposed resolution**: Use jq -nR with inputs for line streaming, or use jq -Rsn over the slurped string with split("\n")[]; pin a harness fixture that invokes the exact jq mode on a valid JSONL file
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:39-42, scripts/token-cost.sh:17-21
+- **Concern**: 2. INPUT is mapped to usage.input_tokens while CACHED_INPUT is added again, but OpenAI documents input_tokens as including cached tokens. Scenario: In a cache-heavy run with input_tokens=1000 cached_tokens=900 output_tokens=50, the plan records input=1000 cache_read=900 total=1950 instead of billing buckets input=100 cache_read=900 output=50 total=1050, silently corrupting cost reports
+- **Proposed resolution**: Compute uncached input as input_tokens - cached_tokens before writing the ledger, fail closed if cached_tokens exceeds input_tokens, and update tests to assert the subtraction; source checked: https://platform.openai.com/docs/api-reference/usage/completions
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: <TMPDIR>/plan.txt:151, scripts/launch-review.sh:526-540, scripts/launch-codex-implement.sh:335-346, scripts/launch-codex-ci.sh:202-234
+- **Concern**: 3. The plan requires stdout-routed auth failures to remain classified, but the proposed split sends stdout to the events sidecar while auth checks still read only SIDECAR or SIDECAR_LOG. Scenario: If Codex exits nonzero and prints unauthorized/login-required text on stdout under --json, the retry loop misses it and CI emits an unknown/other failure instead of auth; the proposed stdout-auth test cannot pass with the listed launcher edits
+- **Proposed resolution**: Update Codex retry and verdict calls to check both stderr sidecar and events sidecar, or tee non-JSON stdout lines into the sidecar before parsing; mirror the existing Cursor multi-sidecar pattern
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:36-38, <TMPDIR>/plan.txt:55, <TMPDIR>/plan.txt:140
+- **Concern**: 4. fromjson? skips malformed JSON even though malformed JSONL is listed as an exit-1 fail-closed condition. Scenario: A truncated events file with one valid usage event followed by a malformed JSON event can succeed and record a partial undercount instead of failing closed
+- **Proposed resolution**: Distinguish wrapper noise from malformed event lines: ignore known non-JSON wrapper/status lines, but treat lines that look like JSON and fail parsing as exit 1; add a mixed valid-usage plus truncated-JSON fixture
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-632
+- **Concern**: Implement launcher harness not listed for JSONL stub migration. Scenario: test-harnesses-13 fails after launch-codex-implement.sh stops scraping tokens used
+- **Proposed resolution**: Add test-codex-implementer.sh to plan; JSONL stub + per-bucket ledger assertions
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-token-vendor-scrapers.sh:100-117
+- **Concern**: launch-codex-implement smoke stub still emits tokens used. Scenario: LCI codex_implement record-vendor regression passes awk era only; fails after JSONL redirect
+- **Proposed resolution**: Update LCI_BIN/codex stub and jq assertions for input/cache_read/output/total
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/parse-codex-usage.sh:0-0
+- **Concern**: Dual-path sum can double-count when one event has .msg.usage and .usage. Scenario: Inflated BUCKETS_codex and false confidence that BLENDED_WARN is gone
+- **Proposed resolution**: Coalesce per event before sum; add dual-path single-event fixture
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/run-external-agent.sh:220-277
+- **Concern**: Wrapper stdout lines mix into events.jsonl sidecar. Scenario: Runs with wrapper noise but no usage events record zero cost with no ledger row
+- **Proposed resolution**: Document in parse-codex-usage.md; add noisy-interleave fixture; track stderr-routing follow-up
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/launch-review.md:69-71
+- **Concern**: Launcher sibling docs still describe combined-stream tokens used scrape. Scenario: Next contributor reintroduces 2>&1 awk scrape or wrong failure triage
+- **Proposed resolution**: Update launch-review.md launch-codex-implement.md launch-codex-ci.md test-token-vendor-scrapers.md
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-launch-codex-ci.sh:58-67
+- **Concern**: CI launcher test plan overstates existing JSONL/token-record coverage. Scenario: No regression for per-bucket token-record or stderr-only auth after stdout split
+- **Proposed resolution**: Add JSONL stub smokes and auth-classification cases to test-launch-codex-ci.sh
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: Makefile:0-0
+- **Concern**: test-parse-codex-usage Makefile wiring unspecified. Scenario: New helper harness never runs in default make lint/test-harnesses
+- **Proposed resolution**: Pin exact test-harnesses-N shard and .PHONY target registration
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: scripts/test-token-vendor-scrapers.sh:26-45
+- **Concern**: Inline awk codex_scrape tests omit migration plan. Scenario: Legacy scrape tests imply production path still uses sidecar awk
+- **Proposed resolution**: Move to test-parse-codex-usage.sh or label as legacy-only documentation tests
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/parse-codex-usage.sh (proposed)
+- **Concern**: FINDING_1: Planned jq invocation uses -s with inputs for JSONL. Scenario: `jq -nsR 'inputs | fromjson?'` slurps the whole events file as one raw string, so two valid JSONL usage events become one invalid JSON blob and the helper fail-closes instead of summing multi-event runs
+- **Proposed resolution**: Use `jq -nR 'inputs | fromjson? | select(type=="object")'` or `jq -Rs 'split("\n")[] | fromjson? | select(type=="object")'`, and add a fixture with two usage lines that would fail under `-s`
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/parse-codex-usage.sh (proposed)
+- **Concern**: FINDING_2: API-shaped cached tokens are treated as additive input. Scenario: The plan maps `INPUT=input_tokens` and `CACHED_INPUT=input_tokens_details.cached_tokens`, then prices both buckets; OpenAI documents cached tokens as a breakdown of input tokens, so cached tokens would be charged once at input rate and again at cached rate
+- **Proposed resolution**: For Responses-shaped usage, compute billable uncached input as `max(input_tokens - cached_tokens, 0)`, keep `cache_read=cached_tokens`, and use `usage.total_tokens` or `input_tokens + output_tokens` only as a consistency check. See https://platform.openai.com/docs/api-reference/responses
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/parse-codex-usage.sh (proposed)
+- **Concern**: FINDING_3: Parser does not cover current Codex CLI token event field names. Scenario: The installed Codex 0.125.0 binary exposes `TokenUsage` fields named `input_tokens`, `cached_input_tokens`, `output_tokens`, `reasoning_output_tokens`, and `total_tokens`; the plan only probes `input_tokens_details.cached_tokens`, so real cache-read usage can silently record as zero even while tests pass on synthetic OpenAI Responses fixtures
+- **Proposed resolution**: Add fixtures and parser branches for Codex CLI-native token-count events, including `cached_input_tokens`, `reasoning_output_tokens`, and `total_tokens`; run one real `codex exec --json` smoke or checked-in captured fixture before landing
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: scripts/launch-review.sh:527-540; scripts/launch-codex-ci.sh:202-213; scripts/lib-external-launcher-common.sh:97-112
+- **Concern**: FINDING_4: Stdout auth diagnostics are planned to be tested but no longer classified. Scenario: The redirect change sends Codex stdout to the events sidecar while auth checks still read only `SIDECAR` or `SIDECAR_LOG`; the plan says tests must verify stdout-routed auth messages are classified, but the proposed dataflow makes that impossible
+- **Proposed resolution**: Decide the contract explicitly: either include the events sidecar in `external_is_auth_failure` and `external_auth_verdict` after filtering JSONL noise, or remove the stdout-auth test requirement and document stderr-only classification as accepted behavior
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/launch-codex-implement.md:7-8; scripts/launch-codex-ci.md:18; scripts/test-token-vendor-scrapers.md:3-7
+- **Concern**: FINDING_5: Existing sibling docs still describe the removed `tokens used` scrape. Scenario: The plan adds new parse-helper docs but leaves adjacent launcher and harness contracts saying stdout/stderr are combined and `tokens used` blocks are scraped, so post-PR docs will point maintainers at the obsolete behavior
+- **Proposed resolution**: Update the existing `.md` siblings for each changed launcher and harness to describe `--json`, events sidecars, fail-closed no-ledger behavior, and the new per-bucket token-record grammar
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-667;scripts/test-token-vendor-scrapers.sh:100-140
+- **Concern**: Plan updates launch-codex-implement.sh but omits harness stub/assertion updates for implement-path Codex token capture. Scenario: test-codex-implementer Test 10 still stubs printf tokens-used to stdout and asserts ledger total=7777 only; test-token-vendor-scrapers launch-codex-implement smoke uses the same stub — make lint fails after --json split-stream redirect
+- **Proposed resolution**: Add test-codex-implementer.sh and test-token-vendor-scrapers.sh to Files to modify; emit JSONL usage on stub stdout, assert per-bucket record-vendor fields (input/cache_read/output/total), and add a fail-closed case with no usage events
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/parse-codex-usage.sh (planned)
+- **Concern**: Planned helper does not parse Codex JSONL cached_input_tokens. Scenario: The plan only reads input_tokens_details.cached_tokens, but the installed Codex CLI token usage schema includes cached_input_tokens alongside input_tokens/output_tokens/total_tokens; real Codex events would record cache_read=0 and keep understating or mispricing cached input despite the new path. OpenAI Responses usage also describes cached_tokens as an input-token detail: https://developers.openai.com/api/reference/resources/responses/methods/create
+- **Proposed resolution**: Add probes for .msg.usage.cached_input_tokens and .usage.cached_input_tokens, prefer Codex's total_tokens when present or explicitly define whether input is uncached before computing TOTAL, and add fixtures using the actual Codex JSONL field names.
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-666
+- **Concern**: Dedicated Codex implementer harness is omitted from the plan. Scenario: launch-codex-implement.sh will stop scraping tokens used, but this existing harness still emits tokens used and asserts a total-only codex_implement ledger row; make lint includes test-codex-implementer, so the PR will fail even if the newly named tests pass.
+- **Proposed resolution**: Update this harness stub to emit JSONL usage, assert --json in argv, and check input/cache_read/output/total fields for codex_implement.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/launch-review.sh:526-551; scripts/launch-codex-ci.sh:202-234
+- **Concern**: Stdout-routed Codex auth errors are no longer classified. Scenario: The plan routes stdout to the events file but leaves auth verdicts reading only SIDECAR/SIDECAR_LOG. Its own failure-mode section requires a stdout auth-pattern test to remain classified, which cannot pass with the proposed redirect unless classification also reads the events sidecar or stderr/stdout are merged for diagnostics.
+- **Proposed resolution**: For failure classification, pass both the stderr sidecar and events sidecar to external_auth_verdict or tee non-JSON stdout diagnostics into the sidecar while keeping parse-codex-usage tolerant of wrapper noise.
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/launch-review.md:69-71; scripts/launch-codex-implement.md:5-8; scripts/launch-codex-ci.md:18
+- **Concern**: Existing sibling docs are left describing the old combined-stream token scrape. Scenario: The plan creates docs for new scripts but does not update modified launcher docs that currently say Codex captures stdout and stderr to sidecar and scrapes tokens used. That leaves consumer-facing contracts stale immediately after the PR lands.
+- **Proposed resolution**: Update the three launcher .md siblings to document --json, the events sidecar, stderr-only sidecar role, and fail-closed token recording.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-632
+- **Concern**: Plan omits updating implementer harness Codex stub. Scenario: Test 10 still prints tokens used to stdout; after launch-codex-implement.sh splits stdout to .events.jsonl the stub will not populate usage and record-vendor codex_implement total=7777 will fail under make lint
+- **Proposed resolution**: Add skills/implement/scripts/test-codex-implementer.sh to Files to modify: emit JSONL usage on stdout (and keep --output-last-message transcript); assert per-bucket ledger fields
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/parse-codex-usage.sh:NEW
+- **Concern**: Planned jq invocation uses -nsR with inputs, which produces no parsed event rows under jq raw-input behavior. Scenario: Success fixtures and real Codex JSONL would fail closed, so no per-bucket ledger rows would ever be written
+- **Proposed resolution**: Use jq -nR with inputs/fromjson? or another line-streaming form, and add a one-line JSONL fixture that must return the four KV lines
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/token-cost.sh:193-199; scripts/token-report.sh:405-411
+- **Concern**: Plan maps input_tokens and cached_tokens into separate billed buckets without subtracting cache hits. Scenario: If input_tokens is inclusive of cached tokens, cached tokens are charged once as full input and again as cached input, preserving inflated Codex cost despite removing BLENDED_WARN
+- **Proposed resolution**: Set INPUT to max(input_tokens - cached_tokens, 0), CACHE_READ to cached_tokens, OUTPUT to output_tokens, and add an API-shaped fixture where input_tokens includes cached_tokens
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/run-external-agent.sh:260-278; scripts/lib-external-launcher-common.sh:97-112; scripts/launch-review.sh:492-523; scripts/launch-codex-implement.sh:321-334; scripts/launch-codex-ci.sh:191-201
+- **Concern**: Stdout split drops wrapper diagnostics and stdout auth text from the sidecar while classifiers still inspect only the sidecar. Scenario: A Codex auth or failure message printed on stdout is routed to events JSONL, not classified as auth, and append-tool-failure loses the wrapper failure summary
+- **Proposed resolution**: Demux stdout so JSON events go to the events file while non-JSON stdout remains in the sidecar, or classify failures against both sidecar and events stdout
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:382-398; skills/implement/scripts/test-codex-implementer.sh:607-666
+- **Concern**: Plan omits the actual launch-codex-implement harness update. Scenario: Existing tests still expect the old argv shape and tokens used scraping, so make lint can fail or miss the new per-bucket path
+- **Proposed resolution**: Update test-codex-implementer stubs/assertions for --json, events sidecars, per-bucket ledger rows, and include make test-codex-implementer in explicit validation
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/run-negotiation-round.sh:84-85; scripts/lint-fix-loop.sh:160-162; scripts/check-reviewers.sh:197-200
+- **Concern**: Stated wherever Codex is launched scope ignores direct codex exec call sites. Scenario: User-visible direct Codex lanes keep no JSON/per-bucket capture, while health probes need an explicit exclusion, leaving partial coverage ambiguous
+- **Proposed resolution**: Grep codex exec in the plan, classify each direct call as excluded probe or update it to use the helper/ledger; narrow the stated goal if only three launchers are intended
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: .claude/rules/script-md-siblings.md:7-12; scripts/launch-review.md:69-71; scripts/launch-codex-implement.md:6-8; scripts/launch-codex-ci.md:18
+- **Concern**: Existing script sibling docs are not included despite behavior changes. Scenario: Docs continue to claim combined stdout/stderr sidecars and tokens used scraping after the launcher contract changes
+- **Proposed resolution**: Add UPDATED entries for affected .md siblings and docs/linting.md so documentation matches the new stream and token-capture contracts
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-redirect-transform
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-666
+- **Concern**: Plan omits updating the dedicated codex-implementer launcher harness. Scenario: Test 10 still stubs `printf 'tokens used\n7,777\n'` to stdout and asserts ledger `.total==7777`; after redirect split that text lands in `${TRANSCRIPT_PATH}.events.jsonl` not `$SIDECAR_LOG`, so `parse-codex-usage.sh` sees no JSONL and fail-closed skips `record-vendor`, breaking `make test-codex-implementer`
+- **Proposed resolution**: Add `skills/implement/scripts/test-codex-implementer.sh` to Files to modify: replace the stub with a JSONL usage event on stdout, assert per-bucket ledger fields (or at minimum non-zero input/output/cache_read/total), and add a fail-closed case with no usage events
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-redirect-transform
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/parse-codex-usage.sh:new
+- **Concern**: Planned jq command uses -nsR with inputs for JSONL parsing. Scenario: With two valid Codex --json event lines, -sR makes inputs yield one newline-joined raw string; fromjson? drops it, so helper exits 1 and all launchers record no Codex tokens despite valid events
+- **Proposed resolution**: Use jq -nR 'inputs | fromjson?' or an explicit line loop, and keep the multiple-usage-events fixture as a required regression
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-redirect-transform
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/launch-review.sh:475-523,556-559
+- **Concern**: /dev/null branch discards events but still plans to parse ${OUTPUT}.events.jsonl. Scenario: If sidecar creation falls back to /dev/null and a stale ${OUTPUT}.events.jsonl already exists, parse-codex-usage can record stale usage, violating the intended no-events/no-ledger behavior
+- **Proposed resolution**: Remove or truncate the events file before launch and skip token parsing when SIDECAR=/dev/null, or set the parser input to /dev/null; add a test that pre-seeds the events file and forces sidecar fallback
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-redirect-transform
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-666
+- **Concern**: Plan omits the existing make test-codex-implementer ledger smoke. Scenario: After launch-codex-implement stops scraping tokens used from SIDECAR_LOG, this harness still emits tokens used and expects total=7777, so make test-codex-implementer fails or misses the new per-bucket path
+- **Proposed resolution**: Update this stub to emit Codex JSONL usage, assert --json is present, and assert input/output/cache_read/total in the codex_implement ledger row
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-dyn-redirect-transform
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/lib-external-launcher-common.sh:97-112; scripts/launch-review.sh:526-540; scripts/launch-codex-implement.sh:335-344; scripts/launch-codex-ci.sh:202-211
+- **Concern**: The plan asks tests to verify stdout-routed auth text is still classified, but the proposed redirects route stdout away from SIDECAR. Scenario: The retry and verdict calls only read SIDECAR/SIDECAR_LOG, so a stdout-only auth marker in the events file will not be classified; that test expectation contradicts the redirect design
+- **Proposed resolution**: Either narrow the assertion to stderr auth text, or explicitly pass the events sidecar into auth retry/verdict classification if stdout auth classification is a requirement
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-stub-audit
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-667
+- **Concern**: Plan updates launch-codex-implement.sh but omits this harness from Files to modify. Scenario: Test 10 still stubs tokens used on stdout and jq-asserts vendor total=7777; after events sidecar + parse-codex-usage the implement launcher smoke fails under test-harnesses-13
+- **Proposed resolution**: Add skills/implement/scripts/test-codex-implementer.sh (and stub at 632) to Files; emit JSONL on stdout, keep --output-last-message transcript write, assert per-bucket ledger fields (and events sidecar path)
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-stub-audit
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/parse-codex-usage.sh:NEW
+- **Concern**: Finding 1: planned jq command uses jq -nsR with inputs. Scenario: fromjson?; with -s the raw input is slurped as one string, so line-oriented JSONL events like the proposed stub payload parse as no objects and every launcher fails closed with empty token records
+- **Proposed resolution**: Use jq -nR 'inputs | fromjson? | select(type=="object")' or split the slurped string explicitly, and add a helper test proving a single JSONL usage line produces non-empty KV output
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-stub-audit
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/token-cost.sh:104-106 scripts/token-cost.sh:194-199
+- **Concern**: Finding 2: planned helper maps input_tokens to INPUT and cached_tokens to CACHE_READ, then defines TOTAL as INPUT+CACHED_INPUT+OUTPUT. Scenario: token-cost charges --codex-input-tokens and --codex-cached-input-tokens separately and recomputes CODEX_T as D_IN+D_CACHED+D_OUT, so if input_tokens is the gross input count with cached_tokens as a detail bucket, cached tokens are double-counted and overcharged
+- **Proposed resolution**: Parse uncached input as max(input_tokens - cached_tokens, 0), cache_read as cached_tokens, output as output_tokens, and total as uncached_input+cached_tokens+output_tokens; update all fixture totals accordingly
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-stub-audit
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-codex-implementer.sh:607-666
+- **Concern**: Finding 3: plan updates launch-codex-implement.sh but omits its existing record-vendor smoke test. Scenario: The harness stub still emits tokens used and asserts aggregate total==7777, so the implement launcher change will break test-codex-implementer under make lint
+- **Proposed resolution**: Update this Codex stub to emit the same JSONL usage event shape while still writing --output-last-message and the manifest, then assert input/cache_read/output/total on the codex_implement ledger row
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-dyn-stub-audit
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-launch-codex-ci.sh:58-68 scripts/append-token-record.sh:37-41 scripts/append-token-record.sh:48-74
+- **Concern**: Finding 4: planned fail-closed CI assertion allows a token-record containing only TOOL=.... Scenario: append-token-record treats any non-empty sidecar as a record and defaults missing numeric fields to zero, so a TOOL-only file would append a misleading codex row instead of proving fail-closed emptiness
+- **Proposed resolution**: Require the no-JSONL branch to assert [[ ! -s "${OUTPUT}.token-record" ]] and, after append-token-record, assert no token-report.ndjson row was appended
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-dyn-stub-audit
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:40-79 scripts/test-harness-shards-coverage.sh:213-219
+- **Concern**: Finding 5: Makefile plan points to a generic aggregate target instead of the shard list this repo validates. Scenario: There is no test-shell/test aggregate here; individual test-* targets must appear in exactly one test-harnesses-N shard or test-harness-shards-coverage reports them missing
+- **Proposed resolution**: Add test-parse-codex-usage to .PHONY, define the recipe, and append it to one single-line test-harnesses-N shard prerequisite list; do not rely on adding it only to test-harnesses
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-dyn-stub-audit
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/test-launch-review.sh:603-618
+- **Concern**: Finding 6: the seven cited test-launch-review stub line numbers include line 603, which is only a comment; the actual stdout-emitting stub is line 618. Scenario: The plan describes seven codex stubs, but rg shows six token-emitting printf sites at 174, 559, 618, 803, 872, and 973, with 603 duplicating the stdout-stub reference as prose
+- **Proposed resolution**: Revise the plan to say six stubs plus the adjacent comment at 603 that must be updated; retain each existing --output-last-message write before emitting the JSONL usage event
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-fail-closed-chain
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-token-vendor-scrapers.sh:100-116
+- **Concern**: Plan updates launch-codex-implement.sh but not this harness's embedded codex stub (still prints tokens used). Scenario: After --json + parse-codex-usage, launch-codex-implement smoke (lines 127-196) gets empty ledger and fails make test-token-vendor-scrapers
+- **Proposed resolution**: Update the codex stub to emit JSONL usage on stdout (matching --output-last-message wiring) and assert per-bucket record-vendor fields instead of total=7777 only
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-fail-closed-chain
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/append-token-record.sh:37-77; <TMPDIR>/plan.txt:117-119
+- **Concern**: The planned fail-closed test permits a non-empty TOOL-only token-record even though append-token-record.sh processes any non-empty sidecar into a zero-total vendor row. Scenario: An empty pre-touched file is safe because append-token-record.sh exits on ! -s, and token-cost only warns when aggregate tokens are >0, but a TOOL-only sidecar would still violate the stated no ledger row contract and the proposed test would not catch it
+- **Proposed resolution**: Tighten test-launch-codex-ci.sh to require the no-usage token-record to be zero-byte or absent, then run append-token-record.sh and assert no codex row is appended; remove the TOOL-only allowance
+

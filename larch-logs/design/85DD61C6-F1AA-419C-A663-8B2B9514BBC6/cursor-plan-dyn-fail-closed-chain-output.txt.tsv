@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-token-vendor-scrapers.sh:100-116	Plan updates launch-codex-implement.sh but not this harness's embedded codex stub (still prints tokens used)	After --json + parse-codex-usage, launch-codex-implement smoke (lines 127-196) gets empty ledger and fails make test-token-vendor-scrapers	Update the codex stub to emit JSONL usage on stdout (matching --output-last-message wiring) and assert per-bucket record-vendor fields instead of total=7777 only

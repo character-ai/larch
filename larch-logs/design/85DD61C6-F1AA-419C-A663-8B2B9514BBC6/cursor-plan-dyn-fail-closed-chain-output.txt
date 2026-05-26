@@ -1,0 +1,38 @@
+Reading the plan and tracing the fail-closed chain in the codebase.
+Verified the fail-closed chain against current code: `token-cost.sh` sets `BLENDED_WARN` for Codex only in the `CODEX_BUCKET=false` branch when `CODEX_T > 0` (```200:204:scripts/token-cost.sh```); `render-cost-line.sh` and `render-run-summary.sh` switch to `--codex-tokens` only when per-bucket sum is zero **and** aggregate `CODEX_T`/`CODEX_TOKENS` is positive (```65:68:scripts/render-cost-line.sh```, ```110:113:scripts/render-run-summary.sh```). An empty `${OUTPUT}.token-record` is skipped by `append-token-record.sh` via `! -s` (```37:41:scripts/append-token-record.sh```), so it cannot introduce an aggregate-only ledger row by itself.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-token-vendor-scrapers.sh:100-116	Plan updates launch-codex-implement.sh but not this harness's embedded codex stub (still prints tokens used)	After --json + parse-codex-usage, launch-codex-implement smoke (lines 127-196) gets empty ledger and fails make test-token-vendor-scrapers	Update the codex stub to emit JSONL usage on stdout (matching --output-last-message wiring) and assert per-bucket record-vendor fields instead of total=7777 only
+2	in_scope	important	risk-integration	skills/implement/scripts/test-codex-implementer.sh:607-632	Gap-1 record-vendor smoke omitted from Files to modify	The codex stub still prints tokens used; post-change launch-codex-implement writes no ledger row and Test 10 fails	Add skills/implement/scripts/test-codex-implementer.sh to UPDATED list: JSONL stub stdout, events-compatible redirect expectations, per-bucket ledger assertions
+3	in_scope	important	correctness	scripts/test-token-vendor-scrapers.sh:121-128	Proposed item 4 does not add a BLENDED_WARN regression; existing block 198-211 only checks token-report markdown	Implementer may keep markdown-only coverage and miss aggregate-fallback stderr regression	Add explicit stderr capture: build legacy ledger with record-vendor codex total=N only, run token-report --full --format json, feed BUCKETS through render-cost-line.sh or render-run-summary.sh (or call token-cost.sh with --codex-tokens only), grep for blended rate / BLENDED_WARN warning
+4	in_scope	important	correctness	scripts/launch-codex-ci.sh:105-106	Unconditional : > token-record before run is underspecified vs partial-write hazards	Accidental printf of TOOL=codex or TOTAL=0 on parse failure yields a non-empty sidecar; append-token-record.sh still appends an ndjson row (total=0), diverging from fail-closed no-row intent	State invariant in launch-codex-ci change: fail-closed path leaves a zero-byte file only; on parse success overwrite with full INPUT/OUTPUT/CACHE_READ/TOTAL block; never write aggregate-only TOTAL= lines; extend test-launch-codex-ci.sh to assert file size 0 after JSONL-less stub run
+5	in_scope	latent	architecture	scripts/launch-review.sh:556-559	Plan does not require numeric validation when mapping parse-codex-usage KV lines to record-vendor	Malformed helper output could hit token-ledger.sh is_uint warnings and skip the row silently while events exist	Mirror existing [[ N =~ ^[0-9]+$ ]] guard for each parsed bucket before record-vendor; add a negative fixture to test-parse-codex-usage or launcher harness if feasible
+6	in_scope	nit	risk-integration	Makefile:266-267	Makefile registration for test-parse-codex-usage names test-shell/test vaguely	New helper may be omitted from make lint shards	Register test-parse-codex-usage with its own target and add it to test-harnesses-12 (alongside test-token-cost and test-token-vendor-scrapers)
+7	out_of_scope	nit	correctness	scripts/test-token-vendor-scrapers.md:5-7	Sibling doc still describes tokens used scraping as primary contract	Post-land doc drift vs JSONL parse path	Update test-token-vendor-scrapers.md when the harness switches to JSONL/events fixtures
+
+**Numbered findings (detail)**
+
+1. **[correctness]** [scripts/test-token-vendor-scrapers.sh:100-116](scripts/test-token-vendor-scrapers.sh) — Plan updates `launch-codex-implement.sh` but not this harness’s embedded codex stub (still `printf 'tokens used\n7,777\n'`). After `--json` + `parse-codex-usage.sh`, the launch-codex-implement smoke (lines 127–196) gets an empty ledger and fails `make test-token-vendor-scrapers`. **Revision:** Update the stub to emit JSONL `usage` on stdout and assert per-bucket `record-vendor` fields.
+
+2. **[risk-integration]** [skills/implement/scripts/test-codex-implementer.sh:607-632](skills/implement/scripts/test-codex-implementer.sh) — Gap-1 `record-vendor` smoke is omitted from “Files to modify.” Same `tokens used` stub; Test 10 will fail post-change. **Revision:** Add this file to UPDATED with JSONL stub + per-bucket ledger assertions.
+
+3. **[correctness]** [scripts/test-token-vendor-scrapers.sh:121-128](scripts/test-token-vendor-scrapers.sh) — Proposed § “item 4” does not add a `BLENDED_WARN` regression; block 198–211 only checks `token-report` markdown, not `token-cost.sh` stderr. **Revision:** Add explicit `grep` for `blended rate` on the legacy `record-vendor codex total=N` path via `render-cost-line.sh`/`render-run-summary.sh` or direct `--codex-tokens`-only `token-cost.sh`.
+
+4. **[correctness]** [scripts/launch-codex-ci.sh:105-106](scripts/launch-codex-ci.sh) — Unconditional `: >` before run is right for uniform `emit_kv`, but the plan should forbid partial writes on parse failure. A non-empty `TOOL=codex` or `TOTAL=0` file still passes `append-token-record.sh` `[ -s ]` (```37:78:scripts/append-token-record.sh```). **Revision:** Fail-closed = zero-byte file only; full KV block on success only; never aggregate-only `TOTAL=`; assert empty file in `test-launch-codex-ci.sh` for JSONL-less stub.
+
+5. **[architecture]** [scripts/launch-review.sh:556-559](scripts/launch-review.sh) — No numeric validation when mapping helper KV lines to `record-vendor` (unlike current `[[ "$N" =~ ^[0-9]+$ ]]`). **Revision:** Validate each bucket before `record-vendor`.
+
+6. **[risk-integration]** [Makefile:266-267](Makefile) — `test-parse-codex-usage` shard placement is vague. **Revision:** Add target + `test-harnesses-12` dependency.
+
+7. **[OUT_OF_SCOPE]** [scripts/test-token-vendor-scrapers.md:5-7](scripts/test-token-vendor-scrapers.md) — Doc still centers `tokens used` scraping; update when harness moves to JSONL.
+
+**Fail-closed chain (plan claims — confirmed)**
+
+| Step | Post-change expectation | Code basis |
+|------|-------------------------|------------|
+| `parse-codex-usage.sh` exit 1 | Empty stdout, no launcher write | Plan § NEW helper exit codes |
+| No `record-vendor` / empty `.token-record` | `BUCKETS_codex.* == 0` | `token-report.sh:405-412`; `append-token-record.sh:37-41` |
+| No `BLENDED_WARN` | Per-bucket flags all 0, `CODEX_T==0` → `CODEX_BUCKET=true`, sum 0 | `token-cost.sh:194-199`; not `201-202` |
+| Legacy `total=N` only still warns | `render-*` uses `--codex-tokens` when bucket sum 0 and aggregate > 0 | `render-cost-line.sh:66-67` |
+
+Plan line reference `token-cost.sh:217-222` is the shared warning print and Cursor branch; Codex `BLENDED_WARN` assignment is at ```201:202:scripts/token-cost.sh```. Empty pre-touched `.token-record` does not by itself re-open aggregate-only `BLENDED_WARN`; gaps are partial non-empty sidecars (finding 4) and missing harness/doc updates (findings 1–3, 7).

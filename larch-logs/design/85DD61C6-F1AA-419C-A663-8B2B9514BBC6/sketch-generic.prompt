@@ -1,0 +1,92 @@
+Propose a high-level implementation approach for this feature:
+
+[BUG] Codex token capture is aggregate-only; BUCKETS_codex per-bucket fields stay…
+
+
+Codex token capture is aggregate-only; BUCKETS_codex per-bucket fields stay zero, triggering blended-rate cost overstatement warning
+
+## Summary
+
+`/design` and `/implement` runs print this warning at final-summary time:
+
+```
+token-cost.sh: WARNING: per-bucket counts unavailable; using blended rate (may overstate by ~3-10x)
+```
+
+Root cause: every Codex launcher records only an aggregate `total=` to the token ledger. The downstream report's `BUCKETS_codex` has `input=0, cached_input=0, output=0` but a real `total`. `render-cost-line.sh` falls back to `--codex-tokens N` (aggregate), and `token-cost.sh` applies a conservative cache-heavy blended rate. By contrast, Cursor records all four buckets and is priced exactly. The committed cost lines therefore systematically overstate the Codex portion (the warning's stated "~3-10x" headroom).
+
+## Evidence chain
+
+1. `scripts/token-cost.sh:217-222` — `BLENDED_WARN=true` triggers the warning when any vendor aggregate > 0 with no per-bucket flags supplied.
+2. `scripts/render-cost-line.sh:67-69` — `if [ "$((D_IN + D_CACHED + D_OUT))" -eq 0 ] && [ "$CODEX_T" -gt 0 ]; then codex_args=(--codex-tokens "$CODEX_T")`. Per-bucket sum being zero forces the aggregate fallback.
+3. `skills/design/scripts/render-final-summary.sh:122` populates `D_IN/D_CACHED/D_OUT` from `.BUCKETS_codex.input/.cached_input/.output` in `token-report-final.json`.
+4. Sample committed `larch-logs/design/0C0B0C05-4B3F-41C8-AFAB-402B4ED6F5D5/token-report-final.json`:
+   ```json
+   "BUCKETS_codex": { "input": 0, "cached_input": 0, "output": 0, "total": 1096822 }
+   ```
+   Per-bucket fields are zero; total is real.
+5. `scripts/token-report.sh:405-412` builds `BUCKETS_codex` by summing per-row `input/cache_read/output` from recorded vendor events.
+6. **The actual aggregate-only write** lives in `scripts/launch-review.sh:557-559`:
+   ```bash
+   N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR" 2>/dev/null || true)
+   if [[ "$N" =~ ^[0-9]+$ ]]; then
+       "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex total="$N" raw="codex_review" >/dev/null 2>&1 || true
+   fi
+   ```
+   Only `total=N` is recorded — no `input=/output=/cache_read=`.
+
+   Contrast with Cursor at the same script `launch-review.sh:1027-1030`:
+   ```bash
+   read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "${OUTPUT}.json" 2>/dev/null || echo "0 0 0 0")
+   TOT=$((INP + OUT + CR + CW))
+   "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor cursor input="$INP" output="$OUT" cache_read="$CR" cache_create="$CW" total="$TOT" raw="cursor_review" >/dev/null 2>&1 || true
+   ```
+   Cursor parses `.usage` from its structured JSON output; all four buckets are recorded.
+
+7. **The same aggregate-only pattern in every other Codex launcher**:
+   - `scripts/launch-codex-implement.sh:356`: `record-vendor codex total="$N" raw="codex_implement"`
+   - `scripts/launch-codex-ci.sh:228`: `printf 'TOOL=codex\nTOTAL=%s\nRAW=codex_ci_fix\n' "$TOKENS" > "${OUTPUT}.token-record"` (then `append-token-record.sh` writes the NDJSON row with input/output/cache_read defaulted to 0)
+
+## Why "may overstate by ~3-10x"
+
+The blended rate is a single $/M-token price chosen to be cache-heavy-conservative. In practice the bulk of any long Codex run's input is `cached_input` (priced at ~10% of fresh input on `gpt-5.5`), but the aggregate fallback can't distinguish input from cached_input from output, so it applies a price closer to the fresh-input/output midpoint to all tokens. Cost lines therefore systematically overstate Codex spend in committed run logs and final-summary chat output.
+
+## Fix directions (not a design, just ideas)
+
+1. **Parse Codex JSON output for per-bucket usage** — `codex agent ... --output-format json` emits structured records with a `usage` object on each `responses` API call. Parse `usage.input_tokens`, `usage.input_tokens_details.cached_tokens` (newer field; falls back to 0 when absent), and `usage.output_tokens`, sum across the run, and record all four (`input`, `cached_input`, `output`, `total`) to the token ledger. Mirror Cursor's `.usage`-parsing path in `launch-review.sh`.
+
+2. **Apply the fix in all three call sites uniformly** — `launch-review.sh` (Codex reviewer/sketch), `launch-codex-implement.sh` (Codex implementer), `launch-codex-ci.sh` (Codex CI-fix loop). Otherwise different lanes will keep different fidelity and the warning will still fire intermittently.
+
+3. **Extend `append-token-record.sh` callers** to pass `INPUT=`, `OUTPUT=`, `CACHE_READ=` alongside `TOTAL=` (the script already accepts these via `kv` and writes them into the NDJSON row; the upstream writer just doesn't populate them today).
+
+4. **Backstop**: an offline harness fixture that runs the full chain on a synthetic ledger with per-bucket Codex rows and asserts `token-cost.sh` does NOT emit the BLENDED_WARN line. Mirrors `test-token-report.sh` style.
+
+## Files involved
+
+- `scripts/launch-review.sh:557-559` — Codex reviewer/sketch token capture (aggregate-only).
+- `scripts/launch-codex-implement.sh:356` — Codex implementer token capture (aggregate-only).
+- `scripts/launch-codex-ci.sh:228` — Codex CI-fix token capture (aggregate-only).
+- `scripts/append-token-record.sh:64-76` — accepts per-bucket KVs but defaults all to 0.
+- `scripts/token-report.sh:397-412` — builds BUCKETS_claude/codex/cursor from ledger rows.
+- `scripts/render-cost-line.sh:65-78` — falls back to aggregate flags when per-bucket sum is 0.
+- `scripts/token-cost.sh:200, 214, 217-222` — sets and prints BLENDED_WARN.
+- `skills/design/scripts/render-final-summary.sh:122` — reads `.BUCKETS_codex.*` from the report JSON.
+
+## Out of scope for this bug
+
+- Changing the blended rates themselves (they are intentionally conservative).
+- Adding per-bucket capture for any third tool (only Codex is affected; Cursor and Claude already record all buckets).
+
+## Related issues (history)
+
+- **#1427** ([DONE] [OOS] Codex token report shows zero Input/Output across all steps despite extensive Codex use) — same end-user symptom from the display angle. Its fix (PR #1458) added a `Total` column to the per-vendor markdown table so Codex's aggregate is visible. That bug also explicitly recommended this fix as a future direction (its "Suggestions for fixing" item (b)): "split Codex's `tokens used: N` into a synthetic input/output approximation by either (i) calling `codex exec --output-schema usage-json` ... or (ii) parsing the rollout file `codex-rollout-*.jsonl`." This bug is that follow-up.
+- **#2622** ([DONE] Fix token cost reporting: dedup, per-bucket rates, refresh defaults) — fixed three compounding cost bugs (Claude double-count, vendor dedup, format) but did not touch the Codex per-bucket capture path.
+- **#1872** ([DONE] (URGENT) [BUG] /report-tokens: stale Codex/Cursor rates + missing Gemini/caching accounting) — adjacent (rates, not capture).
+- **#1874** ([DONE] (URGENT) [BUG] Codex/Cursor reviewer tokens missing from ledger in 65-74% of /implement SIMPLE runs) — adjacent (presence in ledger, not per-bucket fidelity).
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
+
+
+## Operator-supplied scope decisions (binding for Step 2b)
+- Graceful-degrade policy: **fail closed** — when `codex exec --json` is unavailable or produces no usage data, record NO token-ledger entry for that lane (skip the `record-vendor codex` write entirely). Do not fall back to the legacy `tokens used` aggregate parse.
+- Parse helper placement: introduce a **shared helper script** (e.g., `scripts/parse-codex-usage.sh`) called from all three Codex launchers. Do not inline the JSONL parse three times.

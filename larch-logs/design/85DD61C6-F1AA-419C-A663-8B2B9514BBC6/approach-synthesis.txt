@@ -1,0 +1,32 @@
+# Approach Synthesis
+
+## Sketch contributions
+
+- **Codex-Generic** (substantive, 2.5 KB): proposed a shared `scripts/parse-codex-usage.sh` helper that reads Codex JSONL output, sums `usage.input_tokens`, `usage.input_tokens_details.cached_tokens`, and `usage.output_tokens`, and emits shell-safe `INPUT=`/`CACHE_READ=`/`OUTPUT=`/`TOTAL=` KV lines. Treats missing `jq`, malformed JSON, unsupported `codex exec --json`, or zero parsed usage as "no token data" — skip the Codex token write entirely (fail-closed). Identified the three call sites at `scripts/launch-review.sh:500`, `scripts/launch-codex-implement.sh:326`, and `scripts/launch-codex-ci.sh:196`. `launch-review.sh` and `launch-codex-implement.sh` call `token-ledger.sh record-vendor codex input=… cache_read=… output=… total=… raw=…`; `launch-codex-ci.sh` writes the same fields into `${OUTPUT}.token-record` (consumed by `append-token-record.sh`, which already accepts those KVs). Downstream reporting needs no structural change — `token-report.sh:405` already sums vendor row buckets into `BUCKETS_codex`, and `render-cost-line.sh:65` naturally stops falling back to aggregate pricing once buckets are non-zero. Risks called out: preserving `--output-last-message` transcript behavior, ensuring auth/transient classification still has useful sidecar text, and avoiding misleading aggregate ledger rows from older Codex CLIs. Test fixtures suggested: multiple usage records summed correctly, wrapper noise mixed with JSONL, unsupported/no-usage case (no ledger row), end-to-end synthetic ledger asserting `token-cost.sh` no longer emits the blended-rate warning.
+
+- **Cursor-Generic** (degraded, 0.4 KB): Cursor produced only a preamble — "Exploring the codebase... I have enough context. Creating the implementation plan." — and never wrote the actual plan content. Collector STATUS=OK (the empty body is the entire content of the JSON sidecar's `.result` field). No architectural content; treat as a non-vote for synthesis purposes.
+
+## Areas of agreement
+
+Only Codex offered concrete proposals. Cursor's silence is treated as non-objection. The agreed direction (entirely Codex-sourced, validated against the issue body and operator scope decisions in Step 1c):
+
+1. **Shared helper** `scripts/parse-codex-usage.sh` (matches operator scope decision #2 — no inlining).
+2. **Fail-closed semantics** when JSON parse fails (matches operator scope decision #1 — no legacy aggregate fallback).
+3. **Three uniform call sites**: launch-review.sh (Codex section), launch-codex-implement.sh, launch-codex-ci.sh.
+4. **`launch-codex-ci.sh` path**: write per-bucket KVs into `${OUTPUT}.token-record` (the existing `append-token-record.sh` already accepts them; no schema changes needed downstream).
+5. **Mirror Cursor's `.usage` pattern** structurally: dedicated structured-output sidecar parsed via `jq`, kept separate from `--output-last-message` (the agent's text response).
+6. **Preserve `--output-last-message`** so existing downstream collectors of Codex agent text are unaffected.
+7. **Preserve auth/transient-failure detection** by keeping sidecar log text intact (the SIDECAR consumed by `external_is_auth_failure` / `external_is_transient_infra_failure`).
+8. **Test coverage**: a new helper harness for `parse-codex-usage.sh` plus extensions to `scripts/test-token-vendor-scrapers.sh` and the three launcher tests. At least one assertion that `token-cost.sh` no longer emits the BLENDED_WARN line for per-bucket Codex rows.
+
+## Areas of divergence
+
+None — Cursor provided no architectural alternatives.
+
+## Decisions for the implementation plan
+
+- Use `codex exec --json` (event JSONL on stdout) — verified to exist via `codex exec --help`.
+- Capture the JSONL events stream to a dedicated `${OUTPUT}.events.jsonl` (or equivalent) sidecar. This avoids overwriting the existing SIDECAR/text-log path used by auth/transient classification.
+- The new shared helper `scripts/parse-codex-usage.sh` accepts the JSONL events file, prints `INPUT=`/`CACHED_INPUT=`/`OUTPUT=`/`TOTAL=` (or empty on failure), exits 0 on parsed-and-non-zero usage, non-zero otherwise. Callers check exit status and skip the token-ledger write entirely on non-zero.
+- For launch-codex-ci.sh, the helper output is written verbatim into `${OUTPUT}.token-record` (TOOL=codex prefix added) — when the helper exits non-zero, NO token-record file is written.
+- Backstop harness in a new file `scripts/test-parse-codex-usage.sh` covers per-bucket sum, wrapper noise tolerance, missing-jq fail-closed, malformed JSON fail-closed, unsupported `--json` fail-closed. End-to-end coverage in `scripts/test-token-vendor-scrapers.sh` adds a per-bucket Codex fixture asserting no BLENDED_WARN line.
