@@ -1028,14 +1028,25 @@ def create_report_issue(records, analysis_text):
         + "\n```\n"
     )
     repo = os.environ.get("LARCH_REPORT_TOKENS_REPO_FULL", "")
-    args = ["gh", "issue", "create", "--title", title, "--body", body]
-    if repo:
-        args += ["--repo", repo]
-    result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if result.returncode == 0:
-        print(f"\nAnalysis report issue created: {result.stdout.strip()}")
-    else:
-        print(f"\nWarning: failed to create analysis report issue: {result.stderr.strip()}", file=sys.stderr)
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".md", delete=False, prefix="larch-report-tokens-body-"
+    ) as f:
+        f.write(body)
+        body_path = f.name
+    try:
+        args = ["gh", "issue", "create", "--title", title, "--body-file", body_path]
+        if repo:
+            args += ["--repo", repo]
+        result = subprocess.run(args, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            print(f"\nAnalysis report issue created: {result.stdout.strip()}")
+        else:
+            print(f"\nWarning: failed to create analysis report issue: {result.stderr.strip()}", file=sys.stderr)
+    finally:
+        try:
+            os.unlink(body_path)
+        except OSError:
+            pass
 
 
 def main():

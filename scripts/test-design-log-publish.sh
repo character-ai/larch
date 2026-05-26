@@ -33,6 +33,32 @@ fi
 if [[ "$1" == "pr" ]]; then
     case "$2" in
         create)
+            body_file=""
+            prev=""
+            for arg in "$@"; do
+                if [[ "$arg" == "--body" ]]; then
+                    echo "stub pr create received forbidden --body" >&2
+                    exit 98
+                fi
+                if [[ "$prev" == "--body-file" ]]; then
+                    body_file="$arg"
+                    prev=""
+                    continue
+                fi
+                if [[ "$arg" == "--body-file" ]]; then
+                    prev="--body-file"
+                fi
+            done
+            if [[ -z "$body_file" ]]; then
+                echo "stub pr create missing --body-file" >&2
+                exit 98
+            fi
+            if [[ -n "${GH_STUB_EXPECT_PR_BODY_FILE:-}" ]]; then
+                if ! cmp -s "$GH_STUB_EXPECT_PR_BODY_FILE" "$body_file"; then
+                    echo "stub pr create body-file payload mismatch" >&2
+                    exit 98
+                fi
+            fi
             if [[ -n "${GH_STUB_CREATE_RC:-}" && "${GH_STUB_CREATE_RC}" != "0" ]]; then
                 echo "stub pr create failed" >&2
                 exit "${GH_STUB_CREATE_RC}"
@@ -193,6 +219,9 @@ export PATH="$stub:$PATH"
 export TEST_CLONE_ROOT="$clone"
 export TEST_MERGE_BRANCH="larch-log-design-RUNPUB1"
 unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+GH_STUB_EXPECT_PR_BODY_FILE="$TMP/expected-pr-body.txt"
+printf 'Automated design log directory for run RUNPUB1. Commit uses [skip ci].' >"$GH_STUB_EXPECT_PR_BODY_FILE"
+export GH_STUB_EXPECT_PR_BODY_FILE
 
 mkdir -p "$TMP/design/render-cache/nested" "$TMP/design/plan-review/round-1"
 printf 'body\n' >"$TMP/design/plan.txt"
@@ -233,6 +262,9 @@ grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/plain.json" || fail "plain.
 grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail "json body missing"
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
+grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh pr create --body-file in log"
+! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh pr create should not use inline --body"
+unset GH_STUB_EXPECT_PR_BODY_FILE
 # Verify suffix deny-list dropped each denied basename at both top-level and render-cache:
 for denied in \
     "codex-plan-arch-output.txt.sidecar" \

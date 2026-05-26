@@ -17,7 +17,7 @@ REASON=gh issue list failed
 
 1. Lists all open issues with label `audit-report` in `--repo`.
 2. Skips `--new-issue-number` (the just-filed report).
-3. For each remaining issue: posts `Superseded by #N` comment, then closes via `gh issue close`.
+3. For each remaining issue: posts `Superseded by #N` from a temp file via `gh issue comment --body-file`, then closes via `gh issue close`.
 4. Idempotent: already-closed issues are not listed by `gh issue list --state open`, so they are naturally skipped.
 
 ## Edit-in-sync

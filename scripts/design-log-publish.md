@@ -48,6 +48,19 @@ branch by:
    (not `create-pr.sh`), squash-merging with `gh pr merge --squash --admin
    --delete-branch`, then `git worktree remove --force`.
 
+## PR creation exception
+
+This script is the documented disposable-worktree exception to the repository's
+default PR creation path. It pushes a custom `larch-log-design-<RUN_ID>` branch
+from a temporary worktree and owns its own PR lookup, merge, recovery-branch,
+and cleanup semantics, so it invokes `gh pr create --head` directly instead of
+delegating to `scripts/create-pr.sh`.
+
+The PR body is still file-backed: the script writes the short body into a
+`mktemp` file before `git push` and passes that path via `--body-file`. Writing
+the body file before push ensures a local temp-file failure cannot leave a
+pushed branch that never had a valid PR body prepared.
+
 ## Output
 
 On stdout (parseable `KEY=value` lines):

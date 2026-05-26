@@ -1,0 +1,1 @@
+Deferred: L3 per-round velocity between review rounds (>20% plan growth and >10 accepted findings). Normative scope: character-ai/larch issue #2672; see skills/design/references/flags.md (Per-round velocity).
