@@ -87,6 +87,20 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local haystack="$1" needle="$2" label="$3"
+    if [[ "$haystack" != *"$needle"* ]]; then
+        PASS=$((PASS + 1))
+        echo "  ok: $label"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("$label")
+        echo "  FAIL: $label (unexpected needle: $needle)" >&2
+        echo "       haystack: $(printf '%q' "$haystack")" >&2
+        print_stderr_if_any
+    fi
+}
+
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-tracking-issue-read-sentinel-XXXXXX")
 # shellcheck disable=SC2317
 trap 'rm -rf "$TMPROOT"' EXIT
@@ -104,6 +118,18 @@ run_sentinel() {
     LAST_STDERR=""
     LAST_EXIT=0
     LAST_STDOUT=$(bash "$READ_SCRIPT" --sentinel "$sentinel_path" 2>"$stderr_file") || LAST_EXIT=$?
+    LAST_EXIT="${LAST_EXIT:-0}"
+    LAST_STDERR=$(cat "$stderr_file")
+    rm -f "$stderr_file"
+}
+
+run_read_args() {
+    local stderr_file
+    stderr_file=$(mktemp "${TMPROOT}/stderr-XXXXXX")
+    LAST_STDOUT=""
+    LAST_STDERR=""
+    LAST_EXIT=0
+    LAST_STDOUT=$(bash "$READ_SCRIPT" "$@" 2>"$stderr_file") || LAST_EXIT=$?
     LAST_EXIT="${LAST_EXIT:-0}"
     LAST_STDERR=$(cat "$stderr_file")
     rm -f "$stderr_file"
@@ -244,6 +270,103 @@ else
     assert_equal_exit "$LAST_EXIT" "1" "(o) exit 1"
     assert_equal_stdout "$LAST_STDOUT" "$(printf 'FAILED=true\nERROR=sentinel file not readable: %s' "$F")" "(o) stdout envelope"
 fi
+
+# (p) ISSUE_NUMBER=abc — invalid, fixed-token no-echo envelope
+echo "(p) ISSUE_NUMBER=abc — non-numeric reject"
+F="$TMPROOT/p.md"
+printf 'ISSUE_NUMBER=abc\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "1" "(p) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(p) stdout FAILED"
+assert_contains "$LAST_STDOUT" "ERROR=invalid ISSUE_NUMBER in sentinel: ISSUE_NUMBER: 'malformed-value-omitted'" "(p) stdout fixed-token error"
+
+# (q) ISSUE_NUMBER=12.3 — decimal rejected
+echo "(q) ISSUE_NUMBER=12.3 — decimal reject"
+F="$TMPROOT/q.md"
+printf 'ISSUE_NUMBER=12.3\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "1" "(q) exit 1"
+assert_contains "$LAST_STDOUT" "ERROR=invalid ISSUE_NUMBER in sentinel: ISSUE_NUMBER: 'malformed-value-omitted'" "(q) stdout fixed-token error"
+
+# (r) ISSUE_NUMBER= explicit empty — pass-through remains empty
+echo "(r) ISSUE_NUMBER= explicit empty — pass-through"
+F="$TMPROOT/r.md"
+printf 'ISSUE_NUMBER=\nRUN_ID=run-ok\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "0" "(r) exit 0"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nRUN_ID=run-ok\nADOPTED=true')" "(r) stdout"
+
+# (s) missing ISSUE_NUMBER key — pass-through remains empty
+echo "(s) missing ISSUE_NUMBER — pass-through"
+F="$TMPROOT/s.md"
+printf 'RUN_ID=run-ok\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "0" "(s) exit 0"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=\nRUN_ID=run-ok\nADOPTED=true')" "(s) stdout"
+
+# (t) RUN_ID with embedded space — invalid and no verbatim echo
+echo "(t) RUN_ID=has space — charset reject"
+F="$TMPROOT/t.md"
+printf 'ISSUE_NUMBER=42\nRUN_ID=has space\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "1" "(t) exit 1"
+assert_contains "$LAST_STDOUT" "ERROR=invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'" "(t) stdout fixed-token error"
+assert_not_contains "$LAST_STDOUT" "has space" "(t) stdout omits malformed value"
+
+# (u) RUN_ID with slash — invalid and no verbatim echo
+echo "(u) RUN_ID=path/traversal — charset reject"
+F="$TMPROOT/u.md"
+printf 'ISSUE_NUMBER=42\nRUN_ID=path/traversal\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "1" "(u) exit 1"
+assert_contains "$LAST_STDOUT" "ERROR=invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'" "(u) stdout fixed-token error"
+assert_not_contains "$LAST_STDOUT" "path/traversal" "(u) stdout omits malformed value"
+
+# (v) RUN_ID with embedded tab — invalid same-line byte
+echo "(v) RUN_ID with embedded tab — charset reject"
+F="$TMPROOT/v.md"
+printf 'ISSUE_NUMBER=42\nRUN_ID=tab\there\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "1" "(v) exit 1"
+assert_contains "$LAST_STDOUT" "ERROR=invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'" "(v) stdout fixed-token error"
+
+# (w) RUN_ID with non-trailing CR — invalid same-line byte
+echo "(w) RUN_ID with non-trailing CR — charset reject"
+F="$TMPROOT/w.md"
+printf 'ISSUE_NUMBER=42\nRUN_ID=cr\rinjected\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "1" "(w) exit 1"
+assert_contains "$LAST_STDOUT" "ERROR=invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'" "(w) stdout fixed-token error"
+
+# (x) RUN_ID= explicit empty — pass-through remains empty
+echo "(x) RUN_ID= explicit empty — pass-through"
+F="$TMPROOT/x.md"
+printf 'ISSUE_NUMBER=42\nRUN_ID=\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "0" "(x) exit 0"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=42\nRUN_ID=\nADOPTED=true')" "(x) stdout"
+
+# (y) missing RUN_ID key — pass-through remains empty
+echo "(y) missing RUN_ID — pass-through"
+F="$TMPROOT/y.md"
+printf 'ISSUE_NUMBER=42\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "0" "(y) exit 0"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=42\nRUN_ID=\nADOPTED=true')" "(y) stdout"
+
+# (z) Valid three-key sentinel with expanded RUN_ID charset
+echo "(z) valid ISSUE_NUMBER + RUN_ID + ADOPTED — three-line success"
+F="$TMPROOT/z.md"
+printf 'ISSUE_NUMBER=42\nRUN_ID=run-1.0_test-abc\nADOPTED=true\n' > "$F"
+run_sentinel "$F"
+assert_equal_exit "$LAST_EXIT" "0" "(z) exit 0"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'ISSUE_NUMBER=42\nRUN_ID=run-1.0_test-abc\nADOPTED=true')" "(z) stdout"
+
+# (aa) argv --issue validation fires before out-dir / gh work
+echo "(aa) argv --issue=abc — usage reject"
+run_read_args --issue abc --out-dir "$TMPROOT/no-such-dir"
+assert_equal_exit "$LAST_EXIT" "1" "(aa) exit 1"
+assert_equal_stdout "$LAST_STDOUT" "$(printf 'FAILED=true\nERROR=usage: --issue must be numeric')" "(aa) stdout"
 
 # ---------------------------------------------------------------------------
 # Summary

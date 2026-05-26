@@ -19,6 +19,8 @@ Combinations 1–3 share optional cap flags: `--max-body-chars N` (default 8000)
 
 Combination 4 (`--sentinel`) is standalone — any of `--issue` / `--prompt` / `--out-dir` / `--repo` present alongside `--sentinel` triggers usage error. Cap flags are silently ignored in this branch (no wrapped output).
 
+When `--issue` is present, the value must match `^[0-9]+$`. Non-numeric values fail during usage validation with `FAILED=true`, `ERROR=usage: --issue must be numeric`, and exit 1 before `--out-dir` validation, repo resolution, or any `gh` call.
+
 ## Output contract (KEY=value on stdout)
 
 ### Combinations 1–3
@@ -37,6 +39,22 @@ RUN_ID=<token or empty>
 ADOPTED=true|false|
 ```
 
+#### `ISSUE_NUMBER=` field contract (`--sentinel` mode)
+
+- **Allowed values**: any non-empty extracted value must match `^[0-9]+$`.
+- **Absence semantics**: absent key and explicit empty (`ISSUE_NUMBER=`) are emitted as `ISSUE_NUMBER=` and mean the sentinel is unusable for adoption; consumers fall back to their fresh-creation path.
+- **Fail-closed posture**: any non-empty non-numeric value is rejected with `FAILED=true`, `ERROR=invalid ISSUE_NUMBER in sentinel: ISSUE_NUMBER: 'malformed-value-omitted'`, and exit 1.
+
+#### `RUN_ID=` field contract (`--sentinel` mode)
+
+- **Allowed values**: any non-empty extracted value must match `^[A-Za-z0-9._-]+$`.
+- **Absence semantics**: absent key and explicit empty (`RUN_ID=`) are emitted as `RUN_ID=` and mean the sentinel is unusable for adoption; consumers fall back to their fresh-creation path.
+- **Fail-closed posture**: any non-empty value containing a byte outside that charset is rejected with `FAILED=true`, `ERROR=invalid RUN_ID in sentinel: RUN_ID: 'malformed-value-omitted'`, and exit 1.
+
+#### Sentinel-parser security note
+
+Malformed `ISSUE_NUMBER=` and `RUN_ID=` values are never echoed verbatim in `ERROR=` output. Callers parse stdout as `KEY=VALUE`, so an attacker-controlled newline or second `KEY=` token in an error string could confuse downstream parsers. The fixed token `'malformed-value-omitted'` is part of the contract.
+
 #### `ADOPTED=` field contract (pinned by #359; first consumer is umbrella #348 Phase 3 per #351)
 
 - **Allowed values**: exactly `true` or `false` (case-strict; lowercase only) when the key is present with a valid value, or empty (either the key is absent from the sentinel file, or present with an empty value). No other non-empty values are accepted.
@@ -49,14 +67,14 @@ ADOPTED=true|false|
 
 `FAILED=true` followed by `ERROR=<single-line message>`.
 
-The newline-flatten + 500-byte cap applies to `ERROR=` values derived from captured `gh` stderr (via `redact_gh_error`) — combinations 1 and 2 routed through the `gh api` paths. Parse errors on the local `--sentinel` branch (combination 4) emit a single pre-composed `ERROR=` line WITHOUT that cap or flattening step — the script controls the message text, so inputs cannot smuggle multi-line content there. The `ADOPTED=` field contract above documents the exact sentinel-path `ERROR=` shape.
+The newline-flatten + 500-byte cap applies to `ERROR=` values derived from captured `gh` stderr (via `redact_gh_error`) — combinations 1 and 2 routed through the `gh api` paths. Parse errors on the local `--sentinel` branch (combination 4) emit a single pre-composed `ERROR=` line WITHOUT that cap or flattening step — the script controls the message text, so inputs cannot smuggle multi-line content there. The sentinel field contracts above document the exact sentinel-path `ERROR=` shapes.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Usage / invalid flag combination / validated-content rejection (includes invalid `ADOPTED` value in `--sentinel` mode — see `ADOPTED=` field contract above) |
+| 1 | Usage / invalid flag combination / validated-content rejection (includes invalid `ADOPTED`, invalid non-empty sentinel `ISSUE_NUMBER`, invalid non-empty sentinel `RUN_ID`, or non-numeric argv `--issue`) |
 | 2 | `gh` failure OR delegated `tracking-issue-write.sh append-comment` failure (wrapped as `append-comment failed: <nested>`) |
 
 ## Filters
@@ -133,8 +151,10 @@ Parser behavior:
 - **First match wins**: if a key appears on multiple lines (e.g., a duplicate `ADOPTED=` line), the first occurrence wins (`grep -m1` default).
 - **Leading UTF-8 BOM**: a BOM (`\xef\xbb\xbf`) at the start of the sentinel file is stripped before parsing, so producers that accidentally emit BOM-prefixed UTF-8 still parse correctly. Parity with the `--issue` comment-loop BOM tolerance.
 - **Trailing `\r`**: on an extracted value, a single trailing `\r` is stripped. CRLF-written sentinels parse identically to LF-written ones. Other trailing whitespace (e.g., space) is NOT stripped — strict equality for `ADOPTED` rejects a value like `true` followed by a trailing space as invalid.
+- **Field validation**: non-empty `ISSUE_NUMBER` must be all digits. Non-empty `RUN_ID` must contain only ASCII letters, digits, `.`, `_`, or `-`. Empty values pass through unchanged as `KEY=`.
+- **Malformed-value redaction**: invalid `ISSUE_NUMBER` and `RUN_ID` errors use the fixed token `'malformed-value-omitted'`; the malformed value is never copied into stdout.
 
-Absent keys emit an empty value (`KEY=`). No network is touched. Exit 1 if the sentinel file does not exist, or if `ADOPTED` has a non-empty value that is neither `true` nor `false`. Sentinel format is expected to be generated by the future caller; this script is the consumer side only.
+Absent keys emit an empty value (`KEY=`). No network is touched. Exit 1 if the sentinel file does not exist, if `ISSUE_NUMBER` is non-empty and non-numeric, if `RUN_ID` is non-empty and outside `^[A-Za-z0-9._-]+$`, or if `ADOPTED` has a non-empty value that is neither `true` nor `false`. Sentinel format is expected to be generated by the future caller; this script is the consumer side only.
 
 ## Conventions
 
@@ -148,12 +168,12 @@ Uses Bash 3.2-compatible constructs (indexed arrays only; no associative arrays,
 | `SECURITY.md` | Documents the data-not-instructions envelope as active mitigation and summary-marker feedback-loop guard. |
 | `scripts/tracking-issue-summary.sh` | Emits the summary markers filtered here. |
 | `skills/issue/scripts/fetch-issue-details.sh` | Precedent for caps + pagination handling (consulted during design). |
-| `scripts/test-tracking-issue-read-sentinel.sh` | Regression harness for the `--sentinel` branch's `ADOPTED=` field contract. Must stay in sync with the contract defined above; new behaviors in the `--sentinel` branch require new harness cases. |
+| `scripts/test-tracking-issue-read-sentinel.sh` | Regression harness for the `--sentinel` branch's `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` field contracts, plus argv `--issue` numeric validation. Must stay in sync with the contracts defined above; new behaviors in the `--sentinel` branch require new harness cases. |
 | `scripts/test-tracking-issue-read-sentinel.md` | Contract + invariants for the regression harness. Edit in the same PR as behavior or assertion changes. |
 
 ## Regression harness
 
-Phase 1 originally shipped without a regression harness. Issue #359 added a focused harness for the `--sentinel` branch's `ADOPTED=` contract: `scripts/test-tracking-issue-read-sentinel.sh` (wired into `Makefile`'s `test-harnesses` target, run by `make lint`). The harness covers valid `true`/`false`, absent/empty values, invalid values (`yes`, `TRUE`, `1`, trailing-space), sentinel-file-not-found, CRLF line endings, leading UTF-8 BOM, leading whitespace (column-0 rule), duplicate `ADOPTED=` lines, and exact stdout shape on all paths. See `scripts/test-tracking-issue-read-sentinel.md` for the harness contract.
+Phase 1 originally shipped without a regression harness. Issue #359 added a focused harness for the `--sentinel` branch, now covering `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` contracts: `scripts/test-tracking-issue-read-sentinel.sh` (wired into `Makefile`'s `test-harnesses` target, run by `make lint`). The harness covers valid `true`/`false`, absent/empty values, invalid `ADOPTED` values (`yes`, `TRUE`, `1`, trailing-space), invalid non-empty `ISSUE_NUMBER`, invalid non-empty `RUN_ID`, fixed-token no-echo errors, sentinel-file-not-found, CRLF line endings, leading UTF-8 BOM, leading whitespace (column-0 rule), duplicate `ADOPTED=` lines, argv `--issue` numeric validation, and exact stdout shape on all paths. See `scripts/test-tracking-issue-read-sentinel.md` for the harness contract.
 
 The other three flag combinations (`--issue`/`--prompt`/stdin branches) remain un-harnessed in the repo — Phase 2/3/4 consumers will add coverage when they wire runtime callers.
 

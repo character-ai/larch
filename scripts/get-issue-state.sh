@@ -49,6 +49,10 @@ if [ -z "$ISSUE" ]; then
     exit 1
 fi
 
+case "$ISSUE" in
+    *[!0-9]*) emit_kv FAILED true; emit_kv ERROR "--issue must be numeric"; exit 1 ;;
+esac
+
 if [ -z "$REPO" ]; then
     REPO=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || REPO=""
 fi
