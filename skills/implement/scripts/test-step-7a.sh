@@ -473,10 +473,10 @@ out=$(STEP7A_GEN_MODE=failed run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DI
 rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-generation-failure exits 0"
-assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-generation-failure emits failed"
-assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-generation-failure still posts comment"
+assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-failure emits failed"
+assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-failure still posts comment"
 assert_file_contains "helper-error" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-failure writes generator SKIP_REASON helper-error"
-assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-generation-failure appends warning"
+assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-failure appends warning"
 
 new_case diagram-failure-sanitizer
 set +e

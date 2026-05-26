@@ -236,6 +236,15 @@ grep -qxF '### Warnings' "$log" || fail "warnings log missing Warnings"
 grep -qF -- '- **Step 7a — mermaid sanitizer rejected:** br-in-participant-alias' "$log" || fail "warnings log missing sanitizer entry"
 ok "warnings-log append"
 
+reasons_agg="$tmpdir/reasons-agg"
+cat > "$reasons_agg" <<'EOF'
+REASON_TOKEN=normal-token fence=mermaid line=9
+REASON_TOKEN=future=token fence=mermaid line=9
+EOF
+aggregated_tokens="$(awk '/^REASON_TOKEN=/{sub(/^REASON_TOKEN=/, ""); sub(/[[:space:]].*$/, ""); print}' "$reasons_agg" | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+[ "$aggregated_tokens" = "future=token normal-token" ] || fail "warnings-token aggregation expected 'future=token normal-token' got '$aggregated_tokens'"
+ok "warnings-token aggregation preserves embedded equals"
+
 nested="$tmpdir/nested.md"
 cat > "$nested" <<'EOF'
 ````markdown
