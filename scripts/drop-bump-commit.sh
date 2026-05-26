@@ -12,7 +12,8 @@
 #   2. The found commit's subject matches ^Bump version to [0-9]+\.[0-9]+\.[0-9]+$.
 #   3. The parent of the found commit exists.
 #   4. The found commit touches only allowed bump files (optionally together
-#      with CHANGELOG.md), and nothing else.
+#      with CHANGELOG.md), and nothing else. With --allow-changelog-only, a
+#      bump-subject commit that touches exactly CHANGELOG.md is also accepted.
 #
 # Guard 4 allowed-file set:
 #   - When LARCH_BUMP_FILES is unset: defaults to .claude-plugin/plugin.json
@@ -21,16 +22,20 @@
 #     (replacement semantics — replaces the default, not additive).
 #     Membership check: every file in the diff must be in the allowed set.
 #     Fail-closed on empty parse.
-#   CHANGELOG.md is always allowed (never required) on both paths.
+#   CHANGELOG.md is allowed alongside bump files on both paths. CHANGELOG-only
+#   commits are accepted only with --allow-changelog-only.
 #
 # If any check fails, the script prints DROPPED=false and exits 0 (no-op).
 # A stderr WARN line explains which guard refused the drop, for callers that
 # want to surface it.
 #
 # Usage:
-#   drop-bump-commit.sh [--max-depth N]
+#   drop-bump-commit.sh [--allow-changelog-only] [--max-depth N]
 #
 # Options:
+#   --allow-changelog-only
+#                   Accept a bump-subject commit whose diff is exactly
+#                   CHANGELOG.md. Off by default.
 #   --max-depth N   Walk at most N commits back from HEAD (default 10).
 #
 # Output (stdout, KEY=VALUE):
@@ -52,8 +57,13 @@ larch_quiet_init
 
 # --- Parse flags ---
 MAX_DEPTH=10
+ALLOW_CHANGELOG_ONLY=false
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --allow-changelog-only)
+            ALLOW_CHANGELOG_ONLY=true
+            shift
+            ;;
         --max-depth)
             if [ "$#" -lt 2 ]; then
                 larch_err "WARN: --max-depth requires a value"
@@ -132,7 +142,8 @@ if [[ -n "${LARCH_BUMP_FILES+x}" ]]; then
         emit_kv DROPPED false
         exit 0
     fi
-    # CHANGELOG.md is always allowed (never required).
+    # CHANGELOG.md is allowed with configured bump files. CHANGELOG-only is
+    # accepted only by explicit caller opt-in below.
     ALLOWED_SET+=("CHANGELOG.md")
 
     # Membership check: every changed file must be in the allowed set,
@@ -162,6 +173,12 @@ if [[ -n "${LARCH_BUMP_FILES+x}" ]]; then
     fi
 
     if [[ "$BUMP_FILE_FOUND" != "true" ]]; then
+        if [[ "$ALLOW_CHANGELOG_ONLY" == "true" && "$CHANGED_FILES" == "CHANGELOG.md" ]]; then
+            BUMP_FILE_FOUND=true
+        fi
+    fi
+
+    if [[ "$BUMP_FILE_FOUND" != "true" ]]; then
         larch_err "WARN: found commit at HEAD~$FOUND_AT matches bump pattern but touches no configured bump files; refusing to drop (fail-closed)"
         emit_kv DROPPED false
         exit 0
@@ -173,9 +190,13 @@ else
     ALLOWED_ONE=".claude-plugin/plugin.json"
     ALLOWED_TWO=$'.claude-plugin/plugin.json\nCHANGELOG.md'
     if [[ "$CHANGED_FILES" != "$ALLOWED_ONE" && "$CHANGED_FILES" != "$ALLOWED_TWO" ]]; then
-        larch_err "WARN: found commit at HEAD~$FOUND_AT matches bump pattern but touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
-        emit_kv DROPPED false
-        exit 0
+        if [[ "$ALLOW_CHANGELOG_ONLY" == "true" && "$CHANGED_FILES" == "CHANGELOG.md" ]]; then
+            :
+        else
+            larch_err "WARN: found commit at HEAD~$FOUND_AT matches bump pattern but touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
+            emit_kv DROPPED false
+            exit 0
+        fi
     fi
 fi
 

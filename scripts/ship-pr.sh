@@ -18,6 +18,9 @@ source "$SCRIPT_DIR/lib-net.sh" || { larch_err "ship-pr.sh: failed to source lib
 # shellcheck source=scripts/lib-finalize-state-keys.sh
 source "$SCRIPT_DIR/lib-finalize-state-keys.sh" || { larch_err "ship-pr.sh: failed to source lib-finalize-state-keys.sh"; exit 1; }
 [[ "${LARCH_LIB_FINALIZE_STATE_KEYS_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-finalize-state-keys.sh sourced but sentinel missing"; exit 1; }
+# shellcheck source=scripts/lib-changelog.sh
+source "$SCRIPT_DIR/lib-changelog.sh" || { larch_err "ship-pr.sh: failed to source lib-changelog.sh"; exit 1; }
+[[ "${LARCH_LIB_CHANGELOG_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-changelog.sh sourced but sentinel missing"; exit 1; }
 
 STATE_FILE=""
 IMPLEMENT_TMPDIR=""
@@ -494,6 +497,81 @@ kv_value() {
     printf '%s\n' "$input" | awk -F= -v k="$key" '$1 == k {print substr($0, index($0, "=") + 1); found=1} END {if (!found) print ""}' | tail -n 1
 }
 
+ship_pr_record_old_bump_version() {
+    local old_bump_sha=$1 old_subject old_version
+    if [ -z "$old_bump_sha" ]; then
+        state_set_many RRR_OLD_BUMP_SHA "" RRR_OLD_BUMP_VERSION ""
+        return 0
+    fi
+    old_subject=$(git log -1 --format=%s "$old_bump_sha" 2>/dev/null || true)
+    old_version=${old_subject#Bump version to }
+    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION "$old_version"
+    else
+        old_version=$(changelog_first_version_heading CHANGELOG.md 2>/dev/null || true)
+        if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION "$old_version"
+        else
+            state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION ""
+        fi
+    fi
+}
+
+ship_pr_changelog_ready_after_rebump() {
+    local new_version=$1 old_version=${2:-} status_out
+    [ -f CHANGELOG.md ] || return 1
+    if ! grep -Eq "^## \[$new_version\] - " CHANGELOG.md 2>/dev/null; then
+        return 1
+    fi
+    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]] && \
+        grep -Eq "^## \[$old_version\] - " CHANGELOG.md 2>/dev/null; then
+        return 1
+    fi
+    status_out=$(git status --porcelain -- CHANGELOG.md 2>/dev/null || true)
+    [ -z "$status_out" ]
+}
+
+ship_pr_commit_changelog_after_rebump() {
+    local new_version=$1 fail_file=$2 commit_out commit_rc old_version committed
+    local -a commit_args
+    [ -f CHANGELOG.md ] || return 0
+    [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+
+    old_version=$(read_state RRR_OLD_BUMP_VERSION "")
+    commit_args=(--version "$new_version")
+    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]]; then
+        commit_args+=(--replaces-version "$old_version")
+    fi
+
+    set +e
+    commit_out=$("$SCRIPT_DIR/commit-changelog.sh" "${commit_args[@]}" 2>>"$fail_file")
+    commit_rc=$?
+    set +e
+    printf '%s\n' "$commit_out" >> "$fail_file"
+    if [ "$commit_rc" -ne 0 ]; then
+        printf 'ERROR: run_rebase_rebump: commit-changelog.sh failed after re-bump\n' >> "$fail_file"
+        return 1
+    fi
+
+    committed=$(kv_value COMMITTED "$commit_out")
+    case "$committed" in
+        true)
+            return 0
+            ;;
+        false)
+            if ship_pr_changelog_ready_after_rebump "$new_version" "$old_version"; then
+                return 0
+            fi
+            printf 'ERROR: run_rebase_rebump: commit-changelog.sh reported COMMITTED=false before CHANGELOG.md was verified at %s\n' "$new_version" >> "$fail_file"
+            return 1
+            ;;
+        *)
+            printf 'ERROR: run_rebase_rebump: commit-changelog.sh exited 0 without COMMITTED=true|false\n' >> "$fail_file"
+            return 1
+            ;;
+    esac
+}
+
 capture_command_output() {
     local __outvar=$1 __fail_file=$2
     shift 2
@@ -516,6 +594,11 @@ resolve_existing_file() {
     base=$(basename "$input")
     real_dir=$(cd "$dir" 2>/dev/null && pwd -P) || return 1
     printf '%s/%s\n' "$real_dir" "$base"
+}
+
+drop_bump_no_matching_commit() {
+    local fail_file=$1
+    grep -Fq 'WARN: no bump commit found within ' "$fail_file" 2>/dev/null
 }
 
 resolve_checks_log_path() {
@@ -2348,6 +2431,10 @@ _run_rebase_rebump_from_step3() {
                 record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
+            if ! ship_pr_commit_changelog_after_rebump "$new_version" "$fail_file"; then
+                record_failure rebase "commit-changelog.sh" 1 "$fail_file" "CI Issues"
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
             pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
             if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
                 gh pr edit "$pr_n" --repo "$repo_r" \
@@ -2431,12 +2518,30 @@ run_rebase_rebump() {
         plan_args=(--plan-file "$plan_file")
     fi
 
-    # 1. Drop existing bump commit (non-fatal; CI-fix commits may sit on top)
+    # 1. Drop existing bump commit before rebasing. No-op is acceptable only
+    # when no bump commit exists in the walk window; other DROPPED=false cases
+    # stall so a stale bump is never silently force-pushed.
+    # --allow-changelog-only is defense-in-depth for legacy in-flight branches;
+    # the normal path now keeps CHANGELOG.md in its own commit.
     fail_file=$(failure_capture_path rebase)
-    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" 2>"$fail_file")
+    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" --allow-changelog-only --max-depth 20 2>"$fail_file")
     rc=$?
     printf '%s\n' "$drop_out" >> "$fail_file"
-    [ "$rc" -eq 0 ] || record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
+    ship_pr_record_old_bump_version "$(kv_value OLD_BUMP_SHA "$drop_out")"
+    if [ "$rc" -ne 0 ]; then
+        record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
+    elif [ "$(kv_value DROPPED "$drop_out")" = "false" ]; then
+        if drop_bump_no_matching_commit "$fail_file"; then
+            :
+        else
+            # A guarded no-op here means the stale bump may still be on-branch.
+            # Continuing could let classify-bump return NONE and force-push
+            # without a fresh bump — the silent #2852 failure class.
+            printf 'run_rebase_rebump: drop-bump-commit returned DROPPED=false; stalling to prevent silent stale-bump push\n' > "$fail_file"
+            record_failure rebase "drop-bump-commit.sh DROPPED=false" 1 "$fail_file" "CI Issues"
+            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        fi
+    fi
 
     run_id=$(read_state RUN_ID)
 

@@ -53,14 +53,27 @@ run_test() {
     local test_name="$1"
     local expected="$2"
     local env_setting="${3:-unset}"
+    local drop_arg="${4:-}"
 
     local output
     if [[ "$env_setting" == "unset" ]]; then
-        output=$(unset LARCH_BUMP_FILES; bash "$DROP_SCRIPT" 2>/dev/null) || true
+        if [[ -n "$drop_arg" ]]; then
+            output=$(unset LARCH_BUMP_FILES; bash "$DROP_SCRIPT" "$drop_arg" 2>/dev/null) || true
+        else
+            output=$(unset LARCH_BUMP_FILES; bash "$DROP_SCRIPT" 2>/dev/null) || true
+        fi
     elif [[ "$env_setting" == "empty" ]]; then
-        output=$(LARCH_BUMP_FILES="" bash "$DROP_SCRIPT" 2>/dev/null) || true
+        if [[ -n "$drop_arg" ]]; then
+            output=$(LARCH_BUMP_FILES="" bash "$DROP_SCRIPT" "$drop_arg" 2>/dev/null) || true
+        else
+            output=$(LARCH_BUMP_FILES="" bash "$DROP_SCRIPT" 2>/dev/null) || true
+        fi
     else
-        output=$(LARCH_BUMP_FILES="$env_setting" bash "$DROP_SCRIPT" 2>/dev/null) || true
+        if [[ -n "$drop_arg" ]]; then
+            output=$(LARCH_BUMP_FILES="$env_setting" bash "$DROP_SCRIPT" "$drop_arg" 2>/dev/null) || true
+        else
+            output=$(LARCH_BUMP_FILES="$env_setting" bash "$DROP_SCRIPT" 2>/dev/null) || true
+        fi
     fi
 
     local actual
@@ -303,6 +316,100 @@ if [[ "$rc" == "1" ]]; then
     fi
 else
     echo "FAIL: Test 20 — expected exit 1 from forced rebase failure, got $rc" >&2
+    FAIL=$((FAIL + 1))
+fi
+
+# Test 21: CHANGELOG-only with opt-in flag on default path → DROPPED=true
+REPO="$TMPDIR_BASE/test21"
+setup_repo "$REPO" CHANGELOG.md
+run_test "Default: CHANGELOG-only + --allow-changelog-only → DROPPED=true" "true" "unset" "--allow-changelog-only"
+
+# Test 22: CHANGELOG-only without opt-in flag still rejects
+REPO="$TMPDIR_BASE/test22"
+setup_repo "$REPO" CHANGELOG.md
+run_test "Default: CHANGELOG-only without flag → DROPPED=false" "false"
+
+# Test 23: CHANGELOG-only with opt-in flag on custom path → DROPPED=true
+REPO="$TMPDIR_BASE/test23"
+setup_repo "$REPO" CHANGELOG.md
+run_test "Custom: CHANGELOG-only + --allow-changelog-only → DROPPED=true" "true" "version.go" "--allow-changelog-only"
+
+# Test 24: CHANGELOG-only non-bump subject with opt-in flag still rejects
+REPO="$TMPDIR_BASE/test24"
+mkdir -p "$REPO"
+cd "$REPO"
+git init -q
+git config user.email "test@test.com"
+git config user.name "Test"
+mkdir -p .claude-plugin
+echo '{}' > .claude-plugin/plugin.json
+echo '' > CHANGELOG.md
+git add -A
+git commit -q -m "Initial commit"
+echo "changed" >> CHANGELOG.md
+git add CHANGELOG.md
+git commit -q -m "Update CHANGELOG for 1.2.3"
+run_test "Default: CHANGELOG-only non-bump subject + flag → DROPPED=false" "false" "unset" "--allow-changelog-only"
+
+# Test 25: HEAD=CHANGELOG, HEAD~1=bump; walk-back drops bump and preserves CHANGELOG HEAD
+REPO="$TMPDIR_BASE/test25"
+mkdir -p "$REPO"
+cd "$REPO"
+git init -q
+git config user.email "test@test.com"
+git config user.name "Test"
+mkdir -p .claude-plugin
+echo '{"version":"1.2.2"}' > .claude-plugin/plugin.json
+echo '' > CHANGELOG.md
+git add -A
+git commit -q -m "Initial commit"
+echo '{"version":"1.2.3"}' > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to 1.2.3"
+echo "entry" >> CHANGELOG.md
+git add CHANGELOG.md
+git commit -q -m "Update CHANGELOG for 1.2.3"
+output=$(cd "$REPO" && bash "$DROP_SCRIPT" --allow-changelog-only 2>/dev/null) || true
+actual=$(echo "$output" | grep "^DROPPED=" | head -1 | cut -d= -f2)
+new_head_subject=$(git -C "$REPO" log -1 --format=%s HEAD 2>/dev/null || true)
+if [[ "$actual" == "true" && "$new_head_subject" == "Update CHANGELOG for 1.2.3" ]]; then
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: Test 25 — expected bump at HEAD~1 dropped and CHANGELOG preserved; DROPPED=$actual HEAD=$new_head_subject" >&2
+    FAIL=$((FAIL + 1))
+fi
+
+# Test 26: HEAD=log-refresh, HEAD~1=CHANGELOG, HEAD~2=bump; walk-back drops bump
+REPO="$TMPDIR_BASE/test26"
+mkdir -p "$REPO"
+cd "$REPO"
+git init -q
+git config user.email "test@test.com"
+git config user.name "Test"
+mkdir -p .claude-plugin
+echo '{"version":"1.2.2"}' > .claude-plugin/plugin.json
+echo '' > CHANGELOG.md
+git add -A
+git commit -q -m "Initial commit"
+echo '{"version":"1.2.3"}' > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to 1.2.3"
+echo "entry" >> CHANGELOG.md
+git add CHANGELOG.md
+git commit -q -m "Update CHANGELOG for 1.2.3"
+mkdir -p larch-logs
+echo "log" > larch-logs/run.md
+git add larch-logs/run.md
+git commit -q -m "chore(larch-logs): refresh"
+output=$(cd "$REPO" && bash "$DROP_SCRIPT" --allow-changelog-only 2>/dev/null) || true
+actual=$(echo "$output" | grep "^DROPPED=" | head -1 | cut -d= -f2)
+new_head_subject=$(git -C "$REPO" log -1 --format=%s HEAD 2>/dev/null || true)
+if [[ "$actual" == "true" && "$new_head_subject" == "chore(larch-logs): refresh" ]] &&
+    git -C "$REPO" log --format=%s | grep -q '^Update CHANGELOG for 1.2.3$' &&
+    ! git -C "$REPO" log --format=%s | grep -q '^Bump version to 1.2.3$'; then
+    PASS=$((PASS + 1))
+else
+    echo "FAIL: Test 26 — expected bump at HEAD~2 dropped with upper commits preserved; DROPPED=$actual HEAD=$new_head_subject" >&2
     FAIL=$((FAIL + 1))
 fi
 

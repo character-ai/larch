@@ -1,0 +1,29 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- write_changelog_entry has no --replaces-version branch in the verified file, so the alleged dead path is not present.
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- there is overlapping CHANGELOG-section awk logic, but consolidating it is more complexity than the current latent drift risk warrants.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a classify-bump harness now covers HEAD=Bump and HEAD=CHANGELOG-over-Bump idempotency.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the verified ship-pr path now stalls on DROPPED=false before classify/apply/commit-changelog can silently continue.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the verified write_changelog_entry implementation has no --replaces-version flag path to be dead or wired.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the broad “no offline test” claim is stale because the classify-bump harness now covers the core CHANGELOG-at-HEAD idempotency cases.
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- a phase14 changelog-shape resume test with real drop-bump/commit-changelog is present.
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- the phase14 changelog-shape resume case now copies and exercises the real drop-bump and commit-changelog scripts.
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- docs/linting.md already contains a test-commit-changelog harness row.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- test-commit-changelog Test 1 asserts a non-empty COMMIT_SHA output.
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- write_changelog_entry does not expose an unused --replaces-version path in the verified implementation.
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- classify-bump now verifies transparent CHANGELOG commits touch only CHANGELOG.md before walking past them.
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- ship-pr now treats DROPPED=false as a stall rather than continuing to force-push.
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- some CHANGELOG awk behavior is duplicated, but unifying it is not worth blocking the change absent a concrete divergence.
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- depth exhaustion can still stall, but the silent-continue failure mode is gone and dynamic depth adds complexity for a rare operator edge.
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the docs row may omit one edge nuance, but the gap is too small to justify a standalone issue.
+FINDING_24: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the standalone retitle awk can drift, but forcing delegation to a shared helper is more complexity than the demonstrated risk warrants.
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- the phase14 changelog-shape resume regression is present and asserts fresh bump plus CHANGELOG with stale entry removed.
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- docs/linting.md already documents make test-commit-changelog.
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the log-refresh transparency gap is real, but as an out-of-scope follow-up it overlaps accepted in-scope classify-bump concerns.

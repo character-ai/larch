@@ -37,7 +37,8 @@ The script exits 0 only when the bump commit was created. It exits 1 for invalid
 - The pre-commit version probes run inside a retry loop (cap 10): fetch `origin main`, read `origin/main:.claude-plugin/plugin.json`, require strict `^[0-9]+\.[0-9]+\.[0-9]+$`. On a same-version or regression collision (`NEW_VERSION == ORIGIN_VERSION` or `NEW_VERSION < ORIGIN_VERSION`), the script rolls back, re-classifies the bump type from the original (current, initial-target) pair, computes a new `NEW_VERSION` relative to `ORIGIN_VERSION`, emits one breadcrumb via `emit_breadcrumb --category=retry`, and retries. After 10 failed retries the script bails with `APPLIED=false ERROR=origin/main bump race: could not land version after 10 retries ...`. A fetch failure or malformed origin version still fails immediately (no retry on those paths).
 - Every pre-commit probe failure rolls back by restoring from `$BACKUP` and unstaging `plugin.json` with `git reset HEAD "$PLUGIN_JSON"`.
 - On each retry a breadcrumb is emitted via `emit_breadcrumb --category=retry`: `apply-bump: retry N/10 origin/main=X.Y.Z new-version=X.Y.Z`. This is **not** the same stream as `emit` / `emit_kv`: contract key/value lines always go to the caller-visible stream (FD 3 after `larch_quiet_init` in `scripts/lib-quiet.sh`, or ordinary stdout when quiet mode is inactive). `emit_breadcrumb` writes to the **quiet log** by default when quiet init is active; set `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on the caller-visible stream (or `LARCH_QUIET_BREADCRUMB_FD` to a numeric inherited FD for nested routing—see `scripts/lib-quiet.md`). Offline harnesses that assert machine-readable stdout often export `LARCH_QUIET_DISABLE=1` (e.g. `scripts/test-apply-bump.sh`), which skips quiet redirection so breadcrumbs and contract lines share real stdout; operators capturing only FD 3 in a quiet-active session will **not** see default-routing breadcrumbs.
-- No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery (`drop-bump-commit.sh`) walks back from HEAD and drops the most recent matching bump commit, so no post-bump flush commit is needed here.
+- No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery (`drop-bump-commit.sh`) walks back from HEAD and drops the most recent matching bump commit. `CHANGELOG.md` updates are separate `Update CHANGELOG for X.Y.Z` commits and are transparent to `classify-bump.sh`'s idempotency check.
+- `CHANGELOG.md` is not part of the bump commit. `/implement` commits it separately via `scripts/commit-changelog.sh` with subject `Update CHANGELOG for X.Y.Z`; `drop-bump-commit.sh` skips that subject while walking back to the bump.
 - Commit failure uses the existing post-commit rollback path: restore from `$BACKUP`, unstage `plugin.json`, and emit `ERROR=git commit failed; rolled back ...`.
 - The backup file is consumed on success or rollback; it must not remain after a normal script exit.
 
@@ -61,6 +62,8 @@ test-apply-bump:
 Update this file with any behavioral change to `.claude/skills/bump-version/scripts/apply-bump.sh`. In the same PR, keep these files synchronized:
 
 - `.claude/skills/bump-version/SKILL.md` "How it works" section.
+- `.claude/skills/bump-version/scripts/classify-bump.md`.
 - `skills/implement/SKILL.md` Step 8 handling for `/bump-version` failures.
 - `skills/implement/references/rebase-rebump-subprocedure.md` when caller-kind routing changes.
+- `scripts/commit-changelog.md` and `scripts/drop-bump-commit.md` when the bump/changelog commit shape changes.
 - `scripts/test-apply-bump.sh` and `scripts/test-apply-bump.md`.

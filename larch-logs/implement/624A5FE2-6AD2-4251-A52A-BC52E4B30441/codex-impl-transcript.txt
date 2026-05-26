@@ -1,0 +1,20 @@
+Implemented the hybrid fix.
+
+Key changes:
+- Added `scripts/commit-changelog.sh` plus docs/tests so `CHANGELOG.md` updates commit separately as `Update CHANGELOG for <version>`.
+- Updated Step 8a and `ship-pr.sh` rebase/re-bump paths to keep bump commits bump-file-only.
+- Added `drop-bump-commit.sh --allow-changelog-only` and wired active re-bump callers with `--max-depth 20`.
+- Updated `classify-bump.sh` idempotency to walk past transparent CHANGELOG commits.
+- Refreshed docs, Makefile wiring, agent-lint allowlists, CHANGELOG, and regression coverage.
+
+Verification passed:
+- `make test-commit-changelog`
+- `make test-drop-bump-commit`
+- `make test-step-8a-changelog`
+- `make test-implement-finalize`
+- `make test-apply-bump`
+- `make test-ship-pr` (`314 pass(es)`)
+- `make test-harness-shards-coverage`
+- `bash scripts/relevant-checks.sh`
+
+Wrote the implementation manifest at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because QA is not pending.

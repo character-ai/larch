@@ -80,15 +80,55 @@ log() {
 
 # Idempotency check: is HEAD itself a version-bump commit?
 # The only safe way to treat a branch as "already bumped" is when the bump
-# commit is HEAD. If a bump exists earlier in BASE..HEAD but additional
-# commits have landed on top, a fresh bump is required to cover those.
-# The subject match is anchored at ^ and $ so subjects like "chore: Bump
-# version to 1.2.3" or "Revert Bump version to 1.0.0" do not false-match.
-HEAD_SUBJECT=$(git log -1 --format=%s HEAD 2>/dev/null || true)
+# commit is HEAD, or when HEAD is followed only by transparent commits created
+# by the bump/logging pipeline. If a bump exists earlier in BASE..HEAD but
+# additional non-transparent commits have landed on top, a fresh bump is
+# required to cover those. The subject match is anchored at ^ and $ so subjects
+# like "chore: Bump version to 1.2.3" or "Revert Bump version to 1.0.0" do not
+# false-match.
+idempotency_commit_is_transparent() {
+  local ref=$1 subject changed file
+  subject=$(git log -1 --format=%s "$ref" 2>/dev/null || true)
+  changed=$(git diff-tree --no-commit-id --name-only -r "$ref" 2>/dev/null || true)
+  case "$subject" in
+    "Update CHANGELOG for "*) ;;
+    "chore(larch-logs): "*) ;;
+    *) return 1 ;;
+  esac
+  [ -n "$changed" ] || return 1
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    case "$subject" in
+      "Update CHANGELOG for "*)
+        [ "$file" = "CHANGELOG.md" ] || return 1
+        ;;
+      "chore(larch-logs): "*)
+        case "$file" in
+          larch-logs/*) ;;
+          *) return 1 ;;
+        esac
+        ;;
+    esac
+  done <<< "$changed"
+  return 0
+}
+
+IDEMPOTENCY_REF="HEAD"
+IDEMPOTENCY_DEPTH=0
+while [[ "$IDEMPOTENCY_DEPTH" -lt 3 ]]; do
+  git rev-parse --verify "$IDEMPOTENCY_REF" >/dev/null 2>&1 || break
+  if idempotency_commit_is_transparent "$IDEMPOTENCY_REF"; then
+    IDEMPOTENCY_DEPTH=$((IDEMPOTENCY_DEPTH + 1))
+    IDEMPOTENCY_REF="HEAD~$IDEMPOTENCY_DEPTH"
+    continue
+  fi
+  break
+done
+HEAD_SUBJECT=$(git log -1 --format=%s "$IDEMPOTENCY_REF" 2>/dev/null || true)
 if [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   log "## Result: NONE (already bumped)"
   log ""
-  log "HEAD is a version bump commit: \`$(git rev-parse --short HEAD)\` — \"$HEAD_SUBJECT\""
+  log "The idempotency HEAD after transparent CHANGELOG commits is a version bump commit: \`$(git rev-parse --short "$IDEMPOTENCY_REF")\` — \"$HEAD_SUBJECT\""
   log ""
   log "No additional bump will be applied."
 

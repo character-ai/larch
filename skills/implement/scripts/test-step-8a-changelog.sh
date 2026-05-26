@@ -83,15 +83,31 @@ printf 'LOG_WRITTEN=true\nUNCHANGED=false\nCOMMIT_SHA=abc\n'
 SH
     chmod +x "$s/larch-log.sh"
 
-    # git-amend-add.sh: succeed (means amend was applied)
+    # git-amend-add.sh: retained stub for legacy callers.
     cat > "$s/git-amend-add.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-# Verify the file was staged; amend.
 git add -A 2>/dev/null || true
 git commit --amend --no-edit -q 2>/dev/null || true
 SH
     chmod +x "$s/git-amend-add.sh"
+
+    # commit-changelog.sh: create the separate CHANGELOG commit.
+    cat > "$s/commit-changelog.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+version=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --version) version=$2; shift 2 ;;
+        *) shift ;;
+    esac
+done
+git add CHANGELOG.md
+git commit -q -m "Update CHANGELOG for $version"
+printf 'COMMITTED=true\nCOMMIT_SHA=%s\n' "$(git rev-parse HEAD)"
+SH
+    chmod +x "$s/commit-changelog.sh"
 
     # rebase-push.sh: already fresh
     printf '#!/usr/bin/env bash\nprintf '"'"'SKIPPED_ALREADY_FRESH=true\n'"'"'\n' > "$s/rebase-push.sh"
@@ -186,6 +202,14 @@ assert_contains "CHANGELOG_STATUS=updated" "$out_a" "a: CHANGELOG_STATUS=updated
 # CHANGELOG.md should contain the bullet
 assert_file_contains "Fix apply-bump rebase detection" "$SANDBOX/repo/CHANGELOG.md" \
     "a: bullet from manifest in CHANGELOG.md"
+if [ "$(git -C "$SANDBOX/repo" log -1 --format=%s)" = "Update CHANGELOG for 1.0.1" ] &&
+    [ "$(git -C "$SANDBOX/repo" log -2 --format=%s | tail -1)" = "Bump version to 1.0.1" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: a: CHANGELOG update is a separate commit above bump"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: a: expected separate CHANGELOG commit above bump"
+fi
 
 # ===========================================================================
 # Fixture (b): empty manifest + ISSUE_NUMBER set → fallback bullet
