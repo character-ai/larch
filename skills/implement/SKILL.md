@@ -142,7 +142,7 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 | 1.r  | `1.r`           | `plan materialization` |
 | 4.r  | `4.r`           | `commit (impl)`  |
 | 7.r  | `7.r`           | `commit (review)`|
-| 7a.r | `7a.r`          | `diagrams` |
+| 7a.r | `7a.r`          | `diagrams`       |
 
 For `7a.r`, the registry row is reached via `step-7a.sh`, not a standalone probe fence. The orchestrator must branch on `step-7a.sh`'s process exit code plus the relayed `REBASE_*` keys, and the helper only runs the pre-bump flush after wrapper-visible `REBASE_OUTCOME=ok|skipped`.
 

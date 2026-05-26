@@ -7,6 +7,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 WRAPPER="$REPO_ROOT/scripts/rebase-checkpoint-probe.sh"
+STEP7A_WRAPPER="$REPO_ROOT/skills/implement/scripts/step-7a.sh"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -15,6 +16,7 @@ fail() {
 
 [[ -f "$SKILL_MD" ]] || fail "skills/implement/SKILL.md missing: $SKILL_MD"
 [[ -f "$WRAPPER" ]] || fail "scripts/rebase-checkpoint-probe.sh missing: $WRAPPER"
+[[ -f "$STEP7A_WRAPPER" ]] || fail "skills/implement/scripts/step-7a.sh missing: $STEP7A_WRAPPER"
 
 # ---------------------------------------------------------------------------
 # (A) Exactly one `## Rebase Checkpoint Macro` header.
@@ -60,22 +62,26 @@ for row in "${registry_rows[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# (C) Exactly four canonical rebase-checkpoint-probe.sh invocations in SKILL.md.
+# (C) Three direct rebase-checkpoint-probe.sh invocations in SKILL.md, with
+#     7a.r reached through step-7a.sh.
 # ---------------------------------------------------------------------------
 wrapper_count=$(grep -cF '"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh"' "$SKILL_MD" || true)
-[[ "$wrapper_count" == "4" ]] \
-  || fail "(C) expected exactly 4 rebase-checkpoint-probe.sh invocations, found $wrapper_count"
+[[ "$wrapper_count" == "3" ]] \
+  || fail "(C) expected exactly 3 direct rebase-checkpoint-probe.sh invocations in SKILL.md, found $wrapper_count"
 
-canonical_pairs=(
+skill_pairs=(
   'rebase-checkpoint-probe.sh" 1.r'
   'rebase-checkpoint-probe.sh" 4.r'
   'rebase-checkpoint-probe.sh" 7.r'
-  'rebase-checkpoint-probe.sh" 7a.r'
 )
-for pair in "${canonical_pairs[@]}"; do
+for pair in "${skill_pairs[@]}"; do
   grep -Fq "$pair" "$SKILL_MD" \
     || fail "(C) missing canonical wrapper invocation containing: $pair"
 done
+
+step7a_wrapper_count=$(grep -cF '"$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r' "$STEP7A_WRAPPER" || true)
+[[ "$step7a_wrapper_count" == "1" ]] \
+  || fail "(C) expected exactly 1 7a.r rebase-checkpoint-probe.sh invocation in step-7a.sh, found $step7a_wrapper_count"
 
 # ---------------------------------------------------------------------------
 # (C') forked_target BASE_ARGS guard within 10 lines above every wrapper line.
@@ -88,6 +94,15 @@ while IFS= read -r line_num; do
   echo "$window" | grep -Fq 'BASE_ARGS=(--base-remote upstream --base-ref main)' \
     || fail "(C') missing BASE_ARGS fork argv within 10 lines above wrapper at line $line_num"
 done < <(grep -nF '"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh"' "$SKILL_MD" | cut -d: -f1)
+
+while IFS= read -r line_num; do
+  start=$((line_num > 10 ? line_num - 10 : 1))
+  window=$(sed -n "${start},$((line_num - 1))p" "$STEP7A_WRAPPER")
+  echo "$window" | grep -Fq 'if [ "${forked_target:-false}" = "true" ]' \
+    || fail "(C') missing forked_target guard within 10 lines above step-7a wrapper at line $line_num"
+  echo "$window" | grep -Fq 'BASE_ARGS=(--base-remote upstream --base-ref main)' \
+    || fail "(C') missing BASE_ARGS fork argv within 10 lines above step-7a wrapper at line $line_num"
+done < <(grep -nF '"$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r' "$STEP7A_WRAPPER" | cut -d: -f1)
 
 # ---------------------------------------------------------------------------
 # (E) Step 7.r: FILES_CHANGED=true prose above 7.r wrapper; wrapper before Step 7a anchor.
