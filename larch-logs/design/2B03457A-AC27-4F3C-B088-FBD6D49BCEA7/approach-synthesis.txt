@@ -1,0 +1,26 @@
+## Approach Synthesis
+
+### Sketch outcomes
+- **Cursor-Generic**: produced narration-only output (planning prose, no architectural sketch). This is itself an instance of the exact `cursor agent --mode plan` narration-only bug this issue addresses — preserved as direct evidence in the design log.
+- **Codex-Generic**: substantive sketch fully aligned with the issue body's proposed fixes.
+
+### Agreement (Codex sketch + issue body, uncontested)
+1. The structural gate lives in `scripts/dispatch-with-waterfall.sh` at the central `collect_phase` boundary, not in each caller. After `collect-agent-results.sh` resolves `REVIEWER_FILE` and reports `STATUS=OK` (or `cap_hit`), run `grep -Eq "$REQUIRE_RESULT_PATTERN" "${rf:-$output}"`; on mismatch, push the slot into the existing `failed+=("$idx")` array so phase-1/2/3 retry semantics, `FALLBACK_COUNT`, `DISPATCH_OK`, `paths-file`, and sidecar contracts remain unchanged.
+2. The dispatcher accepts a new optional `--require-result-pattern <regex>` flag; when unset, behavior is identical to today (backward compatible).
+3. Callers opt in:
+   - `skills/design/scripts/decompose-aggregator.sh`: swap `--arg tool cursor` → `--arg tool codex` (Fix 1) AND thread `--require-result-pattern '^[[:space:]]*## Recommendation'`.
+   - `skills/design/scripts/decompose-panel-dispatch.sh`: thread the same `--require-result-pattern '^[[:space:]]*## Recommendation'` on all 8 panel slots.
+4. Sketch and plan-review collectors do NOT adopt the pattern (explicit out-of-scope per issue body).
+5. Documentation updates:
+   - `skills/design/references/decompose-panel.md` — note aggregator is now Codex → Cursor → Claude and mention the recommendation-heading gate.
+   - `scripts/dispatch-with-waterfall.md` — document the new flag.
+   - `skills/design/scripts/decompose-aggregator.md` — note the codex-first ordering and the gate.
+
+### Divergence
+None. Cursor failed to produce a sketch (narration-only), and Codex's substantive sketch is the canonical proposal that matches the issue body verbatim on all key decisions.
+
+### Decisions incorporated into the plan
+- Centralize the pattern check in `dispatch-with-waterfall.sh` (single point of enforcement).
+- Reuse existing `failed+=("$idx")` path for mismatch (no new exit codes, no new sidecar files).
+- Default off (`REQUIRE_RESULT_PATTERN=""`) → backward compatible.
+- Per Round 1 Decision 1: create new harness `skills/design/scripts/test-decompose-aggregator.sh` for Fix 1 regression coverage (and a `--require-result-pattern` case extension to `scripts/test-dispatch-with-waterfall.sh` for Fix 2).
