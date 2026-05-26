@@ -241,6 +241,18 @@ dedup_count=$(grep -Fc 'DEDUP_CONTEXT_UNIQUE' "$LARCH_TEST_CLAUDE_STDIN_LOG" || 
 [[ "$dedup_count" -eq 1 ]] \
     || { echo "FAIL: duplicate implicit/explicit context rendered $dedup_count times" >&2; exit 1; }
 
+: > "$LARCH_TEST_CLAUDE_STDIN_LOG"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$TMPROOT/context-explicit-dedup-out.txt" \
+    --prompt-file "$prompt" \
+    --mode diff \
+    --context-files "$dedup_file" \
+    --context-files "$dedup_file" \
+    --timeout 5 >/dev/null
+explicit_dedup_count=$(grep -Fc 'DEDUP_CONTEXT_UNIQUE' "$LARCH_TEST_CLAUDE_STDIN_LOG" || true)
+[[ "$explicit_dedup_count" -eq 1 ]] \
+    || { echo "FAIL: duplicate explicit context rendered $explicit_dedup_count times" >&2; exit 1; }
+
 OUTSIDE_CONTEXT_ROOT="$(mktemp -d /tmp/larch-test-launch-context-outside-XXXXXX)"
 outside_context="$OUTSIDE_CONTEXT_ROOT/outside-context.txt"
 printf 'OUTSIDE_CONTEXT_ALLOWED\n' > "$outside_context"

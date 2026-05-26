@@ -100,9 +100,19 @@ fi
 
 ctx_args=()
 allow_root_args=()
-seen_allow_roots=""
-seen_canonical_paths=""
+seen_allow_roots=()
+seen_canonical_paths=()
 # strict=1: --context-files hard-errors on missing/empty/unreadable; strict=0: implicit flags silent-skip (callers may pass empty).
+array_contains() {
+    local needle="$1"
+    shift || true
+    local value
+    for value in "$@"; do
+        [[ "$value" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
 append_context_file() {
     local path="$1" strict="${2:-0}" dir base canonical
     if [[ "$strict" == "1" ]]; then
@@ -120,18 +130,17 @@ append_context_file() {
             larch_err "launch-claude-review.sh: --context-files path missing or unreadable: $path"
             exit 2
         fi
+        ctx_args+=(--context-files "$path")
         return 0
     fi
     canonical="$dir/$base"
-    case ":$seen_canonical_paths:" in
-        *":$canonical:"*) return 0 ;;
-        *) seen_canonical_paths="${seen_canonical_paths}:$canonical" ;;
-    esac
+    array_contains "$canonical" "${seen_canonical_paths[@]+"${seen_canonical_paths[@]}"}" && return 0
+    seen_canonical_paths+=("$canonical")
     ctx_args+=(--context-files "$path")
-    case ":$seen_allow_roots:" in
-        *":$dir:"*) ;;
-        *) allow_root_args+=(--allow-root "$dir"); seen_allow_roots="${seen_allow_roots}:$dir" ;;
-    esac
+    if ! array_contains "$dir" "${seen_allow_roots[@]+"${seen_allow_roots[@]}"}"; then
+        allow_root_args+=(--allow-root "$dir")
+        seen_allow_roots+=("$dir")
+    fi
 }
 append_context_file "$DIFF_FILE" 0
 append_context_file "$SCOPE_FILES" 0
