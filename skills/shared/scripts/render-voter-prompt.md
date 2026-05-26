@@ -7,7 +7,7 @@ Emit the full body of the external judge voter prompt (stdout) for `/design` pla
 ## Primary callers
 
 - `scripts/dispatch-plan-voters.sh` — `make_prompt_file()` (`--id-grammar finding-oos`, `--verification-context plan`).
-- `scripts/dispatch-code-voters.sh` — `make_voter_prompt_file()` (`--id-grammar finding-only`, `--verification-context diff-plan`).
+- `scripts/dispatch-code-voters.sh` — `make_voter_prompt_file()` (`--id-grammar finding-only`, `--verification-context code`).
 
 ## Flags
 
@@ -16,7 +16,7 @@ Emit the full body of the external judge voter prompt (stdout) for `/design` pla
 | `--ballot-file` | path | Ballot path printed into the prompt (read-only contract). |
 | `--panel-role` | free-form string | Text after the literal prefix `You are a` plus a space — the script prints `You are a {role}.` Callers pass trusted literals. |
 | `--id-grammar` | `finding-oos` \| `finding-only` | Selects OOS clause wording and whether `OOS_N:` example lines are included (`finding-oos` only). |
-| `--verification-context` | `plan` \| `diff-plan` | `plan` keeps the silent plan/repo inspection allowance; `diff-plan` adds diff/plan bounded file reads. |
+| `--verification-context` | `plan` \| `diff-plan` \| `code` | `plan` keeps the silent plan/repo inspection allowance; `diff-plan` and `code` both add diff/plan bounded file reads (`code` is the code-review caller spelling). |
 
 Exit `0` on success, `2` on usage / validation errors.
 
@@ -24,6 +24,18 @@ Exit `0` on success, `2` on usage / validation errors.
 
 - Writes the entire prompt to **stdout** only (no stderr payload on success).
 - Preserves markdown emphasis markers (`**`, `` ` ``, `*`) expected by downstream voters.
+- Unconditionally asks voters to append the forensic rating axes after the
+  anchored vote token for every supported grammar/context:
+  `CORRECTNESS=<true|partially-true|false-positive|uncertain>`,
+  `SEVERITY=<blocker|major|minor|nit|uncertain>`,
+  `QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>`, and
+  `UNCERTAIN=<true|false>`.
+- Axis values are lowercase-only. Axis tokens must precede any optional
+  `-- reason` rationale; downstream parsing ignores axis-looking tokens after
+  the `--` delimiter followed by a space.
+- Example line shape is `FINDING_N: YES CORRECTNESS=<...> SEVERITY=<...>
+  QUALITY=<...> UNCERTAIN=<...>` and, for `finding-oos`, the same shape for
+  `OOS_N:`.
 
 ## lib-quiet divergence
 

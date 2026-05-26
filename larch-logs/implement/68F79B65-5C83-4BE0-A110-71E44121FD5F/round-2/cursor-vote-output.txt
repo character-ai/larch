@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- plan explicitly allowed inline header-only TSV on zero-findings exits.
+FINDING_3: YES
+FINDING_4: EXONERATE -- parsers agree today; duplicate parse is redundant work, not a correctness defect.
+FINDING_5: EXONERATE -- refactor scope exceeds the bugfix; current script size is maintainable.
+FINDING_6: EXONERATE -- test-tally-plan-review.md documents forensic coverage lives in test-findings-classification.
+FINDING_7: YES
+FINDING_8: EXONERATE -- plan split TSV coverage into test-findings-classification; missing default-path case is minor.
+FINDING_9: YES
+FINDING_10: EXONERATE -- quiet-mode risk is low; harness disables quiet by design for stable captures.
+FINDING_11: YES
+FINDING_12: EXONERATE -- publish harness already rejects unexpected plan-review paths; retry literal grep is nice-to-have.
+FINDING_13: YES
+FINDING_14: EXONERATE -- nit edge cases; core argv/TSV paths are already covered.
+FINDING_15: EXONERATE -- tally is loop-invoked with session paths; path confinement is defense-in-depth only.
+FINDING_16: EXONERATE -- formula injection needs Excel open of committed logs; sanitize scope was tab/newline per plan.
+FINDING_17: EXONERATE -- publish already rejects symlinks tree-wide; TOCTOU race is theoretical on trusted hosts.
+FINDING_18: YES
+FINDING_19: EXONERATE -- prompts require `--` before rationale; harness documents last-token-wins without delimiter.
+FINDING_20: EXONERATE -- unreadable voter files abort tally before parse; `|| true` only masks post-check edge cases.
+FINDING_21: EXONERATE -- same duplicated-header concern as FINDING_2; plan permitted inline header path.
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- same quiet-mode gap as FINDING_10; not required for core acceptance.
+FINDING_25: EXONERATE -- same as FINDING_2/21; inline header was an acceptable plan option.
+FINDING_26: YES
+FINDING_27: NO -- plan requires non-zero on mutex, not exit code 1 specifically.

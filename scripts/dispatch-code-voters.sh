@@ -55,7 +55,7 @@ make_voter_prompt_file() {
         --ballot-file "$BALLOT_FILE" \
         --panel-role "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted" \
         --id-grammar finding-only \
-        --verification-context diff-plan > "$prompt_file"
+        --verification-context code > "$prompt_file"
     printf '%s' "$prompt_file"
 }
 

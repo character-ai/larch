@@ -17,7 +17,7 @@ Voter 1 is always Claude and is launched directly through `scripts/launch-claude
 
 ## Voter-role context shape
 
-All launched voter dispatches use `mode=description`. The voter prompt is rendered by `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/render-voter-prompt.sh` (`--id-grammar finding-only`, `--verification-context diff-plan`; see `skills/shared/scripts/render-voter-prompt.md`) and directs the model to Read the ballot plus bounded regular-file copies of diff/plan context produced under `--review-tmpdir` (`diff-context.txt`, `plan-context.txt`). Cited `<file>:<line>` references in each finding give it everything needed to verify on demand while keeping the voter context under the byte caps enforced by `make_bounded_context_copy`.
+All launched voter dispatches use `mode=description`. The voter prompt is rendered by `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/render-voter-prompt.sh` (`--id-grammar finding-only`, `--verification-context code`; see `skills/shared/scripts/render-voter-prompt.md`) and directs the model to Read the ballot plus bounded regular-file copies of diff/plan context produced under `--review-tmpdir` (`diff-context.txt`, `plan-context.txt`). Cited `<file>:<line>` references in each finding give it everything needed to verify on demand while keeping the voter context under the byte caps enforced by `make_bounded_context_copy`.
 
 ## Behavior
 

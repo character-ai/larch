@@ -1,0 +1,27 @@
+Reading the ballot and context files to verify findings and cast votes.
+
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- duplicate vote_for_id/parse calls are real but negligible for typical ballot sizes
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- four awk splits are a minor nit aligned with the documented Bash-wrapper contract
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- without a `--` delimiter, axis-eligible parsing is the documented plan contract
+FINDING_11: YES
+FINDING_12: EXONERATE -- formula-prefix risk is latent for trusted operator/judge TSVs in tmpdir
+FINDING_13: EXONERATE -- symlink overwrite on `--findings-classification-out` is a narrow same-UID threat
+FINDING_14: NO -- `vote_for_id` uses a literal anchored `^<id>:` prefix, not a regex where `.` wildcards ids
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- duplicate nit of header-drift findings already covered elsewhere
+FINDING_19: YES
+FINDING_20: EXONERATE -- vote_for_id and parser agree on normal vote lines; delimiter mismatch is an edge case
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- zero-voter header-only check is a minor harness gap with low regression risk

@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- the inefficiency is real but likely too small to justify caching complexity in this path
+FINDING_3: NO -- tally slot placement is intentionally canonical per the current tally contract; the docs mismatch is covered separately
+FINDING_4: YES
+FINDING_5: EXONERATE -- the subprocess churn is minor and not worth raising on its own
+FINDING_6: YES
+FINDING_7: NO -- tally slot placement is intentionally canonical per the current tally contract; the docs mismatch is covered separately
+FINDING_8: YES
+FINDING_9: NO -- the checked contract specifies non-zero errors, not exit code 1
+FINDING_10: EXONERATE -- the parser behavior is intentional for lines without the documented rationale delimiter
+FINDING_11: NO -- the cited voter-sourced fields are constrained enum/tool values, so embedded tabs/newlines are not a concrete risk
+FINDING_12: YES
+FINDING_13: NO -- the atomic rename replaces a destination symlink rather than following it to overwrite the target
+FINDING_14: NO -- the ballot ids do not contain regex metacharacters and the anchored colon prevents FINDING_1/FINDING_10 collisions
+FINDING_15: NO -- skipped symlinked render-cache contents are not a concrete security or correctness issue worth filing
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: NO -- tally slot placement is intentionally canonical per the current tally contract; the docs mismatch is covered separately
+FINDING_20: NO -- both vote parsers anchor on the immediate vote token, so rationale text after the delimiter cannot change vN_vote
+FINDING_21: YES
+FINDING_22: NO -- this is only a speculative test-hardening concern; the current renderer does not put axis prose inside those sentinels
+FINDING_23: YES
+FINDING_24: YES

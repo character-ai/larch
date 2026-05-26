@@ -10,13 +10,19 @@ BALLOT="$REPO_ROOT/README.md"
 # Shared tail of both OOS grammar variants — must appear verbatim in four doc/SKILL locations.
 CANONICAL_OOS_DRIFT_MARK='vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.'
 
+assert_sentinel_lines_exclude_axis_tokens() {
+    local out="$1" bad
+    bad=$(grep -E '^\*\*Verify silently\*\*|^\*\*Output ONLY vote lines\.\*\*' <<< "$out" | grep -E 'CORRECTNESS=|SEVERITY=|QUALITY=|UNCERTAIN=' || true)
+    [[ -z "$bad" ]] || { echo "FAIL: sentinel directive leaked axis prose: $bad" >&2; exit 1; }
+}
+
 case_finding_only() {
     local out
     out=$("$RENDER" \
         --ballot-file "$BALLOT" \
         --panel-role "test panel role" \
         --id-grammar finding-only \
-        --verification-context diff-plan)
+        --verification-context code)
     grep -Fq "For items prefixed with \`[OUT_OF_SCOPE]\`:" <<< "$out" \
         || { echo "FAIL: finding-only OOS clause missing" >&2; exit 1; }
     grep -Fq "$CANONICAL_OOS_DRIFT_MARK" <<< "$out" \
@@ -26,8 +32,23 @@ case_finding_only() {
         exit 1
     fi
     grep -Fq 'FINDING_N: YES' <<< "$out" || { echo "FAIL: finding-only missing FINDING_N example" >&2; exit 1; }
+    grep -Fq 'CORRECTNESS=<true|partially-true|false-positive|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-only missing correctness axis enum" >&2; exit 1; }
+    grep -Fq 'SEVERITY=<blocker|major|minor|nit|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-only missing severity axis enum" >&2; exit 1; }
+    grep -Fq 'QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-only missing quality axis enum" >&2; exit 1; }
+    grep -Fq 'UNCERTAIN=<true|false>' <<< "$out" \
+        || { echo "FAIL: finding-only missing uncertain axis enum" >&2; exit 1; }
+    grep -Fq 'Use lowercase axis values only.' <<< "$out" \
+        || { echo "FAIL: finding-only missing lowercase-axis instruction" >&2; exit 1; }
+    grep -Fq "Axis tokens must precede any optional \`-- reason\` rationale" <<< "$out" \
+        || { echo "FAIL: finding-only missing rationale delimiter instruction" >&2; exit 1; }
+    grep -Fq '**Output ONLY vote lines.**' <<< "$out" \
+        || { echo "FAIL: finding-only missing output-only sentinel" >&2; exit 1; }
     grep -Fq 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.' <<< "$out" \
-        || { echo "FAIL: finding-only missing diff-plan verification lead-in" >&2; exit 1; }
+        || { echo "FAIL: finding-only missing code verification lead-in" >&2; exit 1; }
+    assert_sentinel_lines_exclude_axis_tokens "$out"
 }
 
 case_finding_oos() {
@@ -41,9 +62,23 @@ case_finding_oos() {
         || { echo "FAIL: finding-oos OOS clause missing" >&2; exit 1; }
     grep -Fq "$CANONICAL_OOS_DRIFT_MARK" <<< "$out" \
         || { echo "FAIL: finding-oos missing canonical OOS body" >&2; exit 1; }
+    grep -Fq 'FINDING_N: YES' <<< "$out" || { echo "FAIL: finding-oos missing FINDING_N example" >&2; exit 1; }
     grep -Fq '  OOS_N: YES' <<< "$out" || { echo "FAIL: finding-oos missing OOS_N example" >&2; exit 1; }
+    grep -Fq 'CORRECTNESS=<true|partially-true|false-positive|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing correctness axis enum" >&2; exit 1; }
+    grep -Fq 'SEVERITY=<blocker|major|minor|nit|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing severity axis enum" >&2; exit 1; }
+    grep -Fq 'QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing quality axis enum" >&2; exit 1; }
+    grep -Fq 'UNCERTAIN=<true|false>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing uncertain axis enum" >&2; exit 1; }
+    grep -Fq "Axis tokens must precede any optional \`-- reason\` rationale" <<< "$out" \
+        || { echo "FAIL: finding-oos missing rationale delimiter instruction" >&2; exit 1; }
+    grep -Fq '**Output ONLY vote lines.**' <<< "$out" \
+        || { echo "FAIL: finding-oos missing output-only sentinel" >&2; exit 1; }
     grep -Fq 'silently inspect the plan or referenced repo files for verification' <<< "$out" \
         || { echo "FAIL: finding-oos plan verification allowance missing" >&2; exit 1; }
+    assert_sentinel_lines_exclude_axis_tokens "$out"
 }
 
 case_canonical_text_drift_guard() {
@@ -88,6 +123,16 @@ case_argument_validation() {
     rc=$?
     set -e
     [[ "$rc" -eq 2 ]] || { echo "FAIL: invalid --id-grammar should exit 2 (got $rc)" >&2; exit 1; }
+
+    set +e
+    "$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role x \
+        --id-grammar finding-only \
+        --verification-context bogus >/dev/null 2>&1
+    rc=$?
+    set -e
+    [[ "$rc" -eq 2 ]] || { echo "FAIL: invalid --verification-context should exit 2 (got $rc)" >&2; exit 1; }
 }
 
 case_finding_only

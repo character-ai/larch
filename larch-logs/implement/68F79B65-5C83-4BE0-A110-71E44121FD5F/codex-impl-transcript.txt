@@ -1,0 +1,25 @@
+Implemented Lesson 2.
+
+Key changes:
+- Added `scripts/parse-judge-vote-and-rating.sh` plus contract docs.
+- Extended `tally-plan-review.sh` to emit 21-column `findings-classification.tsv`, support `--voter SLOT:PATH`, preserve `vN_tool`, handle MainAgent/legacy/error cases, and keep old tally artifacts intact.
+- Updated `plan-review-loop.sh` to pass per-slot voter metadata and write header-only TSVs on empty exits.
+- Extended voter prompts/retry prompts with forensic axes.
+- Added strict design-log publishing allowlist for `plan-review/round-<N>/findings-classification.tsv`.
+- Added `test-findings-classification` and updated related docs/security/run-log notes.
+
+Verification run:
+- `make test-tally-plan-review`
+- `make test-findings-classification`
+- `make test-plan-review-loop`
+- `make test-render-voter-prompt`
+- `make test-design-log-publish`
+- `make test-dispatch-plan-voters`
+- `make test-dispatch-code-voters-happy`
+- `make test-design-structure`
+- `make test-harness-shards-coverage`
+- `bash scripts/relevant-checks.sh`
+
+All passed.
+
+Wrote `<TMPDIR>/manifest.json` atomically with `status=complete`. No `qa-pending.json` was written.

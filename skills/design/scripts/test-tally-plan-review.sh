@@ -9,6 +9,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT
 SUBJECT="$SCRIPT_DIR/tally-plan-review.sh"
+HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool'
 
 fail() {
     echo "FAIL: $1" >&2
@@ -148,6 +149,41 @@ mkdir -p "$DESIGN_ZERO"
 out_zero=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_ZERO")
 printf '%s\n' "$out_zero" | grep -q '^TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required$' || fail "zero voter status missing"
 [[ ! -s "$DESIGN_ZERO/accepted-plan-findings.md" ]] || fail "zero voter accepted file should be empty"
+read -r zero_header < "$DESIGN_ZERO/plan-review/round-1/findings-classification.tsv"
+[[ "$zero_header" == "$HEADER" ]] || fail "zero-voter findings-classification header drifted"
+python3 - "$DESIGN_ZERO/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
+assert rows["FINDING_1"]["voting_result"] == "rejected"
+assert rows["FINDING_2"]["voting_result"] == "rejected"
+PY
+
+V_MAIN="$TMPROOT/v-main.txt"
+cat > "$V_MAIN" <<'EOF'
+FINDING_1: YES
+FINDING_2: NO
+OOS_1: YES
+OOS_2: NO
+EOF
+DESIGN_MAIN="$TMPROOT/design-main"
+mkdir -p "$DESIGN_MAIN"
+out_main=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_MAIN" --voter "MainAgent:$V_MAIN")
+printf '%s\n' "$out_main" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "sole MainAgent rerun should finish ok"
+grep -q 'FINDING_1' "$DESIGN_MAIN/accepted-plan-findings.md" || fail "sole MainAgent YES should accept finding"
+grep -q 'FINDING_2' "$DESIGN_MAIN/rejected-findings.md" || fail "sole MainAgent NO should reject finding"
+grep -q 'OOS_1' "$DESIGN_MAIN/oos-accepted-design.md" || fail "sole MainAgent YES should accept non-security OOS"
+python3 - "$DESIGN_MAIN/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
+assert rows["FINDING_1"]["voting_result"] == "rejected"
+assert rows["FINDING_2"]["voting_result"] == "rejected"
+assert rows["OOS_1"]["voting_result"] == "rejected"
+assert rows["OOS_2"]["voting_result"] == "rejected"
+for row in rows.values():
+    assert row["v1_tool"] == row["v2_tool"] == row["v3_tool"] == ""
+PY
 
 V_NEUTRAL="$TMPROOT/v-neutral.txt"
 : > "$V_NEUTRAL"
@@ -207,6 +243,36 @@ if "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$TMPROOT/missing.txt" --des
     fail "missing voter file accepted"
 fi
 grep -q 'voter file is missing' /tmp/larch-tally-plan-review-fail.out || fail "missing voter diagnostic absent"
+
+echo "=== default findings-classification path and middle-slot preservation ==="
+DESIGN_CANONICAL="$TMPROOT/design-canonical"
+mkdir -p "$DESIGN_CANONICAL"
+"$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_CANONICAL" --voter "Claude:$V1" --voter "Cursor:$V3" >/dev/null
+[[ -f "$DESIGN_CANONICAL/plan-review/round-1/findings-classification.tsv" ]] || fail "default classification TSV missing"
+read -r canonical_header < "$DESIGN_CANONICAL/plan-review/round-1/findings-classification.tsv"
+[[ "$canonical_header" == "$HEADER" ]] || fail "default classification header drifted"
+python3 - "$DESIGN_CANONICAL/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    row = next(csv.DictReader(fh, delimiter="\t"))
+assert row["finding_id"] == "FINDING_1"
+assert row["v1_tool"] == "Claude"
+assert row["v2_tool"] == ""
+assert row["v3_tool"] == "Cursor"
+PY
+
+echo "=== explicit --voter slot ignores misleading basename ==="
+DESIGN_EXPLICIT="$TMPROOT/design-explicit"
+mkdir -p "$DESIGN_EXPLICIT"
+cp "$V1" "$TMPROOT/codex-looking-votes.txt"
+"$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_EXPLICIT" --voter "Claude:$TMPROOT/codex-looking-votes.txt" >/dev/null
+python3 - "$DESIGN_EXPLICIT/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    row = next(csv.DictReader(fh, delimiter="\t"))
+assert row["v1_tool"] == "Claude"
+assert row["v2_tool"] == ""
+PY
 
 echo "=== malformed-ballot abort still writes voting-tally.md ==="
 MALFORMED_BALLOT="$TMPROOT/malformed-ballot.md"

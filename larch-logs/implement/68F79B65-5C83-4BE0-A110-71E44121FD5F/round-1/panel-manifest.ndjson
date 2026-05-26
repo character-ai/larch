@@ -1,0 +1,9 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.6/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.6/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.6/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.6/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.6/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.6/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-voter-slot-position","tool":"cursor","output":"<TMPDIR>/round-1/dyn-voter-slot-position-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-voter-slot-position-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-awk-parser-correctness","tool":"cursor","output":"<TMPDIR>/round-1/dyn-awk-parser-correctness-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-awk-parser-correctness-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-quiet-mode-kv-capture","tool":"cursor","output":"<TMPDIR>/round-1/dyn-quiet-mode-kv-capture-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-quiet-mode-kv-capture-prompt.md","weight":1,"focus_area":"correctness"}

@@ -16,6 +16,9 @@ larch-logs/
     <RUN_ID>/
       manifest.json
       (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`)
+      plan-review/
+        round-<N>/
+          findings-classification.tsv
   implement/
     <RUN_ID>/
       manifest.json
@@ -86,6 +89,50 @@ tmpdir and secrets redaction. This trimming is specific to the committed round
 artifacts; the session tmpdir may still hold raw sidecars for in-run retries.
 If JSON trimming fails, `write-round` fails closed instead of copying the raw
 sidecar into `larch-logs/`.
+
+### design plan-review `findings-classification.tsv`
+
+`larch-logs/design/<RUN_ID>/plan-review/round-<N>/findings-classification.tsv`
+is the per-round forensic export produced by
+`skills/design/scripts/tally-plan-review.sh`. The file always uses a 21-column,
+tab-separated schema:
+
+`finding_id`, `finding_reviewers`, `voting_result`, then three repeated slot
+groups of: `vote`, `correctness`, `severity`, `quality`, `uncertain`, `tool`.
+
+The canonical header is:
+
+```text
+finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool
+```
+
+Semantics:
+
+- `finding_id` is the ballot heading id (`FINDING_N` or `OOS_N`).
+- `finding_reviewers` is proposer attribution copied from the ballot block.
+- `voting_result` is the final tally outcome for that row.
+- `vN_vote` is the normalized vote token used by the tally (`YES`, `NO`,
+  `EXONERATE`, or empty when that slot had no parseable vote for the id).
+- `vN_correctness`, `vN_severity`, `vN_quality`, and `vN_uncertain` are the
+  optional forensic rating axes parsed from the same voter line.
+- `vN_tool` is the runtime tool identity for that slot.
+
+Slot semantics:
+
+- For explicit `--voter` dispatch, non-`MainAgent` voters preserve canonical
+  tool slots from the declared `SLOT` label: `Claude -> v1`, `Codex -> v2`,
+  `Cursor -> v3`. Basename heuristics do not override explicit slot labels.
+  Missing slots stay empty instead of compacting later voters leftward.
+- For sole `--voter MainAgent:<PATH>` adjudication, `v1`/`v2`/`v3` remain empty
+  and `voting_result` stays `rejected` for every row even though the accepted /
+  rejected / OOS artifact files reflect the MainAgent adjudication result.
+- For legacy `--voter-files`, slots are inferred from basename/tool heuristics.
+- Missing or degraded rounds preserve empty cells so every data row still has
+  the full schema width. <!-- lint-literal-counts: allow fixed TSV schema --> A 0-finding or tally-error round may therefore publish a
+  header-only TSV.
+
+See [skills/design/scripts/tally-plan-review.md](skills/design/scripts/tally-plan-review.md)
+for the authoritative producer contract and harness coverage.
 
 `/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, and `review-round-summary` for the human-readable round summary.
 

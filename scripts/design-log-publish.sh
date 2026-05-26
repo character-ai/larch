@@ -139,9 +139,10 @@ WT_PARENT=""
 PUSH_DONE=false
 ENUM_TOP_TMP=""
 ENUM_RC_TMP=""
+ENUM_PR_TMP=""
 # shellcheck disable=SC2317
 wt_cleanup() {
-    rm -f "${ENUM_TOP_TMP:-}" "${ENUM_RC_TMP:-}" 2>/dev/null || true
+    rm -f "${ENUM_TOP_TMP:-}" "${ENUM_RC_TMP:-}" "${ENUM_PR_TMP:-}" 2>/dev/null || true
     if [[ -n "${WT_DIR:-}" ]]; then
         git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
     fi
@@ -284,6 +285,69 @@ while IFS= read -r f || [[ -n "$f" ]]; do
 done <"$_top_files"
 rm -f "$_top_files"
 ENUM_TOP_TMP=""
+
+if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then
+    if [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
+        larch_err "design-log-publish: plan-review must not be a symlink"
+        emit_publish_result false
+        exit 0
+    fi
+    if [[ ! -d "$DESIGN_TMPDIR/plan-review" ]]; then
+        larch_err "design-log-publish: plan-review exists but is not a directory"
+        emit_publish_result false
+        exit 0
+    fi
+    pr_root=$(cd "$DESIGN_TMPDIR/plan-review" && pwd -P) || {
+        larch_err "design-log-publish: cannot resolve plan-review directory"
+        emit_publish_result false
+        exit 0
+    }
+    _sym_check=$(find "$pr_root" -type l -print -quit 2>/dev/null || true)
+    if [[ -n "$_sym_check" ]]; then
+        larch_err "design-log-publish: plan-review tree must not contain symlinks (found: $_sym_check)"
+        emit_publish_result false
+        exit 0
+    fi
+    _pr_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-pr.XXXXXX")
+    ENUM_PR_TMP="$_pr_files"
+    if ! find "$pr_root" -type f | LC_ALL=C sort >"$_pr_files"; then
+        rm -f "$_pr_files"
+        ENUM_PR_TMP=""
+        larch_err "design-log-publish: failed to enumerate plan-review files"
+        emit_publish_result false
+        exit 0
+    fi
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            "$pr_root"/*) ;;
+            *)
+                larch_err "design-log-publish: path escapes plan-review root: $f"
+                emit_publish_result false
+                exit 0
+                ;;
+        esac
+        rel=${f#"$pr_root/"}
+        if ! [[ "$rel" =~ ^round-[1-9][0-9]*/findings-classification\.tsv$ ]]; then
+            larch_err "design-log-publish: unexpected file under plan-review: $rel"
+            emit_publish_result false
+            exit 0
+        fi
+        if [[ -L "$f" ]]; then
+            larch_err "design-log-publish: plan-review file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        mkdir -p "$RUN_DEST/plan-review/$(dirname "$rel")"
+        design_publish_stage_file "$f" "$RUN_DEST/plan-review/$rel" || {
+            larch_err "design-log-publish: staging failed for $f"
+            emit_publish_result false
+            exit 0
+        }
+    done <"$_pr_files"
+    rm -f "$_pr_files"
+    ENUM_PR_TMP=""
+fi
 
 if [[ -e "$DESIGN_TMPDIR/render-cache" ]]; then
     if [[ -L "$DESIGN_TMPDIR/render-cache" ]]; then

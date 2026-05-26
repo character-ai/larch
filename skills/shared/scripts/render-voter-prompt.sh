@@ -7,8 +7,13 @@
 
 set -euo pipefail
 
+CORRECTNESS_ENUM='true|partially-true|false-positive|uncertain'
+SEVERITY_ENUM='blocker|major|minor|nit|uncertain'
+QUALITY_ENUM='excellent|good|adequate|weak|no-fix|uncertain'
+UNCERTAIN_ENUM='true|false'
+
 usage() {
-    echo "Usage: render-voter-prompt.sh --ballot-file PATH --panel-role STRING --id-grammar finding-oos|finding-only --verification-context plan|diff-plan" >&2
+    echo "Usage: render-voter-prompt.sh --ballot-file PATH --panel-role STRING --id-grammar finding-oos|finding-only --verification-context plan|diff-plan|code" >&2
 }
 
 BALLOT_FILE=""
@@ -38,8 +43,8 @@ case "$ID_GRAMMAR" in
 esac
 
 case "$VERIFICATION_CONTEXT" in
-    plan|diff-plan) ;;
-    *) echo "render-voter-prompt.sh: --verification-context must be plan or diff-plan" >&2; usage; exit 2 ;;
+    plan|diff-plan|code) ;;
+    *) echo "render-voter-prompt.sh: --verification-context must be plan, diff-plan, or code" >&2; usage; exit 2 ;;
 esac
 
 printf 'You are a %s.\n' "$PANEL_ROLE"
@@ -64,7 +69,7 @@ case "$VERIFICATION_CONTEXT" in
     plan)
         printf '\n%s\n' '**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and silently inspect the plan or referenced repo files for verification, but do not invoke planning/status tools.'
         ;;
-    diff-plan)
+    diff-plan|code)
         printf '\n%s\n' 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.'
         printf '%s\n' '**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and any provided diff/plan context files for verification, but do not invoke planning/status tools or any other tools beyond those file reads.'
         ;;
@@ -72,17 +77,19 @@ esac
 
 if [[ "$ID_GRAMMAR" == "finding-oos" ]]; then
     printf '\n%s\n' 'For each ballot item output exactly one line using the same ID from the ballot:'
-    printf '%s\n' '  FINDING_N: YES'
-    printf '%s\n' '  FINDING_N: NO -- one-line reason'
-    printf '%s\n' '  FINDING_N: EXONERATE -- one-line reason'
-    printf '%s\n' '  OOS_N: YES'
-    printf '%s\n' '  OOS_N: NO -- one-line reason'
-    printf '%s\n' '  OOS_N: EXONERATE -- one-line reason'
+    printf '%s\n' "Rate each item on four axes: CORRECTNESS is whether the claim is accurate, SEVERITY is the impact if left unfixed, QUALITY is how actionable the suggested fix is, and UNCERTAIN marks low confidence. Use lowercase axis values only. Axis tokens must precede any optional \`-- reason\` rationale; the parser ignores axis-looking tokens after \`-- \`."
+    printf '  FINDING_N: YES CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s>\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '%s\n' '  FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason'
+    printf '%s\n' '  FINDING_N: EXONERATE CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason'
+    printf '  OOS_N: YES CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s>\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '%s\n' '  OOS_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason'
+    printf '%s\n' '  OOS_N: EXONERATE CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason'
 else
     printf '\n%s\n' 'For every ballot item, output exactly one line using the same FINDING_N: id from the ballot heading:'
-    printf '%s\n' '  FINDING_N: YES'
-    printf '%s\n' '  FINDING_N: NO -- one-line reason'
-    printf '%s\n' '  FINDING_N: EXONERATE -- one-line reason'
+    printf '%s\n' "Rate each item on four axes: CORRECTNESS is whether the claim is accurate, SEVERITY is the impact if left unfixed, QUALITY is how actionable the suggested fix is, and UNCERTAIN marks low confidence. Use lowercase axis values only. Axis tokens must precede any optional \`-- reason\` rationale; the parser ignores axis-looking tokens after \`-- \`."
+    printf '  FINDING_N: YES CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s>\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '%s\n' '  FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason'
+    printf '%s\n' '  FINDING_N: EXONERATE CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason'
 fi
 
 printf '%s\n' 'You must vote on every item. Do NOT skip any.'

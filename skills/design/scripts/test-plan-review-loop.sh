@@ -109,6 +109,15 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_dispatch_fail() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'DISPATCH_OK=false\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\n'
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
 write_collect() {
     local mode="${1:?}"
     cat >"$STUB/collect-agent-results.sh" <<EOS
@@ -192,6 +201,39 @@ INNER
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
 printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
+EOS
+    chmod +x "$STUB/dispatch-plan-voters.sh"
+}
+
+write_voters_slot2_failed() {
+    cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+v1="$DESIGN_TMPDIR/claude-vote-output.txt"
+v3="$DESIGN_TMPDIR/cursor-vote-output.txt"
+vp="$DESIGN_TMPDIR/voter-paths.list"
+for f in "$v1" "$v3"; do
+    cat >"$f" <<'INNER'
+FINDING_1: YES
+INNER
+done
+printf '%s\n' "$v1" "$v3" >"$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=failed\n' "$DESIGN_TMPDIR/codex-vote-output.txt"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
 EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
 }
@@ -220,6 +262,9 @@ for f in "$v1" "$v2" "$v3"; do
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
 printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
 EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
 }
@@ -265,6 +310,8 @@ printf '%s\n' "$out0" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-finding
 printf '%s\n' "$out0" | grep -q '^WARN=plan-review-tsv:' || fail "expected WARN for empty TSV path"
 [[ -f "$D0/ballot.txt" ]] || fail "ballot.txt missing on zero-findings path"
 grep -q 'No findings were raised' "$D0/voting-tally.md" || fail "expected zero-findings tally prose"
+[[ -f "$D0/plan-review/round-1/findings-classification.tsv" ]] || fail "zero-findings classification TSV missing"
+[[ "$(wc -l < "$D0/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "zero-findings classification TSV should contain header only"
 
 echo "=== stubbed driver: one finding + real tally ==="
 D1="$TMP/z1"
@@ -279,6 +326,46 @@ out1=$(run_loop "$D1")
 printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status"
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
+[[ -f "$D1/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing for real tally"
+
+echo "=== panel-failed path writes header-only classification TSV ==="
+D1P="$TMP/z1p"
+mkdir -p "$D1P"
+printf 'plan\n' >"$D1P/plan.txt"
+printf 'feat\n' >"$D1P/feature-description.txt"
+write_scout
+write_dispatch_fail
+write_collect one
+write_voters_three
+set +e
+out1p=$(run_loop "$D1P")
+rc1p=$?
+set -e
+[[ "$rc1p" -eq 1 ]] || fail "panel-failed path should exit 1"
+printf '%s\n' "$out1p" | grep -q '^LOOP_STATUS=panel-failed$' || fail "expected panel-failed loop status"
+[[ -f "$D1P/plan-review/round-1/findings-classification.tsv" ]] || fail "panel-failed classification TSV missing"
+[[ "$(wc -l < "$D1P/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "panel-failed TSV should contain header only"
+
+echo "=== stubbed driver: failed middle voter preserves canonical tally slot ==="
+D1B="$TMP/z1b"
+mkdir -p "$D1B"
+printf 'plan\n' >"$D1B/plan.txt"
+printf 'feat\n' >"$D1B/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_slot2_failed
+out1b=$(run_loop "$D1B")
+printf '%s\n' "$out1b" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with failed middle voter"
+python3 - "$D1B/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    row = next(csv.DictReader(fh, delimiter="\t"))
+assert row["finding_id"] == "FINDING_1"
+assert row["v1_tool"] == "Claude"
+assert row["v2_tool"] == ""
+assert row["v3_tool"] == "Cursor"
+PY
 
 echo "=== brainstorm context merges into feature file before dispatch ==="
 DB="$TMP/zb"
@@ -327,6 +414,8 @@ printf '%s\n' "$out2" | grep -q '^WARN=plan-review-tally:' || fail "expected tal
 [[ -f "$D2/voting-tally.md" ]] || fail "voting-tally.md missing after stub tally failure"
 [[ -s "$D2/voting-tally.md" ]] || fail "voting-tally.md empty after stub tally failure"
 grep -q 'Tally aborted' "$D2/voting-tally.md" || fail "stub tally banner missing in voting-tally.md"
+[[ -f "$D2/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing after stub tally failure"
+[[ "$(wc -l < "$D2/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "tally-error TSV should contain header only"
 
 echo "=== stubbed driver: three reviewers each OOS_1 + FINDING_1 (dedup + tally) ==="
 D3="$TMP/z3"

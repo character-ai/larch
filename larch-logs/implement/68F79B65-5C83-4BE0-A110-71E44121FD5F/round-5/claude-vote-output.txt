@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- redundant subprocess per cell is a real nit but caching adds complexity without correctness gain
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- line 208 uses `env -u LARCH_QUIET_DISABLE` which exercises the FD 3 quiet path; the claim that only LARCH_QUIET_DISABLE=1 is tested is inaccurate
+FINDING_11: EXONERATE -- MainAgent voting_result=rejected vs accepted markdown is intentional per plan and documented in tally-plan-review.md
+FINDING_12: EXONERATE -- enum template strings are already lowercase so risk of uppercase examples reaching judges is negligible
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- by design per plan; distinction between TSV voting_result and accepted-findings-in-markdown is documented
+FINDING_19: EXONERATE -- glued YES-CORRECTNESS= is malformed voter output outside the documented format; low practical concern
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- plan explicitly permits the inline fallback implementation; not a violation
+FINDING_24: YES
+FINDING_25: YES

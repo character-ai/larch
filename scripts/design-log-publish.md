@@ -20,7 +20,8 @@ branch by:
    `RUN_ID` slug on one clone, or they will collide on this branch/worktree slot.
 4. Running `larch-log.sh init` under `larch-logs/` in that worktree (schema v2
    `manifest.json` for skill `design`).
-5. Copying design artifacts: top-level regular files (maxdepth 1) plus all
+5. Copying design artifacts: top-level regular files (maxdepth 1), the strict
+   `plan-review/round-<N>/findings-classification.tsv` allowlist, plus all
    regular files under `render-cache/` (recursive). Symlinks at the top level
    are skipped; `render-cache/` itself must be a real directory (not a symlink).
    Files whose basename matches the suffix deny-list are skipped before any
@@ -75,6 +76,28 @@ commit may still exist on the pushed disposable branch — operators reconcile
 manually. When `git push` succeeds but PR create/merge fails, stderr notes the
 remote branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
 `SECURITY.md` for the consolidated note.
+
+## plan-review allowlist
+
+`$DESIGN_TMPDIR/plan-review/` is optional. A missing or empty directory is
+success and stages no files. When present, it is fail-closed:
+
+- `plan-review` must be a real directory, not a symlink and not a regular file.
+- Any symlink anywhere below the resolved physical `plan-review` root fails the
+  publish before regular-file enumeration. This catches both symlinked files
+  and symlinked intermediate directories; `find -type f -not -type l` is not
+  sufficient because `find` does not traverse symlinked directories without
+  `-L`.
+- Each enumerated file must pass the under-root prefix guard against the
+  resolved physical root, matching the `render-cache/` guard.
+- The relativized path must match the anchored regex
+  `^round-[1-9][0-9]*/findings-classification\.tsv$`. Round numbers are
+  positive integers with no leading zero; `round-0` and `round-01` are rejected.
+- Any unexpected file under `plan-review/` emits `larch_err` and
+  `PUBLISH_OK=false`.
+
+Allowed files are staged through the same trim/redact pipeline as other design
+artifacts at `larch-logs/design/<RUN_ID>/plan-review/<relpath>`.
 
 ## Tests
 
