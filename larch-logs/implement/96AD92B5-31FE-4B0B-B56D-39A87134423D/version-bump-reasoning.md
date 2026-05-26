@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `1c6d7211` (Fixes #2872: decompose-file-issues parses multi-blocker dependency lists (#2891))
-- **Current version**: `42.5.18`
+- **Base commit**: `1528bc95` (Fixes #2854: Harden shell input sanitization for OOS follow-up #2854 (#2894))
+- **Current version**: `42.5.19`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.5.19`
+- **New version**: `42.5.20`
 
 ### PATCH rationale
 
