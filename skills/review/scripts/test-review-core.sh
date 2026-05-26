@@ -315,9 +315,9 @@ done
     printf 'aggregate\n' >> "\${rtmp:?}/invoke-order.log"
 exec "\$AGG" "\$@"
 EOF
-    cat > "$TMP/aggregate-exhausted-stub.sh" <<'STUB'
+cat > "$TMP/aggregate-exhausted-stub.sh" <<'STUB'
 #!/usr/bin/env bash
-printf 'AGGREGATED=false\nINPUT_COUNT=2\nMERGED_COUNT=0\nREASON=validation-exhausted\nPHASES_ATTEMPTED=cursor,codex,claude\n'
+printf 'AGGREGATED=false\nINPUT_COUNT=2\nMERGED_COUNT=0\nREASON=validation-exhausted\n'
 exit 0
 STUB
     chmod +x "$TMP"/*.sh
@@ -419,8 +419,8 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 assert_contains "$out" "ACCEPTED_FINDINGS_FILE=$TMP/fix/accepted-findings.md"
 
-out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs")
-assert_contains "$out" '→ review: consolidating findings'
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs")
+assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'

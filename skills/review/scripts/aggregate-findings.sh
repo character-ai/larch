@@ -110,13 +110,6 @@ emit_result() {
     emit_kv INPUT_COUNT "$INPUT_COUNT"
     emit_kv MERGED_COUNT "$MERGED_COUNT"
     emit_kv REASON "$REASON"
-    if [[ -n "${PHASES_ATTEMPTED_CSV:-}" ]]; then
-        local _pc=0
-        _pc=$(printf '%s' "$PHASES_ATTEMPTED_CSV" | awk -F, '{print NF}')
-        if [[ "${_pc:-0}" -gt 1 ]]; then
-            emit_kv PHASES_ATTEMPTED "$PHASES_ATTEMPTED_CSV"
-        fi
-    fi
     if [[ -n "$FAILURE_LOG" ]]; then
         emit_kv FAILURE_LOG "$FAILURE_LOG"
     fi
@@ -631,22 +624,6 @@ PY
 DISPATCH_SH="${AGGREGATE_DISPATCH_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
 dispatch_out="$REVIEW_TMPDIR/aggregator-dispatch.env"
 
-outer_names=()
-outer_out_paths=()
-if [[ "$CURSOR_PRESENT" == "true" ]]; then
-    outer_names+=(cursor)
-    outer_out_paths+=("$REVIEW_TMPDIR/aggregator-output.txt")
-fi
-if [[ "$CODEX_PRESENT" == "true" ]]; then
-    outer_names+=(codex)
-    outer_out_paths+=("$REVIEW_TMPDIR/aggregator-output-codex.txt")
-fi
-outer_names+=(claude)
-outer_out_paths+=("$REVIEW_TMPDIR/aggregator-output-claude.txt")
-
-PHASES_ATTEMPTED_CSV=""
-merge_succeeded=false
-
 _agg_pipeline_for_candidate() {
     local cand="$1"
     local merged_tmp
@@ -694,140 +671,99 @@ PY
     MERGE_PIPELINE_RC=0
 }
 
-for idx in "${!outer_names[@]}"; do
-    outer_name="${outer_names[$idx]}"
-    out_path="${outer_out_paths[$idx]}"
-    if [[ -n "$PHASES_ATTEMPTED_CSV" ]]; then
-        PHASES_ATTEMPTED_CSV+=","
-    fi
-    PHASES_ATTEMPTED_CSV+="$outer_name"
+jq -nc \
+    --arg out "$REVIEW_TMPDIR/aggregator-output.txt" \
+    --arg pf "$prompt_file" \
+    '{slot:"aggregator",tool:"codex",output:$out,prompt_file:$pf}' > "$slots_file"
 
-    case "$outer_name" in
-        cursor)
-            slot_tool=cursor
-            disp_cursor=true
-            disp_codex="$CODEX_PRESENT"
-            ;;
-        codex)
-            slot_tool=codex
-            disp_cursor="$CURSOR_PRESENT"
-            disp_codex=true
-            ;;
-        claude)
-            slot_tool=cursor
-            disp_cursor=false
-            disp_codex=false
-            ;;
-    esac
+dispatch_args=(
+    --slots-file "$slots_file"
+    --codex-present "$CODEX_PRESENT"
+    --cursor-present "$CURSOR_PRESENT"
+    --mode "$MODE"
+)
+[[ -n "$DIFF_FILE" ]] && dispatch_args+=(--diff-file "$DIFF_FILE")
+[[ -n "$PLAN_FILE" ]] && dispatch_args+=(--plan-file "$PLAN_FILE")
+dispatch_args+=(--require-result-pattern '^(### FINDING_[0-9]+:|LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)')
 
-    jq -nc \
-        --arg out "$out_path" \
-        --arg pf "$prompt_file" \
-        --arg tool "$slot_tool" \
-        '{slot:"aggregator",tool:$tool,output:$out,prompt_file:$pf}' > "$slots_file"
+set +e
+"$DISPATCH_SH" "${dispatch_args[@]}" > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
+dispatch_rc=$?
+set -e
 
-    set +e
-    "$DISPATCH_SH" \
-        --slots-file "$slots_file" \
-        --codex-present "$disp_codex" \
-        --cursor-present "$disp_cursor" \
-        --mode "$MODE" \
-        ${DIFF_FILE:+--diff-file "$DIFF_FILE"} \
-        ${PLAN_FILE:+--plan-file "$PLAN_FILE"} \
-        > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    dispatch_rc=$?
-    set -e
-
-    if [[ "$dispatch_rc" -ne 0 ]]; then
-        REASON="dispatch-failed"
-        FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-        append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
-        emit_result
-        exit 0
-    fi
-
-    DISPATCH_OK=$(kv_get "$dispatch_out" DISPATCH_OK)
-    if [[ "$DISPATCH_OK" != "true" ]]; then
-        REASON="dispatch-failed"
-        FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-        append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
-        emit_result
-        exit 0
-    fi
-
-    cand=$(kv_get "$dispatch_out" ALL_OUTPUT_FILES)
-    cand="${cand%% *}"
-    [[ -n "$cand" && -f "$cand" && -s "$cand" && ! -L "$cand" ]] || {
-        REASON="dispatch-failed"
-        append_warning "- **findings aggregator**: missing or empty aggregator output file; leaving findings.md unchanged."
-        emit_result
-        exit 0
-    }
-    _cand_canon="$(cd "$(dirname "$cand")" && pwd -P)/$(basename "$cand")"
-    case "$_cand_canon" in
-        "$REVIEW_TMPDIR_CANON"/* | "$REVIEW_TMPDIR_CANON") ;;
-        *)
-            REASON="dispatch-failed"
-            append_warning "- **findings aggregator**: aggregator output path resolves outside --review-tmpdir; leaving findings.md unchanged."
-            emit_result
-            exit 0
-            ;;
-    esac
-    unset _cand_canon
-
-    actual_tool=$(kv_get "$dispatch_out" ALL_OUTPUT_TOOLS)
-    actual_tool="${actual_tool%% *}"
-    if [[ "$actual_tool" != "$outer_name" ]]; then
-        continue
-    fi
-
-    _agg_pipeline_for_candidate "$cand"
-    case "${MERGE_PIPELINE_RC:-2}" in
-        0)
-            MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
-            AGGREGATED=true
-            REASON="ok"
-            merge_succeeded=true
-            break
-            ;;
-        1)
-            maxp="${LARCH_AGGREGATE_MAX_OUTER_PHASES:-}"
-            if (( idx + 1 < ${#outer_names[@]} )) && { [[ -z "$maxp" ]] || ! [[ "$maxp" =~ ^[0-9]+$ ]] || (( idx + 1 < maxp )); }; then
-                continue
-            fi
-            if (( idx + 1 < ${#outer_names[@]} )); then
-                REASON="validation-failed"
-                FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
-                append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
-                emit_result
-                exit 0
-            fi
-            break
-            ;;
-        2)
-            REASON="validation-failed"
-            FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
-            if [[ ! -f "$FAILURE_LOG" || ! -s "$FAILURE_LOG" ]]; then
-                if [[ -f "$REVIEW_TMPDIR/aggregator-strip.stderr" && -s "$REVIEW_TMPDIR/aggregator-strip.stderr" ]]; then
-                    FAILURE_LOG="$REVIEW_TMPDIR/aggregator-strip.stderr"
-                elif [[ -f "$REVIEW_TMPDIR/aggregator-empty-merge.stderr" ]]; then
-                    FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
-                fi
-            fi
-            append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
-            emit_result
-            exit 0
-            ;;
-    esac
-done
-
-if [[ "$merge_succeeded" == true ]]; then
+if [[ "$dispatch_rc" -ne 0 ]]; then
+    REASON="dispatch-failed"
+    FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
+    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
 
-REASON="validation-exhausted"
-FAILURE_LOG=""
-append_warning "- **findings aggregator**: validation exhausted after outer phases (${PHASES_ATTEMPTED_CSV}); leaving findings.md unchanged."
-emit_result
-exit 0
+DISPATCH_OK=$(kv_get "$dispatch_out" DISPATCH_OK)
+if [[ "$DISPATCH_OK" != "true" ]]; then
+    REASON="dispatch-failed"
+    FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
+    append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    emit_result
+    exit 0
+fi
+
+cand=""
+all_output_files_path=$(kv_get "$dispatch_out" ALL_OUTPUT_FILES_PATH)
+if [[ -n "$all_output_files_path" && -f "$all_output_files_path" && -r "$all_output_files_path" ]]; then
+    read -r cand < "$all_output_files_path" || true
+fi
+if [[ -z "$cand" ]]; then
+    cand=$(kv_get "$dispatch_out" ALL_OUTPUT_FILES)
+    cand="${cand%% *}"
+fi
+[[ -n "$cand" && -f "$cand" && -s "$cand" && ! -L "$cand" ]] || {
+    REASON="dispatch-failed"
+    append_warning "- **findings aggregator**: missing or empty aggregator output file; leaving findings.md unchanged."
+    emit_result
+    exit 0
+}
+_cand_canon="$(cd "$(dirname "$cand")" && pwd -P)/$(basename "$cand")"
+case "$_cand_canon" in
+    "$REVIEW_TMPDIR_CANON"/* | "$REVIEW_TMPDIR_CANON") ;;
+    *)
+        REASON="dispatch-failed"
+        append_warning "- **findings aggregator**: aggregator output path resolves outside --review-tmpdir; leaving findings.md unchanged."
+        emit_result
+        exit 0
+        ;;
+esac
+unset _cand_canon
+
+_agg_pipeline_for_candidate "$cand"
+case "${MERGE_PIPELINE_RC:-2}" in
+    0)
+        MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
+        AGGREGATED=true
+        REASON="ok"
+        emit_result
+        exit 0
+        ;;
+    1)
+        AGGREGATED=false
+        REASON="validation-exhausted"
+        FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
+        append_warning "- **findings aggregator**: validation exhausted (narrow-trigger empty merge after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+        emit_result
+        exit 0
+        ;;
+    2)
+        REASON="validation-failed"
+        FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
+        if [[ ! -f "$FAILURE_LOG" || ! -s "$FAILURE_LOG" ]]; then
+            if [[ -f "$REVIEW_TMPDIR/aggregator-strip.stderr" && -s "$REVIEW_TMPDIR/aggregator-strip.stderr" ]]; then
+                FAILURE_LOG="$REVIEW_TMPDIR/aggregator-strip.stderr"
+            elif [[ -f "$REVIEW_TMPDIR/aggregator-empty-merge.stderr" ]]; then
+                FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
+            fi
+        fi
+        append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+        emit_result
+        exit 0
+        ;;
+esac

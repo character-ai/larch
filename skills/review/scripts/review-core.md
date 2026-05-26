@@ -60,7 +60,7 @@ Round stages:
 Artifact paths under `$REVIEW_TMPDIR`:
 
 - `findings.md` (optionally rewritten by `aggregate-findings.sh` when aggregation succeeds)
-- `aggregator-output.txt`, `aggregator-output-codex.txt`, `aggregator-output-claude.txt`, `review-core-aggregate.env` — per–outer-phase aggregator dispatch captures (see `aggregate-findings.md`); `aggregator-output.txt` is the canonical first-phase path
+- `aggregator-output.txt`, `aggregator-dispatch.env`, `aggregator-dispatch.stderr`, `review-core-aggregate.env` — aggregator dispatch captures (see `aggregate-findings.md`); `aggregator-dispatch.env` includes dispatcher phase and resolution keys such as `PHASE1_SLOTS`, `PHASE2_SLOTS`, `PHASE3_SLOTS`, `ALL_OUTPUT_TOOLS`, and `ALL_OUTPUT_FILES_PATH`
 - `accepted-findings.md`
 - `rejected-findings.md`
 - `oos-accepted-review.md`
