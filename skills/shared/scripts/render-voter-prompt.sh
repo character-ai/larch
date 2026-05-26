@@ -57,7 +57,7 @@ case "$ID_GRAMMAR" in
         printf '%s\n' "For items prefixed with \`[OUT_OF_SCOPE]\`: vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."
         ;;
     finding-oos)
-        printf '%s\n' "For \`OOS_N:\` items (or items prefixed with \`[OUT_OF_SCOPE]\` in code review): vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."
+        printf '%s\n' "For \`OOS_N:\` items in plan review (or items prefixed with \`[OUT_OF_SCOPE]\` in code review): vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."
         ;;
 esac
 

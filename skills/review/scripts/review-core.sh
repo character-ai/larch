@@ -733,3 +733,4 @@ emit_kv OUT_OF_SCOPE_DRIFT_COUNT "$out_of_scope_drift_count"
 emit_kv PANEL_MODE "$panel_mode"
 emit_kv PANEL_SHAPE "$panel_shape"
 [[ -n "$findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$findings_classification_tsv_file"
+exit 0
