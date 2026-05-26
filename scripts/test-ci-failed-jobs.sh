@@ -183,12 +183,12 @@ assert_rc "control-byte gh failure exits 1" "$rc" 1
 assert_file_contains "control-byte stderr preserves prefix" "$T8/err" "HTTP 500"
 assert_file_contains "control-byte stderr preserves prose" "$T8/err" "Bad Gateway"
 if grep -aF $'\x07' "$T8/err" >/dev/null; then
-    fail "control-byte stderr strips BEL"
+    fail "control-byte stderr still contains BEL"
 else
     ok "control-byte stderr strips BEL"
 fi
 if grep -aF $'\x1b' "$T8/err" >/dev/null; then
-    fail "control-byte stderr strips ESC"
+    fail "control-byte stderr still contains ESC"
 else
     ok "control-byte stderr strips ESC"
 fi

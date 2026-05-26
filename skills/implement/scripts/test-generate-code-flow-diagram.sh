@@ -13,6 +13,7 @@ PASS=0; FAIL=0
 pass(){ PASS=$((PASS+1)); printf 'PASS: %s\n' "$1"; }
 fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)" ;; esac; }
+assert_has_line(){ if printf '%s\n' "$2" | grep -Fx -- "$1" >/dev/null; then pass "$3"; else fail "$3 (missing line $1)"; fi; }
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
@@ -54,25 +55,25 @@ if [ -s "$tmp/code-flow-diagram.md" ]; then pass 'diagram promoted'; else fail '
 tmp2="$TMP_ROOT/session2"; mkdir -p "$tmp2"
 out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 "$HELPER" --implement-tmpdir "$tmp2")
 assert_contains 'STATUS=skipped' "$out" 'sanitizer rejection is skippable'
-assert_contains 'SKIP_REASON=test-reject' "$out" 'rejection reason emitted'
+assert_has_line 'SKIP_REASON=test-reject' "$out" 'rejection reason emitted as bare token'
 
 tmp3="$TMP_ROOT/session3"; mkdir -p "$tmp3"
 out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
     SANITIZE_REASON_LINE='REASON_TOKEN=pipe-in-node-label fence=1 line=7' \
     "$HELPER" --implement-tmpdir "$tmp3")
-assert_contains 'SKIP_REASON=pipe-in-node-label' "$out" 'SKIP_REASON extracts token only from production-shape line'
+assert_has_line 'SKIP_REASON=pipe-in-node-label' "$out" 'SKIP_REASON extracts token only from production-shape line'
 
 tmp4="$TMP_ROOT/session4"; mkdir -p "$tmp4"
 out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
     SANITIZE_REASON_LINE='REASON_TOKEN=pipe-in-node-label=foo fence=1 line=7' \
     "$HELPER" --implement-tmpdir "$tmp4")
-assert_contains 'SKIP_REASON=pipe-in-node-label=foo' "$out" 'SKIP_REASON preserves embedded = within token'
+assert_has_line 'SKIP_REASON=pipe-in-node-label=foo' "$out" 'SKIP_REASON preserves embedded = within token'
 
 tmp5="$TMP_ROOT/session5"; mkdir -p "$tmp5"
 out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
     SANITIZE_REASON_LINE='STATUS_DETAIL=other' \
     "$HELPER" --implement-tmpdir "$tmp5")
-assert_contains 'SKIP_REASON=sanitizer-rejected' "$out" 'SKIP_REASON falls back when REASON_TOKEN absent'
+assert_has_line 'SKIP_REASON=sanitizer-rejected' "$out" 'SKIP_REASON falls back when REASON_TOKEN absent'
 
 set +e
 bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" 2>/dev/null)
