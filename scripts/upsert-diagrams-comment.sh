@@ -103,6 +103,7 @@ extract_section() {
                 in_fence = 1
                 fence_chars = chars
                 fence_width = width
+                fence_is_mermaid = (line ~ /^(```|~~~)[[:space:]]*mermaid([[:space:]].*)?$/)
                 fallback_start = fallback_count + 1
                 return
             }
@@ -112,6 +113,7 @@ extract_section() {
                 in_fence = 0
                 fence_chars = ""
                 fence_width = 0
+                fence_is_mermaid = 0
                 fallback_count = fallback_start - 1
                 fallback_start = 0
             }
@@ -123,7 +125,11 @@ extract_section() {
             for (i = 1; i <= count; i++) {
                 if (is_section_start(i)) {
                     if (in_fence) {
-                        fallback[++fallback_count] = i
+                        if (fence_is_mermaid) {
+                            mermaid_fallback[++mermaid_fallback_count] = i
+                        } else {
+                            fallback[++fallback_count] = i
+                        }
                     } else {
                         normal[++normal_count] = i
                     }
@@ -144,10 +150,28 @@ extract_section() {
                 }
             }
             if (start == 0) {
+                for (i = 1; i <= mermaid_fallback_count; i++) {
+                    idx = mermaid_fallback[i]
+                    if (is_target(lines[idx])) {
+                        start = idx
+                        break
+                    }
+                }
+            }
+            if (start == 0) {
                 for (i = 1; i <= fallback_count; i++) {
                     idx = fallback[i]
                     if (is_target(lines[idx])) {
                         start = idx
+                        break
+                    }
+                }
+            }
+            if (start != 0 && end == 0) {
+                for (i = 1; i <= mermaid_fallback_count; i++) {
+                    idx = mermaid_fallback[i]
+                    if (idx > start) {
+                        end = idx - 1
                         break
                     }
                 }

@@ -353,28 +353,10 @@ else
         skipped)
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
-<<<<<<< HEAD
-            _skip_reason=$(kv_value SKIP_REASON "$gen_out")
-            if [ -n "$_skip_reason" ]; then
-                CODE_FLOW_SKIP_REASON="$_skip_reason"
-            else
-                CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            fi
-=======
->>>>>>> 03920fdd (Implement shared diagrams upsert helper: /design posts Architecture, /implement posts Code Flow (#2840))
             ;;
         failed)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
-<<<<<<< HEAD
-            _skip_reason=$(kv_value SKIP_REASON "$gen_out")
-            if [ -n "$_skip_reason" ]; then
-                CODE_FLOW_SKIP_REASON="$_skip_reason"
-            else
-                CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            fi
-=======
->>>>>>> 03920fdd (Implement shared diagrams upsert helper: /design posts Architecture, /implement posts Code Flow (#2840))
             append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
         *)
