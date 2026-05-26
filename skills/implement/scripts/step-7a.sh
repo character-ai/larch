@@ -102,8 +102,10 @@ EOF
 
 compose_summary_diagrams() {
     rm -f "$IMPLEMENT_TMPDIR/code-flow-section.md" 2>/dev/null || true
-    if [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
+    if [ "${DIAGRAM_STATUS:-}" = "ok" ] && [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
         cat "$IMPLEMENT_TMPDIR/code-flow-diagram.md" > "$IMPLEMENT_TMPDIR/code-flow-section.md"
+    else
+        rm -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" 2>/dev/null || true
     fi
 }
 
@@ -321,6 +323,18 @@ if [ "$FORKED_TARGET_SET" != "true" ]; then
 fi
 export ISSUE_NUMBER RUN_ID
 
+REPO=""
+if [ "${forked_target:-false}" = "true" ]; then
+    REPO=$(read_session_key UPSTREAM_REPO "")
+fi
+if [ -z "$REPO" ]; then
+    REPO=$(read_session_key REPO "")
+fi
+if [ -z "$REPO" ]; then
+    REPO=$(read_session_key UPSTREAM_REPO "")
+fi
+export REPO
+
 base_remote=origin
 base_ref=main
 if [ "${forked_target:-false}" = "true" ]; then
@@ -372,10 +386,13 @@ compose_summary_diagrams
 if [ -n "$ISSUE_NUMBER" ] && [ -s "$IMPLEMENT_TMPDIR/code-flow-section.md" ]; then
     upsert_out="$IMPLEMENT_TMPDIR/code-flow-section-upsert.stdout"
     upsert_err="$IMPLEMENT_TMPDIR/code-flow-section-upsert.stderr"
+    upsert_args=(--issue "$ISSUE_NUMBER")
+    if [ -n "$REPO" ]; then
+        upsert_args+=(--repo "$REPO")
+    fi
+    upsert_args+=(--code-flow-file "$IMPLEMENT_TMPDIR/code-flow-section.md")
     set +e
-    "$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" \
-        --issue "$ISSUE_NUMBER" \
-        --code-flow-file "$IMPLEMENT_TMPDIR/code-flow-section.md" >"$upsert_out" 2>"$upsert_err"
+    "$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${upsert_args[@]}" >"$upsert_out" 2>"$upsert_err"
     upsert_rc=$?
     set +e
     upsert_status=$(kv_value UPSERT_STATUS "$upsert_out")

@@ -54,6 +54,26 @@ fail() {
     exit "$code"
 }
 
+redact_gh_error() {
+    local text=$1 redacted status=0
+    [ -x "$SCRIPT_DIR/redact-secrets.sh" ] || {
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
+    }
+    redacted=$(printf '%s' "$text" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null) || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
+    fi
+    case "$redacted" in
+        *'[content truncated'*)
+            printf '%s' 'gh failure: redaction unavailable'
+            return 0
+            ;;
+    esac
+    printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+}
+
 print_data() {
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         printf '%s' "$1" >&3
@@ -279,7 +299,7 @@ if [ "$DRY_RUN" != "true" ]; then
     list_err="$(tmp_file)"
     list_out="$(gh api "/repos/${REPO}/issues/${ISSUE}/comments" --paginate --jq '.[] | (.id|tostring) + "\t" + ((.body // "") | split("\n")[0])' 2>"$list_err")" || {
         err="$(cat "$list_err" 2>/dev/null || true)"
-        fail 2 "gh api comments fetch failed: $(printf '%s' "$err" | tr '\n' ' ' | head -c 500)"
+        fail 2 "gh api comments fetch failed: $(redact_gh_error "$err")"
     }
     ids="$(printf '%s\n' "$list_out" | awk -F'\t' -v marker="$MARKER" '$2 == marker { print $1 }')"
     count="$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n + 0 }')"
@@ -292,7 +312,7 @@ if [ "$DRY_RUN" != "true" ]; then
         body_err="$(tmp_file)"
         gh api "/repos/${REPO}/issues/comments/${comment_id}" --jq '.body // ""' >"$body_existing" 2>"$body_err" || {
             err="$(cat "$body_err" 2>/dev/null || true)"
-            fail 2 "gh api comment fetch failed: $(printf '%s' "$err" | tr '\n' ' ' | head -c 500)"
+            fail 2 "gh api comment fetch failed: $(redact_gh_error "$err")"
         }
     fi
 fi
@@ -353,7 +373,7 @@ upsert_rc=$?
 set -e
 if [ "$upsert_rc" -ne 0 ]; then
     err="$(cat "$upsert_err" 2>/dev/null || true)"
-    fail 2 "tracking-issue-summary.sh failed: $(printf '%s' "$err" | tr '\n' ' ' | head -c 500)"
+    fail 2 "tracking-issue-summary.sh failed: $(redact_gh_error "$err")"
 fi
 
 emit_kv UPSERT_STATUS ok

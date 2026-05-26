@@ -49,6 +49,20 @@ if [ "$1" = "api" ]; then
         printf '200\t<!-- larch:plan v1 runid=abc123 -->\n'
         exit 0
     fi
+    if [ "${STUB_MODE}" = "one-stable" ]; then
+        if printf '%s\n' "$@" | grep -qx -- "PATCH"; then
+            for ((i=1; i<=$#; i++)); do
+                if [ "${!i}" = "--input" ]; then
+                    next=$((i + 1))
+                    jq -r '.body' < "${!next}" > "$BODY_CAPTURE"
+                fi
+            done
+            echo "https://github.com/owner/repo/issues/7#issuecomment-200"
+            exit 0
+        fi
+        printf '200\t<!-- larch:diagrams v1 -->\n'
+        exit 0
+    fi
     if [ "${STUB_MODE}" = "multi" ]; then
         printf '200\t<!-- larch:plan v1 runid=abc123 -->\n'
         printf '201\t<!-- larch:plan v1 runid=abc123 -->\n'
@@ -80,6 +94,33 @@ build_stub "$TMP/stub-one" one
 out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:plan v1 runid=abc123 -->' --content-file "$content" --repo owner/repo)"
 [[ "$out" == *"COMMENT_ID=200"* ]] || { echo "FAIL: update did not report comment id: $out" >&2; exit 1; }
 [[ "$out" == *"UPDATED=true"* ]] || { echo "FAIL: update did not report UPDATED=true: $out" >&2; exit 1; }
+
+stable_content="$TMP/stable-content.md"
+cat > "$stable_content" <<'EOF'
+## Code Flow Diagram
+
+```mermaid
+graph TD
+  A --> B
+```
+EOF
+
+echo "=== stable marker create path ==="
+build_stub "$TMP/stub-stable-create" zero
+out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:diagrams v1 -->' --content-file "$stable_content" --repo owner/repo)"
+[[ "$out" == *"UPDATED=false"* ]] || { echo "FAIL: stable create did not report UPDATED=false: $out" >&2; exit 1; }
+stable_marker_count=$(grep -c '^<!-- larch:diagrams v1 -->$' "$BODY_CAPTURE" 2>/dev/null || true)
+[[ "$stable_marker_count" == "1" ]] || { echo "FAIL: stable create marker count $stable_marker_count" >&2; exit 1; }
+grep -q '^## Code Flow Diagram$' "$BODY_CAPTURE" || { echo "FAIL: stable create missing code flow heading" >&2; exit 1; }
+
+echo "=== stable marker update path ==="
+build_stub "$TMP/stub-stable-update" one-stable
+out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:diagrams v1 -->' --content-file "$stable_content" --repo owner/repo)"
+[[ "$out" == *"COMMENT_ID=200"* ]] || { echo "FAIL: stable update did not report comment id: $out" >&2; exit 1; }
+[[ "$out" == *"UPDATED=true"* ]] || { echo "FAIL: stable update did not report UPDATED=true: $out" >&2; exit 1; }
+stable_marker_count=$(grep -c '^<!-- larch:diagrams v1 -->$' "$BODY_CAPTURE" 2>/dev/null || true)
+[[ "$stable_marker_count" == "1" ]] || { echo "FAIL: stable update marker count $stable_marker_count" >&2; exit 1; }
+grep -q '^## Code Flow Diagram$' "$BODY_CAPTURE" || { echo "FAIL: stable update missing code flow heading" >&2; exit 1; }
 
 echo "=== multiple matches fail closed ==="
 build_stub "$TMP/stub-multi" multi

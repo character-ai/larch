@@ -93,6 +93,10 @@ if [ "$1" = "api" ]; then
                 printf '101\t<!-- larch:diagrams v1 -->\n'
                 printf '102\t<!-- larch:diagrams v1 -->\n'
                 ;;
+            gh-error)
+                printf 'token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD leaked\n' >&2
+                exit 1
+                ;;
         esac
         exit 0
     fi
@@ -363,5 +367,15 @@ rc=$?
 set -e
 assert_equals 2 "$rc" "duplicate marker exits 2"
 assert_contains "multiple summary comments found" "$out" "duplicate marker reports ids"
+
+new_case gh-error gh-error
+set +e
+out="$("$HELPER" --issue 7 --repo owner/repo --clear-code-flow 2>&1)"
+rc=$?
+set -e
+assert_equals 2 "$rc" "gh-error exits 2"
+assert_contains "gh api comments fetch failed:" "$out" "gh-error reports redacted fetch failure"
+assert_contains "<REDACTED-TOKEN>" "$out" "gh-error redacts token-shaped stderr"
+assert_not_contains "sk-ant-" "$out" "gh-error does not leak raw token"
 
 finish
