@@ -70,11 +70,16 @@ tmpdir):
   `dispatch-with-waterfall.sh`) do not write it; parents unset the env var
   before invoking them.
 - **Timeout signaling is best-effort.** On timeout with `--paired-pid-file`,
-  the monitor reads at most 33 bytes, strips one final newline only, rejects any
-  remaining CR/LF, non-digit, empty, zero, or overlong value, and warns with
-  `WARN paired-pid-file-missing` before continuing to `exit 4`. A valid PID gets
-  `SIGTERM`, up to five one-second `kill -0` polls, then `SIGKILL`; every `kill`
-  is guarded so stale or inaccessible PIDs cannot prevent `exit 4`.
+  the monitor reads at most 33 bytes, strips one final newline only, then
+  rejects any remaining CR/LF, non-digit, empty, zero, or post-strip overlong
+  value and warns with `WARN paired-pid-file-missing` before continuing to
+  `exit 4`. A valid PID gets `SIGTERM`, up to five one-second `kill -0` polls,
+  then `SIGKILL`; every `kill` is guarded so stale or inaccessible PIDs cannot
+  prevent `exit 4`.
+- **Paired PID reads re-validate the path.** Timeout handling does not trust the
+  startup argv check alone: immediately before reading `LARCH_PAIRED_PID_FILE`,
+  the monitor re-runs the same absolute/no-`..`/non-symlink/regular-file/
+  session-tmpdir validation and treats anything that no longer passes as missing.
 - **PID reuse caveat.** The monitor does not prove the PID is still the child
   originally launched by the shell. A long-departed PID could theoretically be
   reused; the 1800-second timeout and same-UID operator model keep this a known
@@ -86,7 +91,8 @@ tmpdir):
   sentinel was already non-empty at startup (resume).
 - `2` — argv / path-validation failure.
 - `4` — timed out (default 1800s) waiting for the done sentinel. Tests may set
-  `LARCH_BM_TEST_TIMEOUT_SECONDS` to a positive integer to shorten this branch.
+  `LARCH_BM_TEST_MODE=1` plus a positive `LARCH_BM_TEST_TIMEOUT_SECONDS` to
+  shorten this branch.
 
 The monitor surfaces a "Failure tail (status=N)" block from
 `LARCH_QUIET_LOG_FILE` when `EXIT_CODE` is non-zero, but the monitor's own
@@ -100,6 +106,9 @@ vars must live under the calling skill's session tmpdir
 (`$IMPLEMENT_TMPDIR` / `$DESIGN_TMPDIR` / `$REVIEW_TMPDIR` /
 `$RESEARCH_TMPDIR`); `larch_bm_validate_path` rejects anything outside
 that surface. Paths must be absolute, contain no `..`, and not be symlinks.
+When `LARCH_LOG_ROOT` is set, the helper deliberately disables the fallback
+acceptance for repo-root `larch-logs/...` paths and requires an explicit
+session tmpdir env instead.
 
 ## Harness
 
@@ -119,7 +128,8 @@ that surface. Paths must be absolute, contain no `..`, and not be symlinks.
   invalid-category dropping
 - timeout signaling through `--paired-pid-file`, TERM-to-KILL escalation,
   missing/empty/malformed PID fallback warnings, stale PID kill failures, the
-  `LARCH_BM_TEST_TIMEOUT_SECONDS` hook, and the nested-overwrite regression
+  `LARCH_BM_TEST_MODE=1` / `LARCH_BM_TEST_TIMEOUT_SECONDS` hook, and the
+  nested-overwrite regression
 
 ## Edit-in-sync
 

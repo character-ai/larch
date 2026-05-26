@@ -739,6 +739,25 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "paired PID happy path" "$stderr_file" "$rc"
 
+# 32b — run-step2-dispatch.sh keeps the top-level paired PID requirements.
+reset_tree
+write_md skills/pid-step2-dispatch/SKILL.md <<'EOF'
+# Case 32b
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh --help
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "run-step2-dispatch paired PID happy path" "$stderr_file" "$rc"
+
 # 33 — nested-only denylisted basenames keep the background pair but do not
 # require paired PID allocation/flag.
 for nested_bn in ci-wait.sh review-and-fix.sh step2-implement.sh dispatch-with-waterfall.sh; do

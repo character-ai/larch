@@ -208,7 +208,9 @@ write_helper "$helper" 'IMPLEMENT_TMPDIR=$1; LARCH_PAIRED_PID_FILE=$2; export IM
 pid_path="$session_tmp/breadcrumbs/paired.pid"
 out=$("$helper" "$session_tmp" "$pid_path")
 written_pid=${out#PID=}
-assert_eq "$(cat "$pid_path")" "$written_pid" "paired pid file content"
+printf '%s\n' "$written_pid" >"$SCRATCH/paired-pid-expected"
+cmp -s "$SCRATCH/paired-pid-expected" "$pid_path" || fail "paired pid file content"
+assert_eq "$(wc -c <"$pid_path" | tr -d ' ')" "$(( ${#written_pid} + 1 ))" "paired pid file byte count"
 if find "$session_tmp/breadcrumbs" -name 'paired.pid.tmp.*' -print -quit | grep -q .; then
     fail "paired pid writer left tmp files"
 fi

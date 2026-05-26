@@ -11,7 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_append_done_trap
-larch_quiet_write_paired_pid_file
 # shellcheck source=scripts/lib-implement-round-cap.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-implement-round-cap.sh"
@@ -167,6 +166,7 @@ fi
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
+larch_quiet_write_paired_pid_file
 
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 CODEX_PRESENT="$(session_get "$SESSION_ENV_PATH" CODEX_PRESENT false)"

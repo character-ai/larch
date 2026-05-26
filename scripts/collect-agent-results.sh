@@ -183,7 +183,6 @@ fi
 
 larch_quiet_init
 larch_quiet_append_done_trap
-larch_quiet_write_paired_pid_file
 
 TIMEOUT=""
 SUBSTANTIVE_VALIDATION="false"
@@ -221,6 +220,8 @@ if [[ -z "$TIMEOUT" ]]; then
     larch_err "collect-agent-results.sh: --timeout is required"
     exit 1
 fi
+
+larch_quiet_write_paired_pid_file
 
 if [[ -n "$COLLECT_PATHS_FILE" && ${#OUTPUT_FILES[@]} -gt 0 ]]; then
     larch_err "collect-agent-results.sh: --paths-file is mutually exclusive with positional output-file arguments"

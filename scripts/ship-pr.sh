@@ -2833,7 +2833,6 @@ run_postmerge_phase() {
 main() {
     larch_quiet_init
     larch_quiet_append_done_trap
-    larch_quiet_write_paired_pid_file
     while [ $# -gt 0 ]; do
         case "$1" in
             --state-file) [ $# -ge 2 ] || die_usage "--state-file requires a value"; STATE_FILE=$2; shift 2 ;;
@@ -2892,6 +2891,7 @@ main() {
         case "$INIT_TOOL_LABEL" in *$'\r'*|*$'\n'*) die_usage "--tool-label must not contain CR or LF" ;; esac
     fi
     export IMPLEMENT_TMPDIR
+    larch_quiet_write_paired_pid_file
     export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
 
     if [ ! -e "$STATE_FILE" ] || [ "$FORCE_INIT_STATE" = "true" ]; then

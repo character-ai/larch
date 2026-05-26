@@ -105,14 +105,16 @@ rate_bucket=0
 rate_ts=$(date +%s)
 START_TS=$rate_ts
 TIMEOUT_SECONDS=1800
-case "${LARCH_BM_TEST_TIMEOUT_SECONDS:-}" in
-    ''|*[!0-9]*) ;;
-    *)
-        if (( 10#$LARCH_BM_TEST_TIMEOUT_SECONDS > 0 )); then
-            TIMEOUT_SECONDS=$((10#$LARCH_BM_TEST_TIMEOUT_SECONDS))
-        fi
-        ;;
-esac
+if [[ "${LARCH_BM_TEST_MODE:-}" == "1" ]]; then
+    case "${LARCH_BM_TEST_TIMEOUT_SECONDS:-}" in
+        ''|*[!0-9]*) ;;
+        *)
+            if (( 10#$LARCH_BM_TEST_TIMEOUT_SECONDS > 0 )); then
+                TIMEOUT_SECONDS=$((10#$LARCH_BM_TEST_TIMEOUT_SECONDS))
+            fi
+            ;;
+    esac
+fi
 
 larch_bm_rate_allow() {
     local now=$1
@@ -179,9 +181,17 @@ larch_bm_warn_bad_paired_pid() {
     return 0
 }
 
+larch_bm_paired_pid_file_readable() {
+    if [[ -z "$PAIRED_PID_FILE" ]]; then
+        return 1
+    fi
+    larch_bm_validate_path --paired-pid-file "$PAIRED_PID_FILE" >/dev/null 2>&1 || return 1
+    [[ -f "$PAIRED_PID_FILE" && ! -L "$PAIRED_PID_FILE" ]]
+}
+
 larch_bm_signal_paired_pid() {
     local raw pid len poll_count
-    if [[ -z "$PAIRED_PID_FILE" || ! -f "$PAIRED_PID_FILE" ]]; then
+    if ! larch_bm_paired_pid_file_readable; then
         larch_bm_warn_bad_paired_pid
         return 0
     fi
@@ -195,14 +205,14 @@ larch_bm_signal_paired_pid() {
         return 0
     }
     raw="${raw%$'\001'}"
+    case "$raw" in
+        *$'\n') raw="${raw%$'\n'}" ;;
+    esac
     len=$(LC_ALL=C printf '%s' "$raw" | wc -c | tr -d ' ')
     if [[ -z "$raw" || "$len" -gt 32 ]]; then
         larch_bm_warn_bad_paired_pid
         return 0
     fi
-    case "$raw" in
-        *$'\n') raw="${raw%$'\n'}" ;;
-    esac
     case "$raw" in
         *$'\n'*|*$'\r'*)
             larch_bm_warn_bad_paired_pid

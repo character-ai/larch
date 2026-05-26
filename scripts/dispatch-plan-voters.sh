@@ -9,7 +9,6 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 larch_quiet_append_done_trap
-larch_quiet_write_paired_pid_file
 # shellcheck source=scripts/lib-voter-parse-rate.sh
 source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
 
@@ -40,6 +39,8 @@ done
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --codex-available must be true or false"; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --cursor-available must be true or false"; exit 2; }
 mkdir -p "$DESIGN_TMPDIR"
+export DESIGN_TMPDIR
+larch_quiet_write_paired_pid_file
 
 LARCH_VPR_BALLOT_FILE="$BALLOT_FILE"
 LARCH_VPR_ID_GRAMMAR=finding-oos
