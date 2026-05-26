@@ -558,7 +558,12 @@ fi
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
 if [[ "$SIDECAR" != "/dev/null" ]]; then
-    _codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>/dev/null) || _codex_usage=""
+    _codex_usage_err=$(mktemp "${TMPDIR:-/tmp}/launch-review-codex-usage.XXXXXX")
+    _codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>"$_codex_usage_err") || _codex_usage=""
+    if [[ -z "$_codex_usage" && -s "$CODEX_EVENTS" && -s "$_codex_usage_err" ]]; then
+        cat "$_codex_usage_err" >> "$SIDECAR" 2>/dev/null || true
+    fi
+    rm -f "$_codex_usage_err"
     if [[ -n "$_codex_usage" ]]; then
         INPUT=0
         CACHED_INPUT=0

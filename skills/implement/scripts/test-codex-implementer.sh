@@ -643,7 +643,7 @@ fi
 # Codex --json usage event to stdout; after the launcher returns, dump the
 # per-session ledger and assert a vendor row with per-bucket Codex usage.
 # Skip when jq is unavailable — the assertion uses jq even though the
-# launcher's awk-scrape does not.
+# launcher now records per-bucket tokens via parse-codex-usage.sh.
 if command -v jq >/dev/null 2>&1; then
     RV_STUB_BIN="$SCRATCH/rv-bin"
     mkdir -p "$RV_STUB_BIN"

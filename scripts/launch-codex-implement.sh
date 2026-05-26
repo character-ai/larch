@@ -305,9 +305,10 @@ while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
 
-# Run the wrapper, redirecting its stdout AND stderr to the sidecar log so
-# Claude (the dispatcher's caller) never sees the wrapper's progress lines.
-# The wrapper's own exit code is captured into LAUNCHER_EXIT.
+# Run the wrapper, redirecting stderr to the sidecar log so Claude (the
+# dispatcher's caller) never sees the wrapper's progress lines. Codex JSONL
+# usage stays on stdout in ${TRANSCRIPT_PATH}.events.jsonl for per-bucket
+# accounting. The wrapper's own exit code is captured into LAUNCHER_EXIT.
 LAUNCHER_EXIT=0
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac

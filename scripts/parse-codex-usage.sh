@@ -33,14 +33,14 @@ usage_tsv=$(
       def num($v): ($v | tonumber? // 0);
       reduce (inputs | fromjson? | select(type == "object")) as $o
         ({count:0, input:0, cached:0, output:0};
-          ($o.msg.usage? // $o.usage? // (if ($o.input_tokens? // $o.cached_input_tokens? // $o.output_tokens? // null) == null then null else {} end)) as $usage |
+          ($o.msg.usage? // $o.usage? // (if ($o.msg.input_tokens? // $o.msg.cached_input_tokens? // $o.msg.output_tokens? // $o.input_tokens? // $o.cached_input_tokens? // $o.output_tokens? // null) == null then null else {} end)) as $usage |
           if $usage == null then
             .
           else
             .count += 1
-            | .input += num($o.msg.usage.input_tokens // $o.usage.input_tokens // $o.input_tokens // 0)
-            | .cached += num($o.msg.usage.cached_input_tokens // $o.msg.usage.input_tokens_details.cached_tokens // $o.usage.cached_input_tokens // $o.usage.input_tokens_details.cached_tokens // $o.cached_input_tokens // $o.input_tokens_details.cached_tokens // 0)
-            | .output += num($o.msg.usage.output_tokens // $o.usage.output_tokens // $o.output_tokens // 0)
+            | .input += num($o.msg.usage.input_tokens // $o.msg.input_tokens // $o.usage.input_tokens // $o.input_tokens // 0)
+            | .cached += num($o.msg.usage.cached_input_tokens // $o.msg.usage.input_tokens_details.cached_tokens // $o.msg.cached_input_tokens // $o.msg.input_tokens_details.cached_tokens // $o.usage.cached_input_tokens // $o.usage.input_tokens_details.cached_tokens // $o.cached_input_tokens // $o.input_tokens_details.cached_tokens // 0)
+            | .output += num($o.msg.usage.output_tokens // $o.msg.output_tokens // $o.usage.output_tokens // $o.output_tokens // 0)
           end)
       | "\(.count)\t\(.input)\t\(.cached)\t\(.output)"
     ' "$EVENTS_FILE" 2>/dev/null

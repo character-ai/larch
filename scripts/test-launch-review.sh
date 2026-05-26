@@ -670,6 +670,52 @@ else
     pass
 fi
 
+# Transcript-only stdout must fail closed: no Codex usage parse means no vendor
+# ledger row even when the review itself succeeds.
+LCR_NOUSAGE_BIN="$TMPDIR/lcr-nousage-bin"
+mkdir -p "$LCR_NOUSAGE_BIN"
+cat > "$LCR_NOUSAGE_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex review payload\n' > "$output_path"
+STUB_EOF
+chmod +x "$LCR_NOUSAGE_BIN/codex"
+
+LCR_NOUSAGE_SESSION="lcr-codex-nousage-$$"
+LCR_NOUSAGE_LEDGER="$TMPDIR/lcr-codex-nousage-ledger.jsonl"
+LCR_NOUSAGE_OUT="$TMPDIR/lcr-codex-nousage-output.txt"
+LCR_NOUSAGE_STDERR="$TMPDIR/lcr-nousage.stderr"
+
+set +e
+LARCH_TOKEN_SESSION_ID="$LCR_NOUSAGE_SESSION" \
+LARCH_TOKEN_LEDGER="$LCR_NOUSAGE_LEDGER" \
+IMPLEMENT_TMPDIR='' \
+PATH="$LCR_NOUSAGE_BIN:$PATH" \
+LARCH_CODEX_MODEL="stub-model" \
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --output "$LCR_NOUSAGE_OUT" \
+        --timeout 30 \
+        --prompt "review" \
+        >/dev/null 2>"$LCR_NOUSAGE_STDERR"
+LCR_NOUSAGE_RC=$?
+set -e
+
+if [[ "$LCR_NOUSAGE_RC" -ne 0 ]]; then
+    fail "codex-no-usage smoke exited rc=$LCR_NOUSAGE_RC; stderr=$(cat "$LCR_NOUSAGE_STDERR" 2>/dev/null)"
+elif [[ ! -s "$LCR_NOUSAGE_LEDGER" ]]; then
+    pass
+else
+    fail "codex-no-usage should not record a vendor row; ledger=$(cat "$LCR_NOUSAGE_LEDGER" 2>/dev/null) stderr=$(cat "$LCR_NOUSAGE_STDERR" 2>/dev/null)"
+fi
+
 # --token-budget-cap argv validation
 set +e
 "$LAUNCHER" --output "$TMPDIR/budget-missing.txt" --timeout 5 --prompt "x" \
@@ -805,9 +851,12 @@ STUB_TRANSIENT_CODEX7
 chmod +x "$STUB_BIN/codex-transient-7"
 ln -sf "$STUB_BIN/codex-transient-7" "$STUB_BIN/codex"
 OUT_TRANSIENT_CODEX7="$TMPDIR/transient-codex7.txt"
+SL_TRANSIENT_CODEX7_LEDGER="$TMPDIR/sl-transient-codex7-ledger.jsonl"
 set +e
 LARCH_TRANSIENT_RETRY_DELAY=0 \
     LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_TOKEN_LEDGER="$SL_TRANSIENT_CODEX7_LEDGER" \
+    LARCH_TOKEN_SESSION_ID="sl-transient-codex7-$$" \
     PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$OUT_TRANSIENT_CODEX7" --timeout 10 --prompt "sl-transient-retry-codex-7" >/dev/null 2>&1
 RC_TRANSIENT_CODEX7=$?
@@ -815,6 +864,13 @@ set -e
 assert_eq "SL-transient-retry-codex-7 exits 0 after transient retry" "0" "$RC_TRANSIENT_CODEX7"
 SL_TRANSIENT_CODEX7_ATTEMPTS=$(cat "$SL_TRANSIENT_CODEX7_COUNT" 2>/dev/null || echo "0")
 assert_eq "SL-transient-retry-codex-7 stub invoked exactly 2 times" "2" "$SL_TRANSIENT_CODEX7_ATTEMPTS"
+assert_eq "SL-transient-retry-codex-7 events sidecar contains exactly one usage event" "1" "$(grep -c '"usage"' "${OUT_TRANSIENT_CODEX7}.events.jsonl" 2>/dev/null | tr -d ' ')"
+assert_eq "SL-transient-retry-codex-7 ledger contains exactly one vendor row" "1" "$(wc -l < "$SL_TRANSIENT_CODEX7_LEDGER" 2>/dev/null | tr -d ' ')"
+assert_grep "SL-transient-retry-codex-7 ledger marks codex vendor" '"vendor":"codex"' "$SL_TRANSIENT_CODEX7_LEDGER"
+assert_grep "SL-transient-retry-codex-7 ledger marks codex_review raw bucket" '"raw":"codex_review"' "$SL_TRANSIENT_CODEX7_LEDGER"
+assert_grep "SL-transient-retry-codex-7 ledger records input bucket" '"input":10' "$SL_TRANSIENT_CODEX7_LEDGER"
+assert_grep "SL-transient-retry-codex-7 ledger records output bucket" '"output":1' "$SL_TRANSIENT_CODEX7_LEDGER"
+assert_grep "SL-transient-retry-codex-7 ledger records total bucket" '"total":11' "$SL_TRANSIENT_CODEX7_LEDGER"
 rm -f "$SL_TRANSIENT_CODEX7_COUNT"
 
 # Case SL-transient-retry-exhausted: stub exits 7 with empty output on all 3
@@ -886,6 +942,40 @@ assert_eq "SL-transient-vs-auth-precedence exits 0 via auth retry" "0" "$RC_TRAN
 SL_TRANSIENT_AUTH_ATTEMPTS=$(cat "$SL_TRANSIENT_AUTH_COUNT" 2>/dev/null || echo "0")
 assert_eq "SL-transient-vs-auth-precedence stub invoked exactly 2 times (auth retry)" "2" "$SL_TRANSIENT_AUTH_ATTEMPTS"
 rm -f "$SL_TRANSIENT_AUTH_COUNT"
+
+# Case SL-auth-stderr-only-codex: auth classification must come from stderr
+# alone, with no JSONL usage events and no successful retry.
+SL_AUTH_STDERR_ONLY_COUNT="$TMPDIR/sl-auth-stderr-only-count.txt"
+printf '0' > "$SL_AUTH_STDERR_ONLY_COUNT"
+cat > "$STUB_BIN/codex-auth-stderr-only" <<STUB_AUTH_STDERR_ONLY
+#!/usr/bin/env bash
+count=\$(cat "${SL_AUTH_STDERR_ONLY_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_AUTH_STDERR_ONLY_COUNT}"
+printf 'Error: not logged in\n' >&2
+exit 7
+STUB_AUTH_STDERR_ONLY
+chmod +x "$STUB_BIN/codex-auth-stderr-only"
+ln -sf "$STUB_BIN/codex-auth-stderr-only" "$STUB_BIN/codex"
+IMPL_TMPDIR_AUTH_STDERR_ONLY="$TMPDIR/auth-stderr-only-impl"
+mkdir -p "$IMPL_TMPDIR_AUTH_STDERR_ONLY"
+OUT_AUTH_STDERR_ONLY="$TMPDIR/auth-stderr-only.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=1 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_AUTH_STDERR_ONLY" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_AUTH_STDERR_ONLY" --timeout 10 --prompt "sl-auth-stderr-only-codex" >/dev/null 2>&1
+RC_AUTH_STDERR_ONLY=$?
+set -e
+assert_eq "SL-auth-stderr-only-codex exits 7 without a successful retry" "7" "$RC_AUTH_STDERR_ONLY"
+SL_AUTH_STDERR_ONLY_ATTEMPTS=$(cat "$SL_AUTH_STDERR_ONLY_COUNT" 2>/dev/null || echo "0")
+assert_eq "SL-auth-stderr-only-codex stub invoked exactly 1 time" "1" "$SL_AUTH_STDERR_ONLY_ATTEMPTS"
+assert_grep "SL-auth-stderr-only-codex sidecar preserves stderr auth text" "Error: not logged in" "${OUT_AUTH_STDERR_ONLY}.sidecar"
+EI_AUTH_STDERR_ONLY="$IMPL_TMPDIR_AUTH_STDERR_ONLY/execution-issues.md"
+assert_regex "SL-auth-stderr-only-codex exact auth header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 7 — auth-retries-exhausted — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_AUTH_STDERR_ONLY"
+rm -f "$SL_AUTH_STDERR_ONLY_COUNT"
 
 # Case SL-transient-not-applied: stub exits 1 with non-empty sidecar content.
 # Exit code 1 is not in the transient allowlist → no transient retry, exactly

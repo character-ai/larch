@@ -1,0 +1,3 @@
+{"id":"evt_01","type":"task.started","timestamp":"2026-05-22T12:00:00Z","cwd":"/repo"}
+{"id":"evt_02","type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222,"total_tokens":7999}
+{"id":"evt_03","type":"task.completed","timestamp":"2026-05-22T12:00:01Z"}

@@ -5,6 +5,8 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/parse-codex-usage.sh"
+CODEX_FIXTURE="$REPO_ROOT/scripts/fixtures/parse-codex-usage/codex-events-0.125.jsonl"
+CODEX_MSG_FIXTURE="$REPO_ROOT/scripts/fixtures/parse-codex-usage/codex-msg-token-usage.jsonl"
 PASS=0
 FAIL=0
 
@@ -72,6 +74,8 @@ cat > "$TMP/coalesce.jsonl" <<'JSONL'
 JSONL
 run_ok "msg-coalesce" "$TMP/coalesce.jsonl" $'INPUT=75\nCACHED_INPUT=25\nOUTPUT=10\nTOTAL=110'
 
+run_ok "msg-direct-usage" "$CODEX_MSG_FIXTURE" $'INPUT=100\nCACHED_INPUT=20\nOUTPUT=9\nTOTAL=129'
+
 cat > "$TMP/noise.jsonl" <<'JSONL'
 wrapper noise
 {"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3},"output_tokens":2}}
@@ -114,10 +118,7 @@ cat > "$TMP/line-streaming.jsonl" <<'JSONL'
 JSONL
 run_ok "line-streaming" "$TMP/line-streaming.jsonl" $'INPUT=3\nCACHED_INPUT=1\nOUTPUT=6\nTOTAL=10'
 
-cat > "$TMP/codex-cli-fixture.jsonl" <<'JSONL'
-{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222,"total_tokens":7999}
-JSONL
-run_ok "codex-cli-fixture" "$TMP/codex-cli-fixture.jsonl" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
+run_ok "codex-cli-fixture" "$CODEX_FIXTURE" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
 
 total=$((PASS + FAIL))
 if (( FAIL == 0 )); then
