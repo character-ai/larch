@@ -181,14 +181,6 @@ Aggregator narrative: empty merge; prose mentions FINDING_ids.
 
 EOF
                 ;;
-            zero_findings_padded_attest_rejected)
-                cat > "$out" <<'EOF'
-Aggregator narrative: padded empty-merge token line.
-
-  LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED  
-
-EOF
-                ;;
             merge_plus_spurious_attest)
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
@@ -1233,11 +1225,14 @@ mkdir -p "$PSE"
 cp "$TMP/in3.md" "$PSE/in.md"
 STUBBIN="$PSE/bin"
 write_external_tool_stubs "$STUBBIN"
+write_real_dispatch_wrapper "$PSE/dispatch-wrapper.sh"
 PATH="$STUBBIN:$PATH" \
 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
 RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.01 \
 LARCH_TRANSIENT_RETRY_DELAY=0 \
 LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+AGGREGATE_DISPATCH_SH="$PSE/dispatch-wrapper.sh" \
+AGGREGATE_DISPATCH_ARGV_LOG="$PSE/dispatch.argv" \
 CODEX_STUB_RESULT_CONTENT=$'### FINDING_1 not-a-valid-heading-line\n' \
 CURSOR_STUB_RESULT_CONTENT=$'### FINDING_1: Cursor fallback after pseudo heading\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt\n- **Severity**: nit\n- **Concern**: cursor fallback concern\n- **Suggested revision**: fix\n' \
 "$AGG" \
@@ -1249,6 +1244,8 @@ CURSOR_STUB_RESULT_CONTENT=$'### FINDING_1: Cursor fallback after pseudo heading
 grep -Fq 'REASON=ok' "$TMP/out-pseudo.env" || fail "pseudo-heading fallback REASON"
 grep -Fq 'cursor fallback concern' "$PSE/in.md" || fail "pseudo-heading should fall through to cursor"
 grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$PSE/aggregator-dispatch.env" || fail "pseudo-heading final tool"
+grep -Fq -- '--require-result-pattern' "$PSE/dispatch.argv" || fail "pseudo-heading dispatch missing pattern gate"
+grep -Fq '[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$PSE/dispatch.argv" || fail "pseudo-heading pattern mismatch"
 
 echo "=== codex_absent_runs_cursor_in_phase2 ==="
 WS="$TMP/waterfall-skip"

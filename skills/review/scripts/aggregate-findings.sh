@@ -766,4 +766,10 @@ case "${MERGE_PIPELINE_RC:-2}" in
         emit_result
         exit 0
         ;;
+    *)
+        REASON="validation-failed"
+        append_warning "- **findings aggregator**: merge pipeline returned unexpected status (${MERGE_PIPELINE_RC:-unset}); leaving findings.md unchanged."
+        emit_result
+        exit 0
+        ;;
 esac
