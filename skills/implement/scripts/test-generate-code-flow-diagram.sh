@@ -71,8 +71,14 @@ assert_has_line 'SKIP_REASON=pipe-in-node-label=foo' "$out" 'SKIP_REASON preserv
 
 tmp5="$TMP_ROOT/session5"; mkdir -p "$tmp5"
 out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
-    SANITIZE_REASON_LINE='STATUS_DETAIL=other' \
+    SANITIZE_REASON_LINE='REASON_TOKEN=' \
     "$HELPER" --implement-tmpdir "$tmp5")
+assert_has_line 'SKIP_REASON=' "$out" 'SKIP_REASON= is empty when REASON_TOKEN= is empty'
+
+tmp6="$TMP_ROOT/session6"; mkdir -p "$tmp6"
+out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
+    SANITIZE_REASON_LINE='STATUS_DETAIL=other' \
+    "$HELPER" --implement-tmpdir "$tmp6")
 assert_has_line 'SKIP_REASON=sanitizer-rejected' "$out" 'SKIP_REASON falls back when REASON_TOKEN absent'
 
 set +e
