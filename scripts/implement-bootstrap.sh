@@ -372,7 +372,7 @@ phase_infra() {
     fi
 
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb "→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)"
+        emit_breadcrumb --category=progress "→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)"
     fi
 
     return 0

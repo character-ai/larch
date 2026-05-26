@@ -28,6 +28,8 @@ larch_quiet_default_log() {
         tmp="$REVIEW_TMPDIR"
     elif [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "$DESIGN_TMPDIR" ]; then
         tmp="$DESIGN_TMPDIR"
+    elif [ -n "${RESEARCH_TMPDIR:-}" ] && [ -d "$RESEARCH_TMPDIR" ]; then
+        tmp="$RESEARCH_TMPDIR"
     else
         tmp="${TMPDIR:-/tmp}"
     fi
@@ -133,6 +135,30 @@ larch_quiet_bc_valid_category() {
     esac
 }
 
+larch_quiet_write_breadcrumb_record() {
+    local _bc_cat="$1" _bc_text="$2" _rec _ts
+    if [ -z "$_bc_cat" ]; then
+        larch_err "WARN unknown-category=<missing> emit_breadcrumb requires --category when LARCH_BREADCRUMB_STREAM is set"
+        return 0
+    fi
+    if ! larch_quiet_bc_valid_category "$_bc_cat"; then
+        larch_err "WARN unknown-category=${_bc_cat} (dropped from stream)"
+        return 0
+    fi
+    _ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'na')
+    _rec=$(printf 'larch:bc t=%s d=%s p=%s s=%s c=%s text=%s' \
+        "$_ts" "${LARCH_BC_DEPTH:-0}" "$$" "${0##*/}" "$_bc_cat" "$_bc_text")
+    if [ "${#_rec}" -gt 1024 ]; then
+        _rec=$(printf '%s' "$_rec" | cut -c1-1020)
+        _rec="${_rec}..."
+        larch_err "WARN truncated breadcrumb record (>1KiB cap)"
+    fi
+    mkdir -p "$(dirname "$LARCH_BREADCRUMB_STREAM")" 2>/dev/null || true
+    if ! printf '%s\n' "$_rec" >>"$LARCH_BREADCRUMB_STREAM" 2>/dev/null; then
+        larch_err "WARN breadcrumb-stream-write-failed"
+    fi
+}
+
 larch_quiet__exit_write_done() {
     local _rc=$1
     if [ "${LARCH_DONE_OWNER_PID:-}" != "$$" ]; then
@@ -220,25 +246,7 @@ emit_breadcrumb() {
     fi
 
     if [ -n "${LARCH_BREADCRUMB_STREAM:-}" ]; then
-        if [ -z "$_bc_cat" ]; then
-            larch_err "WARN unknown-category=<missing> emit_breadcrumb requires --category when LARCH_BREADCRUMB_STREAM is set"
-        elif ! larch_quiet_bc_valid_category "$_bc_cat"; then
-            larch_err "WARN unknown-category=${_bc_cat} (dropped from stream)"
-        else
-            local _rec _ts
-            _ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'na')
-            _rec=$(printf 'larch:bc t=%s d=%s p=%s s=%s c=%s text=%s' \
-                "$_ts" "${LARCH_BC_DEPTH:-0}" "$$" "${0##*/}" "$_bc_cat" "$_bc_text")
-            if [ "${#_rec}" -gt 1024 ]; then
-                _rec=$(printf '%s' "$_rec" | cut -c1-1020)
-                _rec="${_rec}..."
-                larch_err "WARN truncated breadcrumb record (>1KiB cap)"
-            fi
-            mkdir -p "$(dirname "$LARCH_BREADCRUMB_STREAM")" 2>/dev/null || true
-            if ! printf '%s\n' "$_rec" >>"$LARCH_BREADCRUMB_STREAM" 2>/dev/null; then
-                larch_err "WARN breadcrumb-stream-write-failed"
-            fi
-        fi
+        larch_quiet_write_breadcrumb_record "$_bc_cat" "$_bc_text"
     fi
 
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
@@ -250,5 +258,39 @@ emit_breadcrumb() {
         fi
     else
         printf '%s\n' "$_bc_text"
+    fi
+}
+
+# emit_breadcrumb_stderr --category=NAME FORMAT [ARGS...]
+# Stream-set path writes only a structured breadcrumb. Stream-unset path keeps
+# larch_errf stderr semantics, including no implicit newline.
+emit_breadcrumb_stderr() {
+    local _bc_cat="" _bc_fmt="" _bc_text=""
+    case "${1:-}" in
+        --category=*)
+            _bc_cat="${1#--category=}"
+            shift
+            ;;
+        --category)
+            _bc_cat="${2:-}"
+            shift 2
+            ;;
+        *)
+            larch_err "emit_breadcrumb_stderr requires --category"
+            return 2
+            ;;
+    esac
+    _bc_fmt="${1-}"
+    if [ $# -gt 0 ]; then
+        # shellcheck disable=SC2059 # preserves larch_errf-compatible printf formats
+        _bc_text="$(printf "$@")"
+    else
+        _bc_text=""
+    fi
+    _bc_text="${_bc_text//$'\n'/ }"
+    if [ -n "${LARCH_BREADCRUMB_STREAM:-}" ]; then
+        larch_quiet_write_breadcrumb_record "$_bc_cat" "$_bc_text"
+    else
+        larch_errf "$_bc_fmt" "${@:2}"
     fi
 }

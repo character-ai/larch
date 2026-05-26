@@ -234,6 +234,199 @@ if [ ! -s "$SURFACED" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Test 7: stream growth is surfaced before the done sentinel completes.
+# ---------------------------------------------------------------------------
+alloc_sentinels t7
+(
+    sleep 1
+    printf 'larch:bc t=now d=0 p=1 s=test c=progress text=growth-visible\n' >>"$STREAM"
+    sleep 1
+    printf 'EXIT_CODE=0\n' >"$STATUS"
+    printf 'EXIT_CODE=0\n' >"$DONE"
+) &
+WRITER_PID=$!
+out=$("$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --poll-interval=1 2>&1) || ec=$?
+ec=${ec:-0}
+wait "$WRITER_PID" 2>/dev/null || true
+if [ "$ec" -ne 0 ]; then
+    fail "test 7: monitor exit was $ec, expected 0"
+fi
+if ! printf '%s' "$out" | grep -q "growth-visible"; then
+    fail "test 7: stream growth breadcrumb was not surfaced (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 8: truncation/rotation emits WARN reset and resumes from offset zero.
+# ---------------------------------------------------------------------------
+alloc_sentinels t8
+(
+    printf 'larch:bc t=now d=0 p=1 s=test c=progress text=before-reset\n' >>"$STREAM"
+    sleep 2
+    : >"$STREAM"
+    printf 'larch:bc t=now d=0 p=1 s=test c=progress text=after-reset\n' >>"$STREAM"
+    sleep 1
+    printf 'EXIT_CODE=0\n' >"$STATUS"
+    printf 'EXIT_CODE=0\n' >"$DONE"
+) &
+WRITER_PID=$!
+out=$("$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --poll-interval=1 2>&1) || ec=$?
+ec=${ec:-0}
+wait "$WRITER_PID" 2>/dev/null || true
+if [ "$ec" -ne 0 ]; then
+    fail "test 8: monitor exit was $ec, expected 0"
+fi
+if ! printf '%s' "$out" | grep -q "WARN reset"; then
+    fail "test 8: rotation warning missing (out=$out)"
+fi
+if ! printf '%s' "$out" | grep -q "after-reset"; then
+    fail "test 8: post-reset breadcrumb missing (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 9: failure tail redacts PEM blocks.
+# ---------------------------------------------------------------------------
+alloc_sentinels t9
+PEM_BEGIN='-----BEGIN RSA PRIVATE ''KEY-----'
+PEM_END='-----END RSA PRIVATE ''KEY-----'
+{
+    printf '%s\n' "$PEM_BEGIN"
+    printf '%s\n' 'MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu'
+    printf '%s\n' "$PEM_END"
+} >"$QUIET"
+printf 'EXIT_CODE=9\n' >"$STATUS"
+printf 'EXIT_CODE=9\n' >"$DONE"
+out=$("$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" 2>&1) || ec=$?
+ec=${ec:-0}
+if [ "$ec" -ne 0 ]; then
+    fail "test 9: monitor exit was $ec, expected 0"
+fi
+if ! printf '%s' "$out" | grep -q "<REDACTED-PRIVATE-KEY>"; then
+    fail "test 9: PEM placeholder missing from failure tail (out=$out)"
+fi
+if printf '%s' "$out" | grep -q "MIIBOgIBAAJB"; then
+    fail "test 9: raw PEM material leaked in failure tail"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 10: path scope rejects outside session roots.
+# ---------------------------------------------------------------------------
+alloc_sentinels t10
+outside="${TMPDIR:-/tmp}/outside-breadcrumb-monitor.$$"
+: >"$outside"
+set +e
+out=$("$MON" \
+    --stream "$outside" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" 2>&1)
+ec=$?
+set -e
+rm -f "$outside"
+if [ "$ec" -eq 2 ]; then
+    :
+else
+    fail "test 10: outside stream path should exit 2, got $ec (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 11: RESEARCH_TMPDIR is an accepted session root.
+# ---------------------------------------------------------------------------
+RESEARCH_TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/test-bm-research.XXXXXX")"
+export RESEARCH_TMPDIR
+STREAM="$(mktemp "$RESEARCH_TMPDIR/t11.stream.XXXXXX")"
+DONE="$(mktemp "$RESEARCH_TMPDIR/t11.done.XXXXXX")"
+STATUS="$(mktemp "$RESEARCH_TMPDIR/t11.status.XXXXXX")"
+QUIET="$(mktemp "$RESEARCH_TMPDIR/t11.quiet.XXXXXX")"
+SURFACED="$(mktemp "$RESEARCH_TMPDIR/t11.surfaced.XXXXXX")"
+printf 'EXIT_CODE=0\n' >"$STATUS"
+printf 'EXIT_CODE=0\n' >"$DONE"
+out=$("$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" 2>&1) || ec=$?
+ec=${ec:-0}
+rm -rf "$RESEARCH_TMPDIR"
+unset RESEARCH_TMPDIR
+if [ "$ec" -ne 0 ]; then
+    fail "test 11: RESEARCH_TMPDIR path should be accepted, got $ec (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 12: symlink stream paths are rejected.
+# ---------------------------------------------------------------------------
+alloc_sentinels t12
+link_stream="$IMPLEMENT_TMPDIR/t12.symlink"
+ln -s "$STREAM" "$link_stream"
+set +e
+out=$("$MON" \
+    --stream "$link_stream" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" 2>&1)
+ec=$?
+set -e
+if [ "$ec" -eq 2 ]; then
+    :
+else
+    fail "test 12: symlink stream path should exit 2, got $ec (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 13: invalid breadcrumb categories are dropped.
+# ---------------------------------------------------------------------------
+alloc_sentinels t13
+{
+    printf 'larch:bc t=now d=0 p=1 s=test c=invalid text=must-not-print\n'
+    printf 'larch:bc t=now d=0 p=1 s=test c=progress text=must-print\n'
+} >"$STREAM"
+printf 'EXIT_CODE=0\n' >"$STATUS"
+printf 'EXIT_CODE=0\n' >"$DONE"
+out=$("$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" 2>&1) || ec=$?
+ec=${ec:-0}
+if [ "$ec" -ne 0 ]; then
+    fail "test 13: monitor exit was $ec, expected 0"
+fi
+if printf '%s' "$out" | grep -q "must-not-print"; then
+    fail "test 13: invalid category was emitted"
+fi
+if ! printf '%s' "$out" | grep -q "must-print"; then
+    fail "test 13: valid category was not emitted"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
 if [ "$FAIL" -gt 0 ]; then
     echo "TESTS FAILED: $FAIL" >&2
     exit 1

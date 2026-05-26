@@ -39,7 +39,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-emit_breadcrumb "→ rebase-probe: ${step_prefix} ${short_name}"
+emit_breadcrumb --category=progress "→ rebase-probe: ${step_prefix} ${short_name}"
 
 rebase_args=(--no-push --skip-if-pushed --keep-on-conflict)
 if [ -n "$base_remote" ]; then

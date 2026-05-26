@@ -181,7 +181,7 @@ MAX_POLLS=$(( (TIMEOUT + 9) / 10 ))
 # Ensure at least one poll even for very small timeouts.
 [ "$MAX_POLLS" -ge 1 ] || MAX_POLLS=1
 
-larch_errf "⏳ CI: waiting"
+emit_breadcrumb_stderr --category=wait-ci "⏳ CI: waiting"
 
 while true; do
     # Poll-count timeout (suspend-resilient)
@@ -248,13 +248,13 @@ while true; do
     if [[ "$ACTION" != "wait" ]]; then
         larch_errf "\n"
         if [[ "$ACTION" == "merge" ]]; then
-            larch_errf "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks"
+            emit_breadcrumb_stderr --category=wait-ci "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks"
         elif [[ "$ACTION" == "already_merged" ]]; then
-            larch_errf "✓ PR already merged (%ds)\n" "$SECONDS"
+            emit_breadcrumb_stderr --category=wait-ci "✓ PR already merged (%ds)\n" "$SECONDS"
         elif [[ "$ACTION" == "bail" ]]; then
-            larch_errf "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks"
+            emit_breadcrumb_stderr --category=wait-ci "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks"
         else
-            larch_errf "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks"
+            emit_breadcrumb_stderr --category=wait-ci "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks"
         fi
         exit 0
     fi
@@ -265,10 +265,10 @@ while true; do
     # ci-decide.sh's iteration limit (50) guards against infinite rebase/fix loops.
     checks=$((checks + 1))
 
-    larch_errf "."
+    emit_breadcrumb_stderr --category=wait-ci "."
     # Print status line every 6 polls (~1 minute)
     if [[ $((checks % 6)) -eq 0 ]]; then
-        larch_errf "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
+        emit_breadcrumb_stderr --category=wait-ci "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
             "$((SECONDS / 60))" "$checks" "$CI_STATUS"
     fi
 
@@ -279,7 +279,7 @@ while true; do
     sleep 10
     iter_delta=$(( $(date +%s) - iter_start ))
     if [[ $iter_delta -gt 60 ]]; then
-        larch_errf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
+        emit_breadcrumb_stderr --category=wait-ci "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
         checks=$((checks - 1))
     fi
 done

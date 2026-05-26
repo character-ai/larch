@@ -184,6 +184,15 @@ Run scripts/test-larch-log.sh.
 EOF
 (cd "$_repo" && "$LARCH_LOG" init --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --issue 42) >/dev/null
 (cd "$_repo" && "$LARCH_LOG" write --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+mkdir -p "$_staging/breadcrumbs"
+PEM_BEGIN='-----BEGIN RSA PRIVATE ''KEY-----'
+PEM_END='-----END RSA PRIVATE ''KEY-----'
+{
+    printf '%s\n' "larch:bc t=now d=0 p=1 s=test c=progress text=tmpdir /tmp/larch-implement-demoABC"
+    printf '%s\n' "$PEM_BEGIN"
+    printf '%s\n' 'MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu'
+    printf '%s\n' "$PEM_END"
+} > "$_staging/breadcrumbs/foo.ndjson"
 _mf_staging="$_staging/larch-logs/implement/$_rid/manifest.json"
 if command -v jq >/dev/null 2>&1; then
     _commit_ts_before="$(jq -r '.updated_at' "$_mf_staging")"
@@ -195,6 +204,11 @@ _commit_out="$(cd "$_repo" && "$LARCH_LOG" commit --log-root "$_staging/larch-lo
 assert_contains "$_commit_out" "LOG_WRITTEN=true" "commit reports written"
 _batch="$_repo/larch-logs/implement/$_rid/plan-goals-test.md"
 if [ -f "$_batch" ]; then pass "commit copies batch to repo under larch-logs/<skill>/<run-id>/"; else fail "commit copies batch to repo (missing $_batch)"; fi
+_breadcrumbs="$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.ndjson"
+if [ -f "$_breadcrumbs" ]; then pass "commit publishes breadcrumbs directory"; else fail "commit publishes breadcrumbs directory (missing $_breadcrumbs)"; fi
+if grep -q '<REDACTED-PRIVATE-KEY>' "$_breadcrumbs" 2>/dev/null; then pass "commit redacts breadcrumb PEM"; else fail "commit redacts breadcrumb PEM"; fi
+if grep -q 'MIIBOgIBAAJB' "$_breadcrumbs" 2>/dev/null; then fail "commit leaked raw breadcrumb PEM"; else pass "commit omits raw breadcrumb PEM"; fi
+if grep -q '<TMPDIR>' "$_breadcrumbs" 2>/dev/null; then pass "commit redacts breadcrumb tmpdir path"; else fail "commit redacts breadcrumb tmpdir path"; fi
 _mf="$_repo/larch-logs/implement/$_rid/manifest.json"
 if [ -f "$_mf" ]; then pass "commit copies manifest to repo"; else fail "commit copies manifest to repo (missing $_mf)"; fi
 if [ -n "$_commit_ts_before" ] && command -v jq >/dev/null 2>&1; then
@@ -203,6 +217,31 @@ if [ -n "$_commit_ts_before" ] && command -v jq >/dev/null 2>&1; then
 fi
 if git -C "$_repo" log -1 --format=%s | grep -qF "larch-logs"; then pass "commit creates git commit in repo"; else fail "commit creates git commit in repo"; fi
 export LARCH_LOG_ROOT="$_saved_log_root"
+
+echo "=== commit fails closed on unsafe breadcrumb source ==="
+_bc_fail_repo="$TMP/breadcrumb-fail-repo"
+_bc_fail_staging="$TMP/breadcrumb-fail-staging"
+_bc_fail_run="breadcrumbfail123"
+mkdir -p "$_bc_fail_staging/breadcrumbs"
+git init "$_bc_fail_repo" >/dev/null 2>&1
+git -C "$_bc_fail_repo" config user.email "ci@test"
+git -C "$_bc_fail_repo" config user.name "Test CI"
+touch "$_bc_fail_repo/.gitkeep"
+git -C "$_bc_fail_repo" add .
+git -C "$_bc_fail_repo" commit -q -m "init"
+git -C "$_bc_fail_repo" checkout -q -b feature-breadcrumb-fail
+(cd "$_bc_fail_repo" && "$LARCH_LOG" init --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" --issue 42) >/dev/null
+(cd "$_bc_fail_repo" && "$LARCH_LOG" write --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'raw breadcrumb\n' > "$_bc_fail_staging/raw-breadcrumb.txt"
+ln -s "$_bc_fail_staging/raw-breadcrumb.txt" "$_bc_fail_staging/breadcrumbs/bad.ndjson"
+_bc_fail_rc=0
+(cd "$_bc_fail_repo" && "$LARCH_LOG" commit --log-root "$_bc_fail_staging/larch-logs" --skill implement --run-id "$_bc_fail_run" >/dev/null 2>&1) || _bc_fail_rc=$?
+if [ "$_bc_fail_rc" -ne 0 ]; then pass "commit exits non-zero on symlinked breadcrumb"; else fail "commit should fail on symlinked breadcrumb"; fi
+if [ ! -e "$_bc_fail_repo/larch-logs/implement/$_bc_fail_run/breadcrumbs" ]; then
+    pass "failed breadcrumb commit leaves no breadcrumbs directory"
+else
+    fail "failed breadcrumb commit must not leave breadcrumbs directory"
+fi
 
 echo "=== commit does not include orphan stale-run directories ==="
 _saved_log_root="$LARCH_LOG_ROOT"

@@ -64,7 +64,7 @@ grep -q '^hidden$' "$log" || fail "nested log missing stdout"
 # 4. Breadcrumbs are quiet by default.
 helper="$SCRATCH/breadcrumb-quiet.sh"
 log="$SCRATCH/breadcrumb.log"
-write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; emit_breadcrumb "step done"; emit_kv STATUS ok'
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; emit_breadcrumb --category=progress "step done"; emit_kv STATUS ok'
 out=$("$helper" "$log")
 assert_eq "$out" "STATUS=ok" "breadcrumb quiet stdout"
 grep -q '^step done$' "$log" || fail "breadcrumb not logged"
@@ -72,14 +72,14 @@ grep -q '^step done$' "$log" || fail "breadcrumb not logged"
 # 5. Breadcrumbs can be surfaced explicitly.
 helper="$SCRATCH/breadcrumb-visible.sh"
 log="$SCRATCH/breadcrumb-visible.log"
-write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; emit_breadcrumb "step done"; emit_kv STATUS ok'
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; emit_breadcrumb --category=progress "step done"; emit_kv STATUS ok'
 out=$("$helper" "$log")
 assert_eq "$out" $'step done\nSTATUS=ok' "breadcrumb visible stdout"
 
 # 5b. Breadcrumbs can use an inherited alternate fd when stdout is captured.
 helper="$SCRATCH/breadcrumb-fd.sh"
 log="$SCRATCH/breadcrumb-fd.log"
-write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; exec 5>&3; export LARCH_QUIET_BREADCRUMB_FD=5; emit_breadcrumb "step done"; emit_kv STATUS ok'
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; exec 5>&3; export LARCH_QUIET_BREADCRUMB_FD=5; emit_breadcrumb --category=progress "step done"; emit_kv STATUS ok'
 "$helper" "$log" >"$SCRATCH/breadcrumb-fd.out"
 assert_eq "$(cat "$SCRATCH/breadcrumb-fd.out")" $'step done\nSTATUS=ok' "breadcrumb visible alternate fd"
 

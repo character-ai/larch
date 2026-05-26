@@ -1,5 +1,11 @@
 # test-breadcrumb-monitor.sh contract
 
-Stub. Offline regression harness for `scripts/breadcrumb-monitor.sh`.
+Offline regression harness for `scripts/breadcrumb-monitor.sh`.
 
-Full contract lives in the primary sibling: `scripts/breadcrumb-monitor.md`.
+Coverage includes sentinel coupling, surfaced-sentinel resume behavior, live
+stream growth, truncation/reset recovery, PEM-redacted failure tails,
+path-scope rejection, `RESEARCH_TMPDIR` acceptance, symlink rejection, invalid
+category dropping, and the fake Family B done-trap path.
+
+Full monitor contract lives in the primary sibling:
+`scripts/breadcrumb-monitor.md`.

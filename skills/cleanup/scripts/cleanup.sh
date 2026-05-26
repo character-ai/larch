@@ -88,7 +88,7 @@ done
 emit_kv TMP_REMOVED "$TMP_REMOVED"
 
 # --- Summary ------------------------------------------------------------------
-emit_breadcrumb ""
-emit_breadcrumb "Cleanup complete:"
-emit_breadcrumb "  ~/.cache/larch/sessions/: $CACHE_REMOVED entries removed"
-emit_breadcrumb "  /tmp (larch patterns):    $TMP_REMOVED entries removed"
+emit_breadcrumb --category=progress ""
+emit_breadcrumb --category=progress "Cleanup complete:"
+emit_breadcrumb --category=progress "  ~/.cache/larch/sessions/: $CACHE_REMOVED entries removed"
+emit_breadcrumb --category=progress "  /tmp (larch patterns):    $TMP_REMOVED entries removed"

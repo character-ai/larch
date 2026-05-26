@@ -221,6 +221,7 @@ try_begin_heredoc() {
     HEREDOC_OPEN_DELIM=
     HEREDOC_OPEN_USE_TAB_STRIP=0
     [[ "$line" =~ ^[[:space:]]*# ]] && return 1
+    [[ "$line" == *'<<'* ]] || return 1
 
     local d
     d=$(printf '%s\n' "$line" | LC_ALL=C sed -n "s/.*<<-[[:space:]]*'\\([^']*\\)'.*/\\1/p")

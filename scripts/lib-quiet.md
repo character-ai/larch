@@ -23,6 +23,11 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   descriptor, surfaced breadcrumbs write there instead of FD 3 so nested
   scripts can stay operator-visible even when their stdout is redirected into
   capture files.
+- `emit_breadcrumb_stderr --category=NAME FORMAT [ARGS...]` is the stderr
+  progress bridge for legacy `larch_errf` progress callsites. Without
+  `LARCH_BREADCRUMB_STREAM`, it preserves `larch_errf` formatting and no-newline
+  behavior. With a stream, it writes only a structured breadcrumb record in the
+  fixed category vocabulary.
 - `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
   original stderr (FD 4 after init) so harnesses and operators still see them
   while incidental `echo`/`printf` chatter stays in the quiet log.
@@ -45,7 +50,7 @@ original stderr instead of the quiet log.
 Callers may set `LARCH_QUIET_LOG_FILE` or `LARCH_QUIET_LOG` to choose the log
 path. Otherwise the library writes `larch-quiet-<script>-<pid>.log` under the
 first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
-`DESIGN_TMPDIR`) or `${TMPDIR:-/tmp}`.
+`DESIGN_TMPDIR`, `RESEARCH_TMPDIR`) or `${TMPDIR:-/tmp}`.
 
 ## Invariants
 

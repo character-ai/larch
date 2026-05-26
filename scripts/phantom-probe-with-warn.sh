@@ -28,6 +28,6 @@ done
 
 [ -n "$step_token" ] || usage
 
-emit_breadcrumb "→ phantom-probe: ${step_token}"
+emit_breadcrumb --category=progress "→ phantom-probe: ${step_token}"
 phantom_probe_with_warn "$step_token"
 exit 0

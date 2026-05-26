@@ -331,6 +331,8 @@ exclude = [
   # test-harnesses-18.
   "scripts/test-breadcrumb-monitor.sh",
   "scripts/test-breadcrumb-monitor.md",
+  "scripts/test-breadcrumb-monitor-bash32.sh",
+  "scripts/test-breadcrumb-monitor-bash32.md",
   # Makefile/ship-pr-only CI recovery helpers. ci-failed-jobs.sh is invoked
   # by scripts/ship-pr.sh after gh-run-logs succeeds; check-focus-area-enum.sh
   # is invoked by the Makefile's agent-sync target, which mirrors the CI job.

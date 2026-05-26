@@ -8,7 +8,9 @@ Coverage includes manifest creation, replace-mode redaction, idempotent retry,
 append-mode newline handling, json-lines rejection for raw markdown records,
 `exists`, mutable manifest updates, the `commit` staging path (`LARCH_LOG_ROOT`
 unset, `--log-root` set) that copies logs from an explicit temp staging dir into
-the repo before committing, the `larch-log-flush.sh` post-merge sentinel no-op
+the repo before committing, committed breadcrumb publication with tmpdir-path
+and PEM redaction, fail-closed rejection of unsafe breadcrumb source entries,
+the `larch-log-flush.sh` post-merge sentinel no-op
 path, commit refusal on the default branch/main, and `write-round` coverage for
 scout artifacts (`scout-round*-status.env`, `scout-round*-manifest.json`) and
 dynamic-archetype files (`reviewer-dyn-*.md`, `dyn-*-prompt.md` flattened from

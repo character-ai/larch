@@ -27,10 +27,19 @@ usage() {
 
 larch_bm_under_session_tmp() {
     local p=$1
-    case "$p" in
-        "${IMPLEMENT_TMPDIR:-}"/*|"${DESIGN_TMPDIR:-}"/*|"${REVIEW_TMPDIR:-}"/*) return 0 ;;
-        *) return 1 ;;
-    esac
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        case "$p" in "$IMPLEMENT_TMPDIR"/*) return 0 ;; esac
+    fi
+    if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
+        case "$p" in "$DESIGN_TMPDIR"/*) return 0 ;; esac
+    fi
+    if [[ -n "${REVIEW_TMPDIR:-}" ]]; then
+        case "$p" in "$REVIEW_TMPDIR"/*) return 0 ;; esac
+    fi
+    if [[ -n "${RESEARCH_TMPDIR:-}" ]]; then
+        case "$p" in "$RESEARCH_TMPDIR"/*) return 0 ;; esac
+    fi
+    return 1
 }
 
 larch_bm_validate_path() {
@@ -48,7 +57,7 @@ larch_bm_validate_path() {
         return 2
     fi
     if ! larch_bm_under_session_tmp "$path"; then
-        larch_err "${label}: path must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, or REVIEW_TMPDIR"
+        larch_err "${label}: path must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR"
         return 2
     fi
     if [[ -e "$path" ]] && [[ ! -f "$path" ]]; then
@@ -196,6 +205,10 @@ if [[ -f "$STREAM" ]]; then
         delta=$((new_sz - last_off))
         chunk=$(dd if="$STREAM" bs=1 skip="$last_off" count="$delta" 2>/dev/null || true)
         larch_bm_process_chunk "$chunk" "$(date +%s)"
+        if [[ -n "$buf" ]]; then
+            larch_bm_emit_line "$buf" "$(date +%s)"
+            buf=""
+        fi
     fi
 fi
 
