@@ -20,45 +20,48 @@ TOTAL=<input + cached_input + output>
 Exit codes:
 
 - `0`: at least one usage object parsed and total usage is non-zero.
-- `1`: fail-closed parse branch: missing/empty events file, missing `jq`, no usage objects, zero total, or `cached_tokens > input_tokens`.
+- `1`: fail-closed parse branch: missing/empty events file, missing `jq`, no usage objects, zero total, or any selected usage object where `cached_tokens > input_tokens`.
 - `2`: argv/usage error.
 
-Failure stdout is empty. Failure stderr is one short diagnostic.
+Failure stdout is empty. Failure stderr is one short diagnostic (`events file missing`, `jq not found`, `jq failed`, `no usage events`, or `cached_tokens exceeds input_tokens; fail-closed`).
 
 ## Bucket Math
 
-OpenAI usage schemas report `input_tokens` as gross input, with cached tokens as a detail bucket inside that gross count. The parser records fresh input as `max(input_tokens - cached_tokens, 0)`, records `cached_tokens` as `CACHED_INPUT`, records `output_tokens` as `OUTPUT`, and computes `TOTAL` from those emitted buckets. If cached tokens exceed input tokens, the parser exits `1` so launchers skip the token row instead of double-billing or inventing data.
+OpenAI usage schemas report `input_tokens` as gross input, with cached tokens as a detail bucket inside that gross count. The parser records fresh input as `max(input_tokens - cached_tokens, 0)`, records `cached_tokens` as `CACHED_INPUT`, records `output_tokens` as `OUTPUT`, and computes `TOTAL` from those emitted buckets. If cached tokens exceed input tokens on any selected event, the parser exits `1` so launchers skip the token row instead of double-billing or inventing data.
 
 ## Schema Probes
 
-Each counted event detects usage in this order:
+Event selection happens in this order:
 
 ```text
-usage payload = .msg.usage
-             // .usage
-             // synthetic top-level branch when any of:
-                .msg.input_tokens, .msg.cached_input_tokens, .msg.output_tokens,
-                .input_tokens, .cached_input_tokens, .output_tokens
-                is present
+1. If the stream contains any `type=="token_usage"` event with token fields,
+   use only the last such event.
+2. Otherwise, sum every event whose `.msg.usage` or `.usage` object carries at
+   least one token field.
 ```
 
-Each token field is then coalesced once per event, in this order:
+The parser never treats arbitrary non-`token_usage` top-level token-shaped
+fields as usage.
+
+Each token field is then coalesced from the selected event(s), in this order:
 
 ```text
-input_tokens  = .msg.usage.input_tokens // .usage.input_tokens
-             // .input_tokens // 0
+input_tokens  = .msg.usage.input_tokens // .msg.input_tokens
+             // .usage.input_tokens // .input_tokens // 0
 cached_tokens = .msg.usage.cached_input_tokens
              // .msg.usage.input_tokens_details.cached_tokens
+             // .msg.cached_input_tokens
+             // .msg.input_tokens_details.cached_tokens
              // .usage.cached_input_tokens
              // .usage.input_tokens_details.cached_tokens
              // .cached_input_tokens
              // .input_tokens_details.cached_tokens
              // 0
-output_tokens = .msg.usage.output_tokens // .usage.output_tokens
-              // .output_tokens // 0
+output_tokens = .msg.usage.output_tokens // .msg.output_tokens
+              // .usage.output_tokens // .output_tokens // 0
 ```
 
-This handles top-level Codex-native `cached_input_tokens`, `.msg` top-level token fields, Responses-style `input_tokens_details.cached_tokens`, and wrappers that nest usage under `.msg.usage`. Non-JSON wrapper noise is skipped by `fromjson?`.
+This handles top-level Codex-native token fields on `token_usage` events, `.msg` top-level token fields, Responses-style `input_tokens_details.cached_tokens`, and wrappers that nest usage under `.msg.usage`. Empty usage objects do not block those fallbacks. Non-JSON wrapper noise is skipped by `fromjson?`.
 
 Example JSONL:
 

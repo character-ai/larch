@@ -355,22 +355,7 @@ QA_PENDING_WRITTEN=false
 [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
 [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
 
-_codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>/dev/null) || _codex_usage=""
-if [[ -n "$_codex_usage" ]]; then
-    INPUT=0
-    CACHED_INPUT=0
-    OUTPUT_T=0
-    TOTAL=0
-    while IFS='=' read -r k v; do
-        case "$k" in
-            INPUT) INPUT=$v ;;
-            CACHED_INPUT) CACHED_INPUT=$v ;;
-            OUTPUT) OUTPUT_T=$v ;;
-            TOTAL) TOTAL=$v ;;
-        esac
-    done <<< "$_codex_usage"
-    "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex input="$INPUT" output="$OUTPUT_T" cache_read="$CACHED_INPUT" total="$TOTAL" raw="codex_implement" >/dev/null 2>&1 || true
-fi
+codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "codex_implement"
 emit_timing_record "$LAUNCHER_EXIT"
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"

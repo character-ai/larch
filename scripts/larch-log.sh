@@ -67,7 +67,7 @@ require_log_root() {
 round_artifact_included() {
     local name="$1"
     case "$name" in
-        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
+        *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
             return 1
             ;;
         # Excluded raw per-specialist reviewer outputs and their sidecars

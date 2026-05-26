@@ -184,6 +184,35 @@ fi
 
 cat > "$runtime_bin/codex" <<'EOF'
 #!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'ci fix transcript schema drift\n' > "$output_path"
+printf '{"type":"token_usage","input_tokens":"abc","cached_input_tokens":0,"output_tokens":1}\n'
+EOF
+chmod +x "$runtime_bin/codex"
+OUT_DRIFT="$TMPDIR_BASE/ci-runtime-drift"
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_DRIFT" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+if grep -q 'parse-codex-usage.sh: jq failed' "${OUT_DRIFT}.sidecar" 2>/dev/null; then
+    ok "runtime schema drift appends parse diagnostic to sidecar"
+else
+    fail "runtime schema drift appends parse diagnostic to sidecar: $(cat "${OUT_DRIFT}.sidecar" 2>/dev/null)"
+fi
+if [[ ! -s "${OUT_DRIFT}.token-record" ]]; then
+    ok "runtime schema drift leaves codex token-record empty"
+else
+    fail "runtime schema drift leaves codex token-record empty: $(cat "${OUT_DRIFT}.token-record" 2>/dev/null)"
+fi
+
+cat > "$runtime_bin/codex" <<'EOF'
+#!/usr/bin/env bash
 printf 'Error: not logged in\n' >&2
 exit 7
 EOF

@@ -28,24 +28,63 @@ if ! command -v jq >/dev/null 2>&1; then
     exit 1
 fi
 
+usage_err_file=$(mktemp "${TMPDIR:-/tmp}/parse-codex-usage.XXXXXX")
+trap 'rm -f "$usage_err_file"' EXIT
 usage_tsv=$(
     jq -nRr '
-      def num($v): ($v | tonumber? // 0);
-      reduce (inputs | fromjson? | select(type == "object")) as $o
-        ({count:0, input:0, cached:0, output:0};
-          ($o.msg.usage? // $o.usage? // (if ($o.msg.input_tokens? // $o.msg.cached_input_tokens? // $o.msg.output_tokens? // $o.input_tokens? // $o.cached_input_tokens? // $o.output_tokens? // null) == null then null else {} end)) as $usage |
-          if $usage == null then
-            .
-          else
-            .count += 1
-            | .input += num($o.msg.usage.input_tokens // $o.msg.input_tokens // $o.usage.input_tokens // $o.input_tokens // 0)
-            | .cached += num($o.msg.usage.cached_input_tokens // $o.msg.usage.input_tokens_details.cached_tokens // $o.msg.cached_input_tokens // $o.msg.input_tokens_details.cached_tokens // $o.usage.cached_input_tokens // $o.usage.input_tokens_details.cached_tokens // $o.cached_input_tokens // $o.input_tokens_details.cached_tokens // 0)
-            | .output += num($o.msg.usage.output_tokens // $o.msg.output_tokens // $o.usage.output_tokens // $o.output_tokens // 0)
-          end)
-      | "\(.count)\t\(.input)\t\(.cached)\t\(.output)"
-    ' "$EVENTS_FILE" 2>/dev/null
+      def num($v): if $v == null then 0 else ($v | tonumber) end;
+      def tokenish($v):
+        ($v.input_tokens?, $v.cached_input_tokens?, $v.output_tokens?,
+         $v.input_tokens_details.cached_tokens?,
+         $v.msg.input_tokens?, $v.msg.cached_input_tokens?, $v.msg.output_tokens?,
+         $v.msg.input_tokens_details.cached_tokens?) | select(. != null);
+      def has_tokenish($v): try ([tokenish($v)] | length > 0) catch false;
+      def input_of($o):
+        num($o.msg.usage.input_tokens // $o.msg.input_tokens // $o.usage.input_tokens // $o.input_tokens // 0);
+      def cached_of($o):
+        num($o.msg.usage.cached_input_tokens
+          // $o.msg.usage.input_tokens_details.cached_tokens
+          // $o.msg.cached_input_tokens
+          // $o.msg.input_tokens_details.cached_tokens
+          // $o.usage.cached_input_tokens
+          // $o.usage.input_tokens_details.cached_tokens
+          // $o.cached_input_tokens
+          // $o.input_tokens_details.cached_tokens
+          // 0);
+      def output_of($o):
+        num($o.msg.usage.output_tokens // $o.msg.output_tokens // $o.usage.output_tokens // $o.output_tokens // 0);
+      def usage_row($o):
+        {input: input_of($o), cached: cached_of($o), output: output_of($o)};
+      def fail_if_cached_exceeds_input($u):
+        if $u.cached > $u.input then
+          error("cached_tokens exceeds input_tokens; fail-closed")
+        else
+          $u
+        end;
+      [inputs | fromjson? | select(type == "object")] as $events
+      | ([ $events[] | select(.type == "token_usage" and has_tokenish(.)) ] | last) as $rollup
+      | if $rollup != null then
+          (usage_row($rollup) | fail_if_cached_exceeds_input(.)) as $usage
+          | [1, $usage.input, $usage.cached, $usage.output] | @tsv
+        else
+          reduce ($events[] | select(has_tokenish(.msg.usage) or has_tokenish(.usage))) as $o
+            ({count:0, input:0, cached:0, output:0};
+              (usage_row($o) | fail_if_cached_exceeds_input(.)) as $usage
+              | .count += 1
+              | .input += $usage.input
+              | .cached += $usage.cached
+              | .output += $usage.output)
+          | [.count, .input, .cached, .output] | @tsv
+        end
+    ' "$EVENTS_FILE" 2>"$usage_err_file"
 ) || {
-    larch_err "parse-codex-usage.sh: no usage events"
+    if grep -Fq 'cached_tokens exceeds input_tokens; fail-closed' "$usage_err_file" 2>/dev/null; then
+        larch_err "parse-codex-usage.sh: cached_tokens exceeds input_tokens; fail-closed"
+    elif [[ -s "$usage_err_file" ]]; then
+        larch_err "parse-codex-usage.sh: jq failed"
+    else
+        larch_err "parse-codex-usage.sh: no usage events"
+    fi
     exit 1
 }
 

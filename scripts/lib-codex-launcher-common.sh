@@ -19,4 +19,8 @@ codex_launcher_append_outer_meta() {
     external_launcher_append_outer_meta "$@"
 }
 
+codex_launcher_record_usage_from_events() {
+    external_launcher_record_usage_from_events "$@"
+}
+
 LARCH_LIB_CODEX_LAUNCHER_COMMON_LOADED=1

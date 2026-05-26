@@ -716,6 +716,144 @@ else
     fail "codex-no-usage should not record a vendor row; ledger=$(cat "$LCR_NOUSAGE_LEDGER" 2>/dev/null) stderr=$(cat "$LCR_NOUSAGE_STDERR" 2>/dev/null)"
 fi
 
+LCR_DEVNULL_BIN="$TMPDIR/lcr-codex-devnull-bin"
+mkdir -p "$LCR_DEVNULL_BIN"
+cat > "$LCR_DEVNULL_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex /dev/null payload\n' > "$output_path"
+printf '{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}\n'
+STUB_EOF
+chmod +x "$LCR_DEVNULL_BIN/codex"
+
+LCR_DEVNULL_SESSION="lcr-codex-devnull-$$"
+LCR_DEVNULL_LEDGER="$TMPDIR/lcr-codex-devnull-ledger.jsonl"
+LCR_DEVNULL_OUT="$TMPDIR/lcr-codex-devnull-output.txt"
+LCR_DEVNULL_STDERR="$TMPDIR/lcr-devnull.stderr"
+mkdir -p "${LCR_DEVNULL_OUT}.sidecar"
+
+set +e
+LARCH_TOKEN_SESSION_ID="$LCR_DEVNULL_SESSION" \
+LARCH_TOKEN_LEDGER="$LCR_DEVNULL_LEDGER" \
+IMPLEMENT_TMPDIR='' \
+PATH="$LCR_DEVNULL_BIN:$PATH" \
+LARCH_CODEX_MODEL="stub-model" \
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --output "$LCR_DEVNULL_OUT" \
+        --timeout 30 \
+        --prompt "review" \
+        >/dev/null 2>"$LCR_DEVNULL_STDERR"
+LCR_DEVNULL_RC=$?
+set -e
+
+if [[ "$LCR_DEVNULL_RC" -ne 0 ]]; then
+    fail "codex-/dev/null smoke exited rc=$LCR_DEVNULL_RC; stderr=$(cat "$LCR_DEVNULL_STDERR" 2>/dev/null)"
+elif [[ ! -e "$LCR_DEVNULL_LEDGER" ]] && [[ ! -e "${LCR_DEVNULL_OUT}.events.jsonl" ]]; then
+    pass
+else
+    fail "codex-/dev/null should not create a vendor row or events file; ledger=$(cat "$LCR_DEVNULL_LEDGER" 2>/dev/null) events=$(cat "${LCR_DEVNULL_OUT}.events.jsonl" 2>/dev/null) stderr=$(cat "$LCR_DEVNULL_STDERR" 2>/dev/null)"
+fi
+
+LCR_SCHEMA_BIN="$TMPDIR/lcr-codex-schema-bin"
+mkdir -p "$LCR_SCHEMA_BIN"
+cat > "$LCR_SCHEMA_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex schema drift payload\n' > "$output_path"
+printf '{"type":"token_usage","input_tokens":"abc","cached_input_tokens":0,"output_tokens":1}\n'
+STUB_EOF
+chmod +x "$LCR_SCHEMA_BIN/codex"
+
+LCR_SCHEMA_SESSION="lcr-codex-schema-$$"
+LCR_SCHEMA_LEDGER="$TMPDIR/lcr-codex-schema-ledger.jsonl"
+LCR_SCHEMA_OUT="$TMPDIR/lcr-codex-schema-output.txt"
+LCR_SCHEMA_STDERR="$TMPDIR/lcr-schema.stderr"
+
+set +e
+LARCH_TOKEN_SESSION_ID="$LCR_SCHEMA_SESSION" \
+LARCH_TOKEN_LEDGER="$LCR_SCHEMA_LEDGER" \
+IMPLEMENT_TMPDIR='' \
+PATH="$LCR_SCHEMA_BIN:$PATH" \
+LARCH_CODEX_MODEL="stub-model" \
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --output "$LCR_SCHEMA_OUT" \
+        --timeout 30 \
+        --prompt "review" \
+        >/dev/null 2>"$LCR_SCHEMA_STDERR"
+LCR_SCHEMA_RC=$?
+set -e
+
+if [[ "$LCR_SCHEMA_RC" -ne 0 ]]; then
+    fail "codex-schema-drift smoke exited rc=$LCR_SCHEMA_RC; stderr=$(cat "$LCR_SCHEMA_STDERR" 2>/dev/null)"
+else
+    assert_grep "codex-schema-drift sidecar appends parse failure diagnostic" "parse-codex-usage.sh: jq failed" "${LCR_SCHEMA_OUT}.sidecar"
+    if [[ ! -s "$LCR_SCHEMA_LEDGER" ]]; then
+        pass
+    else
+        fail "codex-schema-drift should not record a vendor row; ledger=$(cat "$LCR_SCHEMA_LEDGER" 2>/dev/null) stderr=$(cat "$LCR_SCHEMA_STDERR" 2>/dev/null)"
+    fi
+fi
+
+LCR_FAILED_BIN="$TMPDIR/lcr-codex-failed-bin"
+mkdir -p "$LCR_FAILED_BIN"
+cat > "$LCR_FAILED_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'stub codex failed payload\n' > "$output_path"
+printf '{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}\n'
+exit 1
+STUB_EOF
+chmod +x "$LCR_FAILED_BIN/codex"
+
+LCR_FAILED_SESSION="lcr-codex-failed-$$"
+LCR_FAILED_LEDGER="$TMPDIR/lcr-codex-failed-ledger.jsonl"
+LCR_FAILED_OUT="$TMPDIR/lcr-codex-failed-output.txt"
+
+set +e
+LARCH_TOKEN_SESSION_ID="$LCR_FAILED_SESSION" \
+LARCH_TOKEN_LEDGER="$LCR_FAILED_LEDGER" \
+IMPLEMENT_TMPDIR='' \
+PATH="$LCR_FAILED_BIN:$PATH" \
+LARCH_CODEX_MODEL="stub-model" \
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --output "$LCR_FAILED_OUT" \
+        --timeout 30 \
+        --prompt "review" \
+        >/dev/null 2>&1
+LCR_FAILED_RC=$?
+set -e
+
+assert_eq "codex-failed-run exits non-zero" "1" "$LCR_FAILED_RC"
+if [[ ! -s "$LCR_FAILED_LEDGER" ]]; then
+    pass
+else
+    fail "codex-failed-run should not record a vendor row; ledger=$(cat "$LCR_FAILED_LEDGER" 2>/dev/null)"
+fi
+
 # --token-budget-cap argv validation
 set +e
 "$LAUNCHER" --output "$TMPDIR/budget-missing.txt" --timeout 5 --prompt "x" \
@@ -960,10 +1098,13 @@ ln -sf "$STUB_BIN/codex-auth-stderr-only" "$STUB_BIN/codex"
 IMPL_TMPDIR_AUTH_STDERR_ONLY="$TMPDIR/auth-stderr-only-impl"
 mkdir -p "$IMPL_TMPDIR_AUTH_STDERR_ONLY"
 OUT_AUTH_STDERR_ONLY="$TMPDIR/auth-stderr-only.txt"
+SL_AUTH_STDERR_ONLY_LEDGER="$TMPDIR/sl-auth-stderr-only-ledger.jsonl"
 set +e
 LARCH_TRANSIENT_RETRY_DELAY=0 \
     LARCH_EXTERNAL_AUTH_RETRIES=1 \
     LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_TOKEN_LEDGER="$SL_AUTH_STDERR_ONLY_LEDGER" \
+    LARCH_TOKEN_SESSION_ID="sl-auth-stderr-only-$$" \
     IMPLEMENT_TMPDIR="$IMPL_TMPDIR_AUTH_STDERR_ONLY" \
     PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$OUT_AUTH_STDERR_ONLY" --timeout 10 --prompt "sl-auth-stderr-only-codex" >/dev/null 2>&1
@@ -975,6 +1116,12 @@ assert_eq "SL-auth-stderr-only-codex stub invoked exactly 1 time" "1" "$SL_AUTH_
 assert_grep "SL-auth-stderr-only-codex sidecar preserves stderr auth text" "Error: not logged in" "${OUT_AUTH_STDERR_ONLY}.sidecar"
 EI_AUTH_STDERR_ONLY="$IMPL_TMPDIR_AUTH_STDERR_ONLY/execution-issues.md"
 assert_regex "SL-auth-stderr-only-codex exact auth header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 7 — auth-retries-exhausted — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_AUTH_STDERR_ONLY"
+assert_eq "SL-auth-stderr-only-codex leaves no usage JSON events" "0" "$(grep -c '"type":"token_usage"' "${OUT_AUTH_STDERR_ONLY}.events.jsonl" 2>/dev/null | tr -d ' ')"
+if [[ ! -s "$SL_AUTH_STDERR_ONLY_LEDGER" ]]; then
+    pass
+else
+    fail "SL-auth-stderr-only-codex should not record a vendor row; ledger=$(cat "$SL_AUTH_STDERR_ONLY_LEDGER" 2>/dev/null)"
+fi
 rm -f "$SL_AUTH_STDERR_ONLY_COUNT"
 
 # Case SL-transient-not-applied: stub exits 1 with non-empty sidecar content.

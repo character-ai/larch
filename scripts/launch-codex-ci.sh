@@ -227,23 +227,7 @@ END_S=$(date +%s)
     --exit-code "$LAUNCHER_EXIT" \
     --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" >/dev/null 2>&1 || true
 
-_codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>/dev/null) || _codex_usage=""
-if [[ -n "$_codex_usage" ]]; then
-    INPUT=0
-    CACHED_INPUT=0
-    OUTPUT_T=0
-    TOTAL=0
-    while IFS='=' read -r k v; do
-        case "$k" in
-            INPUT) INPUT=$v ;;
-            CACHED_INPUT) CACHED_INPUT=$v ;;
-            OUTPUT) OUTPUT_T=$v ;;
-            TOTAL) TOTAL=$v ;;
-        esac
-    done <<< "$_codex_usage"
-    printf 'TOOL=codex\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nTOTAL=%s\nRAW=codex_ci_fix\n' \
-        "$INPUT" "$OUTPUT_T" "$CACHED_INPUT" "$TOTAL" > "${OUTPUT}.token-record"
-fi
+codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "codex_ci_fix" "${OUTPUT}.token-record"
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
 _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR_LOG"; true)

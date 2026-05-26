@@ -41,6 +41,14 @@ set -e
 eq "codex no-usage fail-closed rc" "1" "$codex_bad_rc"
 eq "codex no-usage stdout empty" "" "$codex_bad"
 
+cat > "$TMP/codex-rollup.events.jsonl" <<'JSONL'
+{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
+{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}
+{"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
+JSONL
+codex_rollup=$("$REPO_ROOT/scripts/parse-codex-usage.sh" "$TMP/codex-rollup.events.jsonl" 2>/dev/null || true)
+eq "codex token_usage rollup wins over per-turn and lifecycle events" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999' "$codex_rollup"
+
 cat > "$TMP/cursor.json" <<'JSON'
 {"result":"plain reviewer prose","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}
 JSON

@@ -195,7 +195,7 @@ fi
 design_artifact_excluded() {
     local name="$1"
     case "$name" in
-        *.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*-output.txt.prompt|*-output-*.txt.prompt)
+        *.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
             return 0
             ;;
     esac

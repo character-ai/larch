@@ -76,6 +76,23 @@ run_ok "msg-coalesce" "$TMP/coalesce.jsonl" $'INPUT=75\nCACHED_INPUT=25\nOUTPUT=
 
 run_ok "msg-direct-usage" "$CODEX_MSG_FIXTURE" $'INPUT=100\nCACHED_INPUT=20\nOUTPUT=9\nTOTAL=129'
 
+cat > "$TMP/token-usage-rollup-precedence.jsonl" <<'JSONL'
+{"msg":{"usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":5}}}
+{"type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}
+{"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
+JSONL
+run_ok "token-usage-rollup-precedence" "$TMP/token-usage-rollup-precedence.jsonl" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
+
+cat > "$TMP/empty-usage-top-level-fallback.jsonl" <<'JSONL'
+{"type":"token_usage","usage":{},"input_tokens":5,"cached_input_tokens":2,"output_tokens":1}
+JSONL
+run_ok "empty-usage-top-level-fallback" "$TMP/empty-usage-top-level-fallback.jsonl" $'INPUT=3\nCACHED_INPUT=2\nOUTPUT=1\nTOTAL=6'
+
+cat > "$TMP/wrong-type-top-level.jsonl" <<'JSONL'
+{"type":"task.completed","input_tokens":999,"cached_input_tokens":500,"output_tokens":111}
+JSONL
+run_fail "wrong-type-top-level" 1 "$TMP/wrong-type-top-level.jsonl" "no usage events"
+
 cat > "$TMP/noise.jsonl" <<'JSONL'
 wrapper noise
 {"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3},"output_tokens":2}}
@@ -102,6 +119,13 @@ cat > "$TMP/cache-exceeds.jsonl" <<'JSONL'
 JSONL
 run_fail "cache-exceeds" 1 "$TMP/cache-exceeds.jsonl" "cached_tokens exceeds input_tokens"
 
+cat > "$TMP/cache-exceeds-midstream.jsonl" <<'JSONL'
+{"usage":{"input_tokens":5,"cached_input_tokens":2,"output_tokens":1}}
+{"usage":{"input_tokens":4,"cached_input_tokens":6,"output_tokens":1}}
+{"usage":{"input_tokens":9,"cached_input_tokens":1,"output_tokens":2}}
+JSONL
+run_fail "cache-exceeds-midstream" 1 "$TMP/cache-exceeds-midstream.jsonl" "cached_tokens exceeds input_tokens"
+
 run_fail "argv-error" 2 "" "usage error"
 
 set +e
@@ -111,6 +135,11 @@ set -e
 eq "jq-missing rc" "1" "$rc"
 eq "jq-missing stdout" "" "$out"
 contains "jq-missing stderr" "jq not found" "$(cat "$TMP/no-jq.err" 2>/dev/null)"
+
+cat > "$TMP/jq-failed.jsonl" <<'JSONL'
+{"usage":{"input_tokens":"abc","cached_input_tokens":0,"output_tokens":1}}
+JSONL
+run_fail "jq-failed" 1 "$TMP/jq-failed.jsonl" "jq failed"
 
 cat > "$TMP/line-streaming.jsonl" <<'JSONL'
 {"usage":{"input_tokens":1,"cached_input_tokens":0,"output_tokens":2}}
