@@ -1,0 +1,30 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES -- latent but real: STATUS=failed with sanitizer SKIP_REASON never sets COMMENT_UPSERT_SKIP
+FINDING_4: EXONERATE -- verbose but clear; a loop adds indirection without fixing any bug
+FINDING_5: YES
+FINDING_6: NO -- intentional per Round 1 Decision 2, documented in step-7a.md:48
+FINDING_7: NO -- git diff --name-only never emits blank lines; grep -c . correctly returns 0 for empty output
+FINDING_8: EXONERATE -- defensive dead code; removing it reduces future resilience if helper contract changes
+FINDING_9: EXONERATE -- 0s is a benign simplification for an instant classifier path
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- offline stubs inherently cannot produce byte-identical output; live-run verification is separate
+FINDING_13: EXONERATE -- one-file docs/ case validates the classifier path; two-file/CHANGELOG gaps are low risk
+FINDING_14: NO -- stated concern is an affirmation of existing security controls, not a problem
+FINDING_15: NO -- security affirmation, not a vulnerability
+FINDING_16: NO -- security affirmation, not a vulnerability
+FINDING_17: NO -- security affirmation; intentionally stricter behavior is a good outcome
+FINDING_18: NO -- security affirmation, not a vulnerability
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: NO -- intentional per docs/run-logs.md; not a problem worth filing
+FINDING_22: NO -- not a real finding; commit listing with no stated concern
+FINDING_23: NO -- not a real finding; excluded-by-rule commit listing
+FINDING_24: NO -- not a real finding; review-feedback commit listing
+FINDING_25: EXONERATE -- plan says capture-session-transcript.sh emits to stdout (not FD 3); stdout is unredirected so status flows through correctly
+FINDING_26: EXONERATE -- intentional deviation reflected in SKILL.md; probe exit propagation is correct design
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES

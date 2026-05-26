@@ -26,8 +26,12 @@ Black-box regression harness for `scripts/lint-foreground-markers.sh`. It builds
 20. **`if !` + repo-relative path** — `if ! scripts/run-step5-review.sh` with markers → passes.
 21. **Env-prefixed `bash` invoke** — `FOO=1 bash "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh"` pattern with markers → passes.
 22. **Commented-out mention** — denylisted path only inside a `#` shell comment line → ignored.
-23. **Heredoc negative** — denylist-shaped `${CLAUDE_PLUGIN_ROOT}/…collect-agent-results.sh` text inside a quoted `<<'…'` heredoc body → ignored (must not require markers above the fence).
-24. **Backslash-continued invocation** — markers satisfied while the `${CLAUDE_PLUGIN_ROOT}/…collect-agent-results.sh` path is split across two source lines with a trailing `\` continuation → passes.
+23. **`step-7a.sh` foreground clean path** — canonical foreground banner/comment pair above `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh` → passes.
+24. **`step-7a.sh` missing banner** — foreground comment present, banner absent → `missing foreground-required banner for step-7a.sh`.
+25. **`step-7a.sh` missing comment** — foreground banner present, comment absent → `missing foreground-required comment for step-7a.sh`.
+26. **`step-7a.sh` background flag forbidden** — marker pair present but fence also sets `run_in_background: true` → `foreground-only invocation must not set run_in_background: true for step-7a.sh`.
+27. **Heredoc negative** — denylist-shaped `${CLAUDE_PLUGIN_ROOT}/…collect-agent-results.sh` text inside a quoted `<<'…'` heredoc body → ignored (must not require markers above the fence).
+28. **Backslash-continued invocation** — markers satisfied while the `${CLAUDE_PLUGIN_ROOT}/…collect-agent-results.sh` path is split across two source lines with a trailing `\` continuation → passes.
 16. **Family A baseline** — minimum `grep -cF 'run_in_background: true'` floors on `skills/design/references/sketch-launch.md`, `skills/design/references/dialectic-execution.md`, `skills/shared/voting-protocol.md`, and `skills/shared/dialectic-protocol.md` (count decreases fail; increases allowed).
 
 Wiring: Makefile targets `test-lint-foreground-markers`, `lint-foreground-markers`, and `lint-foreground` (alias), one `test-harnesses-16` shard entry, pre-commit hook `lint-foreground-markers`, and `agent-lint.toml` exclusions mirroring the `lint-bash32` Makefile-only pattern. Primary normative contract: `scripts/lint-foreground-markers.md`.

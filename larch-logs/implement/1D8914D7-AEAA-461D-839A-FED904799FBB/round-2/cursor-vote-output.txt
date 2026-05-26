@@ -1,0 +1,48 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- single-caller inline flush is acceptable; extracting a helper now adds more churn than value
+FINDING_6: EXONERATE -- set -e scope is narrow and run_log_flush immediately restores set +e
+FINDING_7: EXONERATE -- glob over-match is hypothetical until a non-sanitizer SKIP_REASON contains those substrings
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- same set -e concern as FINDING_6; flush path already runs under set +e
+FINDING_13: EXONERATE -- skip breadcrumb via printf to the quiet log is minor operator visibility, not a contract break
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- skip-upsert on sanitizer rejection matches step-7a.md and the issue plan, not an accidental regression
+FINDING_18: YES
+FINDING_19: NO -- descriptive argv-handling note, not a defect
+FINDING_20: NO -- positive security observation, no stated problem
+FINDING_21: NO -- positive security observation, no stated problem
+FINDING_22: NO -- positive security observation, no stated problem
+FINDING_23: NO -- positive security observation, no stated problem
+FINDING_24: YES
+FINDING_25: EXONERATE -- pre-existing session-env plugin-root trust model, not introduced by this branch
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- intentional skip-upsert policy is documented; stale-comment risk is a product choice, not a latent bug
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- broad glob is latent; current suppression is driven by the unconditional skipped branch
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: EXONERATE -- post-rebase set -e risk is minimal because flush resets errexit immediately
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: EXONERATE -- analysis shows flush never runs under errexit; residual cat failure risk is edge-case only
+FINDING_42: NO -- unreachable degraded branch is observational, not a user-facing defect
+FINDING_43: NO -- intentional plan change, not a problem to file
+FINDING_44: YES
+FINDING_45: YES
+FINDING_46: YES
+FINDING_47: EXONERATE -- exit-before-flush on rebase conflict is encoded in test-step-7a.sh and appears intentional
+FINDING_48: YES

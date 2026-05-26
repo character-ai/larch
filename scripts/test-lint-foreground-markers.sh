@@ -87,6 +87,14 @@ assert_case_clean() {
     PASS=$((PASS + 1))
 }
 
+assert_case_err() {
+    local label="$1"
+    local stderr_file="$2"
+    local rc="$3"
+    shift 3
+    assert_case "$label" 1 "$stderr_file" "$rc" "$@"
+}
+
 stderr_file="$(mktemp)"
 
 # 1 — clean collect-agent-results.sh (background+monitor pair)
@@ -523,10 +531,68 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "commented denylisted line ignored" "$stderr_file" "$rc"
 
-# 23 — denylist-shaped path inside a quoted heredoc body must not anchor (false-positive guard)
+# 23 — step-7a is foreground-only and uses the foreground marker pair
+reset_tree
+write_md skills/step7a/SKILL.md <<'EOF'
+# Case 23
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "step-7a foreground invocation" "$stderr_file" "$rc"
+
+# 24 — step-7a missing the foreground banner fails
+reset_tree
+write_md skills/step7a-missing-banner/SKILL.md <<'EOF'
+# Case 24
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "step-7a missing foreground banner" "$stderr_file" "$rc" "missing foreground-required banner for step-7a.sh"
+
+# 25 — step-7a missing the foreground comment fails
+reset_tree
+write_md skills/step7a-missing-comment/SKILL.md <<'EOF'
+# Case 25
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "step-7a missing foreground comment" "$stderr_file" "$rc" "missing foreground-required comment for step-7a.sh"
+
+# 26 — step-7a must not set run_in_background: true
+reset_tree
+write_md skills/step7a-background/SKILL.md <<'EOF'
+# Case 26
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "step-7a forbids run_in_background" "$stderr_file" "$rc" "foreground-only invocation must not set run_in_background: true for step-7a.sh"
+
+# 27 — denylist-shaped path inside a quoted heredoc body must not anchor (false-positive guard)
 reset_tree
 write_md skills/heredoc-doc/SKILL.md <<'EOF'
-# Case 23
+# Case 27
 
 ```bash
 cat <<'MD'
@@ -538,10 +604,10 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "heredoc body ignores denylist-shaped text" "$stderr_file" "$rc"
 
-# 24 — backslash-continued denylisted path with markers (single logical invocation)
+# 28 — backslash-continued denylisted path with markers (single logical invocation)
 reset_tree
 write_md skills/bs-cont/SKILL.md <<'EOF'
-# Case 24
+# Case 28
 
 **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 

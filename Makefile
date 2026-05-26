@@ -10,6 +10,7 @@
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-report-tokens-recompute
 .PHONY: lint-bash32 test-lint-bash32 lint-foreground lint-foreground-markers test-lint-foreground-markers lint-mermaid agent-sync test-ci-failed-jobs
+.PHONY: test-step-7a
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -73,7 +74,7 @@ test-harnesses-16: test-apply-bump test-check-phantom-dirty test-phantom-probe-w
 
 test-harnesses-17: test-audit-edit-write test-check-review-changes test-collect-findings test-dispatch-code-voters-retry-claude test-finalize-sanity-check test-hook-anti-read-poll test-lint-fix-loop test-parse-prose-blockers test-redact test-research-banner test-run-step2-dispatch test-ship-pr-transient test-token-vendor-scrapers test-verify-run-log-completeness
 
-test-harnesses-18: test-audit-runs test-breadcrumb-monitor test-check-reviewer-failure-threshold test-commit-implementation test-dispatch-code-voters-retry-codex-fail-and-fallback test-keepalive-sentinel test-lint-literal-counts test-redact-tmpdir-paths test-research-structure test-run-step5-review test-tracking-issue-read-sentinel test-verify-skill-called
+test-harnesses-18: test-audit-runs test-breadcrumb-monitor test-check-reviewer-failure-threshold test-commit-implementation test-dispatch-code-voters-retry-codex-fail-and-fallback test-keepalive-sentinel test-lint-literal-counts test-redact-tmpdir-paths test-research-structure test-run-step5-review test-step-7a test-tracking-issue-read-sentinel test-verify-skill-called
 
 test-harnesses-19: test-auto-resolve-changelog test-check-stale-plugin test-commit-review-fixes test-dispatch-code-voters-retry-codex-success test-implement-anti-halt test-larch-log test-lint-no-raw-stderr-after-quiet-init test-pipe-sigpipe-safety test-references-headers test-resolve-repo test-scoreboard test-slack-issue-announce test-tracking-issue-summary test-wait-for-reviewers
 
@@ -557,6 +558,9 @@ test-step-8a-changelog:
 
 test-flush-execution-issues:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-flush-execution-issues.sh
+
+test-step-7a:
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-7a.sh
 
 test-post-tracking-issue:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-post-tracking-issue.sh

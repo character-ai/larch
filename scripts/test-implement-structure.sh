@@ -250,6 +250,7 @@ awk '
 
 COMMIT_IMPL_SH="$REPO_ROOT/skills/implement/scripts/commit-implementation.sh"
 COMMIT_REVIEW_SH="$REPO_ROOT/skills/implement/scripts/commit-review-fixes.sh"
+STEP_7A_SH="$REPO_ROOT/skills/implement/scripts/step-7a.sh"
 GEN_DIAGRAM_SH="$REPO_ROOT/skills/implement/scripts/generate-code-flow-diagram.sh"
 
 [[ -f "$COMMIT_IMPL_SH" ]] || fail "skills/implement/scripts/commit-implementation.sh missing"
@@ -260,9 +261,12 @@ grep -qF 'timing-ledger.sh" mark "Step 4 — commit implementation"' "$COMMIT_IM
 grep -qF 'timing-ledger.sh" mark "Step 7 — commit review fixes"' "$COMMIT_REVIEW_SH" \
   || fail "commit-review-fixes.sh must contain Step 7 timing-ledger mark"
 
+[[ -f "$STEP_7A_SH" ]] || fail "skills/implement/scripts/step-7a.sh missing"
+grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$STEP_7A_SH" \
+  || fail "step-7a.sh must contain Step 7a timing-ledger mark"
 [[ -f "$GEN_DIAGRAM_SH" ]] || fail "skills/implement/scripts/generate-code-flow-diagram.sh missing"
 grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$GEN_DIAGRAM_SH" \
-  || fail "generate-code-flow-diagram.sh must contain Step 7a timing-ledger mark"
+  && fail "generate-code-flow-diagram.sh must not contain Step 7a timing-ledger mark (consolidated into step-7a.sh)"
 
 # Pin Exit 4 handling in SKILL.md: must direct orchestrator to "Continue to Step 16"
 exit4_step16_status=0

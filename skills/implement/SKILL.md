@@ -126,7 +126,7 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 
 **Orchestrator contract — parse the wrapper stdout** (token-aware KV scan; multiple `KEY=value` tokens per line allowed — mirror Step 5-style parsing):
 
-1. Run the foreground `rebase-checkpoint-probe.sh` invocation and capture its stdout as the contract stream (stderr is normally empty; FINDING_1 combined-stream rules live in `scripts/rebase-checkpoint-probe.md`).
+1. Run the foreground `rebase-checkpoint-probe.sh` invocation and capture its stdout as the contract stream (stderr is normally empty; FINDING_1 combined-stream rules live in `scripts/rebase-checkpoint-probe.md`). For `7a.r`, the direct foreground call is `skills/implement/scripts/step-7a.sh`, which invokes the probe internally and re-emits the probe stdout before its final KV tail; the orchestrator must branch on the wrapper's process exit code plus the relayed `REBASE_*` keys, not on a separate probe fence.
 2. Branch on the process exit code **and** `REBASE_OUTCOME=` / `REBASE_ERROR=` / `CONFLICT_FILES=` keys emitted on stdout:
    - **Exit 1 (`REBASE_OUTCOME=conflict`)** — print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. Parse `CONFLICT_FILES=<comma-separated list>` from the captured stdout; `--keep-on-conflict` leaves the rebase in progress so this list is authoritative for Phase 1. (If the line is missing — defensive only — fall back to `git diff --name-only --diff-filter=U` to enumerate the in-progress rebase's unmerged paths.) **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On success, continue. On hard failure, the procedure runs `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, sets `STALL_TRACKING=true` (signals Step 18 to rename the tracking issue to `[STALLED]` — see "Title-prefix lifecycle" below), and skips to Step 18.
    - **Exit 3 (`REBASE_OUTCOME=failed`)** — read `REBASE_ERROR=...` from the same stdout capture. If the value begins with `unexpected-rc-` (FINDING_9 prefix — non-1/3 non-zero exits rewritten by the wrapper), print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**` (derive the numeric exit token from the suffix after `unexpected-rc-` when present; otherwise use the process exit code), set `STALL_TRACKING=true`, and skip to Step 18. **Otherwise** (non-conflict rebase failure — fetch error, detached HEAD, etc.): print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
@@ -143,6 +143,8 @@ Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). 
 | 4.r  | `4.r`           | `commit (impl)`  |
 | 7.r  | `7.r`           | `commit (review)`|
 | 7a.r | `7a.r`          | `diagrams`       |
+
+For `7a.r`, the registry row is reached via `step-7a.sh`, not a standalone probe fence. The orchestrator must branch on `step-7a.sh`'s process exit code plus the relayed `REBASE_*` keys, and the helper only runs the pre-bump flush after wrapper-visible `REBASE_OUTCOME=ok|skipped`.
 
 ## Flags
 
@@ -1379,90 +1381,14 @@ Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Reb
 
 <!-- step:7a — Code Flow Diagram -->
 
-```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-```
-
 Print: `> **🔶 /implement 7a: diagrams**`
 
 Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 **MANDATORY — READ ENTIRE FILE** before writing `larch:diagrams` summary comments: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`.
 
-First check whether the committed diff is small and non-runtime. Compute the merge-base, then enumerate changed files relative to `origin/main`:
-
-```bash
-MERGE_BASE=$(git merge-base HEAD origin/main 2>/dev/null) || MERGE_BASE=""
-if [ -n "$MERGE_BASE" ]; then
-  CHANGED_FILES=$(git diff --name-only "${MERGE_BASE}..HEAD" 2>/dev/null)
-else
-  CHANGED_FILES=""
-fi
-CHANGED_COUNT=$(printf '%s\n' "$CHANGED_FILES" | grep -c . 2>/dev/null || echo 0)
-```
-
-If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
-
-Otherwise, invoke the extracted generator and parse its KV envelope:
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/generate-code-flow-diagram.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
-```
-
-On `STATUS=ok`, continue with `$DIAGRAM_FILE`. On `STATUS=skipped|failed`, set the Code Flow placeholder to `Code flow diagram not available.` and continue; log the helper's captured output as a Step 7a warning when `STATUS=failed`.
-
-### Diagrams summary comment — `larch:diagrams`
-
-Compose the diagrams content using Bash file operations (not Read/Write tools) to keep diagram content out of the orchestrator's context. Determine `CODE_FLOW_SKIP_REASON` from the earlier Step 7a path: empty string when the diagram file was generated successfully (`$IMPLEMENT_TMPDIR/code-flow-diagram.md` exists; the file is used directly below); `"(Code Flow Diagram skipped — small/non-runtime change)"` when the small/non-runtime-change skip fired; `"Code flow diagram not available."` when generation failed or was rejected by the sanitizer.
-
-```bash
-CODE_FLOW_SKIP_REASON="<set per above>"
-{
-  if [ -n "${ARCHITECTURE_DIAGRAM_FILE:-}" ] && [ -f "${ARCHITECTURE_DIAGRAM_FILE:-}" ]; then
-    cat "$ARCHITECTURE_DIAGRAM_FILE"
-  else
-    printf 'Architecture diagram not available.'
-  fi
-  printf '\n\n'
-  if [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
-    cat "$IMPLEMENT_TMPDIR/code-flow-diagram.md"
-  else
-    printf '%s' "$CODE_FLOW_SKIP_REASON"
-  fi
-} > "$IMPLEMENT_TMPDIR/summary-diagrams.md"
-```
-
-Do NOT write a `diagrams` larch-log batch. If `$ISSUE_NUMBER` is set, post the `larch:diagrams` summary comment (best-effort):
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary \
-  --issue "$ISSUE_NUMBER" \
-  --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->" \
-  --content-file "$IMPLEMENT_TMPDIR/summary-diagrams.md" || true
-```
-
-On non-zero exit, log `Step 7a — larch:diagrams upsert failed` to `Tool Failures` and continue.
-
-### Rebase onto latest main (before version bump)
-
-Safety net before version bump. `--skip-if-pushed` short-circuits this when the branch is already on origin; Step 8b (a separate inline rebase that does NOT use `--skip-if-pushed`) ensures already-pushed branches still rebase onto fresh main right before PR creation, with Step 12 remaining the last-chance enforcement at merge time.
+`skills/implement/scripts/step-7a.sh` consolidates the small/non-runtime classifier, `generate-code-flow-diagram.sh`, summary composition, `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-bump log flush into one foreground Bash call. Do NOT write a `diagrams` larch-log batch.
+The helper invokes `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary` internally for the `larch:diagrams` comment. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
@@ -1471,16 +1397,16 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-export LARCH_QUIET_BREADCRUMBS=1
 # Foreground required: see BASH_AUTHORING.md §4
-BASE_ARGS=()
-if [ "${forked_target:-false}" = "true" ]; then
-  BASE_ARGS=(--base-remote upstream --base-ref main)
-fi
-"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}"
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" \
+  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+  --issue-number "${ISSUE_NUMBER:-}" \
+  --run-id "$RUN_ID" \
+  --no-logs-commit "${no_logs_commit:-false}" \
+  --forked-target "${forked_target:-false}"
 ```
 
-Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
+Parse the combined stdout for `REBASE_OUTCOME` first, then read the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `step-7a.sh` returns; `step-7a.sh` preserves the probe exit code and only runs the pre-bump flush after `REBASE_OUTCOME=ok|skipped` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
 
 > **Continue to Step 8 IMMEDIATELY.** Step 7a diagrams are not the end of the run — version bump, PR creation, CI monitoring, and merge still must run.
 
@@ -1488,75 +1414,7 @@ Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Reb
 
 Before the version bump, write the current token/timing reports to the committed log so the flush commit rides inside the PR when the branch is pushed at Step 9b. `larch-log.sh commit` does not push; the branch push carries the commit.
 
-```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 8 — version bump" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 8 — version bump" || true
-# token-mark Step 8 — version bump
-# timing-mark Step 8 — version bump
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh" \
-  --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-  --run-id "$RUN_ID" \
-  2>"$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues.log" || \
-"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
-  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --site step-7a \
-  --tool flush-execution-issues.sh \
-  --exit-code "$?" \
-  --category "Tool Failures" \
-  --output-file "$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues.log" \
-  --redact || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch timing-report --input-file "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
-[ -f "$IMPLEMENT_TMPDIR/parent-issue.md" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch parent-issue --input-file "$IMPLEMENT_TMPDIR/parent-issue.md" || true
-[ -f "$IMPLEMENT_TMPDIR/pre-review-head.txt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch pre-review-head --input-file "$IMPLEMENT_TMPDIR/pre-review-head.txt" || true
-[ -f "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch pre-review-untracked --input-file "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" || true
-[ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-transcript --input-file "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt" || true
-[ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.meta" ] && bash -lc 'set -euo pipefail; source "$1/scripts/lib-redact.sh"; larch_redact_strip_meta_cmd_json "$2/codex-impl-transcript.txt.meta" "$2/codex-impl-transcript.txt.meta.trimmed"' _ "$CLAUDE_PLUGIN_ROOT" "$IMPLEMENT_TMPDIR" && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-transcript-meta --input-file "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.meta.trimmed" || true
-[ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-transcript-prompt --input-file "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt" || true
-[ -f "$IMPLEMENT_TMPDIR/codex-commit-message.txt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-commit-message --input-file "$IMPLEMENT_TMPDIR/codex-commit-message.txt" || true
-[ -f "$IMPLEMENT_TMPDIR/manifest-raw.json" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-manifest-raw --input-file "$IMPLEMENT_TMPDIR/manifest-raw.json" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/capture-session-transcript.sh" \
-  --source-file "$LARCH_CLAUDE_SOURCE_FILE" \
-  --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-  --skill implement \
-  --run-id "$RUN_ID" \
-  --no-logs-commit "${no_logs_commit:-false}" \
-  --defer-commit "true" \
-  --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md"
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh" \
-  --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-  --run-id "$RUN_ID" \
-  --step-label 7a-post-transcript \
-  --source-label "execution-issues.md post-transcript refresh" \
-  2>"$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues-post-transcript.log" || \
-"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
-  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --site step-7a \
-  --tool flush-execution-issues.sh \
-  --exit-code "$?" \
-  --category "Tool Failures" \
-  --output-file "$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues-post-transcript.log" \
-  --redact || true
-if [ "${no_logs_commit:-false}" != "true" ]; then
-  "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" || true
-fi
-```
-
-Best-effort: failures are non-fatal, but `flush-execution-issues.sh` and `larch-log.sh commit` failures in this Step 7a checkpoint must be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures`. The token/timing render and `larch-log.sh write` calls in the illustrative snippet remain best-effort and may use bare `|| true`; later refreshes and Step 18 provide the remaining safety-net refresh path. `capture-session-transcript.sh` is different: it always exits 0, appends its own `SESSION_TRANSCRIPT_STATUS=...` warning to `execution-issues.md`, and emits the machine status on stdout for the prompt-side Step 7a caller. Refresh-mode callers such as `scripts/refresh-run-logs.sh` intentionally redirect that stdout away, so their contract is the execution-issues append plus the post-transcript `flush-execution-issues.sh` refresh rather than an observable status line. Do **not** call `write-final-report.sh` in this Step 7a pre-bump checkpoint: `ship-pr-state.sh` does not exist yet, so `PR_URL` is still unavailable. In Step 8+, `ship-pr.sh` first writes `final-summary.md` with placeholder PR fields before `create-pr.sh`, folds that file into the pre-PR larch-log commit, and lets `create-pr.sh`'s push carry it onto the remote PR tip. That pre-PR pass also seeds the initial tracking-issue `larch:final-summary` upsert with placeholder PR fields. Only after PR creation does `ship-pr.sh` persist `PR_NUMBER`/`PR_URL` and re-run `write-final-report.sh --comment-only` to refresh the tracking-issue `larch:final-summary` comment with the live PR URL via API only — no second commit, no second push. Later refreshes and Step 18 can re-render it as state evolves.
+Implemented inside `step-7a.sh` — see `skills/implement/scripts/step-7a.md`. The KV tail's `LOG_FLUSH_STATUS` indicates the aggregate outcome. The orchestrator does not parse this KV — it relies on the in-script `append-tool-failure.sh` callbacks for Tool Failures logging. Do **not** call `write-final-report.sh` in this Step 7a pre-bump checkpoint: `ship-pr-state.sh` does not exist yet, so `PR_URL` is still unavailable. In Step 8+, `ship-pr.sh` first writes `final-summary.md` with placeholder PR fields before `create-pr.sh`, folds that file into the pre-PR larch-log commit, and lets `create-pr.sh`'s push carry it onto the remote PR tip. That pre-PR pass also seeds the initial tracking-issue `larch:final-summary` upsert with placeholder PR fields. Only after PR creation does `ship-pr.sh` persist `PR_NUMBER`/`PR_URL` and re-run `write-final-report.sh --comment-only` to refresh the tracking-issue `larch:final-summary` comment with the live PR URL via API only — no second commit, no second push. Later refreshes and Step 18 can re-render it as state evolves.
 
 In `scripts/refresh-run-logs.sh`, on each retry (CI failure, merge conflict, rebase in Steps 10/12), Triggers A-C in `ship-pr.sh` re-render and commit the `token-report`, `timing-report`, and `session-transcript` batches before each push, refresh `larch:final-summary` only after `PR_URL` exists, and flush any post-Step-7a `execution-issues.md` tail once the Step 7a checkpoint has run, so the merged PR carries up-to-date token/timing, session-transcript, final-summary, and execution-issues data.
 

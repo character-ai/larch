@@ -1,0 +1,2 @@
+Aggregating reviewer findings: merging duplicates, separating distinct risks, and preserving `[OUT_OF_SCOPE]` tags and verbatim revision bullets.
+

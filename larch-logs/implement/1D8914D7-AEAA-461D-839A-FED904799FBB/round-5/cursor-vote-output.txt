@@ -1,0 +1,41 @@
+FINDING_1: EXONERATE -- Latent extra Step 7a timing/token marks on classifier skip paths are low-impact reporting noise.
+FINDING_2: EXONERATE -- Allowlist currently covers all sanitizer REASON_TOKEN values; shared-token refactor is disproportionate to present risk.
+FINDING_3: EXONERATE -- Unconditional skipped-arm flag is redundant today because the generator only emits STATUS=skipped for sanitizer reasons.
+FINDING_4: EXONERATE -- Orchestrator size is a nit; optional helper extraction is not required for this change.
+FINDING_5: EXONERATE -- Duplicate set +e after rc capture is harmless readability noise only.
+FINDING_6: YES
+FINDING_7: NO -- rebase-checkpoint-probe.sh does not call larch_quiet_init; emit_kv goes to captured stdout and is re-emitted correctly.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- Harness gap is real but overlaps quiet-rebase-contract and the production printf regression in FINDING_36.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- Describes existing safe argv/shell patterns, not a defect.
+FINDING_14: NO -- Describes existing validation, not a defect.
+FINDING_15: NO -- Describes existing redaction, not a defect.
+FINDING_16: NO -- Describes an intentional security improvement, not a defect.
+FINDING_17: NO -- Describes sound KV relay design, not a defect.
+FINDING_18: NO -- Affirms absence of secrets in the diff, not a defect.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- Skipping pre-bump flush on non-zero rebase exit matches the updated macro contract and documented step-7a behavior.
+FINDING_22: EXONERATE -- Pre-case is_sanitizer_skip_reason already gates COMMENT_UPSERT_SKIP for any gen status when SKIP_REASON matches.
+FINDING_23: EXONERATE -- capture-session-transcript rc check is dead but harmless; same class as FINDING_6.
+FINDING_24: EXONERATE -- Missing ARCHITECTURE_DIAGRAM_FILE harness case is a minor offline gap, not a production blocker.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- Same latent unconditional skipped-branch concern as FINDING_3; pre-case sanitizer gate suffices today.
+FINDING_28: YES
+FINDING_29: EXONERATE -- Accurate latent note, not an actionable defect while the generator contract is unchanged.
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- Missing other-non-zero row in step-7a.md is minor doc polish; behavior is already forwarded in code.
+FINDING_33: YES
+FINDING_34: NO -- Pre-existing SKILL anti-halt vs macro tension, not introduced by this consolidation.
+FINDING_35: NO -- Positive consistency observation, not a problem worth raising.
+FINDING_36: YES
+FINDING_37: EXONERATE -- Current step-7a.md documents re-emission; stdout capture works and is not an active production bug.
+FINDING_38: EXONERATE -- Transcript relay via LARCH_QUIET_DISABLE plus re-emit is intentional and functionally sound.
+FINDING_39: EXONERATE -- Global LARCH_QUIET_DISABLE in harness is a known tradeoff, not a correctness failure by itself.
+FINDING_40: YES
+FINDING_41: EXONERATE -- Plan-vs-SKILL exit-code drift is already resolved in shipped SKILL.md and step-7a.md.
