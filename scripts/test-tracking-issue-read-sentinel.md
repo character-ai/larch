@@ -16,7 +16,7 @@ Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.s
    - Leading UTF-8 BOM stripped from the sentinel file's content before parsing.
    - Trailing `\r` stripped from extracted values (CRLF tolerance).
    - Other trailing whitespace NOT stripped.
-6. **Malformed-value no-echo**: invalid `ISSUE_NUMBER=` and `RUN_ID=` errors use the fixed token `'malformed-value-omitted'` and never echo the malformed value verbatim in stdout.
+6. **Malformed-value no-echo**: invalid `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` errors use the fixed token `'malformed-value-omitted'` and never echo the malformed value verbatim in stdout.
 7. **Stdout shape on success**: exactly three lines — `ISSUE_NUMBER=<val>\n`, `RUN_ID=<val>\n`, `ADOPTED=<val>\n` — in that order.
 8. **Stdout shape on failure**: exactly two lines — `FAILED=true\n` followed by `ERROR=<single-line message>\n` — and exit 1.
 9. **Newline-injection scope**: the harness intentionally does not pin embedded-newline rejection for sentinel values. `extract_sentinel_key` is line-oriented (`grep -m1 ... | sed ...`), so a literal newline in the file becomes a separate physical line and is not exposed to the post-extraction case-pattern validator. Same-line invalid bytes (space, slash, tab, non-trailing CR) are pinned.
@@ -29,10 +29,10 @@ Regression harness for the `--sentinel` branch of `scripts/tracking-issue-read.s
 | b | `ADOPTED=false` | exit 0, exact three-line stdout |
 | c | empty file | exit 0, all three keys emitted empty |
 | d | `ADOPTED=` | exit 0, same as empty file |
-| e | `ADOPTED=yes` | exit 1, exact invalid-ADOPTED envelope |
-| f | `ADOPTED=TRUE` | exit 1, envelope names `'TRUE'` |
-| g | `ADOPTED=1` | exit 1, envelope names `'1'` |
-| h | `ADOPTED=true` plus trailing space | exit 1, envelope names trailing-space value |
+| e | `ADOPTED=yes` | exit 1, exact two-line stdout: `FAILED=true` + fixed-token `ERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'`; no verbatim echo of the rejected value (both quoted and raw forms checked) |
+| f | `ADOPTED=TRUE` | exit 1, exact two-line stdout: `FAILED=true` + fixed-token `ERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'`; no verbatim echo of the rejected value (both quoted and raw forms checked) |
+| g | `ADOPTED=1` | exit 1, exact two-line stdout: `FAILED=true` + fixed-token `ERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'`; no verbatim echo of the rejected value (both quoted and raw forms checked) |
+| h | `ADOPTED=true` plus trailing space | exit 1, exact two-line stdout: `FAILED=true` + fixed-token `ERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'`; no verbatim echo of the rejected value (both quoted and raw forms checked) |
 | i | sentinel file missing | exit 1, exact not-found envelope |
 | j | `ISSUE_NUMBER=123`, `ADOPTED=true`, no `RUN_ID` | exit 0, `RUN_ID=` |
 | j2 | `ISSUE_NUMBER=456`, `RUN_ID=abc123`, `ADOPTED=false` | exit 0, exact three-line stdout |

@@ -1,0 +1,25 @@
+Reading the ballot and related context to verify findings before voting.
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Valid gap between (e)-(h) and (p)-(w) assertions, but optional follow-up beyond this PR's ADOPTED scope.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Four duplicate envelope strings are real; a shared variable is nice-to-have, not required here.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Table rows (e)-(h) duplicate prose; invariant #6 already states the contract.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Pre-existing case vs if mix; too minor for a dedicated issue.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ISSUE_NUMBER=0 is real lax behavior, already documented for a future hardening pass.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Stale CHANGELOG text is real; optional doc hygiene, not worth blocking or filing.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- Commit title only; no defect stated.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- Log-flush commit reference, not a reviewable defect.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- Positive plan-verification summary, not a finding to fix.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of FINDING_5; documented pre-existing lax peer behavior.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate stale CHANGELOG concern; optional doc follow-up only.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of FINDING_1; valid test-depth gap but out of this PR's scope.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Missing --issue 0/01 harness cases are real but plan was comment-only and behavior unchanged.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate CHANGELOG staleness; not worth a separate issue.
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- Commit title only; no defect stated.
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- Security approval summary, not a defect.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of FINDING_5; intentional deferral already documented.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Line-oriented parser newline gap is real, pre-existing, and explicitly scoped out in invariant 9.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- emit_kv newline handling is a broad pre-existing family concern, not introduced here.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of FINDING_1; same optional (p)-(w) hardening rationale.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Full $SENTINEL path in ERROR is a real latent risk but pre-existing and beyond this redaction PR.
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Unpinned embedded-newline behavior is documented intentional harness scope, not a regression.
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate ISSUE_NUMBER=0 concern; already covered by peer comment.
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate stale CHANGELOG entry; optional hygiene only.

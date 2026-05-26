@@ -43,7 +43,8 @@
 #                                                      other non-empty value is
 #                                                      rejected with FAILED=true
 #                                                      / ERROR=invalid ADOPTED
-#                                                      value in sentinel: '<v>'
+#                                                      value in sentinel: ADOPTED:
+#                                                      'malformed-value-omitted'
 #                                                      and exit 1.)
 #   On failure: FAILED=true  ERROR=<single-line message>
 #
@@ -251,7 +252,8 @@ fi
 #     Anything else → FAILED=true ERROR=... exit 1. Empty/absent means
 #     "sentinel unusable" and consumers MUST fall back to their
 #     fresh-creation path — NEVER treat empty as equivalent to "false".
-#   - ISSUE_NUMBER and RUN_ID are validated only when non-empty. Invalid
+#   - ISSUE_NUMBER, RUN_ID, and ADOPTED are validated when non-empty (ADOPTED
+#     additionally enforces strict equality against "true" / "false"). Invalid
 #     values use fixed-token ERROR messages so malformed bytes are not echoed
 #     into the KEY=VALUE stdout stream.
 if $HAVE_SENTINEL; then
@@ -290,7 +292,7 @@ if $HAVE_SENTINEL; then
     esac
     if [[ -n "$ADOPTED_VAL" && "$ADOPTED_VAL" != "true" && "$ADOPTED_VAL" != "false" ]]; then
         emit_kv FAILED true
-        emit_kv ERROR "invalid ADOPTED value in sentinel: '$ADOPTED_VAL' (expected 'true' or 'false' or absent)"
+        emit_kv ERROR "invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'"
         exit 1
     fi
     emit_kv ISSUE_NUMBER "$ISSUE_NUMBER_VAL"
