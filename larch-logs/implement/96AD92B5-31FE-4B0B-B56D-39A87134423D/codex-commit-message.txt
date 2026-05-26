@@ -1,0 +1,5 @@
+Add paired PID cleanup for breadcrumb monitor timeouts (#2848)
+
+Introduce an opt-in --paired-pid-file monitor argument plus LARCH_PAIRED_PID_FILE writer support for top-level Family B scripts. On monitor timeout, validate the PID file, send TERM, wait briefly, then send KILL while preserving exit 4 on all kill failures. Update top-level callsites, nested-child env unsets, foreground-marker lint enforcement, tests, and the security/docs contract.
+
+Audit design-log-publish.sh against larch-log.sh/lib-larch-log.sh and leave the already-shared breadcrumb publish helper unchanged.

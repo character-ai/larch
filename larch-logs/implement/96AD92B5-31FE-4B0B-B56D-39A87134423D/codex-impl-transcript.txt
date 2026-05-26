@@ -1,0 +1,18 @@
+Implemented the paired breadcrumb monitor cleanup for #2848.
+
+Key points:
+- Added `--paired-pid-file` support to `scripts/breadcrumb-monitor.sh`, with bounded PID parsing, TERM then KILL timeout cleanup, guarded `kill` calls, and test-only timeout override.
+- Added `larch_quiet_write_paired_pid_file` in `scripts/lib-quiet.sh`.
+- Wired only top-level Family B writers and added defensive `unset LARCH_PAIRED_PID_FILE` before nested children.
+- Updated skill fences, linter enforcement, sibling docs, `BASH_AUTHORING.md`, and `SECURITY.md`.
+- Audited `design-log-publish.sh` vs `larch-log.sh` / `lib-larch-log.sh`; breadcrumb publish logic is already consolidated in `larch_log_publish_breadcrumbs_shared`, so no code edit was needed there.
+- Wrote the required manifest at `<TMPDIR>/manifest.json`; no QA pending file was needed.
+
+Verification passed:
+- `bash scripts/test-lib-quiet.sh`
+- `bash scripts/test-lint-foreground-markers.sh`
+- `bash scripts/test-breadcrumb-monitor.sh`
+- `make lint-bash32`
+- `make lint-foreground-markers`
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`
