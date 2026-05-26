@@ -419,8 +419,10 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 assert_contains "$out" "ACCEPTED_FINDINGS_FILE=$TMP/fix/accepted-findings.md"
 
-out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs")
-assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
+fix_breadcrumbs_out="$TMP/fix-breadcrumbs.out"
+LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs" >"$fix_breadcrumbs_out"
+grep -Fq 'REVIEW_CORE_STATUS=fix-required' "$fix_breadcrumbs_out" || { echo "FAIL: fix-breadcrumbs status" >&2; cat "$fix_breadcrumbs_out" >&2; exit 1; }
+grep -Fq '→ review: consolidating findings' "$fix_breadcrumbs_out" || { echo "FAIL: fix-breadcrumbs breadcrumb" >&2; cat "$fix_breadcrumbs_out" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'

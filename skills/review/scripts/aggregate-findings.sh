@@ -684,7 +684,7 @@ dispatch_args=(
 )
 [[ -n "$DIFF_FILE" ]] && dispatch_args+=(--diff-file "$DIFF_FILE")
 [[ -n "$PLAN_FILE" ]] && dispatch_args+=(--plan-file "$PLAN_FILE")
-dispatch_args+=(--require-result-pattern '^(### FINDING_[0-9]+:|LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)')
+dispatch_args+=(--require-result-pattern '^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)')
 
 set +e
 "$DISPATCH_SH" "${dispatch_args[@]}" > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
