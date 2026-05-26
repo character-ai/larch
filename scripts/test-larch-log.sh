@@ -201,6 +201,11 @@ PEM_END='-----END RSA PRIVATE ''KEY-----'
     printf '%s\n' 'MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu'
     printf '%s\n' "$PEM_END"
 } > "$_staging/breadcrumbs/foo.ndjson"
+printf 'quiet sidecar\n' > "$_staging/breadcrumbs/foo.quiet"
+printf 'EXIT_CODE=0\n' > "$_staging/breadcrumbs/foo.done"
+printf 'EXIT_CODE=0\n' > "$_staging/breadcrumbs/foo.status"
+printf 'surfaced\n' > "$_staging/breadcrumbs/foo.surfaced"
+printf '12\n' > "$_staging/breadcrumbs/foo.bc-offset"
 _mf_staging="$_staging/larch-logs/implement/$_rid/manifest.json"
 if command -v jq >/dev/null 2>&1; then
     _commit_ts_before="$(jq -r '.updated_at' "$_mf_staging")"
@@ -218,6 +223,13 @@ if [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.quiet" ] && [ ! -e 
     pass "commit publishes only ndjson breadcrumbs"
 else
     fail "commit must not publish non-ndjson breadcrumb sidecars"
+fi
+if [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.status" ] \
+    && [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.surfaced" ] \
+    && [ ! -e "$_repo/larch-logs/implement/$_rid/breadcrumbs/foo.bc-offset" ]; then
+    pass "commit does not publish monitor breadcrumb sidecars"
+else
+    fail "commit must not publish monitor breadcrumb sidecars"
 fi
 if grep -q '<REDACTED-PRIVATE-KEY>' "$_breadcrumbs" 2>/dev/null; then pass "commit redacts breadcrumb PEM"; else fail "commit redacts breadcrumb PEM"; fi
 if grep -q 'MIIBOgIBAAJB' "$_breadcrumbs" 2>/dev/null; then fail "commit leaked raw breadcrumb PEM"; else pass "commit omits raw breadcrumb PEM"; fi
@@ -310,6 +322,41 @@ if [ ! -e "$_bc_redact_repo/larch-logs/implement/$_bc_redact_run/breadcrumbs" ];
     pass "redactor failure leaves no published breadcrumbs directory"
 else
     fail "redactor failure must not leave published breadcrumbs directory"
+fi
+
+echo "=== commit fails closed on tmpdir breadcrumb redactor failure ==="
+_bc_tmpdir_repo="$TMP/breadcrumb-tmpdir-redact-repo"
+_bc_tmpdir_staging="$TMP/breadcrumb-tmpdir-redact-staging"
+_bc_tmpdir_run="breadcrumbtmpdirredact123"
+mkdir -p "$_bc_tmpdir_staging/breadcrumbs"
+git init "$_bc_tmpdir_repo" >/dev/null 2>&1
+git -C "$_bc_tmpdir_repo" config user.email "ci@test"
+git -C "$_bc_tmpdir_repo" config user.name "Test CI"
+touch "$_bc_tmpdir_repo/.gitkeep"
+git -C "$_bc_tmpdir_repo" add .
+git -C "$_bc_tmpdir_repo" commit -q -m "init"
+git -C "$_bc_tmpdir_repo" checkout -q -b feature-breadcrumb-tmpdir-redact
+(cd "$_bc_tmpdir_repo" && "$LARCH_LOG" init --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" --issue 42) >/dev/null
+(cd "$_bc_tmpdir_repo" && "$LARCH_LOG" write --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=/tmp/tmpdir-redact-fixture\n' > "$_bc_tmpdir_staging/breadcrumbs/fail.ndjson"
+_orig_tmpdir_redact="$SCRIPT_DIR/redact-tmpdir-paths.sh"
+_saved_tmpdir_redact="$TMP/redact-tmpdir-paths.original.sh"
+cp "$_orig_tmpdir_redact" "$_saved_tmpdir_redact"
+cat >"$TMP/redact-tmpdir-paths.fail.sh" <<'EOF'
+#!/usr/bin/env bash
+cat >/dev/null
+exit 1
+EOF
+chmod +x "$TMP/redact-tmpdir-paths.fail.sh"
+cp "$TMP/redact-tmpdir-paths.fail.sh" "$_orig_tmpdir_redact"
+_bc_tmpdir_rc=0
+(cd "$_bc_tmpdir_repo" && with_implement_tmpdir "$_bc_tmpdir_staging" "$LARCH_LOG" commit --log-root "$_bc_tmpdir_staging/larch-logs" --skill implement --run-id "$_bc_tmpdir_run" >/dev/null 2>&1) || _bc_tmpdir_rc=$?
+cp "$_saved_tmpdir_redact" "$_orig_tmpdir_redact"
+if [ "$_bc_tmpdir_rc" -ne 0 ]; then pass "commit exits non-zero on tmpdir breadcrumb redactor failure"; else fail "commit should fail on tmpdir breadcrumb redactor failure"; fi
+if [ ! -e "$_bc_tmpdir_repo/larch-logs/implement/$_bc_tmpdir_run/breadcrumbs" ]; then
+    pass "tmpdir redactor failure leaves no published breadcrumbs directory"
+else
+    fail "tmpdir redactor failure must not leave published breadcrumbs directory"
 fi
 
 echo "=== breadcrumb redactor failure preserves previously committed breadcrumbs ==="

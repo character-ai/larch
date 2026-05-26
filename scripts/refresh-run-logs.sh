@@ -135,9 +135,14 @@ fi
 commit_out=""
 commit_rc=0
 commit_out=$("$SCRIPT_DIR/larch-log.sh" commit \
-    --log-root "$log_root" --skill implement --run-id "$run_id" 2>/dev/null) || commit_rc=$?
+    --log-root "$log_root" --skill implement --run-id "$run_id" 2>&1) || commit_rc=$?
 if [ "$commit_rc" -ne 0 ]; then
-    emit "REFRESH_COMMITTED=false REASON=commit-failed"
+    commit_err="$(printf '%s' "$commit_out" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//')"
+    if [ -n "$commit_err" ]; then
+        emit "REFRESH_COMMITTED=false REASON=commit-failed ERROR=$commit_err"
+    else
+        emit "REFRESH_COMMITTED=false REASON=commit-failed"
+    fi
 elif printf '%s\n' "$commit_out" | grep -q '^UNCHANGED=true'; then
     emit "REFRESH_COMMITTED=false REASON=no-changes"
 else

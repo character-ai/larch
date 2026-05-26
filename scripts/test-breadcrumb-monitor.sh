@@ -568,6 +568,31 @@ fi
 unset ec
 
 # ---------------------------------------------------------------------------
+# Test 18: non-breadcrumb lines are dropped and warned, never surfaced.
+# ---------------------------------------------------------------------------
+alloc_sentinels t18
+printf 'not-a-breadcrumb secret\n' >"$STREAM"
+printf 'EXIT_CODE=0\n' >"$STATUS"
+printf 'EXIT_CODE=0\n' >"$DONE"
+out=$("$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" 2>&1) || ec=$?
+ec=${ec:-0}
+if [ "$ec" -ne 0 ]; then
+    fail "test 18: monitor exit was $ec, expected 0"
+fi
+if ! printf '%s' "$out" | grep -q "WARN drop-non-breadcrumb-line"; then
+    fail "test 18: non-breadcrumb warning missing (out=$out)"
+fi
+if printf '%s' "$out" | grep -q "not-a-breadcrumb secret"; then
+    fail "test 18: non-breadcrumb line leaked"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
 if [ "$FAIL" -gt 0 ]; then
     echo "TESTS FAILED: $FAIL" >&2
     exit 1

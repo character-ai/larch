@@ -263,11 +263,10 @@ assert_stdout_contains "$root" "ACTION=merge" "breadcrumb stream: ACTION=merge"
 assert_stream_contains "$stream" "c=wait-ci" "breadcrumb stream: wait-ci category written"
 assert_stream_contains "$stream" "text=⏳ CI: waiting" "breadcrumb stream: waiting message written"
 assert_stream_contains "$stream" "text=✓ CI passed" "breadcrumb stream: success message written"
-stderr_no_newlines=$(tr -d '\n' <"$root/.stderr")
-if [[ -z "$stderr_no_newlines" ]]; then
+if [[ ! -s "$root/.stderr" ]]; then
     ok "breadcrumb stream: stderr has no progress output"
 else
-    fail "breadcrumb stream: expected quiet stderr, got [$stderr_no_newlines]"
+    fail "breadcrumb stream: expected quiet stderr, got [$(cat "$root/.stderr")]"
 fi
 
 # --- Case 6: breadcrumb stream captures dot progress across pending polls ---

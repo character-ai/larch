@@ -68,10 +68,12 @@ larch-logs/
 `breadcrumbs/` is a commit-only directory artifact, not a larch-log batch. Live
 streams remain under the session tmpdir (`$IMPLEMENT_TMPDIR/breadcrumbs/`,
 `$DESIGN_TMPDIR/breadcrumbs/`, `$REVIEW_TMPDIR/breadcrumbs/`, or
-`$RESEARCH_TMPDIR/breadcrumbs/`). Before commit, every regular stream file is
-staged through `redact-tmpdir-paths.sh | redact-secrets.sh --streaming`;
-symlink entries or redaction failures fail closed and leave no committed
-`breadcrumbs/` directory.
+`$RESEARCH_TMPDIR/breadcrumbs/`). Before commit, only regular `*.ndjson`
+stream files are staged through
+`redact-tmpdir-paths.sh | redact-secrets.sh --streaming`; sibling monitor
+sidecars such as `.quiet`, `.done`, `.status`, `.surfaced`, and `.bc-offset`
+remain session-local. Symlink entries or redaction failures fail closed and
+leave no committed `breadcrumbs/` directory.
 
 `round-<N>/` directories are written by `larch-log.sh write-round` during
 `/implement` code review. They preserve the per-round reviewer and voter

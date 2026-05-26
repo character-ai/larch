@@ -409,6 +409,10 @@ larch_log_publish_breadcrumbs_shared() {
         fi
         base="$(basename "$f")"
         case "$base" in
+            *.ndjson) ;;
+            *) continue ;;
+        esac
+        case "$base" in
             */*|.*|*..*)
                 rm -rf "$staging_parent"
                 "$on_error" "invalid breadcrumbs basename: $base"

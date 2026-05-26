@@ -124,6 +124,10 @@ larch_bm_emit_line() {
             }')
             larch_quiet_bc_valid_category "$_cval" || return 0
             ;;
+        *)
+            larch_err "WARN drop-non-breadcrumb-line"
+            return 0
+            ;;
     esac
     local out
     if ! out=$(printf '%s\n' "$line" | "$SCRIPT_DIR/lib-redact-streaming.sh" --state-file="$REDACT_STATE"); then

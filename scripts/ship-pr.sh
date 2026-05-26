@@ -2544,7 +2544,7 @@ run_rebase_rebump() {
                     exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
                 fi
                 state_set_many RESUME_PHASE ship-pr-rrr-phase14 CALLER_KIND ship_pr_pre_push
-                emit_breadcrumb --category=stall "⚠ ship-pr: recovery waterfall exhausted; legacy Phase 1–4 handoff (stall)"
+                emit_breadcrumb --category=warn "⚠ ship-pr: recovery waterfall exhausted; legacy Phase 1–4 handoff (stall)"
                 emit_breadcrumb --category=escalate "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
                 emit_kv CONFLICT_FILES "$vendor_conflict_csv"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"

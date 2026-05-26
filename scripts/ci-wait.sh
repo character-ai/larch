@@ -246,7 +246,9 @@ while true; do
 
     # 3. If not wait, stop and return
     if [[ "$ACTION" != "wait" ]]; then
-        larch_errf "\n"
+        if [[ -z "${LARCH_BREADCRUMB_STREAM:-}" ]]; then
+            larch_errf "\n"
+        fi
         if [[ "$ACTION" == "merge" ]]; then
             emit_breadcrumb_stderr --category=wait-ci "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks"
         elif [[ "$ACTION" == "already_merged" ]]; then
