@@ -1,0 +1,32 @@
+Reviewing the branch diff and commits with an edge-case and failure-recovery lens. Gathering the diff, commit history, and key changed files.
+Reading core implementation files and targeted diff sections.
+Reviewing branch commits `03920fdd` (feature), `d3927bd7` / `5b32f4d2` (round-1 fixes), plus unrelated `#2878` and larch-logs. Core edge-case surface: `scripts/upsert-diagrams-comment.sh`, `/design` 5c.5, `/implement` `step-7a.sh`.
+
+### In-Scope Findings
+
+1. **Important** — **architecture** `scripts/upsert-diagrams-comment.sh:215` — Stable-marker discovery uses exact first-line equality (`$2 == marker`) with no BOM or trailing-`\r` normalization, while `scripts/tracking-issue-read.sh:423-425` already strips a UTF-8 BOM before marker matching. If GitHub returns a comment whose first line is `<!-- larch:diagrams v1 -->\r` or BOM-prefixed, the helper treats the comment as missing, creates a second stable-marker comment, and splits Architecture/Code Flow across two comments. **Suggested fix:** Normalize list-tab first lines the same way as `tracking-issue-read.sh` (strip BOM and `${line%$'\r'}`) before comparing to `MARKER`; add a harness case with CRLF/BOM first lines.
+
+2. **Latent** — **correctness** `scripts/upsert-diagrams-comment.sh:94-125` — The section splitter only tracks ```mermaid fences; any plain ``` block before the real `## Code Flow Diagram` / `## Architecture Diagram` boundary, or an unclosed ```mermaid fence, leaves `in_fence` wrong so a literal `## … Diagram` line inside prose/code can be treated as a section boundary and the next upsert can drop the other section silently. **Suggested fix:** Extend the fence state machine (or reject invalid diagrams at generation time) and add a regression where a non-mermaid fence or unclosed mermaid fence precedes the opposite section heading.
+
+3. **Latent** — **risk-integration** `skills/design/SKILL.md:974` — FINDING_8 `--clear-architecture` only updates the stable `<!-- larch:diagrams v1 -->` comment; legacy `<!-- larch:diagrams v1 runid=… -->` orphans are never matched, so re-running `/design` on a non-architectural plan after an old `/implement` run leaves a stale Architecture block on the legacy comment even though 5c.5 reports `ARCHITECTURE_SOURCE=cleared`. **Suggested fix:** Document this migration limitation prominently in Step 5c.5/3b operator text, or add an optional one-time legacy cleanup path (out of scope unless product wants it).
+
+4. **Nit** — **architecture** `scripts/upsert-diagrams-comment.sh:266-272` — When `--clear-architecture` runs but no stable comment exists, the helper exits `UPSERT_STATUS=no-op` while still emitting `ARCHITECTURE_SOURCE=cleared`, which implies GitHub state changed when nothing was updated (legacy orphans remain). **Suggested fix:** Emit `ARCHITECTURE_SOURCE=absent` (or a distinct `no-op`) when `comment_id` is empty after a clear request.
+
+### Out-of-Scope Observations
+
+1. **Latent** — **correctness** `scripts/tracking-issue-summary.sh:71` — The same exact first-line marker match (no CRLF/BOM normalization) exists in the pre-existing summary upsert path; the new stable-marker workflow amplifies the impact but the underlying pattern predates this branch. **Suggested fix:** Fix once in a shared helper used by both scripts.
+
+---
+
+**Commits reviewed:** `03920fdd`, `d3927bd7`, `5b32f4d2` (diagrams feature + round-1 hardening); unrelated `#2878` / larch-logs excluded from findings.
+
+**Acceptance alignment:** FINDING_3 (skip/fail preserves Code Flow), FINDING_1 (marker not in content-file), fence-in-mermaid labels, two-step fetch, and `test-design-structure.sh` 5c.5 pins look satisfied. Main residual risks are marker-line normalization (duplicate comments) and awk boundary parsing on malformed fences.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/upsert-diagrams-comment.sh:215	Stable-marker list matching is exact with no BOM/CRLF normalization unlike tracking-issue-read.sh.	A comment whose first line is BOM-prefixed or ends with \\r is not matched; a second stable larch:diagrams comment is created and Architecture/Code Flow split across comments.	Strip BOM and trailing \\r from listed first lines before marker compare; add harness cases.
+1	in_scope	latent	correctness	scripts/upsert-diagrams-comment.sh:94-125	Awk splitter only tracks mermaid fences; unclosed mermaid or plain code fences can mis-detect H2 section boundaries.	Next upsert can drop Architecture or Code Flow when a fence contains or precedes a literal ## … Diagram line.	Harden fence tracking or validate at generation; add unclosed/non-mermaid fence regression.
+1	in_scope	latent	risk-integration	skills/design/SKILL.md:974	--clear-architecture only updates the stable marker; legacy runid comments are untouched.	Non-architectural /design re-run after legacy /implement leaves stale Architecture on orphan runid comments while 5c.5 reports cleared.	Document migration limit in Step 5c.5/3b or add optional legacy cleanup.
+1	in_scope	nit	architecture	scripts/upsert-diagrams-comment.sh:266-272	clear-architecture with no stable comment returns ARCHITECTURE_SOURCE=cleared on UPSERT_STATUS=no-op.	Operators/logs imply GitHub architecture was removed when no stable comment was updated.	Use absent/no-op-specific ARCHITECTURE_SOURCE when comment_id is empty.
+1	out_of_scope	latent	correctness	scripts/tracking-issue-summary.sh:71	Pre-existing exact first-line marker match shares CRLF/BOM fragility.	Same duplicate-comment risk for all summary markers predates this branch.	Normalize in a shared list-and-match helper for both scripts.
+```

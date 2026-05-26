@@ -1,0 +1,20 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- double list scan is real but teaching tracking-issue-summary.sh to accept an existing comment id introduces interface complexity disproportionate to a nit
+FINDING_2: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- naming improvement is legitimate but purely cosmetic; function correctness unaffected
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stub isolation is intentional test design; the helper is covered end-to-end by test-upsert-diagrams-comment.sh
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- PR hygiene note; not a code defect worth filing as a standalone issue
+FINDING_6: NO CORRECTNESS=uncertain SEVERITY=nit QUALITY=no-fix UNCERTAIN=true -- no lint-mermaid-fences.sh changes are visible in the provided diff context; claim cannot be verified
+FINDING_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- extra API call on first non-architectural run is negligible overhead; the fix adds conditional logic for a no-consequence path
+FINDING_10: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- assertion assert_not_contains "upsert-diagrams-comment.sh" already exists at test-step-7a.sh:556
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- only trusted internal callers pass file paths; realpath-under-tmpdir enforcement adds disproportionate complexity for low-probability misuse
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SECURITY.md already instructs reviewers to treat diagrams like plan bodies; the joint-comment trust model note is an incremental documentation nit
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- legacy orphan handling is documented and by design; migration cleanup is explicitly out of scope for this PR
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- UPSERT_STATUS=no-op already communicates no GitHub mutation; combined no-op+cleared semantics are interpretable without additional source values
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_19: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the assert_not_contains "upsert-diagrams-comment.sh" assertion already exists at test-step-7a.sh:556
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- PR commit hygiene note; not a code defect worth filing as a standalone GitHub issue

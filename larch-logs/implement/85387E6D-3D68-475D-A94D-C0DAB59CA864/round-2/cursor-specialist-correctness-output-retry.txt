@@ -1,0 +1,33 @@
+Reviewing branch changes against the plan: reading the pre-computed diff, commit history, and key implementation files.
+## Review scope
+
+Branch commits (since `main`):
+
+- `03920fdd` — Implement shared diagrams upsert helper (#2840)
+- `d3927bd7` / `5b32f4d2` — Round-1 review fixes
+- Plus unrelated `#2878` and design run-log flush
+
+Reviewed the core path: [`scripts/upsert-diagrams-comment.sh`](scripts/upsert-diagrams-comment.sh), [`skills/implement/scripts/step-7a.sh`](skills/implement/scripts/step-7a.sh), [`skills/design/SKILL.md`](skills/design/SKILL.md) Step 3b/5c.5, [`scripts/ship-pr.sh`](scripts/ship-pr.sh), harnesses, and marker/doc sweep.
+
+Round-1 fixes correctly addressed the main FINDING_3 regression (`compose_summary_diagrams` now gates on `DIAGRAM_STATUS=ok`, clears stale `code-flow-diagram.md`, threads `REPO`, and redacts gh errors).
+
+### In-Scope Findings
+
+1. **Latent** `correctness` [`skills/implement/scripts/test-step-7a.sh:520-533`](skills/implement/scripts/test-step-7a.sh) — Plan acceptance requires a regression case where `STATUS=skipped`/`failed` skips upsert **and** a prior stable comment’s Code Flow section stays intact (FINDING_3). Runtime behavior is correct (`step-7a.sh` skips the helper when `code-flow-section.md` is absent, so no PATCH occurs), but `diagram-rejected` / `diagram-failure` only assert upsert omission and never seed `STEP7A_UPSERT_EXISTING_BODY_FILE` with prior Code Flow content. **Suggested fix:** Add a case pairing `STEP7A_GEN_MODE=rejected|failed` with an existing stable `larch:diagrams` body containing Code Flow, assert `upsert-diagrams-comment.sh` is not invoked, and (if using the body-capture stub) assert the capture file is untouched/empty.
+
+2. **Latent** `correctness` [`scripts/upsert-diagrams-comment.sh:103-124`](scripts/upsert-diagrams-comment.sh) — The fence state-machine only tracks ` ```mermaid ` openings; plain ` ``` ` blocks inside a section do not toggle `in_fence`. A line exactly matching `## Code Flow Diagram` or `## Architecture Diagram` inside a non-mermaid fence would be treated as a section boundary and the remainder of that section would be dropped on the next upsert. **Concrete scenario:** A manually edited comment adds a ` ```text ` example whose body contains a top-level `## Code Flow Diagram` line; the following `/implement` upsert preserves Architecture but silently truncates Code Flow. **Suggested fix:** Track generic fenced-code depth (any ` ``` ` opener toggles), or document/restrict section bodies to mermaid-only fences.
+
+### Out-of-Scope Observations
+
+1. **Latent** `correctness` [`skills/design/SKILL.md:974`](skills/design/SKILL.md) — Every non-architectural `/design` writes `architecture-diagram.skipped`, so Step 5c.5 always calls `--clear-architecture` even on a first run with no prior comment (harmless no-op after a list fetch, but adds an unnecessary gh round trip). Out of scope as pre-existing design choice aligned with FINDING_8.
+
+---
+
+**Summary:** Core merge/preserve/upsert logic, stable-marker rollout, call-site refactors, and round-1 FINDING_3 fix look sound. Remaining gaps are a missing harness case (behavior is correct) and a narrow parser edge case for non-mermaid fences.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/implement/scripts/test-step-7a.sh:520-533	Plan-required FINDING_3 regression case for skip/fail preserving prior Code Flow on the issue is not covered; tests only assert upsert is skipped locally.	A prior stable comment with Code Flow exists, generator returns skipped/failed, and no test asserts remote preservation via upsert omission with seeded existing body.	Add diagram-rejected/failed cases with STEP7A_UPSERT_EXISTING_BODY_FILE containing Code Flow; assert upsert-diagrams-comment.sh is not called and body capture stays unchanged.
+1	in_scope	latent	correctness	scripts/upsert-diagrams-comment.sh:103-124	Section parser fence tracking only recognizes mermaid fence openers, not generic code fences.	A comment section containing a plain ``` block with a top-level ## heading line causes extract_section to end capture early and drop trailing content on the next upsert.	Toggle in_fence on any ``` line, or restrict/document diagram sections as mermaid-only.
+1	out_of_scope	latent	correctness	skills/design/SKILL.md:974	Non-architectural Step 3b always writes architecture-diagram.skipped, forcing a --clear-architecture helper call even when no prior comment exists.	First non-architectural /design on a fresh issue still performs gh comment list fetch before no-op exit.	Optionally skip helper when sentinel exists but list fetch finds zero stable-marker comments (optimization only).
+```
