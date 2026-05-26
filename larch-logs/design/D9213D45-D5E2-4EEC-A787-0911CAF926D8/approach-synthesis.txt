@@ -1,0 +1,40 @@
+# Approach Synthesis
+
+**Sketch state**: 2 sketches launched. Cursor degenerated (preamble narrative only — known plan-mode failure pattern; logged to execution-issues.md). Codex produced a substantive, well-aligned sketch. With only one substantive sketch, there are no genuinely contested architectural decisions — both Codex and direct codebase analysis converge on the same approach.
+
+## Where the sketches agree (Codex + codebase analysis)
+
+- Fix is centered in `skills/review-and-fix/scripts/review-implement-step5-loop.sh`. The `starting-round-invalid` guard at lines 82-87 needs to coexist with — and be subordinated to — the cap-resume logic.
+- Order of operations at loop entry: compute `prior_deg` and `effective_round_cap` FIRST (before the previous-round artifact guard). Only after that should the artifact guard run.
+- Preserve the existing `round_num > effective_round_cap` contract for the documented "MAV at round 5 + restart at round 6 → mav-resume-past-cap" path. Do NOT broaden the comparison to `>=`.
+- Reclassify all `starting-round-invalid` exits to `STALL_TRACKING=false` (the reclassification breadth set in Round 1 Decision 4).
+- Diagnostic logging on file-existence failure must capture: `IMPLEMENT_TMPDIR`, `STARTING_ROUND`, `round_num`, `base_cap`, `prior_deg`, `effective_round_cap`, and the exact expected env path.
+- SKILL.md line 1214 stall-routing prose must be updated to remove `starting-round-invalid` from the `Tracking Issues` category. Lines 1263-1265 `mav-resume-past-cap` handling stays.
+- Test coverage in `skills/review-and-fix/scripts/test-review-and-fix.sh` for the loop body; `scripts/test-run-step5-review.sh` need only change if wrapper-side argv/path behavior is touched.
+
+## Where Codex's framing is load-bearing
+
+Codex's call-out — "make any cap-boundary MAV special case narrow and explicit rather than turning the loop into `>= cap`" — is important. Naively flipping `>` to `>=` in the cap check would break the documented round-5 MAV → restart-at-6 contract. The fix must:
+
+1. Keep the existing `round_num > effective_round_cap` check intact for the documented path.
+2. Move the check to fire BEFORE the artifact guard so a legitimate past-cap restart never trips the missing-file stall.
+3. Add a defensive retry / sync probe around the artifact-existence check (one retry after a brief `sync` invocation) to defeat Hypothesis A filesystem-timing races without changing semantics.
+4. When the artifact is still missing after the retry, emit diagnostic logging and fall through to `starting-round-invalid` — but with `STALL_TRACKING=false` per Decision 4. This handles the residual Hypothesis-B (path mismatch) case so the orchestrator can continue manually without a [STALLED] rename.
+
+## Contested decisions
+
+None. With Cursor's sketch degenerated and Codex aligned with Round 1 + the codebase, there is no genuine architectural disagreement to dialect. Writing `NO_CONTESTED_DECISIONS` so Step 2a.5 short-circuits.
+
+## Architectural decisions for Step 2b
+
+1. **Loop entry reordering**: in `run_implement_loop()`, move `prior_deg` and `effective_round_cap` computation OUT of the while-loop body (lines 107-115) so they are available for an early cap-resume check at the top of the function, BEFORE the artifact-existence guard at lines 82-87. The within-loop computation remains for subsequent rounds, but the same values are used for the entry-time check.
+
+2. **Defensive artifact check**: replace the bare `[[ ! -f "$IMPLEMENT_TMPDIR/round-$((STARTING_ROUND - 1))/review-and-fix.env" ]]` with a small helper that tries once, then on miss invokes `sync` (best-effort) and retries once. Limit to two attempts.
+
+3. **Diagnostic emission**: when the helper finds the file missing on both attempts, emit a single `larch_err` (or `emit_breadcrumb --category=warn`) line carrying the six diagnostic keys before emitting the envelope.
+
+4. **Envelope change**: `step5_emit_final_envelope stall true starting-round-invalid ...` becomes `step5_emit_final_envelope stall false starting-round-invalid ...` (STALL_TRACKING=false). All other envelope fields unchanged.
+
+5. **SKILL.md prose**: line 1214 moves `starting-round-invalid` from `Tracking Issues` to `Tool Failures` (or a new non-tracking bucket). Set `STALL_TRACKING=true` clause is amended to exclude `starting-round-invalid`. Lines 1263-1265 unchanged.
+
+6. **Tests**: extend `test-review-and-fix.sh` with cases that (a) simulate the missing-artifact race and assert STALL_TRACKING=false + diagnostic emission; (b) confirm the existing round-5 MAV → restart-at-6 → `mav-resume-past-cap` contract still fires. No changes needed to `test-run-step5-review.sh` (wrapper-side argv unchanged).
