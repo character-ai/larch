@@ -1,0 +1,157 @@
+# Implementation Plan — Context-file launcher surface (issue #2867)
+
+## Approach
+
+Expose a public, repeatable `--context-files <path>` argv flag on `scripts/launch-claude-review.sh` that forwards verbatim to `scripts/launch-claude-subprocess.sh`'s existing `--context-files` interface. The launcher does only what the subprocess cannot — early hard-error on missing/empty/unreadable operator-supplied paths via explicit arity validation (NOT Bash `${parameter:?...}` expansion, whose exit-1 status would violate the documented exit-2 contract), and canonical-path dedup across all five context-flag sources (implicit `--diff-file/--scope-files/--plan-file/--feature-file` plus the new explicit flag) — while the subprocess retains authority over canonicalization, symlink rejection, allow-root containment, the 1 MB per-file size cap, and the 20-file global cap. The asymmetric validation (hard-error for explicit, silent-skip for implicit) is intentional: implicit-flag callers (`launch-review.sh`, `dispatch-code-voters.sh`) legitimately pass empty strings when a phase has no plan/feature/scope, but explicit operator-typed `--context-files` should fail fast on typos.
+
+**Containment-test contract decision** (resolving review-finding theme B): the launcher's existing `--allow-root` propagation for context-file dirnames is the intentional contract — operator-supplied `--context-files` paths are AUTHORIZED via widened allow-roots, matching the existing implicit-flag behavior. The test harness verifies this propagation positively (explicit context succeeds via widened roots) and uses an orthogonal rejection vector (symlink path) to verify the subprocess-stderr-propagation contract. No symmetry break with the subprocess containment model: the subprocess remains authoritative for what counts as "inside" allowed roots; the launcher only widens the set.
+
+No changes to the subprocess. No new callers added.
+
+## Files to modify/create
+
+### UPDATED: `scripts/launch-claude-review.sh`
+
+Argv + plumbing change:
+
+- Add `EXPLICIT_CONTEXT_FILES=()` initialization near the existing scalars (around line 28, before the `while [[ $# -gt 0 ]]` parser).
+- Insert a new case-arm in the argv parser (between the existing `--feature-file` line 43 and `--timeout` line 44) using **explicit arity validation** so the contract-mandated exit 2 fires correctly:
+  ```bash
+  --context-files)
+      [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]] || {
+          larch_err "launch-claude-review.sh: --context-files requires a value"
+          exit 2
+      }
+      EXPLICIT_CONTEXT_FILES+=("$2")
+      shift 2
+      ;;
+  ```
+  Do NOT use `${2:?...}` parameter expansion — its exit-1 failure status violates the documented exit-2 contract on trailing/missing values (review finding theme A).
+- Update the `usage()` larch_err string (line 12) to include `[--context-files <file>...]` in the context-flags suffix.
+- Refactor `append_context_file()` (line 95) to accept a second positional `strict` argument and to dedup by canonical path:
+  - Signature: `append_context_file <path> <strict>` where `strict` is `0` (silent-skip on missing/empty/unreadable) or `1` (hard-error). Use `local strict="${2:-0}"` so single-argument call sites remain valid during the refactor window.
+  - Compute canonical path: `local canonical; canonical="$(cd "$(dirname "$path")" 2>/dev/null && printf '%s/%s' "$(pwd -P)" "$(basename "$path")")" || canonical=""`.
+  - When `strict=1`: if `path` is empty, `! -f "$path"`, `! -r "$path"` (NEW — readability check addresses review-finding theme D), or `canonical` empty → `larch_err "launch-claude-review.sh: --context-files path missing or unreadable: $path"; exit 2`. The fixed wording is required for the harness assertion.
+  - When `strict=0`: preserve the existing `[[ -n "$path" && -f "$path" ]] || return 0` silent-skip behavior (DO NOT add the `-r` check here — implicit callers may pass non-readable placeholders by design).
+  - Track a new `:`-separated string `seen_canonical_paths` (parallel to `seen_allow_roots`). After computing `canonical`, branch on `case ":$seen_canonical_paths:" in *":$canonical:"*) return 0 ;; ...` — return 0 silently if already seen; otherwise append to `ctx_args` as `--context-files "$path"` (operator-supplied form, NOT `$canonical`; the subprocess re-canonicalizes), append `$canonical` to `seen_canonical_paths`, and add the canonical dirname to `allow_root_args` via the existing `seen_allow_roots` dedup logic.
+- Update the four existing call sites (lines 105-108) to pass `0` as the second argument explicitly:
+  `append_context_file "$DIFF_FILE" 0`, `append_context_file "$SCOPE_FILES" 0`, `append_context_file "$PLAN_FILE" 0`, `append_context_file "$FEATURE_FILE" 0`.
+- Add a new loop after the four existing calls iterating `EXPLICIT_CONTEXT_FILES[@]` with `strict=1`:
+  ```bash
+  for ctx_path in ${EXPLICIT_CONTEXT_FILES[@]+"${EXPLICIT_CONTEXT_FILES[@]}"}; do
+      append_context_file "$ctx_path" 1
+  done
+  ```
+  The `${array[@]+"${array[@]}"}` expansion is required under `set -u` for empty arrays.
+- No changes to the subprocess invocation (lines 113-117); `ctx_args` and `allow_root_args` are already passed through.
+- Add a single one-line comment above the refactored `append_context_file()` body: `# strict=1: --context-files hard-errors on missing/empty/unreadable; strict=0: implicit flags silent-skip (callers may pass empty).` This is a load-bearing WHY comment.
+- Bash 3.2 compatibility: no associative arrays, no `mapfile`/`readarray`, no `${var,,}` parameter case conversion; only `case` matching and `+=` array append.
+
+### UPDATED: `scripts/launch-claude-review.md`
+
+Documentation additions:
+
+- After the existing "The launcher accepts the same review context flags as `launch-review.sh`..." paragraph, add a new paragraph documenting `--context-files`:
+  - Repeatable single-value flag (each occurrence appends one path).
+  - Operator-supplied paths hard-error with exit 2 on missing/empty/non-existent/unreadable (in contrast to the implicit context flags, which silent-skip).
+  - Role-orthogonal: works under both `--role reviewer` and `--role voter` (the `--agent-file` reviewer-only restriction is unaffected because `--context-files` does not interact with the specialist-prompt renderer).
+  - Deduplicates by canonical path against the four implicit flags and against repeated `--context-files` occurrences; the subprocess re-canonicalizes and is authoritative.
+  - The launcher AUTHORIZES each forwarded context file's parent directory via `--allow-root`, matching the existing behavior for implicit context flags. Operator-supplied paths outside the default PLUGIN_ROOT/SESSION_ROOT set are therefore admitted intentionally; the subprocess's symlink rejection, 1 MB per-file cap, and 20-file global cap remain authoritative for what those widened roots can contain.
+  - The combined context-file count (implicit + explicit, after dedup) is bounded by the subprocess's 20-file global cap; the launcher does NOT pre-check, so a 21st file is rejected by the subprocess with the existing tempfile-stderr capture surfacing the error to the caller.
+- Markdownlint MD038 hygiene: write `--context-files <path>` with no inner whitespace at code-span boundaries; put the "repeatable" qualifier in prose, not inside the span.
+
+### UPDATED: `scripts/test-launch-claude-review.sh`
+
+Add 6 new test cases at the existing end-of-file (before the final `echo "PASS: ..."` line on line 149). Each case follows the existing pattern: write a context file under `$TMPROOT`, invoke the launcher with `PATH="$STUB_BIN:$PATH"` and `--timeout 5`, capture stderr to a tempfile, and assert exit code + expected stderr substring.
+
+Before the new cases, extend the existing stub `claude` binary at `$STUB_BIN/claude` (line 12) to tee stdin to `$TMPROOT/claude-stdin.log`:
+```bash
+cat > "$STUB_BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+mkdir -p "$(dirname "${LARCH_TEST_CLAUDE_STDIN_LOG:-/dev/null}")"
+if [[ -n "${LARCH_TEST_CLAUDE_STDIN_LOG:-}" ]]; then
+  tee -a "$LARCH_TEST_CLAUDE_STDIN_LOG" >/dev/null
+else
+  cat >/dev/null
+fi
+printf 'claude review ok\n'
+STUB
+```
+Export `LARCH_TEST_CLAUDE_STDIN_LOG="$TMPROOT/claude-stdin.log"` once in the harness setup so the stub knows where to tee. This addresses review-finding theme C (dedup observability via rendered prompt content, not claude argv).
+
+The 6 new cases:
+
+1. **Two explicit `--context-files` paths, reviewer role**: write `$TMPROOT/ctx1.txt` and `$TMPROOT/ctx2.txt` with distinct content, invoke with `--prompt-file "$prompt" --mode description --role reviewer --context-files "$TMPROOT/ctx1.txt" --context-files "$TMPROOT/ctx2.txt"`. Assert exit 0 and stub output passthrough. Optionally assert both file contents appear in `$TMPROOT/claude-stdin.log` (the subprocess renders context into the prompt sent to claude on stdin).
+2. **Two explicit `--context-files` paths, voter role**: same as (1) but `--role voter`. Proves role-orthogonality.
+3. **Missing value (trailing `--context-files`)**: invoke with the final argv token `--context-files` (no value after). Assert exit 2 and stderr contains `launch-claude-review.sh: --context-files requires a value`. Also add a sub-case: `--context-files --timeout 5` (flag-like next token) MUST also exit 2 with the same message (the explicit `"$2" != --*` guard in the parser arm catches this; review-finding theme A).
+4. **Non-existent path**: invoke with `--context-files "$TMPROOT/does-not-exist.txt"`. Assert exit 2 and stderr contains `launch-claude-review.sh: --context-files path missing or unreadable`.
+5. **Dedup across implicit + explicit, observed via rendered prompt**: write `$TMPROOT/diff.txt`, then invoke with `--diff-file "$TMPROOT/diff.txt" --context-files "$TMPROOT/diff.txt"` (same path). After the launcher exits, grep `$TMPROOT/claude-stdin.log` for occurrences of the rendered context block for that file (e.g., grep `-c` on a stable marker the subprocess inserts, such as the file's path or a unique substring of its content). Assert exactly ONE rendered occurrence. This replaces the unworkable plan-v1 design of grepping claude argv (review-finding theme C).
+6. **Allow-root propagation positive test** (replaces the unworkable plan-v1 outside-roots rejection case; review-finding theme B): write a context file at a path the launcher can canonicalize but which is OUTSIDE `$TMPROOT` (e.g., a second mktemp dir `$EXTRA_ROOT="$(mktemp -d)"; trap-extend the cleanup`). Invoke with `--context-files "$EXTRA_ROOT/extra.txt"`. Assert exit 0 (the launcher's `--allow-root` propagation widens the subprocess's allowed-roots set to include `$EXTRA_ROOT`). The subprocess accepts the file, the stub responds, and stderr is silent on allow-root errors.
+7. **Subprocess-stderr propagation via symlink rejection** (replaces the unworkable outside-roots variant; review-finding theme B): create a symlink at `$TMPROOT/symlink-ctx.txt -> $prompt`. Invoke with `--context-files "$TMPROOT/symlink-ctx.txt"`. Assert exit 2 and stderr contains `invalid context file` (the subprocess's symlink-rejection error, propagated via the existing tempfile-stderr capture lines 129-134). This exercises the same propagation pathway the original case 6 was trying to test, using a vector that survives `--allow-root` propagation.
+8. **Unreadable file hard-errors** (review-finding theme D): write `$TMPROOT/unreadable.txt`, then `chmod 000 "$TMPROOT/unreadable.txt"`. Skip the case if `[[ $EUID -eq 0 ]]` (root bypasses permission bits). Invoke with `--context-files "$TMPROOT/unreadable.txt"`. Assert exit 2 and stderr contains `launch-claude-review.sh: --context-files path missing or unreadable`. Add `chmod 644` to cleanup so the trap can rm-rf `$TMPROOT`.
+
+Note: case counts now sum to 7 (cases 1-7 above) plus the additional unreadable case (case 8), so total NEW cases = 8. Update the trailing `echo "PASS: ..."` line to remain the last line of the file. The original 12+ test cases must continue passing byte-for-byte (the existing 4 `append_context_file` call sites pass `0` explicitly, but `local strict="${2:-0}"` default ensures backward compat during the refactor window).
+
+### UPDATED: `scripts/test-launch-claude-review.md`
+
+Extend the existing Covers line 5 to include the new test cases (review-finding theme E, per `.claude/rules/script-md-siblings.md`):
+
+```
+Covers: output passthrough, `.done` sentinel, `--agent-file` reviewer path, subprocess validation error propagation (#2292), subprocess-stderr tempfile cleanup, voter and reviewer diff-context forwarding validation, `--agent-file --role voter` rejection, invalid `--role` validation, repeatable `--context-files` reviewer + voter (role-orthogonality), `--context-files` missing-value (trailing + flag-like next token) exit-2 validation, non-existent and unreadable `--context-files` exit-2 validation, dedup across implicit + explicit `--context-files` observed via rendered prompt, `--allow-root` propagation positive test for outside-default-roots `--context-files`, subprocess symlink-rejection propagation via `--context-files`.
+```
+
+### UPDATED: `skills/design/scripts/test-validate-plan-commands.sh`
+
+Flip the existing regression that expects `--context-files` to be reported as `unknown-flag` (lines 104-107; review-finding theme E):
+
+- Replace `launch_want='DEFECT script=scripts/launch-claude-review.sh kind=unknown-flag flag=context-files'` and the `grep -Fq "$launch_want"` assertion with an inverted assertion:
+  ```bash
+  ! grep -Fq 'script=scripts/launch-claude-review.sh kind=unknown-flag flag=context-files' "$log" \
+      || fail "launch-claude-review.sh --context-files should now be recognized; obsolete DEFECT line still emitted"
+  ```
+- Keep the `parse-plan-commands.sh` and `validate-plan-commands.sh` invocations so the validator still parses the fixture and emits whatever current-state defects exist (none expected for this fixture after the launcher's `usage()` lists `--context-files`).
+- If the validator's internal "known-flag" recognition depends on a static allowlist that this PR has not extended yet, add the flag to that allowlist as part of the same PR. (Verify by running `make test-validate-plan-commands` against the unmodified fixture after editing only the harness assertion; if the assertion fails with a stale DEFECT line, that means the validator's allowlist needs the same-PR update — file path TBD during implementation.)
+
+### UPDATED: `skills/design/scripts/fixtures/validate-plan-commands/launch-context-plan.md`
+
+Leave the fixture file content unchanged (it correctly describes a plan that uses `--context-files`). After the harness assertion flip above, this fixture acts as a positive regression: a plan using the new flag must NOT produce an unknown-flag DEFECT. If the fixture content needs adjustment to match the final launcher argv shape (e.g., adding a trailing `--prompt-file` argument that matches the new exit-2 arity check), do so as part of the same PR, but the primary contract change is the assertion flip in the harness.
+
+### UPDATED: `SECURITY.md`
+
+Add 2-4 sentences in the existing "Claude voter subprocess (`launch-claude-review.sh`)" paragraph (or a new sibling paragraph if cleaner) documenting the operator-facing `--context-files` surface (review-finding theme E, FINDING_26):
+
+- `scripts/launch-claude-review.sh` now exposes a public repeatable `--context-files <path>` flag for operator-driven context delivery (e.g., Voter 1 ballot delivery).
+- Operator-supplied paths hard-error on missing/empty/unreadable; the launcher widens `--allow-root` for each accepted path's parent directory, matching the existing implicit-flag behavior.
+- The subprocess's mechanical guarantees remain authoritative: symlink rejection, control-character / `..` path rejection, 1 MB per-file size cap, 20-file global cap.
+- Trust-model summary unchanged from the existing wrapper paragraph (no `--sandbox` posture on the Claude subprocess; read-only behavior is prompt-level).
+
+## Edge cases
+
+- **Repeated identical `--context-files <path>`**: dedup by canonical path collapses to one forwarded entry. No error.
+- **`--context-files` shares canonical path with an implicit flag**: same dedup; first occurrence wins (order: implicit four processed in lines 105-108, then `EXPLICIT_CONTEXT_FILES` loop). Explicit duplicate is silently dropped.
+- **Empty `EXPLICIT_CONTEXT_FILES` array under `set -u`**: guarded via `${EXPLICIT_CONTEXT_FILES[@]+"${EXPLICIT_CONTEXT_FILES[@]}"}` expansion.
+- **Path with embedded spaces**: Bash array expansion preserves spaces; parser arm captures `"$2"` correctly with explicit arity check.
+- **Relative path**: `cd "$(dirname "$path")" && pwd -P` resolves to absolute. Subprocess re-canonicalizes.
+- **Symlink path**: launcher's canonical-path dedup uses `pwd -P` of dirname so the symlink TARGET is the dedup key; the subprocess `canonical_existing_file` then rejects the symlink at validation time. Stderr propagates via the existing tempfile capture (test case 7 covers this).
+- **Path beyond combined 20-file cap**: launcher does not pre-check; the 21st file is rejected by the subprocess with `--context-files is capped at 20 files` (line 90), surfacing via tempfile-stderr capture.
+- **Unreadable file (chmod 000)**: launcher's strict mode (`-r` check) hard-errors with exit 2 before forking the subprocess (test case 8).
+- **Trailing `--context-files` (no value) and `--context-files --timeout 5` (flag-like next token)**: both rejected by the parser's explicit arity check with exit 2 + the fixed wording (test case 3 covers both).
+- **Context file in a directory OUTSIDE PLUGIN_ROOT/SESSION_ROOT**: launcher widens `--allow-root` so the subprocess accepts (test case 6 covers this — positive propagation test).
+
+## Failure modes
+
+1. **Backward-compat regression on the existing 4 implicit `append_context_file` call sites**: the helper's new `strict` parameter changes its signature. Earliest warning: every existing test case in `test-launch-claude-review.sh` that exercises `--diff-file`/`--plan-file` etc. fails. Mitigation: default `strict="${2:-0}"` inside the function, AND explicitly pass `0` at all four call sites (lines 105-108). Same-PR diff must show both edits to prevent silent drift on future call-site additions.
+2. **Dedup canonicalization mismatch with subprocess**: launcher's `cd … && pwd -P` may resolve symlinked parent directories differently from subprocess's `canonical_existing_file`, causing the same logical file to bypass dedup OR collapse distinct files. Earliest warning: test case 5 fails when run under a symlinked `$TMPROOT` (some CI runners). Mitigation: ensure the launcher's canonicalization shape matches the subprocess's exactly (no `readlink -f` divergence); document the canonicalization mechanism in the inline WHY comment.
+3. **`make lint` regression from stale validator-harness expectations**: the existing `test-validate-plan-commands.sh` lines 104-107 still expect `--context-files` to be reported as `unknown-flag`. Once the launcher's `usage()` lists the new flag, this assertion fires. Earliest warning: `make lint` fails on the first commit that updates `launch-claude-review.sh` without the same-PR harness flip. Mitigation: revise the harness assertion (and possibly the validator's allowlist) in the SAME commit that updates the launcher.
+4. **Unreadable-file test flakiness as root**: the chmod-000 test case is skipped under `EUID == 0`. CI workflows running as a non-root user honor the case; container-based runners may sometimes run as root and silently skip. Mitigation: document the skip condition in a one-line comment; the case is a regression backstop, not a primary contract assertion.
+5. **`scripts/test-launch-claude-review.md` sibling drift**: the `.claude/rules/script-md-siblings.md` rule expects the `.md` sibling to evolve with the `.sh`. Earliest warning: `make lint` fails the script-md-siblings check. Mitigation: extend the Covers line as part of the same PR (UPDATED entry above).
+
+## Testing strategy
+
+- Extend `scripts/test-launch-claude-review.sh` with the 8 new cases enumerated above. All existing test cases must continue to pass byte-for-byte (backward compat verified by `local strict="${2:-0}"` default + explicit `0` at call sites).
+- Update `skills/design/scripts/test-validate-plan-commands.sh` to flip the obsolete regression (assert NO unknown-flag DEFECT for the launch-context-plan fixture).
+- Run `make lint-bash32` to confirm no Bash 4+ constructs are introduced.
+- Run `make lint` (or `bash scripts/relevant-checks.sh` per AGENTS.md) to exercise pre-commit hooks repo-wide. This catches the script-md-siblings rule, the validator-harness flip, and any markdownlint MD038 issues in `.md` updates.
+- No new CI workflows; both extended harnesses are already wired into the lint chain.
+
+diff_lines: 250

@@ -1,0 +1,38 @@
+# Approach Synthesis (quick-mode, 2 generic sketches)
+
+## Strong agreement (incorporate directly into plan)
+
+Both Cursor-Generic (Claude fallback) and Codex-Generic converged on the same architectural shape:
+
+1. **Thin launcher extension, not a subprocess contract change.** `scripts/launch-claude-subprocess.sh` already owns the authoritative context-file security contract (regular non-symlink files; allow-root containment; 1 MB cap per file; 20-file global cap). `scripts/launch-claude-review.sh` exposes a new public `--context-files <path>` argv case and forwards verbatim to the subprocess. No security-critical logic duplicated.
+
+2. **Argv shape**: repeatable single-value `--context-files <path>` case in `launch-claude-review.sh` lines 32-46. Each occurrence appends one canonical path to an `EXPLICIT_CONTEXT_FILES=()` Bash array via `${2:?--context-files requires a value}` two-token consumption (matches the existing case-arm pattern).
+
+3. **Asymmetric validation semantics**:
+   - **Explicit `--context-files`**: hard-error with `larch_err` + exit 2 on missing/empty/unreadable path (per Step 1c clarification).
+   - **Implicit `--diff-file/--scope-files/--plan-file/--feature-file`**: keep current silent-skip via `append_context_file()` (line 95) `[[ -n "$path" && -f "$path" ]] || return 0`. Callers (`launch-review.sh`, `dispatch-code-voters.sh`) legitimately pass empty strings when a phase has no plan/feature/scope.
+
+4. **Dedup by canonical path** across all five context-flag sources. Track a `:`-separated `seen_canonical_paths` string parallel to the existing `seen_allow_roots` mechanism (lines 100-103). Canonical = `cd "$(dirname …)" && pwd -P` + basename (matches subprocess `canonical_existing_file()` convention).
+
+5. **`--allow-root` forwarding**: for each unique deduped path, add its canonical parent dir to `allow_root_args` exactly once. Same dedup mechanism the existing helper uses for implicit flags.
+
+6. **Role-orthogonality docs** in `scripts/launch-claude-review.md`: explicitly state `--context-files` works for both `--role reviewer` and `--role voter` (matches the existing role-orthogonality framing for `--diff-file/--plan-file/--feature-file/--scope-files`). The `--agent-file` restriction (reviewer-only) is unaffected.
+
+7. **Test harness extension** in `scripts/test-launch-claude-review.sh`: (a) two distinct `--context-files` paths under `--role reviewer`; (b) same under `--role voter`; (c) missing value `${2:?…}` exit 2; (d) non-existent path → new `larch_err` + exit 2; (e) dedup across `--diff-file foo` + `--context-files foo` → single forwarded `--context-files foo`; (f) subprocess containment rejection for a path outside `PLUGIN_ROOT`/`SESSION_ROOT` (the existing tempfile-stderr capture lines 129-134 carries the message back).
+
+8. **Backward compat**: no existing argv shape is touched; existing call sites that don't pass `--context-files` produce byte-identical subprocess invocations.
+
+## Contested decisions
+
+Two minor divergences worth surfacing for dialectic resolution (see `contested-decisions.md`):
+
+- **DECISION_1**: Launcher-side pre-check of combined context-file count vs. defer entirely to subprocess cap.
+- **DECISION_2**: Inline code comment documenting the asymmetric strict/silent-skip behavior of `append_context_file()`.
+
+## Files to touch (from sketches)
+
+- `scripts/launch-claude-review.sh` — add argv case, refactor `append_context_file()` to dedup by canonical path + accept strict flag.
+- `scripts/launch-claude-review.md` — document `--context-files`, role-orthogonality, dedup behavior, 20-file cap context.
+- `scripts/test-launch-claude-review.sh` — add 6 new test cases per item 7.
+
+Out-of-scope per Round 1 decision 5: Voter 1 ballot wiring (separate piece of #2677), Cursor/Codex launcher symmetry (separate piece), `aggregate-findings.sh` input-root contract changes (R4/FINDING_2, separate piece), multi-round plan-review loop, per-round artifact discipline.
