@@ -124,6 +124,32 @@ submodule_paths() {
     git submodule foreach --quiet 'echo $sm_path' 2>/dev/null || true
 }
 
+path_matches_forbidden_list() {
+    local path="$1" forbidden_list="$2" forbidden_path
+
+    while IFS= read -r forbidden_path || [[ -n "$forbidden_path" ]]; do
+        [[ -n "$forbidden_path" ]] || continue
+        case "$path" in
+            "$forbidden_path"|"$forbidden_path"/*)
+                return 0
+                ;;
+        esac
+    done < "$forbidden_list"
+
+    return 1
+}
+
+reset_head_to_baseline() {
+    local baseline_head="$1" run_dir="$2"
+    local current_head
+
+    if ! git reset --hard "$baseline_head" >> "$run_dir/forbidden-revert.log" 2>&1; then
+        return 1
+    fi
+    current_head=$(git rev-parse HEAD 2>/dev/null || true)
+    [[ -n "$current_head" && "$current_head" == "$baseline_head" ]]
+}
+
 post_dispatch_forbidden_revert() {
     local run_dir="$1" forbidden_list="$2"
     local revert_log="$run_dir/forbidden-revert.log"
@@ -142,24 +168,32 @@ post_dispatch_forbidden_revert() {
 
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
-        while IFS= read -r forbidden_path || [[ -n "$forbidden_path" ]]; do
-            [[ -n "$forbidden_path" ]] || continue
-            case "$path" in
-                "$forbidden_path"|"$forbidden_path"/*)
-                    if grep -Fxq "$path" "$untracked_file" 2>/dev/null; then
-                        rm -f -- "$path" 2>>"$revert_log" || true
-                    else
-                        git checkout -- "$path" 2>>"$revert_log" || true
-                    fi
-                    printf '%s\n' "$path" >> "$revert_log"
-                    revert_count=$((revert_count + 1))
-                    break
-                    ;;
-            esac
-        done < "$forbidden_list"
+        if path_matches_forbidden_list "$path" "$forbidden_list"; then
+            if grep -Fxq "$path" "$untracked_file" 2>/dev/null; then
+                rm -f -- "$path" 2>>"$revert_log" || true
+            else
+                git checkout -- "$path" 2>>"$revert_log" || true
+            fi
+            printf '%s\n' "$path" >> "$revert_log"
+            revert_count=$((revert_count + 1))
+        fi
     done < "$diff_file"
 
     printf '%s\n' "$revert_count"
+}
+
+forbidden_paths_match_count() {
+    local paths_list="$1" forbidden_list="$2"
+    local path match_count=0
+
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        if path_matches_forbidden_list "$path" "$forbidden_list"; then
+            match_count=$((match_count + 1))
+        fi
+    done < "$paths_list"
+
+    printf '%s\n' "$match_count"
 }
 
 delta_paths_after_dispatch() {
@@ -276,6 +310,7 @@ run_dir=$(mktemp -d "$run_parent/$SITE.XXXXXX") || fail_status "run-dir-create-f
 baseline_tracked="$run_dir/baseline-tracked.txt"
 baseline_untracked="$run_dir/baseline-untracked.txt"
 baseline_head=""
+baseline_branch=""
 forbidden_paths_file="$run_dir/forbidden-paths.txt"
 submodule_paths_file="$run_dir/submodule-paths.txt"
 current_tracked="$run_dir/current-tracked.txt"
@@ -284,6 +319,7 @@ delta_paths_file="$run_dir/delta-paths.txt"
 capture_tracked_paths > "$baseline_tracked"
 capture_untracked_paths > "$baseline_untracked"
 baseline_head=$(git rev-parse HEAD 2>/dev/null) || fail_status "baseline-head-unresolved" 1
+baseline_branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
 baseline_clean=true
 if [[ -s "$baseline_tracked" || -s "$baseline_untracked" ]]; then
     baseline_clean=false
@@ -317,46 +353,80 @@ else
     exit 1
 fi
 
-current_head=$(git rev-parse HEAD 2>/dev/null || true)
-if [[ -z "$current_head" || "$current_head" != "$baseline_head" ]]; then
-    fail_status "head-changed-after-dispatch" 1
-fi
-
-revert_count=$(post_dispatch_forbidden_revert "$run_dir" "$forbidden_paths_file")
-if (( revert_count > 0 )); then
-    fail_status "forbidden-path-violation" 1
-fi
-
-capture_tracked_paths > "$current_tracked"
-capture_untracked_paths > "$current_untracked"
-delta_paths_after_dispatch "$baseline_tracked" "$baseline_untracked" "$current_tracked" "$current_untracked" \
-    | awk 'NF && !seen[$0]++ { print }' > "$delta_paths_file"
-
-if [[ ! -s "$delta_paths_file" ]]; then
-    emit_kv LINT_FIX_STATUS no-changes
-    emit_kv LINT_FIX_SITE "$SITE"
-    emit_kv CODER_TOOL "$coder_tool"
-    emit_kv CODER_LOG_FILE "$coder_log"
-    emit_kv LINT_FIX_RUN_DIR "$run_dir"
-    exit 0
-fi
-
 commit_sha=""
-if [[ "$baseline_clean" == "true" ]]; then
-    delta_paths=()
-    while IFS= read -r path || [[ -n "$path" ]]; do
-        [[ -n "$path" ]] || continue
-        delta_paths+=("$path")
-    done < "$delta_paths_file"
-    if ! git add -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1; then
-        git reset --quiet -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1 || true
-        fail_status "git-add-failed" 1
+head_changed=false
+current_head=$(git rev-parse HEAD 2>/dev/null || true)
+if [[ -z "$current_head" ]]; then
+    fail_status "head-changed-after-dispatch" 1
+elif [[ "$current_head" != "$baseline_head" ]]; then
+    current_branch=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+    if [[ -z "$baseline_branch" || -z "$current_branch" || "$baseline_branch" != "$current_branch" ]]; then
+        fail_status "head-changed-after-dispatch" 1
     fi
-    if ! "$SCRIPT_DIR/git-commit.sh" --no-trailer -m "Apply relevant-checks fixes ($SITE_LABEL)" >> "$run_dir/commit.log" 2>&1; then
-        git reset --quiet -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1 || true
-        fail_status "git-commit-failed" 1
+    if ! git merge-base --is-ancestor "$baseline_head" "$current_head" 2>/dev/null; then
+        fail_status "head-changed-after-dispatch" 1
     fi
-    commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
+    if [[ "$baseline_clean" != "true" ]]; then
+        fail_status "head-changed-after-dispatch" 1
+    fi
+    current_parent=$(git rev-parse --verify "$current_head^" 2>/dev/null || true)
+    current_second_parent=$(git rev-parse --verify "$current_head^2" 2>/dev/null || true)
+    if [[ -z "$current_parent" || -n "$current_second_parent" || "$current_parent" != "$baseline_head" ]]; then
+        fail_status "head-changed-after-dispatch" 1
+    fi
+
+    git diff --name-only "$baseline_head".."$current_head" | awk 'NF && !seen[$0]++ { print }' > "$delta_paths_file"
+    committed_forbidden_count=$(forbidden_paths_match_count "$delta_paths_file" "$forbidden_paths_file")
+    if (( committed_forbidden_count > 0 )); then
+        if ! reset_head_to_baseline "$baseline_head" "$run_dir"; then
+            fail_status "forbidden-path-reset-failed" 1
+        fi
+        fail_status "forbidden-path-violation" 1
+    fi
+
+    revert_count=$(post_dispatch_forbidden_revert "$run_dir" "$forbidden_paths_file")
+    if (( revert_count > 0 )); then
+        fail_status "forbidden-path-violation" 1
+    fi
+
+    commit_sha="$current_head"
+    head_changed=true
+else
+    revert_count=$(post_dispatch_forbidden_revert "$run_dir" "$forbidden_paths_file")
+    if (( revert_count > 0 )); then
+        fail_status "forbidden-path-violation" 1
+    fi
+
+    capture_tracked_paths > "$current_tracked"
+    capture_untracked_paths > "$current_untracked"
+    delta_paths_after_dispatch "$baseline_tracked" "$baseline_untracked" "$current_tracked" "$current_untracked" \
+        | awk 'NF && !seen[$0]++ { print }' > "$delta_paths_file"
+
+    if [[ ! -s "$delta_paths_file" ]]; then
+        emit_kv LINT_FIX_STATUS no-changes
+        emit_kv LINT_FIX_SITE "$SITE"
+        emit_kv CODER_TOOL "$coder_tool"
+        emit_kv CODER_LOG_FILE "$coder_log"
+        emit_kv LINT_FIX_RUN_DIR "$run_dir"
+        exit 0
+    fi
+
+    if [[ "$baseline_clean" == "true" ]]; then
+        delta_paths=()
+        while IFS= read -r path || [[ -n "$path" ]]; do
+            [[ -n "$path" ]] || continue
+            delta_paths+=("$path")
+        done < "$delta_paths_file"
+        if ! git add -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1; then
+            git reset --quiet -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1 || true
+            fail_status "git-add-failed" 1
+        fi
+        if ! "$SCRIPT_DIR/git-commit.sh" --no-trailer -m "Apply relevant-checks fixes ($SITE_LABEL)" >> "$run_dir/commit.log" 2>&1; then
+            git reset --quiet -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1 || true
+            fail_status "git-commit-failed" 1
+        fi
+        commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
+    fi
 fi
 
 emit_kv LINT_FIX_STATUS applied
@@ -365,4 +435,5 @@ emit_kv CODER_TOOL "$coder_tool"
 emit_kv CODER_LOG_FILE "$coder_log"
 emit_kv LINT_FIX_DELTA_PATHS_FILE "$delta_paths_file"
 [[ -n "$commit_sha" ]] && emit_kv LINT_FIX_COMMIT_SHA "$commit_sha"
+[[ "$head_changed" == "true" ]] && emit_kv LINT_FIX_HEAD_CHANGED true
 emit_kv LINT_FIX_RUN_DIR "$run_dir"

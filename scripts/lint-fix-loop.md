@@ -20,7 +20,11 @@ Output is `KEY=value` through `scripts/lib-quiet.sh`:
 - `LINT_FIX_SITE=step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job`
 - `CODER_TOOL=codex|cursor` when an external coder ran
 - `CODER_LOG_FILE=<path>` when an external coder ran
-- `LINT_FIX_COMMIT_SHA=<sha>` when the helper committed fixes from a clean pre-dispatch baseline
+- `LINT_FIX_DELTA_PATHS_FILE=<path>` when `LINT_FIX_STATUS=applied`
+- `LINT_FIX_COMMIT_SHA=<sha>` when the helper committed fixes from a clean
+  pre-dispatch baseline or accepted a coder-owned commit
+- `LINT_FIX_HEAD_CHANGED=true` when a coder-owned commit was accepted after
+  dispatch
 - `LINT_FIX_RUN_DIR=<path>` for dispatch artifacts
 - `FAILURE_REASON=<reason>` on internal helper failures
 
@@ -49,25 +53,38 @@ Behavior:
    `scripts/lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`)
    immediately before each `run-external-agent.sh` call and release it
    asynchronously via `external_serial_lock_release_after`.
-6. Before dispatch, capture the tracked/untracked dirty-tree baseline plus the
-   current `HEAD`. After dispatch, fail closed if `HEAD` changed, then
-   mechanically revert any `.gitmodules` or checked-out submodule-path edits
-   before staging.
+6. Before dispatch, capture the tracked/untracked dirty-tree baseline, the
+   current `HEAD`, and the symbolic branch name. After dispatch, unchanged
+   `HEAD` follows the working-tree path: mechanically revert any `.gitmodules`
+   or checked-out submodule-path edits before staging.
+   If `HEAD` changed, accept the new commit only when all three invariants hold:
+   the pre-dispatch baseline was clean, the symbolic branch is unchanged, and
+   the baseline `HEAD` is an ancestor of the current `HEAD`. Detached `HEAD`,
+   branch switches, history rewrites, and dirty-baseline `HEAD` movement still
+   fail closed with `FAILURE_REASON=head-changed-after-dispatch`.
 7. If dispatch succeeds but there are no post-dispatch paths beyond the
    baseline, emit
    `LINT_FIX_STATUS=no-changes`.
-8. If dispatch succeeds and post-dispatch paths exist, emit
-   `LINT_FIX_STATUS=applied`. Only when the pre-dispatch baseline was clean may
-   the helper stage those delta paths and commit through
+8. If dispatch succeeds and post-dispatch paths exist, or a guarded coder-owned
+   commit was accepted, emit `LINT_FIX_STATUS=applied`. Only when the
+   pre-dispatch baseline was clean may the helper stage working-tree delta paths
+   and commit through
    `scripts/git-commit.sh --no-trailer` using
    `Apply relevant-checks fixes (Step 3)`, `(Step 5)`, or `(Step 6)`. If the
    commit path fails after staging, the helper must reset the staged delta
-   paths before emitting failure.
+   paths before emitting failure. For accepted coder-owned commits,
+   `LINT_FIX_DELTA_PATHS_FILE` is computed from
+   `git diff --name-only <baseline_head>..<current_head>`, `LINT_FIX_COMMIT_SHA`
+   is the current `HEAD`, and `LINT_FIX_HEAD_CHANGED=true` is emitted.
 9. If every available dispatch path fails, emit `LINT_FIX_STATUS=failed`,
    `FAILURE_REASON=dispatch-failed`, and exit 1.
-10. If forbidden path edits are detected post-dispatch, revert them, emit
-    `LINT_FIX_STATUS=failed`, and set
-    `FAILURE_REASON=forbidden-path-violation`.
+10. Forbidden paths use prefix semantics: a path equal to a forbidden entry or
+    under that entry is forbidden. For accepted coder-owned commits, committed
+    content is checked first; a forbidden committed path triggers
+    `git reset --hard <baseline_head>` and
+    `FAILURE_REASON=forbidden-path-violation`. The helper then still runs the
+    working-tree forbidden-path revert, so residual uncommitted `.gitmodules` or
+    submodule-path edits are reverted and reported with the same failure reason.
 
 The `/implement` orchestrator consumes statuses as follows:
 

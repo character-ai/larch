@@ -1,0 +1,3 @@
+Accept safe coder commits in lint-fix-loop
+
+Treat clean same-branch descendant commits from external CI fixers as applied fixes while preserving fail-closed handling for detached HEAD, branch switches, history rewrites, and dirty baselines. Enforce forbidden paths against committed deltas before returning success.
