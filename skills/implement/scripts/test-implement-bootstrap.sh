@@ -344,8 +344,8 @@ assert_contains "STALL_TRACKING=false" "$out" "GP-adopt no stall"
 assert_contains "RUN_ID=runA" "$(cat "$SANDBOX_TMP/parent-issue.md")" "GP-adopt sentinel run id"
 assert_contains "FORKED_TARGET=false" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP-adopt session-env fork default"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_contains 'token-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt tracking token mark"
-assert_contains 'timing-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt tracking timing mark"
+assert_not_contains 'token-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt no bootstrap token mark"
+assert_not_contains 'timing-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt no bootstrap timing mark"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP2 sentinel resume ---
@@ -472,10 +472,13 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
+printf 'ISSUE_NUMBER=999\nRUN_ID=stale\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
 out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runD 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B4 exit 0"
 assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B4 branch"
 assert_contains "DEFERRED=true" "$out" "B4 deferred"
+assert_not_contains "STALL_TRACKING=true" "$out" "B4 no stall"
+assert_not_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B4 no tracking-init-failed bail"
 if [ ! -f "$SANDBOX_TMP/parent-issue.md" ]; then
     PASS=$((PASS + 1))
     echo "PASS: B4 no sentinel"
@@ -544,6 +547,18 @@ assert_rc "$rc" 2 "B6 exit 2"
 assert_contains "STEP_FAILED=get-issue-state" "$out" "B6 STEP_FAILED"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B7 unexpected issue state ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+set +e
+out=$(LARCH_TEST_ISSUE_STATE=MERGED run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B7-non-open-state exit 2"
+assert_contains "STEP_FAILED=get-issue-state" "$out" "B7-non-open-state STEP_FAILED"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B-sentinel-malformed ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -599,6 +614,17 @@ assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "GP-adopt-rename-fail br
 assert_contains "Step 0 tracking adoption — Branch 2 adopt rename to implementing" "$(cat "$SANDBOX_TMP/execution-issues.md")" "GP-adopt-rename-fail execution issues"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- GP2-rename-fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=123\nRUN_ID=resume-rename\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(LARCH_TEST_RENAME_FAILED=true run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP2-rename-fail exit 0"
+assert_contains "BRANCH_SELECTED=branch-1-resume" "$out" "GP2-rename-fail branch"
+assert_contains "Step 0 tracking adoption — Branch 1 resume rename to implementing" "$(cat "$SANDBOX_TMP/execution-issues.md")" "GP2-rename-fail execution issues"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B-preflight ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -640,6 +666,55 @@ invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_not_contains "write-session-id" "$invoke" "B-gate no write-session-id"
 rm -rf "$SANDBOX_TMP" "$SANDBOX"
 
+# --- B-issue-required-for-resume ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=123\nRUN_ID=resume-guard\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+set +e
+out=$(run_bootstrap --up-to-phase tracking 2>/dev/null)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B-issue-required-for-resume exit 2"
+assert_contains "STEP_FAILED=issue-number-required-for-resume" "$out" "B-issue-required-for-resume STEP_FAILED"
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- B-fork-missing-issue ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+set +e
+out=$(run_bootstrap --up-to-phase tracking --forked-target true --upstream-repo upstream/repo 2>&1)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B-fork-missing-issue exit 2"
+assert_contains "--issue-number is required with --upstream-repo" "$out" "B-fork-missing-issue usage"
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- B-invalid-run-id-arg ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+set +e
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id 'bad run' 2>&1)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B-invalid-run-id-arg exit 2"
+assert_contains "--run-id must match ^[A-Za-z0-9._-]+$" "$out" "B-invalid-run-id-arg usage"
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- B-invalid-upstream-repo-arg ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+set +e
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --forked-target true --upstream-repo bad/repo/extra 2>&1)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B-invalid-upstream-repo-arg exit 2"
+assert_contains "--upstream-repo must be OWNER/REPO" "$out" "B-invalid-upstream-repo-arg usage"
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
 # --- Edge-NEVER14 ---
 # Patterns are literal (grep -F); $ in the pattern is not shell expansion.
 # shellcheck disable=SC2016
@@ -675,6 +750,25 @@ if [ "$n" -eq 1 ]; then
 else
     FAIL=$((FAIL + 1))
     echo "FAIL: Edge-breadcrumb-count expected 1 got $n"
+fi
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- Edge-breadcrumb-count-adopt ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runBreadcrumb 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: tracking adopted' || true)
+assert_rc "$rc" 0 "Edge-breadcrumb-count-adopt exit 0"
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-adopt exactly one breadcrumb"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-adopt expected 1 got $n"
 fi
 rm -rf "$SANDBOX_TMP" "$SANDBOX"
 

@@ -143,11 +143,6 @@ emit_tracking_breadcrumb_if_enabled() {
     fi
 }
 
-mark_tracking_ledgers() {
-    "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — tracking issue" || true
-    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — tracking issue" || true
-}
-
 tracking_init_failed() {
     IMPLEMENT_BAIL_REASON=tracking-init-failed
     STALL_TRACKING=true
@@ -406,6 +401,11 @@ phase_tracking() {
 
     sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
     if [ -f "$sentinel" ]; then
+        if [ -z "$ISSUE_NUMBER_OPT" ]; then
+            larch_err "**⚠ Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel.**"
+            emit_kv STEP_FAILED issue-number-required-for-resume
+            exit 2
+        fi
         read_out=$("$SCRIPT_DIR/tracking-issue-read.sh" --sentinel "$sentinel" 2>"$IMPLEMENT_TMPDIR/tracking-issue-read.stderr.log")
         read_rc=$?
         read_failed=$(kv_value_from_block FAILED "$read_out")
@@ -424,7 +424,6 @@ phase_tracking() {
                 RUN_ID=$sentinel_run_id
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
-                mark_tracking_ledgers
                 emit_tracking_breadcrumb_if_enabled
                 return 0
             fi
@@ -484,12 +483,10 @@ phase_tracking() {
     if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
         DEFERRED=true
         rm -f "$sentinel"
-        mark_tracking_ledgers
         return 0
     fi
 
     rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 2 adopt"
-    mark_tracking_ledgers
     emit_tracking_breadcrumb_if_enabled
     return 0
 }
@@ -623,6 +620,9 @@ main() {
         if [[ ! "$UPSTREAM_REPO_OPT" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
             die_usage "--upstream-repo must be OWNER/REPO"
         fi
+    fi
+    if [ "$FORKED_TARGET" = "true" ] && [ -n "$UPSTREAM_REPO_OPT" ] && [ -z "$ISSUE_NUMBER_OPT" ]; then
+        die_usage "--issue-number is required with --upstream-repo"
     fi
 
     phase_infra

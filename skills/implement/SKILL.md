@@ -572,7 +572,7 @@ If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If
 
 ### Step 0 — tracking issue adoption
 
-Tracking adoption is owned by the single foreground `implement-bootstrap.sh --up-to-phase tracking` call above. Do not run separate prompt-side `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh init`, `post-tracking-issue.sh`, or `tracking-issue-write.sh rename` blocks for Step 0 adoption.
+Tracking adoption calls 6-9 are owned by the single foreground `implement-bootstrap.sh --up-to-phase tracking` call above. Do not run separate prompt-side `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh init`, `post-tracking-issue.sh`, or `tracking-issue-write.sh rename` blocks for Step 0 adoption. The prompt still owns the single post-bootstrap token/timing ledger mark block immediately below.
 
 Resolve a stable `ISSUE_NUMBER` and `RUN_ID` from bootstrap stdout. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
 
@@ -587,8 +587,10 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+if [ "${IMPLEMENT_BAIL_REASON:-}" = "" ] && [ "${DEFERRED:-false}" != "true" ] && { [ "${BRANCH_SELECTED:-}" = "branch-1-resume" ] || [ "${BRANCH_SELECTED:-}" = "branch-2-adopt" ]; }; then
+  "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue" || true
+  "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+fi
 # token-mark Step 0 — tracking issue
 # timing-mark Step 0 — tracking issue
 ```
@@ -600,8 +602,8 @@ Bootstrap behavior map:
 | Branch / condition | Bootstrap behavior | Orchestrator routing |
 |---|---|---|
 | `repo_unavailable=true` | `BRANCH_SELECTED=repo-unavailable-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`. | Continue local-only; downstream GitHub operations stay skipped. |
-| `forked_target=true` | `BRANCH_SELECTED=forked-target-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`, best-effort upstream context fetch with `--repo "$UPSTREAM_REPO"`. | Continue fork flow; no local tracking issue is adopted and Step 9a cannot inject `Closes #N`. |
-| Branch 1 resume | Usable `parent-issue.md` with matching `ISSUE_NUMBER`, numeric `ISSUE_NUMBER`, valid `RUN_ID` (`^[A-Za-z0-9._-]+$`), and `ADOPTED=true`; idempotent `larch-log.sh init`; best-effort implementing rename. | Continue with sentinel `ISSUE_NUMBER` / `RUN_ID`. |
+| `forked_target=true` | `BRANCH_SELECTED=forked-target-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`, best-effort upstream context fetch only when both `--repo "$UPSTREAM_REPO"` and `--issue "$ISSUE_NUMBER"` are present. | Continue fork flow; no local tracking issue is adopted and Step 9a cannot inject `Closes #N`. |
+| Branch 1 resume | Usable `parent-issue.md` with matching argv `ISSUE_NUMBER`, numeric `ISSUE_NUMBER`, valid `RUN_ID` (`^[A-Za-z0-9._-]+$`), and `ADOPTED=true`; idempotent `larch-log.sh init`; best-effort implementing rename. If the sentinel exists but argv omits `ISSUE_NUMBER`, bootstrap refuses resume. | Continue with sentinel `ISSUE_NUMBER` / `RUN_ID`. |
 | Branch 1 mismatch or malformed sentinel | Remove only `parent-issue.md`, preserve `larch-logs/`, then fall through to Branch 2. Treat non-numeric `ISSUE_NUMBER` or invalid `RUN_ID` the same as any other malformed sentinel. | Continue according to Branch 2 result. |
 | Branch 2 open issue | `get-issue-state.sh`, derive `RUN_ID` (`--run-id` > `session-id` > `LARCH_TOKEN_SESSION_ID`), `larch-log.sh init`, `post-tracking-issue.sh --run-id "$RUN_ID"`, best-effort implementing rename. | Continue with `BRANCH_SELECTED=branch-2-adopt`. |
 | Branch 2 metadata post returns `POSTED=false` | No sentinel, no rename, `DEFERRED=true`, exit 0. | Continue to plan materialization; summary publication is deferred by construction. |
