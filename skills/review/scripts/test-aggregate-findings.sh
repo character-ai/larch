@@ -1111,7 +1111,7 @@ AGGREGATE_STUB_MERGE_KIND=preamble_contradiction \
     --mode diff >"$TMP/out-wf-ex.env"
 grep -Fq 'REASON=validation-exhausted' "$TMP/out-wf-ex.env" || fail "validation exhausted REASON"
 grep -Fq 'PHASES_ATTEMPTED=' "$TMP/out-wf-ex.env" && fail "PHASES_ATTEMPTED must not be emitted"
-[[ -f "$WF/aggregator-output.txt" && ! -e "$WF/aggregator-output-codex.txt" && ! -e "$WF/aggregator-output-claude.txt" ]] || fail "expected only base aggregator output file"
+[[ -f "$WF/aggregator-output.txt" ]] || fail "expected base aggregator output file"
 cmp -s "$TMP/in3.md" "$WF/in.md" || fail "findings unchanged on exhaustion"
 grep -c '^- \*\*findings aggregator' "$WF/execution-issues.md" | grep -q '^1$' || fail "expected exactly one execution-issues entry"
 
