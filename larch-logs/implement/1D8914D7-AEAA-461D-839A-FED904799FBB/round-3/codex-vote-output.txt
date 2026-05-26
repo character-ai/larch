@@ -1,0 +1,48 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Duplication risk is real but extracting another shared helper is more churn than this latent maintenance issue warrants.
+FINDING_4: YES
+FINDING_5: EXONERATE -- The dead rc branch is harmless and not worth a required change on its own.
+FINDING_6: NO -- This is not a standalone out-of-scope issue once the in-scope sanitizer gating is handled.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- The substring assertion is weak, but the false-pass risk is too small to require a change.
+FINDING_12: YES
+FINDING_13: EXONERATE -- The untested architecture-file branch is a real gap, but adding another fixture is not warranted for this low-risk path.
+FINDING_14: EXONERATE -- The missing write-failure fixture is a narrow harness gap and not worth expanding the suite here.
+FINDING_15: YES
+FINDING_16: EXONERATE -- Exact empty-line assertions would be nicer, but the current substring check is not worth blocking on.
+FINDING_17: NO -- Direct generator telemetry is not a concrete issue unless a real non-Step-7a caller depends on it.
+FINDING_18: EXONERATE -- The status line is hidden under quiet mode, but Step 7a does not expose or route on that child status.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- The rc check is dead today, but it does not create a meaningful behavioral risk.
+FINDING_22: YES
+FINDING_23: EXONERATE -- The broad glob is a speculative future footgun once the concrete sanitizer-token bug is fixed.
+FINDING_24: YES
+FINDING_25: EXONERATE -- The fork classifier limitation is real but low-impact and not worth a separate issue here.
+FINDING_26: YES
+FINDING_27: EXONERATE -- The stale plan text is real, but current Step 7a docs and runtime intentionally preserve rebase exits.
+FINDING_28: NO -- Capture and re-emission are correct under the quiet stream contract; natural FD3 inheritance would lose the child KVs.
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: EXONERATE -- The repeated set +e pattern only matters because of the mid-script set -e bug and should not be a separate required fix.
+FINDING_32: NO -- The pre-existing flush helper pattern exits explicitly and is not a concrete out-of-scope bug.
+FINDING_33: NO -- The described Bash-version concern is explicitly not present.
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: EXONERATE -- The archival plan mismatch is real but current shipped docs already define the intended exit propagation.
+FINDING_37: NO -- The pre-existing prose ordering is not concrete enough for a separate issue.
+FINDING_38: NO -- This states the current behavior is sound rather than identifying a problem.
+FINDING_39: EXONERATE -- The stale FD3-inheritance plan prose is real, but the runtime and helper docs already establish the correct relay.
+FINDING_40: EXONERATE -- The quiet-mode stub is limited, but it exercises the relevant relay mechanics without needing a heavier real-probe fixture.
+FINDING_41: YES
+FINDING_42: EXONERATE -- The hidden transcript status is telemetry-only and not worth a separate issue.
+FINDING_43: YES
+FINDING_44: YES
+FINDING_45: EXONERATE -- The broad reject glob is speculative for current generator outputs and covered by the concrete sanitizer-token fix.
+FINDING_46: YES
+FINDING_47: NO -- This describes implementation alignment with production behavior, not a problem.
+FINDING_48: NO -- Prior design findings are not a separate issue beyond the current sanitizer-token bug.

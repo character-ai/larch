@@ -1,0 +1,3 @@
+Consolidate implement Step 7a helper
+
+Extract Step 7a diagram/comment/rebase/log-flush orchestration into skills/implement/scripts/step-7a.sh and collapse the SKILL.md body to a single foreground invocation. Add the offline regression harness, sibling docs, Makefile/docs registration, and foreground-marker lint coverage for the new helper.

@@ -1,0 +1,18 @@
+Implemented and verified.
+
+Changed:
+- Added [step-7a.sh](<OPERATOR_REPO_PATH>/skills/implement/scripts/step-7a.sh) plus sibling docs and offline harness.
+- Collapsed Step 7a in [SKILL.md](<OPERATOR_REPO_PATH>/skills/implement/SKILL.md) to one foreground helper invocation.
+- Wired `test-step-7a` into [Makefile](<OPERATOR_REPO_PATH>/Makefile) and [docs/linting.md](<OPERATOR_REPO_PATH>/docs/linting.md).
+- Added foreground-marker lint support and coverage for `step-7a.sh`.
+
+Verification:
+- `make test-step-7a` passed.
+- `make test-lint-foreground-markers` passed.
+- `make test-harness-shards-coverage` passed.
+- `make lint-bash32` passed.
+- `bash scripts/relevant-checks.sh` passed.
+
+I had one usage-only failed command while trying `lint-bash32.sh` with file args; the script only accepts `--root`, and I reran the supported target successfully.
+
+Wrote manifest atomically at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.

@@ -1,0 +1,48 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- inline flush is a single-call maintainability issue, and extracting/commenting it is optional churn.
+FINDING_6: EXONERATE -- current flush immediately disables errexit, so the abort risk is mostly hypothetical future drift.
+FINDING_7: NO -- the substring-collision concern is hypothetical and not concrete enough for an OOS issue.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- current run_log_flush starts with set +e, so the stated benign-flush abort is not present.
+FINDING_13: EXONERATE -- the breadcrumb visibility issue is minor and final contract KVs still surface the skip state.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: NO -- this is a validation summary, not a defect.
+FINDING_20: NO -- this states child invocation is already safely quoted and contains no defect.
+FINDING_21: NO -- this describes reduced publishing risk, not a problem.
+FINDING_22: NO -- this states failure logging already uses redaction.
+FINDING_23: NO -- this states lint hardening already exists.
+FINDING_24: YES
+FINDING_25: NO -- session-env plugin root rehydration is trusted same-UID bootstrap data, not a concrete boundary violation.
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- broad matching is untidy, but current production failure tokens do not make the skipped-upsert case concrete.
+FINDING_33: EXONERATE -- inconsistent site labels are minor log polish and not worth raising on their own.
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: EXONERATE -- current flush work is guarded by set +e, leaving only a narrow pre-flush cat failure risk.
+FINDING_37: YES
+FINDING_38: EXONERATE -- the skipped-flush KV ambiguity is real but not worth a separate OOS issue.
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: NO -- the item itself exonerates the set -e concern and leaves no actionable defect.
+FINDING_42: NO -- the unreachable defensive rc branch matches the helper’s always-zero contract and causes no misbehavior.
+FINDING_43: NO -- an intentional plan change is not itself a defect as stated.
+FINDING_44: YES
+FINDING_45: YES
+FINDING_46: YES
+FINDING_47: EXONERATE -- the conflict-path flush skip is already encoded by current Step 7a behavior and overlaps doc-fidelity findings.
+FINDING_48: YES

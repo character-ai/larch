@@ -1,0 +1,41 @@
+FINDING_1: EXONERATE -- latent behavioral delta on skip path; marks before classifier is harmless and avoids conditional complexity
+FINDING_2: EXONERATE -- hardcoded patterns match plan guidance; sharing with sanitizer is out of scope for consolidation
+FINDING_3: EXONERATE -- latent deviation; generator only emits STATUS=skipped on sanitizer path today, so behavior is functionally correct
+FINDING_4: EXONERATE -- structure nit; large orchestrator is the deliberate point of this consolidation PR
+FINDING_5: EXONERATE -- trivial duplicate set +e; no functional impact
+FINDING_6: EXONERATE -- dead defensive code; capture-session-transcript always exits 0 by contract; not worth a separate issue
+FINDING_7: EXONERATE -- stated problem ("rebase_out is empty") is not real; probe never calls larch_quiet_init per FINDING_37 confirmation
+FINDING_8: YES
+FINDING_9: EXONERATE -- deliberate Round 1 Decision 2 design choice; test-step-7a.sh explicitly verifies the skip behavior
+FINDING_10: EXONERATE -- testing gap; current behavior is correct since probe never calls larch_quiet_init
+FINDING_11: NO -- concern addressed in diff; SKILL.md Macro section updated with explicit "7a.r reached via step-7a.sh" documentation
+FINDING_12: EXONERATE -- green path golden assertion exists; ARCHITECTURE_DIAGRAM_FILE gap is minor
+FINDING_13: NO -- no real problem; positive security confirmation
+FINDING_14: NO -- no real problem; downstream validation already handled
+FINDING_15: NO -- no real problem; existing redact pipeline preserved
+FINDING_16: NO -- no real problem; security improvement observation
+FINDING_17: NO -- no real problem; correct trusted-child relay confirmed
+FINDING_18: NO -- no real problem; positive scan result
+FINDING_19: EXONERATE -- OOS; relocates existing trust model without widening it
+FINDING_20: EXONERATE -- deliberate Round 1 Decision 2 design choice; identical reasoning to FINDING_9
+FINDING_21: EXONERATE -- SKILL.md macro routing handles non-zero exit; harness already asserts skipped-rebase-checkpoint status
+FINDING_22: EXONERATE -- same as FINDING_2; latent concern about future tokens
+FINDING_23: EXONERATE -- dead defensive code; harmless; capture-session-transcript always exits 0
+FINDING_24: EXONERATE -- minor testing gap; ARCHITECTURE_DIAGRAM_FILE path is covered by compose_summary_diagrams logic
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- same as FINDING_3; skipped arm behavior is correct today since generator only emits skipped on sanitizer path
+FINDING_28: EXONERATE -- OOS; latent testing gap for non-existent STATUS=skipped + non-sanitizer path
+FINDING_29: NO -- OOS; positive observation confirming latency
+FINDING_30: EXONERATE -- OOS; minor doc vs plan wording alignment; code and docs agree
+FINDING_31: EXONERATE -- OOS; stale larch-log artifact is historical, not normative
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: EXONERATE -- OOS; macro bail branches override the IMMEDIATELY prose; no regression
+FINDING_35: NO -- OOS; positive consistency observation
+FINDING_36: YES
+FINDING_37: EXONERATE -- code correct; stdout-capture relay works; doc says inheritance but that is minor inaccuracy
+FINDING_38: EXONERATE -- relay is sound; batched delivery vs streaming is an acceptable behavioral difference
+FINDING_39: EXONERATE -- OOS; global LARCH_QUIET_DISABLE=1 in harness is a known testing trade-off
+FINDING_40: EXONERATE -- OOS; harmless dead defensive branch
+FINDING_41: EXONERATE -- OOS; shipped code correct; stale plan text is historical
