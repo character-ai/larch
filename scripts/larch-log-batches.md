@@ -11,7 +11,9 @@ The table intentionally covers the legacy tracking sections as durable files:
 `codex-impl-manifest-raw`), `plan-review-tally`, `code-review-tally`,
 `review-findings-full`, review runtime batches (`review-context`,
 `review-findings`, `review-panel-manifest`, `review-round-summary`,
-`review-scout-manifest`, `review-tally`), `version-bump-reasoning`,
+`review-scout-manifest`, `review-tally`,
+`review-findings-classification-round-1` through
+`review-findings-classification-round-5`), `version-bump-reasoning`,
 `oos-issues`, `run-statistics`, `token-report`, `timing-report`,
 `execution-issues`, `final-bail-reason` (replace-mode text snapshot of the terminal `BAIL_REASON` written during `/implement` Step 18 finalize-state restore), and `session-transcript`
 (the redacted Claude Code session transcript captured at Step 7a tail
@@ -23,6 +25,9 @@ sectioned payload with a non-empty `## Implementation Plan` body and rejects
 pointer-only placeholders such as `See plan.txt`. `plan-review-tally` and
 `code-review-tally` and `review-scout-manifest` use the `json-object`
 sanitizer because their files are single replace-mode JSON objects.
+`review-findings-classification-round-N` batches are replace-mode `.tsv`
+artifacts with no sanitizer beyond the standard tmpdir and secret redaction
+pipeline; the producer restricts vote/rating cells to documented enum tokens.
 
 `review-findings`, `oos-issues`, and `execution-issues` use the `json-lines`
 sanitizer because they are append-mode NDJSON batches. Every non-empty line in

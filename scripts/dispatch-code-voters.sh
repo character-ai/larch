@@ -54,7 +54,7 @@ make_voter_prompt_file() {
     "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
         --ballot-file "$BALLOT_FILE" \
         --panel-role "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted" \
-        --id-grammar finding-only \
+        --id-grammar finding-oos \
         --verification-context code > "$prompt_file"
     printf '%s' "$prompt_file"
 }
@@ -87,7 +87,7 @@ bounded_plan="$(make_bounded_context_copy plan "$PLAN_FILE" 60000)"
 [[ -n "$bounded_plan" ]] && ctx_args+=(--plan-file "$bounded_plan")
 
 LARCH_VPR_BALLOT_FILE="$BALLOT_FILE"
-LARCH_VPR_ID_GRAMMAR=finding-only
+LARCH_VPR_ID_GRAMMAR=finding-oos
 LARCH_VPR_REVIEW_TMPDIR="$REVIEW_TMPDIR"
 LARCH_VPR_RETRY_PREFIX_KIND=code
 LARCH_VPR_LAUNCH_MODE="$mode"

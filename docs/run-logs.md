@@ -46,6 +46,7 @@ larch-logs/
         *.ndjson
       round-<N>/
         findings.md
+        findings-classification.tsv
         accepted-findings.md
         rejected-findings.md
         review-round-summary.md
@@ -64,6 +65,7 @@ larch-logs/
       review-tally.md
       review-scout-manifest.json
       review-round-summary.md
+      review-findings-classification-round-<N>.tsv
 ```
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
@@ -165,7 +167,27 @@ Slot semantics:
 See [skills/design/scripts/tally-plan-review.md](skills/design/scripts/tally-plan-review.md)
 for the authoritative producer contract and harness coverage.
 
-`/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, and `review-round-summary` for the human-readable round summary.
+### code-review `findings-classification.tsv`
+
+`/implement` review rounds publish
+`larch-logs/implement/<RUN_ID>/round-<N>/findings-classification.tsv`.
+Standalone `/review --diff` publishes flat per-round batches named
+`review-findings-classification-round-N.tsv` under
+`larch-logs/review/<RUN_ID>/`.
+
+The code-review TSV schema is:
+
+```text
+finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain
+```
+
+`finding_id` is the ballot id (`FINDING_N` or `OOS_N`), `reviewer_slots` is the
+pipe-delimited proposer attribution, and `voting_result` is one of `accepted`,
+`rejected`, `exonerated`, or `neutral`. `vN_*` columns follow compact effective
+voter order after failed/degraded slots are removed. Rating cells are enum-only;
+missing or invalid axis tokens are empty and force `vN_uncertain=true`.
+
+`/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, `review-round-summary` for the human-readable round summary, and `review-findings-classification-round-N` for the forensic vote/rating TSV.
 
 ## manifest.json
 

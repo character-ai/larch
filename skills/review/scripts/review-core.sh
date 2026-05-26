@@ -448,6 +448,7 @@ if [[ "$findings_count" == "0" ]]; then
     [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")
     "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
     zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
+    zero_findings_classification_tsv_file=$(kv_get "$zero_findings_tally_out" FINDINGS_CLASSIFICATION_TSV_FILE)
     zero_tally_file=$(kv_get "$zero_findings_tally_out" TALLY_FILE)
     zero_accepted_file=$(kv_get "$zero_findings_tally_out" ACCEPTED_FINDINGS_FILE)
     zero_tally_file="${zero_tally_file:-$REVIEW_TMPDIR/review-tally.env}"
@@ -487,6 +488,7 @@ if [[ "$findings_count" == "0" ]]; then
     emit_kv PANEL_MODE "$panel_mode"
     emit_kv PANEL_SHAPE "$panel_shape"
     [[ -n "$zero_voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$zero_voting_tally_file"
+    [[ -n "$zero_findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$zero_findings_classification_tsv_file"
     exit 0
 fi
 
@@ -629,8 +631,10 @@ tally_file=$(kv_get "$tally_out" TALLY_FILE)
 accepted_file=$(kv_get "$tally_out" ACCEPTED_FINDINGS_FILE)
 voting_skipped_warning=$(kv_get "$tally_out" VOTING_SKIPPED_WARNING)
 yield_tsv_file=$(kv_get "$tally_out" YIELD_TSV_FILE)
+findings_classification_tsv_file=$(kv_get "$tally_out" FINDINGS_CLASSIFICATION_TSV_FILE)
 [[ -n "$voting_skipped_warning" ]] && emit_kv VOTING_SKIPPED_WARNING "$voting_skipped_warning"
 [[ -n "$yield_tsv_file" ]] && emit_kv YIELD_TSV_FILE "$yield_tsv_file"
+[[ -n "$findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$findings_classification_tsv_file"
 accepted_count="${accepted_count:-0}"
 rejected_count="${rejected_count:-0}"
 tally_file="${tally_file:-$REVIEW_TMPDIR/review-tally.env}"
@@ -680,6 +684,7 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
     emit_kv PANEL_MODE "$panel_mode"
     emit_kv PANEL_SHAPE "$panel_shape"
     emit_kv OUT_OF_SCOPE_DRIFT_COUNT "$out_of_scope_drift_count"
+    [[ -n "$findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$findings_classification_tsv_file"
     exit 0
 fi
 
@@ -725,3 +730,4 @@ emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
 emit_kv OUT_OF_SCOPE_DRIFT_COUNT "$out_of_scope_drift_count"
 emit_kv PANEL_MODE "$panel_mode"
 emit_kv PANEL_SHAPE "$panel_shape"
+[[ -n "$findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$findings_classification_tsv_file"

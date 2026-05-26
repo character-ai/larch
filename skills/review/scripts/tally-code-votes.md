@@ -26,6 +26,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 ## Output artifacts
 
 - `voting-tally.md` — per-item table (`Item | YES | NO | EXON | JERR | Result`) plus reviewer competition scoreboard.
+- `findings-classification.tsv` for nested `/implement` review rounds, or `findings-classification-round-N.tsv` for standalone `/review --diff` rounds. Schema: `finding_id`, `reviewer_slots`, `voting_result`, then `v1_vote`, `v1_correctness`, `v1_severity`, `v1_quality`, `v1_uncertain` through `v3_*`. Voter columns follow compact `EFFECTIVE_VOTER_FILES` order, so failed slots do not leave positional holes.
 - `accepted-findings.md` — accepted FINDING_N blocks (in-scope only; OOS items go to a separate file).
 - `rejected-findings.md` — non-accepted in-scope findings rendered under `### [rejected] FINDING_N` with a short **Rejected subtype** line, plus `Vote tally: YES=… NO=… EXON=… JUDGE_ERROR=…` appended.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
@@ -59,6 +60,13 @@ Manifest attribution maps output basenames, not slot IDs. Fallback basenames nor
 | `VOTER_COUNT` | Effective quorum count after removing parse-rate-degraded narrative-only voter slots. |
 | `VOTING_SKIPPED_WARNING` | Present on the 0-judge main-agent path. |
 | `YIELD_TSV_FILE` | Present when `--manifest-file` produces `scout-archetype-yield.tsv`. |
+| `FINDINGS_CLASSIFICATION_TSV_FILE` | Present whenever the forensic vote/rating TSV is written, including 0-judge and zero-finding paths. |
+
+## Findings Classification TSV
+
+`finding_id` is the literal ballot ID (`FINDING_N` or `OOS_N`). `reviewer_slots` is the `|`-delimited reviewer attribution with delimiter whitespace stripped. `voting_result` is the same `classify_result` enum used by the tally (`accepted`, `rejected`, `exonerated`, `neutral`) for both in-scope and OOS rows.
+
+Each `vN_*` group is ordered by effective voter-file iteration order after parse-rate-degraded voters are removed. Votes are `YES`, `NO`, `EXONERATE`, `JUDGE_ERROR`, or empty when no recognized line exists for that item. Rating axes are enum-only; missing or unrecognized axis values are recorded as empty and force `vN_uncertain=true`.
 
 ## Threshold (delegated to lib-vote-tally.sh)
 

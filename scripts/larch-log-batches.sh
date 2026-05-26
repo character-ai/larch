@@ -22,6 +22,11 @@ review-panel-manifest .ndjson replace none
 review-round-summary .md replace none
 review-scout-manifest .json replace json-object
 review-tally .md replace none
+review-findings-classification-round-1 .tsv replace none
+review-findings-classification-round-2 .tsv replace none
+review-findings-classification-round-3 .tsv replace none
+review-findings-classification-round-4 .tsv replace none
+review-findings-classification-round-5 .tsv replace none
 version-bump-reasoning .md replace none
 oos-issues .ndjson append json-lines
 run-statistics .md replace none

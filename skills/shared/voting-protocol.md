@@ -8,7 +8,7 @@ After reviewers submit findings and findings are deduplicated, a voting panel vo
 
 ## Ballot Format
 
-Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `tally-plan-review.sh` also splits `### OOS_N:` blocks; for `/review` code review, `ballot-parse.sh` exports per-finding fields from `### FINDING_N:` blocks only:
+Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `tally-plan-review.sh` also splits `### OOS_N:` blocks; for `/review` code review, `tally-code-votes.sh` accepts both `### FINDING_N:` and `### OOS_N:` headings, while legacy OOS-tagged code-review rows may still appear as `### FINDING_N:` headings with `[OUT_OF_SCOPE]` in the title:
 
 ```markdown
 ### FINDING_1: <short title>
@@ -29,17 +29,17 @@ Prepend the voter instructions as free prose before the first `### FINDING_N:` b
 Each voter must output one line per ballot item, **using the same ID that appears on the ballot heading for this run**. The ID form depends on the skill:
 
 - **`/design` plan review**: in-scope headings are `### FINDING_N:`, OOS headings are `### OOS_N:` — vote lines use `FINDING_N:` and `OOS_N:` respectively.
-- **`/review` code review**: all headings (including OOS-tagged ones) are `### FINDING_N:` — vote lines always use `FINDING_N:`, even for `[OUT_OF_SCOPE]` rows. `tally-vote.sh` only matches `FINDING_<n>` patterns; `OOS_N:` lines are ignored.
+- **`/review` code review**: vote lines use the same ID form as the ballot heading. In-scope headings use `FINDING_N:`; OOS headings may use `OOS_N:`. Legacy `[OUT_OF_SCOPE]` rows under `FINDING_N:` still vote with `FINDING_N:`.
 
 YES votes require no reason; NO and EXONERATE votes require a one-line reason:
 
 ```
-FINDING_1: YES
-FINDING_2: NO — <one-line reason>
-FINDING_3: EXONERATE — <one-line reason>
-OOS_1: YES
-OOS_2: NO — <one-line reason>
-OOS_3: EXONERATE — <one-line reason>
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false — <one-line reason>
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false — <one-line reason>
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false — <one-line reason>
+OOS_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false — <one-line reason>
 ...
 ```
 
@@ -111,7 +111,7 @@ OOS_N: NO — <one-line reason>
 or
 OOS_N: EXONERATE — <one-line reason>
 
-Note: for /review code review, all rows (including [OUT_OF_SCOPE] ones) use FINDING_N: vote lines since the ballot only contains ### FINDING_N: headings.
+Note: for /review code review, use `OOS_N:` only when the ballot heading itself is `### OOS_N:`; `[OUT_OF_SCOPE]` rows under `### FINDING_N:` still use `FINDING_N:`.
 
 You must vote on every item. Do NOT skip any. Do NOT modify files.
 ```

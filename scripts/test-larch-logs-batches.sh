@@ -30,6 +30,11 @@ review-panel-manifest
 review-round-summary
 review-scout-manifest
 review-tally
+review-findings-classification-round-1
+review-findings-classification-round-2
+review-findings-classification-round-3
+review-findings-classification-round-4
+review-findings-classification-round-5
 version-bump-reasoning
 oos-issues
 run-statistics
@@ -55,7 +60,7 @@ for slug in $actual; do
     ext="$(larch_log_batch_extension "$slug")"
     mode="$(larch_log_batch_mode "$slug")"
     sanitizer="$(larch_log_batch_sanitizer "$slug")"
-    case "$ext" in .md|.txt|.txt.meta|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
+    case "$ext" in .md|.txt|.txt.meta|.ndjson|.json|.jsonl|.tsv) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
     case "$mode" in replace|append) ;; *) echo "FAIL: invalid mode for $slug: $mode" >&2; exit 1 ;; esac
     case "$sanitizer" in none|mermaid|plan-goals|json-lines|json-object) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
 done
@@ -92,6 +97,15 @@ done
 [ "$(larch_log_batch_mode review-findings-full)" = "replace" ]
 [ "$(larch_log_batch_extension review-findings-full)" = ".jsonl" ]
 [ "$(larch_log_batch_sanitizer review-findings-full)" = "none" ]
+[ "$(larch_log_batch_extension review-findings-classification-round-1)" = ".tsv" ]
+[ "$(larch_log_batch_mode review-findings-classification-round-1)" = "replace" ]
+[ "$(larch_log_batch_sanitizer review-findings-classification-round-1)" = "none" ]
+for round in 1 2 3 4 5; do
+    slug="review-findings-classification-round-$round"
+    [ "$(larch_log_batch_extension "$slug")" = ".tsv" ]
+    [ "$(larch_log_batch_mode "$slug")" = "replace" ]
+    [ "$(larch_log_batch_sanitizer "$slug")" = "none" ]
+done
 [ "$(larch_log_batch_extension final-bail-reason)" = ".txt" ]
 [ "$(larch_log_batch_mode final-bail-reason)" = "replace" ]
 [ "$(larch_log_batch_sanitizer final-bail-reason)" = "none" ]

@@ -33,7 +33,7 @@ Run the same mechanics documented in `/review` Steps 1-3:
 
 1. **Step 1**: gather branch context via `gather-context.sh`.
 2. **Step 2**: launch the full reviewer panel in parallel per the launch procedure and fallback matrix in `SKILL.md`.
-3. **Step 3**: collect, deduplicate, vote (rounds 1-3), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (3 rounds) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"` to each `review-core.sh` round, preserve the emitted scout KVs (`SCOUT_STATUS`, `SCOUT_FAIL_REASON`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`) for the parent Step 4 log batches, return those KVs explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
+3. **Step 3**: collect, deduplicate, vote (rounds 1-3), implement fixes (Step 3e), re-review (Step 3f) — same round-state machine and safety limit (3 rounds) as the inline path. Pass `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"` to each `review-core.sh` round, preserve the emitted scout/artifact KVs (`SCOUT_STATUS`, `SCOUT_FAIL_REASON`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, `FINDINGS_CLASSIFICATION_TSV_FILE`) for the parent Step 4 log batches, return those KVs explicitly in the final worker footer when available, and write Step 3e code edits to the git working tree directly.
 
 Stop after Step 3 (do NOT run Steps 4 or 5 — those belong to the parent).
 
@@ -91,6 +91,7 @@ SCOUT_STATUS=ok
 DYNAMIC_SLOTS=2
 SCOUT_MANIFEST=$REVIEW_TMPDIR/scout-round1-manifest.json
 YIELD_TSV_FILE=$REVIEW_TMPDIR/scout-archetype-yield.tsv
+FINDINGS_CLASSIFICATION_TSV_FILE=$REVIEW_TMPDIR/findings-classification-round-1.tsv
 ```
 
 No prose, no artifact content, and no blank lines between KV lines.

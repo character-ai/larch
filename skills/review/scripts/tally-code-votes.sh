@@ -67,6 +67,11 @@ OOS_FILE="$REVIEW_TMPDIR/oos.md"
 VOTING_TALLY_FILE="$REVIEW_TMPDIR/voting-tally.md"
 TALLY_ENV_FILE="$REVIEW_TMPDIR/review-tally.env"
 YIELD_TSV_FILE="$REVIEW_TMPDIR/scout-archetype-yield.tsv"
+if [[ -n "$SESSION_ENV_PATH" || -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+    CLASSIFICATION_TSV="$REVIEW_TMPDIR/findings-classification.tsv"
+else
+    CLASSIFICATION_TSV="$REVIEW_TMPDIR/findings-classification-round-${ROUND_NUM}.tsv"
+fi
 
 : > "$ACCEPTED_FINDINGS_FILE"
 : > "$REJECTED_FINDINGS_FILE"
@@ -104,6 +109,122 @@ NEUTRAL_COUNT=0
 OOS_ACCEPTED_COUNT=0
 OOS_REJECTED_COUNT=0
 OUT_OF_SCOPE_DRIFT_COUNT=0
+
+write_classification_tsv_header() {
+    printf '%s\n' 'finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain'
+}
+
+sanitize_classification_text_cell() {
+    printf '%s' "${1:-}" | tr '\011\015\012' '   ' | sed 's/[[:space:]]*|[[:space:]]*/|/g'
+}
+
+reviewer_slots_for_tsv() {
+    printf '%s\n' "${1:-}" | awk -F',' '
+      {
+        out = ""
+        for (i = 1; i <= NF; i++) {
+          gsub(/[\t\r\n]/, " ", $i)
+          gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i)
+          if ($i != "") out = (out == "" ? $i : out "|" $i)
+        }
+        print out
+      }'
+}
+
+kv_value() {
+    local key="$1"
+    awk -F= -v k="$key" '$1 == k { print substr($0, length(k) + 2); found=1 } END { if (!found) print "" }'
+}
+
+sanitize_vote_cell() {
+    case "${1:-}" in
+        YES|NO|EXONERATE|JUDGE_ERROR) printf '%s' "$1" ;;
+        *) printf '' ;;
+    esac
+}
+
+sanitize_correctness_cell() {
+    case "${1:-}" in
+        true|partially-true|false-positive|uncertain) printf '%s' "$1" ;;
+        *) printf '' ;;
+    esac
+}
+
+sanitize_severity_cell() {
+    case "${1:-}" in
+        blocker|major|minor|nit|uncertain) printf '%s' "$1" ;;
+        *) printf '' ;;
+    esac
+}
+
+sanitize_quality_cell() {
+    case "${1:-}" in
+        excellent|good|adequate|weak|no-fix|uncertain) printf '%s' "$1" ;;
+        *) printf '' ;;
+    esac
+}
+
+sanitize_uncertain_cell() {
+    case "${1:-}" in
+        true|false) printf '%s' "$1" ;;
+        *) printf 'true' ;;
+    esac
+}
+
+sanitize_result_cell() {
+    case "${1:-}" in
+        accepted|rejected|exonerated|neutral) printf '%s' "$1" ;;
+        *) printf '' ;;
+    esac
+}
+
+parse_vote_rating_for() {
+    local voter_file="$1" ballot_id="$2" parsed rc
+    set +e
+    parsed=$("$PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh" "$voter_file" "$ballot_id" 2>/dev/null)
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+        emit_kv WARN "judge vote/rating parser failed for $(basename "$voter_file") $ballot_id (rc=$rc); treating vote as JUDGE_ERROR"
+        printf 'PARSED_VOTE=JUDGE_ERROR\n'
+        printf 'PARSED_CORRECTNESS=\n'
+        printf 'PARSED_SEVERITY=\n'
+        printf 'PARSED_QUALITY=\n'
+        printf 'PARSED_UNCERTAIN=true\n'
+    else
+        printf '%s\n' "$parsed"
+    fi
+}
+
+write_classification_tsv_row() {
+    local ballot_id="$1" reviewer_slots="$2" voting_result="$3"
+    shift 3
+    local row=("$ballot_id" "$(sanitize_classification_text_cell "$(reviewer_slots_for_tsv "$reviewer_slots")")" "$(sanitize_result_cell "$voting_result")")
+    local value vote correctness severity quality uncertain
+    for _ in 1 2 3; do
+        if [[ $# -lt 5 ]]; then
+            row+=("" "" "" "" "")
+            continue
+        fi
+        vote="${1:-}"; correctness="${2:-}"; severity="${3:-}"; quality="${4:-}"; uncertain="${5:-}"
+        shift 5
+        value=$(sanitize_vote_cell "$vote"); row+=("$value")
+        value=$(sanitize_correctness_cell "$correctness")
+        [[ -z "$value" ]] && uncertain=true
+        row+=("$value")
+        value=$(sanitize_severity_cell "$severity")
+        [[ -z "$value" ]] && uncertain=true
+        row+=("$value")
+        value=$(sanitize_quality_cell "$quality")
+        [[ -z "$value" ]] && uncertain=true
+        row+=("$value")
+        row+=("$(sanitize_uncertain_cell "$uncertain")")
+    done
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${row[@]}" >> "$CLASSIFICATION_TSV"
+}
+
+mkdir -p "$(dirname "$CLASSIFICATION_TSV")"
+write_classification_tsv_header > "$CLASSIFICATION_TSV"
 
 normalize_reviewer_basename() {
     local base="$1" stem ext=""
@@ -211,16 +332,16 @@ scope_drift_check() {
 
 record_tally_outcome() {
     local id="$1" accepted="$2" outcome="$3"
-    local n="${id#FINDING_}"
-    printf 'FINDING_%s_ACCEPTED=%s\n' "$n" "$accepted" >> "$TALLY_ENV_FILE"
+    local prefix="${id%%_*}" n="${id#*_}"
+    printf '%s_%s_ACCEPTED=%s\n' "$prefix" "$n" "$accepted" >> "$TALLY_ENV_FILE"
     if [[ "$outcome" == "accepted" ]]; then
-        printf 'FINDING_%s_OUTCOME=accepted\n' "$n" >> "$TALLY_ENV_FILE"
+        printf '%s_%s_OUTCOME=accepted\n' "$prefix" "$n" >> "$TALLY_ENV_FILE"
     else
-        printf 'FINDING_%s_OUTCOME=rejected\n' "$n" >> "$TALLY_ENV_FILE"
+        printf '%s_%s_OUTCOME=rejected\n' "$prefix" "$n" >> "$TALLY_ENV_FILE"
         case "$outcome" in
-            rejected) printf 'FINDING_%s_REJECTED_SUBTYPE=true_rejected\n' "$n" >> "$TALLY_ENV_FILE" ;;
-            neutral) printf 'FINDING_%s_REJECTED_SUBTYPE=neutral\n' "$n" >> "$TALLY_ENV_FILE" ;;
-            exonerated) printf 'FINDING_%s_REJECTED_SUBTYPE=exonerated\n' "$n" >> "$TALLY_ENV_FILE" ;;
+            rejected) printf '%s_%s_REJECTED_SUBTYPE=true_rejected\n' "$prefix" "$n" >> "$TALLY_ENV_FILE" ;;
+            neutral) printf '%s_%s_REJECTED_SUBTYPE=neutral\n' "$prefix" "$n" >> "$TALLY_ENV_FILE" ;;
+            exonerated) printf '%s_%s_REJECTED_SUBTYPE=exonerated\n' "$prefix" "$n" >> "$TALLY_ENV_FILE" ;;
             *)
                 larch_err "tally-code-votes.sh: record_tally_outcome: unexpected outcome for $id: $outcome"
                 exit 2
@@ -250,6 +371,11 @@ EFFECTIVE_VOTERS=$((ELIGIBLE_VOTERS - VOTER_PARSE_FAILED_COUNT))
 (( EFFECTIVE_VOTERS < 0 )) && EFFECTIVE_VOTERS=0
 
 if (( EFFECTIVE_VOTERS == 0 )); then
+    for block in "${block_files[@]+"${block_files[@]}"}"; do
+        id=$(basename "$block" .md)
+        reviewer=$(reviewer_for_block "$block")
+        write_classification_tsv_row "$id" "$reviewer" rejected
+    done
     VOTING_SKIPPED_WARNING="**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
     printf '# Code Review Voting Tally\n\n' > "$VOTING_TALLY_FILE"
     printf '%s\n\n' "$VOTING_SKIPPED_WARNING" >> "$VOTING_TALLY_FILE"
@@ -277,6 +403,7 @@ if (( EFFECTIVE_VOTERS == 0 )); then
     emit_kv ELIGIBLE_VOTER_COUNT "$ELIGIBLE_VOTERS"
     emit_kv VOTER_COUNT 0
     emit_kv VOTING_SKIPPED_WARNING "$VOTING_SKIPPED_WARNING"
+    [[ -f "$CLASSIFICATION_TSV" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$CLASSIFICATION_TSV"
     exit 0
 fi
 
@@ -306,10 +433,17 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
     for block in "${block_files[@]+"${block_files[@]}"}"; do
         id=$(basename "$block" .md)
         yes=0; no=0; exonerate=0; judge_error=0
+        classification_cells=()
         # Code review uses EFFECTIVE_VOTERS, not raw voter-file count, after
         # parse-rate degradation removes narrative-only voter slots.
         for voter_file in "${EFFECTIVE_VOTER_FILES[@]}"; do
-            vote=$(vote_for_id "$id" "$voter_file")
+            parsed_vote_rating=$(parse_vote_rating_for "$voter_file" "$id")
+            vote=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_VOTE)
+            correctness=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_CORRECTNESS)
+            severity=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_SEVERITY)
+            quality=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_QUALITY)
+            uncertain=$(printf '%s\n' "$parsed_vote_rating" | kv_value PARSED_UNCERTAIN)
+            classification_cells+=("$vote" "$correctness" "$severity" "$quality" "$uncertain")
             case "$vote" in
                 YES) yes=$((yes + 1)) ;;
                 NO) no=$((no + 1)) ;;
@@ -329,11 +463,12 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$judge_error" "$result"
 
         reviewer=$(reviewer_for_block "$block")
+        write_classification_tsv_row "$id" "$reviewer" "$result" "${classification_cells[@]+"${classification_cells[@]}"}"
 
-        # Code review uses a single FINDING_N namespace; OOS items are tagged
-        # via [OUT_OF_SCOPE] in the title heading line.
+        # Code review supports OOS_N headings and legacy FINDING_N headings
+        # tagged with [OUT_OF_SCOPE].
         is_oos=false
-        if head -n1 "$block" | grep -Fq '[OUT_OF_SCOPE]'; then
+        if [[ "$id" == OOS_* ]] || head -n1 "$block" | grep -Fq '[OUT_OF_SCOPE]'; then
             is_oos=true
         fi
         # Scope-fit gate: reclassify in-scope findings whose locations are all
@@ -632,3 +767,4 @@ emit_kv VOTER_COUNT "$EFFECTIVE_VOTERS"
 if [[ -n "$MANIFEST_FILE" && -f "$YIELD_TSV_FILE" ]]; then
     emit_kv YIELD_TSV_FILE "$YIELD_TSV_FILE"
 fi
+[[ -f "$CLASSIFICATION_TSV" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$CLASSIFICATION_TSV"

@@ -83,6 +83,7 @@ cat > "$source_dir/codex-vote-output.txt.json" <<'EOF'
 EOF
 
 printf '# Round summary\n' > "$source_dir/review-round-summary.md"
+printf 'finding_id\treviewer_slots\tvoting_result\n' > "$source_dir/findings-classification.tsv"
 printf 'CODER_STATUS=skipped\n' > "$source_dir/coder.env"
 printf 'excluded\n' > "$source_dir/random-notes.txt"
 printf 'excluded\n' > "$source_dir/session-env.sh"
@@ -107,6 +108,7 @@ assert_file "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phas
 assert_file "$round_dir/cursor-vote-output.txt.json" "cursor json sidecar"
 assert_file "$round_dir/codex-vote-output.txt.json" "codex json sidecar"
 assert_file "$round_dir/review-round-summary.md" "summary"
+assert_file "$round_dir/findings-classification.tsv" "findings classification TSV"
 assert_file "$round_dir/coder.env" "optional coder env"
 assert_not_file "$round_dir/random-notes.txt" "unregistered file"
 assert_not_file "$round_dir/session-env.sh" "session env"

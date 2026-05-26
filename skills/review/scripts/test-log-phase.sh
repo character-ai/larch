@@ -27,6 +27,15 @@ assert_stdout_cap "$out"
 grep -Fq 'LOG_WRITTEN=true' <<< "$out"
 [[ -f "$TMP/logs/review/run1/review-scout-manifest.json" ]]
 
+printf 'finding_id\treviewer_slots\tvoting_result\n' > "$TMP/classification.tsv"
+for round in 1 2 3 4 5; do
+    batch="review-findings-classification-round-$round"
+    out=$(cd "$REPO_ROOT" && "$SCRIPT" --log-root "$TMP/logs" --run-id run1 --batch "$batch" --action write --payload-file "$TMP/classification.tsv")
+    assert_stdout_cap "$out"
+    grep -Fq 'LOG_WRITTEN=true' <<< "$out"
+    [[ -f "$TMP/logs/review/run1/${batch}.tsv" ]]
+done
+
 if LARCH_QUIET_LOG_FILE="$TMP/log-phase-quiet.log" "$SCRIPT" --log-root "$TMP/logs" --run-id run1 --batch bad/batch --action write --payload-file "$TMP/payload.md" >/dev/null 2>"$TMP/err"; then
     echo "FAIL: invalid batch accepted" >&2
     exit 1

@@ -58,7 +58,7 @@ case_finding_oos() {
         --panel-role "test panel role" \
         --id-grammar finding-oos \
         --verification-context plan)
-    grep -Fq "For \`OOS_N:\` items in plan review (or items prefixed with \`[OUT_OF_SCOPE]\` in code review):" <<< "$out" \
+    grep -Fq "For \`OOS_N:\` items (or items prefixed with \`[OUT_OF_SCOPE]\` in code review):" <<< "$out" \
         || { echo "FAIL: finding-oos OOS clause missing" >&2; exit 1; }
     grep -Fq "$CANONICAL_OOS_DRIFT_MARK" <<< "$out" \
         || { echo "FAIL: finding-oos missing canonical OOS body" >&2; exit 1; }

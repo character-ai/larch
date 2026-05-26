@@ -47,9 +47,9 @@ echo "# Case: 3 voters, 2 YES on FINDING_1, 1 YES on FINDING_2, 2 YES on FINDING
 TMP="$WORKDIR/case1"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
-printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
-printf 'FINDING_1: YES\nFINDING_2: NO -- low priority\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
-printf 'FINDING_1: NO -- already handled elsewhere\nFINDING_2: NO -- not actionable\nFINDING_3: NO -- not worth filing\n' > "$TMP/claude-vote-output.txt"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nFINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\nFINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nFINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- low priority\nFINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- already handled elsewhere\nFINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- not actionable\nFINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- not worth filing\n' > "$TMP/claude-vote-output.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -62,6 +62,12 @@ got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); asse
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env stores accepted count summary" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "OOS_ACCEPTED_COUNT=1 (FINDING_3 has 2 YES, accepted)" "$got" "1"
 got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJECTED_COUNT=0" "$got" "0"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+[[ -f "$classification_file" ]] || { FAIL=1; printf '  FAIL classification TSV not emitted\n'; }
+read -r classification_header < "$classification_file"
+assert_eq "classification TSV header" "$classification_header" $'finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain'
+grep -Fq $'FINDING_1\tCodex-Structure\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tYES\ttrue\tmajor\tgood\tfalse\tNO\tpartially-true\tminor\tweak\tfalse' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing rated FINDING_1 row\n'; }
 # Spot-check the artifacts.
 grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL accepted-findings missing FINDING_1\n'; }
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
