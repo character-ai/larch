@@ -1,0 +1,29 @@
+## Approach Synthesis
+
+### Critical scope finding from sketch phase
+
+The Codex sketch surfaced — and direct codebase inspection confirmed — that the documentation this issue calls for **already largely exists**, and that two of the issue's specific claims about the implementation **do not match the current code**:
+
+1. **SECURITY.md** lines 143-156 already contain a `**Breadcrumb stream redaction**` paragraph covering session-tmpdir-only live streams, monitor-side per-line redaction with drop-on-fail, committed-copy staging via `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file`, fail-closed publication semantics, and pattern-based residual risk.
+
+2. **docs/run-logs.md** lines 45 (in the directory tree) and 71-79 already describe `breadcrumbs/` as a commit-only directory artifact, with the live-streams session-tmpdir locations, the `*.ndjson` filter, the streaming redactor, and fail-closed semantics.
+
+3. **Issue claim vs. code mismatch — `scripts/larch-log.sh write --batch breadcrumbs`**: This subcommand does not exist. `scripts/larch-log.sh` exposes `write`, `write-round`, `append`, `commit`, `exists`. Breadcrumb publication is performed by `scripts/larch-log.sh commit` via `larch_log_publish_breadcrumbs_shared` in `scripts/lib-larch-log.sh:356-450`. `scripts/design-log-publish.sh` invokes the same shared helper.
+
+4. **Issue claim vs. code mismatch — "Per-file skip + warn fail-closed semantics: ... continues with the rest of the batch"**: The actual implementation in `scripts/lib-larch-log.sh:430-433` is **directory-level all-or-nothing**: any redaction failure or symlink/hardlink/path-violation `return 1`s the whole helper after `rm -rf "$staging_parent"`. No file is committed. The existing SECURITY.md and docs/run-logs.md text both accurately describe this all-or-nothing behavior ("publishes the directory only after every regular non-symlink file redacts successfully" / "Symlink entries or redaction failures fail closed and leave no committed `breadcrumbs/` directory").
+
+### Where the sketches agreed
+- Cursor-Generic produced essentially no useful content (3 exploration lines).
+- Codex-Generic was the only substantive sketch and is the source for the findings above.
+
+### What changed since the issue was filed
+- Issue #2807 was filed as a deferred OOS from #2790. The core breadcrumb-propagation work in #2790 + #2786 landed; **its documentation also landed** as inline paragraphs in SECURITY.md and prose in docs/run-logs.md — but those documentation additions were not structured as the issue's scope describes (a new top-level `## Breadcrumb stream redaction` section with 5 sub-bullets, plus a `### breadcrumbs/` subsection).
+- The issue's claim about per-file skip+warn semantics appears to describe an aspirational design that was not implemented; the landed code is all-or-nothing.
+
+### Synthesis decision (pending user direction)
+Three potential paths forward (asking user before writing the plan):
+- (a) **Close the issue as already implemented**: existing inline paragraph + run-logs prose already cover the issue's intent accurately.
+- (b) **Reorganization-only PATCH**: convert existing inline paragraph into a structured `## Breadcrumb stream redaction` top-level section with 5 sub-bullets, restate the same accurate semantics, convert existing run-logs prose into a `### breadcrumbs/` subsection, and add explicit cross-references. NO new claims; NO change to the all-or-nothing description.
+- (c) **Reorganization + scope correction**: same as (b) plus an explicit note that the issue's "per-file skip+warn" claim does not match the landed implementation; either align docs to reality (keep all-or-nothing) or file a follow-up to change the code.
+
+No contested architectural decisions among sketches; the only disagreement is between the issue's scope as written and the current code.

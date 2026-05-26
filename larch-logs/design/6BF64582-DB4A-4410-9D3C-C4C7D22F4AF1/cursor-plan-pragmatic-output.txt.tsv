@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	plan.txt:17-18	Proposed residual-risk sub-bullet drops wait-ci/warn CI diagnostic guidance	Operators may commit CI failure strings without treating them as public-boundary content	Restore SECURITY.md:154-156 wait-ci/warn sentence in the new section (sub-bullet 5 or additional bullet)
