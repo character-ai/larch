@@ -17,6 +17,8 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-execution-issues.sh
 source "$SCRIPT_DIR/lib-execution-issues.sh"
+# shellcheck source=scripts/lib-changelog.sh
+source "$SCRIPT_DIR/lib-changelog.sh"
 
 STATE_FILE=""
 FINAL_BAIL_REASON_FILE=""
@@ -558,98 +560,6 @@ collect_changelog_bullets() {
             printf '%s\n' "$bullet" >> "$dir/$category"
         done < "$CHANGELOG_BULLETS_FILE"
     fi
-}
-
-write_changelog_entry() {
-    local version=$1 categories_file=$2 output=$3 replaces_version=${4:-} today tmp
-    today=$(date +%Y-%m-%d)
-    tmp="$output.entry.$$"
-    {
-        printf '## [%s] - %s\n\n' "$version" "$today"
-        cat "$categories_file"
-    } > "$tmp"
-    awk -v version="$version" -v replaces_version="$replaces_version" -v entry="$tmp" '
-        BEGIN {
-            while ((getline line < entry) > 0) e[++en] = line
-            close(entry)
-            has_unreleased = 0
-            inserted = 0
-            skipping = 0
-            in_unreleased = 0
-            match_count = 0
-            entry_from_version_match = 0
-        }
-        FNR == NR {
-            if (/^## \[Unreleased\]/) has_unreleased = 1
-            next
-        }
-        ($0 ~ "^## \\[" version "\\] - ") || (replaces_version != "" && replaces_version != version && $0 ~ "^## \\[" replaces_version "\\] - ") {
-            match_count++
-            if (match_count > 1) exit 4
-            if (in_unreleased) {
-                in_unreleased = 0
-            }
-            if (!inserted) {
-                for (i = 1; i <= en; i++) print e[i]
-                inserted = 1
-                entry_from_version_match = 1
-            }
-            skipping = 1
-            next
-        }
-        skipping && /^## \[/ {
-            if (entry_from_version_match) print ""
-            skipping = 0
-        }
-        skipping {
-            next
-        }
-        /^## \[Unreleased\]/ {
-            print
-            in_unreleased = 1
-            next
-        }
-        in_unreleased && /^## \[/ {
-            in_unreleased = 0
-            if (!inserted) {
-                for (i = 1; i <= en; i++) print e[i]
-                print ""
-                inserted = 1
-            }
-            print
-            next
-        }
-        in_unreleased {
-            print
-            next
-        }
-        !has_unreleased && /and this project adheres to \[Semantic Versioning\]/ {
-            print
-            if (!inserted) {
-                print ""
-                for (i = 1; i <= en; i++) print e[i]
-                inserted = 1
-            }
-            next
-        }
-        !inserted && /^## \[/ {
-            for (i = 1; i <= en; i++) print e[i]
-            print ""
-            inserted = 1
-        }
-        { print }
-        END {
-            if (in_unreleased && !inserted) {
-                print ""
-                for (i = 1; i <= en; i++) print e[i]
-                inserted = 1
-            }
-            if (!inserted) exit 3
-        }
-    ' CHANGELOG.md CHANGELOG.md > "$output"
-    rc=$?
-    rm -f "$tmp"
-    return "$rc"
 }
 
 maybe_update_changelog() {
