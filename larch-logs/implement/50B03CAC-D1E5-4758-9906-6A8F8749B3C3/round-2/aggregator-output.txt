@@ -1,0 +1,2 @@
+Normalizing reviewer findings into a merged structured list per aggregator rules. Security slots 13–17 are affirmative (no actionable risk) and will be excluded; commit-list items 10–12 merge into the branch-stacking finding.
+
