@@ -1,0 +1,27 @@
+Reading the implementation plan and validating it against the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/test-codex-implementer.sh:607-632	Plan omits updating implementer harness Codex stub	Test 10 still prints tokens used to stdout; after launch-codex-implement.sh splits stdout to .events.jsonl the stub will not populate usage and record-vendor codex_implement total=7777 will fail under make lint	Add skills/implement/scripts/test-codex-implementer.sh to Files to modify: emit JSONL usage on stdout (and keep --output-last-message transcript); assert per-bucket ledger fields
+2	in_scope	important	correctness	scripts/test-token-vendor-scrapers.sh:100-117	Plan extends synthetic ledger tests but not the live launch-codex-implement smoke stub	The PATH stub at lines 116-117 still prints tokens used; post-change launcher reads TRANSCRIPT.events.jsonl and fail-closes with empty ledger, breaking the existing record-vendor smoke in the same harness	Update test-token-vendor-scrapers.sh codex stub to write JSONL usage to stdout; change jq assertions from total-only to input/cache_read/output/total
+3	in_scope	important	architecture	scripts/launch-codex-implement.md:7-8	Required sibling contract docs not listed	launch-codex-implement.md still documents combined-stream tokens used scrape; launch-review.md:69-71 and launch-codex-ci.md:18-28 still describe sidecar scraping—violates script-md-siblings and misleads operators	Add UPDATED entries for launch-codex-implement.md launch-review.md launch-codex-ci.md and test-token-vendor-scrapers.md describing --json events sidecar fail-closed per-bucket record-vendor
+4	in_scope	important	integration	Makefile:73	Makefile wiring is underspecified	Plan says add test-parse-codex-usage to test-shell or test (nonexistent/vague); without a concrete test-harnesses-N shard and .PHONY target make lint may never run the new helper harness	Add explicit test-parse-codex-usage target; register on test-harnesses-17 (with test-token-vendor-scrapers) or a new adjacent shard; update docs/linting.md row
+5	in_scope	important	correctness	scripts/test-launch-review.sh:602-618	Stdout auth-classification regression from Failure modes not in file list	Failure modes require a stub that emits auth text on stdout alongside JSONL; Testing strategy only mandates stderr auth for test-launch-codex-ci—launch-review stdout capture path can regress silently	Add test-launch-review.sh case: JSONL on stdout plus auth pattern on stdout; assert external_is_auth_failure still classifies before/after stream split
+6	in_scope	latent	correctness	scripts/parse-codex-usage.sh:38-43	Dual-schema probe semantics ambiguous	Plan says probe .msg.usage and .usage and whichever path wins non-zero but jq sums each field independently—mixed-schema streams could double-count or pick wrong bucket	Specify implementation: single pass summing coalesced paths per event (e.g. max of .msg.usage.input_tokens and .usage.input_tokens) not independent sums of both trees
+7	in_scope	nit	architecture	docs/linting.md:190	New harness absent from linting catalog	Operators and CI docs will not mention make test-parse-codex-usage	Add docs/linting.md table row mirroring other scripts/test-*.sh entries
+
+**Findings**
+
+1. **[correctness]** `skills/implement/scripts/test-codex-implementer.sh:607-632` — The plan updates three launchers and `test-launch-review.sh` / `test-launch-codex-ci.sh` but not `test-codex-implementer.sh`, which still stubs Codex with `printf 'tokens used\n7,777\n'`. After `launch-codex-implement.sh` routes stdout to `${TRANSCRIPT_PATH}.events.jsonl`, that smoke will fail under `make lint`.
+
+2. **[correctness]** `scripts/test-token-vendor-scrapers.sh:100-117` — The plan’s extension (synthetic ledger + `token-cost`) does not require updating the existing `launch-codex-implement.sh` PATH stub that still emits `tokens used`. That live smoke is part of the same harness and will break the same way.
+
+3. **[architecture]** `scripts/launch-codex-implement.md:7-8`, `scripts/launch-review.md:69-71`, `scripts/launch-codex-ci.md:18-28` — Per `.claude/rules/script-md-siblings.md`, behavior changes need in-sync sibling docs. The plan only adds `parse-codex-usage.md` / `test-parse-codex-usage.md`, not updates to launcher or scraper harness docs that still describe combined-stream `tokens used` scraping.
+
+4. **[integration]** `Makefile:73` — Register `test-parse-codex-usage` on a named shard (e.g. `test-harnesses-17` next to `test-token-vendor-scrapers`), not “test-shell or test”. Add a `docs/linting.md` row.
+
+5. **[correctness]** `scripts/test-launch-review.sh:602-618` — Failure mode #2 calls for stdout+stderr auth coverage when `--json` splits streams; the plan’s file list does not add a launch-review stub that puts auth markers on stdout with JSONL, only stderr-oriented coverage for `test-launch-codex-ci.sh`.
+
+6. **[correctness]** `scripts/parse-codex-usage.sh:38-43` — Clarify whether `.msg.usage` and `.usage` are merged per event or summed independently; mixed-schema JSONL could double-count or mis-attribute buckets.
+
+7. **[nit]** `docs/linting.md:190` — Document the new `make test-parse-codex-usage` target for discoverability.
+
+**[OUT_OF_SCOPE]** Monthly Codex CLI version probe in CI (plan Failure modes #1) — already marked out of scope; no plan gap.

@@ -1,0 +1,4 @@
+Exploring the codebase to understand Codex token capture, ledger recording, and how Cursor parses per-bucket usage so we can draft an accurate plan.
+Checking how `token-report.sh` maps ledger fields and whether a similar parse helper pattern exists:
+I have enough context from the launchers, ledger/report pipeline, and real Codex transcripts. Creating the implementation plan.
+
