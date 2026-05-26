@@ -1,0 +1,32 @@
+# Approach Synthesis
+
+## Sketch contributions
+
+- **Codex-Generic**: substantive sketch (3.3KB). Recommends placing the new upsert in Step 5c (durable GitHub-write phase) rather than Step 3b (generation phase). Step 3b should keep generating/sanitizing into `$DESIGN_TMPDIR/architecture-diagram.md` only. Step 5c, after `plan-block-write.sh` succeeds and `REPO` is resolved, runs a best-effort upsert via `tracking-issue-summary.sh upsert-summary --marker "<!-- larch:diagrams v1 -->"` when `architecture-diagram.md` exists; skip when non-architectural. Update all diagram-marker call sites in one pass: /design new upsert, /implement Step 7a, `summary-comment-template.md`, docs/run-log prose, `tracking-issue-read.sh` filter. For /implement, refactor `step-7a.sh` so `compose_summary_diagrams` is code-flow-owned: fetch the existing stable comment via `gh api`, parse the Architecture section, preserve byte-for-byte, append/replace the Code Flow section locally, upsert. Remove `ARCHITECTURE_DIAGRAM_FILE` references from `pr-body-template.md`, `ship-pr.sh`, and `step-7a.sh`. Risks: marker stability invariant violation (call out in docs); race conditions if /design + /implement upsert concurrently (single-runner mitigates but doesn't eliminate; last-writer-wins acceptable since Step 7a always read-merge-patch); /implement running before /design must still upsert Code-Flow-only without failing; tests need expansion in `test-step-7a.sh` plus a new design harness around Step 5c.
+- **Cursor-Generic**: returned only launcher chatter (~200 bytes; no substantive content). Cursor's "max-mode" produced an "Exploring the codebase..." / "I have enough context... Creating the implementation plan." preamble but did NOT emit the actual sketch body. Collector reported STATUS=OK and dirty-tree=clean, so the launcher accepted the empty result. Synthesis proceeds on Codex's substantive output.
+
+## Agreement
+
+Only one substantive sketch was produced. The orchestrator agrees with Codex's primary architectural placements:
+
+1. **Where the new /design upsert lives**: Step 5c (durable GitHub-write phase), AFTER `plan-block-write.sh` succeeds and `REPO` is resolved. NOT Step 3b — Step 3b is generation-only. This colocates the upsert with the existing publish/rename/render-final-summary flow that already owns Step 5c.
+2. **What /design upserts**: when `$DESIGN_TMPDIR/architecture-diagram.md` exists, compose a small `summary-diagrams.md`-shaped file with the Architecture section content, run it through `redact-secrets.sh`, and call `tracking-issue-summary.sh upsert-summary --marker "<!-- larch:diagrams v1 -->"`. When Step 3b skipped (non-architectural), do NOT upsert.
+3. **What /implement keeps doing**: code-flow generation (unchanged). step-7a.sh's `compose_summary_diagrams` becomes code-flow-only.
+4. **How /implement preserves Architecture in the comment**: fetch the existing stable `<!-- larch:diagrams v1 -->` comment body via `gh api`, parse the Architecture section (text between `## Architecture Diagram` and `## Code Flow Diagram` or end-of-body), preserve it, append/replace the Code Flow section, then upsert with the stable marker.
+5. **Marker stability rollout**: change the marker in one sweep across /design + /implement + `summary-comment-template.md` + `tracking-issue-read.sh` filter. Documents must call out that `larch:diagrams` is the only marker that drops `runid=` (issue-scoped, jointly written), while the other three (`larch:metadata`, `larch:plan`, `larch:final-summary`) remain run-scoped.
+6. **/implement cleanups**: drop the Architecture Diagram section from `pr-body-template.md`; remove `ARCHITECTURE_DIAGRAM_FILE` references from `ship-pr.sh` (function `run_pr_prep_phase`) and from `step-7a.sh`.
+7. **No migration script for orphan comments** (Round 1 decision 5): legacy runid-bearing `larch:diagrams` comments stay as orphans.
+
+## Divergence
+
+None (only one substantive sketch).
+
+## Contested decisions
+
+None. The Round 1 user answers and the single substantive sketch produced consistent guidance for every primary architectural choice. Step 2a.5 short-circuits with `NO_CONTESTED_DECISIONS`.
+
+## Risks and ideas to preserve
+
+- **Race condition** between concurrent /design + /implement upserts of the same comment. The /implement single-runner invariant + the /design single-runner invariant mitigate but don't fully serialize cross-skill timing. Acceptable as last-writer-wins because Step 7a always read-merge-patches; first-writer Architecture is preserved by /implement's merge.
+- **/implement runs before /design completes**: edge case; /implement reads the comment, finds no stable comment (or finds the legacy runid-bearing comment and ignores it per filter), upserts Code Flow only. /design later running will see /implement's Code Flow comment, must do the same read-merge-patch in reverse to preserve Code Flow when adding Architecture. **This is an additional consideration not raised by the Codex sketch**: /design's Step 5c upsert must also read-merge-patch (preserve Code Flow if present) — same merge logic both directions, not just /implement.
+- **Test coverage gaps**: `skills/implement/scripts/test-step-7a.sh` must add cases for (a) stable-marker use, (b) preserve existing Architecture section, (c) no-existing-comment behavior, (d) legacy runid comments ignored. A new offline harness near `skills/design/scripts/` should cover the Step 5c upsert helper.

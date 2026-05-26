@@ -1,0 +1,43 @@
+Reading the plan and scanning the repository for diagram/runid/compose-architecture-sketch references.
+Running broader searches to complete the enumeration.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:590-591	Anti-halt chain grep-pins `5→5a→5b→5c.1→5c.7→5c.8→6` but plan adds Step 5c.5 without updating the pin	`make lint` / `test-design-structure` fails after SKILL.md edit, or orchestrators halt after diagram upsert because 5c.5 is absent from the anti-halt transition list	Add `scripts/test-design-structure.sh` to FILES; update `skills/design/SKILL.md:30` to `5→5a→5b→5c.1→5c.5→5c.7→5c.8→6` and adjust check (17) expected literal
+2	in_scope	important	correctness	agent-lint.toml:1446-1447	Allowlist still names deleted `test-compose-architecture-sketch` harness files	Deleting the four compose-architecture-sketch files without editing agent-lint.toml leaves stale allowlist entries / lint drift	Add `agent-lint.toml` to FILES; remove the four deleted paths from the allowlist block (~1436-1447)
+3	in_scope	important	correctness	skills/implement/SKILL.md:632	Blanket prose mandates `<!-- larch:<name> v1 runid=$RUN_ID -->` for all four summary markers including `larch:diagrams`	Post-PR agents keep emitting run-scoped diagrams markers despite code changes; pre-merge `grep 'larch:diagrams v1 runid'` misses this line	Carve out stable `<!-- larch:diagrams v1 -->` in Summary comments section; cite line 632 explicitly in FILES
+4	in_scope	important	correctness	docs/configuration-and-permissions.md	Plan lists this file in the doc sweep but repo has zero `larch:diagrams` / `runid=` / `compose-architecture-sketch` hits under `docs/`	Wasted implementer pass or false confidence the sweep ran	Drop from FILES or note "no change expected"; scope doc sweep to `docs/run-logs.md` (only docs/ file with `larch:diagrams` at :305,:319-323)
+5	in_scope	important	correctness	skills/implement/scripts/test-step-7a.md:11-16	Sibling harness contract still documents sanitizer cases as "skips summary upsert" while `step-7a.md:52` and `test-step-7a.sh` post placeholders via upsert	Contract drift after refactor to `upsert-diagrams-comment.sh`; reviewers mis-gate behavior	Add `skills/implement/scripts/test-step-7a.md` to FILES; rewrite cases 5-10/17 for stable marker + shared helper + code-flow-only bodies
+6	in_scope	important	correctness	plan.txt:18 vs scripts/tracking-issue-summary.sh:60-63	NEW helper spec orders redaction `redact-secrets.sh` then `redact-tmpdir-paths.sh`; canonical upsert path applies tmpdir-paths then secrets	Subtle redaction divergence if helpers are order-sensitive	Match `tracking-issue-summary.sh` order (tmpdir-paths, then secrets) or drop pre-upsert redaction and rely solely on `upsert-summary`
+7	in_scope	important	risk-integration	plan.txt:152	Final grep only targets literal `larch:diagrams v1 runid`	`skills/implement/SKILL.md:632` generic `runid=$RUN_ID` template survives and re-teaches per-run diagrams markers	Broaden exit check to `runid=\$RUN_ID` near `larch:diagrams` or enumerate `skills/implement/SKILL.md:632` in the grep checklist
+8	in_scope	nit	correctness	docs/run-logs.md:305-323	Prose says all four summary comments are "/implement"-maintained and `larch:diagrams` is "Written at Step 7a" only	Operators misread joint /design+/implement ownership and stable marker (plan already updates this file — ensure marker + Step 5c.5 + omit-runid are explicit in the edit)
+9	out_of_scope	latent	architecture	CHANGELOG.md:3649	Still documents manifest hydration of `ARCHITECTURE_DIAGRAM_FILE` after step-7a/ship-pr stop consuming it	Stale operator docs on manifest fields; no runtime break if variable becomes inert	[OUT_OF_SCOPE] Follow-up doc tweak or manifest cleanup issue
+
+**Enumeration (scoped paths, current repo):**
+
+| Pattern | Locations outside plan FILES |
+|--------|------------------------------|
+| `larch:diagrams v1 runid` | `skills/implement/scripts/step-7a.sh:393`, `scripts/tracking-issue-read.sh:427` (plan covers); `skills/implement/references/summary-comment-template.md:9` (plan covers) |
+| `larch:diagrams` (no runid) | `docs/run-logs.md:305,319,323` (plan); `skills/implement/SKILL.md:591,613,1394-1397` (plan); `skills/implement/scripts/step-7a.md:3,50,52` (plan); `pr-body-template.md:49` (plan) |
+| `compose-architecture-sketch` | `scripts/ship-pr.sh:1218` (plan); four script/md files + `Makefile:82,807-808` (plan); **`agent-lint.toml:1446-1447` (missing from plan)** |
+| `runid=` (diagrams-adjacent) | `summary-comment-template.md:9,20` (plan); generic template **`implement/SKILL.md:632` (plan mentions grep but not this line)** |
+
+`docs/configuration-and-permissions.md`, `README.md`, and all of `skills/design/` have **no** `larch:diagrams` / `compose-architecture-sketch` prose today. `scripts/*.md` hits are only the compose-architecture-sketch contracts (deletion covered) and `render-run-summary.md:64` (`final-summary` runid only — correctly out of scope).
+
+**Numbered findings**
+
+1. **[correctness]** `scripts/test-design-structure.sh:590-591` + `skills/design/SKILL.md:30` — Plan introduces **Step 5c.5** but the design anti-halt reminder is grep-pinned as `5→5a→5b→5c.1→5c.7→5c.8→6` (skipping `5c.5`). Adding diagram upsert without updating that literal breaks check (17) or leaves a halt surface after the new Bash sub-step.
+
+2. **[correctness]** `agent-lint.toml:1446-1447` — Makefile harness removal is planned; agent-lint allowlist entries for `test-compose-architecture-sketch` are not.
+
+3. **[correctness]** `skills/implement/SKILL.md:632` — Dominant prose drift vector: all markers described as run-scoped. Not caught by the plan’s narrow final grep.
+
+4. **[correctness]** `docs/configuration-and-permissions.md` — Listed in the doc sweep; no matching content in `docs/`. Only `docs/run-logs.md` needs diagram/marker/ownership edits under `docs/`.
+
+5. **[correctness]** `skills/implement/scripts/test-step-7a.md:11-16` — Omitted from FILES; contradicts current harness (`still posts comment`).
+
+6. **[correctness]** `plan.txt:18` vs `scripts/tracking-issue-summary.sh:60-63` — Redaction order mismatch in the NEW helper contract.
+
+7. **[risk-integration]** `plan.txt:152` — Pre-merge grep scope too narrow for `SKILL.md:632`.
+
+8. **[correctness]** `docs/run-logs.md:305-323` — In FILES; confirm edits cover joint ownership, stable marker, and /design Step 5c.5 (not only Step 7a).
+
+9. **[OUT_OF_SCOPE]** `CHANGELOG.md:3649` — `ARCHITECTURE_DIAGRAM_FILE` manifest prose may outlive consumers after this PR.
