@@ -1825,7 +1825,7 @@ if "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" "${_wf
 fi
 ```
 
-When Step 18 `write-final-report.sh` succeeds with a present `- **Cost**:` line in `$IMPLEMENT_TMPDIR/summary-final.md`, the orchestrator MUST emit that single verbatim `- **Cost**:` line as plain chat text when either condition holds: Step 18 passed `--print-stdout` because `$IMPLEMENT_TMPDIR/.step17-printed` was absent, or the refreshed cost line changed from the pre-Step-18 value. Use the same collapse-resistant rule as Step 17. Do not emit that line when the Step 18 render failed or when the cost line is unchanged after a prior Step 17 print.
+When the Step 18 final-report helper succeeds and `$IMPLEMENT_TMPDIR/summary-final.md` contains a `- **Cost**:` line, the orchestrator MUST emit that single verbatim cost line as plain chat text when either condition holds: the sentinel `$IMPLEMENT_TMPDIR/.step17-printed` was absent (early-bail path that triggered the conditional print flag), or the refreshed cost line changed from the pre-Step-18 value. Use the same collapse-resistant rule as Step 17. Do not emit that line when the Step 18 render failed or when the cost line is unchanged after a prior Step 17 print.
 
 For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
 

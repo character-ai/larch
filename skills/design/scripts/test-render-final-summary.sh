@@ -190,6 +190,9 @@ cat >"$D/final-summary.md" <<'EOF'
 
 <!-- larch:run-summary v=1 -->
 EOF
+# Reset execution-issues.md: prior runs append token-report/timing-report warnings;
+# this sub-case must see exactly 1 new warning from the renderer failure.
+: >"$D/execution-issues.md"
 std_fb="$TMP/std-fallback.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb" 2>/dev/null
