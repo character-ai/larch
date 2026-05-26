@@ -72,6 +72,7 @@ CODER="$(read_kv CODER "$SESSION_ENV")"; [ -n "$CODER" ] || CODER="claude"
 [ -n "$ISSUE" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER not found in parent-issue.md"; exit 1; }
 [ -n "$RUN_ID" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID not found in parent-issue.md, session-id, or session-env LARCH_TOKEN_SESSION_ID"; exit 1; }
 case "$ISSUE" in *[!0-9]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER must be numeric"; exit 1 ;; esac
+case "$RUN_ID" in *[!A-Za-z0-9._-]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID must match ^[A-Za-z0-9._-]+$"; exit 1 ;; esac
 
 summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
 version="$("$PLUGIN_ROOT/scripts/read-plugin-version.sh" 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}')"

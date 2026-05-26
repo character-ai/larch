@@ -27,7 +27,7 @@ Four invariants enforced across multiple steps. Anchor cross-step questions here
 
 3. **Degraded-Git Fail-Closed** — `check-bump-version.sh STATUS != ok` MUST force `VERIFIED=false` at Step 12 regardless of `COMMITS_AFTER`. **Enforcement**: STATUS-first evaluation ordering in the Rebase + Re-bump Sub-procedure step 4 (see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bump-verification.md` Block β); Step 8 permissive, Step 12 strict (bail to 12d). **Why**: a coerced 0 baseline from a transient git error routes to a bogus "wrong commit count" mis-diagnosis — the fail-closed rule prevents silently wrong merged versions.
 
-4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-adopt the wrong issue or corrupt `RUN_ID`. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0 tracking adoption entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so Branch 2 adoption + `larch-log.sh init` + `post-tracking-issue.sh` do not run twice for the same session. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully on the adopt path. If `larch-log.sh init` fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the issue to `[STALLED]` when applicable. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to plan materialization within Step 0. **Why**: `tracking-issue-summary.sh` searches by marker literals for the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double work on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
+4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-adopt the wrong issue or corrupt `RUN_ID`. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0 tracking adoption entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so Branch 2 adoption + `larch-log.sh init` + `post-tracking-issue.sh` do not run twice for the same session. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully on the adopt path. If `larch-log.sh init` fails: `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the issue to `[STALLED]` when applicable. `DEFERRED=true` is reserved for the non-stalled metadata-publication defer path (`POSTED=false` / no sentinel, then continue within Step 0). **Why**: `tracking-issue-summary.sh` searches by marker literals for the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double work on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
 
 ## NEVER List
 
@@ -298,6 +298,7 @@ On `implement-bootstrap.sh` exit **2**, print the raw diagnostic lines from its 
 - When `STEP_FAILED=session-entry-gate`: **⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.** Do NOT print the clean-main banner for `GATE_ERROR`; that banner is reserved for `session-setup.sh` `PREFLIGHT_ERROR`.
 - When `STEP_FAILED=session-setup`: **⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
 - When `STEP_FAILED=get-issue-state`: **⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**
+- When `STEP_FAILED=issue-number-required-for-resume`: **⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel's issue.**
 
 Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
 
@@ -348,6 +349,11 @@ if [ "$_ib_rc" -eq 2 ]; then
   if [ "$_ib_sf" = "get-issue-state" ]; then
     printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true
     printf '%s\n' '**⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**'
+    exit 2
+  fi
+  if [ "$_ib_sf" = "issue-number-required-for-resume" ]; then
+    printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true
+    printf '%s\n' '**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel'\''s issue.**'
     exit 2
   fi
   exit 2
@@ -409,22 +415,7 @@ export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING IMPLEMENT_BAI
 export codex_available cursor_available
 ```
 
-Mandatory Step 0 routing guard:
-
-```bash
-case "${IMPLEMENT_BAIL_REASON:-}" in
-  adopted-issue-closed|adopted-issue-is-pr|tracking-init-failed)
-    STALL_TRACKING=${STALL_TRACKING:-false}
-    # Skip the remaining Step 0 materialization blocks and route to Step 18 cleanup.
-    ;;
-  "")
-    if [ "${STALL_TRACKING:-false}" = "true" ]; then
-      # Skip the remaining Step 0 materialization blocks and route to Step 18 cleanup.
-      :
-    fi
-    ;;
-esac
-```
+Mandatory Step 0 routing guard: immediately after parsing/exporting the bootstrap KVs above, branch on the parsed values. If `IMPLEMENT_BAIL_REASON` is `adopted-issue-closed`, `adopted-issue-is-pr`, or `tracking-init-failed`, skip the remaining Step 0 materialization blocks and jump to Step 18 cleanup. Independently, if `STALL_TRACKING=true`, skip the remaining Step 0 materialization blocks and jump to Step 18 cleanup even when `IMPLEMENT_BAIL_REASON` is empty.
 
 Bootstrap tracking bail routing:
 
@@ -610,7 +601,8 @@ Bootstrap behavior map:
 | Branch 2 issue is closed | `IMPLEMENT_BAIL_REASON=adopted-issue-closed`. | Skip to Step 18 cleanup. |
 | Branch 2 target is PR | `IMPLEMENT_BAIL_REASON=adopted-issue-is-pr`. | Skip to Step 18 cleanup. |
 | `RUN_ID` derivation or `larch-log.sh init` fails | `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `STALL_TRACKING=true`. | Skip to Step 18 cleanup; preserve `ISSUE_NUMBER` when resolved so stalled rename can apply. |
-| `get-issue-state.sh` fails | `STEP_FAILED=get-issue-state`, exit 2. | Abort as an infra-class Step 0 failure. |
+| `get-issue-state.sh` fails or returns an unexpected non-`OPEN` state | `STEP_FAILED=get-issue-state`, exit 2. | Abort as an infra-class Step 0 failure. |
+| Resume sentinel exists but argv omitted `--issue-number` | `STEP_FAILED=issue-number-required-for-resume`, exit 2. | Abort with the dedicated resume-required operator message. |
 
 Resume safety net: Branch 1 always re-runs `larch-log.sh init` and the best-effort implementing rename, so a previous run that wrote the sentinel but missed the visual title transition can recover without re-posting metadata.
 

@@ -387,13 +387,26 @@ phase_tracking() {
     if [ "$FORKED_TARGET" = "true" ]; then
         BRANCH_SELECTED=forked-target-skip
         DEFERRED=true
+        local upstream_context_rc
         if [ -n "$UPSTREAM_REPO_OPT" ] && [ -n "$ISSUE_NUMBER_OPT" ]; then
-            "$SCRIPT_DIR/get-issue-context.sh" \
+            if "$SCRIPT_DIR/get-issue-context.sh" \
                 --issue "$ISSUE_NUMBER_OPT" \
                 --repo "$UPSTREAM_REPO_OPT" \
                 --tmpdir "$IMPLEMENT_TMPDIR" \
                 >"$IMPLEMENT_TMPDIR/upstream-context.out" \
-                2>"$IMPLEMENT_TMPDIR/upstream-context.log" || true
+                2>"$IMPLEMENT_TMPDIR/upstream-context.log"; then
+                :
+            else
+                upstream_context_rc=$?
+                "$SCRIPT_DIR/append-tool-failure.sh" \
+                    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                    --site "Step 0 tracking adoption — forked target upstream context" \
+                    --tool "get-issue-context.sh" \
+                    --exit-code "$upstream_context_rc" \
+                    --category "Warnings" \
+                    --output-file "$IMPLEMENT_TMPDIR/upstream-context.log" \
+                    --redact || true
+            fi
         fi
         emit_skip_breadcrumb_if_enabled forked-target
         return 0

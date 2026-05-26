@@ -15,6 +15,7 @@
 | GP-adopt | Branch 2 fresh adoption emits issue/run ids, `BRANCH_SELECTED=branch-2-adopt`, `DEFERRED=false`, `STALL_TRACKING=false`, and writes the sentinel with the selected `RUN_ID`. |
 | GP2 | Branch 1 sentinel resume emits `BRANCH_SELECTED=branch-1-resume` and reuses sentinel `ISSUE_NUMBER` / `RUN_ID`. |
 | GP3 | Fork mode emits `BRANCH_SELECTED=forked-target-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, and writes `FORKED_TARGET=true` to session-env. |
+| GP3-upstream-context-fail | Fork mode still continues when `get-issue-context.sh` fails and appends a redacted Warning entry to `execution-issues.md`. |
 | GP-repo-unavail-tracking | Tracking phase with `REPO_UNAVAILABLE=true` emits `BRANCH_SELECTED=repo-unavailable-skip`, empty `ISSUE_NUMBER`, and `DEFERRED=true`. |
 | GP4 | Infra-only repo-unavailable path emits `REPO_UNAVAILABLE=true` and repo-unavailable warning on stderr. |
 | B1 | Sentinel issue mismatch clears and replaces the sentinel via Branch 2 fresh adoption. |

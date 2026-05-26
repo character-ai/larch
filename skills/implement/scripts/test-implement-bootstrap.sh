@@ -272,6 +272,10 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
+if [ "${GET_ISSUE_CONTEXT_EXIT:-0}" -ne 0 ]; then
+  printf 'simulated upstream context failure\n' >&2
+  exit "$GET_ISSUE_CONTEXT_EXIT"
+fi
 mkdir -p "$tmpdir"
 printf 'title\n' > "$tmpdir/upstream-issue-title.txt"
 printf 'body\n' > "$tmpdir/upstream-issue-body.txt"
@@ -374,6 +378,18 @@ assert_contains "FORKED_TARGET=true" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP3
 assert_contains "TITLE_FILE=$SANDBOX_TMP/upstream-issue-title.txt" "$(cat "$SANDBOX_TMP/upstream-context.out")" "GP3 upstream title artifact"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains 'get-issue-context --issue 123 --repo upstream/repo' "$invoke" "GP3 upstream context invoked"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- GP3-upstream-context-fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+export GET_ISSUE_CONTEXT_EXIT=7
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --forked-target true --upstream-repo upstream/repo 2>/dev/null) && rc=$? || rc=$?
+unset GET_ISSUE_CONTEXT_EXIT
+assert_rc "$rc" 0 "GP3-upstream-context-fail exit 0"
+assert_contains "BRANCH_SELECTED=forked-target-skip" "$out" "GP3-upstream-context-fail branch"
+assert_contains "Step 0 tracking adoption — forked target upstream context" "$(cat "$SANDBOX_TMP/execution-issues.md")" "GP3-upstream-context-fail execution issues"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP-repo-unavail-tracking ---

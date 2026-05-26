@@ -71,7 +71,7 @@ Future phases will add the later Step 0 breadcrumbs only: `→ step0: branch + p
 | Code | Meaning |
 |------|---------|
 | 0 | Success through `--up-to-phase` boundary. |
-| 2 | Infrastructure/tracking helper failure: `STEP_FAILED=` plus diagnostic (`GATE_ERROR=` or `PREFLIGHT_ERROR=` on stdout where applicable). `STEP_FAILED=get-issue-state` is emitted when Branch 2 cannot verify issue state. |
+| 2 | Infrastructure/tracking helper failure: `STEP_FAILED=` plus diagnostic (`GATE_ERROR=` or `PREFLIGHT_ERROR=` on stdout where applicable). `STEP_FAILED=get-issue-state` is emitted when Branch 2 cannot verify issue state or returns a non-`OPEN`/non-`CLOSED` issue state, and `STEP_FAILED=issue-number-required-for-resume` is emitted when a resume sentinel exists but argv omitted `--issue-number`. |
 | (other) | argv validation failures (`die_usage`). |
 
 ## Bail reasons (`IMPLEMENT_BAIL_REASON`)
