@@ -1,0 +1,14 @@
+[OOS] Hardening follow-ups: ADOPTED echo and get-issue-context.sh validation parity
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+**Phase**: implement
+**Vote tally**: YES=3, 2 items combined
+
+## Description
+
+(1) `scripts/tracking-issue-read.sh:291-294` — `ADOPTED` validation still echoes the raw extracted value in `ERROR=` while `ISSUE_NUMBER` and `RUN_ID` now use the `'malformed-value-omitted'` fixed-token pattern. A corrupted sentinel ADOPTED value could inject KEY=VALUE tokens into the KV-parsed stdout stream. Fix: change the ADOPTED error to use `invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'` instead of echoing `$ADOPTED_VAL`. (2) `scripts/get-issue-context.sh:32-35` — uses a positive-integer regex `[[ "$ISSUE" =~ ^[0-9]+$ ]]` unlike the new all-digit `case *[!0-9]*` guard in sibling scripts; `0` is accepted by the case pattern but rejected by the regex (minor inconsistency). Fix: align validation style in a follow-up hardening pass if parity is desired.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

@@ -1,0 +1,17 @@
+## Approach Synthesis (quick mode, sketch_budget=2)
+
+**Attribution by tool**:
+- Cursor-Generic: produced only placeholder text ("Exploring..." / "Creating...") — non-substantive; treated as missing for synthesis purposes (warning logged in execution-issues.md).
+- Codex-Generic: produced a substantive 3-paragraph analysis confirming the narrow-hardening direction and naming all impacted files.
+
+**Agreement (Codex single-source given Cursor's degraded output)**:
+- This is a narrow contract-hardening patch, not a behavior redesign.
+- ADOPTED validation should follow the same fixed-token no-echo policy already used for ISSUE_NUMBER and RUN_ID. Preserve the strict accepted values (`true` / `false` / empty/absent); only change the failure envelope so attacker-controlled bytes never appear in `ERROR=`.
+- Files in scope: `scripts/tracking-issue-read.sh` (the error string), `scripts/test-tracking-issue-read-sentinel.sh` (assertions for cases (e), (f), (g), (h)), and the matching `.md` siblings (`tracking-issue-read.md`, `test-tracking-issue-read-sentinel.md`) so implementation, contract, and harness all agree.
+- Main risk: existing sentinel tests currently assert the rejected value name (`'TRUE'`, `'1'`, `'true '`); those assertions must flip to assert the fixed token and explicitly assert absence of the injected content.
+
+**Divergence**: none meaningful — Cursor produced no substantive content, so there is no second perspective to weigh against Codex. The Step 1c clarifying answers already resolved the only genuine open question (validation-parity direction for `get-issue-context.sh`: keep strict, add a clarifying comment only).
+
+**Items incorporated into the plan**:
+- From Codex: the contract-drift risk pattern (assert fixed token + absence of injected content), the multi-file scope (script + test + both .md siblings), the post-change verification command (`make test-tracking-issue-read-sentinel`).
+- From Step 1c: the clarifying-comment-only approach for `get-issue-context.sh` (no code change, no test change to that file).

@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	SECURITY.md:133	Plan omits SECURITY.md update though tracking-issue-read.md edit-in-sync table requires it	After ADOPTED adopts fixed-token errors, SECURITY.md still documents only ISSUE_NUMBER/RUN_ID no-echo; readers and auditors retain a false security posture	Extend the sentinel paragraph to include ADOPTED in the malformed-value fixed-token list (same sentence as ISSUE_NUMBER/RUN_ID)

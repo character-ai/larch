@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	SECURITY.md:131-133	Plan omits SECURITY.md update while extending ADOPTED fixed-token no-echo	Security policy still documents ISSUE_NUMBER/RUN_ID redaction only; ADOPTED hardening is invisible to SECURITY.md readers and conflicts with AGENTS.md security-update rule	Add ADOPTED to the tracking-issue-read sentinel paragraph (same fixed-token contract as ISSUE_NUMBER/RUN_ID)
