@@ -1,0 +1,21 @@
+Implemented the plan and wrote the complete manifest at:
+
+`<TMPDIR>/manifest.json`
+
+No `qa-pending.json` was written because status is `complete`.
+
+Changed:
+- Centralized `sanitize_diagnostic_line` in `scripts/lib-quiet.sh`.
+- Sanitized `ci-failed-jobs.sh` job names before counting/TSV/KV emission.
+- Preserved generator `SKIP_REASON` in Step 7a placeholder comments.
+- Hardened Mermaid `REASON_TOKEN` parsing for embedded `=`.
+- Updated docs, `SECURITY.md`, and focused harness coverage.
+
+Verified:
+- `bash scripts/test-lib-quiet.sh`
+- `bash scripts/test-ci-failed-jobs.sh` → 46 passed
+- `bash skills/implement/scripts/test-step-7a.sh` → 112 passed
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`
+
+Working tree has the expected 11 modified files.
