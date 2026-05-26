@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/render-run-summary.sh:130-153	Stage 1 assumes omitted token flags yield Cost N/A	Re-invoke still runs token-cost on zeros and emits ~$0.00; token-missing test fails	Add explicit cost-unavailable contract on render-run-summary or gate argv in write-final-report; use in Stage 1
