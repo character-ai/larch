@@ -2000,13 +2000,9 @@ fi  # end section: convergence
 if section_runs parsers; then
     parsers_tmp="$TMP/parsers-harness"
     mkdir -p "$parsers_tmp"
-    # shellcheck source=scripts/lib-implement-round-cap.sh
-    # shellcheck disable=SC1091
-    . "$REPO_ROOT/scripts/lib-implement-round-cap.sh"
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
-    eval "$(declare -f count_prior_degraded_rounds | sed '1s/count_prior_degraded_rounds/step5_original_count_prior_degraded_rounds/')"
 
     # step5_parse_kv_tokens under set -e (positive / miss / empty line).
     (

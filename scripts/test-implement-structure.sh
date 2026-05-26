@@ -413,4 +413,9 @@ if [[ -n "$diff_ship_not_skill" || -n "$diff_skill_not_ship" ]]; then
   fail "write_initial_state key set drift between skills/implement/SKILL.md (write-initial-state-keys region) and scripts/ship-pr.sh write_initial_state()"
 fi
 
+grep -Fq "seed \`\$IMPLEMENT_TMPDIR/ship-pr-state.sh\` from the canonical Step 8 \`<!-- write-initial-state-keys:begin/end -->\` required-key block" "$SKILL_MD" \
+  || fail "SKILL.md Step 5 stall path must pin the canonical write-initial-state-keys block as the ship-pr-state seed source"
+grep -Fq 'copy the full canonical key set' "$SKILL_MD" \
+  || fail "SKILL.md Step 5 stall path must require copying the full canonical ship-pr-state key set"
+
 echo "All assertions passed."
