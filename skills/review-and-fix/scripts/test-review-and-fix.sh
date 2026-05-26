@@ -2000,6 +2000,9 @@ fi  # end section: convergence
 if section_runs parsers; then
     parsers_tmp="$TMP/parsers-harness"
     mkdir -p "$parsers_tmp"
+    # shellcheck source=scripts/lib-implement-round-cap.sh
+    # shellcheck disable=SC1091
+    . "$REPO_ROOT/scripts/lib-implement-round-cap.sh"
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
@@ -2096,6 +2099,7 @@ if section_runs step5-starting-round; then
     # shellcheck source=scripts/lib-implement-round-cap.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/scripts/lib-implement-round-cap.sh"
+    eval "$(declare -f count_prior_degraded_rounds | sed '1s/count_prior_degraded_rounds/step5_original_count_prior_degraded_rounds/')"
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
@@ -2214,6 +2218,10 @@ if section_runs step5-starting-round; then
                         mkdir -p "$(dirname "$STEP5_SYNC_CREATE_PATH")"
                         printf 'DEGRADED_ROUND=false\n' > "$STEP5_SYNC_CREATE_PATH"
                         ;;
+                    copy-prewritten-prior)
+                        mkdir -p "$(dirname "$STEP5_SYNC_CREATE_PATH")"
+                        cp "$STEP5_PREWRITTEN_PRIOR" "$STEP5_SYNC_CREATE_PATH"
+                        ;;
                     sleep-only)
                         sleep 0.2
                         ;;
@@ -2268,12 +2276,8 @@ if section_runs step5-starting-round; then
         step5_write_prior_round "$STEP5_LAST_CASE_DIR/impl" "$round" false
     done
     printf 'DEGRADED_ROUND=false\n' > "$STEP5_LAST_CASE_DIR/prewritten-round-4.env"
-    (
-        sleep 0.1
-        mkdir -p "$STEP5_LAST_CASE_DIR/impl/round-4"
-        cp "$STEP5_LAST_CASE_DIR/prewritten-round-4.env" "$STEP5_LAST_CASE_DIR/impl/round-4/review-and-fix.env"
-    ) &
-    step5_run_loop_case retry-sees-prewritten-prior 5 5 sleep-only complete
+    STEP5_PREWRITTEN_PRIOR="$STEP5_LAST_CASE_DIR/prewritten-round-4.env"
+    step5_run_loop_case retry-sees-prewritten-prior 5 5 copy-prewritten-prior complete
     [[ "$STEP5_LAST_RC" -eq 0 ]] || { cat "$STEP5_LAST_ERR" >&2; fail "step5 retry-sees-prewritten-prior expected exit 0 got $STEP5_LAST_RC"; }
     step5_assert_envelope "$STEP5_LAST_OUT" complete false "" 5
     pass "step5-starting-round retry-sees-prewritten-prior"
