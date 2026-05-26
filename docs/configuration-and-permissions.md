@@ -258,7 +258,7 @@ When set to `true`, `/implement` Step 17 prints the full per-step token/timing t
 
 ### `LARCH_BUMP_FILES`
 
-Colon-separated list of bump files that `scripts/drop-bump-commit.sh` Guard 4 accepts as the allowed non-changelog file set. Uses **replacement semantics**: when set, this list replaces the built-in default (`.claude-plugin/plugin.json`) — it is NOT additive. `CHANGELOG.md` is always allowed regardless of this setting (never required, always optional).
+Colon-separated list of bump files that `scripts/drop-bump-commit.sh` Guard 4 accepts as the allowed non-changelog file set. Uses **replacement semantics**: when set, this list replaces the built-in default (`.claude-plugin/plugin.json`) — it is NOT additive. `CHANGELOG.md` is allowed alongside bump files regardless of this setting (never required, always optional). The `--allow-changelog-only` flag is independent: it gates the special case where a bump-subject commit touches exactly `CHANGELOG.md`.
 
 This variable controls which commit shapes the Rebase + Re-bump Sub-procedure's step 1 (`drop-bump-commit.sh`) considers safe for destructive `git reset --hard HEAD~1`. Consumer repos whose `/bump-version` touches additional version files (e.g., `version.go`, `package.json`, `Cargo.toml`) should set this so the bump commit can be cleanly dropped before rebasing.
 

@@ -44,10 +44,11 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
    - Fetches `origin/main` (best-effort, non-fatal on failure)
    - Resolves `BASE` via `main` → `origin/main` fallback
    - Validates `.claude-plugin/plugin.json` via `jq`
-   - Detects an **already-bumped branch** by checking whether HEAD itself is a commit with subject `^Bump version to [0-9]+\.[0-9]+\.[0-9]+$`. If HEAD is such a commit, emits `BUMP_TYPE=NONE` and exits 0 (no-op). If a bump exists earlier in the branch but additional commits have landed on top, a fresh bump is required.
+   - Detects an **already-bumped branch** by checking whether HEAD, after walking past up to three transparent `Update CHANGELOG for X.Y.Z` commits, is a commit with subject `^Bump version to [0-9]+\.[0-9]+\.[0-9]+$`. If so, emits `BUMP_TYPE=NONE` and exits 0 (no-op). If a bump exists earlier in the branch but additional non-CHANGELOG commits have landed on top, a fresh bump is required.
    - Computes `git diff -M --name-status $BASE HEAD -- skills agents` for file-level classification (added/deleted/renamed SKILL.md and agent files)
    - For each modified SKILL.md, reads the old and new full file contents via `git show "$BASE:<path>"` and `git show "HEAD:<path>"`, extracts the first YAML frontmatter block between `---` markers, and compares the `name:` and `argument-hint:` fields. The `argument-hint:` comparison uses token sets: a `--<flag>` present in both old and new is treated as unchanged; only genuine additions or removals contribute to classification.
    - Writes evidence to `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md` (absolute path also emitted as `REASONING_FILE=<path>` on stdout)
+   - Maintains its sibling contract at `$PWD/.claude/skills/bump-version/scripts/classify-bump.md`; update that file with idempotency or classification behavior changes.
    - Emits `KEY=VALUE` lines on stdout: `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `REASONING_FILE`
 3. You (main agent) parse the output and review the diff for the **escalation-only** caveat (line 34). **Do not write commentary about that review unless you actually escalate** — no log append, no diff summary, no narration. If escalating, update `NEW_VERSION` and append the bounded reasoning per the Caveat above; otherwise proceed directly to `apply-bump.sh` with the emitted `NEW_VERSION`.
 4. You invoke `apply-bump.sh --new-version <NEW_VERSION>`, which:
@@ -59,7 +60,7 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
    - If the parsed origin version equals `NEW_VERSION`, rolls back the staged `plugin.json` mutation and calls `fail()` with `ERROR="origin/main has already bumped to <NEW_VERSION>; re-classify needed"`. `/implement` Step 8 routes this to the Rebase + Re-bump Sub-procedure with `caller_kind=step8_apply_bump_same_version` for one re-classification attempt; subsequent failure stalls.
    - If `NEW_VERSION < ORIGIN_VERSION`, rolls back the staged `plugin.json` mutation and fails closed on the version-regression guard with `ERROR="version regression: <NEW_VERSION> < origin/main <ORIGIN_VERSION>; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"`. `/implement` Step 8 treats that as a hard failure; Step 10/12's delegated `ship-pr.sh` rebase/re-bump path instead recomputes the bump from the refreshed `origin/main` baseline and rewrites the reasoning artifact before refreshing `version-bump-reasoning`.
    - `git commit -m "Bump version to <NEW_VERSION>"`
-   - No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery requires the bump commit to remain at HEAD.
+   - No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery must be able to find and drop the bump commit. `CHANGELOG.md` is committed separately by `scripts/commit-changelog.sh` when Step 8a or re-bump paths update it.
    - Rolls back from backup on commit failure
    - Maintains its sibling contract at `$PWD/.claude/skills/bump-version/scripts/apply-bump.md`; update that file with any behavioral change.
 5. If `BUMP_TYPE=NONE`, skip the apply step and report "already bumped".

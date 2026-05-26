@@ -4,6 +4,7 @@
 set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
+unset LARCH_BREADCRUMB_STREAM
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_SCRIPT="$SCRIPT_DIR/implement-finalize.sh"
@@ -275,6 +276,17 @@ STUB
 if [ "${STUB_AMEND_FAIL:-false}" = "true" ]; then
   exit 1
 fi
+exit 0
+STUB
+    cat > "$SANDBOX/scripts/commit-changelog.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${STUB_CHANGELOG_COMMIT_FAIL:-false}" = "true" ]; then
+  echo "COMMITTED=false"
+  echo "ERROR=stub changelog commit failure"
+  exit 1
+fi
+echo "COMMITTED=true"
+echo "COMMIT_SHA=stub-changelog"
 exit 0
 STUB
     cat > "$SANDBOX/scripts/rebase-push.sh" <<STUB
@@ -1119,8 +1131,8 @@ assert_contains "FORCE_PUSH_STATUS=failed" "$OUT" "postbump: force-push failure 
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 write_postbump_state "$POSTBUMP_STATE"
-OUT=$(STUB_AMEND_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=changelog-failed" "$OUT" "postbump: changelog amend failure is fatal"
+OUT=$(STUB_CHANGELOG_COMMIT_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=changelog-failed" "$OUT" "postbump: changelog commit failure is fatal"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 : > "$SANDBOX/larch-log-argv.txt"

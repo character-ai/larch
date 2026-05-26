@@ -12,10 +12,15 @@
 4. **Allowed files** — every file in `git diff --name-only HEAD~(found_at+1) HEAD~found_at` must be in the allowed set:
    - **When `LARCH_BUMP_FILES` is unset**: exact two-string equality against `.claude-plugin/plugin.json` alone or `.claude-plugin/plugin.json` + `CHANGELOG.md` (byte-identical to pre-configuration behavior).
    - **When `LARCH_BUMP_FILES` is set**: colon-separated list parsed with whitespace trimming and empty-segment skipping. Replacement semantics — replaces the default `.claude-plugin/plugin.json`, not additive. `CHANGELOG.md` is always appended (allowed but never required). Two-gate membership check: (a) every changed file must appear in the allowed set, and (b) at least one configured bump file (not `CHANGELOG.md`) must be present in the diff. Fail-closed on empty parse and on empty/CHANGELOG-only diffs.
+   - **`--allow-changelog-only`**: opt-in defense for legacy in-flight branches. When set, a bump-subject commit whose diff is exactly `CHANGELOG.md` is accepted on both the default and `LARCH_BUMP_FILES` paths. The strict bump-subject regex still applies. The flag is off by default.
 
 ## Environment variable
 
 - **`LARCH_BUMP_FILES`**: Colon-separated list of bump files. Paths must match `git diff --name-only` format (repo-root-relative, no `./` prefix). Paths must not contain `:`. See `docs/configuration-and-permissions.md` for full documentation.
+
+## Flags
+
+- **`--allow-changelog-only`**: Allows exactly `CHANGELOG.md` for a commit whose subject already matched `^Bump version to [0-9]+\.[0-9]+\.[0-9]+$`. Intended only for the rebase/re-bump callers while the primary changelog path uses separate `Update CHANGELOG for X.Y.Z` commits.
 
 ## Output contract
 
@@ -42,6 +47,7 @@
 When editing `scripts/drop-bump-commit.sh`:
 - Update this file (`scripts/drop-bump-commit.md`) for any behavioral change.
 - Update `scripts/test-drop-bump-commit.sh` for any Guard 4 logic change.
+- Update `scripts/commit-changelog.md` when changing the bump/changelog commit shape.
 - Update `docs/configuration-and-permissions.md` `LARCH_BUMP_FILES` section for any env var contract change.
 - Update `skills/implement/references/rebase-rebump-subprocedure.md` step 1 for any output-contract or walk-back search change.
 - Update `skills/implement/references/bump-verification.md` for any `DROPPED=false` scenario change.

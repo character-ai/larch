@@ -494,6 +494,45 @@ kv_value() {
     printf '%s\n' "$input" | awk -F= -v k="$key" '$1 == k {print substr($0, index($0, "=") + 1); found=1} END {if (!found) print ""}' | tail -n 1
 }
 
+ship_pr_record_old_bump_version() {
+    local old_bump_sha=$1 old_subject old_version
+    if [ -z "$old_bump_sha" ]; then
+        state_set_many RRR_OLD_BUMP_SHA "" RRR_OLD_BUMP_VERSION ""
+        return 0
+    fi
+    old_subject=$(git log -1 --format=%s "$old_bump_sha" 2>/dev/null || true)
+    old_version=${old_subject#Bump version to }
+    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION "$old_version"
+    else
+        state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION ""
+    fi
+}
+
+ship_pr_commit_changelog_after_rebump() {
+    local new_version=$1 fail_file=$2 commit_out commit_rc old_version
+    local -a commit_args
+    [ -f CHANGELOG.md ] || return 0
+    [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+
+    old_version=$(read_state RRR_OLD_BUMP_VERSION "")
+    commit_args=(--version "$new_version")
+    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]]; then
+        commit_args+=(--replaces-version "$old_version")
+    fi
+
+    set +e
+    commit_out=$("$SCRIPT_DIR/commit-changelog.sh" "${commit_args[@]}" 2>>"$fail_file")
+    commit_rc=$?
+    set +e
+    printf '%s\n' "$commit_out" >> "$fail_file"
+    if [ "$commit_rc" -ne 0 ]; then
+        printf 'WARN: run_rebase_rebump: commit-changelog.sh failed; continuing without blocking re-bump push\n' >> "$fail_file"
+    elif [ "$(kv_value COMMITTED "$commit_out")" = "false" ]; then
+        printf 'WARN: run_rebase_rebump: commit-changelog.sh made no CHANGELOG commit after re-bump\n' >> "$fail_file"
+    fi
+}
+
 capture_command_output() {
     local __outvar=$1 __fail_file=$2
     shift 2
@@ -2348,6 +2387,7 @@ _run_rebase_rebump_from_step3() {
                 record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
+            ship_pr_commit_changelog_after_rebump "$new_version" "$fail_file"
             pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
             if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
                 gh pr edit "$pr_n" --repo "$repo_r" \
@@ -2431,11 +2471,14 @@ run_rebase_rebump() {
         plan_args=(--plan-file "$plan_file")
     fi
 
-    # 1. Drop existing bump commit (non-fatal; CI-fix commits may sit on top)
+    # 1. Drop existing bump commit (non-fatal; CI-fix commits may sit on top).
+    # --allow-changelog-only is defense-in-depth for legacy in-flight branches;
+    # the normal path now keeps CHANGELOG.md in its own commit.
     fail_file=$(failure_capture_path rebase)
-    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" 2>"$fail_file")
+    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" --allow-changelog-only --max-depth 20 2>"$fail_file")
     rc=$?
     printf '%s\n' "$drop_out" >> "$fail_file"
+    ship_pr_record_old_bump_version "$(kv_value OLD_BUMP_SHA "$drop_out")"
     [ "$rc" -eq 0 ] || record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
 
     run_id=$(read_state RUN_ID)

@@ -738,6 +738,18 @@ exclude = [
   # test-* harnesses above.
   "scripts/test-drop-bump-commit.sh",
   "scripts/drop-bump-commit.md",
+  # scripts/git-amend-add.sh has no current primary callers after CHANGELOG
+  # commits moved to scripts/commit-changelog.sh. It is retained intentionally
+  # as a tiny future amend primitive with a sibling contract.
+  "scripts/git-amend-add.sh",
+  "scripts/git-amend-add.md",
+  # scripts/commit-changelog.sh is the separate CHANGELOG commit primitive used
+  # by implement-finalize.sh and ship-pr.sh. Its harness is Makefile-only
+  # (test-commit-changelog target) and its sibling docs own the contract.
+  "scripts/commit-changelog.sh",
+  "scripts/commit-changelog.md",
+  "scripts/test-commit-changelog.sh",
+  "scripts/test-commit-changelog.md",
   # scripts/test-ci-wait-exit-trap.sh is the regression harness for
   # scripts/ci-wait.sh's EXIT-trap-writes-.done behavior under SIGTERM and
   # the backward-compat default-mode (stdout) contract. Closes #842 (leaked

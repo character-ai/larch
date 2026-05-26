@@ -87,6 +87,12 @@ SH
 #!/usr/bin/env bash
 exit 0
 SH
+    cat > "$root/scripts/commit-changelog.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "COMMITTED=false"
+exit 0
+SH
     cat > "$root/scripts/implement-finalize.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -455,14 +461,15 @@ section_runs() {
 # them after the fix-loop section is skipped.
 _install_rebump_dep_stubs() {
     local root=$1
-    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh; do
+    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh commit-changelog.sh; do
         printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
     done
     chmod +x \
         "$root/scripts/drop-bump-commit.sh" \
         "$root/scripts/git-sync-local-main.sh" \
         "$root/scripts/git-force-push.sh" \
-        "$root/scripts/refresh-run-logs.sh"
+        "$root/scripts/refresh-run-logs.sh" \
+        "$root/scripts/commit-changelog.sh"
 }
 
 # Real git + real rebase-push.sh for CHANGELOG auto-resolve coverage in run_rebase_rebump.
@@ -2335,6 +2342,101 @@ if [ -f "$sentinel_dir/env-calls.txt" ] && \
     ok "run_rebase_rebump: LARCH_NO_LOGS_COMMIT=false exported to apply-bump"
 else
     fail "run_rebase_rebump: expected LARCH_NO_LOGS_COMMIT=false in apply-bump env"
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo rebump_changelog_commit_shape)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-changelog.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+cp "$REPO_ROOT/scripts/drop-bump-commit.sh" "$root/scripts/drop-bump-commit.sh"
+cp "$REPO_ROOT/scripts/commit-changelog.sh" "$root/scripts/commit-changelog.sh"
+cp "$REPO_ROOT/scripts/git-commit.sh" "$root/scripts/git-commit.sh"
+chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/commit-changelog.sh" "$root/scripts/git-commit.sh"
+mkdir -p "$root/.claude-plugin"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.2"}
+JSON
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add .claude-plugin/plugin.json CHANGELOG.md
+git -C "$root" commit -q -m "Prepare version fixtures"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.3"}
+JSON
+git -C "$root" add .claude-plugin/plugin.json
+git -C "$root" commit -q -m "Bump version to 1.2.3"
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.3] - 2026-01-01
+
+### Fixed
+
+- Preserve the changelog entry body.
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add CHANGELOG.md
+git -C "$root" commit -q -m "Update CHANGELOG for 1.2.3"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+printf '# reasoning\n' > "$reasoning_file"
+echo "CURRENT_VERSION=1.2.3"
+echo "NEW_VERSION=1.2.4"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+new_version=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --new-version) new_version=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '{"version":"%s"}\n' "$new_version" > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to $new_version"
+echo "APPLIED=true"
+echo "COMMIT_SHA=$(git rev-parse HEAD)"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
+         "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-changelog" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-changelog"
+set -e
+assert_rc "$tmp/rc-rebump-changelog" 0 "run_rebase_rebump creates separate fresh CHANGELOG commit"
+rebump_log_subjects=$(git -C "$root" log --format=%s)
+if [[ "$rebump_log_subjects"$'\n' == *$'Bump version to 1.2.4\n'* ]] &&
+   [[ "$rebump_log_subjects"$'\n' == *$'Update CHANGELOG for 1.2.4\n'* ]] &&
+   ! grep -q '^## \[1.2.3\] - ' "$root/CHANGELOG.md" &&
+   grep -q '^## \[1.2.4\] - ' "$root/CHANGELOG.md"; then
+    ok "run_rebase_rebump replaces stale CHANGELOG entry with fresh version"
+else
+    fail "run_rebase_rebump should leave fresh bump plus fresh CHANGELOG entry"
+    git -C "$root" log --oneline --max-count=8 | sed 's/^/    log: /' || true
+    sed 's/^/    changelog: /' "$root/CHANGELOG.md" || true
 fi
 rm -rf "$sentinel_dir"
 

@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # git-amend-add.sh — Stage files and amend the previous commit (no message edit).
 #
-# Wraps `git add <files>` followed by `git commit --amend --no-edit`. Used by
-# /implement Step 8a (CHANGELOG) and the Rebase + Re-bump Sub-procedure step 4a
-# (skills/implement/references/rebase-rebump-subprocedure.md)
-# to fold CHANGELOG.md updates into the preceding bump commit.
+# Wraps `git add <files>` followed by `git commit --amend --no-edit`.
+# Currently no primary callers; retained for future amend use cases.
 #
 # Usage:
 #   git-amend-add.sh <file> [<file> ...]
