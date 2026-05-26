@@ -11,7 +11,7 @@ The harness uses PATH-stubbed `gh` and `git` binaries and the real `scripts/merg
 3. `--no-admin-fallback` uses the admin-eligible gate but invokes only the plain squash merge; a successful plain merge emits `MERGE_RESULT=merged`.
 4. `--no-admin-fallback` with a failing plain merge emits `MERGE_RESULT=policy_denied` and preserves the stable policy-denial `ERROR` string.
 5. Safety gates short-circuit before any merge command: `BEHIND` returns `main_advanced`, and non-pass CI returns `ci_not_ready`.
-6. Empty or `UNKNOWN` merge state fails closed as `MERGE_RESULT=error`.
+6. Initial empty or `UNKNOWN` merge state retries 4 times with 5-second sleeps before failing closed as `MERGE_RESULT=error`; a transient `UNKNOWN` that resolves to `CLEAN` on retry continues to `admin_merged`; a transient `UNKNOWN` that resolves to `BEHIND` on retry takes the early `main_advanced` exit with empty `ERROR`, matching the first-shot `BEHIND` fast path.
 
 ### Same-version gate
 

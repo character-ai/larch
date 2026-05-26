@@ -21,7 +21,7 @@ Emits `MERGE_RESULT=...` and `ERROR=...` on stdout via an EXIT trap. Exits 0 unc
 | `version_already_published` | Same-version race gate found a literal bump commit in `origin/main..HEAD` and `origin/main` already publishes that same `.claude-plugin/plugin.json` version. Caller should bail so the branch can rebase and re-bump. |
 | `admin_failed` | Default-mode `--admin` attempt failed and the plain fallback also failed. Hard error. |
 | `policy_denied` | CI re-verified green + branch fresh (admin-eligible); `--no-admin-fallback` is set, so `--admin` was NOT invoked, and the plain merge attempt failed. Caller should bail to manual reviewer-approval flow. |
-| `error` | Catch-all unexpected failure. Also covers the case where `gh pr view --json mergeStateStatus,headRefOid` returns empty (API/network/`gh` failure) or `UNKNOWN` mergeStateStatus — the script cannot determine merge state, so it short-circuits with `error` rather than mis-routing to `main_advanced`. |
+| `error` | Catch-all unexpected failure. Also covers the case where initial `gh pr view --json mergeStateStatus,headRefOid` returns empty (API/network/`gh` failure) or `UNKNOWN` mergeStateStatus after 4 retries with 5-second sleeps. If the transient state resolves during retry, normal routing resumes. |
 
 ## --no-admin-fallback
 
@@ -61,7 +61,11 @@ Non-recoverable divergence (any non-flush commit in the ahead range, any changed
 
 ## Batched discovery
 
-At startup the script issues one compound `gh pr view --json mergeStateStatus,headRefOid` call that populates both `MERGE_STATE` and `PR_HEAD_OID`. This avoids a second API round-trip later for the same-version bump race gate's OID precondition. Both fields are parsed from the JSON result via `jq -r '.<field> // ""'`. Failure handling is unchanged: an empty result (gh error or network failure) still routes through the existing empty/UNKNOWN short-circuit paths. Flush recovery is the one exception: after a successful recovery push, the script performs an additional `gh pr view` to confirm the new head OID and merge state before proceeding.
+At startup the script issues one compound `gh pr view --json mergeStateStatus,headRefOid` call that populates both `MERGE_STATE` and `PR_HEAD_OID`. This avoids a second API round-trip later for the same-version bump race gate's OID precondition. Both fields are parsed from the JSON result via `jq -r '.<field> // ""'`.
+
+If the initial result has empty or `UNKNOWN` merge state, the script sleeps 5 seconds and re-reads PR metadata, up to 4 times. If the state still cannot be read, `MERGE_RESULT=error` is emitted with the existing `could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state="...")` prefix and an `after 4 retries` suffix. If the retry resolves to `BEHIND`, the script takes the same early `MERGE_RESULT=main_advanced` and empty-`ERROR` exit as a first-shot `BEHIND`; other resolved states continue through normal CI and merge-state routing.
+
+Flush recovery is the one exception to the startup-only compound call: after a successful recovery push, the script performs an additional `gh pr view` to confirm the new head OID and merge state before proceeding. Post-force-push empty/`UNKNOWN` retry behavior remains the 3-retry path described in "Flush-commit OID recovery".
 
 ## Non-responsibilities
 
