@@ -738,6 +738,11 @@ exclude = [
   # test-* harnesses above.
   "scripts/test-drop-bump-commit.sh",
   "scripts/drop-bump-commit.md",
+  # scripts/test-drop-changelog-commit.sh is the regression harness for
+  # scripts/drop-changelog-commit.sh (#2952 Bug A). Referenced only from
+  # Makefile (test-drop-changelog-commit target) and the sibling .md stub,
+  # matching the same Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-drop-changelog-commit.sh",
   # scripts/git-amend-add.sh has no current primary callers after CHANGELOG
   # commits moved to scripts/commit-changelog.sh. It is retained intentionally
   # as a tiny future amend primitive with a sibling contract.
