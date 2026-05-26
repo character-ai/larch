@@ -23,4 +23,5 @@ changelog_duplicate_version_heading_count() {
     ' "$path"
 }
 
+# shellcheck disable=SC2034
 LARCH_LIB_CHANGELOG_LOADED=1

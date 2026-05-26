@@ -2632,6 +2632,67 @@ printf '%s' "$?" > "$tmp/rc-rebump-cm-fail"
 set -e
 assert_rc "$tmp/rc-rebump-cm-fail" 4 "run_rebase_rebump stalls when commit-changelog fails after re-bump"
 
+root=$(make_repo rebump_commit_changelog_noop_success)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-cm-noop.XXXXXX)"
+mkdir -p "$root/.claude-plugin"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.2"}
+JSON
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.4] - 2026-01-02
+
+### Fixed
+
+- Already correct release notes.
+CHANGELOG
+git -C "$root" add .claude-plugin/plugin.json CHANGELOG.md
+git -C "$root" commit -q -m "Prepare version fixtures"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.3"}
+JSON
+git -C "$root" add .claude-plugin/plugin.json
+git -C "$root" commit -q -m "Bump version to 1.2.3"
+cat > "$root/scripts/commit-changelog.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "COMMITTED=false"
+exit 0
+STUB
+chmod +x "$root/scripts/commit-changelog.sh"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+printf '# reasoning\n' > "$reasoning_file"
+echo "CURRENT_VERSION=1.2.3"
+echo "NEW_VERSION=1.2.4"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '{"version":"1.2.4"}\n' > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to 1.2.4"
+echo "APPLIED=true"
+echo "COMMIT_SHA=$(git rev-parse HEAD)"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
+         "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-cm-noop" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-cm-noop"
+set -e
+assert_rc "$tmp/rc-rebump-cm-noop" 0 "run_rebase_rebump accepts COMMITTED=false when CHANGELOG is already correct"
+
 root=$(make_repo rebump_reasoning_fallback_log)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-fallback.XXXXXX)

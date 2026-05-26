@@ -18,6 +18,9 @@ source "$SCRIPT_DIR/lib-net.sh" || { larch_err "ship-pr.sh: failed to source lib
 # shellcheck source=scripts/lib-finalize-state-keys.sh
 source "$SCRIPT_DIR/lib-finalize-state-keys.sh" || { larch_err "ship-pr.sh: failed to source lib-finalize-state-keys.sh"; exit 1; }
 [[ "${LARCH_LIB_FINALIZE_STATE_KEYS_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-finalize-state-keys.sh sourced but sentinel missing"; exit 1; }
+# shellcheck source=scripts/lib-changelog.sh
+source "$SCRIPT_DIR/lib-changelog.sh" || { larch_err "ship-pr.sh: failed to source lib-changelog.sh"; exit 1; }
+[[ "${LARCH_LIB_CHANGELOG_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-changelog.sh sourced but sentinel missing"; exit 1; }
 
 STATE_FILE=""
 IMPLEMENT_TMPDIR=""
@@ -505,13 +508,7 @@ ship_pr_record_old_bump_version() {
     if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION "$old_version"
     else
-        old_version=$(awk '
-            /^## \[Unreleased\]/ { next }
-            match($0, /^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - /, m) {
-                print m[1]
-                exit 0
-            }
-        ' CHANGELOG.md 2>/dev/null || true)
+        old_version=$(changelog_first_version_heading CHANGELOG.md 2>/dev/null || true)
         if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION "$old_version"
         else

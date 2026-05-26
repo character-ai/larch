@@ -18,6 +18,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-changelog.sh
+source "$SCRIPT_DIR/lib-changelog.sh"
 larch_quiet_init
 
 VERSION=""
@@ -119,7 +121,7 @@ if [ ! -f CHANGELOG.md ]; then
     exit 1
 fi
 
-dup_count=$(awk -v version="$VERSION" '$0 ~ "^## \\[" version "\\] - " { count++ } END { print count + 0 }' CHANGELOG.md)
+dup_count=$(changelog_duplicate_version_heading_count "$VERSION" CHANGELOG.md)
 if [ "$dup_count" -gt 1 ]; then
     emit_no_commit "multiple existing ## [$VERSION] - headings"
     exit 1

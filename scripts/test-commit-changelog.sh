@@ -150,6 +150,12 @@ cat >> "$repo/CHANGELOG.md" <<'CHANGELOG'
 ### Added
 
 - Duplicate heading.
+
+## [1.2.3] - 2026-01-01
+
+### Fixed
+
+- Second duplicate heading.
 CHANGELOG
 git -C "$repo" add CHANGELOG.md
 git -C "$repo" commit -q -m "Add duplicate changelog heading"
@@ -161,6 +167,20 @@ if [ "$rc" -eq 1 ] && printf '%s\n' "$out" | grep -q 'ERROR=multiple existing'; 
     ok
 else
     fail "duplicate target headings should fail closed: $out"
+fi
+
+# Test 10: staged-only CHANGELOG.md edit commits successfully.
+repo="$TMPDIR_BASE/test10"
+setup_repo "$repo"
+printf '\n- Staged fix only.\n' >> "$repo/CHANGELOG.md"
+git -C "$repo" add CHANGELOG.md
+out=$(cd "$repo" && run_subject --version 1.2.3)
+if printf '%s\n' "$out" | grep -q '^COMMITTED=true$' &&
+    [ "$(git -C "$repo" log -1 --format=%s)" = "Update CHANGELOG for 1.2.3" ] &&
+    [ "$(git -C "$repo" diff-tree --no-commit-id --name-only -r HEAD)" = "CHANGELOG.md" ]; then
+    ok
+else
+    fail "staged-only changelog edit should create CHANGELOG-only commit: $out"
 fi
 
 total=$((PASS + FAIL))
