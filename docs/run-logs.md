@@ -120,10 +120,12 @@ Semantics:
 Slot semantics:
 
 - For explicit `--voter` dispatch, non-`MainAgent` voters preserve canonical
-  tool slots: `Claude -> v1`, `Codex -> v2`, `Cursor -> v3`. Missing slots stay
-  empty instead of compacting later voters leftward.
+  tool slots from the declared `SLOT` label: `Claude -> v1`, `Codex -> v2`,
+  `Cursor -> v3`. Basename heuristics do not override explicit slot labels.
+  Missing slots stay empty instead of compacting later voters leftward.
 - For sole `--voter MainAgent:<PATH>` adjudication, `v1`/`v2`/`v3` remain empty
-  and `voting_result` is derived from the MainAgent vote.
+  and `voting_result` stays `rejected` for every row even though the accepted /
+  rejected / OOS artifact files reflect the MainAgent adjudication result.
 - For legacy `--voter-files`, slots are inferred from basename/tool heuristics.
 - Missing or degraded rounds preserve empty cells so every data row still has
   the full schema width. <!-- lint-literal-counts: allow fixed TSV schema --> A 0-finding or tally-error round may therefore publish a

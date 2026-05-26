@@ -131,6 +131,15 @@ infer_voter_slot() {
     esac
 }
 
+canonical_position_for_slot() {
+    case "$1" in
+        Claude) printf '1' ;;
+        Codex) printf '2' ;;
+        Cursor) printf '3' ;;
+        *) printf '0' ;;
+    esac
+}
+
 position_for_voter() {
     local tool="$1" path="$2" base lower
     base=$(basename "$path")
@@ -178,6 +187,36 @@ assign_voter() {
     SLOT_TOOL[pos]="$tool"
 }
 
+tally_votes_for_id() {
+    local id="$1"
+    TALLY_YES=0
+    TALLY_NO=0
+    TALLY_EXONERATE=0
+    TALLY_JUDGE_ERROR=0
+    if [[ -n "$TALLY_VOTER_FILE" ]]; then
+        TALLY_VOTE=$(vote_for_id "$id" "$TALLY_VOTER_FILE")
+        case "$TALLY_VOTE" in
+            YES) TALLY_YES=1 ;;
+            NO) TALLY_NO=1 ;;
+            EXONERATE) TALLY_EXONERATE=1 ;;
+            *) TALLY_JUDGE_ERROR=1 ;;
+        esac
+    elif (( TALLY_ELIGIBLE_COUNT > 0 )); then
+        for p in 1 2 3; do
+            voter_file="${SLOT_FILE[$p]}"
+            [[ -n "$voter_file" ]] || continue
+            TALLY_VOTE=$(vote_for_id "$id" "$voter_file")
+            case "$TALLY_VOTE" in
+                YES) TALLY_YES=$((TALLY_YES + 1)) ;;
+                NO) TALLY_NO=$((TALLY_NO + 1)) ;;
+                EXONERATE) TALLY_EXONERATE=$((TALLY_EXONERATE + 1)) ;;
+                *) TALLY_JUDGE_ERROR=$((TALLY_JUDGE_ERROR + 1)) ;;
+            esac
+        done
+    fi
+    TALLY_RESULT=$(classify_result "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_ELIGIBLE_COUNT")
+}
+
 if [[ "$SEEN_VOTER" == true ]]; then
     for spec in "${VOTER_SPECS[@]}"; do
         if [[ "$spec" != *:* ]]; then
@@ -195,7 +234,7 @@ if [[ "$SEEN_VOTER" == true ]]; then
             assign_voter "$slot" "$path"
             continue
         fi
-        assign_voter "$slot" "$path"
+        assign_voter "$slot" "$path" "$(canonical_position_for_slot "$slot")"
     done
 else
     if [[ "$SEEN_VOTER_FILES" == true ]]; then
@@ -292,7 +331,7 @@ parse_rating_for() {
 
 write_findings_classification() {
     mkdir -p "$(dirname "$FINDINGS_CLASSIFICATION_OUT")"
-    local tmp id block reviewer kind yes no exonerate judge_error result security
+    local tmp id block reviewer kind result security tsv_result
     local p voter_file parsed vote correctness severity quality uncertain tool
     tmp=$(mktemp "${FINDINGS_CLASSIFICATION_OUT}.XXXXXX")
     emit_findings_classification_header > "$tmp"
@@ -300,34 +339,14 @@ write_findings_classification() {
         [[ -n "$id" ]] || continue
         block="$BLOCK_DIR/$id.md"
         reviewer=$(sanitize_tsv_cell "$(reviewer_for_block "$block")")
-        yes=0
-        no=0
-        exonerate=0
-        judge_error=0
-        if [[ -n "$TALLY_VOTER_FILE" ]]; then
-            vote=$(vote_for_id "$id" "$TALLY_VOTER_FILE")
-            case "$vote" in
-                YES) yes=1 ;;
-                NO) no=1 ;;
-                EXONERATE) exonerate=1 ;;
-                *) judge_error=1 ;;
-            esac
-        elif (( TALLY_ELIGIBLE_COUNT > 0 )); then
-            for p in 1 2 3; do
-                voter_file="${SLOT_FILE[$p]}"
-                [[ -n "$voter_file" ]] || continue
-                vote=$(vote_for_id "$id" "$voter_file")
-                case "$vote" in
-                    YES) yes=$((yes + 1)) ;;
-                    NO) no=$((no + 1)) ;;
-                    EXONERATE) exonerate=$((exonerate + 1)) ;;
-                    *) judge_error=$((judge_error + 1)) ;;
-                esac
-            done
+        tally_votes_for_id "$id"
+        result="$TALLY_RESULT"
+        tsv_result="$result"
+        if [[ -n "$MAIN_AGENT_VOTER" ]]; then
+            tsv_result="rejected"
         fi
-        result=$(classify_result "$yes" "$no" "$exonerate" "$TALLY_ELIGIBLE_COUNT")
 
-        row=("$id" "$reviewer" "$result")
+        row=("$id" "$reviewer" "$tsv_result")
         for p in 1 2 3; do
             voter_file="${SLOT_FILE[$p]}"
             tool="${SLOT_TOOL[$p]}"
@@ -380,34 +399,9 @@ fi
     while IFS= read -r id || [[ -n "$id" ]]; do
         [[ -n "$id" ]] || continue
         block="$BLOCK_DIR/$id.md"
-        yes=0
-        no=0
-        exonerate=0
-        judge_error=0
-        if [[ -n "$TALLY_VOTER_FILE" ]]; then
-            vote=$(vote_for_id "$id" "$TALLY_VOTER_FILE")
-            case "$vote" in
-                YES) yes=1 ;;
-                NO) no=1 ;;
-                EXONERATE) exonerate=1 ;;
-                *) judge_error=1 ;;
-            esac
-        else
-            for p in 1 2 3; do
-                voter_file="${SLOT_FILE[$p]}"
-                [[ -n "$voter_file" ]] || continue
-                vote=$(vote_for_id "$id" "$voter_file")
-                case "$vote" in
-                    YES) yes=$((yes + 1)) ;;
-                    NO) no=$((no + 1)) ;;
-                    EXONERATE) exonerate=$((exonerate + 1)) ;;
-                    *) judge_error=$((judge_error + 1)) ;;
-                esac
-            done
-        fi
-
-        result=$(classify_result "$yes" "$no" "$exonerate" "$TALLY_ELIGIBLE_COUNT")
-        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$judge_error" "$result"
+        tally_votes_for_id "$id"
+        result="$TALLY_RESULT"
+        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_JUDGE_ERROR" "$result"
 
         reviewer=$(reviewer_for_block "$block")
         kind="finding"
@@ -437,7 +431,7 @@ fi
                 :
             else
                 cat "$block" >> "$oos_file"
-                printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s Result=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error" "$result" >> "$oos_file"
+                printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s Result=%s\n\n' "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_JUDGE_ERROR" "$result" >> "$oos_file"
                 if [[ "$result" == "accepted" ]]; then
                     cat "$block" >> "$oos_accepted_local"
                     printf '\n' >> "$oos_accepted_local"

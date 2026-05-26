@@ -9,4 +9,6 @@ Offline regression harness for `plan-review-loop.sh`.
 - `plan-review-loop.sh` parses argv and fails closed on missing required inputs.
 - Script remains executable and syntactically valid (`bash -n`).
 
-Expand with stubbed PATH scenarios per #2676 as follow-up.
+Stub cases cover zero findings, a real single-finding tally, panel-failed
+header-only artifacts, a tally-failure degraded `voting-tally.md`, and
+canonical-slot preservation when the middle voter fails.

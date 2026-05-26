@@ -15,12 +15,15 @@ The harness verifies:
   last-line-wins behavior, and `--` delimiter rationale scoping;
 - partial rows where a missing axis forces `vN_uncertain=true`;
 - missing judges with preserved empty vN cells and canonical Cursor placement;
-- 0-judge `MainAgent` fallback rows and header-only empty-ballot output;
+- explicit `--voter` slot labels overriding misleading basenames;
+- 0-judge `MainAgent` fallback TSV rows (`voting_result=rejected`) and
+  header-only empty-ballot output;
 - numeric `FINDING_*` rows before numeric `OOS_*` rows;
 - waterfall fallback identity where a Claude runtime voter occupies a non-v1
   position;
 - exact diagnostics for MainAgent misuse, `--voter`/`--voter-files` mutual
   exclusion, invalid slots, and legacy `--voter-files` deprecation;
+- parser usage / unreadable-file exit diagnostics;
 - every data row has exactly 21 tab-separated fields.
 
 Makefile target:

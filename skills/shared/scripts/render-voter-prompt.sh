@@ -13,7 +13,7 @@ QUALITY_ENUM='excellent|good|adequate|weak|no-fix|uncertain'
 UNCERTAIN_ENUM='true|false'
 
 usage() {
-    echo "Usage: render-voter-prompt.sh --ballot-file PATH --panel-role STRING --id-grammar finding-oos|finding-only --verification-context plan|diff-plan" >&2
+    echo "Usage: render-voter-prompt.sh --ballot-file PATH --panel-role STRING --id-grammar finding-oos|finding-only --verification-context plan|diff-plan|code" >&2
 }
 
 BALLOT_FILE=""
@@ -43,8 +43,8 @@ case "$ID_GRAMMAR" in
 esac
 
 case "$VERIFICATION_CONTEXT" in
-    plan|diff-plan) ;;
-    *) echo "render-voter-prompt.sh: --verification-context must be plan or diff-plan" >&2; usage; exit 2 ;;
+    plan|diff-plan|code) ;;
+    *) echo "render-voter-prompt.sh: --verification-context must be plan, diff-plan, or code" >&2; usage; exit 2 ;;
 esac
 
 printf 'You are a %s.\n' "$PANEL_ROLE"
@@ -69,7 +69,7 @@ case "$VERIFICATION_CONTEXT" in
     plan)
         printf '\n%s\n' '**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and silently inspect the plan or referenced repo files for verification, but do not invoke planning/status tools.'
         ;;
-    diff-plan)
+    diff-plan|code)
         printf '\n%s\n' 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.'
         printf '%s\n' '**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and any provided diff/plan context files for verification, but do not invoke planning/status tools or any other tools beyond those file reads.'
         ;;

@@ -22,7 +22,7 @@ case_finding_only() {
         --ballot-file "$BALLOT" \
         --panel-role "test panel role" \
         --id-grammar finding-only \
-        --verification-context diff-plan)
+        --verification-context code)
     grep -Fq "For items prefixed with \`[OUT_OF_SCOPE]\`:" <<< "$out" \
         || { echo "FAIL: finding-only OOS clause missing" >&2; exit 1; }
     grep -Fq "$CANONICAL_OOS_DRIFT_MARK" <<< "$out" \
@@ -47,7 +47,7 @@ case_finding_only() {
     grep -Fq '**Output ONLY vote lines.**' <<< "$out" \
         || { echo "FAIL: finding-only missing output-only sentinel" >&2; exit 1; }
     grep -Fq 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.' <<< "$out" \
-        || { echo "FAIL: finding-only missing diff-plan verification lead-in" >&2; exit 1; }
+        || { echo "FAIL: finding-only missing code verification lead-in" >&2; exit 1; }
     assert_sentinel_lines_exclude_axis_tokens "$out"
 }
 
@@ -123,6 +123,16 @@ case_argument_validation() {
     rc=$?
     set -e
     [[ "$rc" -eq 2 ]] || { echo "FAIL: invalid --id-grammar should exit 2 (got $rc)" >&2; exit 1; }
+
+    set +e
+    "$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role x \
+        --id-grammar finding-only \
+        --verification-context bogus >/dev/null 2>&1
+    rc=$?
+    set -e
+    [[ "$rc" -eq 2 ]] || { echo "FAIL: invalid --verification-context should exit 2 (got $rc)" >&2; exit 1; }
 }
 
 case_finding_only

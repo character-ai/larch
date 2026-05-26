@@ -293,6 +293,23 @@ printf 'z\n' >"$TMPU/design/p.txt"
 )
 unset GH_STUB_CREATE_NO_URL
 
+echo "=== plan-review regular file is rejected ==="
+TMPPR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-planreview-file.XXXXXX")
+clone_pr=$(setup_clone_with_origin_head "$TMPPR")
+stub_pr="$TMPPR/stub"
+make_gh_stub "$stub_pr"
+export PATH="$stub_pr:$PATH"
+export TEST_CLONE_ROOT="$clone_pr"
+export TEST_MERGE_BRANCH="larch-log-design-RUNPRFILE1"
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPPR/design"
+printf 'p\n' >"$TMPPR/design/plan.txt"
+printf 'not a directory\n' >"$TMPPR/design/plan-review"
+out_pr=$(
+    (cd "$clone_pr" && bash "$PUBLISH" --design-tmpdir "$TMPPR/design" --run-id "RUNPRFILE1" --issue 8 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pr" == *"PUBLISH_OK=false"* ]] || fail "plan-review regular file should fail publish: $out_pr"
+
 echo "=== merge failure preserves PR lines and RECOVERY_BRANCH ==="
 TMPM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-merge.XXXXXX")
 clone_m=$(setup_clone_with_origin_head "$TMPM")

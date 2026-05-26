@@ -29,11 +29,10 @@ from `dispatch-plan-voters.sh` stdout for N=1..3. The loop does not use the
 legacy compacted `VOTER_PATHS_FILE` for the tally argv. For each non-failed
 slot with a path, it emits `--voter <SLOT>:<PATH>` in slot order plus
 `--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"`.
-Because `dispatch-plan-voters.sh` preserves canonical output basenames
-(`claude-vote-output.txt`, `codex-vote-output.txt`, `cursor-vote-output.txt`),
-`tally-plan-review.sh` can keep `v1/v2/v3` aligned to canonical slots even
-when a middle voter fails. Waterfall fallback tool identity remains visible via
-`vN_tool`.
+`tally-plan-review.sh` keys the forensic TSV columns from the declared
+`--voter` slot labels, so misleading basenames cannot override the canonical
+`Claude -> v1`, `Codex -> v2`, `Cursor -> v3` mapping. Waterfall fallback tool
+identity remains visible via `vN_tool`.
 
 If the 0-judge main-agent path reruns tally, it uses
 `--voter MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt`. Schema details and
@@ -49,7 +48,7 @@ Introduced for #2676; absorbs aggregator use in /design (`aggregate-findings.sh`
 
 ## Harness
 
-`skills/design/scripts/test-plan-review-loop.sh` exercises argv validation, a stubbed end-to-end path (optional `LARCH_PLAN_REVIEW_SCOUT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH`, `LARCH_PLAN_REVIEW_COLLECT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH`, `LARCH_PLAN_REVIEW_TALLY_SH` pointing at test doubles), zero-finding vs single-finding ballots with real `tally-plan-review.sh`, tally failure recovery KVs, and degraded `voting-tally.md` materialization when the tally stub exits non-zero. It is not a full production panel simulation.
+`skills/design/scripts/test-plan-review-loop.sh` exercises argv validation, a stubbed end-to-end path (optional `LARCH_PLAN_REVIEW_SCOUT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH`, `LARCH_PLAN_REVIEW_COLLECT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH`, `LARCH_PLAN_REVIEW_TALLY_SH` pointing at test doubles), zero-finding vs single-finding ballots with real `tally-plan-review.sh`, panel-failed header-only artifact materialization, tally failure recovery KVs, and degraded `voting-tally.md` materialization when the tally stub exits non-zero. It is not a full production panel simulation.
 
 ## Edit-in-sync
 

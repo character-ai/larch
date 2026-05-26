@@ -109,6 +109,15 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_dispatch_fail() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'DISPATCH_OK=false\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\n'
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
 write_collect() {
     local mode="${1:?}"
     cat >"$STUB/collect-agent-results.sh" <<EOS
@@ -318,6 +327,24 @@ printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expecte
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
 [[ -f "$D1/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing for real tally"
+
+echo "=== panel-failed path writes header-only classification TSV ==="
+D1P="$TMP/z1p"
+mkdir -p "$D1P"
+printf 'plan\n' >"$D1P/plan.txt"
+printf 'feat\n' >"$D1P/feature-description.txt"
+write_scout
+write_dispatch_fail
+write_collect one
+write_voters_three
+set +e
+out1p=$(run_loop "$D1P")
+rc1p=$?
+set -e
+[[ "$rc1p" -eq 1 ]] || fail "panel-failed path should exit 1"
+printf '%s\n' "$out1p" | grep -q '^LOOP_STATUS=panel-failed$' || fail "expected panel-failed loop status"
+[[ -f "$D1P/plan-review/round-1/findings-classification.tsv" ]] || fail "panel-failed classification TSV missing"
+[[ "$(wc -l < "$D1P/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "panel-failed TSV should contain header only"
 
 echo "=== stubbed driver: failed middle voter preserves canonical tally slot ==="
 D1B="$TMP/z1b"

@@ -22,8 +22,9 @@
   `error: invalid voter slot: <value> (must be Claude|Codex|Cursor|MainAgent)`.
 - `--voter MainAgent:<PATH>` is valid only as the sole voter for the 0-judge
   fallback path. It is not mapped to any `vN_*` columns; TSV rows keep the
-  `vN_*` cells empty and derive `voting_result` from the MainAgent vote as a
-  binding single-voter adjudication.
+  `vN_*` cells empty and keep `voting_result=rejected` for every row even
+  though the normal accepted / rejected / OOS artifacts still reflect the
+  MainAgent adjudication result.
   Mixed MainAgent usage exits with `error: --voter MainAgent is only valid as
   the sole voter (0-judge fallback path)`.
 - `--findings-classification-out FILE` writes the forensic TSV to an explicit
@@ -54,11 +55,10 @@ finding_id \t finding_reviewers \t voting_result \t v1_vote \t v1_correctness \t
 - `finding_reviewers` is ballot-proposer attribution from
   `reviewer_for_block`; `vN_tool` is the actual runtime voter tool identity
   supplied by `--voter`.
-- With `--voter`, non-`MainAgent` slots preserve canonical positions. The tally
-  first trusts canonical path markers (`voter-1/2/3`, `slot1/2/3`,
-  `claude-vote-output`, `codex-vote-output`, `cursor-vote-output`), then falls
-  back to canonical tool positions (`Claude` -> `v1_*`, `Codex` -> `v2_*`,
-  `Cursor` -> `v3_*`). Middle failed slots therefore remain empty instead of
+- With explicit `--voter`, non-`MainAgent` slots preserve the canonical
+  positions implied by the declared slot label (`Claude` -> `v1_*`, `Codex` ->
+  `v2_*`, `Cursor` -> `v3_*`). Misleading basenames do not override the
+  declared slot. Middle failed slots therefore remain empty instead of
   compacting later voters leftward.
 - With legacy `--voter-files`, slot placement still uses basename/tool
   heuristics (`slotN`/canonical tool names first, then first free slot) because
@@ -82,7 +82,7 @@ The regression harnesses are `make test-tally-plan-review` and
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, explicit `--voter` slot preservation, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
 
 `test-findings-classification.sh` covers complete ratings, canonical-position
 `--voter` slot filling, legacy `--voter-files` basename fallback, missing

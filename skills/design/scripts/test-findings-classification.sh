@@ -165,15 +165,15 @@ p6=$("$PARSER" "$PV" FINDING_6)
 p7=$("$PARSER" "$PV" FINDING_7)
 [[ "$(parser_value "$p7" PARSED_QUALITY)" == "weak" ]] || fail "without delimiter last axis token should win"
 
-echo "=== canonical-slot --voter preserves basename slot markers ==="
+echo "=== explicit --voter slot overrides misleading basename markers ==="
 W2="$TMPROOT/case2"
 mkdir -p "$W2"
 write_ballot "$W2/ballot.md"
 cp "$CLAUDE" "$W2/slot-2-looking-path.txt"
 cp "$CURSOR" "$W2/slot-3-looking-path.txt"
 "$TALLY" --ballot-file "$W2/ballot.md" --design-tmpdir "$W2/design" --findings-classification-out "$W2/out.tsv" --voter "Claude:$W2/slot-2-looking-path.txt" --voter "Cursor:$W2/slot-3-looking-path.txt" >/dev/null
-assert_cell "$W2/out.tsv" FINDING_1 v1_tool ""
-assert_cell "$W2/out.tsv" FINDING_1 v2_tool Claude
+assert_cell "$W2/out.tsv" FINDING_1 v1_tool Claude
+assert_cell "$W2/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
 assert_all_rows_21_fields "$W2/out.tsv"
 
@@ -183,8 +183,8 @@ mkdir -p "$W2E"
 write_ballot "$W2E/ballot.md"
 cp "$CLAUDE" "$W2E/codex-vote-output.txt"
 "$TALLY" --ballot-file "$W2E/ballot.md" --design-tmpdir "$W2E/design" --findings-classification-out "$W2E/out.tsv" --voter "Claude:$W2E/codex-vote-output.txt" >/dev/null
-assert_cell "$W2E/out.tsv" FINDING_1 v1_tool ""
-assert_cell "$W2E/out.tsv" FINDING_1 v2_tool Claude
+assert_cell "$W2E/out.tsv" FINDING_1 v1_tool Claude
+assert_cell "$W2E/out.tsv" FINDING_1 v2_tool ""
 
 echo "=== legacy --voter-files keeps basename fallback ==="
 W2L="$TMPROOT/case2-legacy"
@@ -214,13 +214,13 @@ assert_cell "$W2Q/out.tsv" FINDING_2 v1_vote YES
 assert_cell "$W2Q/out.tsv" FINDING_2 v1_quality ""
 assert_cell "$W2Q/out.tsv" FINDING_2 v1_uncertain true
 
-echo "=== main-agent and empty-ballot fallback rows ==="
+echo "=== main-agent 0-judge fallback TSV and empty-ballot rows ==="
 W3="$TMPROOT/case3"
 mkdir -p "$W3"
 write_ballot "$W3/ballot.md"
 printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$W3/voter-main-agent.txt"
 "$TALLY" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3/design" --findings-classification-out "$W3/out.tsv" --voter "MainAgent:$W3/voter-main-agent.txt" >/dev/null
-assert_cell "$W3/out.tsv" FINDING_1 voting_result accepted
+assert_cell "$W3/out.tsv" FINDING_1 voting_result rejected
 assert_cell "$W3/out.tsv" FINDING_1 v1_tool ""
 assert_all_rows_21_fields "$W3/out.tsv"
 : > "$W3/empty-ballot.md"
@@ -263,6 +263,23 @@ assert_parser_vote_matches_vote_for_id "$PV" FINDING_6
 assert_parser_vote_matches_vote_for_id "$PV" FINDING_7
 assert_parser_vote_matches_vote_for_id "$PV2" FINDING_1
 assert_parser_vote_matches_vote_for_id "$PV2" FINDING_2
+
+echo "=== parser usage and unreadable-file exit matrix ==="
+set +e
+"$PARSER" >/dev/null 2>"$TMPROOT/parser-usage.err"
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "missing parser args should exit 2"
+grep -Fq 'usage: parse-judge-vote-and-rating.sh <voter_file> <ballot_id>' "$TMPROOT/parser-usage.err" \
+    || fail "parser usage diagnostic missing"
+
+set +e
+"$PARSER" "$TMPROOT/no-such-voter.txt" FINDING_1 >/dev/null 2>"$TMPROOT/parser-unreadable.err"
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "unreadable parser voter file should exit 2"
+grep -Fq 'parse-judge-vote-and-rating.sh: voter file is missing or unreadable:' "$TMPROOT/parser-unreadable.err" \
+    || fail "parser unreadable-file diagnostic missing"
 
 echo "=== malicious parser output is TSV-sanitized ==="
 STUB_ROOT="$TMPROOT/stub-root"

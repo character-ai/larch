@@ -177,9 +177,9 @@ python3 - "$DESIGN_MAIN/plan-review/round-1/findings-classification.tsv" <<'PY'
 import csv, sys
 with open(sys.argv[1], newline="", encoding="utf-8") as fh:
     rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
-assert rows["FINDING_1"]["voting_result"] == "accepted"
+assert rows["FINDING_1"]["voting_result"] == "rejected"
 assert rows["FINDING_2"]["voting_result"] == "rejected"
-assert rows["OOS_1"]["voting_result"] == "accepted"
+assert rows["OOS_1"]["voting_result"] == "rejected"
 assert rows["OOS_2"]["voting_result"] == "rejected"
 for row in rows.values():
     assert row["v1_tool"] == row["v2_tool"] == row["v3_tool"] == ""
@@ -259,6 +259,19 @@ assert row["finding_id"] == "FINDING_1"
 assert row["v1_tool"] == "Claude"
 assert row["v2_tool"] == ""
 assert row["v3_tool"] == "Cursor"
+PY
+
+echo "=== explicit --voter slot ignores misleading basename ==="
+DESIGN_EXPLICIT="$TMPROOT/design-explicit"
+mkdir -p "$DESIGN_EXPLICIT"
+cp "$V1" "$TMPROOT/codex-looking-votes.txt"
+"$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_EXPLICIT" --voter "Claude:$TMPROOT/codex-looking-votes.txt" >/dev/null
+python3 - "$DESIGN_EXPLICIT/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    row = next(csv.DictReader(fh, delimiter="\t"))
+assert row["v1_tool"] == "Claude"
+assert row["v2_tool"] == ""
 PY
 
 echo "=== malformed-ballot abort still writes voting-tally.md ==="
