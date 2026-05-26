@@ -82,6 +82,20 @@ refresh_pr_info() {
     PR_HEAD_OID=$(echo "$PR_INFO" | jq -r '.headRefOid // ""' 2>/dev/null || echo "")
 }
 
+# Callers must re-check MERGE_STATE, not $?, after this helper returns.
+retry_pr_info_unknown_recovery() {
+    local max_retries="$1"
+    local attempt=0
+    while [ "$attempt" -lt "$max_retries" ]; do
+        sleep 5
+        refresh_pr_info
+        if [ -n "$MERGE_STATE" ] && [ "$MERGE_STATE" != "UNKNOWN" ]; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+    done
+}
+
 refresh_ci_state() {
     # Use gh pr checks --json with bucket field (consistent with ci-status.sh)
     CHECKS_JSON=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json name,state,bucket,link 2>/dev/null || echo "")
@@ -124,15 +138,26 @@ if [[ "$MERGE_STATE" == "BEHIND" ]]; then
     exit 0
 fi
 
-# Empty or UNKNOWN mergeStateStatus = could not determine merge state
-# (gh API/network failure on the empty path; GitHub itself unsure on UNKNOWN).
+# Empty or UNKNOWN mergeStateStatus = could not determine merge state yet.
+# Retry up to 4 times with 5-second sleeps before failing closed as error;
+# empty usually reflects gh API/network failure, UNKNOWN is GitHub uncertainty.
 # Routing through the admin-eligible gate below would mis-emit main_advanced
 # with a misleading "Branch mergeStateStatus is " (empty trailing) error and
 # nudge callers toward a useless rebase. Treat as the existing `error` outcome
 # so the orchestrator bails to its error-handling path.
 if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
+    retry_pr_info_unknown_recovery 4
+fi
+
+if [[ "$MERGE_STATE" == "BEHIND" ]]; then
+    MERGE_RESULT="main_advanced"
+    ERROR=""
+    exit 0
+fi
+
+if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
     MERGE_RESULT="error"
-    ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\")"
+    ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\") after 4 retries"
     exit 0
 fi
 
@@ -216,13 +241,7 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
         # propagation delay (#2342). Retry briefly before treating as a hard
         # error so transient post-push UNKNOWN states don't stall the merge.
         if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
-            for _retry in 1 2 3; do
-                sleep 5
-                refresh_pr_info
-                if [[ -n "$MERGE_STATE" ]] && [[ "$MERGE_STATE" != "UNKNOWN" ]]; then
-                    break
-                fi
-            done
+            retry_pr_info_unknown_recovery 3
         fi
         if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
             MERGE_RESULT="error"

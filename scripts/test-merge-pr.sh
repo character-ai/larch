@@ -383,18 +383,37 @@ else
 fi
 
 echo
-echo "Sub-test G: empty / UNKNOWN mergeStateStatus short-circuits to error"
+echo "Sub-test G: initial empty / UNKNOWN mergeStateStatus retries before treating as error"
 run_case "empty_state" \
-    env GH_MERGE_STATE=__EMPTY__ GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    env GH_MERGE_STATE=__EMPTY__ STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=__EMPTY__ GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
 assert_stdout_contains "empty_state" "MERGE_RESULT=error" "G1: empty mergeStateStatus emits error"
+assert_stdout_matches "empty_state" '^ERROR=could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid \(state=""\) after 4 retries$' "G1: empty mergeStateStatus error references retry count"
+assert_command_count "empty_state" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "G1: pr view called 5x before bailing"
 assert_no_merge_commands "empty_state" "G1: empty mergeStateStatus skips merge commands"
 
 run_case "unknown_state" \
-    env GH_MERGE_STATE=UNKNOWN GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    env GH_MERGE_STATE=UNKNOWN STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=UNKNOWN GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
 assert_stdout_contains "unknown_state" "MERGE_RESULT=error" "G2: UNKNOWN mergeStateStatus emits error"
+assert_stdout_matches "unknown_state" '^ERROR=could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid \(state="UNKNOWN"\) after 4 retries$' "G2: UNKNOWN mergeStateStatus error references retry count"
+assert_command_count "unknown_state" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "G2: pr view called 5x before bailing"
 assert_no_merge_commands "unknown_state" "G2: UNKNOWN mergeStateStatus skips merge commands"
+
+run_case "unknown_state_recovers_clean" \
+    env GH_MERGE_STATE=UNKNOWN STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=UNKNOWN GH_VIEW_FLIP_AT_CALL=3 GH_VIEW_FLIP_MERGE_STATE=CLEAN GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "unknown_state_recovers_clean" "MERGE_RESULT=admin_merged" "G3: UNKNOWN resolving to CLEAN proceeds to admin merge"
+assert_command_count "unknown_state_recovers_clean" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "3" "G3: pr view called 3x before CLEAN recovery"
+assert_command_count "unknown_state_recovers_clean" "gh.log" "pr merge 123 --repo owner/repo --squash --admin" "1" "G3: admin merge runs after CLEAN recovery"
+
+run_case "unknown_state_recovers_behind" \
+    env GH_MERGE_STATE=UNKNOWN STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=UNKNOWN GH_VIEW_FLIP_AT_CALL=3 GH_VIEW_FLIP_MERGE_STATE=BEHIND GH_CHECKS_JSON='[{"name":"ci","bucket":"pending"}]' GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "unknown_state_recovers_behind" "MERGE_RESULT=main_advanced" "G4: UNKNOWN resolving to BEHIND emits main_advanced"
+assert_stdout_contains "unknown_state_recovers_behind" "ERROR=" "G4: BEHIND recovery preserves empty ERROR"
+assert_no_merge_commands "unknown_state_recovers_behind" "G4: BEHIND recovery skips merge commands"
+assert_command_count "unknown_state_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "3" "G4: pr view called 3x before BEHIND recovery"
 
 echo
 echo "Sub-test H: same-version gate stops duplicate bump merges"
