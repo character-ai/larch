@@ -203,25 +203,25 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 2,
-          "cache_read": 467943,
-          "cache_create": 2728,
-          "cache_create_5m": 2728,
+          "input": 3,
+          "cache_read": 704093,
+          "cache_create": 4092,
+          "cache_create_5m": 4092,
           "cache_create_1h": 0,
-          "output": 1592,
-          "total": 472265
+          "output": 4353,
+          "total": 712541
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 2,
-              "cache_read": 467943,
-              "cache_create": 2728,
-              "cache_create_5m": 2728,
+              "input": 3,
+              "cache_read": 704093,
+              "cache_create": 4092,
+              "cache_create_5m": 4092,
               "cache_create_1h": 0,
-              "output": 1592,
-              "total": 472265
+              "output": 4353,
+              "total": 712541
             }
           }
         ]
@@ -229,25 +229,64 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "cache_create_5m": 0,
+          "input": 4,
+          "cache_read": 967682,
+          "cache_create": 9075,
+          "cache_create_5m": 9075,
           "cache_create_1h": 0,
-          "output": 0,
-          "total": 0
+          "output": 4947,
+          "total": 981708
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 4,
+              "cache_read": 967682,
+              "cache_create": 9075,
+              "cache_create_5m": 9075,
+              "cache_create_1h": 0,
+              "output": 4947,
+              "total": 981708
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 1,
+          "cache_read": 246589,
+          "cache_create": 1470,
+          "cache_create_5m": 1470,
+          "cache_create_1h": 0,
+          "output": 299,
+          "total": 248359
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 1,
+              "cache_read": 246589,
+              "cache_create": 1470,
+              "cache_create_5m": 1470,
+              "cache_create_1h": 0,
+              "output": 299,
+              "total": 248359
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 55,
-      "cache_read": 7538291,
-      "cache_create": 678146,
-      "cache_create_5m": 678146,
+      "input": 61,
+      "cache_read": 8988712,
+      "cache_create": 690055,
+      "cache_create_5m": 690055,
       "cache_create_1h": 0,
-      "output": 33889,
-      "total": 8250381
+      "output": 41896,
+      "total": 9720724
     }
   },
   "codex": {
@@ -318,6 +357,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -404,6 +451,14 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -413,12 +468,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 55,
-    "cache_read": 7538291,
-    "cache_create_5m": 678146,
+    "input": 61,
+    "cache_read": 8988712,
+    "cache_create_5m": 690055,
     "cache_create_1h": 0,
-    "output": 33889,
-    "total": 8250381
+    "output": 41896,
+    "total": 9720724
   },
   "BUCKETS_codex": {
     "input": 0,
