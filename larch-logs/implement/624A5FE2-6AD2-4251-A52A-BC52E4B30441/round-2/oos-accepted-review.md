@@ -4,7 +4,7 @@
 - **Suggested revision**: Address the concern above.
 
 
-Vote tally: YES=1 NO=1 EXON=1 JUDGE_ERROR=0 Result=neutral
+Vote tally: YES=1 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
 
 
 ### FINDING_20: [OUT_OF_SCOPE] risk-integration: scripts/implement-finalize.sh:563-733
@@ -13,6 +13,6 @@ Vote tally: YES=1 NO=1 EXON=1 JUDGE_ERROR=0 Result=neutral
 - **Suggested revision**: Address the concern above.
 
 
-Vote tally: YES=1 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+Vote tally: YES=2 NO=0 EXON=1 JUDGE_ERROR=0 Result=accepted
 
 

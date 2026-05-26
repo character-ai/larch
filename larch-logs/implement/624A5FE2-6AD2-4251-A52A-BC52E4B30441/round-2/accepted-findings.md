@@ -40,12 +40,6 @@
 - **Suggested revision**: Address the concern above.
 
 
-### FINDING_18: risk-integration: scripts/test-commit-changelog.sh
-- **Reviewer**: cursor-specialist-testing-output.txt
-- **Concern**: [latent] No test for staged-only CHANGELOG.md dirty tree (plan Guard 1 parity). Step 8a may stage CHANGELOG before commit-changelog; unstaged-only path is covered but staged-only is not. Add Test 9: stage CHANGELOG edit only, assert COMMITTED=true and CHANGELOG-only commit.
-- **Suggested revision**: Address the concern above.
-
-
 ### FINDING_19: risk-integration: scripts/test-ship-pr.sh
 - **Reviewer**: cursor-specialist-testing-output.txt
 - **Concern**: [latent] No assertion that run_rebase_rebump passes --allow-changelog-only --max-depth 20 to drop-bump. Regression could drop flags and reintroduce CHANGELOG-only bump stall or depth exhaustion without failing CI. Add drop-bump stub that logs argv; assert both flags on re-bump invocation.
@@ -85,6 +79,12 @@
 ### FINDING_3: code-quality: scripts/implement-finalize.sh:563-653 and scripts/commit-changelog.sh:26-176
 - **Reviewer**: cursor-specialist-structure-output.txt
 - **Concern**: [important] Duplicated Keep-a-Changelog awk for insert and replaces-version instead of plan reuse via write_changelog_entry. Future heading-format fixes must be applied twice; drift risks wrong stale-entry removal on CI re-bump. Extract shared lib-changelog-entry.sh used by write_changelog_entry and commit-changelog.sh.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_30: architecture: scripts/commit-changelog.sh:26-82 vs scripts/implement-finalize.sh:563-652
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Duplicate CHANGELOG writers; duplicate-heading guard only in implement-finalize. Messy history can get duplicate version sections from commit-changelog paths. Share one writer or port exit-4 duplicate detection.
 - **Suggested revision**: Address the concern above.
 
 

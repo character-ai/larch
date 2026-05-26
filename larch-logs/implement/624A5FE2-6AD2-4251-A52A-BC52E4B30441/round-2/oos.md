@@ -4,7 +4,7 @@
 - **Suggested revision**: Address the concern above.
 
 
-Vote tally: YES=1 NO=1 EXON=1 JUDGE_ERROR=0 Result=neutral
+Vote tally: YES=1 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
 
 ### FINDING_20: [OUT_OF_SCOPE] risk-integration: scripts/implement-finalize.sh:563-733
 - **Reviewer**: cursor-specialist-testing-output.txt
@@ -12,7 +12,7 @@ Vote tally: YES=1 NO=1 EXON=1 JUDGE_ERROR=0 Result=neutral
 - **Suggested revision**: Address the concern above.
 
 
-Vote tally: YES=1 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+Vote tally: YES=2 NO=0 EXON=1 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_21: [OUT_OF_SCOPE] risk-integration: scripts/drop-bump-commit.sh
 - **Reviewer**: cursor-specialist-testing-output.txt
@@ -28,7 +28,7 @@ Vote tally: YES=1 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
 - **Suggested revision**: Address the concern above.
 
 
-Vote tally: YES=1 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+Vote tally: YES=2 NO=0 EXON=1 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_33: [OUT_OF_SCOPE] code-quality: larch-logs/implement/FC85DE8D-CBEF-4652-B425-FA0825CFDF24/
 - **Reviewer**: cursor-specialist-edge-cases-output.txt
