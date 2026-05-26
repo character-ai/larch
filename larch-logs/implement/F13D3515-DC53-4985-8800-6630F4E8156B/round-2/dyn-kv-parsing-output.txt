@@ -1,0 +1,15 @@
+Reviewing KV parsing and emission across the branch diff. Reading the diff and key implementation files.
+Checking one edge case: whether `tracking-init-failed` can hit the wildcard `*` branch with an empty `ISSUE_NUMBER`.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **`ingest_kv_line` scope** (`scripts/implement-bootstrap.sh:76-102`) — The helper only ingests keys from `create-branch.sh`, `session-entry-gate.sh`, and `session-setup.sh` during `phase_infra`. Tracking globals (`ISSUE_NUMBER_RESOLVED`, `RUN_ID`, `BRANCH_SELECTED`, etc.) are set in-process and emitted via `emit_final_tail`; no ingest update is required for the new protocol keys.
+- **`_ib_kv_scan` vs `emit_kv` layout** (`skills/implement/SKILL.md:355-397`) — SKILL documents whitespace-separated multi-token lines, while `emit_kv` emits one `KEY=value` per line. The tokenizer handles both; not a regression from this branch.
+- **Exit-2 `STEP_FAILED` parsing** (`skills/implement/SKILL.md:337`) — Uses `cut -d= -f2-` rather than the `substr($0,index($0,"=")+1)` awk pattern used in `kv_value_from_block`. Safe for current `STEP_FAILED` values (`session-entry-gate`, `session-setup`, `get-issue-state`); pre-existing style extended by this diff, not a functional gap for the audited paths.
+
+**Commits reviewed:** `fc4d783b` (phase tracking), `6d635cd2` (larch-logs flush), `438ab338` (round-1 review fixes — fork/closed/PR `issue_tail`, `valid_issue_number`/`valid_run_id`, ledger marks).
+
+**KV audit summary:** `kv_value_from_block` preserves values after the first `=` (harness stub `ERROR=failed=value` is safe). `emit_final_tail` routes `tracking-init-failed` through `branch-1-resume|branch-2-adopt` (preserving `ISSUE_NUMBER`), not the closed/PR empty tail. `_ib_kv_scan` includes `ISSUE_NUMBER`, `RUN_ID`, `BRANCH_SELECTED`, `DEFERRED`, `STALL_TRACKING`, and `IMPLEMENT_BAIL_REASON` with no shadowing of existing keys.

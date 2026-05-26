@@ -1,0 +1,44 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- plan explicitly specifies best-effort for fork mode; the dual-guard is intentional design
+FINDING_5: EXONERATE -- extracting a helper adds abstraction overhead for stubs that will be replaced when phases land
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- IMPLEMENT_BAIL_REASON is always co-emitted; consumers must key on bail reason, not ISSUE_NUMBER alone
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- stdout FD still validates breadcrumb presence and count; dedicated FD regression risk is nit-level
+FINDING_19: EXONERATE -- tracking breadcrumb count tests are a nice-to-have; absence does not mask regressions in the tested functional paths
+FINDING_20: YES
+FINDING_21: EXONERATE -- plan explicitly specified best-effort || true semantics for fork context fetch
+FINDING_22: EXONERATE -- SKILL.md always passes --issue-number; theoretical edge case without a realistic attack path in the current flow
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- Phase 3 is out of scope for this PR; the concern will surface when phase_plan_materialize is implemented
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- DECISION_1 (3-0) explicitly chose deferred=true + continue on POSTED=false; orphan manifest semantics are known
+FINDING_29: EXONERATE -- same as FINDING_21; best-effort by design
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: NO -- no problem exists; finding confirms correct portability behavior
+FINDING_38: NO -- no problem exists; finding confirms correct temp hygiene
+FINDING_39: NO -- no problem exists; finding confirms correct exit-code capture
+FINDING_40: NO -- no problem exists; noting pre-existing patterns does not constitute a filing-worthy issue
+FINDING_41: YES
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: YES

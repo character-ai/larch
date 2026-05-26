@@ -1,0 +1,19 @@
+Implemented Phase 2 tracking bootstrap.
+
+Changed:
+- `scripts/implement-bootstrap.sh`: full `phase_tracking` state machine, new `--forked-target`, `--upstream-repo`, `--run-id` handling, branch-aware final KV tail, bail/deferred/stall routing.
+- `scripts/write-session-env.sh`: persists `FORKED_TARGET=`.
+- `skills/implement/scripts/post-tracking-issue.sh`: accepts `--run-id` and writes that RUN_ID to `parent-issue.md`.
+- Updated sibling docs and collapsed `/implement` Step 0 docs to the single `implement-bootstrap.sh --up-to-phase tracking` flow.
+- Expanded `skills/implement/scripts/test-implement-bootstrap.sh` with tracking adoption, resume, fork/repo skip, deferred, bail, mismatch, and malformed sentinel cases.
+
+Verification:
+- `make test-implement-bootstrap` passed.
+- `make test-post-tracking-issue` passed.
+- `make test-session-env-roundtrip` passed.
+- `make lint-bash32` passed.
+- `make lint-foreground-markers` passed.
+- `bash scripts/relevant-checks.sh` passed.
+- `make lint` was attempted. With inherited breadcrumb env it first failed in unrelated `test-implement-finalize`; that target passed when rerun with those env vars unset. A sanitized full rerun later stopped in unrelated `test-review-core` with `/dev/fd/62: Operation not permitted`.
+
+Wrote `<TMPDIR>/manifest.json`. No `qa-pending.json` was created because no QA is pending.

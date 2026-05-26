@@ -1,0 +1,28 @@
+FINDING_1: EXONERATE -- DEFERRED=true intentionally allows later phases to proceed; the guard excluding DEFERRED is correct design and Phase 3 stubs correctly signal they are unimplemented
+FINDING_2: EXONERATE -- extracting a single-use helper adds abstraction without materially reducing maintenance risk
+FINDING_3: EXONERATE -- omitting --issue-number is documented optional behavior; infra-only path has no issue to track
+FINDING_4: EXONERATE -- test code duplication only, no functional impact
+FINDING_5: NO -- `[[` is valid in Bash 3.2 and predates this branch; not a real problem
+FINDING_6: NO -- B7-non-open-state case already exists in the diff and covers this exact path
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- separation of bootstrap and post-tracking-issue tests is by design; substantively duplicates FINDING_8
+FINDING_12: YES
+FINDING_13: NO -- positive confirmation of correct implementation, no problem identified
+FINDING_14: NO -- positive confirmation of correct implementation, no problem identified
+FINDING_15: NO -- positive confirmation of correct implementation, no problem identified
+FINDING_16: NO -- positive confirmation of correct implementation, no problem identified
+FINDING_17: NO -- positive confirmation of correct implementation, no problem identified
+FINDING_18: NO -- positive confirmation of correct implementation, no problem identified
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- same reasoning as FINDING_1; DEFERRED intentionally does not block later phases
+FINDING_23: EXONERATE -- re-running Branch 2 on retry is the intended DECISION_1 semantic
+FINDING_24: EXONERATE -- BRANCH_SELECTED already disambiguates all three cases for parsers
+FINDING_25: YES
+FINDING_26: NO -- identifies the subject commit, no problem raised
+FINDING_27: NO -- out-of-scope chore commit, no problem raised
+FINDING_28: NO -- NO_ISSUES_FOUND positive affirmation, no problem identified

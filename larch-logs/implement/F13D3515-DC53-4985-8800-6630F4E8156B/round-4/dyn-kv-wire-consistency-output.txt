@@ -1,0 +1,17 @@
+Reviewing KV wire consistency between the bootstrap emitter and SKILL.md parser. Reading the diff and key files.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+Cross-check of the branch diff against the scout checklist:
+
+- **`emit_final_tail` → `_ib_kv_scan`:** All five tracking keys emitted in `scripts/implement-bootstrap.sh` (`ISSUE_NUMBER`, `RUN_ID`, `BRANCH_SELECTED`, `DEFERRED`, `STALL_TRACKING` at lines 557–561) have matching `case` arms in `skills/implement/SKILL.md` `_ib_kv_scan` (lines 395–399) and are listed in the Step 0 parse prose (line 292) and `export` block (line 414).
+- **`IMPLEMENT_BAIL_REASON` routing:** Production tracking paths emit only `adopted-issue-closed`, `adopted-issue-is-pr`, `tracking-init-failed`, or empty (plus `DEFERRED=true` without bail per DECISION_1). The mandatory guard (line 418), bail table (lines 422–427), behavior map (lines 595–605), and plan-skip guard (line 654) cover every value the tracking phase can return on `--up-to-phase tracking`.
+- **`STEP_FAILED=issue-number-required-for-resume`:** Dedicated exit-2 branch exists in SKILL.md (lines 301, 354–357), matching `scripts/implement-bootstrap.sh` emission (lines 419–420) and `scripts/implement-bootstrap.md` exit table (line 74).
+- **`scripts/implement-bootstrap.md` contract:** `BRANCH_SELECTED` enum (lines 36–44) and bail-reason table (lines 77–86) align with the state machine and SKILL behavior map.
+
+### Out-of-Scope Observations
+
+- **`skills/implement/SKILL.md:337-359`** — `phase_infra` can emit `STEP_FAILED=create-branch` or `STEP_FAILED=write-session-env` (`scripts/implement-bootstrap.sh` lines 206–207, 326–327), but the exit-2 handler only special-cases `session-entry-gate`, `session-setup`, `get-issue-state`, and `issue-number-required-for-resume`; the other two fall through to a bare `exit 2`. This predates the Phase 2 tracking KV work and is outside the five-key wire focus.
+- **`skills/implement/SKILL.md:361-405`** — `emit_final_tail` also emits placeholder keys `BRANCH_NAME`, `PLAN_FILE`, `coder`, and `coder_fallback` (bootstrap lines 562–565), but `_ib_kv_scan` has no arms for them. Harmless while `--up-to-phase tracking` leaves them empty; Phase 3/4 will need scanner arms when those phases land.
+- **`scripts/implement-bootstrap.md:85-86`** — Documents `not-yet-implemented-phase-3/4` bail tokens from stubs; `skills/implement/SKILL.md` routing tables do not reference them because production calls `--up-to-phase tracking` only. Expected until Phase 3/4 ships.
