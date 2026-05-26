@@ -1,0 +1,22 @@
+{"type":"mark","step":"design Step 0 — session setup","ts":"2026-05-26T04:20:25Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":37815,"raw":"codex_review","ts":"2026-05-26T04:31:04Z"}
+{"type":"vendor","vendor":"cursor","input":41302,"output":4090,"cache_read":191823,"cache_create":0,"total":237215,"raw":"cursor_review","ts":"2026-05-26T04:31:18Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":45056,"raw":"codex_review","ts":"2026-05-26T04:38:13Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":70393,"raw":"codex_review","ts":"2026-05-26T04:38:19Z"}
+{"type":"vendor","vendor":"cursor","input":39547,"output":5401,"cache_read":226510,"cache_create":0,"total":271458,"raw":"cursor_review","ts":"2026-05-26T04:38:21Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":69970,"raw":"codex_review","ts":"2026-05-26T04:38:34Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":76083,"raw":"codex_review","ts":"2026-05-26T04:38:40Z"}
+{"type":"vendor","vendor":"cursor","input":52324,"output":7828,"cache_read":276320,"cache_create":0,"total":336472,"raw":"cursor_review","ts":"2026-05-26T04:38:49Z"}
+{"type":"vendor","vendor":"cursor","input":71265,"output":7882,"cache_read":310192,"cache_create":0,"total":389339,"raw":"cursor_review","ts":"2026-05-26T04:38:51Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":90572,"raw":"codex_review","ts":"2026-05-26T04:38:51Z"}
+{"type":"vendor","vendor":"cursor","input":57385,"output":7614,"cache_read":472006,"cache_create":0,"total":537005,"raw":"cursor_review","ts":"2026-05-26T04:38:53Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":57579,"raw":"codex_review","ts":"2026-05-26T04:38:53Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":67807,"raw":"codex_review","ts":"2026-05-26T04:39:01Z"}
+{"type":"vendor","vendor":"cursor","input":63067,"output":8699,"cache_read":831024,"cache_create":0,"total":902790,"raw":"cursor_review","ts":"2026-05-26T04:39:10Z"}
+{"type":"vendor","vendor":"cursor","input":46720,"output":9537,"cache_read":374672,"cache_create":0,"total":430929,"raw":"cursor_review","ts":"2026-05-26T04:39:12Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":87018,"raw":"codex_review","ts":"2026-05-26T04:39:20Z"}
+{"type":"vendor","vendor":"cursor","input":131305,"output":10240,"cache_read":924271,"cache_create":0,"total":1065816,"raw":"cursor_review","ts":"2026-05-26T04:39:30Z"}
+{"type":"vendor","vendor":"cursor","input":91361,"output":9692,"cache_read":1603945,"cache_create":0,"total":1704998,"raw":"cursor_review","ts":"2026-05-26T04:39:34Z"}
+{"type":"vendor","vendor":"cursor","input":18433,"output":5229,"cache_read":1883,"cache_create":0,"total":25545,"raw":"cursor_review","ts":"2026-05-26T04:40:41Z"}
+{"type":"vendor","vendor":"cursor","input":132423,"output":4059,"cache_read":61216,"cache_create":0,"total":197698,"raw":"cursor_review","ts":"2026-05-26T04:44:22Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":67142,"raw":"codex_review","ts":"2026-05-26T04:44:52Z"}

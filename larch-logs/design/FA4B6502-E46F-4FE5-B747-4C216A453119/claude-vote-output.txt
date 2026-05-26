@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- flag-parse boilerplate mirroring existing pattern; plan's rationale against over-engineering two identical case entries is defensible
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- same rationale as FINDING_9; single-substitution prompt change and boilerplate flag parse don't warrant new direct-generator harness assertions
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES

@@ -1,0 +1,23 @@
+Propose a high-level implementation approach for this feature:
+
+Align step-7a.sh small/non-runtime classifier with forked_target remote
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Step 5 code-review panel (cursor-specialist-edge-cases-output.txt, FINDING_25)
+**Phase**: implement
+**Vote tally**: YES=2 NO=0 EXON=1 JUDGE_ERROR=0 Result=accepted
+
+## Description
+
+`skills/implement/scripts/step-7a.sh` around line 88 uses `git merge-base HEAD origin/main` for the small/non-runtime classifier. When `forked_target=true`, the classifier should compare against `upstream/main` (mirroring the rebase-checkpoint-probe `--base-remote/--base-ref` pattern used elsewhere in the file). Fork repositories without an `origin/main` ref will never trigger the small/non-runtime skip even when the diff qualifies. Pre-existing carry-over from the SKILL.md classifier, surfaced only after consolidation. Suggested fix: read `forked_target` argv (already plumbed) and choose `upstream/main` vs `origin/main` accordingly; add a harness regression case.
+
+## Round 1 scope decisions (binding)
+
+The orchestrator confirmed with the user during Round 1:
+
+1. **Audit scope**: include `generate-code-flow-diagram.sh:58` in the fix (same `git merge-base HEAD origin/main` pattern, also called from Step 7a). Two callsites total need the fix.
+2. **Backward compatibility**: when `forked_target` is unset/false, both classifiers must behave bit-for-bit identically to today (keep using `origin/main`). Only the fork path switches to `upstream/main`. The existing `diagram-skip` test case must continue to pass unchanged.
+3. **Test coverage**: at least one new harness regression case in `skills/implement/scripts/test-step-7a.sh` that demonstrates the skip classifier firing on a `forked_target=true` fixture with `upstream/main` (and no `origin/main`).
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
