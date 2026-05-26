@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {
+      "path": "scripts/git-commit.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-implement-finalize.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    }
+  ],
+  "tests_added_or_modified": [],
+  "summary_bullets": [
+    "Remove stale amend wording from the git-commit contract",
+    "Update the implement-finalize harness contract to describe CHANGELOG detection/commit behavior"
+  ],
+  "commit_message": "Remove stale amend wording from commit docs\n\nUpdate the git-commit and implement-finalize harness contracts to refer to the separate CHANGELOG commit path after the post-bump flow stopped amending.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}

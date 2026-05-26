@@ -1,0 +1,2 @@
+Normalizing the supplied reviewer findings into a merged structured list per aggregator rules, keeping in-scope and `[OUT_OF_SCOPE]` items separate where sources distinguished them.
+

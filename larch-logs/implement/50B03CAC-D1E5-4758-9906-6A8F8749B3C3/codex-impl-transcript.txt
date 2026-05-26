@@ -1,0 +1,9 @@
+Implemented the planned doc cleanup in [scripts/git-commit.md](<OPERATOR_REPO_PATH>/scripts/git-commit.md:3) and [scripts/test-implement-finalize.md](<OPERATOR_REPO_PATH>/scripts/test-implement-finalize.md:3).
+
+Verification:
+- `grep -i amend scripts/git-commit.md scripts/test-implement-finalize.md` returns no matches.
+- `bash scripts/relevant-checks.sh` passed.
+- Wrote `manifest.json` atomically with `status=complete`.
+- Did not write `qa-pending.json`, since no Q/A is needed.
+
+Current working tree has only the two planned modified files.
