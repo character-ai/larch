@@ -363,13 +363,21 @@ if [ "$_ib_rc" -eq 2 ]; then
     printf '%s\n' '**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel'\''s issue.**'
     exit 2
   fi
+  _ib_tmpdir=$(printf '%s\n' "$_ib_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
+  if [ -n "$_ib_tmpdir" ]; then
+    IMPLEMENT_TMPDIR=$_ib_tmpdir
+  fi
   if [ "$_ib_sf" = "copy-plan" ]; then
     [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ] && cat "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" || true
     printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not copy the preflight plan into the implement session. Aborting.**'
     exit 2
   fi
   if [ "$_ib_sf" = "gh-issue-view" ]; then
-    [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ] && cat "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" || true
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ]; then
+      if ! "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"; then
+        printf '%s\n' '**⚠ /implement Step 0 plan materialization: gh issue view failed and stderr could not be safely redacted.**'
+      fi
+    fi
     printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not read the issue title/body. Aborting.**'
     exit 2
   fi
@@ -435,7 +443,7 @@ export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME B
 export codex_available cursor_available
 ```
 
-Mandatory Step 0 routing guard: immediately after parsing/exporting the bootstrap KVs above, branch on the parsed values. If `IMPLEMENT_BAIL_REASON` is `adopted-issue-closed`, `adopted-issue-is-pr`, `tracking-init-failed`, `run-flags-persist-failed`, or `branch-create-failed`, jump to Step 18 cleanup. Independently, if `STALL_TRACKING=true`, jump to Step 18 cleanup even when `IMPLEMENT_BAIL_REASON` is empty. If `IMPLEMENT_BAIL_REASON=dirty-tree`, fire the existing dirty-tree recovery `AskUserQuestion` flow using the idempotency sentinel `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize`; do not proceed to the implementer waterfall until the operator chooses the documented recovery path.
+Mandatory Step 0 routing guard: immediately after parsing/exporting the bootstrap KVs above, branch on the parsed values. If `IMPLEMENT_BAIL_REASON` is `adopted-issue-closed`, `adopted-issue-is-pr`, `tracking-init-failed`, `run-flags-persist-failed`, or `branch-create-failed`, jump to Step 18 cleanup. Independently, if `STALL_TRACKING=true`, jump to Step 18 cleanup even when `IMPLEMENT_BAIL_REASON` is empty. If `IMPLEMENT_BAIL_REASON=dirty-tree`, enter the Step 0 dirty-tree recovery gate below; do not proceed to the implementer waterfall until that gate clears.
 
 Bootstrap tracking bail routing:
 
@@ -446,8 +454,15 @@ Bootstrap tracking bail routing:
 | `adopted-issue-is-pr` | Skip to Step 18 cleanup. |
 | `tracking-init-failed` | `STALL_TRACKING=true`; skip Phase 3/4 bootstrap stubs and route to Step 18 cleanup. |
 | `run-flags-persist-failed` | `STALL_TRACKING=true`; route to Step 18 cleanup. |
-| `branch-create-failed` | `STALL_TRACKING=true`; route to Step 18 cleanup. |
-| `dirty-tree` | No stall flag; route to dirty-tree recovery `AskUserQuestion` with sentinel `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize`. |
+| `branch-create-failed` | `STALL_TRACKING=true`; route to Step 18 cleanup. This includes branch-create failures and post-create branch-capture failures (`git-current-branch.sh`). |
+| `dirty-tree` | No stall flag; route to the Step 0 dirty-tree recovery gate with sentinel `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize`. |
+
+Step 0 dirty-tree recovery gate:
+
+1. Write `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `STATUS=dirty-or-unknown`, `STAGE=step0-plan-materialize`, and `RECOVERY_REQUIRED=true`.
+2. If `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize` is absent, create it and fire `AskUserQuestion` with exactly two operator paths: **Restore a clean tree and continue** / **Cancel this implement run**.
+3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false` and continue.
+4. On **Cancel this implement run**: preserve `$IMPLEMENT_TMPDIR` for inspection and jump to Step 18 cleanup. Do not enter the Step 2 implementer waterfall on this path.
 
 - If `REPO_UNAVAILABLE=true`: the script prints `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` to stderr; set `repo_unavailable=true` from the parsed KV.
 - If `CODEX_BINARY_FOUND=false` (from parsed stdout / `session-env.sh` after the script writes it): the script prints `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` to stderr; else if `CODEX_PRESENT=false`, the script prints `**⚠ Codex not healthy for this session (runtime probe failed, skipped probe, auth error, or timeout). Using Claude replacement.**` Mirror the same two-tier pattern for Cursor. Derive mental flags `codex_available` / `cursor_available` from parsed `codex_available=` / `cursor_available=` stdout lines (`true` only when **both** the corresponding `*_BINARY_FOUND` and `*_PRESENT` keys are `true`).
@@ -586,7 +601,7 @@ If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If
 
 ### Step 0 — tracking issue adoption
 
-Tracking adoption calls 6-9 are owned by the single foreground `implement-bootstrap.sh --up-to-phase plan` call above. Do not run separate prompt-side `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh init`, `post-tracking-issue.sh`, or `tracking-issue-write.sh rename` blocks for Step 0 adoption. The prompt still owns the single post-bootstrap token/timing ledger mark block immediately below.
+Tracking adoption calls 6-9 are owned by the single foreground `implement-bootstrap.sh --up-to-phase plan` call above. Do not run separate prompt-side `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh init`, `post-tracking-issue.sh`, or `tracking-issue-write.sh rename` blocks for Step 0 adoption. The prompt still owns only the tracking-issue post-bootstrap token/timing ledger mark block immediately below.
 
 Resolve a stable `ISSUE_NUMBER` and `RUN_ID` from bootstrap stdout. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
 
@@ -662,7 +677,7 @@ The bootstrap call materializes `$IMPLEMENT_TMPDIR/plan.txt` from `$PREFLIGHT_TM
 
 ### Implementer waterfall
 
-Runs on every path that continues to Step 2.
+Runs on every path that continues to Step 2 after the Step 0 dirty-tree recovery gate has cleared. Never enter this waterfall while `IMPLEMENT_BAIL_REASON=dirty-tree` or while `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` still records `RECOVERY_REQUIRED=true`.
 
 When `coder_explicit=true`:
 

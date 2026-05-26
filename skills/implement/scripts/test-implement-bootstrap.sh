@@ -375,6 +375,10 @@ STUB
 #!/usr/bin/env bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 printf 'check-mid-run-dirty-tree %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_DIRTY_EXIT:-0}" -ne 0 ]; then
+  printf 'dirty tree probe failure\n' >&2
+  exit "$SANDBOX_DIRTY_EXIT"
+fi
 echo "STATUS=${SANDBOX_DIRTY_STATUS:-clean}"
 exit 0
 STUB
@@ -384,6 +388,10 @@ STUB
 #!/usr/bin/env bash
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 printf 'git-current-branch\n' >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_BRANCH_CAPTURE_EXIT:-0}" -ne 0 ]; then
+  printf 'branch capture failure\n' >&2
+  exit "$SANDBOX_BRANCH_CAPTURE_EXIT"
+fi
 if [ -f "$script_dir/../last-created-branch.txt" ]; then
   branch=$(cat "$script_dir/../last-created-branch.txt")
 elif [ "${SANDBOX_IS_USER_BRANCH:-false}" = "true" ]; then
@@ -391,7 +399,11 @@ elif [ "${SANDBOX_IS_USER_BRANCH:-false}" = "true" ]; then
 else
   branch=main
 fi
-echo "BRANCH=$branch"
+if [ "${SANDBOX_BRANCH_CAPTURE_EMPTY:-false}" = "true" ]; then
+  echo "BRANCH="
+else
+  echo "BRANCH=$branch"
+fi
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/git-current-branch.sh"
@@ -586,6 +598,34 @@ assert_line "ISSUE_NUMBER=" "$out" "GP-repo-unavail-tracking empty issue"
 assert_contains "DEFERRED=true" "$out" "GP-repo-unavail-tracking deferred"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- GP-repo-unavail-plan ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=
+echo REPO_UNAVAILABLE=true
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runRepoSkip --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP-repo-unavail-plan exit 0"
+assert_contains "BRANCH_SELECTED=repo-unavailable-skip" "$out" "GP-repo-unavail-plan branch"
+assert_contains "DEFERRED=true" "$out" "GP-repo-unavail-plan deferred"
+assert_line "PLAN_FILE=" "$out" "GP-repo-unavail-plan empty plan file"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "snapshot-untracked" "$invoke" "GP-repo-unavail-plan no snapshot"
+assert_not_contains "gh issue view" "$invoke" "GP-repo-unavail-plan no gh"
+assert_not_contains "persist-implement-run-flags" "$invoke" "GP-repo-unavail-plan no persist"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- GP4 repo_unavailable ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -693,6 +733,23 @@ assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "
 assert_not_contains "IMPLEMENT_BAIL_REASON=run-flags-persist-failed" "$out" "B4-plan no run-flags bail"
 assert_not_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B4-plan no dirty-tree bail"
 assert_not_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B4-plan no branch-create bail"
+if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-plan plan.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-plan plan.txt materialized"
+fi
+if [ -f "$SANDBOX_TMP/feature-description.txt" ] && grep -qxF "Test Feature" "$SANDBOX_TMP/feature-description.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-plan feature-description.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-plan feature-description.txt materialized"
+fi
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "gh issue view 123" "$invoke" "B4-plan gh invoked"
+assert_contains "persist-implement-run-flags" "$invoke" "B4-plan persist invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4-all POSTED=false deferred guard ---
@@ -760,6 +817,7 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 for case_data in \
     "UPPER CASE FEATURE|upper-case-feature" \
     "Symbols: Plan + Branch!!|symbols-plan-branch" \
+    "!!!|issue" \
     "This title is deliberately longer than forty characters for slug coverage|this-title-is-deliberately-longer-than-f"
 do
     SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
@@ -773,6 +831,20 @@ do
     assert_contains "BRANCH_NAME=testuser/$expected_slug-123" "$out" "B5-plan-green $expected_slug branch"
     assert_contains "BRANCH_ACTION=created" "$out" "B5-plan-green $expected_slug action"
     assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B5-plan-green $expected_slug plan file"
+    if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
+        PASS=$((PASS + 1))
+        echo "PASS: B5-plan-green $expected_slug plan.txt materialized"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: B5-plan-green $expected_slug plan.txt materialized"
+    fi
+    if [ -f "$SANDBOX_TMP/feature-description.txt" ] && grep -qxF "$title" "$SANDBOX_TMP/feature-description.txt"; then
+        PASS=$((PASS + 1))
+        echo "PASS: B5-plan-green $expected_slug feature-description.txt materialized"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: B5-plan-green $expected_slug feature-description.txt materialized"
+    fi
     invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
     assert_order "snapshot-untracked" "gh issue view 123" "$invoke" "B5-plan-green $expected_slug snapshot before gh"
     assert_order "gh issue view 123" "persist-implement-run-flags" "$invoke" "B5-plan-green $expected_slug gh before persist"
@@ -819,6 +891,20 @@ for dirty_status in dirty unknown; do
     rm -rf "$SANDBOX" "$SANDBOX_TMP"
 done
 
+# --- B7-plan-dirty-tree probe failure ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_DIRTY_EXIT=7 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyProbe --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree probe failure exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree probe failure bail"
+assert_contains "STALL_TRACKING=false" "$out" "B7-plan-dirty-tree probe failure no stall"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree probe failure no branch"
+assert_not_contains "git-current-branch" "$invoke" "B7-plan-dirty-tree probe failure no branch capture"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B8-plan-forked-target ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -831,6 +917,20 @@ assert_contains "DEFERRED=true" "$out" "B8-plan-forked-target deferred"
 assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B8-plan-forked-target plan file"
 assert_contains "BRANCH_NAME=main" "$out" "B8-plan-forked-target branch name"
 assert_line "BRANCH_ACTION=" "$out" "B8-plan-forked-target empty action"
+if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B8-plan-forked-target plan.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B8-plan-forked-target plan.txt materialized"
+fi
+if [ -f "$SANDBOX_TMP/feature-description.txt" ] && grep -qxF "Test Feature" "$SANDBOX_TMP/feature-description.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B8-plan-forked-target feature-description.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B8-plan-forked-target feature-description.txt materialized"
+fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "gh issue view 123 --repo upstream/repo" "$invoke" "B8-plan-forked-target gh upstream"
 assert_not_contains "create-branch --branch" "$invoke" "B8-plan-forked-target no branch create"
@@ -873,6 +973,7 @@ rc=$?
 set -e
 assert_rc "$rc" 2 "B11-plan-copy-plan-failure exit 2"
 assert_contains "STEP_FAILED=copy-plan" "$out" "B11-plan-copy-plan-failure STEP_FAILED"
+assert_contains "IMPLEMENT_TMPDIR=$SANDBOX_TMP" "$out" "B11-plan-copy-plan-failure tmpdir emitted"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B12-plan-gh-issue-view-failure ---
@@ -886,7 +987,45 @@ rc=$?
 set -e
 assert_rc "$rc" 2 "B12-plan-gh-issue-view-failure exit 2"
 assert_contains "STEP_FAILED=gh-issue-view" "$out" "B12-plan-gh-issue-view-failure STEP_FAILED"
+assert_contains "IMPLEMENT_TMPDIR=$SANDBOX_TMP" "$out" "B12-plan-gh-issue-view-failure tmpdir emitted"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B13-plan-branch-create ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_CREATE_BRANCH_EXIT=9 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBranchFail --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B13-plan-branch-create exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B13-plan-branch-create bail"
+assert_contains "STALL_TRACKING=true" "$out" "B13-plan-branch-create stall"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "git-current-branch" "$invoke" "B13-plan-branch-create no branch capture"
+assert_not_contains "run-step1-plan-log" "$invoke" "B13-plan-branch-create no plan log"
+assert_not_contains "write-tally" "$invoke" "B13-plan-branch-create no tally"
+assert_not_contains "tracking-issue-summary upsert-summary" "$invoke" "B13-plan-branch-create no plan summary"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B14-plan-branch-capture ---
+for branch_capture_mode in exit empty; do
+    SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+    build_sandbox
+    write_gp1_session_setup
+    write_preflight_plan
+    if [ "$branch_capture_mode" = "exit" ]; then
+        out=$(SANDBOX_BRANCH_CAPTURE_EXIT=8 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBranchCapture --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+    else
+        out=$(SANDBOX_BRANCH_CAPTURE_EMPTY=true run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBranchCapture --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+    fi
+    assert_rc "$rc" 0 "B14-plan-branch-capture $branch_capture_mode exit 0"
+    assert_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B14-plan-branch-capture $branch_capture_mode bail"
+    assert_contains "STALL_TRACKING=true" "$out" "B14-plan-branch-capture $branch_capture_mode stall"
+    invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+    assert_contains "git-current-branch" "$invoke" "B14-plan-branch-capture $branch_capture_mode branch capture attempted"
+    assert_not_contains "run-step1-plan-log" "$invoke" "B14-plan-branch-capture $branch_capture_mode no plan log"
+    assert_not_contains "write-tally" "$invoke" "B14-plan-branch-capture $branch_capture_mode no tally"
+    rm -rf "$SANDBOX" "$SANDBOX_TMP"
+done
 
 # --- B6 get-issue-state FAILED=true ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)

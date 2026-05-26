@@ -87,7 +87,7 @@ Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_
 | `tracking-init-failed` | `RUN_ID` derivation failed or `larch-log.sh init` failed; `STALL_TRACKING=true`. Closed / PR bails clear `ISSUE_NUMBER` in the final KV tail; stalled tracking preserves a resolved issue number when available. |
 | `run-flags-persist-failed` | `persist-implement-run-flags.sh` returned non-zero; `STALL_TRACKING=true`. |
 | `dirty-tree` | `check-mid-run-dirty-tree.sh --mode checkpoint` reported `STATUS=dirty` or `STATUS=unknown`; no stall flag so the orchestrator can route to dirty-tree recovery. |
-| `branch-create-failed` | `create-branch.sh --branch` returned non-zero; `STALL_TRACKING=true`. |
+| `branch-create-failed` | `create-branch.sh --branch` returned non-zero, or `git-current-branch.sh` could not capture a non-empty branch name after plan materialization; `STALL_TRACKING=true`. |
 | `not-yet-implemented-phase-4` | Stub `phase_coder_select`. |
 
 ## Phase-skip semantics
@@ -110,8 +110,8 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | Rename to `[IMPLEMENTING]` (`tracking-issue-write.sh rename`) | Best-effort inside `phase_tracking` Branch 1 and Branch 2 |
 | Session untracked baseline (`snapshot-untracked.sh --output … --nul`) | `phase_plan_materialize` |
 | Post-bootstrap token/timing marks for plan materialization | `phase_plan_materialize` |
-| Issue title/body compose (`gh issue view`) | `phase_plan_materialize` |
 | Copy Preflight plan to `$IMPLEMENT_TMPDIR/plan.txt` | `phase_plan_materialize` |
+| Issue title/body compose (`gh issue view`) | `phase_plan_materialize` |
 | Persist run flags (`persist-implement-run-flags.sh`) | `phase_plan_materialize` |
 | Dirty-tree checkpoint (`check-mid-run-dirty-tree.sh --mode checkpoint`) | `phase_plan_materialize` |
 | Slug derivation + `create-branch.sh --branch` | `phase_plan_materialize` |

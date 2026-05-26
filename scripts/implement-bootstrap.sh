@@ -150,7 +150,9 @@ emit_tracking_breadcrumb_if_enabled() {
 emit_plan_materialize_breadcrumbs_if_enabled() {
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
         emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-} + plan logged"
-        emit_breadcrumb "→ step0: larch:plan posted"
+        if [ "${PLAN_SUMMARY_POSTED:-false}" = "true" ]; then
+            emit_breadcrumb "→ step0: larch:plan posted"
+        fi
     fi
 }
 
@@ -547,6 +549,7 @@ phase_plan_materialize() {
     PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
     plan_src="$PREFLIGHT_TMPDIR_OPT/plan-from-issue.txt"
     if ! cp "$plan_src" "$PLAN_FILE" 2>"$IMPLEMENT_TMPDIR/copy-plan.stderr.log"; then
+        emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
         emit_kv STEP_FAILED copy-plan
         exit 2
     fi
@@ -566,6 +569,7 @@ phase_plan_materialize() {
     fi
     gh_rc=$?
     if [ "$gh_rc" -ne 0 ]; then
+        emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
         emit_kv STEP_FAILED gh-issue-view
         exit 2
     fi
@@ -625,7 +629,17 @@ phase_plan_materialize() {
     branch_rc=$?
     if [ "$branch_rc" -eq 0 ]; then
         branch_value=$(kv_value_from_block BRANCH "$branch_out")
-        BRANCH_NAME=$branch_value
+        if [ -n "$branch_value" ]; then
+            BRANCH_NAME=$branch_value
+        else
+            STALL_TRACKING=true
+            IMPLEMENT_BAIL_REASON=branch-create-failed
+            return 0
+        fi
+    else
+        STALL_TRACKING=true
+        IMPLEMENT_BAIL_REASON=branch-create-failed
+        return 0
     fi
 
     issue_title=$(head -1 "$feature_file" 2>/dev/null || true)
@@ -681,6 +695,7 @@ phase_plan_materialize() {
     fi
 
     if [ "$FORKED_TARGET" != "true" ] && [ -n "${ISSUE_NUMBER_RESOLVED:-}" ]; then
+        PLAN_SUMMARY_POSTED=false
         summary_body_raw="$IMPLEMENT_TMPDIR/larch-plan-summary.raw.md"
         {
             printf "Plan materialized for run \`%s\`.\n" "${RUN_ID:-}"
@@ -705,6 +720,8 @@ phase_plan_materialize() {
                 --category Warnings \
                 --output-file "$summary_err" \
                 --redact || true
+        else
+            PLAN_SUMMARY_POSTED=true
         fi
     fi
 
