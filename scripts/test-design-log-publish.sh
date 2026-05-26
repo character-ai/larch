@@ -384,15 +384,13 @@ printf 'quiet tmpdir %s\n' "$secret_path" >"$TMPBC/design/breadcrumbs/stream.qui
 )
 git -C "$clone_bc" pull -q origin main
 bc_stream="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.ndjson"
-bc_quiet="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.quiet"
+# Only .ndjson files are published; non-ndjson sidecars (e.g. .quiet) are filtered by larch_log_publish_breadcrumbs_shared
 [[ -f "$bc_stream" ]] || fail "breadcrumb ndjson missing"
-[[ -f "$bc_quiet" ]] || fail "breadcrumb non-ndjson sidecar missing"
+[[ ! -f "$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.quiet" ]] || fail "non-ndjson sidecar must not be published"
 grep -Eq '<TMPDIR>|<OPERATOR_REPO_PATH>' "$bc_stream" || fail "breadcrumb ndjson tmpdir redaction missing"
 ! grep -Fq "$secret_path" "$bc_stream" || fail "breadcrumb ndjson leaked tmpdir path"
 grep -q '<REDACTED-PRIVATE-KEY>' "$bc_stream" || fail "breadcrumb ndjson PEM redaction missing"
 ! grep -Fq "$pem_body" "$bc_stream" || fail "breadcrumb ndjson leaked PEM body"
-grep -Eq '<TMPDIR>|<OPERATOR_REPO_PATH>' "$bc_quiet" || fail "breadcrumb sidecar tmpdir redaction missing"
-! grep -Fq "$secret_path" "$bc_quiet" || fail "breadcrumb sidecar leaked tmpdir path"
 
 echo "=== breadcrumb publish rejects symlink source closed ==="
 TMPBCSYM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-breadcrumb-symlink.XXXXXX")

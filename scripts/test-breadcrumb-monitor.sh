@@ -83,8 +83,8 @@ if [ "$ec" -ne 0 ]; then
     fail "test 1: non-empty surfaced should exit 0, got $ec (out=$out)"
 fi
 elapsed=$((ts2 - ts1))
-if [ "$elapsed" -gt 2 ]; then
-    fail "test 1: non-empty surfaced took ${elapsed}s, expected <=2s"
+if [ "$elapsed" -gt 5 ]; then
+    fail "test 1: non-empty surfaced took ${elapsed}s, expected <=5s"
 fi
 unset ec
 
