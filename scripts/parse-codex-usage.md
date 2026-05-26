@@ -61,7 +61,7 @@ output_tokens = .msg.usage.output_tokens // .msg.output_tokens
               // .usage.output_tokens // .output_tokens // 0
 ```
 
-This handles top-level Codex-native token fields on `token_usage` events, `.msg` top-level token fields, Responses-style `input_tokens_details.cached_tokens`, and wrappers that nest usage under `.msg.usage`. Empty usage objects do not block those fallbacks. Non-JSON wrapper noise is skipped by `fromjson?`.
+This handles top-level Codex-native token fields on `token_usage` events, `.msg` top-level token fields, Responses-style `input_tokens_details.cached_tokens`, and wrappers that nest usage under `.msg.usage`. Empty usage objects do not block those fallbacks, and an all-zero `.msg.usage` payload falls through to `.usage` when the latter carries real counters. Non-JSON wrapper noise is skipped by `fromjson?`.
 
 Example JSONL:
 

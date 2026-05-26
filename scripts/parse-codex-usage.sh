@@ -39,11 +39,21 @@ usage_tsv=$(
          $v.msg.input_tokens?, $v.msg.cached_input_tokens?, $v.msg.output_tokens?,
          $v.msg.input_tokens_details.cached_tokens?) | select(. != null);
       def has_tokenish($v): try ([tokenish($v)] | length > 0) catch false;
+      def branch_zero($v):
+        (num($v.input_tokens // 0) == 0)
+        and (num($v.cached_input_tokens // $v.input_tokens_details.cached_tokens // 0) == 0)
+        and (num($v.output_tokens // 0) == 0);
+      def ignore_msg_usage($o):
+        has_tokenish($o.msg.usage) and branch_zero($o.msg.usage) and has_tokenish($o.usage);
       def input_of($o):
-        num($o.msg.usage.input_tokens // $o.msg.input_tokens // $o.usage.input_tokens // $o.input_tokens // 0);
+        num((if ignore_msg_usage($o) then null else $o.msg.usage.input_tokens end)
+          // $o.msg.input_tokens
+          // $o.usage.input_tokens
+          // $o.input_tokens
+          // 0);
       def cached_of($o):
-        num($o.msg.usage.cached_input_tokens
-          // $o.msg.usage.input_tokens_details.cached_tokens
+        num((if ignore_msg_usage($o) then null else $o.msg.usage.cached_input_tokens end)
+          // (if ignore_msg_usage($o) then null else $o.msg.usage.input_tokens_details.cached_tokens end)
           // $o.msg.cached_input_tokens
           // $o.msg.input_tokens_details.cached_tokens
           // $o.usage.cached_input_tokens
@@ -52,7 +62,11 @@ usage_tsv=$(
           // $o.input_tokens_details.cached_tokens
           // 0);
       def output_of($o):
-        num($o.msg.usage.output_tokens // $o.msg.output_tokens // $o.usage.output_tokens // $o.output_tokens // 0);
+        num((if ignore_msg_usage($o) then null else $o.msg.usage.output_tokens end)
+          // $o.msg.output_tokens
+          // $o.usage.output_tokens
+          // $o.output_tokens
+          // 0);
       def usage_row($o):
         {input: input_of($o), cached: cached_of($o), output: output_of($o)};
       def fail_if_cached_exceeds_input($u):

@@ -93,6 +93,11 @@ cat > "$TMP/wrong-type-top-level.jsonl" <<'JSONL'
 JSONL
 run_fail "wrong-type-top-level" 1 "$TMP/wrong-type-top-level.jsonl" "no usage events"
 
+cat > "$TMP/msg-zero-fallback.jsonl" <<'JSONL'
+{"msg":{"usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0}},"usage":{"input_tokens":5000,"cached_input_tokens":0,"output_tokens":100}}
+JSONL
+run_ok "msg-zero-fallback" "$TMP/msg-zero-fallback.jsonl" $'INPUT=5000\nCACHED_INPUT=0\nOUTPUT=100\nTOTAL=5100'
+
 cat > "$TMP/noise.jsonl" <<'JSONL'
 wrapper noise
 {"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3},"output_tokens":2}}
