@@ -103,6 +103,29 @@ EOF
     chmod +x "$path"
 }
 
+write_wrapper_amend_history_rewrite() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+printf 'stub amend history rewrite\n' > "$output"
+printf 'amended-change\n' > tracked.txt
+git add tracked.txt
+git commit --amend -q -m "stub amended commit"
+EOF
+    chmod +x "$path"
+}
+
 write_wrapper_modify_only() {
     local path="$1"
     cat > "$path" <<'EOF'
@@ -143,6 +166,35 @@ printf 'stub forbidden commit\n' > "$output"
 printf 'forbidden-change\n' > submod/file
 git add submod/file
 git commit -q -m "stub forbidden commit"
+EOF
+    chmod +x "$path"
+}
+
+write_wrapper_merge_commit() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+printf 'stub merge commit\n' > "$output"
+git checkout -q -b sibling
+printf 'sibling-change\n' > sibling.txt
+git add sibling.txt
+git commit -q -m "stub sibling commit"
+git checkout -q main
+printf 'main-change\n' > tracked.txt
+git add tracked.txt
+git commit -q -m "stub main commit"
+git merge --no-ff -q sibling -m "stub merge commit"
 EOF
     chmod +x "$path"
 }
@@ -256,6 +308,8 @@ case1_out=$(printf '%s\n' "$case1_result" | sed -n '2,$p')
 assert_contains "$case1_out" 'LINT_FIX_STATUS=applied' "case1 status"
 case1_commit_sha=$(kv_value LINT_FIX_COMMIT_SHA "$case1_out")
 [[ -n "$case1_commit_sha" ]] || fail "case1 expected non-empty LINT_FIX_COMMIT_SHA"
+case1_head=$(cd "$REPO1" && git rev-parse HEAD)
+[[ "$case1_commit_sha" == "$case1_head" ]] || fail "case1 expected commit sha $case1_head, got $case1_commit_sha"
 assert_contains "$case1_out" 'LINT_FIX_HEAD_CHANGED=true' "case1 head changed"
 case1_delta_file=$(kv_value LINT_FIX_DELTA_PATHS_FILE "$case1_out")
 [[ -n "$case1_delta_file" && -f "$case1_delta_file" ]] || fail "case1 expected readable delta paths file"
@@ -324,6 +378,46 @@ case1d_out=$(printf '%s\n' "$case1d_result" | sed -n '2,$p')
 [[ "$case1d_rc" == "1" ]] || fail "case1d expected rc 1, got $case1d_rc"
 assert_contains "$case1d_out" 'LINT_FIX_STATUS=failed' "case1d status"
 assert_contains "$case1d_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1d reason"
+
+# Case 1d.5: amended history rewrite after dispatch still fails closed.
+CASE1D5="$TMPROOT/case1d5"
+REPO1D5="$CASE1D5/repo"
+SCRIPTS1D5="$CASE1D5/scripts"
+SESSION1D5="$CASE1D5/session"
+CHECKS1D5="$CASE1D5/checks.log"
+WRAPPER1D5="$CASE1D5/wrapper.sh"
+make_repo "$REPO1D5"
+make_fixture_scripts "$SCRIPTS1D5"
+make_session "$SESSION1D5"
+printf 'synthetic checks failure\n' > "$CHECKS1D5"
+write_wrapper_amend_history_rewrite "$WRAPPER1D5"
+
+case1d5_result=$(run_case "$SCRIPTS1D5" "$REPO1D5" "$SESSION1D5" "$CHECKS1D5" "$WRAPPER1D5")
+case1d5_rc=$(printf '%s\n' "$case1d5_result" | sed -n '1p')
+case1d5_out=$(printf '%s\n' "$case1d5_result" | sed -n '2,$p')
+[[ "$case1d5_rc" == "1" ]] || fail "case1d5 expected rc 1, got $case1d5_rc"
+assert_contains "$case1d5_out" 'LINT_FIX_STATUS=failed' "case1d5 status"
+assert_contains "$case1d5_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1d5 reason"
+
+# Case 1d.6: merge commits after dispatch still fail closed.
+CASE1D6="$TMPROOT/case1d6"
+REPO1D6="$CASE1D6/repo"
+SCRIPTS1D6="$CASE1D6/scripts"
+SESSION1D6="$CASE1D6/session"
+CHECKS1D6="$CASE1D6/checks.log"
+WRAPPER1D6="$CASE1D6/wrapper.sh"
+make_repo "$REPO1D6"
+make_fixture_scripts "$SCRIPTS1D6"
+make_session "$SESSION1D6"
+printf 'synthetic checks failure\n' > "$CHECKS1D6"
+write_wrapper_merge_commit "$WRAPPER1D6"
+
+case1d6_result=$(run_case "$SCRIPTS1D6" "$REPO1D6" "$SESSION1D6" "$CHECKS1D6" "$WRAPPER1D6")
+case1d6_rc=$(printf '%s\n' "$case1d6_result" | sed -n '1p')
+case1d6_out=$(printf '%s\n' "$case1d6_result" | sed -n '2,$p')
+[[ "$case1d6_rc" == "1" ]] || fail "case1d6 expected rc 1, got $case1d6_rc"
+assert_contains "$case1d6_out" 'LINT_FIX_STATUS=failed' "case1d6 status"
+assert_contains "$case1d6_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1d6 reason"
 
 # Case 1e: dirty baseline plus HEAD movement still fails closed without reset.
 CASE1E="$TMPROOT/case1e"

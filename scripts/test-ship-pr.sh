@@ -3353,6 +3353,50 @@ else
 fi
 rm -rf "$call_dir"
 
+# Per-job local head-changed failure stalls immediately with the head-changed marker.
+root=$(make_repo ci_per_job_head_changed_failure)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/per-job-head-changed-failure.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then
+  printf '%s\n' 'lint'
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+printf 'mock lint failure\n'
+exit 1
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     /^MERGE=/ {print "MERGE=false"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" \
+  STUB_LINT_FIX_STATUS=failed STUB_LINT_FIX_FAILURE_REASON=head-changed-after-dispatch \
+  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+  --merge false --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "per-job head-changed failure stalls with rc 4"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "per-job head-changed failure marks stall"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-head-changed" "per-job head-changed failure records 10-head-changed"
+rm -rf "$call_dir"
+
 # Verification regressions after a local replay consume the outer retry budget without dropping into vendor recovery.
 root=$(make_repo ci_per_job_verify_regression)
 tmp=$(make_tmpdir)

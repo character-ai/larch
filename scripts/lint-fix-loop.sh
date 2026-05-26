@@ -124,6 +124,32 @@ submodule_paths() {
     git submodule foreach --quiet 'echo $sm_path' 2>/dev/null || true
 }
 
+path_matches_forbidden_list() {
+    local path="$1" forbidden_list="$2" forbidden_path
+
+    while IFS= read -r forbidden_path || [[ -n "$forbidden_path" ]]; do
+        [[ -n "$forbidden_path" ]] || continue
+        case "$path" in
+            "$forbidden_path"|"$forbidden_path"/*)
+                return 0
+                ;;
+        esac
+    done < "$forbidden_list"
+
+    return 1
+}
+
+reset_head_to_baseline() {
+    local baseline_head="$1" run_dir="$2"
+    local current_head
+
+    if ! git reset --hard "$baseline_head" >> "$run_dir/forbidden-revert.log" 2>&1; then
+        return 1
+    fi
+    current_head=$(git rev-parse HEAD 2>/dev/null || true)
+    [[ -n "$current_head" && "$current_head" == "$baseline_head" ]]
+}
+
 post_dispatch_forbidden_revert() {
     local run_dir="$1" forbidden_list="$2"
     local revert_log="$run_dir/forbidden-revert.log"
@@ -142,21 +168,15 @@ post_dispatch_forbidden_revert() {
 
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
-        while IFS= read -r forbidden_path || [[ -n "$forbidden_path" ]]; do
-            [[ -n "$forbidden_path" ]] || continue
-            case "$path" in
-                "$forbidden_path"|"$forbidden_path"/*)
-                    if grep -Fxq "$path" "$untracked_file" 2>/dev/null; then
-                        rm -f -- "$path" 2>>"$revert_log" || true
-                    else
-                        git checkout -- "$path" 2>>"$revert_log" || true
-                    fi
-                    printf '%s\n' "$path" >> "$revert_log"
-                    revert_count=$((revert_count + 1))
-                    break
-                    ;;
-            esac
-        done < "$forbidden_list"
+        if path_matches_forbidden_list "$path" "$forbidden_list"; then
+            if grep -Fxq "$path" "$untracked_file" 2>/dev/null; then
+                rm -f -- "$path" 2>>"$revert_log" || true
+            else
+                git checkout -- "$path" 2>>"$revert_log" || true
+            fi
+            printf '%s\n' "$path" >> "$revert_log"
+            revert_count=$((revert_count + 1))
+        fi
     done < "$diff_file"
 
     printf '%s\n' "$revert_count"
@@ -164,19 +184,13 @@ post_dispatch_forbidden_revert() {
 
 forbidden_paths_match_count() {
     local paths_list="$1" forbidden_list="$2"
-    local path forbidden_path match_count=0
+    local path match_count=0
 
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
-        while IFS= read -r forbidden_path || [[ -n "$forbidden_path" ]]; do
-            [[ -n "$forbidden_path" ]] || continue
-            case "$path" in
-                "$forbidden_path"|"$forbidden_path"/*)
-                    match_count=$((match_count + 1))
-                    break
-                    ;;
-            esac
-        done < "$forbidden_list"
+        if path_matches_forbidden_list "$path" "$forbidden_list"; then
+            match_count=$((match_count + 1))
+        fi
     done < "$paths_list"
 
     printf '%s\n' "$match_count"
@@ -355,11 +369,18 @@ elif [[ "$current_head" != "$baseline_head" ]]; then
     if [[ "$baseline_clean" != "true" ]]; then
         fail_status "head-changed-after-dispatch" 1
     fi
+    current_parent=$(git rev-parse --verify "$current_head^" 2>/dev/null || true)
+    current_second_parent=$(git rev-parse --verify "$current_head^2" 2>/dev/null || true)
+    if [[ -z "$current_parent" || -n "$current_second_parent" || "$current_parent" != "$baseline_head" ]]; then
+        fail_status "head-changed-after-dispatch" 1
+    fi
 
     git diff --name-only "$baseline_head".."$current_head" | awk 'NF && !seen[$0]++ { print }' > "$delta_paths_file"
     committed_forbidden_count=$(forbidden_paths_match_count "$delta_paths_file" "$forbidden_paths_file")
     if (( committed_forbidden_count > 0 )); then
-        git reset --hard "$baseline_head" >> "$run_dir/forbidden-revert.log" 2>&1 || true
+        if ! reset_head_to_baseline "$baseline_head" "$run_dir"; then
+            fail_status "forbidden-path-reset-failed" 1
+        fi
         fail_status "forbidden-path-violation" 1
     fi
 
