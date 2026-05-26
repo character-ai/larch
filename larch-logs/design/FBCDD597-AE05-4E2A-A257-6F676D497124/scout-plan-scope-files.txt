@@ -1,0 +1,8 @@
+skills/implement/scripts/generate-code-flow-diagram.sh
+scripts/ci-failed-jobs.sh
+skills/implement/scripts/generate-code-flow-diagram.md
+scripts/ci-failed-jobs.md
+skills/implement/scripts/test-generate-code-flow-diagram.sh
+scripts/test-ci-failed-jobs.sh
+skills/implement/scripts/test-generate-code-flow-diagram.md
+scripts/test-ci-failed-jobs.md

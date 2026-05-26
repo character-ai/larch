@@ -1,0 +1,3 @@
+Validating reviewer findings against the plan and cited code so we can merge duplicates accurately.
+Producing the normalized aggregator output from the 28 raw findings, merged by behavioral risk and ordered by first-seen theme.
+
