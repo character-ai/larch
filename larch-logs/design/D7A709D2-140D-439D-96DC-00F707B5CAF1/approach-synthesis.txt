@@ -1,0 +1,18 @@
+## Approach Synthesis
+
+**Agreement (both sketches):**
+- Doc-only fix; single target file is `docs/linting.md`, the `make test-step-7a` inventory row.
+- Current drift: doc says "Covers 18 cases"; harness `test-step-7a.sh` has 21 `new_case` invocations (the default `diagram-rejected` case + a 3-token sanitizer loop = 4 sanitizer-skip variants, plus 17 other named cases).
+- Verification: run `make test-step-7a` and `bash scripts/relevant-checks.sh` before/after the doc edit.
+
+**Divergence and resolution:**
+- Codex sketch suggested keeping "Covers N cases" prose with N=21 and enumerating the new scenarios. Cursor sketch did not commit to a count format.
+- Resolved by user choice in Step 1c (Decision 1): drop the hardcoded count entirely. Rewrite the row to match the qualitative-coverage prose pattern of sibling rows that describe coverage without numeric totals (e.g., `test-finalize-sanity-check`, `test-restore-finalize-state`). This addresses root cause per `.claude/rules/drift-prone-prose-in-docs.md` ("Don't write hardcoded counts in prose").
+
+**Out-of-scope finding to file in Step 5b (raised by Codex sketch):**
+- Sibling `skills/implement/scripts/test-step-7a.md` enumerates 19 cases — missing `rebase-unexpected-rc` and `quiet-diagram-skip-contract`. Out of scope per Step 1c Decision 3 ("Bounded to the single inventory row"). File as a separate OOS issue.
+
+**Sibling-row pattern survey (read 258-266 of docs/linting.md):**
+- Adjacent rows describe coverage with verbs like "Exercises X, Y, Z" or "Covers X, Y, Z" without numeric totals. The rewritten row should match this pattern.
+
+**Files to modify:** `docs/linting.md` (single row at line 263). No harness changes; no sibling `.md` edits (OOS).

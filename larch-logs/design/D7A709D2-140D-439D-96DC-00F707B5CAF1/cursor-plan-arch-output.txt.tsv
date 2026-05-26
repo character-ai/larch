@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	plan.txt:49	Edge cases claim a two-column inventory row has exactly two pipe boundary characters	A 2-column Markdown table row needs three pipes (`| cell1 | cell2 |`); following two-pipe guidance can drop the closing delimiter and break the Makefile Targets table	Reword to require the same three-pipe, single-line shape as sibling rows (leading, column delimiter, trailing)

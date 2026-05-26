@@ -1,0 +1,4 @@
+Count-audit review: reading the plan and counting `new_case` invocations in the harness file.
+Verifying invocation count and whether the issue's acceptance criteria conflict with the plan's qualitative approach.
+Count audit complete: 21 runtime `new_case` calls (18 static sites + 3 loop iterations); mapping matches the harness. Reporting plan gaps around stale issue counts and numeric vs qualitative acceptance criteria.
+

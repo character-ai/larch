@@ -1,0 +1,10 @@
+Reading the implementation plan and exploring the referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	plan.txt:49	Edge cases claim a two-column inventory row has exactly two pipe boundary characters	A 2-column Markdown table row needs three pipes (`| cell1 | cell2 |`); following two-pipe guidance can drop the closing delimiter and break the Makefile Targets table	Reword to require the same three-pipe, single-line shape as sibling rows (leading, column delimiter, trailing)
+2	out_of_scope	latent	architecture	skills/implement/scripts/test-step-7a.md:1-25	Sibling harness contract still enumerates 19 cases and omits `rebase-unexpected-rc` and `quiet-diagram-skip-contract` while the harness runs 21 `new_case` invocations	Readers of `test-step-7a.md` still see stale coverage after #2843 updates only `docs/linting.md`; same-file drift risk when the planned OOS issue lands	File separately (per plan Step 5b): align `test-step-7a.md` with qualitative category prose or refresh its case list to all 21 harness cases
+
+1. **[nit] correctness** — [plan.txt:49](plan.txt) — Edge cases say the replacement row has “exactly two `|` boundary characters.” A standard two-column table row needs three pipes. Suggested revision: match sibling rows’ `| target | description |` shape and drop the two-pipe wording.
+
+2. **[OUT_OF_SCOPE] architecture** — [skills/implement/scripts/test-step-7a.md:1-25](skills/implement/scripts/test-step-7a.md) — The sibling contract still lists 19 cases and does not document `rebase-unexpected-rc` or `quiet-diagram-skip-contract`. The plan correctly defers this to Step 5b; track for the follow-up issue so `test-step-7a.md` and `docs/linting.md` do not diverge after #2843.
+
+Otherwise the plan is sound: 21 `new_case` calls in `skills/implement/scripts/test-step-7a.sh` match the proposed category mapping, the rewrite follows sibling qualitative style, dropping `Covers 18 cases` satisfies `.claude/rules/drift-prone-prose-in-docs.md`, and scope stays limited to `docs/linting.md` with appropriate `make lint` verification.
