@@ -8,7 +8,7 @@
 - **Issue**: #2881 — https://github.com/character-ai/larch/issues/2881
 - **PR**: #2940 — https://github.com/character-ai/larch/pull/2940
 - **Plan review**: N/A
-- **Code review**: 24/40 accepted
+- **Code review**: 28/62 accepted
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/2939\\n-
 - **Exec issues**: 0
 - **Warnings**: 2
