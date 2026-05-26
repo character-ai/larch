@@ -269,6 +269,7 @@ set -euo pipefail
 slots=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --review-tmpdir) review_tmpdir="${2:?}"; shift 2 ;;
         --slots-file) slots="${2:?}"; shift 2 ;;
         --codex-present|--cursor-present|--mode) shift 2 ;;
         --diff-file|--plan-file|--feature-file|--scope-files|--description-text) shift 2 ;;

@@ -143,6 +143,14 @@ LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
 
 EOF
                 ;;
+            zero_findings_padded_attest_rejected)
+                cat > "$out" <<'EOF'
+Aggregator narrative: padded empty-merge attestation should reach the validator.
+
+  LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED  
+
+EOF
+                ;;
             zero_findings_no_attest)
                 cat > "$out" <<'EOF'
 Aggregator narrative: all input findings were resolved as duplicates; no merged FINDING blocks.
@@ -355,7 +363,17 @@ fi
 jq -nc --arg r "${CURSOR_STUB_RESULT_CONTENT:-cursor ok}" \
     '{result:$r,usage:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheWriteTokens:0}}'
 STUB
-    chmod +x "$dir/codex" "$dir/cursor"
+    cat > "$dir/claude" <<'STUB'
+#!/usr/bin/env bash
+log="${CLAUDE_STUB_LOG:-}"
+[[ -n "$log" ]] && printf '%s\n' "$*" >>"$log"
+cat >/dev/null
+if [[ "${CLAUDE_STUB_FAIL:-false}" == "true" ]]; then
+    exit 9
+fi
+printf '%s\n' "${CLAUDE_STUB_RESULT_CONTENT:-claude ok}"
+STUB
+    chmod +x "$dir/codex" "$dir/cursor" "$dir/claude"
 }
 
 write_real_dispatch_wrapper() {
@@ -1140,7 +1158,7 @@ AGGREGATE_STUB_ARGV_LOG="$SIDE/dispatch.argv" \
     --mode diff >"$TMP/out-sidecar.env"
 grep -Fq 'REASON=ok' "$TMP/out-sidecar.env" || fail "sidecar resolution REASON"
 grep -Fq -- '--require-result-pattern' "$SIDE/dispatch.argv" || fail "expected --require-result-pattern threaded to dispatch"
-grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$SIDE/dispatch.argv" || fail "expected aggregator result pattern"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$SIDE/dispatch.argv" || fail "expected aggregator result pattern"
 
 echo "=== output resolution falls back to ALL_OUTPUT_FILES when sidecar is absent ==="
 LEG="$TMP/legacy-output-resolution"
@@ -1175,7 +1193,7 @@ AGGREGATE_STUB_REQUIRE_PATTERN_LOG="$PAT/require-pattern.txt" \
     --cursor-present true \
     --mode diff >"$TMP/out-pattern-attest.env"
 grep -Fq 'REASON=validation-exhausted' "$TMP/out-pattern-attest.env" || fail "attestation should reach validator narrow-trigger path"
-grep -Fq '^(### FINDING_[0-9]+:|LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
+grep -Fq '^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
 
 echo "=== codex_primary_narration_routes_to_phase2_cursor ==="
 WR="$TMP/codex-primary-phase2"
@@ -1205,7 +1223,7 @@ grep -Fq 'Cursor phase 2 concern' "$WR/in.md" || fail "expected cursor phase2 ba
 grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$WR/aggregator-dispatch.env" || fail "expected cursor final tool"
 grep -Eq '^PHASE2_SLOTS=.+aggregator-output-phase2\.txt' "$WR/aggregator-dispatch.env" || fail "expected phase2 slot output"
 grep -Fq -- '--require-result-pattern' "$WR/dispatch.argv" || fail "phase2 recover dispatch missing pattern gate"
-grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$WR/dispatch.argv" || fail "phase2 recover pattern mismatch"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$WR/dispatch.argv" || fail "phase2 recover pattern mismatch"
 grep -Fq 'PHASES_ATTEMPTED=' "$TMP/out-wf-rec.env" && fail "PHASES_ATTEMPTED must not be emitted"
 
 echo "=== dispatcher_rejects_pseudo_finding_heading ==="
@@ -1234,7 +1252,7 @@ grep -Fq 'REASON=ok' "$TMP/out-pseudo.env" || fail "pseudo-heading fallback REAS
 grep -Fq 'cursor fallback concern' "$PSE/in.md" || fail "pseudo-heading should fall through to cursor"
 grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$PSE/aggregator-dispatch.env" || fail "pseudo-heading final tool"
 grep -Fq -- '--require-result-pattern' "$PSE/dispatch.argv" || fail "pseudo-heading dispatch missing pattern gate"
-grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$PSE/dispatch.argv" || fail "pseudo-heading pattern mismatch"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$PSE/dispatch.argv" || fail "pseudo-heading pattern mismatch"
 
 echo "=== codex_absent_runs_cursor_in_phase2 ==="
 WS="$TMP/waterfall-skip"
