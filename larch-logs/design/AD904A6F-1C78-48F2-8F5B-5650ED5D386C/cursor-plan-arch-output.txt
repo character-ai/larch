@@ -1,0 +1,38 @@
+Reading the implementation plan and exploring the cited codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/upsert-diagrams-comment.sh:17-18	Composed body includes marker line but upsert-summary prepends marker again	tracking-issue-summary.sh builds body as MARKER + blank + content (line 59); duplicate first lines break exact first-line matching and leave orphan marker-only comments	Pass --content-file with section bodies only (no marker); reserve marker for --marker. Document in upsert-diagrams-comment.md; dry-run may print full preview including marker separately
+2	in_scope	important	security	scripts/upsert-diagrams-comment.sh:18	Helper pre-redaction order contradicts canonical pipeline and Failure modes item 3	Line 18 pipes secrets then tmpdir before upsert-summary; tracking-issue-summary.sh applies redact-tmpdir-paths then redact-secrets (60-63). Failure mode 3 says centralize via upsert-summary only. Wrong order can leak tmpdir paths or confuse implementers	Omit pre-upsert redaction in the helper; let tracking-issue-summary.sh own redaction. If a test needs a planted secret, assert the PATCH/POST body after the summary script runs
+3	in_scope	important	risk-integration	scripts/test-design-structure.sh:590-591	Structural grep pin omits new Step 5c.5 sub-step	Check (17) requires literal 5→5a→5b→5c.1→5c.7→5c.8→6 in skills/design/SKILL.md. Plan adds 5c.5 but does not list updating this harness	make lint fails or anti-halt omits diagrams upsert	Add scripts/test-design-structure.sh to the plan; extend the pinned chain to include 5c.5 (e.g. 5c.1→5c.5→5c.7→5c.8) and add a grep pin for the 5c.5 breadcrumb/callsite
+4	in_scope	important	correctness	skills/design/SKILL.md:5c.5	Step 5c.5 lacks ISSUE_NUMBER empty gate	step-7a.sh only upserts when ISSUE_NUMBER is set (387-403); design 5c.5 prose does not mirror that gate	Empty or adoption-failed issue runs may call gh with invalid issue or pollute hub default	Gate 5c.5 on non-empty ISSUE_NUMBER; skip with ⏩ breadcrumb when unset (same as step-7a)
+5	in_scope	important	risk-integration	agent-lint.toml:1446-1447	Dead harness paths after compose-architecture-sketch deletion	Plan deletes scripts/test-compose-architecture-sketch.sh but not agent-lint.toml entries	agent-lint or make lint fails on missing paths	Remove test-compose-architecture-sketch entries from agent-lint.toml in the same commit; drop test-harnesses-20 reference per Makefile plan
+6	in_scope	important	correctness	scripts/upsert-diagrams-comment.sh:15-16	Comment fetch match lacks BOM handling tracking-issue-read already has	tracking-issue-read.sh strips UTF-8 BOM before first_line case (421-422); helper exact first-line match can miss valid comments	BOM-prefixed bodies are treated as no match → duplicate stable-marker comments	Strip BOM from fetched first_line before marker compare; add harness case with BOM-prefixed body
+7	in_scope	important	architecture	docs/run-logs.md:305-323	Joint ownership of larch:diagrams not reflected in authoritative run-logs prose	Docs say four markers maintained by /implement and Step 7a writes Architecture + Code Flow; after change /design owns Architecture section	Operators and drift grep miss the split	Add docs/run-logs.md to the plan with explicit joint-ownership: /design Step 5c.5 Architecture, /implement Step 7a Code Flow, stable marker exception
+8	in_scope	latent	architecture	scripts/upsert-diagrams-comment.sh:20	UPSERT_STATUS=no-op semantics undefined	tracking-issue-summary emits UPDATED true/false only; plan lists no-op without when to emit	Callers cannot branch on idempotent skip vs content change	Define no-op (e.g. composed body byte-identical to existing) in upsert-diagrams-comment.md or drop no-op from the KV set
+9	in_scope	latent	correctness	scripts/upsert-diagrams-comment.sh:20-21	Exit-code contract for design best-effort not specified	design 5c.5 maps UPSERT_STATUS=failed to Warnings and continues; tracking-issue-summary exits non-zero on gh errors	Non-zero helper exit may abort Step 5c before REPO/publish	Specify helper exits 0 when UPSERT_STATUS=failed and surfaces gh stderr via append-tool-failure input; reserve non-zero for argv/usage only
+10	in_scope	nit	correctness	scripts/test-upsert-diagrams-comment.sh:36	Pre-redaction test may assert wrong layer if helper stops pre-redacting	Conflicts with Failure modes item 3 centralization	False PASS while regressions bypass tracking-issue-summary redaction	Assert redacted secret absent in gh body capture after upsert-summary delegation
+11	out_of_scope	latent	architecture	CHANGELOG.md:3649	ARCHITECTURE_DIAGRAM_FILE remains in manifest hydrate list after all readers removed	Manifest still documents variable; no runtime consumer after step-7a/ship-pr deletions	Stale manifest contract confuses implement/debug	Follow-up: drop ARCHITECTURE_DIAGRAM_FILE from manifest export/hydrate prose or repoint to larch:diagrams on the issue
+12	out_of_scope	nit	architecture	skills/shared/subskill-invocation.md:176	subskill-invocation still implies implement consumes architecture-diagram via manifest only	Does not mention issue-scoped larch:diagrams comment	Update handoff bullet to Architecture on tracking issue (larch:diagrams), Code Flow at implement Step 7a
+
+**1. [correctness]** `scripts/upsert-diagrams-comment.sh` (plan lines 17–18) vs `scripts/tracking-issue-summary.sh:59` — Do not put the marker inside `--content-file`; `upsert-summary` always prepends `--marker`.
+
+**2. [security]** Plan line 18 vs Failure modes §3 vs `tracking-issue-summary.sh:60-63` — Do not pre-redact in the helper; canonical order is tmpdir then secrets inside `tracking-issue-summary.sh` only.
+
+**3. [risk-integration]** `scripts/test-design-structure.sh:590-591` — Add `5c.5` to the anti-halt grep pin when updating `skills/design/SKILL.md`.
+
+**4. [correctness]** `skills/design/SKILL.md` Step 5c.5 — Gate on non-empty `ISSUE_NUMBER` like `step-7a.sh:387-403`.
+
+**5. [risk-integration]** `agent-lint.toml:1446-1447` — Remove deleted `test-compose-architecture-sketch` paths in the same commit as the script deletion.
+
+**6. [correctness]** `scripts/upsert-diagrams-comment.sh` fetch/match — Strip UTF-8 BOM on first line like `tracking-issue-read.sh:421-422`.
+
+**7. [architecture]** `docs/run-logs.md:305-323` — Document joint `/design` + `/implement` ownership of `larch:diagrams`.
+
+**8. [architecture]** `UPSERT_STATUS=no-op` — Define or remove from the helper KV contract.
+
+**9. [correctness]** Helper exit codes — Exit 0 on `UPSERT_STATUS=failed` so design Step 5c best-effort continues.
+
+**10. [correctness]** Redaction harness — Assert final posted body, not helper-only pre-redaction.
+
+**[OUT_OF_SCOPE] 11.** `CHANGELOG.md:3649` — Manifest still lists `ARCHITECTURE_DIAGRAM_FILE` with no consumer.
+
+**[OUT_OF_SCOPE] 12.** `skills/shared/subskill-invocation.md:176` — Update architecture handoff prose to the issue comment.
