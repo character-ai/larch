@@ -1,0 +1,2 @@
+Normalizing the 37 raw reviewer findings into merged blocks with stable IDs, max severity, and verbatim revision bullets per slot.
+

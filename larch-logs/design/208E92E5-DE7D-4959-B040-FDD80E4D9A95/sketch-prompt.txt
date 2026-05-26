@@ -1,0 +1,59 @@
+Propose a high-level implementation approach for this feature:
+
+# [DESIGNING] [OOS] Diagnostic sanitization + SKIP_REASON contract: 5 follow-ups (step-7a, sanitize-mermaid, ci-failed-jobs, lib-quiet, test-step-7a)
+
+## Out-of-Scope Observation — combined follow-up
+
+**Sources**: #2893, #2862, #2875, #2876, #2874
+**Phase**: implement / design
+**Combination rationale**: Same code area (diagnostic sanitization + Step 7a diagram pipeline + SKIP_REASON contract) and overlapping change pattern. Combined per OOS triage rules 3/4 (multiple small items in one area) to save `/design` + `/implement` cycles.
+
+Each item below is independent and small (single-file or harness edit); they may be picked off as one PR or split as convenient.
+
+---
+
+**Item A — `skills/implement/scripts/step-7a.sh`: does not consume generator `SKIP_REASON`** (from #2893)
+
+- **Concern**: `step-7a.sh` sets `CODE_FLOW_SKIP_REASON` to a generic value instead of reading the `SKIP_REASON` KV emitted by `generate-code-flow-diagram.sh`. Operators viewing skipped diagram status never see the specific sanitizer reason token in PR or summary text.
+- **Fix**: wire `kv_value SKIP_REASON` from generator stdout into `CODE_FLOW_SKIP_REASON` in `step-7a.sh`.
+- **Surfaced by**: cursor-specialist-security-output.txt (Codex/Cursor YES; main EXONERATE). Vote: YES=2 EXON=1 — accepted.
+
+**Item B — `skills/implement/scripts/test-step-7a.{md,sh}`: stale Step 7a coverage ledger** (from #2862)
+
+- **Concern**: Markdown case ledger still lists 19 cases, omits `rebase-unexpected-rc` and `quiet-diagram-skip-contract`, and says `diagram-failure-sanitizer` suppresses summary upsert even though the harness asserts the comment is posted. Downstream readers can get stale Step 7a coverage info.
+- **Location**: `skills/implement/scripts/test-step-7a.md:7-25`, `test-step-7a.sh:413-422`, `test-step-7a.sh:512-539`.
+- **Fix**: reconcile `test-step-7a.md` case ledger with the harness's actual cases and assertions.
+- **Reviewer**: Codex-Arch. Severity: latent. Focus: correctness.
+
+**Item C — `scripts/sanitize-mermaid-fragment.sh:283-285`: REASON_TOKEN parser assumes no embedded `=`** (from #2875)
+
+- **Concern**: Another `REASON_TOKEN` parser still assumes tokens cannot contain equals. If this PR makes embedded `=` a supported value across the Mermaid sanitizer contract, the warnings-log aggregation still truncates at the first `=`/space.
+- **Location**: `scripts/sanitize-mermaid-fragment.sh:283-285`.
+- **Fix**: align the line-283 token parser with the broader SKIP_REASON contract so embedded `=` are preserved.
+- **Reviewer**: Codex-Innovation. Severity: latent. Focus: architecture.
+
+**Item D — `scripts/ci-failed-jobs.sh:125-128`: raw job-name still leaks via TSV + KV emit** (from #2876)
+
+- **Concern**: Issue #2798 suggested auditing any site that emits raw job names; the prior plan audited only the line-80 `larch_err` path. TSV rows and quiet emit at line 128 still carry raw `job_name` values from `gh` stdout (pre-existing; out of #2798 stderr scope but not recorded as deferred).
+- **Location**: `scripts/ci-failed-jobs.sh:125-128`.
+- **Fix**: sanitize `job_name` before TSV/KV emit at lines 125-128.
+- **Reviewer**: Cursor-Requirements. Severity: latent. Focus: security.
+
+**Item E — `scripts/lib-quiet.sh:97-103`: extract shared `sanitize_diagnostic_line` helper** (from #2874)
+
+- **Concern**: Per-call-site `tr -d [:cntrl:]` duplicates policy and leaves other `larch_err` passthrough sites unprotected. Future scripts forwarding external stderr verbatim remain injectable unless each adds its own helper.
+- **Location**: `scripts/lib-quiet.sh:97-103`.
+- **Fix**: extract a shared `sanitize_diagnostic_line` helper in `lib-quiet.sh` and route `larch_err` passthrough sites through it.
+- **Reviewer**: Cursor-Innovation. Severity: latent. Focus: architecture.
+
+---
+
+**Background — why one issue instead of five**: OOS triage rule 3 (multiple medium bugs in same area) and rule 4 (multiple moderate doc/code changes). All five items individually are < ~30 LOC and would normally fold inline; filed as a single follow-up because the originating inline windows already closed.
+
+*This issue is a combine-issues consolidation of #2893, #2862, #2875, #2876, #2874.*
+
+**Lineage** (pre-combination blocked-by parents, all CLOSED — informational only):
+- Item B (#2862) was blocked by #2843 (closed)
+- Items C/D/E (#2875, #2876, #2874) were blocked by #2854 (closed)
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.

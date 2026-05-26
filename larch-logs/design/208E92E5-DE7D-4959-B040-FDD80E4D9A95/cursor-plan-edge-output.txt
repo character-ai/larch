@@ -1,0 +1,29 @@
+Reading the plan and tracing cited paths to validate proposed contracts and edge cases.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ci-failed-jobs.sh:106-108	Sanitize runs after the only empty-name guard	An all-control-byte gh job name passes `[ -n "$raw_name" ]`, sanitizes to empty, still increments `count` and can emit a blank TSV/`emit` row; Edge cases §2 wrongly claims line 107 catches this	Sanitize first then `[ -n "$raw_name" ] || continue`, or repeat the empty guard immediately after assignment
+2	in_scope	important	correctness	skills/implement/scripts/test-step-7a.sh:444-478	Harness assertion plan omits cases that always emit SKIP_REASON	`diagram-rejected` stub prints `SKIP_REASON=pipe-in-node-label fence=mermaid line=7`; `diagram-failure` defaults to `helper-error`; Item A will change summaries but the plan keeps placeholder assertions → harness failure on first run	Extend Item A/B to update `diagram-rejected` (line 455) and `diagram-failure` (line 478) expected summaries to the stub SKIP_REASON values (or align stubs to bare tokens)
+3	in_scope	important	risk-integration	scripts/lib-quiet.sh:98-104	`larch_err` always strips `[:cntrl:]` including tab	Plan failure-mode §2 flags medium risk; a harness or operator path that relies on tab-aligned `larch_err` text will change silently; mitigation is deferred to post-failure	Narrow the delete set (exclude `\t`) or add a `test-lib-quiet.sh` tab-preservation case before merge
+4	in_scope	latent	correctness	scripts/lib-quiet.sh:98-104	Pipeline failure inside `larch_err` is masked	`printf … | sanitize_diagnostic_line` can fail under `pipefail`; trailing `printf '\n'` still succeeds so callers may emit a blank diagnostic and continue instead of surfacing `tr` failure	Capture pipe status and return non-zero when sanitization fails; avoid a unconditional trailing `printf` that masks the pipe rc
+5	in_scope	latent	security	skills/implement/scripts/step-7a.sh:72-84	Item A forwards generator `SKIP_REASON` verbatim into `summary-diagrams.md`	A poisoned sanitizer log or future token with C0 bytes flows into the tracking-issue comment without `sanitize_diagnostic_line`	Pipe `_skip_reason` through `sanitize_diagnostic_line` (or shared helper) before assigning `CODE_FLOW_SKIP_REASON`
+6	in_scope	latent	risk-integration	skills/implement/scripts/test-step-7a.sh:131-138	Stub generator emits metadata suffix on SKIP_REASON	Production `generate-code-flow-diagram.sh:109` emits bare tokens; step-7a tests will assert `token fence=…` strings operators never see in production, weakening integration signal	Change rejected-mode stub to `SKIP_REASON=%s\n` with bare token only, matching production `emit_kv` shape
+7	out_of_scope	latent	architecture	scripts/ci-failed-jobs.md:49-60	Stdout job-name sanitization not documented	Item D adds parse-boundary sanitization but the md still describes only stderr hardening; operators may miss the new contract	Update Diagnostic Sanitization section for stdout/TSV/KV path (or track follow-up doc issue)
+8	out_of_scope	latent	security	scripts/ci-failed-jobs.sh:85-87	Embedded newlines in gh stderr still split before sanitize	Attacker-controlled stderr can still produce multiple `larch_err` lines; Item E only strips intra-line C0 bytes	Track OOS: collapse/strip newlines or cap relayed stderr lines
+9	out_of_scope	nit	correctness	skills/implement/scripts/test-step-7a.md:11	Stale case prose for diagram-rejected	Ledger still says "skips summary upsert" while harness posts `tracking-issue-summary.sh` (line 451)	Fix description when reconciling the 23-case ledger
+
+1. **[correctness]** `scripts/ci-failed-jobs.sh:106-108` — Sanitize-after-guard ordering contradicts Edge cases §2; all-control-byte names inflate `FAILED_JOBS_COUNT` and can emit empty TSV fields. **Suggested revision:** sanitize, then re-apply `[ -n "$raw_name" ] || continue` before `count++`.
+
+2. **[correctness]** `skills/implement/scripts/test-step-7a.sh:444-478` — Plan lists only `diagram-failure-sanitizer` and the `diagram-rejected-*` loop for assertion updates, but `diagram-rejected` and `diagram-failure` stubs always emit non-empty `SKIP_REASON`. **Suggested revision:** update those two cases (or emit empty `SKIP_REASON` in stubs when testing the fallback).
+
+3. **[risk-integration]** `scripts/lib-quiet.sh:98-104` — Global `larch_err` tab stripping is acknowledged as medium risk without a mandated regression. **Suggested revision:** narrow `tr` delete set or add an explicit tab-preservation harness case in Item E.
+
+4. **[correctness]** `scripts/lib-quiet.sh:98-104` — Sanitization pipe failure is masked by a succeeding trailing `printf '\n'`. **Suggested revision:** propagate pipe exit status from `sanitize_diagnostic_line`.
+
+5. **[security]** `skills/implement/scripts/step-7a.sh:72-84` — `CODE_FLOW_SKIP_REASON` is written to operator-visible summary markdown without control-byte stripping. **Suggested revision:** sanitize before assignment on skipped/failed branches.
+
+6. **[risk-integration]** `skills/implement/scripts/test-step-7a.sh:131-138` — Stub `SKIP_REASON` includes ` fence=mermaid line=7` metadata unlike production generator output. **Suggested revision:** align stub stdout with bare-token `emit_kv` from `generate-code-flow-diagram.sh:109`.
+
+7. **[OUT_OF_SCOPE] [architecture]** `scripts/ci-failed-jobs.md:49-60` — Document stdout parse-boundary sanitization added by Item D.
+
+8. **[OUT_OF_SCOPE] [security]** `scripts/ci-failed-jobs.sh:85-87` — Newline-split stderr relay remains injectable; only intra-line C0 stripping is in scope.
+
+9. **[OUT_OF_SCOPE] [correctness]** `skills/implement/scripts/test-step-7a.md:11` — `diagram-rejected` description still claims summary upsert is skipped.
