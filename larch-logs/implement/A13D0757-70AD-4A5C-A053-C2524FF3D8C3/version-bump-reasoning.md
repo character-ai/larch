@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `ebc4045e` (Fixes #2897: Honor diagram SKIP_REASON and centralize diagnostic sanitization (#2938))
-- **Current version**: `42.5.27`
+- **Base commit**: `0a9c32ea` (Fixes #2867: Add context-files support to Claude review launcher (#2945))
+- **Current version**: `42.5.28`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.5.28`
+- **New version**: `42.5.29`
 
 ### PATCH rationale
 
