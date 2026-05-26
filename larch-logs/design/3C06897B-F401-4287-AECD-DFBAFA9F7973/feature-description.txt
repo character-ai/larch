@@ -1,0 +1,61 @@
+[DESIGNING] Phase 3/4: phase_plan_materialize — absorb plan + branch + larch:plan (umbrella #2732)
+
+## Context
+
+Phase 3 of 4. Blocked by Phase 2. See umbrella #2732 and prior phases.
+
+This phase extends `implement-bootstrap.sh` with the `phase_plan_materialize` function, replacing Step 0 calls #10–#16 in `skills/implement/SKILL.md`.
+
+## phase_plan_materialize contents
+
+Absorbs:
+
+10. Orchestrator-improvised `gh issue view ... > feature-description.txt && echo DONE && cat ...` (replaced with proper compose, no spurious `DONE` line)
+11. `persist-implement-run-flags.sh`
+12. `check-mid-run-dirty-tree.sh --mode checkpoint`
+13. Inline slug-derivation + `create-branch.sh --branch` (skipped when `forked_target=true` or `IS_USER_BRANCH=true`)
+14. `git-current-branch.sh` (canonical branch capture)
+15. `run-step1-plan-log.sh` (plan-goals-test batch + `plan-review-tally` placeholder via `write-tally.sh`)
+16. `tracking-issue-summary.sh upsert-summary` (`larch:plan` summary marker)
+
+Also absorbs the `snapshot-untracked.sh` call between #9 and #10 (currently described in SKILL.md L770-776).
+
+Reads `$PREFLIGHT_TMPDIR/plan-from-issue.txt` and copies it to `$IMPLEMENT_TMPDIR/plan.txt`. Composes `$IMPLEMENT_TMPDIR/feature-description.txt` from `gh issue view "$ISSUE_NUMBER" --json title,body --template "{{.title}}\n\n{{.body}}"`. Binds `POST_PLAN_WORKFLOW_PATH=HARD` via `timing-ledger.sh workflow-path "HARD"`.
+
+Slug derivation: kebab-case slug from issue title, ≤ 40 chars, suffix `-<ISSUE_NUMBER>`, prefix `<USER_PREFIX>/`. Same `tr | sed | cut` pipeline as the current SKILL.md inline shell, but now inside the script with proper test coverage.
+
+Bail signals:
+
+- `persist-implement-run-flags.sh` exit 2 → `STALL_TRACKING=true` + `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`.
+- `check-mid-run-dirty-tree.sh STATUS=dirty|unknown` → `IMPLEMENT_BAIL_REASON=dirty-tree` (orchestrator continues to existing recovery `AskUserQuestion` flow).
+- `create-branch.sh --branch` exit 1 (branch exists) → `STALL_TRACKING=true` + `IMPLEMENT_BAIL_REASON=branch-create-failed`.
+
+Emits two breadcrumbs: `→ step0: branch $BRANCH_NAME + plan logged` and `→ step0: larch:plan posted`.
+
+## Files to modify
+
+#### UPDATED: `scripts/implement-bootstrap.sh`
+
+Replace `phase_plan_materialize` stub. Emit `BRANCH_NAME`, `BRANCH_ACTION`, `PLAN_FILE`, and update existing tail keys.
+
+#### UPDATED: `scripts/implement-bootstrap.md`
+
+Update phase mapping + bail-reason enum.
+
+#### UPDATED: `skills/implement/scripts/test-implement-bootstrap.sh`
+
+Add cases: B6 (persist-run-flags exit 2), B7 (dirty-tree), plus a green-path check that BRANCH_NAME is correctly derived from issue title.
+
+#### UPDATED: `skills/implement/SKILL.md`
+
+Replace Step 0 calls #10–#16 fenced blocks. The single Bash invocation block now covers calls #1–#16. Only the implementer waterfall remains as separate prose.
+
+## Acceptance
+
+- All Phase 3 harness cases pass.
+- `/implement <issue>` transcript shows 1 Bash call covering #1–#16 (down from 16 separate calls).
+- Slug derivation tested with edge cases (uppercase title, special chars, 40+ char title).
+
+## Out of scope
+
+Phase 4 (waterfall), structural pin, aggressive SKILL.md collapse.

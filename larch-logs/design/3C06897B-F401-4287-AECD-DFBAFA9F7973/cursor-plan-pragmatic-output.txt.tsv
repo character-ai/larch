@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:783-787	phase_plan_materialize omits write-tally.sh plan-review-tally step	Step 0 runs lack plan-review-tally.json required by batch table and downstream log completeness	Add compose plan-review-tally-body.md plus write-tally.sh between run-step1-plan-log and tracking-issue-summary; stub write-tally in harness invoke-log tests
