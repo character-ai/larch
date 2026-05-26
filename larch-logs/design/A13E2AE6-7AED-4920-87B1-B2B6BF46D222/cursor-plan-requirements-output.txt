@@ -1,0 +1,29 @@
+Reading the plan and exploring referenced codebase paths to verify requirements coverage.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-drop-bump-commit.sh:156-307	Plan adds new Tests 16-19 for --allow-changelog-only but the harness already defines Tests 16-20 (empty-diff custom path untracked walkback max-depth rebase failure)	Implementer overwrites or duplicates cases and make lint reports false pass/fail or drops existing coverage	Add new flag cases as Tests 21-24 (or renumber entire harness) and update scripts/test-drop-bump-commit.md
+2	in_scope	important	correctness	scripts/test-implement-finalize.sh:273-279	Plan changes maybe_update_changelog to call commit-changelog.sh but does not list updating this harness stub (still git-amend-add.sh only)	Postbump happy-path cases in make test-implement-finalize fail with missing script or wrong tool	Add commit-changelog.sh stub beside git-amend-add stub (or replace it) and list scripts/test-implement-finalize.sh under Files to modify
+3	in_scope	important	correctness	skills/implement/scripts/test-step-8a-changelog.sh:86-94	Same commit-changelog migration for Step 8a; harness still stubs only git-amend-add.sh	make test-step-8a-changelog fails after implement-finalize.sh switch	Stub commit-changelog.sh (mirror prior amend behavior) and update skills/implement/scripts/test-step-8a-changelog.md; add to plan file list
+4	in_scope	important	risk-integration	Makefile:63-306	Plan registers test-commit-changelog target but does not assign it to any test-harnesses-N shard	test-harness-shards-coverage fails make lint (orphan harness)	Add test-commit-changelog to a shard (e.g. test-harnesses-10 next to test-drop-bump-commit) and .PHONY
+5	in_scope	important	correctness	scripts/test-drop-bump-commit.sh:179-227	Core post-fix shape (HEAD=Update CHANGELOG for X HEAD~1=plugin.json-only bump) has no regression test	Guard walk-back or rebase --onto regressions for #2852 stall fix go undetected	Add Test 21+ setup: changelog subject at HEAD bump at HEAD~1 expect DROPPED=true and bump removed
+6	in_scope	important	risk-integration	scripts/ship-pr.sh:2436	Plan adds --allow-changelog-only only in rebase-rebump-subprocedure.md step 1; Step 10/12 recovery uses run_rebase_rebump which calls drop-bump-commit.sh without the flag	In-flight branches with legacy CHANGELOG-only bump subject at HEAD still get DROPPED=false during CI-loop drop (secondary defense missing on main mechanical path)	Pass --allow-changelog-only from run_rebase_rebump drop invocation or document explicit non-goal and accept legacy stall until manual fix
+7	in_scope	latent	architecture	skills/implement/references/rebase-rebump-subprocedure.md:3-4	Approach applies Option 2 step 4a to step10/step12/step12_phase4 callers but doc states Steps 10/12 are handled inside ship-pr.sh and no longer enter this sub-procedure	Step 12 CI re-bumps may never run commit-changelog.sh; only implement-finalize Step 8a changes changelog commit shape	Clarify plan scope to step8b_rebase/step8_apply_bump_same_version orchestrator paths only or add ship-pr post-rebump CHANGELOG update if required
+8	in_scope	nit	latent	agent-lint.toml:734-740	New scripts/commit-changelog.sh and scripts/test-commit-changelog.sh not mentioned for agent-lint allowlist	New harness may trip agent-lint reachability rules	Add agent-lint.toml entries matching test-drop-bump-commit pattern
+9	out_of_scope	latent	risk-integration	scripts/test-ship-pr.sh:115-141	Plan defers force-push-gate integration test for new commit shape	End-to-end stall at force-push-gate not CI-guarded	Track follow-up to add resume-phase case when harness can simulate Step 8b conflict
+
+1. **correctness** — `scripts/test-drop-bump-commit.sh:156-307`: Plan assigns new `--allow-changelog-only` cases to Tests 16–19, but those numbers already cover empty-diff, untracked tolerance, walk-back flush-at-HEAD, max-depth, and forced rebase failure. Renumber new cases (e.g. 21–24) and refresh `scripts/test-drop-bump-commit.md`.
+
+2. **correctness** — `scripts/test-implement-finalize.sh:273-279`: `maybe_update_changelog` will invoke `commit-changelog.sh`, but the sandbox only stubs `git-amend-add.sh`. Add the file to the plan’s change list and stub `commit-changelog.sh` for postbump tests.
+
+3. **correctness** — `skills/implement/scripts/test-step-8a-changelog.sh:86-94`: Same stub gap for the Step 8a harness wired into `make test-step-8a-changelog` / `test-harnesses-20`.
+
+4. **risk-integration** — `Makefile:63-306`: Registering `test-commit-changelog` without placing it on a `test-harnesses-N` prerequisite will fail `test-harness-shards-coverage`; assign a shard (natural home: `test-harnesses-10` with `test-drop-bump-commit`).
+
+5. **correctness** — `scripts/test-drop-bump-commit.sh:179-227`: No test for the primary happy path after Option 2 (`Update CHANGELOG for <version>` at HEAD, plugin.json-only bump at `HEAD~1`). Add an explicit walk-back case so the #2852 fix is regression-locked.
+
+6. **risk-integration** — `scripts/ship-pr.sh:2436`: Secondary `--allow-changelog-only` defense is documented only for Markdown sub-procedure step 1; mechanical Step 10/12 `run_rebase_rebump` still calls `drop-bump-commit.sh` without the flag, leaving legacy CHANGELOG-only bump commits on those paths.
+
+7. **architecture** — `skills/implement/references/rebase-rebump-subprocedure.md:3-4`: Plan lists `step10_rebase` / `step12_*` for step 4a `commit-changelog.sh`, but the canonical doc says those flows no longer enter the sub-procedure; reconcile scope (Step 8a + step8-family orchestrator only vs. ship-pr hook).
+
+8. **latent** — `agent-lint.toml:734-740`: Plan omits allowlist entries for the new script and harness siblings.
+
+**[OUT_OF_SCOPE]** — `scripts/test-ship-pr.sh`: Plan correctly defers `--resume-phase force-push-gate` integration; worth a follow-up issue for E2E stall coverage.

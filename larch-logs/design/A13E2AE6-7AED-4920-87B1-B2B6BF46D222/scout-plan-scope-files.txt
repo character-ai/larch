@@ -1,0 +1,17 @@
+scripts/commit-changelog.sh
+scripts/commit-changelog.md
+scripts/test-commit-changelog.sh
+scripts/test-commit-changelog.md
+scripts/drop-bump-commit.sh
+scripts/drop-bump-commit.md
+scripts/test-drop-bump-commit.sh
+scripts/implement-finalize.sh
+scripts/implement-finalize.md
+skills/implement/references/rebase-rebump-subprocedure.md
+skills/implement/references/bump-verification.md
+scripts/git-amend-add.sh
+scripts/git-amend-add.md
+docs/configuration-and-permissions.md
+Makefile
+CHANGELOG.md
+scripts/test-ship-pr.sh
