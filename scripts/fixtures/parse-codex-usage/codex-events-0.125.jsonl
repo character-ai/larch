@@ -1,3 +1,7 @@
-{"id":"evt_01","type":"task.started","timestamp":"2026-05-22T12:00:00Z","cwd":"/repo"}
-{"id":"evt_02","type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222,"total_tokens":7999}
-{"id":"evt_03","type":"task.completed","timestamp":"2026-05-22T12:00:01Z"}
+{"id":"evt_01","type":"task.started","timestamp":"2026-05-22T12:00:00Z","cwd":"/repo","model":"codex-test"}
+{"id":"evt_02","type":"agent_message.delta","role":"assistant","delta":"Planning implementation steps."}
+{"id":"evt_03","type":"tool.started","tool":"shell","timestamp":"2026-05-22T12:00:00Z"}
+{"id":"evt_04","type":"tool.completed","tool":"shell","exit_code":0,"timestamp":"2026-05-22T12:00:00Z"}
+{"id":"evt_05","type":"token_usage","input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222,"total_tokens":7999}
+{"id":"evt_06","type":"agent_message.completed","role":"assistant","finish_reason":"stop"}
+{"id":"evt_07","type":"task.completed","timestamp":"2026-05-22T12:00:01Z","status":"completed"}

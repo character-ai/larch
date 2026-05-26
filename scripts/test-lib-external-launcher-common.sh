@@ -188,6 +188,18 @@ else
     fail "fail-closed parse should append sidecar diagnostic without writing token-record"
 fi
 
+MISSING_EVENTS="$TMPDIR_ROOT/missing-events.jsonl"
+rm -f "$MISSING_EVENTS"
+MISSING_SIDECAR="$TMPDIR_ROOT/missing-events.sidecar"
+rm -f "$MISSING_SIDECAR"
+LARCH_TEST_PARSE_MODE=fail \
+    external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$MISSING_EVENTS" "$MISSING_SIDECAR" "codex_review"
+if grep -Fq 'parse-codex-usage.sh: jq failed' "$MISSING_SIDECAR" 2>/dev/null; then
+    pass
+else
+    fail "missing/empty events parse should still append sidecar diagnostic"
+fi
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     for f in "${FAILURES[@]}"; do

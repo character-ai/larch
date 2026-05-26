@@ -41,7 +41,7 @@ external_launcher_record_usage_from_events() {
 
     usage_err=$(mktemp "${TMPDIR:-/tmp}/external-launcher-usage.XXXXXX") || return 0
     usage_blob=$("$plugin_root/scripts/parse-codex-usage.sh" "$events_file" 2>"$usage_err") || usage_blob=""
-    if [[ -z "$usage_blob" && -s "$events_file" && -s "$usage_err" ]]; then
+    if [[ -z "$usage_blob" && -s "$usage_err" ]]; then
         cat "$usage_err" >> "$sidecar_path" 2>/dev/null || true
     fi
     rm -f "$usage_err"

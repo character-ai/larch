@@ -261,7 +261,7 @@ JSONL
     eq "codex aggregate cost rc" "0" "$aggregate_cost_rc"
     contains "codex aggregate warning" "blended rate" "$(cat "$TMP/cost-aggregate.err" 2>/dev/null)"
 else
-    pass  # jq absent — skip per launcher runtime guard parallel
+    fail "jq required for codex launcher/token-cost integration assertions"
 fi
 
 total=$((PASS + FAIL))

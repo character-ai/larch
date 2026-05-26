@@ -474,6 +474,48 @@ else
     fail 5c "failed implement run with parseable usage should still record codex vendor row; out=$FAIL_WITH_USAGE_OUT ledger=$(cat "$FAIL_WITH_USAGE_LEDGER" 2>/dev/null)"
 fi
 
+AUTH_STDERR_ONLY_BIN="$SCRATCH/auth-stderr-only-bin"
+mkdir -p "$AUTH_STDERR_ONLY_BIN"
+cat > "$AUTH_STDERR_ONLY_BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'Error: not logged in\n' >&2
+exit 7
+EOF
+chmod +x "$AUTH_STDERR_ONLY_BIN/codex"
+
+AUTH_STDERR_ONLY_LEDGER="$SCRATCH/auth-stderr-only-ledger.jsonl"
+AUTH_STDERR_ONLY_TRANSCRIPT="$SCRATCH/auth-stderr-only-transcript.txt"
+AUTH_STDERR_ONLY_SIDECAR="$SCRATCH/auth-stderr-only-sidecar.log"
+AUTH_STDERR_ONLY_MANIFEST="$SCRATCH/auth-stderr-only-manifest.json"
+AUTH_STDERR_ONLY_QA="$SCRATCH/auth-stderr-only-qa.json"
+AUTH_STDERR_ONLY_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$AUTH_STDERR_ONLY_BIN:$PATH" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_EXTERNAL_AUTH_RETRIES=1 \
+    LARCH_TOKEN_SESSION_ID="codex-auth-stderr-only-$$" \
+    LARCH_TOKEN_LEDGER="$AUTH_STDERR_ONLY_LEDGER" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$LAUNCHER" \
+        --transcript-path "$AUTH_STDERR_ONLY_TRANSCRIPT" \
+        --sidecar-log "$AUTH_STDERR_ONLY_SIDECAR" \
+        --manifest-path "$AUTH_STDERR_ONLY_MANIFEST" \
+        --qa-pending-path "$AUTH_STDERR_ONLY_QA" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$AUTH_STDERR_ONLY_OUT" == *"LAUNCHER_EXIT=7"* ]] \
+   && grep -Fq 'Error: not logged in' "$AUTH_STDERR_ONLY_SIDECAR" \
+   && grep -Fq 'parse-codex-usage.sh: no usage events' "$AUTH_STDERR_ONLY_SIDECAR" \
+   && [[ "$(grep -c '"type":"token_usage"' "${AUTH_STDERR_ONLY_TRANSCRIPT}.events.jsonl" 2>/dev/null | tr -d ' ')" == "0" ]] \
+   && ! jq -e 'select(.type=="vendor" and .vendor=="codex")' "$AUTH_STDERR_ONLY_LEDGER" >/dev/null 2>&1; then
+    pass
+else
+    fail 5d "stderr-only auth failure should leave empty events/no vendor row and preserve auth text; out=$AUTH_STDERR_ONLY_OUT sidecar=$(cat "$AUTH_STDERR_ONLY_SIDECAR" 2>/dev/null) ledger=$(cat "$AUTH_STDERR_ONLY_LEDGER" 2>/dev/null)"
+fi
+
 if [[ "$(sed -n '1p' "$ARGV_FILE")" == "exec" ]] \
    && [[ "$(sed -n '2p' "$ARGV_FILE")" == "--full-auto" ]] \
    && [[ "$(sed -n '3p' "$ARGV_FILE")" == "-C" ]] \
