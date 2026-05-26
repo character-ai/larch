@@ -1,0 +1,15 @@
+Reviewing the branch diff and stub counter logic for G3/G4 test fidelity.
+Checking whether E1 asserts empty ERROR on the first-shot BEHIND path for comparison:
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **Stub counter fidelity (verified):** The fake-gh stub in [`scripts/test-merge-pr.sh:48-67`](scripts/test-merge-pr.sh) increments `_count` only inside the `pr view` branch when `GH_VIEW_SECOND_HEAD_OID` is set; `gh.log` records all `gh` invocations at line 39, but `assert_command_count` filters on the exact `pr view …` substring, so checks/merge calls do not affect G3/G4 call-count assertions. With `GH_VIEW_FLIP_AT_CALL=3`, call 1 returns `GH_MERGE_STATE=UNKNOWN`, calls 2+ return `GH_VIEW_SECOND_MERGE_STATE=UNKNOWN`, and call 3+ override to `GH_VIEW_FLIP_MERGE_STATE` — matching the G3/G4 assumption of 3 total `pr view` calls (1 initial + 2 retries before flip).
+
+- **G4 empty-ERROR assertion (verified, not a defect):** `assert_stdout_contains` uses `grep -Fqx` ([`scripts/test-merge-pr.sh:243`](scripts/test-merge-pr.sh)), which requires an exact full-line match. The needle `"ERROR="` matches only a line that is literally `ERROR=` and rejects lines like `ERROR=CI checks are not all passing`. The assertion is weaker in *intent documentation* than `assert_stdout_matches '^ERROR=$'`, but it is not a false-positive hazard.
+
+- **Pre-existing test gap:** E1 (`behind_gate`, [`scripts/test-merge-pr.sh:356-361`](scripts/test-merge-pr.sh)) never pins empty `ERROR=` on the first-shot BEHIND fast path; G4 adds that pin only for the post-retry BEHIND re-route.
+
+- **Branch hygiene:** Commit `982720f9` adds `larch-logs/implement/EBF528A2-…/` run artifacts unrelated to the merge-pr fix; not a correctness defect in the feature code.

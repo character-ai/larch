@@ -1,0 +1,9 @@
+Reviewing the branch diff and G4 assertion patterns in the test harness.
+Checking how empty `ERROR` is emitted and whether `assert_stdout_contains` can false-positive.
+Checking whether stdout could produce a false pass on the G4 `ERROR=` assertion:
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** (scout clarification) — The plan text describes G4’s `assert_stdout_contains … "ERROR="` as a substring match, but [`scripts/test-merge-pr.sh:238-248`](scripts/test-merge-pr.sh) implements `assert_stdout_contains` with `grep -Fqx`, which requires a **full-line** exact match. For the two-line `emit_kv` contract (`MERGE_RESULT=…` / `ERROR=…`), that is equivalent to anchored `^ERROR=$` and would **not** pass on `ERROR=CI checks are not all passing`, `ERROR=Branch mergeStateStatus is BEHIND`, or any other non-empty error line. G4’s `assert_no_merge_commands` is present at [`scripts/test-merge-pr.sh:415`](scripts/test-merge-pr.sh). A missing post-retry BEHIND re-route (the regression G4 is meant to catch) would still fail G4 via `MERGE_RESULT` or the `ERROR=` line assertion.
+- **code-quality** `scripts/test-merge-pr.sh:354-361` — Sub-test E1 (`behind_gate`) never asserts empty `ERROR=` for first-shot BEHIND; that gap predates this branch. G4 is the first harness case that pins empty `ERROR` on the BEHIND fast path (including post-retry). Optional follow-up: add the same `assert_stdout_contains … "ERROR="` to E1 for symmetry with G4, or switch G4 to `assert_stdout_matches … '^ERROR=$'` for readability only (no correctness gain given `-Fqx`).
