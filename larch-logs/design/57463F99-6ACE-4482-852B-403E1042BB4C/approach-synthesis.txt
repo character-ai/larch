@@ -1,0 +1,41 @@
+## Approach Synthesis (sketch_budget=2; Cursor-Generic returned only an exploration stub; Codex-Generic delivered the substantive sketch)
+
+### Agreement
+- Single new file: `.claude/rules/gh-body-file.md`. No other behavioral changes required to satisfy the user's "rule only" decision.
+- Rule tone: prescriptive ("never compose ... use --body-file"), not advisory ("prefer ... when possible"). Matches the user's "Always --body-file" decision in Round 1.
+- Scope of the rule body: every `gh ... --body` / `--notes` invocation must read its value from a file (Write tool → `--body-file <path>` or `--notes-file <path>`). For `gh pr create` in this repo, the rule additionally points at `scripts/create-pr.sh` as the canonical wrapper.
+- Path-trigger surface: narrow `paths:` frontmatter listing PR-body-adjacent files only (not `**/*.md`, not `scripts/**/*.sh`).
+
+### Path-trigger surface (codebase-verified)
+All paths below exist. The Round 1 minimum was 6 files; Codex's expansion adds the remaining surfaces that actually invoke `gh ... --body/--notes`:
+- `AGENTS.md` — repo convention prose ("Run `gh pr create` through the skill, not manually.")
+- `BASH_AUTHORING.md` — companion quoting-hygiene guidance
+- `scripts/create-pr.{sh,md}` — canonical PR-creation wrapper (already uses `--body-file`)
+- `scripts/ship-pr.{sh,md}` — `/implement` PR publication (calls `create-pr.sh`)
+- `scripts/gh-pr-body-update.{sh,md}` — wraps `gh pr edit --body-file` (already correct)
+- `scripts/design-log-publish.{sh,md}` — currently has one inline `--body` at line 463 (short literal, see below)
+- `scripts/tracking-issue-write.{sh,md}` — `gh issue create --body-file` / `gh issue comment --body-file`
+- `scripts/clarify-comment-post.{sh,md}` — `gh issue comment --body-file`
+- `scripts/plan-block-write.{sh,md}` — `gh issue edit --body-file`
+- `skills/implement/SKILL.md`, `skills/issue/SKILL.md`, `skills/design/SKILL.md` — orchestrator-side prompt examples of PR/issue/comment lifecycle
+- `skills/design/scripts/decompose-file-issues.{sh,md}` — files OOS issues via `gh`
+
+### One known violation in the codebase
+`scripts/design-log-publish.sh:463` calls `gh issue create --body "Automated design log directory for run ${RUN_ID}. Commit uses [skip ci]."` inline. Short single-line literal, no backticks, low failure risk in isolation — but the user explicitly chose "Always `--body-file`" (Round 1 #4). Plan options:
+- (a) Migrate that one inline `--body` to `--body-file` in the same PR, so the rule's prescriptive tone matches reality at landing.
+- (b) Leave it as a future cleanup target and file an OOS issue (Step 5b path).
+
+Recommendation: (a) — one ~3-line edit (write a short body file via `mktemp` + `printf`, swap `--body "..."` for `--body-file "$body_tmp"` + cleanup). Keeps rule + reality consistent at landing without adding scope.
+
+### Rule body content (architectural intent only — exact wording is a Step 2b detail)
+- Front-matter `paths:` listing as above.
+- Title `# gh ... --body / --notes — file-backed only`.
+- The forbidden pattern (single short example fence): `gh pr create --body "$(cat <<'EOF' ... EOF)"` — failure-mode: heredoc tokens inside `$()` get corrupted by the surrounding shell when the body contains markdown backticks.
+- The required pattern: Write the body to `$IMPLEMENT_TMPDIR/pr-body.md` (or another local tmpdir path), then `gh pr create ... --body-file <path>`; or use `scripts/create-pr.sh --title T --body-file F` for PR creation in this repo.
+- Coverage clause: same rule applies to `gh issue create --body[-file]`, `gh issue comment --body[-file]`, `gh pr comment --body[-file]`, `gh release create --notes[-file]`. Out of scope: `git commit -m`, `--title` text, any `gh` command without `--body`/`--notes`.
+- One brief sentence pointing at companion `BASH_AUTHORING.md §2` ("Bash Quoting Hygiene") so readers know where the broader heredoc/quoting context lives.
+
+### Tradeoffs
+- Trigger coverage vs. noise: narrow `paths:` keeps the rule out of unrelated edits. Will not fire for future files that invoke `gh ... --body` — accepted per Round 1 #3.
+- Mechanism strength: declarative rule only (no PreToolUse hook) means the rule relies on the model. Accepted per Round 1 #2.
+- Consistency at landing: fixing the one inline-`--body` violation in `design-log-publish.sh` is in-scope for the PR; deferring it would leave the rule's prescriptive tone contradicted at landing.
