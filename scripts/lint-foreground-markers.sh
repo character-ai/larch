@@ -19,6 +19,12 @@ FOREGROUND_BANNER='**⚠ Foreground required — do NOT set `run_in_background: 
 FOREGROUND_COMMENT='# Foreground required: see BASH_AUTHORING.md §4'
 OLD_BANNER='**⚠ Foreground required'
 OLD_COMMENT='# Foreground required:'
+# shellcheck disable=SC2016 # Literal Markdown/code-span text.
+POST_FENCE_CONTRADICTION_RE='(^|[[:space:][:punct:]])Do NOT set[[:space:]]+`run_in_background:[[:space:]]*true`'
+
+read -r -d '' PARENT_UNSET_REQUIRED_CHILDREN <<'PARENT_UNSET_EOF' || true
+dispatch-with-waterfall.sh
+PARENT_UNSET_EOF
 
 read -r -d '' DENYLIST <<'DENYLIST_EOF' || true
 ship-pr.sh
@@ -123,6 +129,37 @@ list_md_files() {
     fi
 }
 
+list_shell_files() {
+    if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git -C "$ROOT" ls-files -z -- \
+            'scripts/*.sh' \
+            'skills/*/scripts/*.sh' \
+            'skills/shared/scripts/*.sh' 2>/dev/null || true
+    else
+        (
+            cd "$ROOT"
+            find scripts -maxdepth 1 -type f -name '*.sh' 2>/dev/null || true
+            find skills -path 'skills/*/scripts/*.sh' -type f 2>/dev/null || true
+            find skills/shared/scripts -type f -name '*.sh' 2>/dev/null || true
+        ) | LC_ALL=C sort -u | while IFS= read -r path; do
+            [[ -n "$path" ]] || continue
+            printf '%s\0' "$path"
+        done
+    fi
+}
+
+should_skip_shell_file() {
+    local rel="$1"
+    case "$rel" in
+        larch-logs/*|*/test-*.sh|scripts/dispatch-with-waterfall.sh|scripts/lint-foreground-markers.sh)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 # Strip at most one leading "> " blockquote prefix (per plan).
 strip_bq() {
     local s="$1"
@@ -219,6 +256,12 @@ is_anchor_for_basename() {
     [[ "$line" =~ ^[[:space:]]*$ ]] && return 1
     [[ "$line" =~ ^[[:space:]]*[^#[:space:]] ]] || return 1
     [[ "$line" == *"$bn"* ]] || return 1
+    [[ "$line" =~ ^[[:space:]]*(echo|printf)[[:space:]] ]] && return 1
+    case "$line" in
+        *"/$bn "|*"/$bn\""*|*"/$bn'"*|*"/$bn)"*|*"/$bn;"*|*"/$bn")
+            return 0
+            ;;
+    esac
 
     # Single grep -Eq avoids bash =~ catastrophic backtracking on long lines.
     p='(^[[:space:]]*(bash[[:space:]]+)?(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
@@ -241,6 +284,129 @@ is_anchor_for_basename() {
         return 0
     fi
     return 1
+}
+
+line_has_lint_suppression() {
+    local line="$1"
+    [[ "$line" == *'# lint-foreground-markers: ok '* ]]
+}
+
+line_mentions_diagnostic_tool_string() {
+    local line="$1"
+    local bn="$2"
+    local e
+    e="$(printf '%s\n' "$bn" | sed 's/[][\\.^$*+?{}|()]/\\&/g')"
+    printf '%s\n' "$line" | LC_ALL=C grep -Eq -- '--tool[[:space:]]+["'"'"'"]?([^[:space:]"'"'"'"]*/)?'"$e"'["'"'"'"]?([[:space:]]|$)'
+}
+
+line_is_child_assignment() {
+    local line="$1"
+    local bn="$2"
+    [[ "$line" == *"$bn"* ]] || return 1
+    [[ "$line" =~ ^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*= ]] || return 1
+}
+
+capture_child_var_assignment() {
+    local line="$1"
+    local vars_file="$2"
+    local bn var
+    [[ "$line" =~ ^[[:space:]]*# ]] && return 0
+    # shellcheck disable=SC2016 # Literal command-substitution token.
+    [[ "$line" == *'$('* ]] && return 0
+    [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)= ]] || return 0
+    var="${BASH_REMATCH[1]}"
+    while IFS= read -r bn; do
+        [[ -n "$bn" ]] || continue
+        [[ "$line" == *"$bn"* ]] || continue
+        printf '%s\t%s\n' "$var" "$bn" >>"$vars_file"
+    done <<<"$PARENT_UNSET_REQUIRED_CHILDREN"
+}
+
+line_invokes_captured_child_var() {
+    local line="$1"
+    local vars_file="$2"
+    [[ -s "$vars_file" ]] || return 1
+    [[ "$line" == *'$'* ]] || return 1
+    [[ "$line" =~ ^[[:space:]]*# ]] && return 1
+    local var bn e
+    while IFS=$'\t' read -r var bn || [[ -n "$var" ]]; do
+        [[ -n "$var" && -n "$bn" ]] || continue
+        [[ "$line" == *"\$$var"* ]] || continue
+        e="$(printf '%s\n' "$var" | sed 's/[][\\.^$*+?{}|()]/\\&/g')"
+        if printf '%s\n' "$line" | LC_ALL=C grep -Eq '^[[:space:]]*"?\$'"$e"'"?([[:space:]]|$)'; then
+            printf '%s\n' "$bn"
+            return 0
+        fi
+        if printf '%s\n' "$line" | LC_ALL=C grep -Eq '=\$\("?\$'"$e"'"?([[:space:]]|\)|$)'; then
+            printf '%s\n' "$bn"
+            return 0
+        fi
+    done <"$vars_file"
+    return 1
+}
+
+unset_before_anchor_idx() {
+    local anchor_idx="$1"
+    shift
+    local -a lines=("$@")
+    local seen=0 i line
+    for ((i = anchor_idx - 1; i >= 0; i--)); do
+        line="${lines[$i]}"
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        seen=$((seen + 1))
+        if [[ "$line" =~ ^[[:space:]]*unset[[:space:]]+LARCH_PAIRED_PID_FILE([[:space:]]|$) ]]; then
+            return 0
+        fi
+        if ((seen >= 5)); then
+            break
+        fi
+    done
+    return 1
+}
+
+scan_shell_file_for_unset_before_nested_child() {
+    local rel="$1"
+    should_skip_shell_file "$rel" && return 0
+    local path="$ROOT/$rel"
+    [[ -f "$path" ]] || return 0
+    LC_ALL=C grep -Fq 'dispatch-with-waterfall.sh' "$path" || return 0
+
+    local vars_file
+    vars_file="$(mktemp "${TMPDIR:-/tmp}/lint-fg-vars.XXXXXX")"
+    local -a lines=()
+    local line bn matched_bn idx
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        lines+=("$line")
+        capture_child_var_assignment "$line" "$vars_file"
+    done <"$path"
+
+    for idx in "${!lines[@]}"; do
+        line="${lines[$idx]}"
+        line_has_lint_suppression "$line" && continue
+        matched_bn=""
+        if bn="$(line_invokes_captured_child_var "$line" "$vars_file")"; then
+            matched_bn="$bn"
+        else
+            while IFS= read -r bn; do
+                [[ -n "$bn" ]] || continue
+                [[ "$line" == *"$bn"* ]] || continue
+                line_is_child_assignment "$line" "$bn" && continue
+                line_mentions_diagnostic_tool_string "$line" "$bn" && continue
+                if is_anchor_for_basename "$line" "$bn"; then
+                    matched_bn="$bn"
+                    break
+                fi
+            done <<<"$PARENT_UNSET_REQUIRED_CHILDREN"
+        fi
+        [[ -n "$matched_bn" ]] || continue
+        if ! unset_before_anchor_idx "$idx" "${lines[@]}"; then
+            printf '%s:%s: missing parent-unset (unset LARCH_PAIRED_PID_FILE) before nested %s\n' "$rel" "$((idx + 1))" "$matched_bn" >&2
+            VIOLATIONS=$((VIOLATIONS + 1))
+        fi
+    done
+    rm -f "$vars_file"
 }
 
 # Strip leading ASCII TAB characters (Bash 3.2; used for <<- heredoc close lines).
@@ -327,7 +493,17 @@ scan_fence_buffer_for_anchors() {
         FG_FENCE_LINES+=("$fline")
     done <"$fence_buf"
 
-    local fline mline bn
+    local fline mline bn joined_all has_denylisted_bn=0
+    joined_all=$(printf '%s\n' "${FG_FENCE_LINES[@]}")
+    while IFS= read -r bn; do
+        [[ -n "$bn" ]] || continue
+        if [[ "$joined_all" == *"$bn"* ]]; then
+            has_denylisted_bn=1
+            break
+        fi
+    done <<<"$DENYLIST"
+    ((has_denylisted_bn == 0)) && return 0
+
     local active_hd_delim=""
     local active_hd_strip=0
     local i n phy_line merge_start_phy found_bn
@@ -374,10 +550,11 @@ scan_fence_buffer_for_anchors() {
         [[ "$mline" == *'.sh'* ]] || continue
         while IFS= read -r bn; do
             [[ -n "$bn" ]] || continue
+            [[ "$mline" == *"$bn"* ]] || continue
             if is_anchor_for_basename "$mline" "$bn"; then
                 local abs_anchor=$((open_fence_line + merge_start_phy))
                 local joined="" win_txt=""
-                joined=$(printf '%s\n' "${FG_FENCE_LINES[@]}")
+                joined="$joined_all"
                 win_txt=$(printf '%s\n' "${pre_fence_window[@]}")
                 local has_rb=0 has_c=0 has_pid_alloc=0 has_pid_flag=0
                 [[ "$joined" == *"run_in_background: true"* ]] && has_rb=1
@@ -456,6 +633,9 @@ scan_markdown_file() {
         fi
     done
     [[ -f "$path" ]] || return 0
+    if ! LC_ALL=C grep -Eq 'ship-pr\.sh|ci-wait\.sh|run-step5-review\.sh|review-and-fix\.sh|run-step2-dispatch\.sh|step2-implement\.sh|step-7a\.sh|collect-agent-results\.sh|dispatch-with-waterfall\.sh|dispatch-plan-voters\.sh|breadcrumb-monitor\.sh' "$path"; then
+        return 0
+    fi
 
     local -a md_ring=()
     local in_fence=0
@@ -463,13 +643,22 @@ scan_markdown_file() {
     local -a pre_fence_window=()
     local ln=0
     local line open_fence_line
+    local post_fence_bg_monitor_remaining=0
 
     fence_tmp="$(mktemp "${TMPDIR:-/tmp}/lint-fg-fence.XXXXXX")"
-    trap 'rm -f "$fence_tmp"' RETURN
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((ln++)) || true
         if [[ "$in_fence" -eq 0 ]]; then
+            if ((post_fence_bg_monitor_remaining > 0)); then
+                if line_has_lint_suppression "$line"; then
+                    :
+                elif printf '%s\n' "$line" | LC_ALL=C grep -Eq "$POST_FENCE_CONTRADICTION_RE"; then
+                    printf '%s:%s: contradictory post-fence prose "Do NOT set run_in_background: true" after background+monitor fence\n' "$rel" "$ln" >&2
+                    VIOLATIONS=$((VIOLATIONS + 1))
+                fi
+                post_fence_bg_monitor_remaining=$((post_fence_bg_monitor_remaining - 1))
+            fi
             if [[ "$line" =~ ^[[:space:]]*\`\`\`[[:space:]]*(bash|sh|shell)([[:space:]]+.*)?$ ]]; then
                 in_fence=1
                 open_fence_line="$ln"
@@ -484,7 +673,11 @@ scan_markdown_file() {
         else
             if [[ "$line" =~ ^[[:space:]]*\`\`\`[[:space:]]*$ ]]; then
                 in_fence=0
+                fence_joined="$(cat "$fence_tmp")"
                 scan_fence_buffer_for_anchors "$rel" "$open_fence_line" "$fence_tmp" "${pre_fence_window[@]}"
+                if [[ "$fence_joined" == *"run_in_background: true"* && "$fence_joined" == *"breadcrumb-monitor.sh"* ]]; then
+                    post_fence_bg_monitor_remaining=10
+                fi
                 continue
             fi
             printf '%s\n' "$line" >>"$fence_tmp"
@@ -496,7 +689,6 @@ scan_markdown_file() {
     fi
 
     rm -f "$fence_tmp"
-    trap - RETURN
 }
 
 TMP_LIST="$(mktemp "${TMPDIR:-/tmp}/lint-fg-files.XXXXXX")"
@@ -505,6 +697,11 @@ trap 'rm -f "$TMP_LIST"' EXIT
 list_md_files >"$TMP_LIST"
 while IFS= read -r -d '' rel; do
     scan_markdown_file "$rel"
+done <"$TMP_LIST"
+
+list_shell_files >"$TMP_LIST"
+while IFS= read -r -d '' rel; do
+    scan_shell_file_for_unset_before_nested_child "$rel"
 done <"$TMP_LIST"
 
 if [[ "$VIOLATIONS" -gt 0 ]]; then

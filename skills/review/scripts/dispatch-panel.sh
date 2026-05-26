@@ -401,6 +401,7 @@ waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_wat
 [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && waterfall_args+=(--feature-file "$FEATURE_FILE")
 [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && waterfall_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
 
+unset LARCH_PAIRED_PID_FILE
 waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
 all_outputs=""
 all_tools=""

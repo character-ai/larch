@@ -23,6 +23,31 @@ tokens emit `missing LARCH_PAIRED_PID_FILE allocation for <basename>` or
 `review-and-fix.sh`, `step2-implement.sh`, `dispatch-with-waterfall.sh`) do not
 need the new paired-PID tokens.
 
+Shell-script parent-unset rule: tracked shell scripts under `scripts/*.sh`,
+`skills/*/scripts/*.sh`, and `skills/shared/scripts/*.sh` are scanned for
+nested-only Family B children that must not inherit a caller-owned
+`LARCH_PAIRED_PID_FILE`. Today the enforced child list is
+`dispatch-with-waterfall.sh`. A call is anchored either by a basename-shaped
+literal invocation or by a variable-backed invocation where a simple assignment
+previously resolved a variable to a path ending in the child basename, including
+default-expansion forms such as
+`DISPATCH_WATERFALL_SH="${EXTERNAL:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"`.
+Within the prior five non-blank non-comment shell lines, the parent must contain
+`unset LARCH_PAIRED_PID_FILE`; otherwise stderr reports
+`missing parent-unset (unset LARCH_PAIRED_PID_FILE) before nested
+dispatch-with-waterfall.sh`. Exclusions: `larch-logs/**`, `*/test-*.sh`, the
+child script itself, diagnostic strings such as `--tool
+"dispatch-with-waterfall.sh"`, and variable definitions that do not invoke the
+child. A specific invocation line can be suppressed with
+`# lint-foreground-markers: ok <reason>`.
+
+Post-fence contradiction rule: after a fenced shell block that contains both
+`run_in_background: true` and `breadcrumb-monitor.sh`, the next ten Markdown
+lines must not say the foreground-only phrase `Do NOT set run_in_background:
+true`. This catches prose that contradicts the required background+monitor pair.
+The same inline suppression syntax, `# lint-foreground-markers: ok <reason>`, is
+accepted on the contradictory prose line.
+
 The script never evaluates fence bodies. Lines inside an in-fence shell heredoc opened by a `<<` / `<<-` delimiter (quoted `<<'WORD'`, `<<"WORD"`, or a simple trailing `WORD` token on the opener line per the implementation) are skipped for anchor detection until the closing delimiter line is seen, so tutorial text that quotes denylist-shaped paths inside heredocs does not false-positive. Exit codes: `0` clean, `1` violations (stderr: `<path>:<line>: missing banner|missing comment for <basename>`), `2` CLI/`--root` errors.
 
 Non–git-worktree enumeration uses a `find` subshell piped through `sort`; each `find` is suffixed with `|| true` so missing `skills/`, `.claude/skills/`, or `.claude/rules/` trees do not trip `set -o pipefail` (regression harnesses use bare `mktemp` roots).

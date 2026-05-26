@@ -26,6 +26,15 @@ for arg in "$@"; do
 done
 [[ -n "$out" ]] || exit 9
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
+if [[ -n "${CODEX_STUB_COUNTER:-}" ]]; then
+    n=0
+    [[ -f "$CODEX_STUB_COUNTER" ]] && n=$(cat "$CODEX_STUB_COUNTER" 2>/dev/null || echo 0)
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    printf '%s\n' "$((n + 1))" > "$CODEX_STUB_COUNTER"
+fi
+if [[ -n "${CODEX_STUB_FAIL_OUTPUT_CONTAINS:-}" && "$out" == *"${CODEX_STUB_FAIL_OUTPUT_CONTAINS}"* ]]; then
+    exit 7
+fi
 if [[ "${CODEX_STUB_FAIL:-false}" == "true" ]]; then
     exit 7
 fi
@@ -37,6 +46,9 @@ cat > "$STUB_BIN/cursor" <<'STUB'
 #!/usr/bin/env bash
 log="${CURSOR_STUB_LOG:-}"
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
+if [[ -n "${CURSOR_STUB_FAIL_OUTPUT_CONTAINS:-}" && "$*" == *"${CURSOR_STUB_FAIL_OUTPUT_CONTAINS}"* ]]; then
+    exit 8
+fi
 if [[ "${CURSOR_STUB_FAIL:-false}" == "true" ]]; then
     exit 8
 fi
@@ -372,5 +384,138 @@ grep -Fq 'is not a valid ERE' "$TMPROOT/pattern-invalid.stderr" \
     || { echo "FAIL: invalid ERE stderr message" >&2; cat "$TMPROOT/pattern-invalid.stderr" >&2; exit 1; }
 [[ ! -s "$codex_invalid_log" ]] || { echo "FAIL: invalid ERE must not launch codex" >&2; exit 1; }
 [[ ! -s "$cursor_invalid_log" ]] || { echo "FAIL: invalid ERE must not launch cursor" >&2; exit 1; }
+
+# --- fallback_group dedup tests ---
+
+counter_value() {
+    local file="$1"
+    [[ -f "$file" ]] || { printf '0\n'; return; }
+    cat "$file"
+}
+
+manifest="$TMPROOT/slots-dedup-two-cursor.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/dedup-a.txt" --arg pf "$prompt" \
+        '{slot:"dedup-a",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"dedup-g"}'
+    jq -cn --arg out "$TMPROOT/dedup-b.txt" --arg pf "$prompt" \
+        '{slot:"dedup-b",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"dedup-g"}'
+} >"$manifest"
+codex_dedup_log="$TMPROOT/codex-dedup.log"
+codex_dedup_counter="$TMPROOT/codex-dedup.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_CONTENT=$'## Recommendation\nsplit' \
+    CODEX_STUB_LOG="$codex_dedup_log" \
+    CODEX_STUB_COUNTER="$codex_dedup_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
+[[ "$(counter_value "$codex_dedup_counter")" == "1" ]] || { echo "FAIL: grouped phase2 dedup should launch codex once" >&2; cat "$codex_dedup_log" >&2; exit 1; }
+[[ -f "$TMPROOT/dedup-b.txt.dedup" ]] || { echo "FAIL: reused slot sidecar missing" >&2; exit 1; }
+grep -Fxq 'DEDUPE_REUSED_FROM=dedup-a' "$TMPROOT/dedup-b.txt.dedup" || { echo "FAIL: reused-from sidecar" >&2; cat "$TMPROOT/dedup-b.txt.dedup" >&2; exit 1; }
+grep -Fxq 'DEDUPE_REUSED_TOOL=codex' "$TMPROOT/dedup-b.txt.dedup" || { echo "FAIL: reused-tool sidecar" >&2; cat "$TMPROOT/dedup-b.txt.dedup" >&2; exit 1; }
+grep -Fq '## Recommendation' "$TMPROOT/dedup-b.txt" || { echo "FAIL: reused slot output not copied" >&2; exit 1; }
+grep -Fxq "$TMPROOT/dedup-b.txt" "${manifest}.output-files" || { echo "FAIL: reused slot not settled in output files list" >&2; exit 1; }
+[[ ! -f "$TMPROOT/dedup-b-phase3.txt" ]] || { echo "FAIL: reused slot must not enter phase3" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-dedup-phase1-ok.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/phase1-ok-codex.txt" --arg pf "$prompt" \
+        '{slot:"phase1-codex",tool:"codex",output:$out,prompt_file:$pf,fallback_group:"phase1-g"}'
+    jq -cn --arg out "$TMPROOT/phase1-bad-cursor.txt" --arg pf "$prompt" \
+        '{slot:"phase1-cursor",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"phase1-g"}'
+} >"$manifest"
+codex_phase1_log="$TMPROOT/codex-phase1-ok.log"
+codex_phase1_counter="$TMPROOT/codex-phase1-ok.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_CONTENT=$'## Recommendation\nsplit' \
+    CODEX_STUB_LOG="$codex_phase1_log" \
+    CODEX_STUB_COUNTER="$codex_phase1_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+[[ "$(counter_value "$codex_phase1_counter")" == "1" ]] || { echo "FAIL: phase1 OK peer should avoid phase2 codex launch" >&2; cat "$codex_phase1_log" >&2; exit 1; }
+[[ ! -f "$TMPROOT/phase1-bad-cursor-phase2.txt" ]] || { echo "FAIL: phase1 peer reuse should not create phase2 output" >&2; exit 1; }
+grep -Fxq 'DEDUPE_REUSED_FROM=phase1-codex' "$TMPROOT/phase1-bad-cursor.txt.dedup" || { echo "FAIL: phase1 OK reuse sidecar" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-cross-group.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/cross-a.txt" --arg pf "$prompt" \
+        '{slot:"cross-a",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cross-a"}'
+    jq -cn --arg out "$TMPROOT/cross-b.txt" --arg pf "$prompt" \
+        '{slot:"cross-b",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cross-b"}'
+} >"$manifest"
+codex_cross_log="$TMPROOT/codex-cross.log"
+codex_cross_counter="$TMPROOT/codex-cross.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_CONTENT=$'## Recommendation\nsplit' \
+    CODEX_STUB_LOG="$codex_cross_log" \
+    CODEX_STUB_COUNTER="$codex_cross_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+[[ "$(counter_value "$codex_cross_counter")" == "2" ]] || { echo "FAIL: cross-group slots should each launch codex" >&2; cat "$codex_cross_log" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-mixed-group.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/mixed-a.txt" --arg pf "$prompt" \
+        '{slot:"mixed-a",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"mixed-g"}'
+    jq -cn --arg out "$TMPROOT/mixed-b.txt" --arg pf "$prompt" \
+        '{slot:"mixed-b",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"mixed-g"}'
+    jq -cn --arg out "$TMPROOT/mixed-ungrouped.txt" --arg pf "$prompt" \
+        '{slot:"mixed-ungrouped",tool:"cursor",output:$out,prompt_file:$pf}'
+} >"$manifest"
+codex_mixed_log="$TMPROOT/codex-mixed.log"
+codex_mixed_counter="$TMPROOT/codex-mixed.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_CONTENT=$'## Recommendation\nsplit' \
+    CODEX_STUB_LOG="$codex_mixed_log" \
+    CODEX_STUB_COUNTER="$codex_mixed_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+[[ "$(counter_value "$codex_mixed_counter")" == "2" ]] || { echo "FAIL: mixed grouped+ungrouped codex count" >&2; cat "$codex_mixed_log" >&2; exit 1; }
+[[ -f "$TMPROOT/mixed-ungrouped-phase2.txt" ]] || { echo "FAIL: ungrouped legacy phase2 output missing" >&2; exit 1; }
+[[ -f "$TMPROOT/mixed-b.txt.dedup" ]] || { echo "FAIL: grouped mixed reuse sidecar missing" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-invalid-fallback-group.ndjson"
+jq -cn --arg out "$TMPROOT/bad-group.txt" --arg pf "$prompt" --arg fg $'bad\tgroup' \
+    '{slot:"bad-group",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:$fg}' >"$manifest"
+set +e
+bad_group_out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5 2>"$TMPROOT/bad-group.stderr")
+rc_group=$?
+set -e
+[[ "$rc_group" -ne 0 ]] || { echo "FAIL: invalid fallback_group should fail" >&2; exit 1; }
+grep -Fxq 'STEP_FAILED=MANIFEST_VALIDATION' <<<"$bad_group_out" || { echo "FAIL: missing manifest validation stdout" >&2; printf '%s\n' "$bad_group_out" >&2; exit 1; }
+grep -Fq 'fallback_group contains a tab' "$TMPROOT/bad-group.stderr" || { echo "FAIL: missing fallback_group validation stderr" >&2; cat "$TMPROOT/bad-group.stderr" >&2; exit 1; }
 
 echo "PASS: test-dispatch-with-waterfall.sh"

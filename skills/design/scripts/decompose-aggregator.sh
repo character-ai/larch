@@ -113,6 +113,7 @@ jq -nc \
 WATERFALL_SH="${DECOMPOSE_AGGREGATE_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
 
 set +e
+unset LARCH_PAIRED_PID_FILE
 _agg_out=$("$WATERFALL_SH" \
     --slots-file "$_slots" \
     --codex-present "$CODEX_PRESENT" \
