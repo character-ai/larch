@@ -1,0 +1,3 @@
+Verifying contradictory pre-publish findings and overlapping items by reading the cited code (read-only).
+Producing the aggregated structured finding list from the merged reviewer inputs.
+

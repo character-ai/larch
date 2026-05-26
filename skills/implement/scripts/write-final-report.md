@@ -66,6 +66,23 @@ After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script reje
 
 Still refreshes `summary-final.md` for the upsert but **does not** overwrite `larch-logs/.../final-summary.md`. Used by `ship-pr.sh` after PR creation so the tracking comment picks up the live URL without dirtying the run-log tree before the next flush.
 
-## Degraded render
+## Token-data-missing primary path
 
-If `render-run-summary.sh` fails or produces an empty file, the script falls back to a minimal markdown stub that still includes the `<!-- larch:run-summary v=1 -->` sentinel.
+When no usable token JSON exists, or the JSON is unparseable / lacks
+`.claude.totals`, the primary `render-run-summary.sh` call passes
+`--cost-unavailable` and omits token count flags. The rendered body therefore
+uses `- **Cost**: N/A` instead of the misleading all-zero dollar line.
+
+## Degraded render — two-stage fallback
+
+If `render-run-summary.sh` fails or produces an empty file, the script appends a
+Warning to `execution-issues.md`, refreshes warning counts, and re-invokes the
+renderer with `--cost-unavailable`. That Stage 1 fallback preserves the full
+renderer schema while forcing `- **Cost**: N/A`.
+
+If Stage 1 also fails, Stage 2 writes a self-composed markdown body that mirrors
+the renderer's `/implement` schema: conditional `- **Outcome**:` only for
+`bailed*` / `stalled` / `cancelled-*` / `failed-*`, conditional `- **PR**:` only
+when a PR display exists, always includes `- **Code review**:`, always includes
+`- **Cost**: N/A`, and ends with `<!-- larch:run-summary v=1 -->`. The body still
+surfaces through `--print-stdout`.

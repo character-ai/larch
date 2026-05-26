@@ -6,10 +6,13 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
 f="$REPO/skills/implement/scripts/write-final-report.sh"
-c=$(grep -c 'render-run-summary\.sh' "$f") || c=0
+# Count only actual shell invocation lines (starts with spaces then quotes+script path),
+# not string-argument references in printf/append_render_warning calls.
+c=$(grep -cE '^\s+"?\$[{(]?PLUGIN_ROOT[})]?/scripts/render-run-summary\.sh"?' "$f") || c=0
 test "$c" -ge 1 || fail "expected render-run-summary.sh invocations in write-final-report.sh"
 b=$(grep -cF -- '--claude-input-tokens' "$f") || b=0
-test "$b" -ge "$c" || fail "each render-run-summary invocation should pass --claude-input-tokens (blocks=$c flags=$b)"
+cu=$(grep -cF -- '--cost-unavailable' "$f") || cu=0
+test "$((b + cu))" -ge "$c" || fail "each render-run-summary invocation should pass --claude-input-tokens or --cost-unavailable (blocks=$c flags=$((b + cu)))"
 pass 'write-final-report render-run-summary per-bucket wiring'
 
 g="$REPO/skills/design/scripts/render-final-summary.sh"

@@ -165,6 +165,7 @@ C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
 D_IN=0 D_CACHED=0 D_OUT=0
 U_IN=0 U_CR=0 U_OUT=0
 TOKEN_JSON=""
+TOKEN_DATA_AVAILABLE=false
 for cand in "$run_dir/token-report.json" "$IMPLEMENT_TMPDIR/token-report-rendered.json"; do
     [ -f "$cand" ] && TOKEN_JSON="$cand" && break
 done
@@ -175,12 +176,17 @@ if [ -z "$TOKEN_JSON" ] || [ ! -f "$TOKEN_JSON" ]; then
         TOKEN_JSON="$tr_json"
     fi
 fi
-if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ]; then
+if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1 && jq -e '.claude.totals' "$TOKEN_JSON" >/dev/null 2>&1; then
     read -r CLAUDE_T CODEX_T CURSOR_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0)] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
     if jq -e '.BUCKETS_claude' "$TOKEN_JSON" >/dev/null 2>&1; then
         read -r C_IN C_CR C_CW5 C_CW1 C_OUT < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
         read -r D_IN D_CACHED D_OUT < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
         read -r U_IN U_CR U_OUT < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+    fi
+    sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT))
+    total_t=$((CLAUDE_T + CODEX_T + CURSOR_T))
+    if [ "$sum_b" -ne 0 ] || [ "$total_t" -ne 0 ]; then
+        TOKEN_DATA_AVAILABLE=true
     fi
 fi
 
@@ -219,14 +225,98 @@ fi
 
 # --- Execution issues / warnings ---
 EXEC_N=0 WARN_N=0
-if [ -f "$run_dir/execution-issues.ndjson" ]; then
-    EXEC_N=$(grep -c '"category":"Tool Failures"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
-    WARN_N=$(grep -c '"category":"Warnings"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
-    case "$EXEC_N" in *[!0-9]*) EXEC_N=0 ;; esac
-    case "$WARN_N" in *[!0-9]*) WARN_N=0 ;; esac
-fi
 
 RUN_LOGS_DISP="larch-logs/implement/${RUN_ID}/"
+
+refresh_issue_counts() {
+    EXEC_N=0
+    WARN_N=0
+    if [ -f "$IMPLEMENT_TMPDIR/execution-issues.md" ] && [ -s "$IMPLEMENT_TMPDIR/execution-issues.md" ]; then
+        read -r md_exec md_warn < <(awk '
+          /^### Tool Failures$/ { sec=1; next }
+          /^### External Reviewer Issues$/ { sec=1; next }
+          /^### Warnings$/ { sec=2; next }
+          /^### / { sec=0; next }
+          /^- \*\*[^*].*\*\*:?([[:space:]].*)?$/ {
+            if (sec == 1) ex++
+            if (sec == 2) wa++
+            next
+          }
+          END { print ex+0, wa+0 }
+        ' "$IMPLEMENT_TMPDIR/execution-issues.md")
+        EXEC_N=$md_exec
+        WARN_N=$md_warn
+    elif [ -f "$run_dir/execution-issues.ndjson" ] && command -v jq >/dev/null 2>&1; then
+        local ndjson_body nd_exec nd_warn
+        ndjson_body="$(mktemp "${TMPDIR:-/tmp}/wfr-execution-issues.XXXXXX")"
+        jq -r '.body // empty' "$run_dir/execution-issues.ndjson" 2>/dev/null >"$ndjson_body" || true
+        if grep -Eq '^### (Tool Failures|External Reviewer Issues|Warnings)$' "$ndjson_body"; then
+            read -r nd_exec nd_warn < <(awk '
+              /^### Tool Failures$/ { sec=1; next }
+              /^### External Reviewer Issues$/ { sec=1; next }
+              /^### Warnings$/ { sec=2; next }
+              /^### / { sec=0; next }
+              /^- \*\*[^*].*\*\*:?([[:space:]].*)?$/ {
+                if (sec == 1) ex++
+                if (sec == 2) wa++
+                next
+              }
+              END { print ex+0, wa+0 }
+            ' "$ndjson_body")
+            EXEC_N=${nd_exec:-0}
+            WARN_N=${nd_warn:-0}
+        else
+            read -r nd_exec nd_warn < <(jq -rs '
+              . as $rows
+              | [
+                  ($rows | map(select(.category == "Tool Failures" or .category == "External Reviewer Issues")) | length),
+                  ($rows | map(select(.category == "Warnings")) | length)
+                ] | @tsv
+            ' "$run_dir/execution-issues.ndjson" 2>/dev/null || printf '0\t0\n')
+            EXEC_N=${nd_exec:-0}
+            WARN_N=${nd_warn:-0}
+        fi
+        rm -f "$ndjson_body"
+    elif [ -f "$run_dir/execution-issues.ndjson" ]; then
+        EXEC_N=$(( \
+            $(grep -c '"category":"Tool Failures"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0) + \
+            $(grep -c '"category":"External Reviewer Issues"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0) \
+        ))
+        WARN_N=$(grep -c '"category":"Warnings"' "$run_dir/execution-issues.ndjson" 2>/dev/null || echo 0)
+        case "$EXEC_N" in *[!0-9]*) EXEC_N=0 ;; esac
+        case "$WARN_N" in *[!0-9]*) WARN_N=0 ;; esac
+    fi
+}
+
+redact_output_file_in_place() {
+    local output_file=${1:-}
+    local redacted_tmp
+    [ -n "$output_file" ] || return 0
+    [ -f "$output_file" ] || return 0
+    [ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ] || return 0
+    redacted_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-redacted.XXXXXX")" || return 0
+    if "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$output_file" >"$redacted_tmp"; then
+        mv "$redacted_tmp" "$output_file"
+    else
+        rm -f "$redacted_tmp"
+    fi
+}
+
+append_render_warning() {
+    local site=$1 tool=$2 rc=$3 output_file=$4
+    [ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ] || return 0
+    [ -f "$output_file" ] || : >"$output_file"
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+        --site "$site" \
+        --tool "$tool" \
+        --exit-code "$rc" \
+        --category Warnings \
+        --redact \
+        --output-file "$output_file" \
+        >/dev/null 2>&1 || true
+    refresh_issue_counts
+}
 
 # --- Note lines (after sentinel in body — appended by render via note file) ---
 notes_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-notes.XXXXXX")"
@@ -281,89 +371,119 @@ trap 'rm -f "$body_tmp" "${notes_tmp:-}"' EXIT
 
 run_body_render() {
     local nf="${1-}"
-    if [ -n "$nf" ] && [ -f "$nf" ]; then
-        "$PLUGIN_ROOT/scripts/render-run-summary.sh" \
-            --skill implement \
-            --outcome "$OUTCOME" \
-            --run-id "$RUN_ID" \
-            --mode "$mode_str" \
-            --workflow-path "$WORKFLOW_PATH" \
-            --duration "$DURATION" \
-            --claude-tokens "$CLAUDE_T" \
-            --codex-tokens "$CODEX_T" \
-            --cursor-tokens "$CURSOR_T" \
-            --claude-input-tokens "$C_IN" \
-            --claude-cache-read-tokens "$C_CR" \
-            --claude-cache-write-5m-tokens "$C_CW5" \
-            --claude-cache-write-1h-tokens "$C_CW1" \
-            --claude-output-tokens "$C_OUT" \
-            --codex-input-tokens "$D_IN" \
-            --codex-cached-input-tokens "$D_CACHED" \
-            --codex-output-tokens "$D_OUT" \
-            --cursor-input-tokens "$U_IN" \
-            --cursor-cache-read-tokens "$U_CR" \
-            --cursor-output-tokens "$U_OUT" \
-            --issue-number "$ISSUE" \
-            --issue-url "${ISSUE_URL:-N/A}" \
-            --pr-number "${PR_NUMBER:-0}" \
-            --pr-url "$PR_URL" \
-            --plan-review-line "$PLAN_LINE" \
-            --code-review-line "$CODE_LINE" \
-            --oos-count "$OOS_COUNT" \
-            --oos-urls "${OOS_URLS:-}" \
-            --exec-issues "$EXEC_N" \
-            --warnings "$WARN_N" \
-            --run-logs-path "$RUN_LOGS_DISP" \
-            --note-lines-file "$nf" \
-            --output-file "$body_tmp" >/dev/null
+    local force_cost_unavailable="${2:-false}"
+    local cost_args=()
+    local note_args=()
+    if [ "$force_cost_unavailable" = true ] || [ "$TOKEN_DATA_AVAILABLE" != true ]; then
+        cost_args=(--cost-unavailable)
     else
-        "$PLUGIN_ROOT/scripts/render-run-summary.sh" \
-            --skill implement \
-            --outcome "$OUTCOME" \
-            --run-id "$RUN_ID" \
-            --mode "$mode_str" \
-            --workflow-path "$WORKFLOW_PATH" \
-            --duration "$DURATION" \
-            --claude-tokens "$CLAUDE_T" \
-            --codex-tokens "$CODEX_T" \
-            --cursor-tokens "$CURSOR_T" \
-            --claude-input-tokens "$C_IN" \
-            --claude-cache-read-tokens "$C_CR" \
-            --claude-cache-write-5m-tokens "$C_CW5" \
-            --claude-cache-write-1h-tokens "$C_CW1" \
-            --claude-output-tokens "$C_OUT" \
-            --codex-input-tokens "$D_IN" \
-            --codex-cached-input-tokens "$D_CACHED" \
-            --codex-output-tokens "$D_OUT" \
-            --cursor-input-tokens "$U_IN" \
-            --cursor-cache-read-tokens "$U_CR" \
-            --cursor-output-tokens "$U_OUT" \
-            --issue-number "$ISSUE" \
-            --issue-url "${ISSUE_URL:-N/A}" \
-            --pr-number "${PR_NUMBER:-0}" \
-            --pr-url "$PR_URL" \
-            --plan-review-line "$PLAN_LINE" \
-            --code-review-line "$CODE_LINE" \
-            --oos-count "$OOS_COUNT" \
-            --oos-urls "${OOS_URLS:-}" \
-            --exec-issues "$EXEC_N" \
-            --warnings "$WARN_N" \
-            --run-logs-path "$RUN_LOGS_DISP" \
-            --output-file "$body_tmp" >/dev/null
+        cost_args=(
+            --claude-tokens "$CLAUDE_T"
+            --codex-tokens "$CODEX_T"
+            --cursor-tokens "$CURSOR_T"
+            --claude-input-tokens "$C_IN"
+            --claude-cache-read-tokens "$C_CR"
+            --claude-cache-write-5m-tokens "$C_CW5"
+            --claude-cache-write-1h-tokens "$C_CW1"
+            --claude-output-tokens "$C_OUT"
+            --codex-input-tokens "$D_IN"
+            --codex-cached-input-tokens "$D_CACHED"
+            --codex-output-tokens "$D_OUT"
+            --cursor-input-tokens "$U_IN"
+            --cursor-cache-read-tokens "$U_CR"
+            --cursor-output-tokens "$U_OUT"
+        )
+    fi
+    if [ -n "$nf" ] && [ -f "$nf" ]; then
+        note_args=(--note-lines-file "$nf")
+    fi
+    "$PLUGIN_ROOT/scripts/render-run-summary.sh" \
+        --skill implement \
+        --outcome "$OUTCOME" \
+        --run-id "$RUN_ID" \
+        --mode "$mode_str" \
+        --workflow-path "$WORKFLOW_PATH" \
+        --duration "$DURATION" \
+        "${cost_args[@]}" \
+        --issue-number "$ISSUE" \
+        --issue-url "${ISSUE_URL:-N/A}" \
+        --pr-number "${PR_NUMBER:-0}" \
+        --pr-url "$PR_URL" \
+        --plan-review-line "$PLAN_LINE" \
+        --code-review-line "$CODE_LINE" \
+        --oos-count "$OOS_COUNT" \
+        --oos-urls "${OOS_URLS:-}" \
+        --exec-issues "$EXEC_N" \
+        --warnings "$WARN_N" \
+        --run-logs-path "$RUN_LOGS_DISP" \
+        "${note_args[@]+"${note_args[@]}"}" \
+        --output-file "$body_tmp" >/dev/null
+}
+
+compose_self_fallback() {
+    {
+        printf '## /implement run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
+        case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
+        printf -- '- **Mode**: %s\n' "${mode_str:-N/A}"
+        printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
+        printf -- '- **Duration**: %s\n' "${DURATION:-N/A}"
+        printf -- '- **Cost**: N/A\n'
+        if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ]; then
+            if [ -n "${ISSUE_URL:-}" ] && [ "${ISSUE_URL:-N/A}" != "N/A" ]; then
+                printf -- '- **Issue**: #%s — %s\n' "$ISSUE" "$ISSUE_URL"
+            else
+                printf -- '- **Issue**: #%s\n' "$ISSUE"
+            fi
+        else
+            printf -- '- **Issue**: N/A\n'
+        fi
+        if [ -n "${PR_NUMBER:-}" ] && [ "${PR_NUMBER:-0}" != "0" ]; then
+            if [ -n "$PR_URL" ] && [ "$PR_URL" != "N/A" ]; then
+                printf -- '- **PR**: #%s — %s\n' "$PR_NUMBER" "$PR_URL"
+            else
+                printf -- '- **PR**: #%s\n' "$PR_NUMBER"
+            fi
+        fi
+        printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
+        printf -- '- **Code review**: %s\n' "${CODE_LINE:-N/A}"
+        if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then
+            printf -- '- **OOS filed**: %s — %s\n' "$OOS_COUNT" "$OOS_URLS"
+        else
+            printf -- '- **OOS filed**: %s\n' "${OOS_COUNT:-0}"
+        fi
+        printf -- '- **Exec issues**: %s\n' "${EXEC_N:-0}"
+        printf -- '- **Warnings**: %s\n' "${WARN_N:-0}"
+        printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_DISP:-N/A}"
+        printf '%s\n' '<!-- larch:run-summary v=1 -->'
+    } > "$body_tmp"
+    if [ -n "${notes_tmp:-}" ] && [ -f "$notes_tmp" ]; then
+        printf '\n' >> "$body_tmp"
+        cat "$notes_tmp" >> "$body_tmp"
     fi
 }
 
 set +e
+refresh_issue_counts
 run_body_render "${notes_tmp}"
 rr=$?
 set -e
 
 if [ "$rr" -ne 0 ] || [ ! -s "$body_tmp" ]; then
-    {
-        printf '## /implement run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
-        printf '%s\n' "- **Outcome**: $OUTCOME (summary render degraded — see logs)"
-        printf '%s\n' '<!-- larch:run-summary v=1 -->'
-    } > "$body_tmp"
+    primary_err="$IMPLEMENT_TMPDIR/wfr-primary-render-failed.log"
+    printf 'render-run-summary.sh failed or produced an empty body (exit %s)\n' "$rr" > "$primary_err"
+    append_render_warning "implement final summary" "render-run-summary.sh" "${rr:-1}" "$primary_err"
+    set +e
+    run_body_render "${notes_tmp}" true 2>"$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
+    rr2=$?
+    set -e
+    if [ "$rr2" -ne 0 ] || [ ! -s "$body_tmp" ]; then
+        redact_output_file_in_place "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
+        append_render_warning "implement final summary fallback" "render-run-summary.sh --cost-unavailable" "${rr2:-1}" "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
+        rm -f "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
+        compose_self_fallback
+    else
+        rm -f "$IMPLEMENT_TMPDIR/wfr-fallback-stage1.log"
+    fi
 fi
 
 cp "$body_tmp" "$summary" || {

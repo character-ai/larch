@@ -1,0 +1,18 @@
+Implemented and verified.
+
+Changes landed in local commit `0349b169 Fix final summary cost visibility`, followed by larch run-log flush commit `8535f066`. Worktree is clean; branch is ahead of `origin/main` by 2 commits.
+
+What changed:
+- Added `--cost-unavailable` to `scripts/render-run-summary.sh`.
+- Updated `/implement` and `/design` final-summary scripts to render `- **Cost**: N/A` for missing/unreliable token data instead of `$0.00`.
+- Added full-schema fallback summaries for renderer failures.
+- Updated skill prompts to emit the verbatim cost line as collapse-resistant chat text and forbid free-form terminal recap summaries.
+- Added regression coverage for cost visibility, fallback paths, Step 18 conditional printing, per-agent cost breakdowns, and `/design` empty-mode cancellations.
+
+Verification passed:
+- `bash scripts/test-render-run-summary.sh`
+- `bash skills/implement/scripts/test-write-final-report.sh`
+- `bash skills/design/scripts/test-render-final-summary.sh`
+- `bash scripts/relevant-checks.sh`
+
+Wrote `<TMPDIR>/manifest.json` atomically with `status=complete`. No `qa-pending.json` was needed.

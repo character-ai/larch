@@ -26,7 +26,7 @@ emit_body_line() {
 }
 
 usage() {
-    emit_diag "Usage: render-run-summary.sh --skill {implement|design} ... (see render-run-summary.md)"
+    emit_diag "Usage: render-run-summary.sh --skill {implement|design} [--cost-unavailable] ... (see render-run-summary.md)"
 }
 
 SKILL=""
@@ -55,6 +55,7 @@ RUN_LOGS_PATH=""
 NOTE_LINES_FILE=""
 PRINT_STDOUT=false
 OUTPUT_FILE=""
+COST_UNAVAILABLE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -92,6 +93,7 @@ while [ $# -gt 0 ]; do
         --note-lines-file) [ $# -ge 2 ] || { usage; exit 2; }; NOTE_LINES_FILE=$2; shift 2 ;;
         --print-stdout) PRINT_STDOUT=true; shift ;;
         --output-file) [ $# -ge 2 ] || { usage; exit 2; }; OUTPUT_FILE=$2; shift 2 ;;
+        --cost-unavailable) COST_UNAVAILABLE=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage; exit 2 ;;
     esac
@@ -127,20 +129,24 @@ else
     claude_args=(--claude-tokens "$CLAUDE_TOKENS")
 fi
 
-cost_lines=""
-if [ -x "$TOKEN_COST_SH" ]; then
-    cost_lines=$("$TOKEN_COST_SH" \
-        "${claude_args[@]}" \
-        "${codex_args[@]}" \
-        "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
+if [ "$COST_UNAVAILABLE" = true ]; then
+    cost_lines=""
 else
-    cost_lines=$("$PLUGIN_ROOT/scripts/token-cost.sh" \
-        "${claude_args[@]}" \
-        "${codex_args[@]}" \
-        "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
-fi
-if [ -s "$cost_errf" ]; then
-    cat "$cost_errf" >&2
+    cost_lines=""
+    if [ -x "$TOKEN_COST_SH" ]; then
+        cost_lines=$("$TOKEN_COST_SH" \
+            "${claude_args[@]}" \
+            "${codex_args[@]}" \
+            "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
+    else
+        cost_lines=$("$PLUGIN_ROOT/scripts/token-cost.sh" \
+            "${claude_args[@]}" \
+            "${codex_args[@]}" \
+            "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
+    fi
+    if [ -s "$cost_errf" ]; then
+        cat "$cost_errf" >&2
+    fi
 fi
 
 read_cost() {
@@ -149,11 +155,19 @@ read_cost() {
     [ -n "$v" ] && printf '%s\n' "$v" || printf 'N/A\n'
 }
 
-tc=$(read_cost TOTAL_COST)
-cc=$(read_cost CLAUDE_COST)
-dc=$(read_cost CODEX_COST)
-uc=$(read_cost CURSOR_COST)
-tt=$(read_cost TOTAL_TOKENS)
+if [ "$COST_UNAVAILABLE" = true ]; then
+    tc=N/A
+    cc=N/A
+    dc=N/A
+    uc=N/A
+    tt=N/A
+else
+    tc=$(read_cost TOTAL_COST)
+    cc=$(read_cost CLAUDE_COST)
+    dc=$(read_cost CODEX_COST)
+    uc=$(read_cost CURSOR_COST)
+    tt=$(read_cost TOTAL_TOKENS)
+fi
 
 cost_bullet() {
     case "$tc" in N/A|"") printf 'N/A'; return ;; esac
