@@ -1,0 +1,150 @@
+Propose a high-level implementation approach for this feature:
+
+[DESIGNING] [BUG] review aggregator: Cursor narration-only output breaks aggregate-findings waterfall (follow-up to #2865)
+
+## Context
+
+Follow-up to #2865 ("Cursor --mode plan narration-only outputs bypass waterfall fallback"). Issue #2865 explicitly deferred the review aggregator to a follow-up: _"Plan-review collector pattern adoption (similar — pin to a follow-up if the failure mode shows up there)."_
+
+This issue was observed during `/implement` run `96AD92B5-31FE-4B0B-B56D-39A87134423D` (branch `sergey-zhupanov/implementing-oos-breadcrumb-publish-pipe-2848`, implementing #2848) while running `run-step5-review.sh --mode loop`.
+
+---
+
+## Symptoms
+
+**Round 1 (`$IMPLEMENT_TMPDIR/round-1/`):**
+- 6 Cursor specialists produced 25 raw findings
+- `aggregate-findings.sh` invoked `dispatch-with-waterfall.sh` with `slot_tool=cursor` (cursor outer phase, idx=0)
+- Cursor ran and produced **1 line of narration**: `"Merging duplicate reviewer findings by behavioral risk, then producing the structured aggregator output."`
+- JSON metadata: `outputTokens=6086` — full response generated internally but only the planning narration surfaced in `.result`
+- Validation: `AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input` (25 raw findings, 0 FINDING blocks merged, no `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`)
+- Outer fallback to Codex (idx=1) **did not run** — no `aggregator-output-codex.txt` created; `aggregator-dispatch.env` unchanged from cursor phase
+- `review-core-aggregate.env`: `AGGREGATED=false REASON=validation-failed`
+- `STEP5_REVIEW_STATUS=complete FINAL_REVIEW_AND_FIX_STATUS=no-changes` — coder was never dispatched
+
+**Round 2 (`$IMPLEMENT_TMPDIR/round-2/`):**
+- Same 6 Cursor specialists on the post-MAV-apply tree, 20 raw findings
+- Cursor outer phase produced **0 bytes** (aggregator-output.txt empty, no .json file)
+- Outer fallback to Codex DID trigger — `aggregator-output-codex.txt` (9241 bytes, 18 valid `### FINDING_N:` blocks) was created
+- `aggregator-dispatch.env`: `PHASE1_SLOTS=aggregator-output-codex.txt ALL_OUTPUT_TOOLS=codex DISPATCH_OK=true`
+- Codex aggregation succeeded; voters ran normally; round completed with findings voted on
+
+---
+
+## Root Cause
+
+Same as #2865. `aggregate-findings.sh` invokes the aggregator via:
+
+```
+cursor agent -p --trust --mode plan --output-format json --model composer-2.5
+```
+
+(via `scripts/launch-review.sh`). In Cursor's `--mode plan`, the model generates internal planning steps (hence 6086 output tokens in round 1) but the `.result` field in the JSON response contains only the planning narration, not the structured `### FINDING_N:` blocks the aggregator needs to produce.
+
+**Outer-fallback inconsistency (round 1 vs round 2):** In round 1, the Codex outer-phase fallback did not trigger despite `MERGE_PIPELINE_RC=1` (which should `continue` to the next outer phase per the code at `aggregate-findings.sh:795`). In round 2, the fallback fired correctly. The cause of this inconsistency is not yet determined — possible candidates include subtle bash `set -e` interaction, env-var state, or a timing/ordering edge in the loop. Both cases expose the primary issue: Cursor is an unreliable primary tool for text-generation aggregation tasks in `--mode plan`.
+
+---
+
+## Affected surface
+
+`skills/review/scripts/aggregate-findings.sh` — the review-pipeline aggregator that merges raw per-reviewer findings before voting. Called by `skills/review/scripts/review-core.sh` at line ~506:
+
+```bash
+"$AGGREGATE_FINDINGS_SH" "${aggregate_args[@]}" > "$aggregate_out"
+```
+
+The outer waterfall in `aggregate-findings.sh` is: `cursor → codex → claude`, with cursor hardcoded as the primary tool (lines ~637):
+```bash
+if [[ "$CURSOR_PRESENT" == "true" ]]; then
+    outer_names+=(cursor)
+    ...
+fi
+```
+
+---
+
+## Proposed Fix
+
+Mirrors the approach in #2865 for `decompose-aggregator.sh`:
+
+**Fix 1 (primary, 1-line change):** Switch the primary outer phase in `aggregate-findings.sh` from `cursor` to `codex`. The existing waterfall already places cursor first only because `$CURSOR_PRESENT` check precedes `$CODEX_PRESENT`. Swap the insertion order so codex is primary when available. Estimated diff: ~2 lines in `aggregate-findings.sh` + note in `aggregate-findings.md`.
+
+**Fix 2 (defense-in-depth, after #2865 lands):** Adopt the `--require-result-pattern` flag from `dispatch-with-waterfall.sh` (to be added by #2865) in `aggregate-findings.sh`'s dispatch call, passing `'^[[:space:]]*### FINDING_[0-9]'` as the pattern. This ensures even if Cursor is primary, a narration-only output is treated as a dispatch failure and falls through to the inner Codex/Claude waterfall — eliminating the need for the outer-phase loop at all.
+
+**Fix 3 (robustness, independent):** Investigate and fix the round-1 inconsistency where `MERGE_PIPELINE_RC=1` failed to trigger the outer `continue` to the Codex phase. Add a regression test to `scripts/test-aggregate-findings.sh` (or a new sibling) that asserts the outer Codex fallback fires when Cursor validation returns `empty_merge_from_nonempty_input`.
+
+---
+
+## Evidence artifacts
+
+From run `96AD92B5-31FE-4B0B-B56D-39A87134423D`:
+
+| Round | Tool | Output bytes | Tokens | Validation | Codex fallback | Outcome |
+|-------|------|-------------|--------|-----------|----------------|---------|
+| 1 | cursor | 106 (1 line) | 6086 | `empty_merge_from_nonempty_input` | ❌ did not fire | `no-changes` |
+| 2 | cursor | 0 | — | dispatch empty | ✅ fired, Codex: 9241 bytes / 18 findings | voters ran normally |
+
+**Round 1 Cursor JSON (`.json` sidecar):**
+```json
+{"type":"result","subtype":"success","is_error":false,"duration_ms":48506,
+ "result":"Merging duplicate reviewer findings by behavioral risk, then producing the structured aggregator output.\n",
+ "usage":{"inputTokens":16317,"outputTokens":6086,...}}
+```
+
+**Round 1 validation error (`aggregator-validate.stderr`):**
+```
+zero merged FINDING blocks while input had findings; output must include a line whose trimmed text equals 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED'
+```
+
+---
+
+## Acceptance
+
+- [ ] `aggregate-findings.sh` uses Codex (not Cursor) as the primary outer-phase aggregator when Codex is available.
+- [ ] When Codex is unavailable, fallback order is Cursor → Claude (existing).
+- [ ] `aggregate-findings.md` documents the outer-phase order change.
+- [ ] Regression test asserts that a narration-only Cursor output triggers the Codex outer fallback (not just inner-waterfall fallback).
+- [ ] After #2865 lands: `--require-result-pattern '^[[:space:]]*### FINDING_[0-9]'` is threaded through `aggregate-findings.sh`'s dispatch call as a defense-in-depth guard.
+- [ ] `make lint` passes on the converted tree.
+
+
+## Round 1 scope boundaries (locked-in decisions)
+
+The user has already settled the following constraints in design discussion Round 1. Your sketch MUST respect these:
+
+1. **Scope**: All three fixes (Fix 1 swap, Fix 2 pattern gate, Fix 3 regression test) are in scope.
+2. **Architecture (locked)**: Collapse `skills/review/scripts/aggregate-findings.sh` to a SINGLE slot like `skills/design/scripts/decompose-aggregator.sh` (post-PR #2895). Use `dispatch-with-waterfall.sh`'s internal phase-1/phase-2/phase-3 fallback (NOT an outer `cursor → codex → claude` loop). Primary tool = Codex. Required-result-pattern: `'^[[:space:]]*### FINDING_[0-9]'`.
+3. **Backward compat (hard constraint)**: `REASON=validation-exhausted` MUST remain reachable — `skills/review/scripts/review-core.sh:514` branches on it and downstream consumers (`review-and-fix.sh`, `review-implement-step5-loop.sh`, `test-review-core.sh`) depend on its `REVIEW_CORE_STATUS=aggregator-validation-exhausted` semantics. After collapse, this state should map to: dispatch returned OK + pattern-matched, but the post-dispatch python validator (aggregate-validate.py) still failed (narrow-trigger or other validation-failure), with no further retry possible at this layer.
+4. **Test harness**: Extend the EXISTING sibling `skills/review/scripts/test-aggregate-findings.sh` (49KB). Rewrite/delete the ~10 cases using `LARCH_AGGREGATE_MAX_OUTER_PHASES=1` since that env var becomes meaningless after the collapse.
+5. **Fix 3 reframed**: Drop archaeological investigation of the historical round-1 inconsistency. Add a regression test that asserts: when Cursor is primary and produces narration-only output, the dispatcher's internal phase-2 Codex fallback fires (via `--require-result-pattern`), and the final aggregated output contains valid `### FINDING_N:` blocks from Codex.
+6. **Acceptance reconciliation**: The composed plan's Acceptance section will rewrite the issue's original acceptance criteria (which referenced the now-removed outer loop) to match the collapse design.
+7. **Non-goal**: Do NOT thread `--require-result-pattern` into any OTHER aggregator/caller in this PR. Restrict to `aggregate-findings.sh`.
+8. **Adjacent surface in scope**: `aggregate-findings.sh`, `aggregate-findings.md`, `test-aggregate-findings.sh`, `CHANGELOG.md`, `SECURITY.md` (line ~81 has prose describing the outer waterfall that must be updated). `review-core.sh` / `review-core.md` only if removing dead code is warranted.
+
+## Reference: how #2895 did the same collapse for decompose-aggregator.sh
+
+```
+WATERFALL_SH="${DECOMPOSE_AGGREGATE_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
+...
+"$WATERFALL_SH" \
+  --slots-file "$slots_file" \
+  --codex-present "$CODEX_PRESENT" \
+  --cursor-present "$CURSOR_PRESENT" \
+  --mode "$MODE" \
+  --require-result-pattern '^[[:space:]]*## Recommendation' \
+  ...
+```
+
+## Sketch task
+
+Explore the codebase. Write 2-3 paragraphs covering:
+(1) Key architectural decisions for the collapse — specifically, what happens to:
+    - the outer-phase loop and its state (`outer_names`, `outer_out_paths`, `PHASES_ATTEMPTED_CSV`, `merge_succeeded`),
+    - the python `_agg_pipeline_for_candidate` function (does it stay? move? get inlined?),
+    - the validation states (`MERGE_PIPELINE_RC` 0/1/2 → which REASON values they now produce),
+    - the env var `LARCH_AGGREGATE_MAX_OUTER_PHASES` (delete or honor as no-op?),
+    - the stdout key `PHASES_ATTEMPTED=<csv>` (still emit? omit? always emit empty?).
+(2) Which files/modules to modify and why — list the concrete changes in `aggregate-findings.sh`, `aggregate-findings.md`, `test-aggregate-findings.sh`, `CHANGELOG.md`, `SECURITY.md`.
+(3) Main tradeoffs and risks — including: (a) loss of narrow-trigger retry semantics across tools (the old design retried with the NEXT tool on `empty_merge_from_nonempty_input`; the new design does not — pattern gate catches structural failures but semantic empty merges become single-shot); (b) ~10 test cases need rewriting; (c) `REVIEW_CORE_STATUS=aggregator-validation-exhausted` consumers must still see the REASON value.
+
+Do NOT modify files. Output the sketch only.

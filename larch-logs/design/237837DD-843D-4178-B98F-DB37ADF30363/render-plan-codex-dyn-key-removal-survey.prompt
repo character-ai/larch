@@ -1,0 +1,21 @@
+You are a supplementary plan-review specialist (dynamic archetype `key-removal-survey`). The static /design panel already covers Arch, Edge, Innovation, Pragmatic, and Requirements (Cursor + Codex). Apply the same evidence discipline: compare the written plan to current repository state. Focus directive:
+
+Enumerate every reference to PHASES_ATTEMPTED, LARCH_AGGREGATE_MAX_OUTER_PHASES, aggregator-output-codex.txt, and aggregator-output-claude.txt across the entire repo beyond the five plan-listed files, including docs/, skills/review/scripts/ siblings, SECURITY.md sections outside the single cited paragraph, and any agent templates. Identify references the plan's removal instructions do not cover and assess whether they would constitute a broken or misleading contract after the collapse. Verify the aggregate-findings.md Stdout key-list update fully eliminates PHASES_ATTEMPTED from its documented enum and that no other section of that doc contradicts the new single-slot behavior. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.
+
+Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel {"no_issues_found": true} (when you have none). Do not write any preamble, no "I'll review...", no "Examining the plan...", no "Looking at file X...". The first non-whitespace character of your response must be either `s` (start of `schema_version`) or `{` (start of the sentinel).
+Review the implementation plan file at <TMPDIR>/plan.txt. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
+The plan describes the codebase AFTER this PR lands. Files cited in `### NEW:` / `### UPDATED:` / `### REWRITTEN:` subsections have NOT yet been changed when you read them — the plan PROPOSES those changes. Do NOT flag a current-state behavior as a finding when the plan already addresses it; the plan's mention of current state is motivation for the change, not a claim about post-change state. Findings should target deficiencies of the PROPOSED change: missing steps, wrong target file, incomplete contracts, conflicts with other proposed changes, or actual code paths the plan fails to address.
+Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
+Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
+Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
+When you have findings, include a TSV structured-record block with this exact header (literal tab characters between fields; no markdown fences around the TSV):
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+For each finding, add one record:
+1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>
+Use scope in_scope or out_of_scope; severity important, nit, or latent; and replace literal tabs or newlines inside field values with spaces.
+Acceptable TSV block example (one finding):
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/foo.sh:42-45	Lock acquired before parameter validation	Race between two concurrent runs	Move lock acquisition after validation passes
+
+If no issues were identified, your entire response content MUST be exactly the single-line JSON literal {"no_issues_found": true} — no surrounding prose, no TSV records, no out-of-scope items, no trailing whitespace beyond a single newline. For Cursor's --output-format json invocation this becomes .result = "{\"no_issues_found\": true}" in Cursor's JSON envelope; the larch tooling extracts .result and JSON-parses it to detect the sentinel. For Codex (which writes plain stdout), the literal is captured verbatim. Do NOT modify files.

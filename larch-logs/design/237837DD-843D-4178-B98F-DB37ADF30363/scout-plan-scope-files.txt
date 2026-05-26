@@ -1,0 +1,5 @@
+skills/review/scripts/aggregate-findings.sh
+skills/review/scripts/aggregate-findings.md
+skills/review/scripts/test-aggregate-findings.sh
+CHANGELOG.md
+SECURITY.md
