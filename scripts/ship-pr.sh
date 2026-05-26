@@ -2617,6 +2617,7 @@ run_ci_phase() {
 $(ci_common_args)
 EOF
     fail_file=$(failure_capture_path "$phase")
+    unset LARCH_PAIRED_PID_FILE
     with_transient_retry transient_envelope_predicate_ci_wait "$fail_file" "$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}"
     rc=$_WTR_RC
     out=$_WTR_OUT
@@ -2832,6 +2833,7 @@ run_postmerge_phase() {
 main() {
     larch_quiet_init
     larch_quiet_append_done_trap
+    larch_quiet_write_paired_pid_file
     while [ $# -gt 0 ]; do
         case "$1" in
             --state-file) [ $# -ge 2 ] || die_usage "--state-file requires a value"; STATE_FILE=$2; shift 2 ;;

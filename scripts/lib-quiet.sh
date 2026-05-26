@@ -10,6 +10,7 @@ if [ "${LARCH_LIB_QUIET_LOADED:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
 LARCH_LIB_QUIET_LOADED=1
+LARCH_LIB_QUIET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
 larch_quiet_truthy() {
     case "${1:-}" in
@@ -202,6 +203,70 @@ larch_quiet_append_done_trap() {
         unset LARCH_QUIET_PREV_EXIT_TRAP
     fi
     trap 'larch_quiet__exit_combo' EXIT
+}
+
+larch_quiet_source_larch_log_lib() {
+    if declare -F larch_log_breadcrumbs_under_session_tmp >/dev/null 2>&1; then
+        return 0
+    fi
+    # shellcheck source=scripts/lib-larch-log.sh
+    # shellcheck disable=SC1091
+    source "$LARCH_LIB_QUIET_DIR/lib-larch-log.sh" >/dev/null 2>&1 || return 1
+}
+
+larch_quiet_warn_paired_pid_invalid() {
+    larch_err "WARN paired-pid-file-invalid"
+    return 0
+}
+
+larch_quiet_write_paired_pid_file() {
+    local _path="${LARCH_PAIRED_PID_FILE:-}" _parent _tmp=""
+    if [ -z "$_path" ]; then
+        return 0
+    fi
+    case "$_path" in
+        /*) ;;
+        *) larch_quiet_warn_paired_pid_invalid; return 0 ;;
+    esac
+    case "$_path" in
+        ../*|*/../*|*/..|..|*..*) larch_quiet_warn_paired_pid_invalid; return 0 ;;
+    esac
+    if [ -L "$_path" ]; then
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    fi
+    if [ -e "$_path" ] && [ ! -f "$_path" ]; then
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    fi
+    _parent="$(dirname "$_path")"
+    if [ ! -d "$_parent" ] || [ ! -w "$_parent" ] || [ -L "$_parent" ]; then
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    fi
+    if ! larch_quiet_source_larch_log_lib; then
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    fi
+    if ! ( LARCH_LOG_ROOT="${LARCH_LOG_ROOT:-/.__larch_no_log_root__/larch-logs}" larch_log_breadcrumbs_under_session_tmp "$_path" >/dev/null 2>&1 ); then
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    fi
+    _tmp="$(mktemp "${_path}.tmp.XXXXXX" 2>/dev/null)" || {
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    }
+    if ! printf '%s\n' "$$" >"$_tmp" 2>/dev/null; then
+        rm -f "$_tmp" 2>/dev/null || true
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    fi
+    if ! mv -f "$_tmp" "$_path" 2>/dev/null; then
+        rm -f "$_tmp" 2>/dev/null || true
+        larch_quiet_warn_paired_pid_invalid
+        return 0
+    fi
+    return 0
 }
 
 # emit_breadcrumb [--category=NAME] TEXT

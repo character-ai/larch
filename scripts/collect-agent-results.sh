@@ -183,6 +183,7 @@ fi
 
 larch_quiet_init
 larch_quiet_append_done_trap
+larch_quiet_write_paired_pid_file
 
 TIMEOUT=""
 SUBSTANTIVE_VALIDATION="false"

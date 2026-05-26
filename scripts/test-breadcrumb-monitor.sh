@@ -32,6 +32,23 @@ fail() {
     FAIL=$((FAIL + 1))
 }
 
+pid_alive() {
+    kill -0 "$1" 2>/dev/null
+}
+
+assert_pid_gone() {
+    local pid="$1" label="$2" poll_count=0
+    while (( poll_count < 5 )); do
+        poll_count=$((poll_count + 1))
+        if ! pid_alive "$pid"; then
+            return 0
+        fi
+        sleep 1
+    done
+    fail "$label: pid $pid is still alive"
+    return 1
+}
+
 alloc_sentinels() {
     local prefix="$1"
     STREAM="$(mktemp "$IMPLEMENT_TMPDIR/${prefix}.stream.XXXXXX")"
@@ -590,6 +607,159 @@ fi
 if printf '%s' "$out" | grep -q "not-a-breadcrumb secret"; then
     fail "test 18: non-breadcrumb line leaked"
 fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 19: timeout with paired PID sends TERM and exits 4.
+# ---------------------------------------------------------------------------
+alloc_sentinels t19
+PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t19.paired.XXXXXX")"
+sleep 30 &
+TARGET_PID=$!
+printf '%s\n' "$TARGET_PID" >"$PAIRED_PID"
+set +e
+out=$(LARCH_BM_TEST_TIMEOUT_SECONDS=1 "$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --paired-pid-file "$PAIRED_PID" 2>&1)
+ec=$?
+set -e
+assert_pid_gone "$TARGET_PID" "test 19"
+wait "$TARGET_PID" 2>/dev/null || true
+if [ "$ec" -ne 4 ]; then
+    fail "test 19: timeout should exit 4, got $ec (out=$out)"
+fi
+if printf '%s' "$out" | grep -q "WARN paired-pid-file-missing"; then
+    fail "test 19: valid paired pid should not warn (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 20: TERM-ignoring child is KILLed after the grace window.
+# ---------------------------------------------------------------------------
+alloc_sentinels t20
+PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t20.paired.XXXXXX")"
+bash -c 'trap "" TERM; while sleep 1; do :; done' &
+TARGET_PID=$!
+printf '%s\n' "$TARGET_PID" >"$PAIRED_PID"
+ts1=$(date +%s)
+set +e
+out=$(LARCH_BM_TEST_TIMEOUT_SECONDS=1 "$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --paired-pid-file "$PAIRED_PID" 2>&1)
+ec=$?
+set -e
+ts2=$(date +%s)
+assert_pid_gone "$TARGET_PID" "test 20"
+wait "$TARGET_PID" 2>/dev/null || true
+if [ "$ec" -ne 4 ]; then
+    fail "test 20: timeout should exit 4, got $ec (out=$out)"
+fi
+elapsed=$((ts2 - ts1))
+if [ "$elapsed" -lt 5 ]; then
+    fail "test 20: TERM-ignoring child exited before KILL grace elapsed (${elapsed}s)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Tests 21-25: missing and malformed paired PID files warn but still exit 4.
+# ---------------------------------------------------------------------------
+for malformed_case in missing empty alpha multiline crlf; do
+    alloc_sentinels "t21-${malformed_case}"
+    PAIRED_PID="$IMPLEMENT_TMPDIR/t21-${malformed_case}.paired"
+    case "$malformed_case" in
+        missing) rm -f "$PAIRED_PID" ;;
+        empty) : >"$PAIRED_PID" ;;
+        alpha) printf 'not-a-number\n' >"$PAIRED_PID" ;;
+        multiline) printf '12345\nstuff\npadding-padding-padding\n' >"$PAIRED_PID" ;;
+        crlf) printf '12345\r\n' >"$PAIRED_PID" ;;
+    esac
+    set +e
+    out=$(LARCH_BM_TEST_TIMEOUT_SECONDS=1 "$MON" \
+        --stream "$STREAM" \
+        --done-sentinel "$DONE" \
+        --status-file "$STATUS" \
+        --quiet-log "$QUIET" \
+        --surfaced-sentinel "$SURFACED" \
+        --paired-pid-file "$PAIRED_PID" 2>&1)
+    ec=$?
+    set -e
+    if [ "$ec" -ne 4 ]; then
+        fail "test 21-${malformed_case}: timeout should exit 4, got $ec (out=$out)"
+    fi
+    if ! printf '%s' "$out" | grep -q "WARN paired-pid-file-missing"; then
+        fail "test 21-${malformed_case}: malformed pid warning missing (out=$out)"
+    fi
+    unset ec
+done
+
+# ---------------------------------------------------------------------------
+# Test 26: stale syntactically valid PID does not abort or warn.
+# ---------------------------------------------------------------------------
+alloc_sentinels t26
+PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t26.paired.XXXXXX")"
+sleep 0.1 &
+TARGET_PID=$!
+wait "$TARGET_PID" 2>/dev/null || true
+printf '%s\n' "$TARGET_PID" >"$PAIRED_PID"
+set +e
+out=$(LARCH_BM_TEST_TIMEOUT_SECONDS=1 "$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --paired-pid-file "$PAIRED_PID" 2>&1)
+ec=$?
+set -e
+if [ "$ec" -ne 4 ]; then
+    fail "test 26: stale pid timeout should exit 4, got $ec (out=$out)"
+fi
+if printf '%s' "$out" | grep -q "WARN paired-pid-file-missing"; then
+    fail "test 26: stale but valid pid should not warn (out=$out)"
+fi
+unset ec
+
+# ---------------------------------------------------------------------------
+# Test 27: nested overwrite regression documents last-writer PID semantics.
+# ---------------------------------------------------------------------------
+alloc_sentinels t27
+PAIRED_PID="$(mktemp "$IMPLEMENT_TMPDIR/t27.paired.XXXXXX")"
+sleep 30 &
+PARENT_PID=$!
+printf '%s\n' "$PARENT_PID" >"$PAIRED_PID"
+sleep 1 &
+CHILD_PID=$!
+printf '%s\n' "$CHILD_PID" >"$PAIRED_PID"
+wait "$CHILD_PID" 2>/dev/null || true
+set +e
+out=$(LARCH_BM_TEST_TIMEOUT_SECONDS=1 "$MON" \
+    --stream "$STREAM" \
+    --done-sentinel "$DONE" \
+    --status-file "$STATUS" \
+    --quiet-log "$QUIET" \
+    --surfaced-sentinel "$SURFACED" \
+    --paired-pid-file "$PAIRED_PID" 2>&1)
+ec=$?
+set -e
+if [ "$ec" -ne 4 ]; then
+    fail "test 27: nested overwrite timeout should exit 4, got $ec (out=$out)"
+fi
+if printf '%s' "$out" | grep -q "WARN paired-pid-file-missing"; then
+    fail "test 27: stale overwritten pid should not warn (out=$out)"
+fi
+if ! pid_alive "$PARENT_PID"; then
+    fail "test 27: parent pid was signaled despite pid file containing child pid"
+fi
+kill "$PARENT_PID" 2>/dev/null || true
+wait "$PARENT_PID" 2>/dev/null || true
 unset ec
 
 # ---------------------------------------------------------------------------

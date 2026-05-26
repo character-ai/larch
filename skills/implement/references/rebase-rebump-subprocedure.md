@@ -183,6 +183,11 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
 
    **`ci-wait.sh` MUST be invoked synchronously** at every re-invocation site above (no `run_in_background: true`). Use `timeout: 1860000` on the Bash tool call to allow up to 31 minutes of blocking; do NOT background it. Backgrounding `ci-wait.sh` disconnects the orchestrator from its return code and creates a leaked-polling-loop risk if a later session-exit attempt force-kills the shell mid-poll (closes #842). See `${CLAUDE_PLUGIN_ROOT}/scripts/ci-wait.md` and `skills/implement/SKILL.md` Step 10 / Step 12a for the canonical wording.
 
+   `ci-wait.sh` is intentionally excluded from the `LARCH_PAIRED_PID_FILE`
+   writer list for the same reason: it is a nested synchronous child under
+   `ship-pr.sh`, not the top-level background process paired with
+   `breadcrumb-monitor.sh`. `ship-pr.sh` unsets the env var before invoking it.
+
 ## Phase 4 caller path (`rebase_already_done=true`)
 
 This section applies when **`conflict-resolution.md` Phase 4** dispatches here after a successful `--continue`. **Skip steps 1–2 entirely.** Still run steps 3 (fast-forward local main), 4 (re-bump), 5 (push, when applicable), 6 (`version-bump-reasoning` log refresh), 7 (return to caller). **Push vs local-only before step 3** depends on `caller_kind` (do not read "completed locally" as universal — see subsections): `step12_phase4` follows a Phase 4 path that **already pushed** the rebased branch; `step8b_rebase` follows a Phase 4 path that completed the rebase **locally only** with no push in Phase 4. The exact semantics below depend on `caller_kind`.

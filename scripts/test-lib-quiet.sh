@@ -194,4 +194,79 @@ if grep -Eq 'text=A{20,}' "$SCRATCH/breadcrumb-truncated.ndjson"; then
     fail "truncated breadcrumb should not keep a secret prefix"
 fi
 
+# 19. Paired PID writer is a no-op when env var is unset.
+helper="$SCRATCH/paired-pid-unset.sh"
+write_helper "$helper" 'unset LARCH_PAIRED_PID_FILE; larch_quiet_write_paired_pid_file; printf "ok\n"'
+out=$("$helper")
+assert_eq "$out" "ok" "paired pid unset no-op"
+
+# 20. Paired PID writer atomically writes the caller PID and leaves no tmp files.
+helper="$SCRATCH/paired-pid-write.sh"
+session_tmp="$SCRATCH/session"
+mkdir -p "$session_tmp/breadcrumbs"
+write_helper "$helper" 'IMPLEMENT_TMPDIR=$1; LARCH_PAIRED_PID_FILE=$2; export IMPLEMENT_TMPDIR LARCH_PAIRED_PID_FILE; printf "PID=%s\n" "$$"; larch_quiet_write_paired_pid_file'
+pid_path="$session_tmp/breadcrumbs/paired.pid"
+out=$("$helper" "$session_tmp" "$pid_path")
+written_pid=${out#PID=}
+assert_eq "$(cat "$pid_path")" "$written_pid" "paired pid file content"
+if find "$session_tmp/breadcrumbs" -name 'paired.pid.tmp.*' -print -quit | grep -q .; then
+    fail "paired pid writer left tmp files"
+fi
+
+# 21. Invalid or unwritable paths fail open with warnings.
+helper="$SCRATCH/paired-pid-invalid.sh"
+write_helper "$helper" 'IMPLEMENT_TMPDIR=$1; LARCH_PAIRED_PID_FILE=$2; export IMPLEMENT_TMPDIR LARCH_PAIRED_PID_FILE; larch_quiet_write_paired_pid_file; printf "after\n"'
+bad_parent="$session_tmp/unwritable"
+mkdir -p "$bad_parent"
+chmod 500 "$bad_parent"
+"$helper" "$session_tmp" "$bad_parent/paired.pid" >"$SCRATCH/paired-unwritable.out" 2>"$SCRATCH/paired-unwritable.err"
+chmod 700 "$bad_parent"
+assert_eq "$(cat "$SCRATCH/paired-unwritable.out")" "after" "paired pid unwritable fail-open stdout"
+assert_file_contains "$SCRATCH/paired-unwritable.err" "WARN paired-pid-file-invalid" "paired pid unwritable warning"
+
+outside_path="$SCRATCH/outside.pid"
+"$helper" "$session_tmp" "$outside_path" >"$SCRATCH/paired-outside.out" 2>"$SCRATCH/paired-outside.err"
+assert_eq "$(cat "$SCRATCH/paired-outside.out")" "after" "paired pid outside fail-open stdout"
+assert_file_contains "$SCRATCH/paired-outside.err" "WARN paired-pid-file-invalid" "paired pid outside warning"
+if [[ -e "$outside_path" ]]; then
+    fail "paired pid outside path should not be written"
+fi
+
+symlink_path="$session_tmp/breadcrumbs/symlink.pid"
+ln -s "$session_tmp/breadcrumbs/target.pid" "$symlink_path"
+"$helper" "$session_tmp" "$symlink_path" >"$SCRATCH/paired-symlink.out" 2>"$SCRATCH/paired-symlink.err"
+assert_file_contains "$SCRATCH/paired-symlink.err" "WARN paired-pid-file-invalid" "paired pid symlink warning"
+
+dotdot_path="$session_tmp/breadcrumbs/../paired.pid"
+"$helper" "$session_tmp" "$dotdot_path" >"$SCRATCH/paired-dotdot.out" 2>"$SCRATCH/paired-dotdot.err"
+assert_file_contains "$SCRATCH/paired-dotdot.err" "WARN paired-pid-file-invalid" "paired pid dotdot warning"
+
+relative_path="relative.pid"
+"$helper" "$session_tmp" "$relative_path" >"$SCRATCH/paired-relative.out" 2>"$SCRATCH/paired-relative.err"
+assert_file_contains "$SCRATCH/paired-relative.err" "WARN paired-pid-file-invalid" "paired pid relative warning"
+
+# 22. Concurrent writers publish one complete PID line and clean tmp files.
+helper="$SCRATCH/paired-pid-race.sh"
+write_helper "$helper" 'IMPLEMENT_TMPDIR=$1; LARCH_PAIRED_PID_FILE=$2; export IMPLEMENT_TMPDIR LARCH_PAIRED_PID_FILE; printf "PID=%s\n" "$$"; larch_quiet_write_paired_pid_file'
+race_path="$session_tmp/breadcrumbs/race.pid"
+out1="$SCRATCH/race1.out"
+out2="$SCRATCH/race2.out"
+"$helper" "$session_tmp" "$race_path" >"$out1" 2>"$SCRATCH/race1.err" &
+race_pid1=$!
+"$helper" "$session_tmp" "$race_path" >"$out2" 2>"$SCRATCH/race2.err" &
+race_pid2=$!
+wait "$race_pid1"
+wait "$race_pid2"
+race_written="$(cat "$race_path")"
+race_expected_1="$(cat "$out1")"
+race_expected_1="${race_expected_1#PID=}"
+race_expected_2="$(cat "$out2")"
+race_expected_2="${race_expected_2#PID=}"
+if [[ "$race_written" != "$race_expected_1" && "$race_written" != "$race_expected_2" ]]; then
+    fail "paired pid race wrote unexpected content: $race_written"
+fi
+if find "$session_tmp/breadcrumbs" -name 'race.pid.tmp.*' -print -quit | grep -q .; then
+    fail "paired pid race left tmp files"
+fi
+
 printf 'PASS: test-lib-quiet.sh\n'

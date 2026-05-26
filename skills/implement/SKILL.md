@@ -63,7 +63,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 15. **NEVER end the turn after `/bump-version`'s Skill tool return inside the Rebase + Re-bump Sub-procedure.** **Why**: `/bump-version` is invoked as a direct Skill call from the Rebase + Re-bump Sub-procedure step 4 for any active `caller_kind` whose `HAS_BUMP=true` branch reaches the Skill invocation — currently `step8_apply_bump_same_version` and `step8b_rebase` (the step8 family, after `ship-pr.sh` exit 5 **only when** `CALLER_KIND` is `step8b_rebase` or `step8_apply_bump_same_version` — **not** `ship_pr_pre_push`, whose exit **5** follows `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` only and never enters this sub-procedure Skill path) and `step12_phase4` (the post-conflict re-bump path). NEVER #11 carves out the Step 8 main path (where `ship-pr.sh` handles the bump internally without invoking the Skill); NEVER #15 covers the orthogonal sub-procedure direct-Skill path. The Skill returns `APPLIED=true COMMIT_SHA=<sha>` — those values are step 4 inputs, NOT a run-completion signal; the sub-procedure still has post-verification (`check-bump-version.sh --mode post`, Block β STATUS-first matrix, sentinel-file check, and the rest of steps 4a-7) to execute. The exact symptom this rule targets (issue #2338) is a turn that ends immediately after the Skill returns `APPLIED=true COMMIT_SHA=<sha>` instead of invoking `check-bump-version.sh --mode post --before-count <COMMITS_BEFORE-value>` as the next Bash tool call. Ending the turn here leaves the post-verification gate unrun and the run stalled until the user manually prompts continuation; the Stop hook (`hook-stop-fail-close.sh` `.bump-version-armed` block) backstops only session-termination events, not turn-boundary halts. The PostToolUse hook `skills/implement/scripts/hook-post-bump-version.sh` injects a continuation directive into the next turn's context as a mechanical backstop, but the orchestrator's `check-bump-version.sh --mode post` Bash call remains the load-bearing next action. **How to apply**: immediately after the `/bump-version` Skill tool returns, the FIRST and ONLY permitted next orchestrator action is `check-bump-version.sh --mode post --before-count <COMMITS_BEFORE-value-from-pre-check-stdout>` as a Bash tool call (substitute the numeric value parsed from the earlier pre-check stdout for `<COMMITS_BEFORE-value...>` — do NOT pass the literal string `$COMMITS_BEFORE`) — do NOT echo `APPLIED=true, COMMIT_SHA=...` as a comma-separated list, do NOT write a recap or status line, do NOT end the turn. See `skills/implement/references/rebase-rebump-subprocedure.md` step 4 "Continue after child returns" anti-halt reminder.
 
-16. **NEVER invoke a Family B denylisted script without the background+monitor pair.** **Why**: the nine linted entrypoints (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, `review-and-fix.sh`, `run-step2-dispatch.sh`, `step2-implement.sh`, `collect-agent-results.sh`, `dispatch-with-waterfall.sh`, `dispatch-plan-voters.sh`) must launch with Bash `run_in_background: true` **and** a foreground `${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh` call in the same message so breadcrumbs stream live and completion is coupled before the orchestrator continues. Backgrounding without the monitor loses visibility and defers completion to an async task notification that may arrive after the model has already ended the turn — the failure mode behind issue **#2454**. **How to apply**: before each denylisted launch, export the five `LARCH_*` breadcrumb paths under the skill tmpdir, set `run_in_background: true` on the long-script Bash tool call, then invoke `breadcrumb-monitor.sh --stream … --done-sentinel … --status-file … --quiet-log … --surfaced-sentinel …` in the same fenced block (see `BASH_AUTHORING.md` §4). The call may take a long time (multi-step CI and merge loops); configure a sufficiently large Bash timeout when supported (see `skills/implement/references/rebase-rebump-subprocedure.md` for long-blocking `ci-wait.sh` guidance, including a 31-minute reference). If a timeout or unexpected turn end occurs anyway, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` for persisted `PHASE` / resume semantics, then re-invoke the same background+monitor `Invoke:` block **without** `--resume-phase` so the persisted `PHASE` main loop resumes — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. Pass `--resume-phase` only with tokens `ship-pr.sh` accepts (`force-push-gate`, `bump`, `pr-create`, `ci-initial`, `ci-merge`, `evaluate-failure`, `postmerge`) — for example the explicit exit-code paths below or `RESUME_PHASE` from Exit 5 — never as `--resume-phase $PHASE` when `PHASE` is a main-loop value such as `checks` or `pr-prep`. See the inline warning block immediately before the Step 8+ `Invoke:` block. **CI-backed**: no (editorial invariant). The seven argv-init per-key flags from issue #2742 (`--branch-name`, `--expected-session-id`, `--expected-tmpdir-basename-prefix`, `--issue-number`, `--manifest-path`, `--run-id`, `--tool-label`) are written into `ship-pr-state.sh` on cold start by `ship-pr.sh` itself; on resume (state file already present) they are silently ignored unless `--force-init-state true`. A resume invocation may omit them to keep argv short; re-passing them is harmless.
+16. **NEVER invoke a Family B denylisted script without the background+monitor pair.** **Why**: the nine linted entrypoints (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, `review-and-fix.sh`, `run-step2-dispatch.sh`, `step2-implement.sh`, `collect-agent-results.sh`, `dispatch-with-waterfall.sh`, `dispatch-plan-voters.sh`) must launch with Bash `run_in_background: true` **and** a foreground `${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh` call in the same message so breadcrumbs stream live and completion is coupled before the orchestrator continues. Backgrounding without the monitor loses visibility and defers completion to an async task notification that may arrive after the model has already ended the turn — the failure mode behind issue **#2454**. **How to apply**: before each denylisted launch, export the six `LARCH_*` breadcrumb paths under the skill tmpdir, including `LARCH_PAIRED_PID_FILE` for top-level Family B writers, set `run_in_background: true` on the long-script Bash tool call, then invoke `breadcrumb-monitor.sh --stream … --done-sentinel … --status-file … --quiet-log … --surfaced-sentinel … --paired-pid-file …` in the same fenced block (see `BASH_AUTHORING.md` §4). The call may take a long time (multi-step CI and merge loops); configure a sufficiently large Bash timeout when supported (see `skills/implement/references/rebase-rebump-subprocedure.md` for long-blocking `ci-wait.sh` guidance, including a 31-minute reference). If a timeout or unexpected turn end occurs anyway, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` for persisted `PHASE` / resume semantics, then re-invoke the same background+monitor `Invoke:` block **without** `--resume-phase` so the persisted `PHASE` main loop resumes — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. Pass `--resume-phase` only with tokens `ship-pr.sh` accepts (`force-push-gate`, `bump`, `pr-create`, `ci-initial`, `ci-merge`, `evaluate-failure`, `postmerge`) — for example the explicit exit-code paths below or `RESUME_PHASE` from Exit 5 — never as `--resume-phase $PHASE` when `PHASE` is a main-loop value such as `checks` or `pr-prep`. See the inline warning block immediately before the Step 8+ `Invoke:` block. **CI-backed**: no (editorial invariant). The seven argv-init per-key flags from issue #2742 (`--branch-name`, `--expected-session-id`, `--expected-tmpdir-basename-prefix`, `--issue-number`, `--manifest-path`, `--run-id`, `--tool-label`) are written into `ship-pr-state.sh` on cold start by `ship-pr.sh` itself; on resume (state file already present) they are silently ignored unless `--force-init-state true`. A resume invocation may omit them to keep argv short; re-passing them is harmless.
 
 17. **NEVER silently drop a voted-in OOS finding.** **Why**: accepted OOS blocks are the durable contract between reviewers, the implementer manifest, and Step 9a.1 filing — losing them between acceptance and GitHub/inline disposition breaks auditability and leaves follow-up work untracked. **How to apply**: honor the Terminal disposition invariant in the OOS triage section; run `oos-disposition-gate.sh` before clearing `OOS_PENDING`; if the gate fails, log with `append-tool-failure.sh` and do not clear `OOS_PENDING` or write the `run-statistics` batch until the gap is resolved.
 
@@ -925,6 +925,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-di
 export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -937,7 +938,8 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `run-step2-dispatch.sh` with `run_in_background: true` paired with foreground `breadcrumb-monitor.sh`. The launcher, in turn, invokes `step2-implement.sh` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
@@ -1187,6 +1189,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-re
 export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -1200,7 +1203,8 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 Parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
@@ -1244,6 +1248,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-re
 export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -1257,7 +1262,8 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
@@ -1488,6 +1494,7 @@ export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_l
 export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.status.XXXXXX")"
 export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.quiet.XXXXXX")"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.surfaced.XXXXXX")"
+export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.pid.XXXXXX")"
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
@@ -1513,7 +1520,8 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
 Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction only; do not source it.

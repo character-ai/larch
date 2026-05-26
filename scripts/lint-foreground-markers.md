@@ -10,6 +10,19 @@ and **each** invocation-shaped anchor must have a matching comment in the **prev
 
 `# Foreground required: see BASH_AUTHORING.md §4`
 
+Family B background fences use the background banner/comment pair instead and
+must include both halves of the pair: `run_in_background: true` and a
+`breadcrumb-monitor.sh --stream ...` consumer. Top-level Family B writers
+(`ship-pr.sh`, `run-step5-review.sh`, `run-step2-dispatch.sh`,
+`collect-agent-results.sh`, and `dispatch-plan-voters.sh`) must also allocate
+and export `LARCH_PAIRED_PID_FILE` with `mktemp` under a session
+`breadcrumbs/` directory and pass `--paired-pid-file` to the monitor. Missing
+tokens emit `missing LARCH_PAIRED_PID_FILE allocation for <basename>` or
+`missing --paired-pid-file monitor argument for <basename>`. The foreground-only
+`step-7a.sh` carve-out and nested-only children (`ci-wait.sh`,
+`review-and-fix.sh`, `step2-implement.sh`, `dispatch-with-waterfall.sh`) do not
+need the new paired-PID tokens.
+
 The script never evaluates fence bodies. Lines inside an in-fence shell heredoc opened by a `<<` / `<<-` delimiter (quoted `<<'WORD'`, `<<"WORD"`, or a simple trailing `WORD` token on the opener line per the implementation) are skipped for anchor detection until the closing delimiter line is seen, so tutorial text that quotes denylist-shaped paths inside heredocs does not false-positive. Exit codes: `0` clean, `1` violations (stderr: `<path>:<line>: missing banner|missing comment for <basename>`), `2` CLI/`--root` errors.
 
 Non–git-worktree enumeration uses a `find` subshell piped through `sort`; each `find` is suffixed with `|| true` so missing `skills/`, `.claude/skills/`, or `.claude/rules/` trees do not trip `set -o pipefail` (regression harnesses use bare `mktemp` roots).

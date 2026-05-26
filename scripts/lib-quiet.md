@@ -35,6 +35,13 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   while incidental `echo`/`printf` chatter stays in the quiet log.
 - `larch_errf` is the `printf`-style variant for formatted user-visible errors
   (same FD routing as `larch_err`).
+- `larch_quiet_write_paired_pid_file` writes the caller's `$$` to
+  `LARCH_PAIRED_PID_FILE` when that env var is set. It validates an absolute,
+  non-symlink path with no `..` under the active session tmpdir, requires a
+  writable parent directory, writes through `mktemp` in that parent, and
+  publishes with `mv -f`. Invalid paths or write failures emit
+  `WARN paired-pid-file-invalid` and return 0 so callers under `set -e` do not
+  abort.
 
 `LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses that
 assert legacy stdout may use that override during migration.
@@ -64,6 +71,13 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
 - Pure stdin-to-stdout filters must either avoid `larch_quiet_init` or set
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.
+- Paired PID ownership is restricted to top-level Family B entrypoints:
+  `ship-pr.sh`, `run-step5-review.sh`, `run-step2-dispatch.sh`,
+  `collect-agent-results.sh`, and `dispatch-plan-voters.sh`. Nested children
+  (`ci-wait.sh`, `review-and-fix.sh`, `step2-implement.sh`, and
+  `dispatch-with-waterfall.sh`) must not call the helper; their parents unset
+  `LARCH_PAIRED_PID_FILE` before invoking them. See
+  `scripts/breadcrumb-monitor.md`.
 
 `scripts/ship-pr.sh` and the review/review-and-fix tree (`skills/review/scripts/dispatch-panel.sh`, `skills/review/scripts/review-core.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`) opt into breadcrumb surfacing via `export LARCH_QUIET_BREADCRUMBS=1` set at their `/implement` invocation sites (`skills/implement/SKILL.md` Step 8+ block and `scripts/run-step5-review.sh`).
 
@@ -72,6 +86,7 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
 `scripts/test-lib-quiet.sh` exercises default redirect behavior, explicit log
 paths, disable mode, nested init, contract emission, breadcrumb suppression and
 opt-in surfacing, empty values, fallback behavior when the log directory cannot
-be created, pure-filter disable semantics, and `larch_err` routing to real
-stderr. It is wired as `make
+be created, pure-filter disable semantics, `larch_err` routing to real stderr,
+and the paired PID writer's no-op, atomic-write, validation, fail-open, and
+parallel-write behavior. It is wired as `make
 test-lib-quiet`.

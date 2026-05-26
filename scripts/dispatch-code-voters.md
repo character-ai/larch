@@ -4,6 +4,10 @@ Launches the `/review` judge voting panel through the current waterfall stack. E
 
 Voter 1 is always Claude and is launched directly through `scripts/launch-claude-review.sh`. Voter 2 and Voter 3 are dispatched as Codex-first and Cursor-first slots through `scripts/dispatch-with-waterfall.sh`, so each external slot can fall through to the alternate external tool and then to Claude when necessary.
 
+Before invoking nested `dispatch-with-waterfall.sh`, the script defensively
+unsets any inherited `LARCH_PAIRED_PID_FILE`; this script is not a top-level
+Family B writer.
+
 ## Inputs
 
 - `--ballot-file FILE`: required markdown ballot path.

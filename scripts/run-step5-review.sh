@@ -11,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_append_done_trap
+larch_quiet_write_paired_pid_file
 # shellcheck source=scripts/lib-implement-round-cap.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-implement-round-cap.sh"
@@ -185,6 +186,7 @@ case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or
 
 REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scripts/review-and-fix.sh}"
 [[ -x "$REVIEW_AND_FIX_SH" ]] || fail "review-and-fix.sh not executable: $REVIEW_AND_FIX_SH"
+unset LARCH_PAIRED_PID_FILE
 
 # Fixed base Step 5 round cap (unified hard workflow contract); see scripts/run-step5-review.md.
 ROUND_CAP_BASE="5"

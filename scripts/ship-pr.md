@@ -182,6 +182,10 @@ handoffs, `network-flake` for transient network exits, and `escalate` for
 rebase/conflict recovery handoffs. Sourced helpers must preserve the inherited
 stream and use the same vocabulary.
 
+`ship-pr.sh` is a top-level Family B writer for `LARCH_PAIRED_PID_FILE`; it
+writes its own PID after quiet/done-trap setup and unsets the env var before
+invoking nested synchronous `ci-wait.sh`.
+
 ## Edit In Sync
 
 When changing phase names, exit-code meaning, helper stdout parsing, or state keys, update `skills/implement/SKILL.md`, `scripts/test-ship-pr.sh`, `scripts/test-restore-finalize-state.sh`, `scripts/test-implement-structure.sh`, and this file together.

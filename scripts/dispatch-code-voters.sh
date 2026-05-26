@@ -169,6 +169,7 @@ manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
 } > "$manifest"
 
 codex_present_for_waterfall="$CODEX_AVAILABLE"
+unset LARCH_PAIRED_PID_FILE
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --codex-present "$codex_present_for_waterfall" \

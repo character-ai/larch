@@ -9,6 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 larch_quiet_append_done_trap
+larch_quiet_write_paired_pid_file
 # shellcheck source=scripts/lib-voter-parse-rate.sh
 source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
 
@@ -135,6 +136,7 @@ VOTER_3_PATH="$DESIGN_TMPDIR/cursor-vote-output.txt"
     printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_PATH" "$cursor_prompt"
 } > "$manifest"
 
+unset LARCH_PAIRED_PID_FILE
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --codex-present "$CODEX_AVAILABLE" \

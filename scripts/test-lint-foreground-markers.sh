@@ -107,8 +107,10 @@ write_md skills/clean/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -122,8 +124,10 @@ write_md skills/miss-banner/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -138,8 +142,10 @@ write_md skills/miss-comment/SKILL.md <<'EOF'
 
 ```bash
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -155,8 +161,10 @@ write_md skills/bq-banner/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -195,8 +203,10 @@ x
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -212,12 +222,14 @@ write_md skills/comment-window/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 
 
 
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -257,8 +269,10 @@ write_md skills/ship-pr/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -274,8 +288,10 @@ write_md skills/indented-fence/SKILL.md <<'EOF'
    ```bash
    # Background pair required: see BASH_AUTHORING.md §4
    # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-   ${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+   ${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
    ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -291,8 +307,10 @@ write_md skills/shared/case11.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -308,10 +326,12 @@ write_md skills/if-shape/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 if ! "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" --flag; then
   exit 1
 fi
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -327,9 +347,11 @@ write_md skills/assign-shape/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 CMD=${CLAUDE_PLUGIN_ROOT}/scripts/review-and-fix.sh
 printf '%s\n' "$CMD"
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -345,9 +367,11 @@ write_md skills/cmdsubst-assign/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 VAR=$(${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh --timeout 1)
 printf '%s\n' "$VAR"
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -363,8 +387,10 @@ write_md skills/unbraced-root/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 $CLAUDE_PLUGIN_ROOT/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -404,8 +430,10 @@ write_md skills/plan-voters/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh --tmpdir "$TMP"
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -421,9 +449,11 @@ write_md skills/parse-only-exec/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 exit 99
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -437,8 +467,10 @@ write_md skills/eof-open-fence/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 EOF
 rc="$(run_lint "$stderr_file")"
 assert_case "EOF unterminated fence still linted" 1 "$stderr_file" "$rc" 'missing background-pair banner for collect-agent-results.sh'
@@ -453,8 +485,10 @@ write_md skills/multi-anchor-gap/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 
 
 
@@ -475,10 +509,12 @@ write_md skills/if-not-claude-path/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 if ! scripts/run-step5-review.sh --mode loop; then
   exit 1
 fi
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -494,8 +530,10 @@ write_md skills/env-bash-prefix/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 FOO=1 bash "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -511,8 +549,10 @@ write_md skills/step2-impl/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/step2-implement.sh" --help
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -583,6 +623,8 @@ write_md skills/step7a-background/SKILL.md <<'EOF'
 ```bash
 # Foreground required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 EOF
@@ -614,13 +656,108 @@ write_md skills/bs-cont/SKILL.md <<'EOF'
 ```bash
 # Background pair required: see BASH_AUTHORING.md §4
 # Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.\
 sh --timeout 1 x.txt
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "backslash-continued denylisted path with markers" "$stderr_file" "$rc"
+
+# 29 — top-level Family B missing paired PID allocation fails
+reset_tree
+write_md skills/missing-pid-alloc/SKILL.md <<'EOF'
+# Case 29
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "missing paired PID allocation" "$stderr_file" "$rc" 'missing LARCH_PAIRED_PID_FILE allocation for collect-agent-results.sh'
+
+# 30 — bare export without same-fence mktemp allocation fails
+reset_tree
+write_md skills/bare-pid-export/SKILL.md <<'EOF'
+# Case 30
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "bare paired PID export" "$stderr_file" "$rc" 'missing LARCH_PAIRED_PID_FILE allocation for collect-agent-results.sh'
+
+# 31 — allocation without monitor flag fails
+reset_tree
+write_md skills/missing-pid-flag/SKILL.md <<'EOF'
+# Case 31
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "missing paired PID monitor flag" "$stderr_file" "$rc" 'missing --paired-pid-file monitor argument for collect-agent-results.sh'
+
+# 32 — top-level Family B happy path with allocation and monitor flag
+reset_tree
+write_md skills/pid-happy/SKILL.md <<'EOF'
+# Case 32
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "paired PID happy path" "$stderr_file" "$rc"
+
+# 33 — nested-only denylisted basenames keep the background pair but do not
+# require paired PID allocation/flag.
+for nested_bn in ci-wait.sh review-and-fix.sh step2-implement.sh dispatch-with-waterfall.sh; do
+    reset_tree
+    write_md "skills/nested-${nested_bn}/SKILL.md" <<EOF
+# Case 33 ${nested_bn}
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+\`\`\`bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+\${CLAUDE_PLUGIN_ROOT}/scripts/${nested_bn} --help
+\${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
+\`\`\`
+EOF
+    rc="$(run_lint "$stderr_file")"
+    assert_case_clean "nested-only ${nested_bn} without paired PID" "$stderr_file" "$rc"
+done
 
 # 16 — Family A: minimum run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {

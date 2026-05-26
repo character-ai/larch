@@ -6,7 +6,10 @@ Coverage includes sentinel coupling, surfaced-sentinel resume behavior, live
 stream growth, truncation/reset recovery, PEM-redacted failure tails,
 path-scope rejection, `RESEARCH_TMPDIR` acceptance, symlink rejection, invalid
 category dropping, partial-line retention, redactor-failure drop warnings, and
-the fake Family B done-trap path.
+the fake Family B done-trap path. It also covers the paired-PID timeout path:
+TERM signaling, TERM-to-KILL escalation, missing/empty/malformed/multi-line/CRLF
+PID files, stale PID kill failures, the `LARCH_BM_TEST_TIMEOUT_SECONDS` test
+hook, and the nested-overwrite regression.
 
 Full monitor contract lives in the primary sibling:
 `scripts/breadcrumb-monitor.md`.

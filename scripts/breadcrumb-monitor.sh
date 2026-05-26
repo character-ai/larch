@@ -19,13 +19,14 @@ DONE_SENTINEL=""
 STATUS_FILE=""
 QUIET_LOG=""
 SURFACED_SENT=""
+PAIRED_PID_FILE=""
 POLL_INTERVAL=1
 RATE_CAP=5
 FINAL_TAIL_LINES=30
 MODE="tail"
 
 usage() {
-    printf 'Usage: %s --stream PATH --done-sentinel PATH --status-file PATH --quiet-log PATH --surfaced-sentinel PATH [--poll-interval=SEC] [--rate-cap=N] [--final-tail-lines=N] [--mode=tail|monitor]\n' "$(basename "$0")" >&2
+    printf 'Usage: %s --stream PATH --done-sentinel PATH --status-file PATH --quiet-log PATH --surfaced-sentinel PATH [--paired-pid-file PATH] [--poll-interval=SEC] [--rate-cap=N] [--final-tail-lines=N] [--mode=tail|monitor]\n' "$(basename "$0")" >&2
 }
 
 larch_bm_validate_path() {
@@ -42,7 +43,7 @@ larch_bm_validate_path() {
         larch_err "${label}: symlinks are rejected"
         return 2
     fi
-    if ! larch_log_breadcrumbs_under_session_tmp "$path"; then
+    if ! ( LARCH_LOG_ROOT="${LARCH_LOG_ROOT:-/.__larch_no_log_root__/larch-logs}" larch_log_breadcrumbs_under_session_tmp "$path" ); then
         larch_err "${label}: path must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR"
         return 2
     fi
@@ -60,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         --status-file) STATUS_FILE="${2:?}"; shift 2 ;;
         --quiet-log) QUIET_LOG="${2:?}"; shift 2 ;;
         --surfaced-sentinel) SURFACED_SENT="${2:?}"; shift 2 ;;
+        --paired-pid-file) PAIRED_PID_FILE="${2:?}"; shift 2 ;;
         --poll-interval=*) POLL_INTERVAL="${1#*=}"; shift ;;
         --rate-cap=*) RATE_CAP="${1#*=}"; shift ;;
         --final-tail-lines=*) FINAL_TAIL_LINES="${1#*=}"; shift ;;
@@ -79,6 +81,9 @@ larch_bm_validate_path --done-sentinel "$DONE_SENTINEL" || exit 2
 larch_bm_validate_path --status-file "$STATUS_FILE" || exit 2
 larch_bm_validate_path --quiet-log "$QUIET_LOG" || exit 2
 larch_bm_validate_path --surfaced-sentinel "$SURFACED_SENT" || exit 2
+if [[ -n "$PAIRED_PID_FILE" ]]; then
+    larch_bm_validate_path --paired-pid-file "$PAIRED_PID_FILE" || exit 2
+fi
 
 printf 'MODE=%s\n' "$MODE"
 
@@ -99,6 +104,15 @@ buf=""
 rate_bucket=0
 rate_ts=$(date +%s)
 START_TS=$rate_ts
+TIMEOUT_SECONDS=1800
+case "${LARCH_BM_TEST_TIMEOUT_SECONDS:-}" in
+    ''|*[!0-9]*) ;;
+    *)
+        if (( 10#$LARCH_BM_TEST_TIMEOUT_SECONDS > 0 )); then
+            TIMEOUT_SECONDS=$((10#$LARCH_BM_TEST_TIMEOUT_SECONDS))
+        fi
+        ;;
+esac
 
 larch_bm_rate_allow() {
     local now=$1
@@ -160,10 +174,71 @@ larch_bm_read_chunk() {
     chunk="${out%$'\001'}"
 }
 
+larch_bm_warn_bad_paired_pid() {
+    larch_err "WARN paired-pid-file-missing"
+    return 0
+}
+
+larch_bm_signal_paired_pid() {
+    local raw pid len poll_count
+    if [[ -z "$PAIRED_PID_FILE" || ! -f "$PAIRED_PID_FILE" ]]; then
+        larch_bm_warn_bad_paired_pid
+        return 0
+    fi
+    raw="$(
+        {
+            dd if="$PAIRED_PID_FILE" bs=1 count=33 2>/dev/null || exit 1
+            printf '\001'
+        }
+    )" || {
+        larch_bm_warn_bad_paired_pid
+        return 0
+    }
+    raw="${raw%$'\001'}"
+    len=$(LC_ALL=C printf '%s' "$raw" | wc -c | tr -d ' ')
+    if [[ -z "$raw" || "$len" -gt 32 ]]; then
+        larch_bm_warn_bad_paired_pid
+        return 0
+    fi
+    case "$raw" in
+        *$'\n') raw="${raw%$'\n'}" ;;
+    esac
+    case "$raw" in
+        *$'\n'*|*$'\r'*)
+            larch_bm_warn_bad_paired_pid
+            return 0
+            ;;
+    esac
+    if ! LC_ALL=C printf '%s' "$raw" | grep -Eq '^[0-9]+$'; then
+        larch_bm_warn_bad_paired_pid
+        return 0
+    fi
+    case "$raw" in
+        *[1-9]*) ;;
+        *)
+            larch_bm_warn_bad_paired_pid
+            return 0
+            ;;
+    esac
+    pid="$raw"
+    kill -TERM "$pid" 2>/dev/null || true
+    poll_count=0
+    while (( poll_count < 5 )); do
+        poll_count=$((poll_count + 1))
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 1
+    done
+    kill -KILL "$pid" 2>/dev/null || true
+    return 0
+}
+
 while true; do
     now=$(date +%s)
-    if (( now - START_TS > 1800 )); then
+    if (( now - START_TS > TIMEOUT_SECONDS )); then
         larch_err "breadcrumb-monitor: timeout waiting for done sentinel"
+        if [[ -n "$PAIRED_PID_FILE" ]]; then
+            larch_bm_signal_paired_pid
+        fi
         exit 4
     fi
     if [[ -s "$DONE_SENTINEL" ]]; then

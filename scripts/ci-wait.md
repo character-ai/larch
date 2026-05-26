@@ -8,6 +8,10 @@
 
 Backgrounding `ci-wait.sh` disconnects the orchestrator from the script's return code AND creates a leaked-polling-loop risk: when the harness later force-kills the wrapper shell mid-poll, the EXIT trap fires only on trap-deliverable signals (SIGTERM, etc.), and any operator-improvised polling loop watching the harness's `<task-id>.output.done` (rather than this script's optional `--output-file <path>.done`) will spin forever because the harness only writes its own sentinel on clean wrapper-shell exit. See issue #842 for the full failure-mode trace.
 
+For the paired-PID monitor contract, `ci-wait.sh` remains intentionally
+excluded from the writer list because it is a nested synchronous child under
+`ship-pr.sh`, which unsets `LARCH_PAIRED_PID_FILE` before invocation.
+
 ## Default I/O contract
 
 When `--output-file` is **absent**, the EXIT trap emits 7 KV lines on stdout in this order:
