@@ -1,0 +1,41 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a transient hoisted miss still reaches the in-loop cap path before the round body; the remaining difference is low-impact ordering.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the diagnostic is specified as one line, and replacing this with richer parsing is more test complexity than the risk warrants.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the duplicated local helpers are small and isolated to the new test section.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the landed value exercises the intended missing prior artifact path despite drifting from the written plan text.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the flush/envelope ordering divergence is real but too low-impact for a separate refactor issue.
+FINDING_8: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- the path-mismatch concern is hypothetical and not concrete enough to file without diagnostics showing it.
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a transient hoisted miss still reaches the in-loop cap path before the round body; the remaining difference is low-impact ordering.
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- strict greater-than at cap equality is the intended current behavior, with MAV-as-degraded explicitly deferred.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a prose regression grep would be nice, but the added guard is not important enough here.
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the missing test targets a defensive branch that the real helper should not reach.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the order difference is real but unlikely to matter to consumers.
+FINDING_20: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the proposed E2E gap depends on an unproven tmpdir path mismatch.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the branch is defense-in-depth and already has a coverage note.
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a parsed commit list entry, not a review finding.
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is parsed review scope text, not a concrete defect.
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- global sync latency is legitimate but not worth a follow-up issue for this bounded retry.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- local path exposure is low-risk and the diagnostic value outweighs adding redaction complexity now.
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- tmpdir integrity is part of the existing session trust model.
+FINDING_27: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a transient hoisted miss still reaches the in-loop cap path before the round body; the remaining difference is low-impact ordering.
+FINDING_28: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_29: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_30: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_31: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the path-mismatch follow-up is hypothetical without observed diagnostics.
+FINDING_32: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- MAV-as-degraded behavior was explicitly deferred and should not be raised from this PR.
+FINDING_33: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan text drift is real, but the landed value better exercises the intended missing prior artifact case.
+FINDING_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_35: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- committed run-log artifacts are treated as intentional run-log noise for this review.
+FINDING_36: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_37: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_38: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- make behavior is correct and the line-placement convention is not worth raising.
+FINDING_39: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the stale ancillary doc is real but too small and pre-existing for a separate issue.
+FINDING_40: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- committed run-log artifacts are treated as intentional run-log noise for this review.
+FINDING_41: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the landed STARTING_ROUND value intentionally exercises the prior artifact miss that the written plan value would not.

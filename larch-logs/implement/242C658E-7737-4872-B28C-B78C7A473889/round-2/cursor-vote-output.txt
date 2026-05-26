@@ -1,0 +1,34 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- hoisted bare -f can miss transient prior file but in-loop cap path preserves correct status
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- valid regression-gap note; optional harness exceeds this PR's mechanical scope
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- sleep/cp background race can flake starting-round-invalid harness on slow CI
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- minor doc drift outside six-file plan; acceptable contract sync
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same hoisted -f vs sync-probe inconsistency; correctness preserved in-loop
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- timing-dependent probe ordering makes retry-sees-prewritten-prior unreliable
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- envelope emits false; mechanical Step-18 persistence is heavier than this fix warrants now
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- entry-nonnumeric else calls alias undefined when step5-starting-round shard runs alone
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deferred pwd -P tmpdir skew is a real follow-up if diagnostics show it
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- wall-clock race between background cp and sleep-only sync can false-fail CI
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive verification of integer validation, not a defect
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive verification of hoisted anchor behavior, not a defect
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive verification of stall envelope semantics, not a defect
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive verification of bounded sync guard, not a defect
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms no new secrets or deps; not a finding
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sparse-tmpdir trust model predates hoisted check; not materially widened here
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- full tmpdir paths in larch_err may leak usernames in shared CI logs
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- orchestrator-not-sourcing-untrusted-state matches existing implement patterns
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- missing count_prior alias in step5-starting-round section breaks else fallback if exercised
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- ship-pr-state rewrite at Step 5 stall is usually a no-op before Step 8; prose overclaims durable rename gate
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- hoisted probe inconsistency is real but in-loop path retains correct outcome
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- same race as 1b; severity nit and fix already captured by stronger duplicate findings
+FINDING_23: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- theoretical flush ordering delta without identified consumer
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- path-resolution mismatch remains valid deferred follow-up per plan
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- step5_original_count_prior_degraded_rounds alias missing from step5-starting-round setup
+FINDING_26: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- envelope STALL_TRACKING=false not mechanically propagated to Step 18 finalize-state on typical Step-5-stall path
+FINDING_27: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- scout checklist positives, not actionable defects
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing teardown without readable finalize-state affects early bail paths; worth separate issue
+FINDING_29: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documents aligned reporting behavior, not a problem
+FINDING_30: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- no harness for Step 5 stall through Step 18 STALL_TRACKING propagation is a real coverage gap
+FINDING_31: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- parsers alias eval never sources lib-implement-round-cap; step5-starting-round else path undefined
+FINDING_32: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- background cp without wait/barrier makes case 1b timing-flaky
+FINDING_33: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stub only affects hypothetical STARTING_ROUND>1 entry-nonnumeric cases not in current matrix
+FINDING_34: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- section-local step5_write_prior_round is reasonable vs plan lift; not a functional defect

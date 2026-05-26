@@ -71,6 +71,18 @@ step5_emit_final_envelope() {
     emit_kv EFFECTIVE_ROUND_CAP "$eff_cap"
 }
 
+# Best-effort retry shim for the immediately previous round artifact. `sync`
+# is not a guaranteed cache-invalidation barrier; it only gives a just-written
+# env file one bounded retry before the loop fail-closes.
+step5_probe_prior_round_env() {
+    local implement_tmpdir="$1" prior_round="$2"
+    local expected_env_path="$implement_tmpdir/round-$((10#$prior_round))/review-and-fix.env"
+    [[ -f "$expected_env_path" ]] && return 0
+    sync >/dev/null 2>&1 || true
+    [[ -f "$expected_env_path" ]] && return 0
+    return 1
+}
+
 run_implement_loop() {
     local base_cap="${ROUND_CAP:-5}"
     case "$base_cap" in ''|*[!0-9]*) larch_err "review-and-fix.sh: --round-cap must be a positive integer for loop mode"; exit 2 ;; esac
@@ -79,9 +91,28 @@ run_implement_loop() {
     case "$STARTING_ROUND" in ''|*[!0-9]*) larch_err "review-and-fix.sh: --starting-round must be a positive integer"; exit 2 ;; esac
     (( 10#$STARTING_ROUND > 0 )) || { larch_err "review-and-fix.sh: --starting-round must be positive"; exit 2; }
 
+    local entry_prior_deg="" entry_effective_cap="" prior_round_num=0 expected_env_path=""
+    entry_prior_deg="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$STARTING_ROUND")"
+    case "$entry_prior_deg" in
+        ''|*[!0-9]*)
+            larch_err "review-and-fix.sh: count_prior_degraded_rounds returned non-numeric entry_prior_deg=${entry_prior_deg:-}"
+            step5_emit_final_envelope stall true env-write-failed 0 "$STARTING_ROUND" unknown "" "" "$base_cap"
+            exit 2
+            ;;
+    esac
+    entry_effective_cap=$((10#$base_cap + 10#$entry_prior_deg))
+
     if (( 10#$STARTING_ROUND > 1 )); then
-        if [[ ! -f "$IMPLEMENT_TMPDIR/round-$((10#$STARTING_ROUND - 1))/review-and-fix.env" ]]; then
-            step5_emit_final_envelope stall true starting-round-invalid 0 "$STARTING_ROUND" unknown "" "" "$base_cap"
+        prior_round_num=$((10#$STARTING_ROUND - 1))
+        expected_env_path="$IMPLEMENT_TMPDIR/round-${prior_round_num}/review-and-fix.env"
+        if (( 10#$STARTING_ROUND > entry_effective_cap )) && [[ -f "$expected_env_path" ]]; then
+            flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" 0 0 0 0 0 2>/dev/null || true
+            step5_emit_final_envelope mav-resume-past-cap false "" 0 "$prior_round_num" complete "" "" "$entry_effective_cap"
+            exit 0
+        fi
+        if ! step5_probe_prior_round_env "$IMPLEMENT_TMPDIR" "$prior_round_num"; then
+            larch_err "IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR STARTING_ROUND=$STARTING_ROUND expected_env_path=$expected_env_path base_cap=$base_cap entry_prior_deg=$entry_prior_deg entry_effective_cap=$entry_effective_cap"
+            step5_emit_final_envelope stall false starting-round-invalid 0 "$STARTING_ROUND" unknown "" "" "$entry_effective_cap"
             exit 2
         fi
     fi
