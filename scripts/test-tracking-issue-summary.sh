@@ -17,6 +17,7 @@ build_stub() {
     mkdir -p "$dir"
     cat > "$dir/gh" <<'GHSTUB'
 #!/usr/bin/env bash
+printf 'gh %s\n' "$*" >> "$GH_CALLS"
 if [ "$1" = "repo" ]; then
     echo "owner/repo"
     exit 0
@@ -76,6 +77,8 @@ GHSTUB
     export PATH="$STUB_DIR:$ORIG_PATH"
     export STUB_MODE="$mode"
     export BODY_CAPTURE="$TMP/body-$mode.txt"
+    export GH_CALLS="$TMP/calls-$mode.log"
+    : > "$GH_CALLS"
 }
 
 ORIG_PATH="$PATH"
@@ -121,6 +124,15 @@ out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:diagrams v1 -->'
 stable_marker_count=$(grep -c '^<!-- larch:diagrams v1 -->$' "$BODY_CAPTURE" 2>/dev/null || true)
 [[ "$stable_marker_count" == "1" ]] || { echo "FAIL: stable update marker count $stable_marker_count" >&2; exit 1; }
 grep -q '^## Code Flow Diagram$' "$BODY_CAPTURE" || { echo "FAIL: stable update missing code flow heading" >&2; exit 1; }
+
+echo "=== explicit comment id skips list scan ==="
+build_stub "$TMP/stub-comment-id" one-stable
+out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:diagrams v1 -->' --content-file "$stable_content" --repo owner/repo --comment-id 200)"
+[[ "$out" == *"COMMENT_ID=200"* ]] || { echo "FAIL: comment-id update did not report comment id: $out" >&2; exit 1; }
+if grep -Fq '/issues/7/comments' "$GH_CALLS"; then
+    echo "FAIL: comment-id path still listed comments" >&2
+    exit 1
+fi
 
 echo "=== multiple matches fail closed ==="
 build_stub "$TMP/stub-multi" multi

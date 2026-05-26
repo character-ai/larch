@@ -13,7 +13,7 @@ REDACT_PATHS="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
-  tracking-issue-summary.sh upsert-summary --issue N --marker M --content-file F [--repo OWNER/REPO]
+  tracking-issue-summary.sh upsert-summary --issue N --marker M --content-file F [--repo OWNER/REPO] [--comment-id N]
 USAGE
 }
 
@@ -30,19 +30,29 @@ redact_text() {
     printf '%s' "$1" | "$REDACT" || fail 3 "redaction failed"
 }
 
+normalize_first_line() {
+    local line=$1
+    if [[ "${line:0:3}" == $'\xef\xbb\xbf' ]]; then
+        line="${line:3}"
+    fi
+    line="${line%$'\r'}"
+    printf '%s' "$line"
+}
+
 cmd="${1:-}"
 [ -n "$cmd" ] || { usage; exit 1; }
 shift
 
 case "$cmd" in
     upsert-summary)
-        ISSUE=""; MARKER=""; CONTENT_FILE=""; REPO=""
+        ISSUE=""; MARKER=""; CONTENT_FILE=""; REPO=""; COMMENT_ID=""
         while [ $# -gt 0 ]; do
             case "$1" in
                 --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
                 --marker) MARKER="${2:?--marker requires a value}"; shift 2 ;;
                 --content-file) CONTENT_FILE="${2:?--content-file requires a value}"; shift 2 ;;
                 --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
+                --comment-id) COMMENT_ID="${2:?--comment-id requires a value}"; shift 2 ;;
                 *) usage; fail 1 "unknown option for upsert-summary: $1" ;;
             esac
         done
@@ -51,6 +61,7 @@ case "$cmd" in
         [ -f "$CONTENT_FILE" ] || fail 1 "content file not found: $CONTENT_FILE"
         case "$ISSUE" in *[!0-9]*|"") fail 1 "invalid issue: $ISSUE" ;; esac
         case "$MARKER" in '<!-- larch:'*' -->') ;; *) fail 1 "invalid marker: $MARKER" ;; esac
+        case "$COMMENT_ID" in ""|*[!0-9]*) [ -z "$COMMENT_ID" ] || fail 1 "invalid comment id: $COMMENT_ID" ;; esac
         if [ -z "$REPO" ]; then
             REPO="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)"
             [ -n "$REPO" ] || fail 2 "could not determine repo"
@@ -61,15 +72,28 @@ case "$cmd" in
             body="$(printf '%s' "$body" | "$REDACT_PATHS" 2>/dev/null || printf '%s' "$body")"
         fi
         body="$(redact_text "$body")"
-        list_err="$(mktemp)"
-        list_out="$(gh api "/repos/${REPO}/issues/${ISSUE}/comments" --paginate --jq '.[] | (.id|tostring) + "\t" + (.body // "" | split("\n")[0])' 2>"$list_err")" || {
-            err="$(cat "$list_err")"
+        ids=""
+        count=0
+        if [ -n "$COMMENT_ID" ]; then
+            ids="$COMMENT_ID"
+            count=1
+        else
+            list_err="$(mktemp)"
+            list_out="$(gh api "/repos/${REPO}/issues/${ISSUE}/comments" --paginate --jq '.[] | (.id|tostring) + "\t" + (.body // "" | split("\n")[0])' 2>"$list_err")" || {
+                err="$(cat "$list_err")"
+                rm -f "$list_err"
+                fail 2 "gh api comments fetch failed: $(redact_text "$err" | tr '\n' ' ' | head -c 500)"
+            }
             rm -f "$list_err"
-            fail 2 "gh api comments fetch failed: $(redact_text "$err" | tr '\n' ' ' | head -c 500)"
-        }
-        rm -f "$list_err"
-        ids="$(printf '%s\n' "$list_out" | awk -F'\t' -v marker="$MARKER" '$2 == marker { print $1 }')"
-        count="$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n + 0 }')"
+            ids="$(printf '%s\n' "$list_out" | while IFS=$'\t' read -r id first_line; do
+                [ -n "$id" ] || continue
+                first_line="$(normalize_first_line "$first_line")"
+                if [ "$first_line" = "$MARKER" ]; then
+                    printf '%s\n' "$id"
+                fi
+            done)"
+            count="$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n + 0 }')"
+        fi
         tmp="$(mktemp)"
         json_tmp=""
         trap 'rm -f "$tmp" "${json_tmp:-}"' EXIT

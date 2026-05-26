@@ -86,6 +86,9 @@ if [ "$1" = "api" ]; then
             arch|code|both|fence|redact-existing)
                 printf '101\t<!-- larch:diagrams v1 -->\n'
                 ;;
+            bom-crlf)
+                printf '101\t\xef\xbb\xbf<!-- larch:diagrams v1 -->\r\n'
+                ;;
             legacy)
                 printf '77\t<!-- larch:diagrams v1 runid=old -->\n'
                 ;;
@@ -101,6 +104,10 @@ if [ "$1" = "api" ]; then
         exit 0
     fi
     if [[ "$endpoint" == "/repos/owner/repo/issues/comments/101" ]]; then
+        if printf '%s\n' "$@" | grep -qx -- "DELETE"; then
+            printf 'delete 101\n' >> "$GH_CALLS"
+            exit 0
+        fi
         if printf '%s\n' "$@" | grep -qx -- "PATCH"; then
             for ((i=1; i<=$#; i++)); do
                 if [ "${!i}" = "--input" ]; then
@@ -205,21 +212,14 @@ graph TD
 EOF
 }
 
-write_existing_arch_plain_fence_nested_section() {
+write_existing_arch_plain_fence_heading() {
     cat >"$EXISTING_BODY" <<'EOF'
 <!-- larch:diagrams v1 -->
 
 ## Architecture Diagram
 
 ```text
-
 ## Code Flow Diagram
-
-```mermaid
-graph TD
-  Fake --> Heading
-```
-
 literal text
 ```
 EOF
@@ -240,6 +240,19 @@ graph TD
 ```mermaid
 sequenceDiagram
   A->>B: preserved
+```
+EOF
+}
+
+write_existing_arch_unsafe_mermaid() {
+    cat >"$EXISTING_BODY" <<'EOF'
+<!-- larch:diagrams v1 -->
+
+## Architecture Diagram
+
+```mermaid
+graph TD
+  A[bad|pipe] --> B
 ```
 EOF
 }
@@ -291,12 +304,29 @@ assert_contains "ARCHITECTURE_SOURCE=cleared" "$out" "clear architecture source"
 assert_file_lacks_line "## Architecture Diagram" "$BODY_CAPTURE" "clear architecture removes top-level section"
 assert_file_contains "## Code Flow Diagram" "$BODY_CAPTURE" "clear architecture preserves code"
 
+new_case clear-arch-arch-only arch
+write_existing_arch
+out="$("$HELPER" --issue 7 --repo owner/repo --clear-architecture)"
+assert_contains "UPSERT_STATUS=ok" "$out" "clear architecture only deletes comment"
+assert_contains "UPDATED=true" "$out" "clear architecture only reports update"
+assert_contains "delete 101" "$(cat "$GH_CALLS")" "clear architecture only deletes existing comment"
+assert_not_contains "PATCH" "$(cat "$GH_CALLS")" "clear architecture only skips patch"
+if [ ! -e "$BODY_CAPTURE" ]; then pass "clear architecture only leaves no replacement body"; else fail_assert "clear architecture only leaves no replacement body"; fi
+
 new_case clear-code both
 write_existing_both_with_fence_heading
 out="$("$HELPER" --issue 7 --repo owner/repo --clear-code-flow)"
 assert_contains "CODE_FLOW_SOURCE=cleared" "$out" "clear code source"
 assert_file_contains "## Architecture Diagram" "$BODY_CAPTURE" "clear code preserves architecture"
 assert_file_lacks_line "## Code Flow Diagram" "$BODY_CAPTURE" "clear code removes top-level section"
+
+new_case clear-arch-no-comment none
+out="$("$HELPER" --issue 7 --repo owner/repo --clear-architecture)"
+assert_contains "UPSERT_STATUS=no-op" "$out" "clear architecture without comment is no-op"
+assert_contains "ARCHITECTURE_SOURCE=absent" "$out" "clear architecture without comment reports absent source"
+assert_not_contains "gh issue comment" "$(cat "$GH_CALLS")" "clear architecture without comment skips create"
+assert_not_contains "PATCH" "$(cat "$GH_CALLS")" "clear architecture without comment skips patch"
+assert_not_contains "DELETE" "$(cat "$GH_CALLS")" "clear architecture without comment skips delete"
 
 new_case empty-file-preserve both
 write_existing_both_with_fence_heading
@@ -315,15 +345,14 @@ out="$("$HELPER" --issue 7 --repo owner/repo --architecture-file "$arch")"
 assert_contains "CODE_FLOW_SOURCE=preserved" "$out" "fence preserves code"
 assert_file_contains '## Architecture Diagram inside label' "$BODY_CAPTURE" "fence parser ignores heading inside mermaid"
 
-new_case plain-fence-nested-section arch
-write_existing_arch_plain_fence_nested_section
+new_case plain-fence arch
+write_existing_arch_plain_fence_heading
 code="$CASE/code.md"
 write_code "$code" "Replacement code"
 out="$("$HELPER" --issue 7 --repo owner/repo --code-flow-file "$code")"
-assert_contains "ARCHITECTURE_SOURCE=preserved" "$out" "nested plain fence preserves architecture section"
-assert_file_contains "Fake --> Heading" "$BODY_CAPTURE" "nested plain fence keeps inner mermaid example"
-assert_file_contains "literal text" "$BODY_CAPTURE" "nested plain fence keeps trailing fence content"
-assert_file_contains "Replacement code" "$BODY_CAPTURE" "nested plain fence replaces code section"
+assert_contains "ARCHITECTURE_SOURCE=preserved" "$out" "plain fence preserves architecture section"
+assert_file_contains "$(printf '```text')" "$BODY_CAPTURE" "plain fence keeps non-mermaid fence"
+assert_file_contains "Replacement code" "$BODY_CAPTURE" "plain fence replaces code section"
 
 new_case unclosed-fence arch
 write_existing_arch_unclosed_fence
@@ -335,6 +364,26 @@ assert_file_contains "## Architecture Diagram" "$BODY_CAPTURE" "unclosed fence k
 assert_file_contains "## Code Flow Diagram" "$BODY_CAPTURE" "unclosed fence keeps code heading"
 assert_file_contains "Replacement code" "$BODY_CAPTURE" "unclosed fence replaces code section"
 assert_file_not_contains "A->>B: preserved" "$BODY_CAPTURE" "unclosed fence drops malformed preserved tail"
+
+new_case bom-crlf-marker bom-crlf
+write_existing_arch
+code="$CASE/code.md"
+write_code "$code" "BOM code"
+out="$("$HELPER" --issue 7 --repo owner/repo --code-flow-file "$code")"
+assert_contains "UPSERT_STATUS=ok" "$out" "bom-crlf marker matches stable comment"
+assert_file_contains "BOM code" "$BODY_CAPTURE" "bom-crlf marker updates existing comment"
+
+new_case preserved-unsafe-mermaid arch
+write_existing_arch_unsafe_mermaid
+code="$CASE/code.md"
+write_code "$code" "Replacement code"
+set +e
+out="$("$HELPER" --issue 7 --repo owner/repo --code-flow-file "$code" 2>&1)"
+rc=$?
+set -e
+assert_equals 1 "$rc" "preserved unsafe mermaid exits 1"
+assert_contains "sanitize-mermaid-fragment.sh rejected architecture section" "$out" "preserved unsafe mermaid reports sanitizer rejection"
+assert_not_contains "PATCH" "$(cat "$GH_CALLS")" "preserved unsafe mermaid skips patch"
 
 new_case legacy legacy
 code="$CASE/code.md"
@@ -377,5 +426,13 @@ assert_equals 2 "$rc" "gh-error exits 2"
 assert_contains "gh api comments fetch failed:" "$out" "gh-error reports redacted fetch failure"
 assert_contains "<REDACTED-TOKEN>" "$out" "gh-error redacts token-shaped stderr"
 assert_not_contains "sk-ant-" "$out" "gh-error does not leak raw token"
+
+new_case external-path-denied none
+set +e
+out="$("$HELPER" --issue 7 --repo owner/repo --architecture-file "$SCRIPT_DIR/upsert-diagrams-comment.sh" --dry-run 2>&1)"
+rc=$?
+set -e
+assert_equals 1 "$rc" "external path denied exits 1"
+assert_contains "architecture file must be under a temporary directory" "$out" "external path denied reports tmpdir restriction"
 
 finish

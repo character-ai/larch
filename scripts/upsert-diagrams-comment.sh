@@ -15,6 +15,7 @@ ARCH_FILE=""
 CODE_FILE=""
 ARCH_CLEAR=false
 CODE_CLEAR=false
+ALLOW_EXTERNAL_PATHS=false
 DRY_RUN=false
 
 TMP_FILES=""
@@ -35,7 +36,7 @@ tmp_file() {
 }
 
 usage() {
-    larch_err "Usage: upsert-diagrams-comment.sh --issue N [--repo OWNER/REPO] [--architecture-file PATH | --clear-architecture] [--code-flow-file PATH | --clear-code-flow] [--marker '<!-- larch:diagrams v1 -->'] [--dry-run]"
+    larch_err "Usage: upsert-diagrams-comment.sh --issue N [--repo OWNER/REPO] [--architecture-file PATH | --clear-architecture] [--code-flow-file PATH | --clear-code-flow] [--marker '<!-- larch:diagrams v1 -->'] [--allow-external-paths] [--dry-run]"
 }
 
 emit_failure() {
@@ -91,16 +92,66 @@ redact_file() {
     "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$tmp_redacted" >"$out_file" || fail 3 "redact-tmpdir-paths.sh failed"
 }
 
+normalize_first_line() {
+    local line=$1
+    if [[ "${line:0:3}" == $'\xef\xbb\xbf' ]]; then
+        line="${line:3}"
+    fi
+    line="${line%$'\r'}"
+    printf '%s' "$line"
+}
+
+canonical_path() {
+    local path=$1 dir base
+    dir="$(dirname "$path")"
+    base="$(basename "$path")"
+    (
+        cd "$dir" 2>/dev/null &&
+            printf '%s/%s\n' "$(pwd -P)" "$base"
+    )
+}
+
+assert_tmp_scoped_input() {
+    local label=$1 path=$2 resolved tmp_root canonical_root
+    [ -n "$path" ] || return 0
+    [ "$ALLOW_EXTERNAL_PATHS" = "true" ] && return 0
+    [ -r "$path" ] || fail 1 "$label file not readable: $path"
+    resolved="$(canonical_path "$path")" || fail 1 "$label file path is invalid: $path"
+    for tmp_root in "${TMPDIR:-}" /tmp /private/tmp /var/folders; do
+        [ -n "$tmp_root" ] || continue
+        canonical_root="$(canonical_path "$tmp_root" 2>/dev/null || printf '%s' "$tmp_root")"
+        case "$resolved" in
+            "$canonical_root"|"$canonical_root"/*)
+                return 0
+                ;;
+        esac
+    done
+    fail 1 "$label file must be under a temporary directory (or pass --allow-external-paths)"
+}
+
+sanitize_section_file() {
+    local label=$1 path=$2 rc
+    [ -s "$path" ] || return 0
+    [ -x "$SCRIPT_DIR/sanitize-mermaid-fragment.sh" ] || fail 3 "sanitizer helper missing: sanitize-mermaid-fragment.sh"
+    set +e
+    "$SCRIPT_DIR/sanitize-mermaid-fragment.sh" --input "$path" --from-md > /dev/null 2>&1
+    rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        fail 1 "sanitize-mermaid-fragment.sh rejected $label section"
+    fi
+}
+
 extract_section() {
     local body_file=$1 wanted=$2 out_file=$3
     awk -v wanted="$wanted" '
-        function is_target(line) {
-            return line == ("## " wanted " Diagram")
-        }
         function trim(line) {
             sub(/^[[:space:]]+/, "", line)
             sub(/[[:space:]]+$/, "", line)
             return line
+        }
+        function is_target(line) {
+            return line == ("## " wanted " Diagram")
         }
         function is_section_heading(line) {
             return line == "## Architecture Diagram" || line == "## Code Flow Diagram"
@@ -114,95 +165,21 @@ extract_section() {
             }
             return 0
         }
-        function update_fence(line,    token, chars, width, fence_re) {
-            if (match(line, /^(```+|~~~+)/) == 0) return
-            token = substr(line, RSTART, RLENGTH)
-            chars = substr(token, 1, 1)
-            width = length(token)
-            if (!in_fence) {
-                in_fence = 1
-                fence_chars = chars
-                fence_width = width
-                fence_is_mermaid = (line ~ /^(```|~~~)[[:space:]]*mermaid([[:space:]].*)?$/)
-                fallback_start = fallback_count + 1
-                return
-            }
-            if (chars != fence_chars || width < fence_width) return
-            fence_re = "^" fence_chars "{" fence_width ",}[[:space:]]*$"
-            if (line ~ fence_re) {
-                in_fence = 0
-                fence_chars = ""
-                fence_width = 0
-                fence_is_mermaid = 0
-                fallback_count = fallback_start - 1
-                fallback_start = 0
-            }
-        }
         {
             lines[++count] = $0
         }
         END {
-            for (i = 1; i <= count; i++) {
-                if (is_section_start(i)) {
-                    if (in_fence) {
-                        if (fence_is_mermaid) {
-                            mermaid_fallback[++mermaid_fallback_count] = i
-                        } else {
-                            fallback[++fallback_count] = i
-                        }
-                    } else {
-                        normal[++normal_count] = i
-                    }
-                }
-                update_fence(lines[i])
-            }
             start = 0
             end = 0
-            for (i = 1; i <= normal_count; i++) {
-                idx = normal[i]
-                if (start == 0 && is_target(lines[idx])) {
-                    start = idx
+            for (i = 1; i <= count; i++) {
+                if (!is_section_start(i)) continue
+                if (start == 0 && is_target(lines[i])) {
+                    start = i
                     continue
                 }
-                if (start != 0 && idx > start) {
-                    end = idx - 1
+                if (start != 0) {
+                    end = i - 1
                     break
-                }
-            }
-            if (start == 0) {
-                for (i = 1; i <= mermaid_fallback_count; i++) {
-                    idx = mermaid_fallback[i]
-                    if (is_target(lines[idx])) {
-                        start = idx
-                        break
-                    }
-                }
-            }
-            if (start == 0) {
-                for (i = 1; i <= fallback_count; i++) {
-                    idx = fallback[i]
-                    if (is_target(lines[idx])) {
-                        start = idx
-                        break
-                    }
-                }
-            }
-            if (start != 0 && end == 0) {
-                for (i = 1; i <= mermaid_fallback_count; i++) {
-                    idx = mermaid_fallback[i]
-                    if (idx > start) {
-                        end = idx - 1
-                        break
-                    }
-                }
-            }
-            if (start != 0 && end == 0) {
-                for (i = 1; i <= fallback_count; i++) {
-                    idx = fallback[i]
-                    if (idx > start) {
-                        end = idx - 1
-                        break
-                    }
                 }
             }
             if (start == 0) exit 0
@@ -268,6 +245,7 @@ while [ $# -gt 0 ]; do
         --code-flow-file) CODE_FILE="${2:?--code-flow-file requires a value}"; shift 2 ;;
         --clear-code-flow) CODE_CLEAR=true; shift ;;
         --marker) MARKER="${2:?--marker requires a value}"; shift 2 ;;
+        --allow-external-paths) ALLOW_EXTERNAL_PATHS=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         --help) usage; exit 0 ;;
         *) usage; fail 1 "unknown option: $1" ;;
@@ -286,6 +264,8 @@ fi
 if [ -z "$ARCH_FILE" ] && [ "$ARCH_CLEAR" != "true" ] && [ -z "$CODE_FILE" ] && [ "$CODE_CLEAR" != "true" ]; then
     fail 1 "at least one section mode is required"
 fi
+assert_tmp_scoped_input architecture "$ARCH_FILE"
+assert_tmp_scoped_input code-flow "$CODE_FILE"
 
 body_existing="$(tmp_file)"
 arch_existing="$(tmp_file)"
@@ -301,7 +281,13 @@ if [ "$DRY_RUN" != "true" ]; then
         err="$(cat "$list_err" 2>/dev/null || true)"
         fail 2 "gh api comments fetch failed: $(redact_gh_error "$err")"
     }
-    ids="$(printf '%s\n' "$list_out" | awk -F'\t' -v marker="$MARKER" '$2 == marker { print $1 }')"
+    ids="$(printf '%s\n' "$list_out" | while IFS=$'\t' read -r id first_line; do
+        [ -n "$id" ] || continue
+        first_line="$(normalize_first_line "$first_line")"
+        if [ "$first_line" = "$MARKER" ]; then
+            printf '%s\n' "$id"
+        fi
+    done)"
     count="$(printf '%s\n' "$ids" | awk 'NF { n++ } END { print n + 0 }')"
     if [ "$count" -gt 1 ]; then
         flat="$(printf '%s' "$ids" | paste -sd, -)"
@@ -329,6 +315,8 @@ ARCHITECTURE_SOURCE=absent
 CODE_FLOW_SOURCE=absent
 resolve_mode architecture "$ARCH_FILE" "$ARCH_CLEAR" "$arch_existing" "$arch_final"
 resolve_mode code-flow "$CODE_FILE" "$CODE_CLEAR" "$code_existing" "$code_final"
+sanitize_section_file architecture "$arch_final"
+sanitize_section_file code-flow "$code_final"
 
 : >"$sections_raw"
 append_nonempty_section "$arch_final" "$sections_raw"
@@ -353,9 +341,29 @@ if [ "$DRY_RUN" = "true" ]; then
 fi
 
 if [ ! -s "$sections_redacted" ] && [ "${comment_id:-}" = "" ]; then
+    if [ "$ARCH_CLEAR" = "true" ] && [ "$ARCHITECTURE_SOURCE" = "cleared" ]; then
+        ARCHITECTURE_SOURCE=absent
+    fi
+    if [ "$CODE_CLEAR" = "true" ] && [ "$CODE_FLOW_SOURCE" = "cleared" ]; then
+        CODE_FLOW_SOURCE=absent
+    fi
     emit_kv UPSERT_STATUS no-op
     emit_kv COMMENT_URL ""
     emit_kv UPDATED false
+    emit_kv ARCHITECTURE_SOURCE "$ARCHITECTURE_SOURCE"
+    emit_kv CODE_FLOW_SOURCE "$CODE_FLOW_SOURCE"
+    exit 0
+fi
+
+if [ ! -s "$sections_redacted" ] && [ "${comment_id:-}" != "" ]; then
+    delete_err="$(tmp_file)"
+    gh api "/repos/${REPO}/issues/comments/${comment_id}" -X DELETE > /dev/null 2>"$delete_err" || {
+        err="$(cat "$delete_err" 2>/dev/null || true)"
+        fail 2 "gh api comment delete failed: $(redact_gh_error "$err")"
+    }
+    emit_kv UPSERT_STATUS ok
+    emit_kv COMMENT_URL ""
+    emit_kv UPDATED true
     emit_kv ARCHITECTURE_SOURCE "$ARCHITECTURE_SOURCE"
     emit_kv CODE_FLOW_SOURCE "$CODE_FLOW_SOURCE"
     exit 0
@@ -368,6 +376,7 @@ set +e
     --issue "$ISSUE" \
     --marker "$MARKER" \
     --content-file "$sections_redacted" \
+    ${comment_id:+--comment-id "$comment_id"} \
     ${REPO:+--repo "$REPO"} >"$upsert_out" 2>"$upsert_err"
 upsert_rc=$?
 set -e
