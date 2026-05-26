@@ -3,6 +3,7 @@ paths:
   - ".claude/skills/audit-runs/SKILL.md"
   - ".claude/skills/audit-runs/scripts/audit-close-priors.md"
   - ".claude/skills/audit-runs/scripts/audit-close-priors.sh"
+  - ".claude/skills/audit-runs/scripts/test-audit-runs.sh"
   - ".claude/skills/combine-issues/SKILL.md"
   - ".claude/skills/combine-issues/scripts/apply-combination.sh"
   - ".github/workflows/release-tag.yaml"
@@ -15,6 +16,7 @@ paths:
   - "scripts/create-pr.sh"
   - "scripts/design-log-publish.md"
   - "scripts/design-log-publish.sh"
+  - "scripts/test-design-log-publish.sh"
   - "scripts/gh-pr-body-update.md"
   - "scripts/gh-pr-body-update.sh"
   - "scripts/plan-block-write.md"
@@ -88,14 +90,6 @@ boundary:
 ```bash
 gh issue comment 123 --body-file <(printf '%s' "$body")
 ```
-
-## Dynamic Bodies
-
-Before any public `gh` write that sends dynamic or session-derived content,
-redact the payload with `scripts/redact-secrets.sh` and, when tmpdir/session
-paths may appear, `scripts/redact-tmpdir-paths.sh`. Route `gh pr create`
-through `scripts/create-pr.sh`, which already enforces that pipeline for PR
-bodies.
 
 ## Forbidden Patterns
 

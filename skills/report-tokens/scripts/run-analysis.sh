@@ -90,6 +90,8 @@ fi
 export LARCH_REPORT_TOKENS_REPO_FULL="$REPO"
 export LARCH_REPORT_TOKENS_NO_ISSUE="${NO_ISSUE:-${LARCH_REPORT_TOKENS_NO_ISSUE:-}}"
 export LARCH_REPORT_TOKENS_NO_PLOT="${NO_PLOT:-${LARCH_REPORT_TOKENS_NO_PLOT:-}}"
+export LARCH_REPORT_TOKENS_REDACT_SECRETS="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+export LARCH_REPORT_TOKENS_REDACT_TMPDIR="$PLUGIN_ROOT/scripts/redact-tmpdir-paths.sh"
 
 LIMIT="${LARCH_REPORT_TOKENS_LIMIT:-}"
 if [[ -n "$LIMIT" && ! "$LIMIT" =~ ^[0-9]+$ ]]; then
@@ -1030,6 +1032,7 @@ def create_report_issue(records, analysis_text):
     repo = os.environ.get("LARCH_REPORT_TOKENS_REPO_FULL", "")
     body_path = None
     try:
+        body = redact_issue_body(body)
         with tempfile.NamedTemporaryFile(
             "w", suffix=".md", delete=False, prefix="larch-report-tokens-body-"
         ) as f:
@@ -1049,6 +1052,42 @@ def create_report_issue(records, analysis_text):
                 os.unlink(body_path)
             except OSError:
                 pass
+
+
+def redact_issue_body(body):
+    text = re.sub(
+        r'/(?:private/)?tmp/larch-report-tokens[^/\s"]*',
+        "<TMPDIR>",
+        body,
+    )
+    text = re.sub(
+        r'/var/folders/[^/]+/[^/]+/T/larch-report-tokens[^/\s"]*',
+        "<TMPDIR>",
+        text,
+    )
+    redaction_steps = (
+        os.environ.get("LARCH_REPORT_TOKENS_REDACT_SECRETS"),
+        os.environ.get("LARCH_REPORT_TOKENS_REDACT_TMPDIR"),
+    )
+    for helper in redaction_steps:
+        if not helper:
+            raise RuntimeError("redaction helper not configured")
+        try:
+            result = subprocess.run(
+                [helper],
+                input=text,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except OSError as exc:
+            raise RuntimeError(f"{os.path.basename(helper)} unavailable: {exc}") from exc
+        if result.returncode != 0:
+            detail = result.stderr.strip() or f"{os.path.basename(helper)} exited {result.returncode}"
+            raise RuntimeError(detail)
+        text = result.stdout
+    return text
 
 
 def main():

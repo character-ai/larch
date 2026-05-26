@@ -45,7 +45,7 @@ if [ -z "$OPEN_ISSUES" ]; then
 fi
 
 SUPERSEDE_BODY=$(mktemp "${TMPDIR:-/tmp}/larch-audit-superseded.XXXXXX") || {
-    printf 'ISSUE_LIST_FAILED=true\nREASON=mktemp failed\n'
+    printf 'BODY_FILE_FAILED=true\nREASON=mktemp failed\n'
     exit 1
 }
 trap 'rm -f "$SUPERSEDE_BODY"' EXIT
