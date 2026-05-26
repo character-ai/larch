@@ -1,0 +1,186 @@
+# Implementation Plan — #2898
+
+Reconcile paired-PID prose conflicts in research/validation phase docs, add defensive `unset LARCH_PAIRED_PID_FILE` to every caller of `dispatch-with-waterfall.sh` with linter enforcement that handles variable-backed invocations, and add a dual-vendor-slot dedup mechanism (`fallback_group`) to `dispatch-with-waterfall.sh` that is wired into the production manifest producers, serializes within a group, tracks every phase OK result (not just phase-2 fallback), registers reused slots in the existing output bookkeeping, and validates TSV ledger fields.
+
+## Files to modify/create
+
+### UPDATED: `skills/research/references/research-phase.md`
+Replace the post-fence prose at line 215 (`Use \`timeout: 1860000\` on the Bash tool call. Do NOT set \`run_in_background: true\`.`) with: `Use \`run_in_background: true\` and \`timeout: 1860000\` on the Bash tool call. The paired \`breadcrumb-monitor.sh\` invocation in the same message provides the synchronization point and surfaces live breadcrumbs while the collector runs.` The fence body (lines 184-214 — env-var allocation, `# Tool JSON: run_in_background: true` comment, `# Background pair required: see BASH_AUTHORING.md §4` comment, paired `breadcrumb-monitor.sh` invocation with `--paired-pid-file`) and the `**⚠ Background required — must be paired with breadcrumb-monitor.sh.**` banner at line 188 are already correct and MUST be preserved byte-for-byte.
+
+### UPDATED: `skills/research/references/validation-phase.md`
+Identical reconciliation for the post-fence prose at line 209 — same replacement text as research-phase.md. Banner at line 182 and fence body (lines 184-206) are already correct and MUST be preserved byte-for-byte.
+
+### UPDATED: `skills/design/scripts/dispatch-plan-review-panel.sh`
+Two changes:
+1. Add `unset LARCH_PAIRED_PID_FILE` on its own line immediately before line 140 (the actual `_dispatch_out=$("$DISPATCH_WATERFALL_SH" \` invocation), so the line is at most 1 line before the call (well within the 5-line look-back window).
+2. Wire `fallback_group` into BOTH manifest builders. In the static archetype loop (lines 84-97), add `--arg fallback_group "plan-${_archetype}"` to both `jq -nc` rows (cursor and codex) and merge the field into the produced object (`{slot,tool,output,prompt_file,fallback_group:$fallback_group}`). In the dynamic slots loop (lines 109-120), add `--arg fallback_group "plan-dyn-${_slug}"` to both `jq -nc` rows (`dyn-cursor-plan-${_slug}` and `dyn-codex-plan-${_slug}`) and merge the field into the produced object the same way. Both paired vendor rows in a single archetype share the same group string.
+
+### UPDATED: `skills/design/scripts/decompose-panel-dispatch.sh`
+Two changes:
+1. Add `unset LARCH_PAIRED_PID_FILE` on its own line immediately before line 153 (the actual `_dispatch_out=$("$WATERFALL_SH" \` invocation). Single callsite — the `:171` mention in the original issue is a `--tool "dispatch-with-waterfall.sh"` diagnostic argument inside an `append-execution-issue.sh` call, NOT an invocation; the linter rule (below) must exclude diagnostic-string mentions from the anchor set.
+2. Wire `fallback_group` into the paired manifest builders (lines 131-142). Add `--arg fallback_group "decomp-${_a}"` to both `jq -nc` rows (`decomp-cursor-${_a}` and `decomp-codex-${_a}`) and merge the field into the produced object (`{slot,tool,output,prompt_file,fallback_group:$fallback_group}`).
+
+### UPDATED: `skills/design/scripts/decompose-aggregator.sh`
+Single change: add `unset LARCH_PAIRED_PID_FILE` on its own line immediately before line 116 (the actual `_agg_out=$("$WATERFALL_SH" \` invocation). The aggregator is a single-slot caller — do NOT add `fallback_group` here (no paired vendor row exists, so dedup is inapplicable).
+
+### UPDATED: `skills/review/scripts/aggregate-findings.sh`
+Single change: add `unset LARCH_PAIRED_PID_FILE` on its own line immediately before line 730 (the actual `"$DISPATCH_SH" \` invocation, which lives inside the per-loop dispatcher body). Single-slot caller — do NOT add `fallback_group`.
+
+### UPDATED: `skills/review/scripts/dispatch-panel.sh`
+Single change: add `unset LARCH_PAIRED_PID_FILE` on its own line immediately before line 404 (the actual `waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")` invocation). Line 25 is a variable definition (`DISPATCH_WATERFALL="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"`), NOT an invocation, and must be excluded from the linter anchor set via the variable-backed scanning rule (below).
+
+### UPDATED: `scripts/lint-foreground-markers.sh`
+Add a shell-script scanner that enforces the parent-unset-before-nested-Family-B-child invariant AND handles variable-backed invocations:
+- Define a new global token `PARENT_UNSET_REQUIRED_CHILDREN` (newline-delimited list) containing `dispatch-with-waterfall.sh`. Future nested-only Family B children can be added here.
+- Add a new function `scan_shell_file_for_unset_before_nested_child(path)` that operates in two passes per file:
+  - **Pass 1 (variable resolution)**: walk the file line-by-line and capture simple assignments of any child basename into a variable. Match shell-assignment forms `NAME="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"`, `NAME=...dispatch-with-waterfall.sh` (any path ending in the basename), and `NAME="${OTHER:-...dispatch-with-waterfall.sh}"` (default-expansion form used by `DISPATCH_PLAN_REVIEW_WATERFALL_SH` / `DECOMPOSE_PANEL_WATERFALL_SH` / `AGGREGATE_DISPATCH_SH`). Store `NAME` in a session-local newline-delimited file (Bash 3.2 compatible — no `declare -A`) as `<varname>\t<basename>` rows. Skip assignments where the right-hand side contains command substitution (`$(...)`) that does not literally resolve at scan time.
+  - **Pass 2 (invocation scan)**: walk the file again, treat each line as a candidate invocation. A line is an INVOCATION anchor if (a) the basename appears as a final path segment in a command position (existing `is_anchor_for_basename` logic) AND it is not inside a `--tool "..."` or similar diagnostic-string argument, OR (b) the line invokes a variable captured in Pass 1 in command position: shapes `"$NAME" args`, `$NAME args`, `_x=$("$NAME" args)`, `_x=$("$NAME" "${args[@]}")`. For each anchor line, look BACK up to 5 NON-BLANK NON-COMMENT lines (excluding `#`-only and pure-whitespace lines) for an `unset LARCH_PAIRED_PID_FILE` statement. When no preceding `unset` is found, emit `printf '%s:%s: missing parent-unset (unset LARCH_PAIRED_PID_FILE) before nested %s\n' "$rel" "$line_num" "$bn" >&2` and increment `VIOLATIONS`.
+- Add a per-line suppression escape hatch: lines ending in `# lint-foreground-markers: ok <reason>` are excluded from the new rule (mirror existing inline-suppression patterns elsewhere in the linter).
+- Add a second top-level traversal loop after the existing markdown loop at line 506-508: walk `scripts/*.sh`, `skills/*/scripts/*.sh`, and `skills/shared/scripts/*.sh` if it exists. Exclude `larch-logs/**`, any `*/test-*.sh`, and the script that IS the child (`scripts/dispatch-with-waterfall.sh` itself). Call `scan_shell_file_for_unset_before_nested_child` on each.
+- The existing markdown scanning behavior is unchanged.
+
+Also add a NEW markdown post-fence prose check (covers F48/F49): in `scan_markdown_file`, after a fenced block closes whose body contained both `run_in_background: true` AND `breadcrumb-monitor.sh`, scan the NEXT 10 markdown lines for the contradictory phrase `Do NOT set \`run_in_background: true\`` (allow whitespace and prefix punctuation around the phrase; case-sensitive on `run_in_background`). When matched, emit `printf '%s:%s: contradictory post-fence prose "Do NOT set run_in_background: true" after background+monitor fence\n' "$rel" "$line_num" >&2` and increment `VIOLATIONS`. Use the same `# lint-foreground-markers: ok <reason>` inline-suppression mechanism.
+
+### UPDATED: `scripts/lint-foreground-markers.md`
+Add two new sections:
+1. **Parent-unset rule** (shell-script linter): trigger pattern (basename-anchored OR variable-backed invocation of `dispatch-with-waterfall.sh`), required pre-call statement (`unset LARCH_PAIRED_PID_FILE` within prior 5 NON-BLANK NON-COMMENT lines), excluded paths (`larch-logs/**`, `*/test-*.sh`, the child script itself), excluded shapes (`--tool "<basename>"` diagnostic strings, variable definitions without invocation), variable-assignment recognition list (default-expansion form supported), suppression syntax (`# lint-foreground-markers: ok <reason>`), and rationale (paired-PID file is owned only by top-level Family B writers per `BASH_AUTHORING.md` §4; nested children must not inherit it).
+2. **Post-fence contradiction rule** (markdown linter): after a background+monitor fence (run_in_background: true + breadcrumb-monitor.sh), scan the next 10 markdown lines for `Do NOT set \`run_in_background: true\``. Required to prevent the research-phase.md / validation-phase.md regression pattern.
+
+### UPDATED: `scripts/test-lint-foreground-markers.sh`
+Add regression coverage for BOTH new rules:
+- **Parent-unset positive cases**:
+  - Fixture invoking `dispatch-with-waterfall.sh` literally without preceding `unset` — lint exits non-zero.
+  - Fixture invoking `"$WATERFALL_SH"` after an earlier `WATERFALL_SH=".../dispatch-with-waterfall.sh"` assignment, without preceding `unset` — lint exits non-zero (variable-backed path).
+  - Fixture invoking `"$DISPATCH_WATERFALL_SH"` after a default-expansion assignment `DISPATCH_WATERFALL_SH="${EXTERNAL:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"`, without preceding `unset` — lint exits non-zero.
+- **Parent-unset negative cases (compliant)**:
+  - Fixture with `unset LARCH_PAIRED_PID_FILE` 1, 3, and 5 NON-BLANK NON-COMMENT lines before a literal invocation — all pass.
+  - Same with variable-backed invocation — all pass.
+- **Parent-unset distance edge**: `unset` 6+ non-blank lines before invocation — lint exits non-zero (look-back boundary).
+- **Parent-unset suppression**: invocation tagged `# lint-foreground-markers: ok <reason>` without preceding `unset` — lint exits zero.
+- **Parent-unset carve-outs**: `test-*.sh` fixture (in test directory) ignored; the `--tool "dispatch-with-waterfall.sh"` diagnostic-string shape not anchored.
+- **Post-fence prose positive**: fixture markdown with a background+monitor fence followed by `Do NOT set \`run_in_background: true\`` within 10 lines — lint exits non-zero.
+- **Post-fence prose negative**: fixture with a background+monitor fence followed by valid prose — lint exits zero.
+- **Post-fence prose suppression**: contradictory line with trailing `# lint-foreground-markers: ok <reason>` — exits zero.
+Fixtures live in the existing `$BATS_TMPDIR/lint-foreground-markers-XXXX/` temp-dir pattern from the file (verify exact pattern by reading the file's existing fixture-temp-dir setup).
+
+### UPDATED: `scripts/dispatch-with-waterfall.sh`
+Add the `fallback_group` dedup mechanism with phase-aware ledger, group-serialized phase-2, ledger anchoring, TSV validation, and reused-slot bookkeeping. Concretely:
+
+1. **Manifest parse (Bash 3.2 compatible)**: when parsing the slots NDJSON, populate parallel arrays `slot_names[]`, `slot_tools[]`, `slot_outputs[]`, `slot_prompt_files[]`, and a NEW `slot_fallback_groups[]`. Use `jq -r '.fallback_group // empty'` (or `jq -r 'if has("fallback_group") then .fallback_group else "" end'`) to extract per-row; empty string means "no group, legacy path".
+
+2. **TSV-safety validation** (immediately after manifest parse): for each non-empty `slot_fallback_groups[i]` and `slot_names[i]` and `slot_outputs[i]`, REJECT any value containing tab (`$'\t'`), CR (`$'\r'`), or LF (`$'\n'`). On rejection, write a `STEP_FAILED=MANIFEST_VALIDATION` line to stdout, emit a diagnostic to stderr, and exit non-zero. Document the rejected character set in `dispatch-with-waterfall.md`.
+
+3. **Ledger anchoring**: derive the per-call tmpdir from `dirname` of the resolved slots-file path passed via `--slots-file`, then create `<tmpdir>/waterfall-group-results.tsv` (touch on first ledger write). Do NOT read `RESEARCH_TMPDIR`/`DESIGN_TMPDIR`/`REVIEW_TMPDIR` env vars in the dispatcher — anchoring solely on slots-file dirname avoids cross-run leakage and env-var drift.
+
+4. **Ledger schema (TSV, single-token status)**: rows are 5 tab-separated fields: `group<TAB>slot_name<TAB>tool<TAB>output_path<TAB>status`. The status field is a SINGLE token: `ok` for primary success or fresh fallback success; `reused` for a slot that copied another slot's result. (No comma-embedded `OK,reused` form — keeps grep/cut parsing simple.) Add `source_slot` as an OPTIONAL 6th column ONLY on `reused` rows so consumers can attribute the source. The ledger is append-only within a dispatcher call; concurrent writers within the same call are not possible (the dispatcher itself owns the file). Document strict 5-or-6-field tab parsing only in `dispatch-with-waterfall.md`.
+
+5. **Phase-1 ledger writes**: in `collect_phase` (or wherever phase-1 collection settles), for every slot `i` whose `slot_fallback_groups[i]` is non-empty AND whose phase-1 `STATUS` is `OK` (or the configured success token — confirm against existing `STATUS` set during implementation), atomically append a ledger row `<group><TAB><slot_name><TAB><tool><TAB><output_path><TAB>ok`. Use `printf '%s\t%s\t%s\t%s\t%s\n' ... >>"$ledger"` — append is atomic on POSIX for small lines, but if more safety is needed use the `mktemp` + `cat ledger new >tmp && mv tmp ledger` pattern.
+
+6. **Group-serialized phase-2 dispatch** (addresses the race): change phase-2 launch logic from the current "background all queued phase-2 slots, then wait once" to per-group serialization for grouped slots:
+   - **Ungrouped slots** (`slot_fallback_groups[i]` empty): launch in parallel as today.
+   - **Grouped slots**: for each unique `fallback_group` in the queued phase-2 set, iterate group members ONE AT A TIME within that group. Before launching each member:
+     - Scan the ledger for an existing `ok` row matching `(fallback_group, fallback_tool)` where `fallback_tool` is the tool this phase-2 slot would have launched (typically `codex` when primary was cursor, or vice versa).
+     - **Match found**: invoke the `reuse_slot_result(idx, source_row)` helper (item 7 below) instead of launching. No process is spawned for this slot.
+     - **No match**: launch the slot normally, wait for completion, write the resulting ledger row (status `ok`), then proceed to the next group member.
+   - Groups are processed serially relative to each other ONLY IF the implementation cannot easily run inter-group phase-2 in parallel; if inter-group parallelism is easy (different ledger keys), keep it. Within a group, members are strictly sequential.
+   - Document this exact invariant ("within a fallback_group, phase-2 launches are sequential") in `dispatch-with-waterfall.md` and add a same-group two-slot test.
+
+7. **Reused-slot bookkeeping helper** (`reuse_slot_result(idx, source_slot_name, source_output_path, source_tool)`):
+   - Copy `source_output_path` content to `slot_outputs[idx]` via `cat src > dst` (or `cp src dst`). Preserve file permissions per existing pattern.
+   - Write a sidecar file `${slot_outputs[idx]}.dedup` containing exactly the two lines `DEDUPE_REUSED_FROM=<source_slot_name>` and `DEDUPE_REUSED_TOOL=<source_tool>` (use `printf '%s\n%s\n' ...`, NOT `>>` so the file is freshly written each call).
+   - Append a ledger row `<group><TAB><slot_name><TAB><source_tool><TAB><slot_outputs[idx]><TAB>reused<TAB><source_slot_name>` (the 6th column is the optional `source_slot`).
+   - Emit a structured contract-stream KV breadcrumb: `DEDUPE_REUSED=true` and `DEDUPE_REUSED_FROM=<source_slot_name>` and `DEDUPE_REUSED_TOOL=<source_tool>` (use existing `emit_kv` / `emit` helper from `scripts/lib-quiet.md` if available; otherwise plain stderr lines).
+   - Set `final_outputs[idx]="${slot_outputs[idx]}"` and `final_tools[idx]="$source_tool"` so this slot is considered SETTLED by all downstream phase aggregation (avoids the blank-`ALL_OUTPUT_FILES` failure mode from FINDING_10).
+   - Mark `idx` as excluded from any subsequent phase collection (e.g. add to a `_reused_indices` newline-delimited file the phase-3 fallback loop reads to skip).
+
+8. **Backward compatibility**: when `slot_fallback_groups[i]` is empty for ALL slots in the manifest (legacy case), skip ALL ledger logic (do not create the TSV file). The dispatcher behavior is byte-equivalent to the pre-change version. Verify via existing `scripts/test-dispatch-with-waterfall.sh` cases — they must continue to pass without modification.
+
+### UPDATED: `scripts/dispatch-with-waterfall.md`
+Document:
+- The new optional `fallback_group` manifest field (string, no tab/CR/LF, validation enforced).
+- The ledger file location (`<dirname-of-slots-file>/waterfall-group-results.tsv`) and the 5-or-6-field TSV schema with single-token `status` (`ok` / `reused`).
+- The phase-1 + phase-2 OK row writing semantics.
+- The group-serialized phase-2 invariant: "within a fallback_group, phase-2 launches are sequential; ungrouped slots remain parallel".
+- The reused-slot contract: `.dedup` sidecar schema, `DEDUPE_REUSED_FROM` / `DEDUPE_REUSED_TOOL` KV breadcrumbs, the bookkeeping integration with `final_outputs` / `final_tools`.
+- The absence semantics (no group → no ledger, byte-equivalent legacy behavior).
+- A worked example showing `decomp-cursor-arch` + `decomp-codex-arch` paired with `fallback_group="decomp-arch"`: phase-1 codex succeeds, phase-1 cursor fails → cursor's phase-2 reuses codex result, emits `DEDUPE_REUSED_FROM=decomp-codex-arch`.
+
+### UPDATED: `scripts/test-dispatch-with-waterfall.sh`
+Add regression coverage for the new dedup mechanism:
+- **No-dedup baseline**: existing tests pass unchanged (no `fallback_group` → legacy path).
+- **Single-group two-slot phase-2 dedup hit (both primaries fail)**: two slots `A` (cursor primary) + `B` (codex primary) with same `fallback_group=G`. Both phase-1 fail. Phase-2 must process `A` first (or `B` first; either order is acceptable), succeed Codex, then `B`'s phase-2 (or `A`'s if `B` went first) MUST detect the ledger row and reuse — assert exactly one Codex process was launched across the group.
+- **Phase-1 OK + phase-1 fail (the explicit OOS-2898 scenario)**: slot `A` codex primary phase-1 OK with valid `## Recommendation`; slot `B` cursor primary phase-1 fails. Same `fallback_group=G`. Phase-2 for `B` MUST detect the phase-1 ledger row from `A` and reuse `A`'s output. Assert zero Codex launches in phase-2.
+- **Cross-group isolation**: slot `A` with `fallback_group=G1`, slot `B` with `fallback_group=G2`, both fail primary → both Codex launches fire (no cross-group dedup).
+- **Mixed manifest**: slot `A` has `fallback_group=G`, slot `B` has no `fallback_group` → A participates in dedup ledger, B uses legacy per-slot path; both behaviors observable.
+- **Reused slot is settled in final arrays**: assert `ALL_OUTPUT_FILES` (or equivalent emitted KV) contains the reused slot's `output` path; assert the reused slot does NOT appear in any phase-3 Claude fallback queue.
+- **`.dedup` sidecar contract**: reused slot produces a sidecar file with the two documented lines and nothing else.
+- **TSV validation rejection**: manifest with `fallback_group` containing a tab → dispatcher exits non-zero with `STEP_FAILED=MANIFEST_VALIDATION`. Same for CR and LF.
+- **Variable-backed counter for Codex launches**: each test sets up a `LAUNCH_REVIEW_SH` stub that increments a counter file on each Codex launch; tests assert exact launch counts (0, 1, or 2 depending on the scenario).
+
+Use the existing fixture-temp-dir pattern from `test-dispatch-with-waterfall.sh` (verify by reading the file before writing the new cases).
+
+### UPDATED: `skills/design/scripts/test-decompose-panel-dispatch.sh`
+Add an assertion that the produced manifest emits paired `fallback_group="decomp-${archetype}"` for both vendor rows in every archetype. Read the manifest and verify (a) the field is present on every row, (b) the two paired rows for the same archetype share the same value, (c) the value matches the expected `decomp-<archetype>` pattern.
+
+### NEW: `skills/design/scripts/test-dispatch-plan-review-panel-manifest.sh`
+A small new test that constructs a minimal `dispatch-plan-review-panel.sh` invocation (or uses the existing test harness for that script if one exists; check before writing a new file vs. extending an existing one). Asserts (a) static archetype rows emit `fallback_group="plan-${archetype}"` for both vendor rows, (b) dynamic slot rows emit `fallback_group="plan-dyn-${slug}"` for both vendor rows, (c) every paired vendor row shares the same group value with its peer. If a `test-dispatch-plan-review-panel.sh` already exists, EXTEND it instead and DELETE this NEW entry from the plan.
+
+### UPDATED: `BASH_AUTHORING.md` §4
+Three updates to the existing §4 prose:
+1. Update the parent-unset list narrative so it explicitly names the `dispatch-with-waterfall.sh` enforcement: "Parents of nested-only Family B children MUST `unset LARCH_PAIRED_PID_FILE` before synchronous invocation; this is now enforced by `scripts/lint-foreground-markers.sh` for shell-script callers (look-back: 5 non-blank non-comment lines; supports both literal-basename and variable-backed invocation shapes; suppression: `# lint-foreground-markers: ok <reason>`)."
+2. Add a note that research/validation phase docs (skills/research/references/research-phase.md, validation-phase.md) now match the Family B background+monitor pattern (Item A reconciliation result); `lint-foreground-markers.sh` now detects post-fence contradictory `Do NOT set run_in_background: true` prose after a background+monitor fence to prevent regression.
+3. No structural change to the §4 paragraph identifying top-level Family B writers (`ship-pr.sh`, `run-step5-review.sh`, `run-step2-dispatch.sh`, `collect-agent-results.sh`, `dispatch-plan-voters.sh`) — they remain the canonical list.
+
+## Approach
+
+Three independent fixes share one PR. Sequencing within the PR is critical to avoid mid-merge CI breakage:
+
+1. **Item A first** (prose-only, no executable impact): research-phase.md, validation-phase.md, BASH_AUTHORING.md prose updates.
+2. **Item B next** in two steps:
+   - Step 2a: Add the `unset LARCH_PAIRED_PID_FILE` lines to all five callers (`dispatch-plan-review-panel.sh`, `decompose-panel-dispatch.sh`, `decompose-aggregator.sh`, `aggregate-findings.sh`, `dispatch-panel.sh`) BEFORE turning on the new linter rules.
+   - Step 2b: Extend `lint-foreground-markers.sh` with the parent-unset rule AND the post-fence contradiction rule, then add the regression coverage in `test-lint-foreground-markers.sh`. Order matters: turning on the lint after the `unset` lines are already in place means CI does not break on the intermediate state.
+3. **Item C last** (largest behavioral change, most independent): add `fallback_group` parsing + ledger + group-serialized phase-2 + reused-slot bookkeeping + TSV validation to `dispatch-with-waterfall.sh`, document in `dispatch-with-waterfall.md`, wire `fallback_group` into the `decompose-panel-dispatch.sh` and `dispatch-plan-review-panel.sh` manifest builders, and add regression coverage in `test-dispatch-with-waterfall.sh` + `test-decompose-panel-dispatch.sh` (+ the plan-review panel manifest assertion).
+
+The `fallback_group` field is additive on the manifest schema. Existing callers that do NOT set it (`decompose-aggregator.sh`, `aggregate-findings.sh`, and any third-party caller) skip ALL ledger logic — the dispatcher is byte-equivalent to pre-change for those callers. This makes the rollout incremental and reversible: a caller can opt into dedup by adding `fallback_group` to its jq manifest rows; it can opt out by removing the field.
+
+The ledger anchoring uses `dirname` of the resolved `--slots-file` argument, NOT environment variables. This decouples the dispatcher from caller-specific tmpdir conventions and avoids the cross-run leakage risk (FINDING_5).
+
+Phase-2 is restructured from "background all queued phase-2 slots in one batch, then `wait` once" to "for grouped slots, launch one per group at a time and copy the result to peers". This is the only known way the dedup invariant ("exactly one Codex launch per (group, tool) phase-2") can hold given existing dispatcher concurrency (FINDING_13/15/20/24/28/36/45). Ungrouped slots keep their existing parallel behavior to preserve performance for callers that did not opt in.
+
+## Edge cases
+
+- **`fallback_group` present on a single slot** (no peer with same group): ledger row is written but no peer ever reads it; behavior is identical to legacy. Test: single-slot group must not break.
+- **First slot's Codex itself fails** (no `ok` row in ledger for the group): subsequent slots in the group launch their own Codex (independent failure path). Test: dedup must not propagate failure or silently mask it.
+- **Phase-1 codex-primary OK + cursor-primary fail in same group** (the explicit issue body scenario for Item C): cursor's phase-2 detects the phase-1 ledger row and reuses. Test mandatory (FINDING_40).
+- **Slot whose primary tool IS codex (not cursor)**: dedup applies symmetrically — if a codex-primary slot fails primary and its peer's cursor-primary succeeded, the codex-primary slot's phase-2 (which would launch cursor) reuses the peer's cursor result. The ledger TSV `tool` column captures the actual result tool, not the slot's primary.
+- **Linter look-back boundary at file top**: if the invocation is in the first 5 lines (rare), treat missing `unset` the same as the normal case (violation, unless suppressed).
+- **`unset` on a continuation line (`unset LARCH_PAIRED_PID_FILE \`)**: the linter must treat physical lines, not logical lines, when counting look-back distance. Continuation lines are extremely uncommon for `unset`, so this is documentation-only.
+- **`dispatch-with-waterfall.sh` referenced inside a heredoc body or string literal**: the linter's invocation-shape check excludes lines where the basename appears only inside `--tool "..."` or quoted string arguments. Heredocs are not anchors.
+- **TSV validation false-positive on legitimate group strings**: only tab, CR, LF are rejected; underscores, hyphens, slashes, dots, alphanumerics are all valid. The valid set covers all proposed group names (`plan-arch`, `plan-dyn-some-slug`, `decomp-arch`, etc.).
+- **Two distinct dispatchers running in the same repo concurrently** (`/design` + `/implement`): each call has its own `--slots-file` so the ledger anchoring (per-call tmpdir) keeps them isolated.
+
+## Failure modes
+
+1. **Dedup race (within a group)** — if phase-2 group serialization is implemented incorrectly (e.g. accidentally launches two members of the same group in parallel), the ledger scan can miss the first launch's `ok` row. Early warning: `test-dispatch-with-waterfall.sh` "single-group two-slot phase-2 dedup hit" case assertion that exactly one Codex process was launched will fail. Mitigation: implement group serialization as a strict per-group sequential loop; review for accidental `&` after `launch_slot`.
+2. **Linter false-positive on legitimate suppression cases** — if a Family B caller has a justified reason to skip `unset` (e.g. an outer trap already cleared the env), the linter blocks the change. Early warning: a regression test or CI run shows the new violation on an unrelated PR. Mitigation: the `# lint-foreground-markers: ok <reason>` inline suppression is the documented escape hatch; document the typical reasons explicitly in `lint-foreground-markers.md`.
+3. **Post-fence contradiction regression** — if a future commit reintroduces a `Do NOT set run_in_background: true` line within 10 markdown lines after a background+monitor fence in any file under the markdown scan set, the new linter check catches it. The existing `fence_stale_foreground_markers` check only scanned fence-internal/pre-fence content; the new check fills the post-fence gap and the regression coverage in `test-lint-foreground-markers.sh` keeps it locked down.
+4. **Reused slot not settled in final arrays** — if `reuse_slot_result` forgets to set `final_outputs[idx]` / `final_tools[idx]` or to add `idx` to the phase-3-skip set, the reused slot can leak into a Claude fallback queue or produce blank `ALL_OUTPUT_FILES`. Early warning: `test-dispatch-with-waterfall.sh` "reused slot is settled in final arrays" assertion. Mitigation: make `reuse_slot_result` a single function that ALWAYS performs all four bookkeeping steps (copy + sidecar + ledger + final-arrays); no caller skips any step.
+5. **TSV corruption from malicious or buggy manifest** — `fallback_group` / slot_name / output_path containing tab/CR/LF could corrupt the ledger. Early warning: `STEP_FAILED=MANIFEST_VALIDATION` exit on validation rejection. Mitigation: validation runs at manifest parse time, before any ledger write.
+6. **Ledger anchored under wrong dir if slots-file is a relative path** — if a caller passes a relative `--slots-file` path, `dirname` resolves under cwd, which may surprise. Early warning: existing tests pass absolute paths; document the assumption in `dispatch-with-waterfall.md`. Mitigation: resolve `--slots-file` to absolute via `realpath` (or `readlink -f` fallback) before computing `dirname`.
+
+## Testing strategy
+
+- `make lint-foreground-markers` (alias `make lint-foreground`) must pass on the modified repo — the new parent-unset rule AND the new post-fence contradiction rule are enforced via the same target. Both `unset` additions and prose updates must land BEFORE the lint rule activates in CI, OR the new lint rules must be added in the same commit as the fixes (preferred — atomic merge).
+- `bash scripts/test-lint-foreground-markers.sh` exercises every parent-unset case (literal, variable-backed, default-expansion variable, look-back boundary, suppression, carve-outs) and every post-fence prose case (positive/negative/suppression).
+- `bash scripts/test-dispatch-with-waterfall.sh` exercises all dedup cases including the explicit OOS-2898 scenario (phase-1 codex OK + phase-1 cursor fail, reuse phase-2).
+- `bash skills/design/scripts/test-decompose-panel-dispatch.sh` asserts `fallback_group` is present in every paired manifest row with the expected `decomp-<archetype>` value.
+- The new manifest assertion for `dispatch-plan-review-panel.sh` (extended existing test or new file) verifies the same for `plan-<archetype>` and `plan-dyn-<slug>`.
+- `bash scripts/relevant-checks.sh` (or `make lint`) must pass repo-wide (catches Bash 3.2 portability, shellcheck, etc.).
+- Confirm `scripts/test-dispatch-plan-voters.sh`, `scripts/test-dispatch-code-voters.sh`, and any other existing tests already passing continue to pass after the changes.
+- Spot-check post-edit: `grep -L "unset LARCH_PAIRED_PID_FILE" scripts/dispatch-code-voters.sh scripts/dispatch-plan-voters.sh skills/design/scripts/dispatch-plan-review-panel.sh skills/design/scripts/decompose-panel-dispatch.sh skills/design/scripts/decompose-aggregator.sh skills/review/scripts/aggregate-findings.sh skills/review/scripts/dispatch-panel.sh` should print nothing (all files contain the unset).
+
+## Diff size estimate
+
+~550 lines (Item A prose ~10; Item B `unset` sweep + linter parent-unset rule + post-fence contradiction rule + lint-foreground-markers.md + test-lint-foreground-markers.sh ~200; Item C dispatch-with-waterfall.sh dedup logic + group-serialized phase-2 + reused-slot helper + TSV validation + ledger anchoring ~180; manifest producer wiring in dispatch-plan-review-panel.sh + decompose-panel-dispatch.sh ~20; dispatch-with-waterfall.md ~40; test-dispatch-with-waterfall.sh + test-decompose-panel-dispatch.sh + plan-review panel manifest test ~100).
+
+diff_lines: 550

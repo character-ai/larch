@@ -1,0 +1,46 @@
+# Approach Synthesis
+
+**Sketch attribution**: Codex-Generic produced a substantive sketch; Cursor-Generic returned only meta-narration (degraded — no usable design content beyond confirming the topic). Synthesis below is driven by the Codex sketch and codebase exploration; no real divergence exists to adjudicate since only one sketch surfaced design content.
+
+## Agreement
+
+Both sketches (insofar as Cursor was substantive at all) implicitly agree on staying within #2848's paired-PID architecture and fixing the surrounding inconsistencies rather than redesigning the mechanism. This aligns with the Step 1c user resolution (background+monitor for Item A, full sweep for Item B, define+implement for Item C).
+
+## Divergence
+
+None visible — Cursor produced no concrete proposal to compare. No contested decisions to debate.
+
+## Architectural direction (from Codex sketch, validated against codebase)
+
+### Item A: `research-phase.md` and `validation-phase.md` reconciliation
+- Keep paired-PID direction (#2848). Update the prose fences so the `collect-agent-results.sh` Bash block uses `run_in_background: true` and is paired with a foreground `breadcrumb-monitor.sh` invocation in the same message.
+- Replace any existing "Foreground required — do NOT set `run_in_background: true`" banner above those fences with the canonical "Background required — must be paired with breadcrumb-monitor.sh" banner.
+- The fences already allocate `LARCH_PAIRED_PID_FILE` and pass `--paired-pid-file`; only the prose framing is wrong. Preserve the existing env allocation lines and monitor arguments.
+
+### Item B: Defensive `unset LARCH_PAIRED_PID_FILE` + linter rule
+- Add `unset LARCH_PAIRED_PID_FILE` immediately before each synchronous `dispatch-with-waterfall.sh` invocation. Codebase grep confirms the missing-`unset` set: `skills/design/scripts/dispatch-plan-review-panel.sh` (the named offender), `skills/design/scripts/decompose-panel-dispatch.sh`, `skills/design/scripts/decompose-aggregator.sh`, `skills/review/scripts/aggregate-findings.sh`, `skills/review/scripts/dispatch-panel.sh`. Already-compliant: `scripts/dispatch-code-voters.sh:172`, `scripts/dispatch-plan-voters.sh:140`.
+- Extend `scripts/lint-foreground-markers.sh` with a new lint rule: scan shell scripts for synchronous `dispatch-with-waterfall.sh` invocations and require a preceding `unset LARCH_PAIRED_PID_FILE` within a small look-back window (mirror the existing per-anchor look-back semantics around lines 1379-1397 of `lint-foreground-markers.sh`).
+- Update `scripts/lint-foreground-markers.md` with the new rule's contract: trigger pattern, required pre-call statement, look-back window, and `# lint-foreground-markers: ok` suppression syntax. Add a regression test to `scripts/test-lint-foreground-markers.sh` exercising both positive (missing-`unset` → fail) and negative (proper-`unset` → pass) cases.
+
+### Item C: Dual vendor slot dedup
+- Place the coordination in `scripts/dispatch-with-waterfall.sh` (not each caller — avoids duplicating logic across 5+ dispatch sites).
+- Add an optional manifest field on the existing slot manifest schema: a per-slot `fallback_group` key. Paired vendor rows (e.g. `decomp-cursor-arch` + `decomp-codex-arch`, or any "two slots intended for the same fallback need") share that key.
+- Before launching the Phase-2 fallback Codex for a failed Cursor slot in group G, dispatch-with-waterfall.sh checks whether another slot in group G has already produced an `OK` Codex result. If so, copy or reference that result into the failed slot's Phase-2 output instead of re-running Codex. Emit an explicit metadata KV line (`DEDUPE_REUSED_FROM=<other-slot-output>`) on the reused slot so downstream (collectors, tests, audit-runs) can observe the reuse.
+- Tests in `scripts/test-dispatch-with-waterfall.sh` must assert: (a) no duplicate Codex launch in a paired-group scenario, (b) the reused-slot output file still resolves to a valid path with the dedup KV present, (c) absence of `fallback_group` preserves the pre-existing waterfall behavior exactly (backward compatibility).
+
+## Files touched (summary, driven from synthesis)
+
+- `skills/research/references/research-phase.md` — prose + fence banner reconciliation
+- `skills/research/references/validation-phase.md` — same reconciliation
+- `skills/design/scripts/dispatch-plan-review-panel.sh` — add `unset LARCH_PAIRED_PID_FILE`
+- `skills/design/scripts/decompose-panel-dispatch.sh` — add `unset LARCH_PAIRED_PID_FILE`
+- `skills/design/scripts/decompose-aggregator.sh` — add `unset LARCH_PAIRED_PID_FILE`
+- `skills/review/scripts/aggregate-findings.sh` — add `unset LARCH_PAIRED_PID_FILE`
+- `skills/review/scripts/dispatch-panel.sh` — add `unset LARCH_PAIRED_PID_FILE`
+- `scripts/lint-foreground-markers.sh` — new lint rule
+- `scripts/lint-foreground-markers.md` — document the new rule
+- `scripts/test-lint-foreground-markers.sh` — regression coverage for new rule
+- `scripts/dispatch-with-waterfall.sh` — dedup logic (`fallback_group` field)
+- `scripts/dispatch-with-waterfall.md` — document `fallback_group` field + dedup behavior
+- `scripts/test-dispatch-with-waterfall.sh` — dedup regression test
+- `BASH_AUTHORING.md` §4 — update with the (now-enforced) parent-unset invariant + research/validation prose now matches Family B background+monitor pattern

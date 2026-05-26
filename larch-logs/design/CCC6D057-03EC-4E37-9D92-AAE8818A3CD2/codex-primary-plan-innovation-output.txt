@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/design/scripts/dispatch-plan-review-panel.sh:84-120; skills/design/scripts/decompose-panel-dispatch.sh:131-142	The plan adds opt-in fallback_group support but never updates the paired slot manifest producers to emit fallback_group	The dispatcher change is inert for the paired Cursor/Codex slots that motivated the PR, so double Codex work still happens after this lands	Add fallback_group to paired manifest rows, e.g. plan-${archetype}, dyn-plan-${slug}, and decomp-${archetype}; add caller-level assertions in the relevant tests
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:324-337	The dedup design assumes Phase 2 can observe an earlier group result before launching the next fallback, but current Phase 2 launches every fallback before collecting any result	The proposed dedup-hit test cannot pass: two failed primaries in one group will both launch Codex because no OK ledger row exists until after all Phase 2 children have already started	Change Phase 2 to be group-aware: launch at most one fallback per fallback_group, collect it, then copy/reuse for peers; or process grouped fallbacks sequentially while leaving ungrouped slots parallel
+1	in_scope	important	risk-integration	scripts/lint-foreground-markers.sh:212-243; skills/design/scripts/dispatch-plan-review-panel.sh:138-140; skills/design/scripts/decompose-panel-dispatch.sh:145-153	The proposed shell linter only matches basename-shaped invocation lines, but several real callers invoke dispatch-with-waterfall.sh through a variable	The new invariant is not actually enforced on the callsites this plan edits, so future regressions can pass lint even without unset LARCH_PAIRED_PID_FILE	Teach the scanner to resolve simple path variable assignments to dispatch-with-waterfall.sh and check the later variable command invocation, or require/directly lint an inline path invocation pattern after the unset
+
+1. **architecture** `skills/design/scripts/dispatch-plan-review-panel.sh:84-120`, `skills/design/scripts/decompose-panel-dispatch.sh:131-142`  
+Concern: the `fallback_group` feature is opt-in, but the plan does not add the field to the paired vendor slot manifests.  
+Suggested revision: update the manifest-producing jq/printf calls for paired Cursor/Codex slots, not just `dispatch-with-waterfall.sh`.
+
+2. **correctness** `scripts/dispatch-with-waterfall.sh:324-337`  
+Concern: current Phase 2 dispatch is batch-parallel: it launches all fallbacks, then collects. A ledger checked “before launch” cannot see a peer’s successful fallback until too late.  
+Suggested revision: make Phase 2 group-aware so one fallback per group runs and is collected before peers are reused.
+
+3. **risk-integration** `scripts/lint-foreground-markers.sh:212-243`, `skills/design/scripts/dispatch-plan-review-panel.sh:138-140`, `skills/design/scripts/decompose-panel-dispatch.sh:145-153`  
+Concern: basename-only invocation scanning misses variable-mediated invocations like `"$WATERFALL_SH"`.  
+Suggested revision: either lint simple variable assignment plus later variable invocation, or standardize these callers on direct inline path invocations after the `unset`.

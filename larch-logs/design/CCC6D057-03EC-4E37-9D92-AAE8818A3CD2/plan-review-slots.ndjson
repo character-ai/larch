@@ -1,0 +1,16 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt"}
+{"slot":"dyn-cursor-plan-caller-site-audit","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-caller-site-audit-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-caller-site-audit.prompt"}
+{"slot":"dyn-codex-plan-caller-site-audit","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-caller-site-audit-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-caller-site-audit.prompt"}
+{"slot":"dyn-cursor-plan-bash32-ledger-design","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-bash32-ledger-design-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-bash32-ledger-design.prompt"}
+{"slot":"dyn-codex-plan-bash32-ledger-design","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-bash32-ledger-design-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-bash32-ledger-design.prompt"}
+{"slot":"dyn-cursor-plan-prose-fence-consistency","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-prose-fence-consistency-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-prose-fence-consistency.prompt"}
+{"slot":"dyn-codex-plan-prose-fence-consistency","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-prose-fence-consistency-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-prose-fence-consistency.prompt"}
