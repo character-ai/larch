@@ -162,6 +162,17 @@ larch_bm_process_chunk() {
     done
 }
 
+larch_bm_read_chunk() {
+    local file=$1 offset=$2 count=$3 out
+    out="$(
+        {
+            dd if="$file" bs=1 skip="$offset" count="$count" 2>/dev/null || true
+            printf '\001'
+        }
+    )"
+    chunk="${out%$'\001'}"
+}
+
 while true; do
     now=$(date +%s)
     if (( now - START_TS > 1800 )); then
@@ -185,7 +196,8 @@ while true; do
         if (( delta > 10485760 )); then
             printf '%s\n' "WARN stream-growth-exceeds-soft-cap"
         fi
-        chunk=$(dd if="$STREAM" bs=1 skip="$last_off" count="$delta" 2>/dev/null || true)
+        chunk=""
+        larch_bm_read_chunk "$STREAM" "$last_off" "$delta"
         larch_bm_process_chunk "$chunk" "$now"
         last_off=$new_sz
         printf '%s\n' "$last_off" >"${OFFSET_FILE}.tmp" && mv -f "${OFFSET_FILE}.tmp" "$OFFSET_FILE"
@@ -195,19 +207,18 @@ while true; do
 done
 
 if [[ -n "$buf" ]]; then
-    larch_bm_emit_line "$buf" "$(date +%s)"
-    buf=""
+    :
 fi
 
 if [[ -f "$STREAM" ]]; then
     new_sz=$(wc -c <"$STREAM" | tr -d ' ' || echo 0)
     if (( new_sz > last_off )); then
         delta=$((new_sz - last_off))
-        chunk=$(dd if="$STREAM" bs=1 skip="$last_off" count="$delta" 2>/dev/null || true)
+        chunk=""
+        larch_bm_read_chunk "$STREAM" "$last_off" "$delta"
         larch_bm_process_chunk "$chunk" "$(date +%s)"
         if [[ -n "$buf" ]]; then
-            larch_bm_emit_line "$buf" "$(date +%s)"
-            buf=""
+            :
         fi
     fi
 fi
@@ -222,7 +233,9 @@ if [[ "$exit_code" != "0" ]]; then
     if [[ -f "$QUIET_LOG" ]]; then
         tail_state="${REDACT_STATE}.tail"
         printf 'in_pem=0\n' >"$tail_state"
-        tail -n "$FINAL_TAIL_LINES" "$QUIET_LOG" | "$SCRIPT_DIR/lib-redact-streaming.sh" --state-file="$tail_state" || true
+        if ! tail -n "$FINAL_TAIL_LINES" "$QUIET_LOG" | "$SCRIPT_DIR/lib-redact-streaming.sh" --state-file="$tail_state"; then
+            larch_err "WARN redact-drop-line"
+        fi
     fi
 fi
 

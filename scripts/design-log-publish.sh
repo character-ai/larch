@@ -252,62 +252,13 @@ design_publish_stage_file() {
 }
 
 design_publish_breadcrumbs() {
-    local source_dir="$1" dest_dir="$2" staging_parent staging_dir f base state_file tmp_out
-    if [[ ! -e "$source_dir" ]]; then
-        rm -rf "$dest_dir" 2>/dev/null || true
-        return 0
-    fi
-    if [[ -L "$source_dir" || ! -d "$source_dir" ]]; then
-        larch_err "design-log-publish: breadcrumbs source must be a non-symlink directory"
-        return 1
-    fi
-    staging_parent=$(mktemp -d "${TMPDIR:-/tmp}/design-log-breadcrumbs.XXXXXX") || return 1
-    staging_dir="$staging_parent/breadcrumbs"
-    mkdir -p "$staging_dir" || {
-        rm -rf "$staging_parent"
-        return 1
-    }
-    for f in "$source_dir"/*; do
-        [[ -e "$f" ]] || continue
-        if [[ -L "$f" ]]; then
-            larch_err "design-log-publish: breadcrumbs source file must not be a symlink: $f"
-            rm -rf "$staging_parent"
-            return 1
-        fi
-        [[ -f "$f" ]] || continue
-        base=$(basename "$f")
-        case "$base" in
-            */*|.*|*..*)
-                larch_err "design-log-publish: invalid breadcrumbs basename: $base"
-                rm -rf "$staging_parent"
-                return 1
-                ;;
-        esac
-        state_file="$staging_parent/${base}.state"
-        tmp_out="$staging_dir/$base"
-        printf 'in_pem=0\n' >"$state_file" || {
-            rm -rf "$staging_parent"
-            return 1
-        }
-        if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$f" | "$SCRIPT_DIR/redact-secrets.sh" --streaming --state-file "$state_file" >"$tmp_out"; then
-            larch_err "design-log-publish: breadcrumbs redaction failed for $f"
-            rm -rf "$staging_parent" "$dest_dir" 2>/dev/null || true
-            return 1
-        fi
-    done
-    if ! find "$staging_dir" -maxdepth 1 -type f 2>/dev/null | grep -q .; then
-        rm -rf "$staging_parent" "$dest_dir" 2>/dev/null || true
-        return 0
-    fi
-    rm -rf "$dest_dir" || {
-        rm -rf "$staging_parent"
-        return 1
-    }
-    mv "$staging_dir" "$dest_dir" || {
-        rm -rf "$staging_parent"
-        return 1
-    }
-    rm -rf "$staging_parent"
+    local source_dir="$1" dest_dir="$2"
+    larch_log_publish_breadcrumbs_shared "$source_dir" "$dest_dir" design_publish_breadcrumbs_error
+}
+
+# shellcheck disable=SC2317 # invoked indirectly via larch_log_publish_breadcrumbs_shared callback name
+design_publish_breadcrumbs_error() {
+    larch_err "design-log-publish: $1"
 }
 
 RUN_DEST="$WT_DIR/larch-logs/design/$RUN_ID"

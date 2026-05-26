@@ -252,7 +252,7 @@ while true; do
         elif [[ "$ACTION" == "already_merged" ]]; then
             emit_breadcrumb_stderr --category=wait-ci "✓ PR already merged (%ds)\n" "$SECONDS"
         elif [[ "$ACTION" == "bail" ]]; then
-            emit_breadcrumb_stderr --category=wait-ci "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks"
+            emit_breadcrumb_stderr --category=warn "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks"
         else
             emit_breadcrumb_stderr --category=wait-ci "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks"
         fi
@@ -279,7 +279,7 @@ while true; do
     sleep 10
     iter_delta=$(( $(date +%s) - iter_start ))
     if [[ $iter_delta -gt 60 ]]; then
-        emit_breadcrumb_stderr --category=wait-ci "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
+        emit_breadcrumb_stderr --category=warn "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
         checks=$((checks - 1))
     fi
 done

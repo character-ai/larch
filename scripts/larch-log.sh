@@ -154,61 +154,12 @@ larch_log_copy_run_tree_without_breadcrumbs() {
 }
 
 larch_log_publish_breadcrumbs() {
-    local source_dir="$1" repo_path="$2" staging_parent staging_dir f base state_file tmp_out
-    [ -n "$source_dir" ] || return 0
-    if [ ! -e "$source_dir" ]; then
-        rm -rf "$repo_path/breadcrumbs" 2>/dev/null || true
-        return 0
-    fi
-    case "$source_dir" in
-        /*) ;;
-        *) larch_log_fail 3 "breadcrumbs source must be absolute: $source_dir" ;;
-    esac
-    [ ! -L "$source_dir" ] || larch_log_fail 3 "breadcrumbs source must not be a symlink: $source_dir"
-    [ -d "$source_dir" ] || larch_log_fail 3 "breadcrumbs source is not a directory: $source_dir"
+    local source_dir="$1" repo_path="$2"
+    larch_log_publish_breadcrumbs_shared "$source_dir" "$repo_path/breadcrumbs" larch_log_publish_breadcrumbs_error
+}
 
-    staging_parent="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-breadcrumbs.XXXXXX")" || larch_log_fail 3 "cannot create breadcrumbs staging temp"
-    staging_dir="$staging_parent/breadcrumbs"
-    mkdir -p "$staging_dir" || {
-        rm -rf "$staging_parent"
-        larch_log_fail 3 "cannot create breadcrumbs staging directory"
-    }
-    for f in "$source_dir"/*; do
-        [ -e "$f" ] || continue
-        [ ! -L "$f" ] || {
-            rm -rf "$staging_parent"
-            larch_log_fail 3 "breadcrumbs source file must not be a symlink: $f"
-        }
-        [ -f "$f" ] || continue
-        base="$(basename "$f")"
-        case "$base" in
-            */*|.*|*..*) rm -rf "$staging_parent"; larch_log_fail 3 "invalid breadcrumbs basename: $base" ;;
-        esac
-        state_file="$staging_parent/${base}.state"
-        tmp_out="$staging_dir/$base"
-        printf 'in_pem=0\n' >"$state_file" || {
-            rm -rf "$staging_parent"
-            larch_log_fail 3 "cannot create breadcrumbs redaction state"
-        }
-        if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$f" | "$SCRIPT_DIR/redact-secrets.sh" --streaming --state-file "$state_file" >"$tmp_out"; then
-            rm -rf "$staging_parent"
-            rm -rf "$repo_path/breadcrumbs" 2>/dev/null || true
-            larch_log_fail 3 "breadcrumbs redaction failed for $f"
-        fi
-    done
-    if ! find "$staging_dir" -maxdepth 1 -type f 2>/dev/null | grep -q .; then
-        rm -rf "$staging_parent" "$repo_path/breadcrumbs" 2>/dev/null || true
-        return 0
-    fi
-    rm -rf "$repo_path/breadcrumbs" || {
-        rm -rf "$staging_parent"
-        larch_log_fail 3 "cannot replace breadcrumbs directory"
-    }
-    mv "$staging_dir" "$repo_path/breadcrumbs" || {
-        rm -rf "$staging_parent"
-        larch_log_fail 3 "cannot publish breadcrumbs directory"
-    }
-    rm -rf "$staging_parent"
+larch_log_publish_breadcrumbs_error() {
+    larch_log_fail 3 "$1"
 }
 
 current_branch_is_default() {

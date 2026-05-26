@@ -205,3 +205,120 @@ larch_log_emit_success() {
     echo "COMMIT_SHA=$commit_sha"
     echo "UNCHANGED=$unchanged"
 }
+
+larch_log_session_tmp_contains() {
+    local root="$1" path="$2"
+    case "$path" in
+        "$root"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+larch_log_breadcrumbs_under_session_tmp() {
+    local path="$1"
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && larch_log_session_tmp_contains "$IMPLEMENT_TMPDIR" "$path"; then
+        return 0
+    fi
+    if [ -n "${DESIGN_TMPDIR:-}" ] && larch_log_session_tmp_contains "$DESIGN_TMPDIR" "$path"; then
+        return 0
+    fi
+    if [ -n "${REVIEW_TMPDIR:-}" ] && larch_log_session_tmp_contains "$REVIEW_TMPDIR" "$path"; then
+        return 0
+    fi
+    if [ -n "${RESEARCH_TMPDIR:-}" ] && larch_log_session_tmp_contains "$RESEARCH_TMPDIR" "$path"; then
+        return 0
+    fi
+    return 1
+}
+
+larch_log_publish_breadcrumbs_shared() {
+    local source_dir="$1" dest_dir="$2" on_error="$3"
+    local staging_parent staging_dir f base state_file tmp_out found_any=false
+
+    [ -n "$source_dir" ] || return 0
+    if [ ! -e "$source_dir" ]; then
+        return 0
+    fi
+    case "$source_dir" in
+        /*) ;;
+        *) "$on_error" "breadcrumbs source must be absolute: $source_dir"; return 1 ;;
+    esac
+    if [ -L "$source_dir" ]; then
+        "$on_error" "breadcrumbs source must not be a symlink: $source_dir"
+        return 1
+    fi
+    if [ ! -d "$source_dir" ]; then
+        "$on_error" "breadcrumbs source is not a directory: $source_dir"
+        return 1
+    fi
+    if ! larch_log_breadcrumbs_under_session_tmp "$source_dir"; then
+        "$on_error" "breadcrumbs source must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR: $source_dir"
+        return 1
+    fi
+
+    staging_parent="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-breadcrumbs.XXXXXX")" || {
+        "$on_error" "cannot create breadcrumbs staging temp"
+        return 1
+    }
+    staging_dir="$staging_parent/breadcrumbs"
+    mkdir -p "$staging_dir" || {
+        rm -rf "$staging_parent"
+        "$on_error" "cannot create breadcrumbs staging directory"
+        return 1
+    }
+
+    for f in "$source_dir"/*.ndjson; do
+        [ -e "$f" ] || continue
+        [ ! -L "$f" ] || {
+            rm -rf "$staging_parent"
+            "$on_error" "breadcrumbs source file must not be a symlink: $f"
+            return 1
+        }
+        [ -f "$f" ] || continue
+        base="$(basename "$f")"
+        case "$base" in
+            */*|.*|*..*)
+                rm -rf "$staging_parent"
+                "$on_error" "invalid breadcrumbs basename: $base"
+                return 1
+                ;;
+        esac
+        state_file="$staging_parent/${base}.state"
+        tmp_out="$staging_dir/$base"
+        printf 'in_pem=0\n' >"$state_file" || {
+            rm -rf "$staging_parent"
+            "$on_error" "cannot create breadcrumbs redaction state"
+            return 1
+        }
+        if ! "$LARCH_LOG_LIB_DIR/redact-tmpdir-paths.sh" <"$f" | "$LARCH_LOG_LIB_DIR/redact-secrets.sh" --streaming --state-file "$state_file" >"$tmp_out"; then
+            rm -rf "$staging_parent" "$dest_dir" 2>/dev/null || true
+            "$on_error" "breadcrumbs redaction failed for $f"
+            return 1
+        fi
+        found_any=true
+    done
+
+    if [ "$found_any" != "true" ]; then
+        rm -rf "$staging_parent"
+        if [ -e "$dest_dir" ]; then
+            rm -rf "$dest_dir" || {
+                "$on_error" "cannot replace breadcrumbs directory"
+                return 1
+            }
+        fi
+        return 0
+    fi
+    if [ -e "$dest_dir" ]; then
+        rm -rf "$dest_dir" || {
+            rm -rf "$staging_parent"
+            "$on_error" "cannot replace breadcrumbs directory"
+            return 1
+        }
+    fi
+    mv "$staging_dir" "$dest_dir" || {
+        rm -rf "$staging_parent"
+        "$on_error" "cannot publish breadcrumbs directory"
+        return 1
+    }
+    rm -rf "$staging_parent"
+}

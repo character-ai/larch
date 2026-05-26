@@ -138,7 +138,9 @@ publish the directory only after every regular non-symlink file redacts
 successfully. This is fail-closed for covered secret families and session paths;
 it is not a comprehensive classifier for private hostnames, PII, or
 domain-specific sensitive content, so operators must still avoid placing such
-data in breadcrumbs.
+data in breadcrumbs. Operational `wait-ci` / `warn` breadcrumb text may still be
+committed after secrets-family redaction, so CI failure strings, check names,
+and similar diagnostics should also be treated as public-boundary content.
 
 Mermaid diagram content is sanitized at diagram-write time, PR-body composition, and larch-log publication via `scripts/sanitize-mermaid-fragment.sh` so unsafe diagram content is dropped before it reaches public comments or PR bodies. The Mermaid parser lint introduces a Node toolchain surface through `@mermaid-js/mermaid-cli`; pin, audit, and bump expectations are documented in `skills/shared/mermaid-safe-content.md` "Node Toolchain Maintenance".
 

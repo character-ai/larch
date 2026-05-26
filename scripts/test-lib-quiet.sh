@@ -24,6 +24,11 @@ assert_eq() {
     [ "$got" = "$want" ] || fail "$label: got [$got], want [$want]"
 }
 
+assert_file_contains() {
+    local file=$1 needle=$2 label=$3
+    grep -Fq "$needle" "$file" || fail "$label: missing [$needle]"
+}
+
 write_helper() {
     local path=$1 body=$2
     {
@@ -130,5 +135,21 @@ write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; la
 assert_eq "$(cat "$SCRATCH/larch_err.out")" "STATUS=ok" "larch_err contract stdout"
 grep -q '^user-visible$' "$SCRATCH/larch_err.err" || fail "larch_err not on stderr"
 grep -q '^noisy$' "$log" || fail "larch_err noisy not logged"
+
+# 13. emit_breadcrumb_stderr preserves stderr semantics without a stream.
+helper="$SCRATCH/breadcrumb-stderr-unset.sh"
+write_helper "$helper" 'larch_quiet_init; emit_breadcrumb_stderr --category=wait-ci "wait:%s" "done"'
+"$helper" >"$SCRATCH/breadcrumb-stderr-unset.out" 2>"$SCRATCH/breadcrumb-stderr-unset.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-unset.out")" "" "emit_breadcrumb_stderr unset stdout"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-unset.err")" "wait:done" "emit_breadcrumb_stderr unset stderr bytes"
+
+# 14. emit_breadcrumb_stderr writes only to the breadcrumb stream when set.
+helper="$SCRATCH/breadcrumb-stderr-stream.sh"
+write_helper "$helper" 'LARCH_BREADCRUMB_STREAM=$1; export LARCH_BREADCRUMB_STREAM; larch_quiet_init; emit_breadcrumb_stderr --category=wait-ci "wait:%s" "done"'
+"$helper" "$SCRATCH/breadcrumb-stream.ndjson" >"$SCRATCH/breadcrumb-stderr-stream.out" 2>"$SCRATCH/breadcrumb-stderr-stream.err"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-stream.out")" "" "emit_breadcrumb_stderr stream stdout"
+assert_eq "$(cat "$SCRATCH/breadcrumb-stderr-stream.err")" "" "emit_breadcrumb_stderr stream stderr"
+assert_file_contains "$SCRATCH/breadcrumb-stream.ndjson" "c=wait-ci" "emit_breadcrumb_stderr stream category"
+assert_file_contains "$SCRATCH/breadcrumb-stream.ndjson" "text=wait:done" "emit_breadcrumb_stderr stream payload"
 
 printf 'PASS: test-lib-quiet.sh\n'

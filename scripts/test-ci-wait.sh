@@ -10,6 +10,8 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE="$(mktemp -d -t ci-wait-test.XXXXXX)"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+unset LARCH_BREADCRUMB_STREAM LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
+    LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG LARCH_BREADCRUMBS_SURFACED_FILE || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMP_BASE/execution-issues.md"
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -107,6 +109,16 @@ assert_rc() {
         ok "$label"
     else
         fail "$label (expected $expected, got $actual)"
+    fi
+}
+
+assert_stream_contains() {
+    local file=$1 pattern=$2 label=$3
+    if grep -q "$pattern" "$file"; then
+        ok "$label"
+    else
+        fail "$label (pattern '$pattern' not found in stream)"
+        sed 's/^/    stream: /' "$file"
     fi
 }
 
@@ -228,6 +240,24 @@ if [[ "$call_count" -le 4 ]]; then
     ok "genuine timeout: ci-status called at most 4 times (MAX_POLLS=3)"
 else
     fail "genuine timeout: expected ≤4 ci-status calls, got $call_count"
+fi
+
+# --- Case 5: breadcrumb stream captures wait-ci progress while stderr stays quiet ---
+root=$(make_env breadcrumb_stream)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+stream="$root/breadcrumbs.ndjson"
+LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pass run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "breadcrumb stream: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "breadcrumb stream: ACTION=merge"
+assert_stream_contains "$stream" "c=wait-ci" "breadcrumb stream: wait-ci category written"
+assert_stream_contains "$stream" "text=⏳ CI: waiting" "breadcrumb stream: waiting message written"
+assert_stream_contains "$stream" "text=✓ CI passed" "breadcrumb stream: success message written"
+stderr_no_newlines=$(tr -d '\n' <"$root/.stderr")
+if [[ -z "$stderr_no_newlines" ]]; then
+    ok "breadcrumb stream: stderr has no progress output"
+else
+    fail "breadcrumb stream: expected quiet stderr, got [$stderr_no_newlines]"
 fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
