@@ -16,3 +16,5 @@ larch:bc t=2026-05-26T20:42:12Z d=0 p=39868 s=review-and-fix.sh c=progress text=
 larch:bc t=2026-05-26T20:42:12Z d=0 p=39868 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
 larch:bc t=2026-05-26T20:42:13Z d=0 p=82058 s=dispatch-panel.sh c=progress text=→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)
 larch:bc t=2026-05-26T20:46:29Z d=0 p=81804 s=review-core.sh c=progress text=→ review: consolidating findings
+larch:bc t=2026-05-26T20:54:10Z d=0 p=39868 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 4 accepted, 18 rejected (13 exonerated)
+larch:bc t=2026-05-26T20:54:11Z d=0 p=39868 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (4 fixes)

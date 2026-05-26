@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- extracting shared stub fixtures across harness files adds cross-file coupling that outweighs the dedup benefit at this scale
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- centralizing an ERE constant into a shell variable adds indirection without eliminating doc/grep drift since documentation contexts cannot reference shell variables
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a helper abstraction over four similar test setups is premature given the low count and the risk of a shared fixture masking per-case differences
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly marks this test as optional; absence is by design
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the plan explicitly accepted attestation-only as a terminal pattern-gate success with validation-exhausted as the mapped outcome; this is a deliberate architectural tradeoff, not an oversight
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly marks the indented-heading case as optional
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly marks this three-phase test as optional
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly marks indented-heading test as optional
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan edge-case prose incorrectly claims attestation-only produces REASON=ok; validator always returns RC=1 (empty_merge_from_nonempty_input) for nonempty input, so the documented ok path is unreachable and the discrepancy is untested
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- asserting a breadcrumb string literal adds brittleness to minor wording changes disproportionate to the regression risk
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the codex_absent case exercises availability routing; adding pattern greps to every availability variant over-specifies implementation detail
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- same deliberate design as FINDING_7; the plan explicitly accepts attestation passing the gate as terminal with validation-exhausted; removing attestation from the gate or adding INPUT_COUNT semantics contradicts the plan's accepted design
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- in the old system plain narration-only (no FINDING references, no attestation) was already single-shot validation-failed not validation-exhausted; the behavioral regression only applies to narration containing FINDING references, which the plan consciously remapped to dispatch-failed; deliberate design
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan edge cases section explicitly documents and accepts cap_hit bypass behavior as unchanged from pre-collapse; same concern as out-of-scope FINDING_10
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- attestation-short-circuit behavior is deliberate per accepted design; all-narration dispatch-failed is intentional per plan; adding tests for accepted behavior adds value only if behavior is contested
+FINDING_22: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_23: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan marks both three-phase narration failure and indented-heading cases as optional; absence is by design
