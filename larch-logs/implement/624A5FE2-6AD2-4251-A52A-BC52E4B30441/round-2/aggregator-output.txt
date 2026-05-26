@@ -1,0 +1,3 @@
+Normalizing reviewer findings into a merged list. Verifying key code paths cited across reviewers so merges reflect the same behavioral risks.
+Building the normalized, merged finding list from the 37 inputs (security slots 22–24 are informational only and produce no actionable finding blocks).
+

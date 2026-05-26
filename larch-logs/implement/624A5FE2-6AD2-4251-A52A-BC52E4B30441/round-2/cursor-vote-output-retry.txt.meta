@@ -1,0 +1,5 @@
+TOOL=cursor
+TIMEOUT=1200
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=true
+OUTPUT_FILE=<TMPDIR>/round-2/cursor-vote-output-retry.txt
