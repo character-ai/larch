@@ -45,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add repeatable --context-files support to launch-claude-review.sh with strict explicit-path validation, canonical dedup, and allow-root propagation.
 - Extend launcher and validator regression harnesses plus sibling docs for the new public context-file surface.
 - Document the security contract and make the validator Perl timeout fallback immune to locale-warning help-capture pollution.
+<<<<<<< HEAD
+=======
+=======
+## [42.5.33] - 2026-05-26
+
+### Changed
+
+- Closed: #2675
+>>>>>>> 699c5f04 (Update CHANGELOG for 42.5.28)
+>>>>>>> c22a17d6 (Update CHANGELOG for 42.5.33)
 
 ## [42.5.27] - 2026-05-26
 
