@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Closed: #2899
 
+## [42.5.32] - 2026-05-26
+
+### Changed
+
+- Remove stale amend wording from `scripts/git-commit.md` and `scripts/test-implement-finalize.md` so both contracts describe the current separate `CHANGELOG` commit path after the post-bump flow stopped amending. Closes #2899.
+
 ## [42.5.31] - 2026-05-26
 
 ### Changed
