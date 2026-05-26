@@ -44,7 +44,10 @@ if [ -z "$OPEN_ISSUES" ]; then
     exit 0
 fi
 
-SUPERSEDE_BODY=$(mktemp "${TMPDIR:-/tmp}/larch-audit-superseded.XXXXXX")
+SUPERSEDE_BODY=$(mktemp "${TMPDIR:-/tmp}/larch-audit-superseded.XXXXXX") || {
+    printf 'ISSUE_LIST_FAILED=true\nREASON=mktemp failed\n'
+    exit 1
+}
 trap 'rm -f "$SUPERSEDE_BODY"' EXIT
 printf 'Superseded by #%s' "$NEW_ISSUE" >"$SUPERSEDE_BODY"
 

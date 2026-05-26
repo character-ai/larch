@@ -1028,12 +1028,13 @@ def create_report_issue(records, analysis_text):
         + "\n```\n"
     )
     repo = os.environ.get("LARCH_REPORT_TOKENS_REPO_FULL", "")
-    with tempfile.NamedTemporaryFile(
-        "w", suffix=".md", delete=False, prefix="larch-report-tokens-body-"
-    ) as f:
-        f.write(body)
-        body_path = f.name
+    body_path = None
     try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".md", delete=False, prefix="larch-report-tokens-body-"
+        ) as f:
+            body_path = f.name
+            f.write(body)
         args = ["gh", "issue", "create", "--title", title, "--body-file", body_path]
         if repo:
             args += ["--repo", repo]
@@ -1043,10 +1044,11 @@ def create_report_issue(records, analysis_text):
         else:
             print(f"\nWarning: failed to create analysis report issue: {result.stderr.strip()}", file=sys.stderr)
     finally:
-        try:
-            os.unlink(body_path)
-        except OSError:
-            pass
+        if body_path:
+            try:
+                os.unlink(body_path)
+            except OSError:
+                pass
 
 
 def main():

@@ -450,11 +450,7 @@ fi
 
 PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
     larch_err "design-log-publish: mktemp failed for PR body"
-    if [[ "$PUSH_DONE" == true ]] && commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
-        git -C "$REPO_ROOT" branch -f "larch-log-design-recovery-${RUN_ID}" "$commit_sha" >/dev/null 2>&1 || true
-    fi
     emit_publish_result false
-    [[ "$PUSH_DONE" == true ]] && emit_kv RECOVERY_BRANCH "$WT_BRANCH"
     exit 0
 }
 printf 'Automated design log directory for run %s. Commit uses [skip ci].' "$RUN_ID" >"$PR_BODY_TMP"
