@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:5	Top-level Contract still says every reviewer suggestion requires a user prompt and nothing is auto-applied	Implementers rewrite Invariant #4 and Gate B only; line 5 stays, contradicting default auto-apply and confusing agents that read the Contract block first	Rewrite the Contract paragraph to dual-mode language (Gate B auto-applies by default; Gate A/C unchanged; manual restores the 3-option prompt)
