@@ -1,0 +1,2 @@
+Normalizing 22 raw reviewer findings into merged groups with severity rules and verbatim revision attribution.
+

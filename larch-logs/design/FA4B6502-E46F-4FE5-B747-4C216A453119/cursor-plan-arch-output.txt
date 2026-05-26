@@ -1,0 +1,21 @@
+Reading the implementation plan and exploring referenced codebase paths.
+Checking whether the existing `forked-target` case invokes the generator and what it logs:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/implement/scripts/test-step-7a.sh:464-470	Plan adds call-log coverage for `--base-remote origin --base-ref main` on the non-fork `green` path only; existing `forked-target` still asserts rebase argv but not generator argv	Fork-mode generation can regress to `origin/main` in `generate-code-flow-diagram.sh:58` while `diagram-skip-forked` and rebase assertions stay green; fork PRs get wrong prompt diffs with no harness failure	Extend `forked-target` (or add a forked generation case) with `assert_contains` for `generate-code-flow-diagram.sh` and `--base-remote upstream --base-ref main` in `calls.log`, mirroring the planned `green` assertion
+2	in_scope	nit	architecture	skills/implement/scripts/test-step-7a.md:5-19	Plan adds `diagram-skip-forked` and augments `green` but does not update the harness case catalog	`step-7a.md` Edit-in-sync points at `test-step-7a.sh`; the `.md` catalog drifts and reviewers miss the new regression surface	Add cases for `diagram-skip-forked` and the `green` generator argv assertion to `test-step-7a.md`
+3	in_scope	nit	code-quality	skills/implement/scripts/generate-code-flow-diagram.sh:14-16	Plan updates argv parsing and `generate-code-flow-diagram.md` Usage but not the in-script `usage()` string	Operators/`--help` still show the old interface after flags ship	Update `usage()` to include `[--base-remote NAME] [--base-ref BRANCH]` alongside the `.md` fence
+4	in_scope	latent	security	skills/implement/scripts/generate-code-flow-diagram.sh:28-58	New `--base-remote` / `--base-ref` are parsed without the character-class guard `rebase-push.sh` applies	Any future caller passing shell-metacharacters or odd ref names gets them embedded in `git merge-base` / `git diff` command lines	Reuse or mirror `rebase-push.sh` remote/ref validation before substituting `${BASE_REMOTE}/${BASE_REF}`, or document flags as internal-only and reject non-matching values in `fail_usage`
+
+1. **Fork-mode generator argv gap** (`risk-integration`, important): The plan correctly closes the classifier blind spot with `diagram-skip-forked` and the non-fork generator regression with a `green` call-log check, but the existing `forked-target` case at ```464:470:skills/implement/scripts/test-step-7a.sh``` only locks in rebase-probe upstream args. After the change, `forked-target` still runs the generator stub (no git repo → classifier does not skip) yet nothing asserts `--base-remote upstream --base-ref main` on that invocation.
+
+2. **Harness doc drift** (`architecture`, nit): ```skills/implement/scripts/test-step-7a.md``` lists cases 1–19 and case 13 already documents forked rebase argv; the plan’s new cases are absent from that catalog despite ```skills/implement/scripts/step-7a.md``` calling for edit-in-sync with the harness.
+
+3. **`usage()` not in plan** (`code-quality`, nit): ```generate-code-flow-diagram.sh``` `usage()` at line 15 will remain stale relative to the proposed argv surface.
+
+4. **Ref validation** (`security`, latent): New flags become a semi-public CLI on the generator; unlike ```scripts/rebase-push.sh```, the plan does not add ref-name validation—low risk while only `step-7a.sh` passes fixed `origin`/`upstream` and `main`, worth hardening if the flags are meant for general callers.
+
+**[OUT_OF_SCOPE]** `skills/implement/scripts/test-step-7a.sh:532-539` — no `quiet-diagram-skip-contract` fork variant; reasonable follow-up, not required for #2844.
+
+**[OUT_OF_SCOPE]** `skills/implement/scripts/test-generate-code-flow-diagram.sh:1-62` — dedicated argv-parse harness omitted by plan (explicitly declined); acceptable given step-7a stub coverage once finding 1 is addressed.
+
+Overall the plan is sound: module-level `base_remote`/`base_ref`, unified `BASE_ARGS`, and `diagram-skip-forked` match existing patterns at ```396:403:skills/implement/scripts/step-7a.sh``` and ```464:470:skills/implement/scripts/test-step-7a.sh```. The main gap is asymmetric test coverage on the fork **generation** path versus the non-fork path.

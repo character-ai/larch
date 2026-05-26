@@ -1,0 +1,27 @@
+## Approach Synthesis (quick mode, 2 sketches)
+
+**Note on sketch quality**: The Cursor-Generic slot returned only a narration trace ("Exploring the codebase..." / "Creating the implementation plan from the codebase review.") with no architectural content. STATUS=OK was reported by the collector, but the file lacks the 2-3 paragraph sketch body. Synthesis therefore reflects primarily the substantive Codex-Generic sketch; no contested decision exists because only one substantive perspective was returned.
+
+## Agreement
+
+Both sketches (one substantive, one thin) point in the same direction — the Codex sketch makes it explicit, and the Cursor narration does not disagree:
+
+1. **Centralize base-ref selection in `step-7a.sh`**: define module-level `base_remote`/`base_ref` (default `origin`/`main`; switch to `upstream`/`main` when `forked_target=true`). Use those values in `is_small_non_runtime_change` at line 81.
+2. **Pass base args through to `generate-code-flow-diagram.sh`** via optional `--base-remote`/`--base-ref` argv (mirroring the existing `rebase-checkpoint-probe.sh` interface at line 396 of step-7a.sh). Generator stays fork-policy-agnostic; orchestrator (step-7a.sh) decides.
+3. **Backward compatibility (Round 1 binding)**: when `forked_target` is unset/false, both classifiers behave exactly as today (continue using `origin/main`).
+4. **Test regression case** in `skills/implement/scripts/test-step-7a.sh`: add a new `make_forked_skip_repo` fixture that sets up `upstream/main` with no `origin/main`, runs Step 7a with `--forked-target true`, asserts `DIAGRAM_STATUS=skip`, no generator invocation, and the small/non-runtime placeholder.
+
+## Divergence
+
+None of substance, because Cursor produced no architectural content. The Codex sketch flags one open design choice that is worth surfacing here even though it was not contested:
+
+- **Interface shape on the generator**: pass new `--base-remote`/`--base-ref` argv (Codex's preference, mirrors `rebase-checkpoint-probe.sh`) vs. teach `generate-code-flow-diagram.sh` directly about `forked_target`. Codex argues for the argv path because it keeps fork policy in the orchestrator and matches the existing `rebase-checkpoint-probe.sh` shape — this is the **chosen** approach.
+
+## Incorporated ideas
+
+- **Codex**: `base_remote`/`base_ref` module-level vars in step-7a.sh; `--base-remote`/`--base-ref` argv on `generate-code-flow-diagram.sh`; `make_forked_skip_repo` test fixture; preserve fall-closed-to-generation behavior when refs are missing in fork mode (analogous to non-fork case today).
+
+## Risks flagged
+
+- **Missing-ref fallback parity**: today, when `origin/main` is missing, the classifier returns false (i.e., falls through to generation). In fork mode, when `upstream/main` is missing the classifier should *also* fall through to generation, not skip. The fix must preserve "fail-closed → generation" symmetry across both modes.
+- **Test blind spot on second callsite**: the existing generator stub means a regression in `generate-code-flow-diagram.sh:58` would not be caught by the harness unless the test also verifies that step-7a.sh **passes** the new base args to the stubbed generator (call-log assertion), or a focused test exercises the real generator's diff line. The Codex sketch explicitly calls this out.

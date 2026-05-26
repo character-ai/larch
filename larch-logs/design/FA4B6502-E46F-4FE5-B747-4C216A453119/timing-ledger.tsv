@@ -1,0 +1,33 @@
+v1	mark	1779769371	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1779769687	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779769701	design	design Step 1e — gate A	-	-	-	-	-	-	-	-
+v1	mark	1779769743	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779769864	implement	-	codex	codex-sketch-generic	1779769803	1779769864	61	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779769878	implement	-	cursor	cursor-sketch-generic	1779769797	1779769878	81	cursor-sketch-generic-output.txt	0	complete
+v1	mark	1779769962	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1779769976	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779770108	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779770293	implement	-	codex	codex-phase1-dyn-codex-plan-fork-generator-callsite-test	1779770209	1779770293	84	codex-primary-plan-dyn-fork-generator-callsite-test-output.txt	0	complete
+v1	vendor	1779770299	implement	-	codex	codex-phase1-codex-plan-arch	1779770208	1779770299	91	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779770302	implement	-	cursor	cursor-phase1-dyn-cursor-plan-fork-generator-callsite-test	1779770208	1779770302	94	cursor-plan-dyn-fork-generator-callsite-test-output.txt	0	complete
+v1	vendor	1779770314	implement	-	codex	codex-phase1-dyn-codex-plan-env-argv-doc-parity	1779770208	1779770314	106	codex-primary-plan-dyn-env-argv-doc-parity-output.txt	0	complete
+v1	vendor	1779770320	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779770208	1779770320	112	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779770330	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779770208	1779770330	122	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779770331	implement	-	codex	codex-phase1-codex-plan-innovation	1779770208	1779770331	123	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779770331	implement	-	cursor	cursor-phase1-dyn-cursor-plan-env-argv-doc-parity	1779770208	1779770331	123	cursor-plan-dyn-env-argv-doc-parity-output.txt	0	complete
+v1	vendor	1779770333	implement	-	codex	codex-phase1-dyn-codex-plan-shell-scope-ordering	1779770208	1779770333	125	codex-primary-plan-dyn-shell-scope-ordering-output.txt	0	complete
+v1	vendor	1779770333	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779770208	1779770333	125	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779770341	implement	-	codex	codex-phase1-codex-plan-edge	1779770208	1779770341	133	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779770350	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779770208	1779770350	142	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779770352	implement	-	cursor	cursor-phase1-dyn-cursor-plan-shell-scope-ordering	1779770208	1779770352	144	cursor-plan-dyn-shell-scope-ordering-output.txt	0	complete
+v1	vendor	1779770360	implement	-	codex	codex-phase1-codex-plan-requirements	1779770208	1779770360	152	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779770370	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779770208	1779770370	162	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779770374	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779770208	1779770374	166	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779770441	implement	-	cursor	cursor-phase1-aggregator	1779770390	1779770441	51	aggregator-output.txt	0	complete
+v1	vendor	1779770663	implement	-	cursor	cursor-phase1-voter-3	1779770612	1779770662	50	cursor-vote-output.txt	0	complete
+v1	vendor	1779770692	implement	-	codex	codex-phase1-voter-2	1779770612	1779770692	80	codex-vote-output.txt	0	complete
+v1	mark	1779770781	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779771962	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779772014	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779772024	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779772653	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
