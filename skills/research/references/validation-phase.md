@@ -206,7 +206,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substant
   --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
-Use `timeout: 1860000` on the Bash tool call. Do NOT set `run_in_background: true`.
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call. The paired `breadcrumb-monitor.sh` invocation in the same message provides the synchronization point and surfaces live breadcrumbs while the collector runs.
 
 1. Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`.
 2. **Runtime-timeout replacement**: For any reviewer with `STATUS` not `OK`, follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` to flip the availability flag, then immediately launch the matching single Claude Code Reviewer subagent fallback and wait for it before negotiation.

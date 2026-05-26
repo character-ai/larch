@@ -133,13 +133,15 @@ for _a in "${_archetypes[@]}"; do
         --arg tool cursor \
         --arg output "$DECOMP_DIR/decomp-cursor-${_a}-output.txt" \
         --arg prompt_file "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        --arg fallback_group "decomp-${_a}" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
     jq -nc \
         --arg slot "decomp-codex-${_a}" \
         --arg tool codex \
         --arg output "$DECOMP_DIR/decomp-codex-${_a}-output.txt" \
         --arg prompt_file "$DECOMP_DIR/render-decomp-codex-${_a}.prompt" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        --arg fallback_group "decomp-${_a}" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
 done
 
 WATERFALL_SH="${DECOMPOSE_PANEL_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
@@ -150,6 +152,7 @@ if [[ "$MODE" == "plan" ]]; then
 fi
 
 set +e
+unset LARCH_PAIRED_PID_FILE
 _dispatch_out=$("$WATERFALL_SH" \
     --slots-file "$_manifest" \
     --codex-present "$CODEX_PRESENT" \

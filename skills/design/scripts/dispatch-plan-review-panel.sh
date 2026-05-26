@@ -87,13 +87,15 @@ for _archetype in arch edge innovation pragmatic requirements; do
         --arg tool cursor \
         --arg output "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
         --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        --arg fallback_group "plan-${_archetype}" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
     jq -nc \
         --arg slot "codex-plan-${_archetype}" \
         --arg tool codex \
         --arg output "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
         --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        --arg fallback_group "plan-${_archetype}" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
 done
 
 if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout_manifest" >/dev/null 2>&1; then
@@ -111,13 +113,15 @@ if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout
             --arg tool cursor \
             --arg output "$DESIGN_TMPDIR/cursor-plan-dyn-${_slug}-output.txt" \
             --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt" \
-            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+            --arg fallback_group "plan-dyn-${_slug}" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
         jq -nc \
             --arg slot "dyn-codex-plan-${_slug}" \
             --arg tool codex \
             --arg output "$DESIGN_TMPDIR/codex-primary-plan-dyn-${_slug}-output.txt" \
             --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt" \
-            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+            --arg fallback_group "plan-dyn-${_slug}" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
     done < <(jq -c '.archetypes[]?' "$_scout_manifest")
 fi
 
@@ -137,6 +141,7 @@ fi
 
 DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
 
+unset LARCH_PAIRED_PID_FILE
 _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
     --slots-file "$_manifest" \
     --codex-present "$CODEX_PRESENT" \

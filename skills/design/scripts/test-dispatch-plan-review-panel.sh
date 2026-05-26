@@ -79,6 +79,13 @@ grep -Fq 'DYNAMIC_SLOT_COUNT=0' "$D1/out.env" || fail "expected zero dynamic slo
 grep -Fq -- '--feature-file' "$log1" || fail "feature-file not forwarded"
 manifest_line_count=$(grep -c . "$D1/plan-review-slots.ndjson" || true)
 [[ "$manifest_line_count" == "10" ]] || fail "expected 10 ndjson lines, got $manifest_line_count"
+jq -s -e 'all(.[]; .fallback_group != null)' "$D1/plan-review-slots.ndjson" >/dev/null \
+    || fail "every static plan-review row must include fallback_group"
+for archetype in arch edge innovation pragmatic requirements; do
+    expected="plan-${archetype}"
+    got_count=$(jq -r --arg fg "$expected" 'select(.fallback_group == $fg) | .slot' "$D1/plan-review-slots.ndjson" | wc -l | tr -d ' ')
+    [[ "$got_count" == "2" ]] || fail "expected static fallback_group $expected on two rows, got $got_count"
+done
 
 echo "=== two dynamic archetypes => 14 slots ==="
 D2="$TMP/s2"
@@ -107,6 +114,18 @@ grep -Fq 'DYNAMIC_SLOT_COUNT=4' "$D2/out.env" || fail "expected 4 dynamic slot r
 grep -Fq 'dyn-cursor-plan-alpha' "$D2/plan-review-slots.ndjson" || fail "dyn cursor alpha"
 grep -Fq 'dyn-codex-plan-beta' "$D2/plan-review-slots.ndjson" || fail "dyn codex beta"
 jq -e . "$D2/plan-review-slots.ndjson" >/dev/null || fail "manifest must remain valid ndjson"
+jq -s -e 'all(.[]; .fallback_group != null)' "$D2/plan-review-slots.ndjson" >/dev/null \
+    || fail "every static+dynamic plan-review row must include fallback_group"
+for slug in alpha beta; do
+    expected="plan-dyn-${slug}"
+    got_count=$(jq -r --arg fg "$expected" 'select(.fallback_group == $fg) | .slot' "$D2/plan-review-slots.ndjson" | wc -l | tr -d ' ')
+    [[ "$got_count" == "2" ]] || fail "expected dynamic fallback_group $expected on two rows, got $got_count"
+    jq -e --arg s "$slug" --arg fg "$expected" '
+        select(.slot == ("dyn-cursor-plan-" + $s) or .slot == ("dyn-codex-plan-" + $s))
+        | .fallback_group == $fg
+    ' "$D2/plan-review-slots.ndjson" >/dev/null \
+        || fail "dynamic fallback_group mismatch for $slug"
+done
 
 echo "=== prompts must not demand **Reviewer** attribution line ==="
 if grep -Rq '\*\*Reviewer\*\*' "$D2"/render-plan-*.prompt "$D2"/render-plan-cursor-dyn-*.prompt 2>/dev/null; then

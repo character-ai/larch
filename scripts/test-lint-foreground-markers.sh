@@ -33,6 +33,12 @@ write_md() {
     cat >"$TMPROOT/$rel"
 }
 
+write_sh() {
+    local rel="$1"
+    mkdir -p "$(dirname "$TMPROOT/$rel")"
+    cat >"$TMPROOT/$rel"
+}
+
 run_lint() {
     local stderr_file="$1"
     set +e
@@ -777,6 +783,167 @@ EOF
     rc="$(run_lint "$stderr_file")"
     assert_case_clean "nested-only ${nested_bn} without paired PID" "$stderr_file" "$rc"
 done
+
+# 34 — shell-script parent-unset rule catches literal invocation.
+reset_tree
+write_sh scripts/call-waterfall.sh <<'EOF'
+#!/usr/bin/env bash
+scripts/dispatch-with-waterfall.sh --help
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "parent unset literal missing" "$stderr_file" "$rc" 'missing parent-unset (unset LARCH_PAIRED_PID_FILE) before nested dispatch-with-waterfall.sh'
+
+# 35 — shell-script parent-unset rule catches variable-backed invocation.
+reset_tree
+write_sh scripts/call-waterfall-var.sh <<'EOF'
+#!/usr/bin/env bash
+WATERFALL_SH="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
+"$WATERFALL_SH" --help
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "parent unset variable missing" "$stderr_file" "$rc" 'missing parent-unset (unset LARCH_PAIRED_PID_FILE) before nested dispatch-with-waterfall.sh'
+
+# 36 — default-expansion assignment is recognized.
+reset_tree
+write_sh skills/design/scripts/call-waterfall-default.sh <<'EOF'
+#!/usr/bin/env bash
+DISPATCH_WATERFALL_SH="${EXTERNAL:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
+_out=$("$DISPATCH_WATERFALL_SH" --help)
+printf '%s\n' "$_out"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "parent unset default-expansion variable missing" "$stderr_file" "$rc" 'missing parent-unset (unset LARCH_PAIRED_PID_FILE) before nested dispatch-with-waterfall.sh'
+
+# 37 — unset 1, 3, and 5 non-blank non-comment lines before literal invocation passes.
+for gap in 1 3 5; do
+    reset_tree
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'unset LARCH_PAIRED_PID_FILE\n'
+        i=1
+        while [[ "$i" -lt "$gap" ]]; do
+            printf 'x%s=%s\n' "$i" "$i"
+            i=$((i + 1))
+        done
+        printf 'scripts/dispatch-with-waterfall.sh --help\n'
+    } | write_sh "scripts/call-waterfall-gap-${gap}.sh"
+    rc="$(run_lint "$stderr_file")"
+    assert_case_clean "parent unset literal gap ${gap}" "$stderr_file" "$rc"
+done
+
+# 38 — unset within window before variable-backed invocation passes.
+reset_tree
+write_sh scripts/call-waterfall-var-ok.sh <<'EOF'
+#!/usr/bin/env bash
+WATERFALL_SH="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
+unset LARCH_PAIRED_PID_FILE
+one=1
+two=2
+"$WATERFALL_SH" --help
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "parent unset variable backed ok" "$stderr_file" "$rc"
+
+# 39 — six non-blank non-comment lines is outside the boundary.
+reset_tree
+write_sh scripts/call-waterfall-far.sh <<'EOF'
+#!/usr/bin/env bash
+unset LARCH_PAIRED_PID_FILE
+a=1
+b=2
+c=3
+d=4
+e=5
+f=6
+scripts/dispatch-with-waterfall.sh --help
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "parent unset too far" "$stderr_file" "$rc" 'missing parent-unset (unset LARCH_PAIRED_PID_FILE) before nested dispatch-with-waterfall.sh'
+
+# 40 — inline suppression permits an exceptional invocation.
+reset_tree
+write_sh scripts/call-waterfall-suppressed.sh <<'EOF'
+#!/usr/bin/env bash
+scripts/dispatch-with-waterfall.sh --help # lint-foreground-markers: ok fixture
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "parent unset suppressed" "$stderr_file" "$rc"
+
+# 41 — test scripts and diagnostic --tool strings are not shell anchors.
+reset_tree
+write_sh scripts/test-waterfall-fixture.sh <<'EOF'
+#!/usr/bin/env bash
+scripts/dispatch-with-waterfall.sh --help
+EOF
+write_sh scripts/diagnostic-tool-string.sh <<'EOF'
+#!/usr/bin/env bash
+bash scripts/append-tool-failure.sh --tool "dispatch-with-waterfall.sh"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "parent unset carve outs" "$stderr_file" "$rc"
+
+# 42 — contradictory post-fence prose after a background+monitor fence fails.
+reset_tree
+write_md skills/post-fence/SKILL.md <<'EOF'
+# Case 42
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+```
+
+Use `timeout: 1000`. Do NOT set `run_in_background: true`.
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "post-fence contradiction" "$stderr_file" "$rc" 'contradictory post-fence prose "Do NOT set run_in_background: true" after background+monitor fence'
+
+# 43 — valid post-fence prose is accepted.
+reset_tree
+write_md skills/post-fence-ok/SKILL.md <<'EOF'
+# Case 43
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+```
+
+Use `run_in_background: true` and wait on the paired monitor.
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "post-fence valid prose" "$stderr_file" "$rc"
+
+# 44 — post-fence contradiction suppression is accepted.
+reset_tree
+write_md skills/post-fence-suppressed/SKILL.md <<'EOF'
+# Case 44
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+```
+
+Do NOT set `run_in_background: true`. # lint-foreground-markers: ok fixture
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "post-fence contradiction suppressed" "$stderr_file" "$rc"
 
 # 16 — Family A: minimum run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {

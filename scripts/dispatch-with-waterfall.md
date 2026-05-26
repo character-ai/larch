@@ -11,6 +11,12 @@ Input is an NDJSON slots file. Each row must contain:
 
 Rows may include optional metadata such as `weight` and `focus_area`; the dispatcher preserves validation compatibility and ignores those fields at launch time.
 
+Rows may also include optional `fallback_group`. Empty or absent
+`fallback_group` keeps legacy behavior: no group ledger is created and the slot
+participates in the normal per-slot waterfall. When at least one row has a
+group, the dispatcher writes `<dirname-of-resolved-slots-file>/waterfall-group-results.tsv`
+as grouped slots settle.
+
 Phases:
 
 1. Launch each slot on its assigned external tool when `--<tool>-present true`.
@@ -18,6 +24,30 @@ Phases:
 3. Remaining slots launch through `scripts/launch-claude-review.sh`.
 
 Each phase is collected with `scripts/collect-agent-results.sh --summary-only`; `STATUS=OK` and `STATUS=cap_hit` settle a slot. Other statuses advance to the next phase, and a phase-3 failure leaves `DISPATCH_OK=false`.
+
+Grouped dedup:
+
+- The ledger schema is TSV: `group<TAB>slot_name<TAB>tool<TAB>output_path<TAB>status`, with optional sixth `source_slot` only for reused rows.
+- `status` is a single token: `ok` for a fresh successful result, `reused` when a slot copied another slot's result.
+- Phase-1 and phase-2 `STATUS=OK` results for grouped slots append `ok` rows.
+- Phase-2 launches are serialized within each `fallback_group`. Before launching a grouped phase-2 slot, the dispatcher looks for an existing `ok` row for the same group and fallback tool. If found, it copies that output to the slot's phase-1 output path, records final bookkeeping, and skips the launch.
+- Ungrouped phase-2 slots remain on the legacy parallel path.
+- Reused slots write `${output}.dedup` with exactly:
+
+```text
+DEDUPE_REUSED_FROM=<source_slot>
+DEDUPE_REUSED_TOOL=<source_tool>
+```
+
+They also emit `DEDUPE_REUSED=true`, `DEDUPE_REUSED_FROM`, and
+`DEDUPE_REUSED_TOOL` KVs and are included in `ALL_OUTPUT_FILES` /
+`ALL_OUTPUT_TOOLS` without entering phase 3.
+
+Example: `decomp-cursor-arch` and `decomp-codex-arch` share
+`fallback_group="decomp-arch"`. If the codex primary succeeds in phase 1 and
+the cursor primary fails, the cursor slot's phase-2 codex fallback reuses
+`decomp-codex-arch`; the cursor output sidecar contains
+`DEDUPE_REUSED_FROM=decomp-codex-arch`.
 
 Stdout keys:
 
@@ -40,5 +70,6 @@ Guards:
 
 - Empty slots manifest (zero JSON rows) exits **2** with `slots file contains no slot rows` and does not emit stdout KVs or write a paths-file.
 - Any resolved final output path containing a literal newline or carriage return exits **2** before writing the paths-file (line-oriented contract).
+- For grouped rows, `fallback_group`, `slot`, and `output` must not contain tab, newline, or carriage return. Violations print `STEP_FAILED=MANIFEST_VALIDATION` to stdout, emit a diagnostic on stderr, and exit non-zero before launches.
 
 Regression harness: `scripts/test-dispatch-with-waterfall.sh`.

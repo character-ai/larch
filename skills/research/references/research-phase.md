@@ -212,7 +212,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substant
   --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
-Use `timeout: 1860000` on the Bash tool call. Do NOT set `run_in_background: true`.
+Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call. The paired `breadcrumb-monitor.sh` invocation in the same message provides the synchronization point and surfaces live breadcrumbs while the collector runs.
 
 Parse the structured output for each lane's `STATUS` and `REVIEWER_FILE`. Under `--substantive-validation`, content validation is performed by `collect-agent-results.sh`; thin-but-cited or long-but-uncited prose is rejected with `STATUS=NOT_SUBSTANTIVE` and a diagnostic in `FAILURE_REASON`.
 
