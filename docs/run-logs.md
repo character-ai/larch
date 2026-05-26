@@ -68,15 +68,46 @@ larch-logs/
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
 
-`breadcrumbs/` is a commit-only directory artifact, not a larch-log batch. Live
-streams remain under the session tmpdir (`$IMPLEMENT_TMPDIR/breadcrumbs/`,
-`$DESIGN_TMPDIR/breadcrumbs/`, `$REVIEW_TMPDIR/breadcrumbs/`, or
-`$RESEARCH_TMPDIR/breadcrumbs/`). Before commit, only regular `*.ndjson`
-stream files are staged through
-`redact-tmpdir-paths.sh | redact-secrets.sh --streaming`; sibling monitor
-sidecars such as `.quiet`, `.done`, `.status`, `.surfaced`, and `.bc-offset`
-remain session-local. Symlink entries or redaction failures fail closed and
-leave no committed `breadcrumbs/` directory.
+### breadcrumbs/
+
+The tree above shows `implement/<RUN_ID>/breadcrumbs/` as a representative
+example. The committed path shape is shared across publishing skill roots, so
+the same directory artifact may exist as `design/<RUN_ID>/breadcrumbs/`,
+`review/<RUN_ID>/breadcrumbs/`, or `research/<RUN_ID>/breadcrumbs/` when a
+publisher wires that helper for that skill. Today the landed callers are
+`scripts/larch-log.sh commit` (`/implement`) and `scripts/design-log-publish.sh`
+(`design` publish).
+
+`breadcrumbs/` is a commit-only directory artifact, not a larch-log batch.
+`scripts/larch-log.sh commit` and `scripts/design-log-publish.sh` invoke the
+shared `larch_log_publish_breadcrumbs_shared` helper. Live streams remain under
+the session tmpdir
+(`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
+`$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`).
+
+Source resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (which must still
+be under an active session tmpdir), else the log-root parent's `breadcrumbs/`.
+The source directory and every candidate file must resolve under
+`IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
+`larch_log_breadcrumbs_under_session_tmp`; otherwise publication fails closed.
+
+Only regular `*.ndjson` files at depth 1 are staged. Each `foo.ndjson` is
+redacted through
+`redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>` and
+committed as `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson` after an
+atomic mktemp-plus-move of the staging directory. A missing source directory, a
+source path that exists but yields zero accepted `*.ndjson` files, or a source
+tree containing only silently skipped entries is a successful no-op: the helper
+returns 0 and does not create, replace, or clear an existing committed
+`breadcrumbs/` destination.
+
+The enforced-reject and silent-skip split is documented in
+[SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction):
+enforced triggers fail closed for the whole directory, while hidden entries,
+non-regular files, and non-`*.ndjson` regular files are ignored and not
+committed. Hidden monitor sidecars such as `.quiet`, `.done`, `.status`,
+`.surfaced`, `.bc-offset`, and `.pid` are skipped by the glob and remain
+session-local.
 
 `round-<N>/` directories are written by `larch-log.sh write-round` during
 `/implement` code review. They preserve the per-round reviewer and voter

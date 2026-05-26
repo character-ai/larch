@@ -289,6 +289,55 @@ else
     fail "failed breadcrumb commit must not leave breadcrumbs directory"
 fi
 
+echo "=== commit rejects symlinked breadcrumb source directory ==="
+_bc_source_link_repo="$TMP/breadcrumb-source-link-repo"
+_bc_source_link_staging="$TMP/breadcrumb-source-link-staging"
+_bc_source_link_run="breadcrumbsourcelink123"
+mkdir -p "$_bc_source_link_staging/source-real"
+git init "$_bc_source_link_repo" >/dev/null 2>&1
+git -C "$_bc_source_link_repo" config user.email "ci@test"
+git -C "$_bc_source_link_repo" config user.name "Test CI"
+touch "$_bc_source_link_repo/.gitkeep"
+git -C "$_bc_source_link_repo" add .
+git -C "$_bc_source_link_repo" commit -q -m "init"
+git -C "$_bc_source_link_repo" checkout -q -b feature-breadcrumb-source-link
+(cd "$_bc_source_link_repo" && "$LARCH_LOG" init --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" --issue 42) >/dev/null
+(cd "$_bc_source_link_repo" && "$LARCH_LOG" write --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+ln -s "$_bc_source_link_staging/source-real" "$_bc_source_link_staging/breadcrumbs"
+_bc_source_link_rc=0
+(cd "$_bc_source_link_repo" && with_implement_tmpdir "$_bc_source_link_staging" "$LARCH_LOG" commit --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" >/dev/null 2>&1) || _bc_source_link_rc=$?
+if [ "$_bc_source_link_rc" -ne 0 ]; then pass "commit exits non-zero on symlinked breadcrumb source directory"; else fail "commit should fail on symlinked breadcrumb source directory"; fi
+if [ ! -e "$_bc_source_link_repo/larch-logs/implement/$_bc_source_link_run/breadcrumbs" ]; then
+    pass "symlinked breadcrumb source directory leaves no breadcrumbs directory"
+else
+    fail "symlinked breadcrumb source directory must not publish breadcrumbs"
+fi
+
+echo "=== commit rejects hardlinked breadcrumb file ==="
+_bc_hardlink_repo="$TMP/breadcrumb-hardlink-repo"
+_bc_hardlink_staging="$TMP/breadcrumb-hardlink-staging"
+_bc_hardlink_run="breadcrumbhardlink123"
+mkdir -p "$_bc_hardlink_staging/breadcrumbs"
+git init "$_bc_hardlink_repo" >/dev/null 2>&1
+git -C "$_bc_hardlink_repo" config user.email "ci@test"
+git -C "$_bc_hardlink_repo" config user.name "Test CI"
+touch "$_bc_hardlink_repo/.gitkeep"
+git -C "$_bc_hardlink_repo" add .
+git -C "$_bc_hardlink_repo" commit -q -m "init"
+git -C "$_bc_hardlink_repo" checkout -q -b feature-breadcrumb-hardlink
+(cd "$_bc_hardlink_repo" && "$LARCH_LOG" init --log-root "$_bc_hardlink_staging/larch-logs" --skill implement --run-id "$_bc_hardlink_run" --issue 42) >/dev/null
+(cd "$_bc_hardlink_repo" && "$LARCH_LOG" write --log-root "$_bc_hardlink_staging/larch-logs" --skill implement --run-id "$_bc_hardlink_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=hardlink\n' > "$_bc_hardlink_staging/source.ndjson"
+ln "$_bc_hardlink_staging/source.ndjson" "$_bc_hardlink_staging/breadcrumbs/hardlinked.ndjson"
+_bc_hardlink_rc=0
+(cd "$_bc_hardlink_repo" && with_implement_tmpdir "$_bc_hardlink_staging" "$LARCH_LOG" commit --log-root "$_bc_hardlink_staging/larch-logs" --skill implement --run-id "$_bc_hardlink_run" >/dev/null 2>&1) || _bc_hardlink_rc=$?
+if [ "$_bc_hardlink_rc" -ne 0 ]; then pass "commit exits non-zero on hardlinked breadcrumb file"; else fail "commit should fail on hardlinked breadcrumb file"; fi
+if [ ! -e "$_bc_hardlink_repo/larch-logs/implement/$_bc_hardlink_run/breadcrumbs" ]; then
+    pass "hardlinked breadcrumb file leaves no breadcrumbs directory"
+else
+    fail "hardlinked breadcrumb file must not publish breadcrumbs"
+fi
+
 echo "=== commit fails closed on breadcrumb redactor failure ==="
 _bc_redact_repo="$TMP/breadcrumb-redact-repo"
 _bc_redact_staging="$TMP/breadcrumb-redact-staging"

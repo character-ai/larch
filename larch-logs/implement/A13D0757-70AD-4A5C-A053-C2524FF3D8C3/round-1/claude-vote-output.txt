@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- "destination not created or replaced" clearly implies prior state preserved; explicit restatement adds verbosity without meaningful clarity gain
+FINDING_3: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_4: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_5: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan already acknowledges manual visual verification for anchors; automated regression for doc anchors is disproportionate for a docs-only patch
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- diff shows a single targeted row replacement, not a broad table rewrite
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- meta-observation about branch scope; not actionable as a standalone filed issue
+FINDING_10: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_11: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- lint-fix-loop trust boundary expansion is the #2909 feature already implemented and documented in SECURITY.md; not a separate issue to file
+FINDING_13: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer's scope approach is not a problem worth filing as an issue
+FINDING_14: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_15: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true

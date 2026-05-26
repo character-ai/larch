@@ -1,0 +1,2 @@
+Merging the reviewer inputs into a normalized finding list: grouping duplicates, applying severity rules, and excluding security-slot positive assessments (FINDING_13–20) that aren't actionable concerns.
+
