@@ -1,0 +1,29 @@
+Reading the implementation plan and exploring referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-fix-loop.sh:320-333	Proposed commit-range forbidden check uses exact path match only	Commits under a forbidden directory (e.g. vendor/foo) are not matched when forbidden_paths_file lists vendor; post_dispatch_forbidden_revert uses prefix match at 147-148	Mirror post_dispatch case logic: for each diff path test forbidden_path and forbidden_path/* (bash loop or awk), or factor a shared matcher used by both paths
+2	in_scope	important	security	scripts/lint-fix-loop.sh:325-328	HEAD-moved branch skips post_dispatch_forbidden_revert entirely	Coder can commit an allowed fix and leave uncommitted .gitmodules or submodule-path edits; _stage_and_push_ci_fixes may stage them via capture_tracked_dirty_paths	After commit-range check passes, still run post_dispatch_forbidden_revert (or equivalent) before emit applied; fail forbidden-path-violation if revert_count>0
+3	in_scope	important	correctness	scripts/test-ship-pr.sh:3261-3303	Rewrite only flips lint-fix stub; fixture env always exits 1	Phase B verification reruns the same env stub and returns rc=4 (verify regression), so the case cannot prove push/exit 0 even after applied	Clone ci_per_job_happy stubs: env/make fail-then-pass (or always pass on verify), two-phase ci-wait, git-push.sh, run-relevant-checks-captured; assert rc=0 and push-calls.txt
+4	in_scope	important	architecture	scripts/lint-fix-loop.sh:127-163	Duplicate forbidden enforcement with weaker semantics	Drift between working-tree revert and commit-range check will recur on future edits	Extract committed_forbidden_paths_count (or reuse post_dispatch matching on git diff output) shared by both branches
+5	in_scope	important	risk-integration	scripts/test-lint-fix-loop.sh:48-49	New forbidden-in-commit case likely tests only .gitmodules	Exact-match bug in finding 1 passes when only the top-level file changes; nested submodule edits stay untested	Have wrapper commit a file under a synthetic submodule directory listed in forbidden_paths_file, not only .gitmodules
+6	in_scope	nit	correctness	scripts/test-ship-pr.sh:245-268	Stub lint-fix-loop omits LINT_FIX_COMMIT_SHA and LINT_FIX_HEAD_CHANGED	Preferred ship-pr rewrite cannot assert new envelope fields; weaker integration signal	Extend shared stub with optional STUB_LINT_FIX_COMMIT_SHA and STUB_LINT_FIX_HEAD_CHANGED echo lines
+7	in_scope	nit	code-quality	scripts/lint-fix-loop.sh:55	Prompt still says parent owns commits while plan accepts coder commits	No functional break, but coders get contradictory guidance	Optionally add one line: if you already committed, do not amend further; helper will accept HEAD
+8	in_scope	latent	correctness	scripts/lint-fix-loop.sh:320-333	git diff in a pipeline under set -euo pipefail	A failing diff aborts the script before fail_status, yielding a hard crash instead of controlled failed envelope	Wrap diff pipeline: if ! git diff ...; then fail_status repo-state-unreadable 1; fi (or set +o pipefail locally)
+9	out_of_scope	latent	security	scripts/lint-fix-loop.sh:291-295	forbidden_paths_file frozen at pre-dispatch	Coder adds a new submodule mid-dispatch; commit-range check uses stale list	Track as follow-up: refresh forbidden list from post-dispatch tree before commit check (plan failure mode 1)
+
+1. **[correctness]** `scripts/lint-fix-loop.sh:320-333` — The plan’s `awk '($0 in forbidden)'` commit check does not implement the prefix semantics of `post_dispatch_forbidden_revert` (`"$forbidden_path"/*` at 147-148). Nested submodule file commits can be accepted as `applied`.
+
+2. **[security]** `scripts/lint-fix-loop.sh:325-328` — Skipping `post_dispatch_forbidden_revert` on the HEAD-moved branch leaves uncommitted forbidden edits in the worktree; `ship-pr.sh` `_stage_and_push_ci_fixes` (1597-1638) can stage them on push.
+
+3. **[correctness]** `scripts/test-ship-pr.sh:3261-3303` — Stubbing `applied` alone is insufficient: the current `env` stub always fails, so Phase B verification still yields `per_job_rc=4`, not the happy-path push the plan targets.
+
+4. **[architecture]** `scripts/lint-fix-loop.sh:127-163` — Two divergent forbidden-path implementations increase maintenance risk; consolidate matching logic.
+
+5. **[correctness]** `scripts/test-lint-fix-loop.sh:48-49` — The planned forbidden-in-commit fixture should assert a path under a submodule directory, not only `.gitmodules`, or it will not catch finding 1.
+
+6. **[risk-integration]** `scripts/test-ship-pr.sh:245-268` — Extend the lint-fix stub for `STUB_LINT_FIX_COMMIT_SHA` / `STUB_LINT_FIX_HEAD_CHANGED` if the ship-pr case is rewritten per the preferred approach.
+
+7. **[code-quality]** `scripts/lint-fix-loop.sh:55` — Prompt text still forbids commits; optional alignment with the new applied-on-HEAD-moved contract.
+
+8. **[correctness]** `scripts/lint-fix-loop.sh:320-333` — Guard `git diff` failures under `set -e` so errors surface as `fail_status`, not an abrupt exit.
+
+9. **[OUT_OF_SCOPE]** `scripts/lint-fix-loop.sh:291-295` — Pre-dispatch-only forbidden list cannot see submodules added during dispatch (acknowledged in plan failure modes); file a follow-up if stricter enforcement is required.

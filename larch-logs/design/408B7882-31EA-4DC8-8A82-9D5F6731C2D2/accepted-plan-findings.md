@@ -1,0 +1,189 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:320-333
+- **Concern**: Proposed commit-range forbidden check uses exact path match only. Scenario: Commits under a forbidden directory (e.g. vendor/foo) are not matched when forbidden_paths_file lists vendor; post_dispatch_forbidden_revert uses prefix match at 147-148
+- **Proposed resolution**: Mirror post_dispatch case logic: for each diff path test forbidden_path and forbidden_path/* (bash loop or awk), or factor a shared matcher used by both paths
+
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:320-323
+- **Concern**: Plan treats any non-empty current_head as same-branch movement, but git rev-parse HEAD is also non-empty in detached HEAD or after a branch switch. Scenario: An external coder can detach HEAD or checkout another branch, commit there, and lint-fix-loop will emit applied; ship-pr may then push or continue from the wrong ref instead of preserving the existing head-changed safety net
+- **Proposed resolution**: Capture the baseline symbolic ref before dispatch with git symbolic-ref --quiet HEAD, compare it after dispatch, and only accept current_head != baseline_head when the symbolic ref is unchanged; add detached and branch-switched regression cases
+
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/lint-fix-loop.sh:127-159
+- **Concern**: Proposed committed forbidden-path check uses exact path membership while the existing working-tree enforcement treats forbidden paths as prefixes. Scenario: A commit that changes files under a forbidden submodule path such as submod/file can bypass the new commit-content check because only submod is in forbidden_paths_file
+- **Proposed resolution**: Reuse the same case "$path" in "$forbidden_path"|"$forbidden_path"/* matching semantics for committed diff paths, or extract a shared helper so working-tree and committed checks cannot diverge
+
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/lint-fix-loop.sh:286-345
+- **Concern**: Plan accepts coder commits even when baseline_clean=false, despite the existing design avoiding helper-owned commits over a dirty baseline. Scenario: If the parent had unrelated tracked edits before dispatch, a coder commit can accidentally include and push those edits; the proposed forbidden reset path can also discard pre-existing tracked work via git reset --hard "$baseline_head"
+- **Proposed resolution**: Only treat coder commits as applied when baseline_clean=true, or add explicit preservation/validation for dirty baselines before accepting or resetting; otherwise fail closed with the existing head-changed-after-dispatch reason
+
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:320-323
+- **Concern**: Proposed HEAD-moved branch only checks current_head is non-empty and different. Scenario: Detached HEAD, a different symbolic branch, or a same-branch history rewrite such as commit --amend can be reported as applied; later verification or push runs on the wrong history
+- **Proposed resolution**: Before dispatch capture baseline_branch with git symbolic-ref --short HEAD; after dispatch require the same branch and git merge-base --is-ancestor "$baseline_head" "$current_head"; otherwise keep failing with head-changed-after-dispatch
+
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/lint-fix-loop.sh:143-159
+- **Concern**: Proposed committed forbidden-path check does exact path membership instead of the existing equal-or-under-prefix contract. Scenario: A committed edit to submodule_path/file is missed when forbidden_paths_file contains only submodule_path, so forbidden submodule content can be accepted
+- **Proposed resolution**: Add prefix-aware matching equivalent to post_dispatch_forbidden_revert case "$path" in "$forbidden_path"|"$forbidden_path"/*); test both .gitmodules and nested submodule-path files
+
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/lint-fix-loop.sh:325-333
+- **Concern**: HEAD-changed branch skips the remaining working-tree forbidden-path revert/check. Scenario: A coder can commit an allowed file and leave an uncommitted .gitmodules or submodule-path edit; commit-content check passes, lint-fix-loop reports applied, and the parent may stage or trip over the dirty forbidden file
+- **Proposed resolution**: Run post_dispatch_forbidden_revert or an equivalent fail-closed forbidden dirty-tree check after accepting the commit, before emitting applied; add a commit-plus-uncommitted-forbidden regression
+
+
+### FINDING_8:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:284-289
+- **Concern**: Plan accepts coder commits even when the pre-dispatch baseline was dirty. Scenario: If baseline dirty work existed and the coder runs git add -A && git commit, unrelated user changes are folded into LINT_FIX_COMMIT_SHA and can be pushed as the CI fix
+- **Proposed resolution**: Only accept coder-owned commits when baseline_clean=true, or reject when the committed delta intersects baseline tracked/untracked paths; for baseline_clean=false keep the head-changed failure path so the dirty baseline is not silently committed
+
+
+### FINDING_9:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/lint-fix-loop.sh:147-148
+- **Concern**: Finding 1: proposed committed forbidden-path check uses exact path matching instead of the existing prefix contract. Scenario: A committed change under a forbidden submodule directory such as submod/file.txt will not equal the forbidden path submod, so the plan can emit applied and allow the protected content through
+- **Proposed resolution**: Implement the commit-content helper with the same path-or-descendant match as post_dispatch_forbidden_revert and add a nested submodule-path test
+
+
+### FINDING_10:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:320-323
+- **Concern**: Finding 2: non-empty current_head does not prove HEAD moved on the same branch. Scenario: If the external coder checks out another branch or detaches HEAD and commits, git rev-parse HEAD still returns a SHA and the proposed branch accepts it as applied
+- **Proposed resolution**: Capture the baseline symbolic branch before dispatch and require the post-dispatch symbolic branch to match before accepting the commit; otherwise fail closed or restore deliberately
+
+
+### FINDING_11:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/lint-fix-loop.sh:284-289
+- **Concern**: Finding 3: accepting coder commits when baseline_clean=false can commit or destroy pre-existing dirty work. Scenario: During Step 3 or CI follow-up checks with an already dirty tree, a coder commit using git add -A can fold parent/user changes into its commit, and the planned forbidden-path reset --hard can discard tracked dirty changes
+- **Proposed resolution**: Only treat HEAD drift as applied when the pre-dispatch baseline is clean, or normalize the coder commit into a patch after preserving/restoring the baseline dirty state and validating the resulting delta
+
+
+### FINDING_12:
+- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/lint-fix-loop.sh:320-327
+- **Concern**: Proposed committed forbidden-path check only matches exact forbidden path names. Scenario: The pseudocode rejects .gitmodules and a diff entry equal to the submodule root, but a committed change under a forbidden directory such as submodule_dir/file does not match `($0 in forbidden)`, so prohibited content can be accepted with LINT_FIX_STATUS=applied
+- **Proposed resolution**: Use prefix-aware matching equivalent to the existing post_dispatch_forbidden_revert semantics in scripts/lint-fix-loop.sh:143-149, and make the new regression assert a nested path under the synthetic submodule
+
+
+### FINDING_13:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:320-323
+- **Concern**: Plan accepts any non-empty changed HEAD without proving it stayed on the same named branch. Scenario: If the external coder checks out another branch or commits while detached, `git rev-parse HEAD` still returns a SHA, so lint-fix-loop reports applied and the later push either targets the wrong branch or fails later instead of preserving the defensive head-changed failure
+- **Proposed resolution**: Capture the baseline symbolic branch before dispatch and compare it after dispatch; only use the applied-with-coder-commit path when both branches resolve and match, otherwise emit head-changed-after-dispatch or another terminal failure
+
+
+### FINDING_14:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/lint-fix-loop.sh:276-289
+- **Concern**: Forbidden committed-fix rollback uses git reset --hard even when the baseline worktree was already dirty. Scenario: When baseline_clean=false, a coder commit that touches a forbidden path triggers hard reset to baseline_head, discarding unrelated uncommitted parent/user changes that existed before dispatch
+- **Proposed resolution**: For baseline_clean=false, avoid hard reset unless baseline patches were captured and restored; simplest safe revision is to fail the head-moved path before accepting or rolling back committed fixes when the baseline is dirty, or use a non-destructive reset plus explicit restoration verification
+
+
+### FINDING_15:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:22-32
+- **Concern**: Planned commit-content forbidden-path check uses exact path equality only. Scenario: `post_dispatch_forbidden_revert` (scripts/lint-fix-loop.sh:147-148) treats `forbidden_path` and `forbidden_path/*`; the plan’s awk `($0 in forbidden)` misses nested edits (e.g. commit touches `vendor/foo/bar` while forbidden list has `vendor/foo`), allowing submodule/.gitmodules violations through the new applied-with-coder-commit path
+- **Proposed resolution**: Mirror the working-tree matcher: prefix/`case` logic over `git diff --name-only "$baseline_head".."$current_head"` vs `forbidden_paths_file`, or factor a shared helper used by both revert paths
+
+
+### FINDING_16:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-lint-fix-loop.sh:140-142
+- **Concern**: Case 1 still asserts exit code 1 for the rewritten success path. Scenario: After `LINT_FIX_STATUS=applied`, `lint-fix-loop.sh` falls through to the applied envelope (implicit exit 0); leaving `case1_rc == 1` will fail the harness despite correct behavior
+- **Proposed resolution**: Change case 1 to expect `case1_rc == 0` (or drop the rc assertion if aligned with cases 3/5) alongside the new applied/HEAD_CHANGED assertions
+
+
+### FINDING_17:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-ship-pr.sh:3265-3294
+- **Concern**: Per-job head-changed rewrite underspecifies fixture changes beyond lint-fix stub env vars. Scenario: The current case forces `env` to always fail and `ci-wait.sh` to always return `evaluate_failure`; stubbing `STUB_LINT_FIX_STATUS=applied` alone still leaves per-job commands failing and never reaches push/CI re-entry (Decision 4 / feature “push + re-run CI”)
+- **Proposed resolution**: Model the rewrite on `ci_per_job_happy` (scripts/test-ship-pr.sh:3056-3111): count-based `ci-wait` pass, `env`/`make` stubs that succeed on replay, `git-push.sh` call logging; then stub `applied` (and optional `STUB_LINT_FIX_*` fields)
+
+
+### FINDING_18:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-ship-pr.sh:3297-3303
+- **Concern**: Ship-pr regression lacks concrete success assertions required by Decision 4. Scenario: Plan allows deleting the case or a vague “reach _stage_and_push_ci_fixes + ci-wait”; without `assert_rc 0`, `push-calls.txt`, `STALL_TRACKING=false`, and a second `ci-wait` pass, the stall regression could be removed without proving the #2909 fix
+- **Proposed resolution**: Specify assertions mirroring `ci_per_job_happy`: exit 0, `push-calls.txt` present, no `STALL_TRACKING=true`, `ci-wait` invoked twice; assert `ship-pr-ci-per-job` lint-fix site when using the stub sentinel
+
+
+### FINDING_21:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-fix-loop.sh:320-323
+- **Concern**: Finding 1: Detached HEAD and branch-switch handling is underspecified even though the plan says only same-branch HEAD moves should be accepted. Scenario: git rev-parse HEAD returns a SHA in detached HEAD, so the proposed current_head non-empty check would accept a detached commit or a commit made after switching branches instead of preserving the existing defensive failure path
+- **Proposed resolution**: Capture the symbolic branch/ref before dispatch, compare it after dispatch, and only accept current_head != baseline_head when the branch is still the same named branch; otherwise fail head-changed-after-dispatch
+
+
+### FINDING_22:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/lint-fix-loop.sh:325-333
+- **Concern**: Finding 2: The head-changed branch skips working-tree forbidden-path cleanup. Scenario: The plan explicitly skips the existing post_dispatch_forbidden_revert block after a coder commit; if the coder commits a safe file but also leaves dirty .gitmodules or submodule-path changes, ship-pr can later stage tracked dirty paths and commit/push them
+- **Proposed resolution**: Run the forbidden dirty-tree revert/check in the head-changed path before emitting applied, or separately reject/reset when any uncommitted forbidden path remains; add a commit-plus-uncommitted-forbidden regression
+
+
+### FINDING_23:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: SECURITY.md:53,docs/linting.md:203
+- **Concern**: Finding 4: Documentation updates are incomplete for the changed trust/safety contract. Scenario: The plan changes lint-fix-loop from failing closed on external-coder commits to accepting and pushing those commits, but SECURITY.md still documents external coder commit assumptions and docs/linting.md still says the harness pins fail-closed HEAD drift
+- **Proposed resolution**: Update SECURITY.md to describe the lint-fix-loop accepted-coder-commit path and its mechanical checks, and update docs/linting.md to describe the revised test expectations
+
+

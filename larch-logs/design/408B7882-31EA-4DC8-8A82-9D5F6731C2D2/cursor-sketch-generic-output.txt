@@ -1,0 +1,4 @@
+Exploring the per-job CI fix loop and how `head-changed` is handled across the relevant scripts.
+Checking how `run_captured_cmd_then_fix_loop` behaves after an `applied` status in the check-first path:
+Creating the implementation plan from the code flow analysis.
+

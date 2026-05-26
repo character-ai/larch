@@ -1,0 +1,54 @@
+Propose a high-level implementation approach for this feature:
+
+[DESIGNING] [BUG] ship-pr.sh stalls at 10-head-changed when per-job CI fixer commits a fix instead of pushing and re-running CI
+
+## Bug Report
+
+**Exit code observed**: 4 (stall, `STALL_STEP=10-head-changed`)
+**Phase**: `ci-initial`
+
+## Summary
+
+During an `/implement` run, `ship-pr.sh` stalls with `STALL_STEP=10-head-changed` when the per-job CI fix loop dispatches an external fixer (Codex/Cursor) that successfully commits a fix to the branch. Instead of pushing the committed fix and re-entering the CI loop, `ship-pr.sh` stalls and reports `10-head-changed`.
+
+## Root Cause Trace
+
+1. CI fails on a test harness shard (`test-harnesses-N`)
+2. `run_per_job_local_fix_loop` dispatches an external fixer via `lint-fix-loop.sh` (`--site ship-pr-ci-per-job`)
+3. The fixer (Codex/Cursor) commits a fix to the branch — HEAD changes
+4. `lint-fix-loop.sh` detects HEAD changed after dispatch → returns `LINT_FIX_STATUS=failed FAILURE_REASON=head-changed-after-dispatch`
+5. `_rcc_handle_fix_status` in `ship-pr.sh` routes this to `_RCC_STATUS=head-changed` (line ~148)
+6. `run_per_job_local_fix_loop` receives `_RCC_STATUS=head-changed` → returns 2
+7. The outer per-job loop hits `exit_stall "10-head-changed"` (line ~1991)
+
+**Key file**: `scripts/lint-fix-loop.sh` line 322: `fail_status "head-changed-after-dispatch" 1` — fires when the external coder changed HEAD.
+
+## Expected Behavior
+
+When the external CI-fix coder commits a fix, the run should:
+1. Push the committed fix commit via `git-force-push.sh`  
+2. Re-enter CI monitoring (`ci-wait.sh`) so CI validates the fix
+
+## Observed Behavior
+
+The run stalls with `STALL_STEP=10-head-changed`, leaving the committed fix on the branch but not pushed. The operator must manually push and restart.
+
+## Evidence
+
+From run `624A5FE2-6AD2-4251-A52A-BC52E4B30441` (issue #2852 implementation):
+- Ship-pr applied `ebbd4528 "Apply relevant-checks fixes (ship-pr CI per-job)"` via the fix loop
+- Then stalled with `STALL_STEP=10-head-changed`
+- PR #2892 required manual rebase + re-push to complete
+
+## Suggested Fix
+
+In `run_per_job_local_fix_loop` (around line 1870), when `head-changed` is returned (meaning the external fixer committed):
+- Instead of `return 2` (which causes `exit_stall "10-head-changed"`), push the committed fix and restart the CI loop via `run_rebase_rebump` or directly with `git-force-push.sh` + re-entry into CI monitoring.
+
+Alternatively, `lint-fix-loop.sh` could treat `head-changed-after-dispatch` as a successful fix (similar to `applied`) — the commit _is_ the fix. The push can then happen in the normal per-job post-fix push path.
+
+## Distinction from #2852
+
+Issue #2852 was about `drop-bump-commit.sh` refusing to drop a bump commit that also contained `CHANGELOG.md`. That has been fixed. This issue (`10-head-changed`) is a separate code path in the per-job CI fix loop and requires its own fix.
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.

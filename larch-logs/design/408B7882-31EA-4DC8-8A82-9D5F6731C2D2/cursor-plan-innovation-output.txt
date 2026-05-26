@@ -1,0 +1,27 @@
+Reviewing the implementation plan and validating it against the codebase.
+Checking whether the plan mentions exit-code updates and validating the soft-reset path against the current flow.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-fix-loop.sh:147-157	Proposed commit-content forbidden check uses exact-path awk only	Paths under a forbidden submodule root (e.g. vendor/foo/bar when vendor/foo is listed) are not flagged; commit is accepted and may be pushed	post_dispatch_forbidden_revert already uses prefix matching; reuse that logic (extract a shared matcher) for baseline..HEAD paths instead of the plan's exact-match awk
+2	in_scope	important	correctness	scripts/lint-fix-loop.sh:325-327	Head-changed success path skips post_dispatch_forbidden_revert	Coder commits an allowed fix but leaves forbidden .gitmodules/submodule edits unstaged; applied is emitted and ship-pr may stage/push the forbidden WT delta	After accepting a coder commit, still run post_dispatch_forbidden_revert (or equivalent) on the working tree before emit applied
+3	in_scope	important	architecture	scripts/lint-fix-loop.sh:320-360	Parallel head-changed branch duplicates enforcement and weakens invariants	~40 new lines, new LINT_FIX_HEAD_CHANGED contract, and divergent forbidden rules vs the existing revert+helper-commit path	On HEAD drift, git reset --soft "$baseline_head" then fall through to the existing unchanged-HEAD pipeline so forbidden revert, delta capture, and helper-owned commit stay single-sourced
+4	in_scope	important	correctness	scripts/lint-fix-loop.sh:320-323	Detached-HEAD edge case mis-specified as empty current_head	git rev-parse HEAD returns a SHA on detached HEAD; a new commit is treated as applied instead of head-changed-after-dispatch (guard at scripts/ship-pr.sh:1944 does not cover step3/5/6 callers)	Gate the new branch on unchanged symbolic-ref (or merge-base --is-ancestor) and keep head-changed-after-dispatch when ref/ancestry checks fail; add a harness case
+5	in_scope	important	correctness	scripts/test-lint-fix-loop.sh:140-142	Plan rewrites case 1 KV assertions but not exit code	Case 1 still expects rc 1 while applied exits 0; harness fails after implementation	Update case1_rc expectation to 0 (and assert success) alongside the new applied envelope assertions
+6	in_scope	latent	risk-integration	scripts/test-ship-pr.sh:261-268	Stub lint-fix-loop omits LINT_FIX_COMMIT_SHA and LINT_FIX_HEAD_CHANGED	Preferred per-job regression rewrite cannot assert the new applied contract without ad-hoc echo hacks	Extend the stub heredoc with optional STUB_LINT_FIX_COMMIT_SHA / STUB_LINT_FIX_HEAD_CHANGED (mirror STUB_LINT_FIX_DELTA_PATHS_FILE) before rewriting the case at ~3280
+7	out_of_scope	important	architecture	scripts/lint-fix-loop.sh:320-323	No ancestry/branch guard when HEAD SHA changes	Coder checks out another branch or adds a non-ancestor commit; fix is applied and pushed from the wrong history	Require git merge-base --is-ancestor "$baseline_head" "$current_head" and unchanged git symbolic-ref HEAD before treating coder output as applied
+8	out_of_scope	latent	security	scripts/lint-fix-loop.sh:291-295	forbidden_paths_file frozen at pre-dispatch only	Coder adds a new submodule mid-dispatch; neither commit nor WT checks include the new path (plan acknowledges; Codex/Cursor bypass Edit hooks)	Refresh forbidden_paths_file from post-dispatch .gitmodules/submodule_paths before enforcement or file a follow-up as plan suggests
+
+1. **correctness** `scripts/lint-fix-loop.sh:147-157` — Commit-only forbidden check in the plan uses exact-path `awk`; existing `post_dispatch_forbidden_revert` uses `"$forbidden_path"/*` prefix rules. Submodule nested paths can slip through. Reuse or extract the existing matcher.
+
+2. **correctness** `scripts/lint-fix-loop.sh:325-327` — Skipping `post_dispatch_forbidden_revert` on the head-changed success path leaves forbidden working-tree edits in place after a valid coder commit. Still run WT forbidden revert before `applied`.
+
+3. **architecture** `scripts/lint-fix-loop.sh:320-360` — Stronger alternative: `git reset --soft "$baseline_head"` after dispatch when HEAD moved, then reuse the unchanged-HEAD pipeline (forbidden revert, deltas, helper commit). Avoids a parallel branch, `LINT_FIX_HEAD_CHANGED`, and weaker commit-only checks.
+
+4. **correctness** `scripts/lint-fix-loop.sh:320-323` — Edge case “detached HEAD ⇒ empty `current_head`” is wrong; detached HEAD still yields a SHA. New commits would be accepted outside ship-pr’s detached guard (`scripts/ship-pr.sh:1944`). Use symbolic-ref or ancestry gates plus a test.
+
+5. **correctness** `scripts/test-lint-fix-loop.sh:140-142` — Plan omits updating case 1 exit code from 1 to 0 for `applied`.
+
+6. **risk-integration** `scripts/test-ship-pr.sh:261-268` — Extend stub KV fields before rewriting the per-job regression (~3280).
+
+**[OUT_OF_SCOPE]** `scripts/lint-fix-loop.sh:320-323` — Add `merge-base --is-ancestor` and unchanged branch ref to block branch hops.
+
+**[OUT_OF_SCOPE]** `scripts/lint-fix-loop.sh:291-295` — Refresh forbidden paths after dispatch if coders can add submodules (plan’s accepted gap).

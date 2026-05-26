@@ -1,0 +1,22 @@
+v1	mark	1779821409	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779821471	implement	-	codex	codex-sketch-generic	1779821421	1779821471	50	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779821519	implement	-	cursor	cursor-sketch-generic	1779821418	1779821519	101	cursor-sketch-generic-output.txt	0	complete
+v1	mark	1779821610	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779821728	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779822061	implement	-	codex	codex-phase1-codex-plan-arch	1779821960	1779822061	101	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779822062	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779821961	1779822062	101	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779822073	implement	-	codex	codex-phase1-codex-plan-innovation	1779821960	1779822073	113	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779822082	implement	-	codex	codex-phase1-codex-plan-edge	1779821960	1779822082	122	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779822083	implement	-	codex	codex-phase1-codex-plan-requirements	1779821961	1779822083	122	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779822162	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779821960	1779822162	202	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779822162	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779821961	1779822162	201	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779822175	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779821960	1779822175	215	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779822203	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779821960	1779822203	243	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779822233	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779821961	1779822233	272	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779822319	implement	-	cursor	cursor-phase1-aggregator	1779822238	1779822319	81	aggregator-output.txt	0	complete
+v1	vendor	1779822636	implement	-	cursor	cursor-phase1-voter-3	1779822565	1779822636	71	cursor-vote-output.txt	0	complete
+v1	vendor	1779822646	implement	-	codex	codex-phase1-voter-2	1779822565	1779822646	81	codex-vote-output.txt	0	complete
+v1	mark	1779823983	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779824020	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779824034	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779824164	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
