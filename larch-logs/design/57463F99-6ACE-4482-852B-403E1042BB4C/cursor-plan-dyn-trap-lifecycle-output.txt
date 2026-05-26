@@ -1,0 +1,16 @@
+Reviewing the plan and `scripts/design-log-publish.sh` for trap lifecycle ordering and early-exit paths.
+Checking the test harness and similar trap patterns in the script for comparison.
+Verifying bash trap + errexit interaction with the existing `wt_cleanup` pattern:
+Checking whether `gh` could still read the body file after the subshell returns, and whether the plan's `printf` matches the original body bytes:
+Confirming the inline `--body` string has no trailing newline; the plan's `printf` with `\n` would change the bytes.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/design-log-publish.sh:144-152	Plan omits trap-safe error suppression on proposed PR_BODY_TMP rm inside wt_cleanup	Adjacent ENUM cleanup uses rm -f … 2>/dev/null || true (line 145); a bare [ -n … ] && rm -f "$PR_BODY_TMP" can return non-zero on permission or odd FS errors and, under set -e, abort wt_cleanup before worktree removal (lines 146-151)	Mirror line 145: [ -n "${PR_BODY_TMP:-}" ] && rm -f "$PR_BODY_TMP" 2>/dev/null || true; optionally set PR_BODY_TMP="" after the explicit post-gh rm (ENUM_TOP_TMP="" pattern at line 287)
+2	in_scope	nit	correctness	scripts/design-log-publish.sh:463-464	Plan claims byte-identical body but proposes printf with trailing newline	Inline --body has no trailing newline; printf '…\n' adds one, contradicting plan line 117 and "unchanged" test rationale	Use printf '%s' 'Automated design log directory for run %s. Commit uses [skip ci].' "$RUN_ID" (no \n) or drop the byte-identical claim if newline is intentional
+
+1. **[risk-integration]** [`scripts/design-log-publish.sh:144-152`](scripts/design-log-publish.sh) — The plan adds `PR_BODY_TMP` cleanup to `wt_cleanup()` but does not require `2>/dev/null || true` on that `rm`, unlike the existing ENUM temp cleanup on line 145. A rare `rm` failure could stop the trap handler before worktree teardown.
+
+2. **[correctness]** [`scripts/design-log-publish.sh:463-464`](scripts/design-log-publish.sh) — The plan’s `printf '…\n'` does not match the current inline `--body` string (no trailing newline), despite claiming the body is byte-identical.
+
+**Trap-lifecycle checks (no findings):** `PR_BODY_TMP=""` before `wt_cleanup` at line 144 and `trap wt_cleanup EXIT` at line 153; proposed `mktemp` → `printf` → `gh … --body-file` → explicit `rm -f` sits at the current PR-create block (~458-464); `create_rc≠0` does not skip the explicit `rm`; `exit 0` paths before line 494 still run `wt_cleanup`; `trap - EXIT` at line 494 runs only after explicit `rm` on success paths; `[ -n "${PR_BODY_TMP:-}" ]` is safe when `mktemp` was never reached; double `rm -f` is harmless.
+
+

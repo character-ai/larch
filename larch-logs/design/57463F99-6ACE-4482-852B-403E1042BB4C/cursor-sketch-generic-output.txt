@@ -1,0 +1,4 @@
+Exploring the codebase for existing PR-creation guidance, rules patterns, and `create-pr.sh` integration.
+Checking how rules reference `${CLAUDE_PLUGIN_ROOT}` and whether `gh-pr-body-update` belongs in the path surface.
+Creating the implementation plan from codebase findings.
+

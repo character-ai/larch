@@ -1,0 +1,29 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- design-log-publish.md:47-48 explicitly documents "not create-pr.sh"; the proposed rule's "always route through the wrapper" wording directly contradicts the documented disposable-worktree path
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- SKILL.md:991 confirmed shows inline --body literal in Step 5d while skills/design/SKILL.md is in paths:; the contradiction lands verbatim after merge
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- run-analysis.sh:1031 confirmed with inline gh issue create --body body; plan claims exhaustive grep audit but missed this Python caller and omits the file from paths:
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- same Step 5d vs rule contradiction already captured by FINDING_2; no new information
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_2 and FINDING_4
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- audit-close-priors.sh:55 confirmed inline --body caller absent from paths:; tracking-issue-summary.sh already compliant but also absent; coverage gap is real
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- security framing of the same Step 5d conflict already raised in FINDING_2
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_2/4/5/7
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- both audit-close-priors.sh:55 and run-analysis.sh:1031 confirmed as live inline --body callers not in paths: and not migrated; plan completeness claim is false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- mktemp/write is planned post-push under set -e; if TMPDIR unavailable at that point, script exits before emitting RECOVERY_BRANCH with PUSH_DONE=true
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly accepts prompt-only enforcement as a tradeoff; a pre-commit grep hook would mechanically catch drift; gap is real even if accepted
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_1
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_1/12
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- same Step 5d/SECURITY.md concern as FINDING_2; SECURITY.md angle does not change the problem or required fix
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_3 and FINDING_9 for run-analysis.sh
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly notes harness does not assert on --body argv shape; the migration can silently regress while test passes
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_2 family
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_2 family
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- tracking-issue-summary.sh:80 confirmed uses --body-file but file is absent from paths:; future edits miss the reminder despite being a gh body composition surface
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- harness assertion gap same as FINDING_16; broader static lint aspect already covered by FINDING_11
+FINDING_21: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- script-md-siblings rule requires updating design-log-publish.md when script behavior changes; plan lists only UPDATED: design-log-publish.sh
+FINDING_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- proposed printf writes trailing \n; original inline --body string has no trailing newline; plan's "byte-identical" claim is inaccurate
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_3 for run-analysis.sh
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_3/9
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_2 family
+FINDING_26: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- tracking-issue-summary.sh confirmed absent; release-tag.yaml and review-and-fix.sh claimed as compliant callers also absent; incomplete paths: means regression reminders miss these surfaces
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- rule text "value MUST come from a file" with no exception inadvertently bans --body-file - (stdin); plan's own failure-modes section names this gap
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- adjacent ENUM cleanup at line 145 uses 2>/dev/null || true; bare [ -n ] && rm -f lacks that guard; pattern to mirror is explicit and in-file
+FINDING_29: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- explicit rm -f after gh pr create leaves PR_BODY_TMP non-empty; wt_cleanup then attempts a redundant rm on the same path; zeroing the variable matches the ENUM_TOP_TMP="" pattern already used in this script

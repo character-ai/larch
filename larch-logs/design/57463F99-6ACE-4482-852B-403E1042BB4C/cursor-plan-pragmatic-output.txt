@@ -1,0 +1,51 @@
+Reviewing the implementation plan and validating it against the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	.claude/rules/gh-body-file.md:54-56 (proposed);scripts/design-log-publish.md:47-48	Rule requires all gh pr create to use create-pr.sh but design-log-publish intentionally uses raw gh pr create	Editors of design-log-publish.sh (in paths:) get a rule that contradicts the documented disposable-worktree PR path and may wrongly route through create-pr.sh (existing-PR fast-path / assignee / push semantics)	Qualify Required pattern: create-pr.sh for interactive/implement PRs; exempt scripts/design-log-publish.sh (documented direct gh pr create --body-file on disposable branch)
+2	in_scope	important	correctness	skills/design/SKILL.md:986-991;SECURITY.md:135	Rule bans all inline --body including fixed literals; Step 5d normatively requires inline fixed-literal --body	Opening/editing skills/design/SKILL.md injects a rule that forbids the Step 5d snippet SECURITY.md still mandates; a follow-up edit may break the upstream #2672 gate or trigger spurious refactors	Co-update Step 5d to write the fixed literal to a temp/file and pass --body-file (content still static; no dynamic assembly), or add an explicit SECURITY-documented carve-out in the rule Forbidden/Required sections
+3	in_scope	important	risk-integration	scripts/design-log-publish.md:47-49;scripts/design-log-publish.sh:461-463	Script migration to --body-file planned but sibling .md contract not updated	script-md-siblings + paths: on design-log-publish.md still describe gh pr create without --body-file; reviewers/operators copy stale argv from the contract doc	Update scripts/design-log-publish.md step 7 in the same PR to state --body-file and note why create-pr.sh is not used
+4	out_of_scope	important	risk-integration	skills/report-tokens/scripts/run-analysis.sh:1031-1034	Python gh issue create still passes dynamic --body inline (not in paths:)	Large analysis bodies with backticks/markdown can still break or truncate when passed as argv; path-triggered rule never fires on this script	Migrate to tempfile + --body-file (or gh --body-file -) and add skills/report-tokens/scripts/run-analysis.sh (+ .md if present) to the rule paths: list in a follow-up
+5	out_of_scope	latent	correctness	.claude/skills/audit-runs/scripts/audit-close-priors.sh:55	Remaining inline gh issue comment --body for superseded notice	Convention drift: short literal bypasses the new rule because dev-only script is outside paths:	Switch to mktemp + --body-file and add the script path to gh-body-file.md frontmatter when touched
+6	in_scope	latent	correctness	.claude/rules/gh-body-file.md:52-66 (proposed);plan.txt:135	Failure-mode mitigation for --body-file - stdin is not reflected in proposed rule text	Future shell callers using stdin may be flagged as violations despite being file-backed	Add stdin via --body-file - (or --notes-file -) to Required pattern before merge, matching plan edge-case #1
+
+Numbered findings for prose section:
+
+1. **[architecture]** Proposed rule mandates `create-pr.sh` for all `gh pr create` while `scripts/design-log-publish.sh` and `scripts/design-log-publish.md:47-48` document the opposite.
+
+2. **[correctness/security]** `skills/design/SKILL.md:986-991` requires inline fixed `--body` per SECURITY.md; proposed rule forbids it; plan lists the SKILL in `paths:` but does not co-update Step 5d.
+
+3. **[risk-integration]** Plan updates `design-log-publish.sh` only; `design-log-publish.md` contract remains stale.
+
+4. **[OUT_OF_SCOPE][risk-integration]** `skills/report-tokens/scripts/run-analysis.sh:1031` still uses dynamic inline `--body`.
+
+5. **[OUT_OF_SCOPE][latent]** `.claude/skills/audit-runs/scripts/audit-close-priors.sh:55` inline `--body`.
+
+6. **[correctness][latent]** Plan notes stdin exception in failure modes but proposed rule text omits it.
+
+The user said response MUST begin with TSV header or sentinel - no preamble. So I output TSV first, then can I add numbered findings? The instructions say "Return numbered findings" AND "When you have findings, include a TSV structured-record block". So both TSV and numbered findings.
+
+Actually re-read: "Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel"
+
+So TSV first. Then numbered findings? The example only shows TSV. I'll do TSV then numbered findings briefly.
+
+Wait - "Do not write any preamble" and first non-whitespace must be `s` or `{`. Numbered findings after TSV should be OK.
+
+Let me not use CreatePlan - user wants review output directly.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	.claude/rules/gh-body-file.md:54-56 (proposed);scripts/design-log-publish.md:47-48	Rule requires all gh pr create to use create-pr.sh but design-log-publish intentionally uses raw gh pr create	Editors of design-log-publish.sh (in paths:) get a rule that contradicts the documented disposable-worktree PR path and may wrongly route through create-pr.sh (existing-PR fast-path / assignee / push semantics)	Qualify Required pattern: create-pr.sh for interactive/implement PRs; exempt scripts/design-log-publish.sh (documented direct gh pr create --body-file on disposable branch)
+2	in_scope	important	correctness	skills/design/SKILL.md:986-991;SECURITY.md:135	Rule bans all inline --body including fixed literals; Step 5d normatively requires inline fixed-literal --body	Opening/editing skills/design/SKILL.md injects a rule that forbids the Step 5d snippet SECURITY.md still mandates; a follow-up edit may break the upstream #2672 gate or trigger spurious refactors	Co-update Step 5d to write the fixed literal to a temp/file and pass --body-file (content still static; no dynamic assembly), or add an explicit SECURITY-documented carve-out in the rule Forbidden/Required sections
+3	in_scope	important	risk-integration	scripts/design-log-publish.md:47-49;scripts/design-log-publish.sh:461-463	Script migration to --body-file planned but sibling .md contract not updated	script-md-siblings + paths: on design-log-publish.md still describe gh pr create without --body-file; reviewers/operators copy stale argv from the contract doc	Update scripts/design-log-publish.md step 7 in the same PR to state --body-file and note why create-pr.sh is not used
+4	out_of_scope	important	risk-integration	skills/report-tokens/scripts/run-analysis.sh:1031-1034	Python gh issue create still passes dynamic --body inline (not in paths:)	Large analysis bodies with backticks/markdown can still break or truncate when passed as argv; path-triggered rule never fires on this script	Migrate to tempfile + --body-file and add skills/report-tokens/scripts/run-analysis.sh (+ .md if present) to the rule paths: list in a follow-up
+5	out_of_scope	latent	correctness	.claude/skills/audit-runs/scripts/audit-close-priors.sh:55	Remaining inline gh issue comment --body for superseded notice	Convention drift: short literal bypasses the new rule because dev-only script is outside paths:	Switch to mktemp + --body-file and add the script path to gh-body-file.md frontmatter when touched
+6	in_scope	latent	correctness	.claude/rules/gh-body-file.md:52-66 (proposed);plan.txt:135	Failure-mode mitigation for --body-file - stdin is not reflected in proposed rule text	Future shell callers using stdin may be flagged as violations despite being file-backed	Add stdin via --body-file - (or --notes-file -) to Required pattern before merge, matching plan edge-case #1
+
+1. **[architecture]** Proposed rule mandates `create-pr.sh` for all `gh pr create` while `scripts/design-log-publish.sh` and `scripts/design-log-publish.md:47-48` document the opposite.
+
+2. **[correctness/security]** `skills/design/SKILL.md:986-991` requires inline fixed `--body` per `SECURITY.md:135`; proposed rule forbids it; plan lists the SKILL in `paths:` but does not co-update Step 5d.
+
+3. **[risk-integration]** Plan updates `design-log-publish.sh` only; `design-log-publish.md` contract remains stale relative to `script-md-siblings`.
+
+4. **[OUT_OF_SCOPE][risk-integration]** `skills/report-tokens/scripts/run-analysis.sh:1031` still uses dynamic inline `--body`.
+
+5. **[OUT_OF_SCOPE][latent]** `.claude/skills/audit-runs/scripts/audit-close-priors.sh:55` inline `--body`.
+
+6. **[correctness][latent]** Plan notes stdin exception in failure modes but proposed rule text omits it.
