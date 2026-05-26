@@ -25,6 +25,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.5.27] - 2026-05-26
+
+### Changed
+
+- Accepted same-branch, ancestor-preserved coder commits in lint-fix-loop when the pre-dispatch baseline is clean.
+- Added prefix-aware forbidden-path enforcement for committed coder deltas plus residual working-tree forbidden cleanup.
+- Updated lint-fix-loop, ship-pr, security, and linting docs/tests for the new applied-with-head-changed contract.
+
 ## [42.5.26] - 2026-05-26
 
 ### Changed
