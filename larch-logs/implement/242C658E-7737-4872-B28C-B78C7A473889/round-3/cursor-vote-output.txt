@@ -1,0 +1,28 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stall bullet expansion is real but ship-pr seeding is required for Step 18 teardown; splitting adds more drift surface than it removes
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- STALL_TRACKING=false durability still prompt-only; no bash writer or Step5-stall-to-Step18 integration test
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- hoisted past-cap intentionally requires a present artifact; probe path retries before loop entry
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- parsers section sources lib-implement-round-cap and eval-renames count_prior_degraded_rounds but never uses it
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- flush/emit ordering differs but no demonstrated consumer breakage
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- distinct helpers in different sections; rename/comment is optional polish
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- envelope reclassification is tested in bash; ship-pr-state persistence to finalize-state remains orchestrator-only without integration guard
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same hoisted -f vs probe asymmetry as FINDING_3 with in-loop and probe backstops
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- ordering nit only; both paths exit immediately after terminal envelope
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan scope drift is real but remedied by updating acceptance criteria not reverting needed seed prose
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- grep pins were optional in plan; new step5-starting-round harness already guards loop envelope contract
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- restates existing ship-pr-state trust boundary; no new security defect worth an issue
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- path-bearing larch_err matches existing operational telemetry; reviewer found no merge-blocking security regression
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- SKILL now documents seeding but mechanical enforcement and Step18 state-file regression tests are still missing
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of hoisted-anchor concern; transient miss falls through to sync-retry probe
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- in-loop prior_deg lacks entry validation but count_prior_degraded_rounds effectively returns numeric counts today
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sync retry addresses Hypothesis A; residual platform risk is already documented in plan failure modes
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate flush-ordering nit without functional impact
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- diagnostic is a single larch_err line; per-key grep is sufficient for the harness
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- IMPLEMENT_TMPDIR path mismatch is a concrete deferred failure mode worth a follow-up issue
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- MAV-not-degraded policy is explicitly deferred; not a regression introduced here
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan fidelity gap; amend acceptance criteria rather than shrink the stall bullet
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- second key list is a maintenance hazard but Step5-stall path does not re-enter ship-pr under normal flow
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- acceptance list lag is documentation-only; implementation matches downstream Step18 contract
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no stall_track vs STALL_TRACKING collision; symbols are different scopes
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documents why seeding is necessary, not a defect to file
+FINDING_27: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing early-bail gap documented in NEVER #13; branch does not widen it
+

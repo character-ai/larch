@@ -1,0 +1,26 @@
+Reviewing the branch diff and key source files for loop reentry correctness.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+Reviewed `run_implement_loop()` entry logic in [`skills/review-and-fix/scripts/review-implement-step5-loop.sh`](skills/review-and-fix/scripts/review-implement-step5-loop.sh) (lines 74–118, 138–146), the round-2 follow-up commit, and the `step5-starting-round` harness (all cases pass in isolation).
+
+**STARTING_ROUND=1:** The `(( STARTING_ROUND > 1 ))` guard correctly skips both the hoisted past-cap branch and `step5_probe_prior_round_env`; only numeric validation and `entry_prior_deg` computation run, with no early terminal exit.
+
+**Production incident path (STARTING_ROUND=5, base_cap=5):** Hoisted past-cap correctly does not fire (`5 > 5` is false). Recovery is via `step5_probe_prior_round_env` for `round-4/review-and-fix.env`, covered by `retry-sees-prior` / `retry-sees-prewritten-prior` / `visible-prior-no-sync` with `STARTING_ROUND=5`.
+
+**Hoisted past-cap (STARTING_ROUND=6+, cap exceeded):** Fires only when `STARTING_ROUND > entry_effective_cap` and the prior artifact exists; `flush_review_batches` gets seven numeric args (matching the 8-parameter signature with an omitted optional 8th); `FINAL_ROUND_NUM` is `prior_round_num` (`STARTING_ROUND - 1`), not `STARTING_ROUND`; `ROUNDS_COMPLETED=0` matches the in-loop first-iteration past-cap envelope.
+
+**In-loop `mav-resume-past-cap`:** Not dead code. It remains reachable when entry hoisting does not apply (e.g. cap inflates mid-loop via `DEGRADED_ROUND`, or hoisted anchor fails but probe succeeds and the first loop iteration still exceeds the recomputed cap). Hoisted and in-loop paths are equivalent for the common `STARTING_ROUND=6` resume case.
+
+**`starting-round-invalid`:** Emits `STALL_TRACKING=false` and `EFFECTIVE_ROUND_CAP=$entry_effective_cap` (round-2 fix); [`skills/implement/SKILL.md`](skills/implement/SKILL.md) stall bullet now retains envelope `STALL_TRACKING` instead of forcing `true`.
+
+### Out-of-Scope Observations
+
+- **Hoisted anchor vs probe asymmetry:** The hoisted branch uses a bare `[[ -f "$expected_env_path" ]]` (line 108) while the artifact gate uses `step5_probe_prior_round_env` (sync + retry). If the prior file is visible only after `sync`, hoisting is skipped but behavior is still correct via probe success and the in-loop past-cap check on the first iteration. Defense-in-depth, not a functional regression.
+
+- **In-loop vs hoisted side-effect order:** Hoisted path flushes batches before emitting the envelope (lines 109–110); in-loop still emits then flushes (lines 143–144). Pre-existing in-loop ordering; not introduced by this branch.
+
+- **Diff scope:** The precomputed diff includes `larch-logs/implement/242C658E-...` artifacts and broad `Makefile` whitespace churn beyond the six-file plan scope; unrelated to loop correctness.
+
+- **SKILL prose:** The note at [`skills/implement/SKILL.md:1263`](skills/implement/SKILL.md) (`FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`) is imprecise vs the strict `>` comparison in code; pre-existing documentation drift, not a branch regression.

@@ -1,0 +1,18 @@
+Implemented the Step 5 starting-round fix and wrote the required manifest at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written.
+
+Changed:
+- [review-implement-step5-loop.sh](<OPERATOR_REPO_PATH>/skills/review-and-fix/scripts/review-implement-step5-loop.sh): added anchored entry-time `mav-resume-past-cap`, bounded prior-artifact retry, diagnostics, and `STALL_TRACKING=false` for persistent `starting-round-invalid`.
+- [SKILL.md](<OPERATOR_REPO_PATH>/skills/implement/SKILL.md): preserves parsed `STALL_TRACKING` and classifies `starting-round-invalid` as a tool failure.
+- [test-review-and-fix.sh](<OPERATOR_REPO_PATH>/skills/review-and-fix/scripts/test-review-and-fix.sh) and [Makefile](<OPERATOR_REPO_PATH>/Makefile): added the `step5-starting-round` shard.
+- [review-implement-step5-loop.md](<OPERATOR_REPO_PATH>/skills/review-and-fix/scripts/review-implement-step5-loop.md): documented the loop envelope contract and retry caveat.
+
+Verification:
+- Passed: `make test-review-and-fix-step5-starting-round`
+- Passed: `make test-review-and-fix-convergence`
+- Passed: `make test-review-and-fix-parsers`
+- Passed: `make lint-bash32`
+- Passed: `make lint-foreground-markers`
+- Passed: `bash scripts/relevant-checks.sh`
+- Passed: `git diff --check`
+
+One existing shard issue remains: `bash skills/review-and-fix/scripts/test-review-and-fix.sh --section dispatch` fails at `compose-fail summary warning breadcrumb`. That assertion runs before the new Step 5 section and does not exercise the changed code.

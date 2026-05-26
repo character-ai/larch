@@ -1,0 +1,2 @@
+Normalizing reviewer findings into merged FINDING/OOS blocks with stable IDs, merged severity, and verbatim revision bullets per slot.
+

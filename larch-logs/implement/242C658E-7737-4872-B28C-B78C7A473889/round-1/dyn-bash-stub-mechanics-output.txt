@@ -1,0 +1,12 @@
+Reviewing the branch diff and bash stub mechanics in the test harness.
+### In-Scope Findings
+
+- **correctness** `skills/review-and-fix/scripts/review-implement-step5-loop.sh:113-115` — On the `starting-round-invalid` path, the diagnostic line reports `entry_effective_cap` (which includes inflated cap from prior degraded rounds), but the terminal envelope still passes `"$base_cap"` as `EFFECTIVE_ROUND_CAP`. For cases like `inflated-anchor-reject` (`STARTING_ROUND=11`, five prior `DEGRADED_ROUND=true` rounds), stderr shows `entry_effective_cap=10` while stdout emits `EFFECTIVE_ROUND_CAP=5`, so token-aware orchestrator parsing and operator triage can disagree on the effective cap for the same failure. **Suggested fix:** Pass `"$entry_effective_cap"` (not `"$base_cap"`) as the ninth argument to `step5_emit_final_envelope` on the `starting-round-invalid` branch, and update `step5_assert_envelope` expectations in `test-review-and-fix.sh` case 4a (and any docs that describe the stall envelope) to match.
+
+### Out-of-Scope Observations
+
+**Bash stub mechanics (scout focus):** The `step5_run_loop_case` subshell pattern is sound for Bash 3.2. Functions defined inside `( … )` before `run_implement_loop` (`emit_kv`, `larch_err`, `flush_review_batches`, `sync`, `_implement_round_body`) override names via dynamic lookup when parent-sourced `run_implement_loop` / `step5_emit_final_envelope` / `step5_probe_prior_round_env` run in that subshell. The `sync` stub correctly shadows the external `sync` binary; the default branch uses `command sync` to avoid recursion. `_implement_round_body` matches the symbol invoked at `review-implement-step5-loop.sh:154`. `STEP5_SYNC_CREATE_PATH` (`$case_dir/impl/round-$((starting_round-1))/review-and-fix.env`) matches `expected_env_path` built inside `step5_probe_prior_round_env` when `IMPLEMENT_TMPDIR="$case_dir/impl"`. Case 1 correctly uses `STARTING_ROUND=5` (prior round 4) rather than the plan’s inconsistent `STARTING_ROUND=4` + “create round-4” wording.
+
+- **risk-integration** — The branch diff includes committed implement run artifacts under `larch-logs/implement/242C658E-7737-4872-B28C-B78C7A473889/` (breadcrumbs, manifest, plan copy). These are outside the six-file scope in the plan and should not ship with the fix.
+
+**Commits on branch:** `6b382278` (fix), `a42811d4` (larch-logs flush).

@@ -1,0 +1,27 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- failure mode is benign: hoisted anchor miss falls through to step5_probe_prior_round_env then in-loop cap check, same final outcome
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- flush and emit go to different destinations; ordering difference has no observable consumer impact
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- step5_ prefix is a sufficient distinction; concern is too speculative to warrant a fix
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same benign fallthrough as FINDING_3; in-loop mav-resume-past-cap catches it
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same as FINDING_5; no observable correctness impact
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer documents the existing trust model unchanged; no problem described worth filing as an issue
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- matches existing larch_err usage throughout codebase; not a net-new risk introduced by this PR
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same benign fallthrough as FINDING_3/8
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- in-loop case is pre-existing and still fails closed under set -e; adding validation to both sites adds complexity without proportional benefit
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- sync-as-best-effort is already documented as non-guaranteed; STALL_TRACKING=false ensures no false [STALLED] rename
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same as FINDING_5/9; no observable consumer impact
+FINDING_19: NO CORRECTNESS=false SEVERITY=nit QUALITY=weak UNCERTAIN=false -- concern is misdirected: co-occurrence check would cause a test FAIL (not false-pass) if keys are on separate lines; and the diagnostic is intentionally a single line
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_24: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_25: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer reports no collision; no problem to file as an issue
+FINDING_26: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer confirms correctness of the existing change; no problem to file
+FINDING_27: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

@@ -1,0 +1,21 @@
+Reviewing the branch diff with focus on shell semantics and correctness. Reading the diff and relevant source sections.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+Shell-semantics review of `skills/review-and-fix/scripts/review-implement-step5-loop.sh` (lines 77–118) shows the new code is sound under `set -euo pipefail`:
+
+- **`(( … ))` usage** — Comparisons at lines 89–92, 105, 108, and 142 sit in `if` tests or `|| { … }` chains, so a false arithmetic result does not trip errexit. This includes `(( 10#$STARTING_ROUND > entry_effective_cap ))` when the comparison is false (e.g. incident path `STARTING_ROUND=5`, `entry_effective_cap=5`).
+- **`entry_prior_deg` assignment** — Splitting `local …` from `entry_prior_deg="$(count_prior_degraded_rounds …)"` (lines 94–95) avoids masking a failing substitution inside `local var=$(cmd)` on older Bash; the `''|*[!0-9]*` guard (lines 96–101) runs before `entry_effective_cap=$((10#$base_cap + 10#$entry_prior_deg))` (line 103).
+- **`step5_probe_prior_round_env`** — `[[ -f … ]] && return 0` (lines 80, 82) is errexit-safe because a failed `[[` is not the final command in the `&&` list; `sync >/dev/null 2>&1 || true` (line 81) cannot abort; terminal `return 1` (line 83) is only reached from `if ! step5_probe_prior_round_env …` (line 113).
+- **Scoping** — `prior_round_num` and `expected_env_path` are declared `local` in `run_implement_loop` (line 94); the probe helper keeps its own `local expected_env_path` (line 79) and does not leak into the caller.
+- **`flush_review_batches`** — `2>/dev/null || true` on line 109 is correctly positioned so a non-zero flush cannot propagate under `set -e`.
+
+The entry path addresses the reported incident (`STARTING_ROUND=5` at cap): hoisted past-cap does not fire (`5 > 5` is false), and the sync-backed probe is what recovers a briefly invisible `round-4/review-and-fix.env`.
+
+### Out-of-Scope Observations
+- **Scope** — The branch also adds `larch-logs/implement/242C658E-…/` artifacts, beyond the plan’s six-file scope; unrelated to loop correctness but worth noting for PR hygiene.
+- **risk-integration** — Hoisted `mav-resume-past-cap` flushes batches before emitting the envelope (`skills/review-and-fix/scripts/review-implement-step5-loop.sh:109-110`); the in-loop path still emits first, then flushes (`skills/review-and-fix/scripts/review-implement-step5-loop.sh:143-144`). Pre-existing ordering in the loop body; only relevant if flush side effects must be strictly ordered relative to envelope emission.
+- **risk-integration** — `STALL_TRACKING=false` for `starting-round-invalid` depends on the orchestrator following the updated `skills/implement/SKILL.md` stall bullet (retain parsed envelope, seed/rewrite `ship-pr-state.sh`); there is no additional Bash enforcement in `scripts/run-step5-review.sh`.
+- **Deferred** — Hypothesis B (`IMPLEMENT_TMPDIR` canonical-path mismatch) and partial-write races in `count_prior_degraded_rounds` remain acknowledged limitations, not regressions introduced here.
+
+**Commits reviewed:** `6b382278` (core fix), `7ab5d35b` / `ff40de94` (review feedback: `EFFECTIVE_ROUND_CAP` on stall envelope, deterministic sync-retry test, `ship-pr-state.sh` persistence prose).
