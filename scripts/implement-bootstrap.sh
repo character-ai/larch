@@ -30,6 +30,7 @@ ISSUE_NUMBER_OPT=""
 FORKED_TARGET=false
 UPSTREAM_REPO_OPT=""
 RUN_ID_OPT=""
+PREFLIGHT_TMPDIR_OPT=""
 IMPLEMENT_BAIL_REASON=""
 SKIP_CODEX_PROBE_FLAG=false
 SKIP_CURSOR_PROBE_FLAG=false
@@ -61,9 +62,12 @@ RUN_ID=""
 BRANCH_SELECTED=""
 DEFERRED=false
 STALL_TRACKING=false
+BRANCH_NAME=""
+BRANCH_ACTION=""
+PLAN_FILE=""
 
 usage() {
-    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID]"
+    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--preflight-tmpdir PATH]"
 }
 
 die_usage() {
@@ -143,10 +147,23 @@ emit_tracking_breadcrumb_if_enabled() {
     fi
 }
 
+emit_plan_materialize_breadcrumbs_if_enabled() {
+    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
+        emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-} + plan logged"
+        emit_breadcrumb "→ step0: larch:plan posted"
+    fi
+}
+
 should_run_post_tracking_phase() {
     [ -z "${IMPLEMENT_BAIL_REASON:-}" ] \
         && [ "${STALL_TRACKING:-false}" != "true" ] \
         && [ "${DEFERRED:-false}" != "true" ]
+}
+
+should_run_phase_plan_materialize() {
+    [ -z "${IMPLEMENT_BAIL_REASON:-}" ] \
+        && [ "${STALL_TRACKING:-false}" != "true" ] \
+        && [ "${REPO_UNAVAILABLE:-false}" != "true" ]
 }
 
 tracking_init_failed() {
@@ -511,7 +528,187 @@ phase_tracking() {
 }
 
 phase_plan_materialize() {
-    IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3
+    local snapshot_out
+    local plan_src gh_issue_arg feature_file gh_rc gh_err
+    local persist_rc dirty_out dirty_rc dirty_status
+    local issue_title slug branch_name_derived create_out create_rc create_err
+    local branch_out branch_rc branch_value
+    local goal_text_raw goal_text run_plan_rc run_plan_err
+    local tally_body_raw tally_body tally_rc tally_err
+    local summary_body_raw summary_body summary_rc summary_err
+    local summary_args
+
+    snapshot_out="$IMPLEMENT_TMPDIR/untracked-baseline.z"
+    "$SCRIPT_DIR/snapshot-untracked.sh" --output "$snapshot_out" --nul || true
+
+    "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — plan materialization" || true
+    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — plan materialization" || true
+
+    PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
+    plan_src="$PREFLIGHT_TMPDIR_OPT/plan-from-issue.txt"
+    if ! cp "$plan_src" "$PLAN_FILE" 2>"$IMPLEMENT_TMPDIR/copy-plan.stderr.log"; then
+        emit_kv STEP_FAILED copy-plan
+        exit 2
+    fi
+
+    feature_file="$IMPLEMENT_TMPDIR/feature-description.txt"
+    gh_err="$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"
+    if [ "$FORKED_TARGET" = "true" ]; then
+        gh_issue_arg="$ISSUE_NUMBER_OPT"
+        if [ -n "$UPSTREAM_REPO_OPT" ]; then
+            gh issue view "$gh_issue_arg" --repo "$UPSTREAM_REPO_OPT" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
+        else
+            gh issue view "$gh_issue_arg" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
+        fi
+    else
+        gh_issue_arg="$ISSUE_NUMBER_RESOLVED"
+        gh issue view "$gh_issue_arg" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
+    fi
+    gh_rc=$?
+    if [ "$gh_rc" -ne 0 ]; then
+        emit_kv STEP_FAILED gh-issue-view
+        exit 2
+    fi
+
+    "$SCRIPT_DIR/timing-ledger.sh" workflow-path "HARD" || true
+
+    "$SCRIPT_DIR/persist-implement-run-flags.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+        --no-issues false \
+        --workflow-path HARD \
+        >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
+        2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
+    persist_rc=$?
+    if [ "$persist_rc" -ne 0 ]; then
+        STALL_TRACKING=true
+        IMPLEMENT_BAIL_REASON=run-flags-persist-failed
+        return 0
+    fi
+
+    dirty_out=$("$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode checkpoint 2>"$IMPLEMENT_TMPDIR/check-mid-run-dirty-tree.stderr.log")
+    dirty_rc=$?
+    if [ "$dirty_rc" -ne 0 ]; then
+        dirty_status=unknown
+    else
+        dirty_status=$(kv_value_from_block STATUS "$dirty_out")
+        [ -n "$dirty_status" ] || dirty_status=unknown
+    fi
+    case "$dirty_status" in
+        dirty|unknown)
+            IMPLEMENT_BAIL_REASON=dirty-tree
+            return 0
+            ;;
+    esac
+
+    if [ "$FORKED_TARGET" != "true" ] && [ "${IS_USER_BRANCH:-false}" != "true" ]; then
+        issue_title=$(head -1 "$feature_file" 2>/dev/null || true)
+        slug=$(printf '%s' "$issue_title" \
+            | tr '[:upper:]' '[:lower:]' \
+            | tr -c 'a-z0-9' '-' \
+            | sed 's/--*/-/g; s/^-//; s/-$//' \
+            | cut -c1-40 \
+            | sed 's/-*$//')
+        [ -n "$slug" ] || slug=issue
+        branch_name_derived="${USER_PREFIX}/${slug}-${ISSUE_NUMBER_RESOLVED}"
+        create_err="$IMPLEMENT_TMPDIR/create-branch.stderr.log"
+        create_out=$("$SCRIPT_DIR/create-branch.sh" --branch "$branch_name_derived" 2>"$create_err")
+        create_rc=$?
+        if [ "$create_rc" -ne 0 ]; then
+            STALL_TRACKING=true
+            IMPLEMENT_BAIL_REASON=branch-create-failed
+            return 0
+        fi
+        BRANCH_ACTION=$(kv_value_from_block ACTION "$create_out")
+    fi
+
+    branch_out=$("$SCRIPT_DIR/git-current-branch.sh" 2>"$IMPLEMENT_TMPDIR/git-current-branch.stderr.log")
+    branch_rc=$?
+    if [ "$branch_rc" -eq 0 ]; then
+        branch_value=$(kv_value_from_block BRANCH "$branch_out")
+        BRANCH_NAME=$branch_value
+    fi
+
+    issue_title=$(head -1 "$feature_file" 2>/dev/null || true)
+    goal_text_raw="Implement issue #${gh_issue_arg}: ${issue_title:-planned change}."
+    goal_text=$(printf '%s\n' "$goal_text_raw" | "$SCRIPT_DIR/redact-secrets.sh" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" 2>/dev/null) || goal_text=$goal_text_raw
+    run_plan_err="$IMPLEMENT_TMPDIR/run-step1-plan-log.stderr.log"
+    "$SCRIPT_DIR/run-step1-plan-log.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --goal-text "$goal_text" >"$IMPLEMENT_TMPDIR/run-step1-plan-log.out" 2>"$run_plan_err"
+    run_plan_rc=$?
+    if [ "$run_plan_rc" -ne 0 ]; then
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "Step 0 plan materialization — plan-goals-test" \
+            --tool "run-step1-plan-log.sh" \
+            --exit-code "$run_plan_rc" \
+            --category Warnings \
+            --output-file "$run_plan_err" \
+            --redact || true
+    fi
+
+    tally_body_raw="$IMPLEMENT_TMPDIR/plan-review-tally-body.raw.md"
+    {
+        printf '%s\n' '# Plan Review Tally'
+        printf '\n'
+        printf 'Plan read from issue larch:plan block for issue #%s.\n' "${gh_issue_arg:-}"
+    } >"$tally_body_raw"
+    tally_body="$IMPLEMENT_TMPDIR/plan-review-tally-body.md"
+    if ! "$SCRIPT_DIR/redact-secrets.sh" <"$tally_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$tally_body" 2>/dev/null; then
+        cp "$tally_body_raw" "$tally_body" 2>/dev/null || true
+    fi
+    tally_err="$IMPLEMENT_TMPDIR/write-tally.stderr.log"
+    "$SCRIPT_DIR/write-tally.sh" \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --skill implement \
+        --run-id "$RUN_ID" \
+        --phase plan-review \
+        --mode hard \
+        --rounds 0 \
+        --accepted 0 \
+        --rejected 0 \
+        --body-file "$tally_body" \
+        >"$IMPLEMENT_TMPDIR/write-tally.out" \
+        2>"$tally_err"
+    tally_rc=$?
+    if [ "$tally_rc" -ne 0 ]; then
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "Step 0 plan materialization — plan-review tally" \
+            --tool "write-tally.sh" \
+            --exit-code "$tally_rc" \
+            --category Warnings \
+            --output-file "$tally_err" \
+            --redact || true
+    fi
+
+    if [ "$FORKED_TARGET" != "true" ] && [ -n "${ISSUE_NUMBER_RESOLVED:-}" ]; then
+        summary_body_raw="$IMPLEMENT_TMPDIR/larch-plan-summary.raw.md"
+        {
+            printf "Plan materialized for run \`%s\`.\n" "${RUN_ID:-}"
+            printf '\n'
+            printf "- Branch: \`%s\`\n" "${BRANCH_NAME:-}"
+            printf "- Plan file: \`%s\`\n" "${PLAN_FILE:-}"
+        } >"$summary_body_raw"
+        summary_body="$IMPLEMENT_TMPDIR/larch-plan-summary.md"
+        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$summary_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$summary_body" 2>/dev/null; then
+            cp "$summary_body_raw" "$summary_body" 2>/dev/null || true
+        fi
+        summary_err="$IMPLEMENT_TMPDIR/tracking-issue-summary.stderr.log"
+        summary_args=(upsert-summary --issue "$ISSUE_NUMBER_RESOLVED" --marker "<!-- larch:plan v1 runid=$RUN_ID -->" --content-file "$summary_body")
+        "$SCRIPT_DIR/tracking-issue-summary.sh" "${summary_args[@]}" >"$IMPLEMENT_TMPDIR/tracking-issue-summary.out" 2>"$summary_err"
+        summary_rc=$?
+        if [ "$summary_rc" -ne 0 ]; then
+            "$SCRIPT_DIR/append-tool-failure.sh" \
+                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                --site "Step 0 plan materialization — larch:plan summary" \
+                --tool "tracking-issue-summary.sh" \
+                --exit-code "$summary_rc" \
+                --category Warnings \
+                --output-file "$summary_err" \
+                --redact || true
+        fi
+    fi
+
+    emit_plan_materialize_breadcrumbs_if_enabled
     return 0
 }
 
@@ -565,8 +762,9 @@ emit_final_tail() {
     emit_kv BRANCH_SELECTED "${BRANCH_SELECTED:-}"
     emit_kv DEFERRED "${DEFERRED:-false}"
     emit_kv STALL_TRACKING "${STALL_TRACKING:-false}"
-    emit_kv BRANCH_NAME ""
-    emit_kv PLAN_FILE ""
+    emit_kv BRANCH_NAME "${BRANCH_NAME:-}"
+    emit_kv BRANCH_ACTION "${BRANCH_ACTION:-}"
+    emit_kv PLAN_FILE "${PLAN_FILE:-}"
     emit_kv coder ""
     emit_kv coder_fallback ""
     emit_kv IMPLEMENT_BAIL_REASON "${IMPLEMENT_BAIL_REASON:-}"
@@ -608,6 +806,11 @@ main() {
                 RUN_ID_OPT=$2
                 shift 2
                 ;;
+            --preflight-tmpdir)
+                [ $# -ge 2 ] || die_usage "--preflight-tmpdir requires a value"
+                PREFLIGHT_TMPDIR_OPT=$2
+                shift 2
+                ;;
             --skip-codex-probe)
                 SKIP_CODEX_PROBE_FLAG=true
                 shift
@@ -643,6 +846,13 @@ main() {
     if [ "$FORKED_TARGET" = "true" ] && [ -n "$UPSTREAM_REPO_OPT" ] && [ -z "$ISSUE_NUMBER_OPT" ]; then
         die_usage "--issue-number is required with --upstream-repo"
     fi
+    case "$UP_TO_PHASE" in
+        plan|coder|all)
+            if [ -n "$ISSUE_NUMBER_OPT" ] && [ -z "$PREFLIGHT_TMPDIR_OPT" ]; then
+                die_usage "--preflight-tmpdir is required with --issue-number when --up-to-phase is plan, coder, or all"
+            fi
+            ;;
+    esac
 
     phase_infra
 
@@ -653,13 +863,13 @@ main() {
             ;;
         plan)
             phase_tracking
-            if should_run_post_tracking_phase; then
+            if should_run_phase_plan_materialize; then
                 phase_plan_materialize
             fi
             ;;
         coder)
             phase_tracking
-            if should_run_post_tracking_phase; then
+            if should_run_phase_plan_materialize; then
                 phase_plan_materialize
             fi
             if should_run_post_tracking_phase; then
@@ -668,7 +878,7 @@ main() {
             ;;
         all)
             phase_tracking
-            if should_run_post_tracking_phase; then
+            if should_run_phase_plan_materialize; then
                 phase_plan_materialize
             fi
             if should_run_post_tracking_phase; then

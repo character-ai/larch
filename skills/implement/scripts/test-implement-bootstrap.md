@@ -4,8 +4,8 @@
 
 ## Layout
 
-- Builds a `/tmp` sandbox, copies `implement-bootstrap.sh` plus `lib-quiet.sh`, `lib-execution-issues.sh`, and the real `write-session-env.sh` / `read-session-env-key.sh` beside PATH-resolved `${SCRIPT_DIR}` peers.
-- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `token-claude-source.sh`, `append-tool-failure.sh`, `token-ledger.sh`, `timing-ledger.sh`, `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, and `get-issue-context.sh` with stubs that emit canned KV / exit codes.
+- Builds a `/tmp` sandbox, copies `implement-bootstrap.sh` plus `lib-quiet.sh`, `lib-execution-issues.sh`, and the real `write-session-env.sh` / `read-session-env-key.sh` beside PATH-resolved `${SCRIPT_DIR}` peers. `$SANDBOX/bin` is prepended to `PATH` for the `gh` stub.
+- Replaces `create-branch.sh`, `session-entry-gate.sh`, `session-setup.sh`, `write-session-id.sh`, `token-claude-source.sh`, `append-tool-failure.sh`, `token-ledger.sh`, `timing-ledger.sh`, `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `get-issue-context.sh`, and Phase 3 helpers with stubs that emit canned KV / exit codes.
 
 ## Cases
 
@@ -20,13 +20,21 @@
 | GP4 | Infra-only repo-unavailable path emits `REPO_UNAVAILABLE=true` and repo-unavailable warning on stderr. |
 | B1 | Sentinel issue mismatch clears and replaces the sentinel via Branch 2 fresh adoption. |
 | B2 | CLOSED target issue emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed`. |
-| B2-plan | CLOSED target issue on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=adopted-issue-closed` and does not overwrite it with a phase-3 placeholder. |
+| B2-plan | CLOSED target issue on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=adopted-issue-closed` and does not overwrite it with Phase 3 bail reasons. |
 | B3 | PR target emits `IMPLEMENT_BAIL_REASON=adopted-issue-is-pr`. |
 | B4 | `POSTED=false` emits `DEFERRED=true`, exits 0, and removes any stale sentinel. |
 | B5 | `larch-log.sh init` failure emits `IMPLEMENT_BAIL_REASON=tracking-init-failed` and `STALL_TRACKING=true`. |
 | B5-all | `larch-log.sh init` failure on `--up-to-phase all` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips later placeholder bail reasons. |
 | B5-plan | `larch-log.sh init` failure on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips the phase-3 placeholder. |
 | B5-branch1 | Branch 1 sentinel resume with `larch-log.sh init` failure preserves the sentinel issue/run id while stalling tracking. |
+| B5-plan-green | Phase 3 green path copies the Preflight plan, composes issue context, persists run flags, creates/captures the derived branch, writes plan batches, upserts `larch:plan`, and covers three slug inputs. |
+| B6-plan-flags | Any non-zero `persist-implement-run-flags.sh` exit emits `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`, sets `STALL_TRACKING=true`, and stops subsequent Phase 3 helpers. |
+| B7-plan-dirty-tree | `STATUS=dirty` and `STATUS=unknown` emit `IMPLEMENT_BAIL_REASON=dirty-tree` without setting `STALL_TRACKING`, and stop subsequent Phase 3 helpers. |
+| B8-plan-forked-target | Fork mode still materializes plan/feature files with upstream `gh --repo`, skips branch creation, captures the current branch, and skips the local `larch:plan` upsert. |
+| B9-plan-user-branch | Existing user branch skips branch creation but still writes the local `larch:plan` summary. |
+| B10-plan-missing-preflight-tmpdir | `--up-to-phase plan --issue-number N` without `--preflight-tmpdir` exits 2 with usage. |
+| B11-plan-copy-plan-failure | Missing `plan-from-issue.txt` exits 2 with `STEP_FAILED=copy-plan`. |
+| B12-plan-gh-issue-view-failure | `gh issue view` failure exits 2 with `STEP_FAILED=gh-issue-view`. |
 | B6 | `get-issue-state.sh` failure exits 2 with `STEP_FAILED=get-issue-state`. |
 | B7-non-open-state | Unexpected non-`OPEN`/`CLOSED` issue state exits 2 with `STEP_FAILED=get-issue-state`. |
 | B-sentinel-malformed | Malformed sentinel is cleared and replaced via Branch 2 fresh adoption. |
