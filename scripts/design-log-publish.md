@@ -23,13 +23,15 @@ branch by:
 5. Copying design artifacts: top-level regular files (maxdepth 1), the strict
    `plan-review/round-<N>/findings-classification.tsv` allowlist, plus all
    regular files under `render-cache/` (recursive). Symlinks at the top level
-   are skipped; `render-cache/` itself must be a real directory (not a symlink).
+   are skipped; `plan-review/` and `render-cache/` subtrees fail closed on any
+   symlink anywhere in them.
    Files whose basename matches the suffix deny-list are skipped before any
    trim/redact work (`design_artifact_excluded`, narrows the
    `round_artifact_included` deny patterns in `scripts/larch-log.sh` for
    `/implement` to the sidecar/operational-scratch family that also appears
    in design tmpdirs): `*.sidecar`, `*.dirty-tree`, `*.untracked-baseline`,
-   `*.done`, `*.diag`, `*-output.txt.prompt`, `*-output-*.txt.prompt`. Other
+   `*.done`, `*.diag`, `*.events.jsonl`, `*-output.txt.prompt`,
+   `*-output-*.txt.prompt`. Other
    `/implement`-specific deny patterns (`coder-output.log`, `coder-codex.log`,
    `cursor-specialist-*-output.txt`, `*-vote-prompt.txt`, the known empty
    placeholders) are intentionally NOT included — those basenames do not
@@ -92,8 +94,9 @@ remote branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
 
 ## plan-review allowlist
 
-`$DESIGN_TMPDIR/plan-review/` is optional. A missing or empty directory is
-success and stages no files. When present, it is fail-closed:
+`$DESIGN_TMPDIR/plan-review/` is optional. A missing path is success and stages
+no files. When present, including as a symlink path caught by the `-L` guard,
+it is fail-closed:
 
 - `plan-review` must be a real directory, not a symlink and not a regular file.
 - Any symlink anywhere below the resolved physical `plan-review` root fails the
@@ -103,6 +106,11 @@ success and stages no files. When present, it is fail-closed:
   `-L`.
 - Each enumerated file must pass the under-root prefix guard against the
   resolved physical root, matching the `render-cache/` guard.
+- A per-file `[[ -L "$f" ]]` recheck immediately before staging closes the
+  find-to-stage race window at the leaf-component slot. Parent-directory
+  replacement races, where a parent dir is swapped for a symlink between
+  enumeration and stage, are not closed; this matches the residual race surface
+  in `render-cache/`.
 - The relativized path must match the anchored regex
   `^round-[1-9][0-9]*/findings-classification\.tsv$`. Round numbers are
   positive integers with no leading zero; `round-0` and `round-01` are rejected.
@@ -111,6 +119,33 @@ success and stages no files. When present, it is fail-closed:
 
 Allowed files are staged through the same trim/redact pipeline as other design
 artifacts at `larch-logs/design/<RUN_ID>/plan-review/<relpath>`.
+
+## render-cache symlink rejection
+
+`$DESIGN_TMPDIR/render-cache/` is optional. A missing directory is success and
+stages no files. When present, including as a symlink path caught by the `-L`
+guard, it is fail-closed against symlinks:
+
+- `render-cache` must be a real directory, not a symlink (including dangling)
+  and not a regular file.
+- Any symlink anywhere below the resolved physical `render-cache` root fails the
+  publish before regular-file enumeration. Same rationale as `plan-review/`:
+  this catches both symlinked files, which `find -type f` would silently skip,
+  and symlinked intermediate directories, which `find` does not traverse without
+  `-L`.
+- Each enumerated file must pass the under-root prefix guard against the
+  resolved physical root.
+- A per-file `[[ -L "$f" ]]` recheck immediately before staging closes the
+  find-to-stage race window at the leaf-component slot. Parent-directory
+  replacement races, where a parent dir is swapped for a symlink between
+  enumeration and stage, are not closed; this is the same residual race surface
+  as `plan-review/`.
+- No filename allowlist is enforced because render-cache content schema is open.
+  The suffix deny-list inside `design_publish_stage_file` (`*.sidecar`,
+  `*.events.jsonl`, etc.) is preserved unchanged.
+
+Allowed files are staged through the same trim/redact pipeline at
+`larch-logs/design/<RUN_ID>/render-cache/<relpath>`.
 
 ## Tests
 

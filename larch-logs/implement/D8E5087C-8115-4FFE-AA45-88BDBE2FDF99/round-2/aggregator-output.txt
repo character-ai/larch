@@ -1,0 +1,2 @@
+Normalizing reviewer findings into a merged structured list. Positive "Correct" attestations are subsumed (non-actionable); merging duplicate OOS and in-scope items.
+

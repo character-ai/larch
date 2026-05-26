@@ -290,7 +290,7 @@ done <"$_top_files"
 rm -f "$_top_files"
 ENUM_TOP_TMP=""
 
-if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then
+if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; then
     if [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
         larch_err "design-log-publish: plan-review must not be a symlink"
         emit_publish_result false
@@ -353,7 +353,7 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then
     ENUM_PR_TMP=""
 fi
 
-if [[ -e "$DESIGN_TMPDIR/render-cache" ]]; then
+if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; then
     if [[ -L "$DESIGN_TMPDIR/render-cache" ]]; then
         larch_err "design-log-publish: render-cache must not be a symlink"
         emit_publish_result false
@@ -369,6 +369,12 @@ if [[ -e "$DESIGN_TMPDIR/render-cache" ]]; then
         emit_publish_result false
         exit 0
     }
+    _sym_check=$(find "$rc_root" -type l -print -quit 2>/dev/null || true)
+    if [[ -n "$_sym_check" ]]; then
+        larch_err "design-log-publish: render-cache tree must not contain symlinks (found: $_sym_check)"
+        emit_publish_result false
+        exit 0
+    fi
     _rc_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-rc.XXXXXX")
     ENUM_RC_TMP="$_rc_files"
     if ! find "$rc_root" -type f | LC_ALL=C sort >"$_rc_files"; then
@@ -389,6 +395,11 @@ if [[ -e "$DESIGN_TMPDIR/render-cache" ]]; then
                 ;;
         esac
         rel=${f#"$rc_root/"}
+        if [[ -L "$f" ]]; then
+            larch_err "design-log-publish: render-cache file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
         design_publish_stage_file "$f" "$RUN_DEST/render-cache/$rel" || {
             larch_err "design-log-publish: staging failed for $f"
             emit_publish_result false

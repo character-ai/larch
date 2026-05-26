@@ -346,6 +346,23 @@ out_pr=$(
 )
 [[ "$out_pr" == *"PUBLISH_OK=false"* ]] || fail "plan-review regular file should fail publish: $out_pr"
 
+echo "=== render-cache regular file is rejected ==="
+TMPRC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rendercache-file.XXXXXX")
+clone_rc=$(setup_clone_with_origin_head "$TMPRC")
+stub_rc="$TMPRC/stub"
+make_gh_stub "$stub_rc"
+export PATH="$stub_rc:$PATH"
+export TEST_CLONE_ROOT="$clone_rc"
+export TEST_MERGE_BRANCH="larch-log-design-RUNRCFILE1"
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPRC/design"
+printf 'r\n' >"$TMPRC/design/plan.txt"
+printf 'not a directory\n' >"$TMPRC/design/render-cache"
+out_rc=$(
+    (cd "$clone_rc" && bash "$PUBLISH" --design-tmpdir "$TMPRC/design" --run-id "RUNRCFILE1" --issue 9 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rc" == *"PUBLISH_OK=false"* ]] || fail "render-cache regular file should fail publish: $out_rc"
+
 echo "=== merge failure preserves PR lines and RECOVERY_BRANCH ==="
 TMPM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-merge.XXXXXX")
 clone_m=$(setup_clone_with_origin_head "$TMPM")
@@ -657,5 +674,86 @@ out_prrace=$(
 )
 unset RACE_FIND_ROOT RACE_FIND_PATH RACE_FIND_TARGET
 [[ "$out_prrace" == *"PUBLISH_OK=false"* ]] || fail "plan-review symlink race should fail publish: $out_prrace"
+
+echo "=== render-cache root symlink rejection ==="
+TMPRCROOT=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-rootsym.XXXXXX")
+clone_rcroot=$(setup_clone_with_origin_head "$TMPRCROOT")
+stub_rcroot="$TMPRCROOT/stub"
+make_gh_stub "$stub_rcroot"
+export PATH="$stub_rcroot:$PATH"
+mkdir -p "$TMPRCROOT/real-render-cache/nested"
+mkdir -p "$TMPRCROOT/design"
+printf 'body\n' >"$TMPRCROOT/design/plan.txt"
+printf 'ok\n' >"$TMPRCROOT/real-render-cache/nested/c.txt"
+ln -s "$TMPRCROOT/real-render-cache" "$TMPRCROOT/design/render-cache"
+out_rcroot=$(
+    (cd "$clone_rcroot" && bash "$PUBLISH" --design-tmpdir "$TMPRCROOT/design" --run-id "RUNRCROOT1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rcroot" == *"PUBLISH_OK=false"* ]] || fail "render-cache root symlink should fail publish: $out_rcroot"
+
+echo "=== render-cache dangling root symlink rejection ==="
+TMPRCDANGLE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-dangle.XXXXXX")
+clone_rcdangle=$(setup_clone_with_origin_head "$TMPRCDANGLE")
+stub_rcdangle="$TMPRCDANGLE/stub"
+make_gh_stub "$stub_rcdangle"
+export PATH="$stub_rcdangle:$PATH"
+mkdir -p "$TMPRCDANGLE/design"
+printf 'body\n' >"$TMPRCDANGLE/design/plan.txt"
+ln -s "$TMPRCDANGLE/does-not-exist" "$TMPRCDANGLE/design/render-cache"
+out_rcdangle=$(
+    (cd "$clone_rcdangle" && bash "$PUBLISH" --design-tmpdir "$TMPRCDANGLE/design" --run-id "RUNRCDANGLE1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rcdangle" == *"PUBLISH_OK=false"* ]] || fail "render-cache dangling root symlink should fail publish: $out_rcdangle"
+
+echo "=== render-cache leaf file-symlink rejection ==="
+TMPRCLEAF=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-leaf.XXXXXX")
+clone_rcleaf=$(setup_clone_with_origin_head "$TMPRCLEAF")
+stub_rcleaf="$TMPRCLEAF/stub"
+make_gh_stub "$stub_rcleaf"
+export PATH="$stub_rcleaf:$PATH"
+mkdir -p "$TMPRCLEAF/design/render-cache"
+printf 'body\n' >"$TMPRCLEAF/design/plan.txt"
+ln -s "$TMPRCLEAF/design/plan.txt" "$TMPRCLEAF/design/render-cache/linked.txt"
+out_rcleaf=$(
+    (cd "$clone_rcleaf" && bash "$PUBLISH" --design-tmpdir "$TMPRCLEAF/design" --run-id "RUNRCLEAF1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rcleaf" == *"PUBLISH_OK=false"* ]] || fail "render-cache leaf file-symlink should fail publish: $out_rcleaf"
+
+echo "=== render-cache intermediate symlink rejection ==="
+TMPRCMID=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-midsym.XXXXXX")
+clone_rcmid=$(setup_clone_with_origin_head "$TMPRCMID")
+stub_rcmid="$TMPRCMID/stub"
+make_gh_stub "$stub_rcmid"
+export PATH="$stub_rcmid:$PATH"
+mkdir -p "$TMPRCMID/real-nested"
+mkdir -p "$TMPRCMID/design/render-cache"
+printf 'body\n' >"$TMPRCMID/design/plan.txt"
+printf 'ok\n' >"$TMPRCMID/real-nested/c.txt"
+ln -s "$TMPRCMID/real-nested" "$TMPRCMID/design/render-cache/nested"
+out_rcmid=$(
+    (cd "$clone_rcmid" && bash "$PUBLISH" --design-tmpdir "$TMPRCMID/design" --run-id "RUNRCMID1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_rcmid" == *"PUBLISH_OK=false"* ]] || fail "render-cache intermediate symlink should fail publish: $out_rcmid"
+
+echo "=== render-cache symlink race rejection ==="
+TMPRCRACE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-race.XXXXXX")
+clone_rcrace=$(setup_clone_with_origin_head "$TMPRCRACE")
+stub_rcrace="$TMPRCRACE/stub"
+make_gh_stub "$stub_rcrace"
+REAL_FIND=$(command -v find)
+make_find_symlink_race_stub "$TMPRCRACE/findstub" "$REAL_FIND"
+export PATH="$TMPRCRACE/findstub:$stub_rcrace:$PATH"
+mkdir -p "$TMPRCRACE/design/render-cache"
+printf 'body\n' >"$TMPRCRACE/design/plan.txt"
+printf 'ok\n' >"$TMPRCRACE/design/render-cache/cached-output.txt"
+RACE_FIND_ROOT="$(cd "$TMPRCRACE/design/render-cache" && pwd -P)"
+export RACE_FIND_ROOT
+export RACE_FIND_PATH="$TMPRCRACE/design/render-cache/cached-output.txt"
+export RACE_FIND_TARGET="$TMPRCRACE/design/plan.txt"
+out_rcrace=$(
+    (cd "$clone_rcrace" && bash "$PUBLISH" --design-tmpdir "$TMPRCRACE/design" --run-id "RUNRCRACE1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+unset RACE_FIND_ROOT RACE_FIND_PATH RACE_FIND_TARGET
+[[ "$out_rcrace" == *"PUBLISH_OK=false"* ]] || fail "render-cache symlink race should fail publish: $out_rcrace"
 
 echo "All design-log-publish harness assertions passed."

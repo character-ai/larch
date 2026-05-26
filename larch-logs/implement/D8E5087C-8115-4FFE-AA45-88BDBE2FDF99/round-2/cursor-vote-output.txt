@@ -1,0 +1,30 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real duplication risk but a shared harness helper is optional refactor, not required for this PR
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan-review doc omits per-file recheck and parent-dir race bullets present in render-cache and in code
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dangling plan-review root symlink skips the block without PUBLISH_OK=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicated hardened-subtree blocks are a concrete maintainability and parity risk worth tracking
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmation of correct behavior, not a defect
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmation of correct behavior, not a defect
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmation of correct behavior, not a defect
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmation of correct behavior, not a defect
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmation of correct behavior, not a defect
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- mixed correctness summary with no actionable defect
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same dangling plan-review root gap as FINDING_3
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- symlink created between tree-wide and file enumeration can be skipped silently
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- find stderr suppression can mask permission failures on symlink scan
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- negative staging assertions would help but existing fail-closed exits make the gap low value
+FINDING_15: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch-scope triage note, not a render-cache defect worth accepting
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- harness doc omits the existing render-cache non-directory root rejection test
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same dangling plan-review root parity gap
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- empty render-cache path is edge coverage; happy path already exercises populated trees
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- render-cache lacks plan-review path-escape stub coverage; concrete parity gap for #2906
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dangling plan-review root is a real silent-skip security posture gap
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- residual TOCTOU is real but already documented and tracked (#2905/#2907)
+FINDING_22: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- open render-cache schema is intentional policy, not a filing-worthy defect
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- SECURITY.md overstates plan-review root strictness versus dangling-symlink skip behavior
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same find stderr masking issue as FINDING_13
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same dangling plan-review root gap
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- parent-dir TOCTOU is documented and already tracked out of scope
+FINDING_27: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch composition is observational, not a concrete code defect
+FINDING_28: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- correctly notes intentional plan scope, not an implementation gap
+FINDING_29: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- deliberate plan exclusion already tracked via #2906
+FINDING_30: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer meta-note about tests not run, not a product issue
