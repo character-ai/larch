@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Closed: #2830
+- Closed: #2830 — Fixes #2830: Require file-backed gh body payloads
 
 ## [42.5.23] - 2026-05-26
 
