@@ -1,0 +1,56 @@
+Reviewing the implementation plan and exploring the referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/generate-code-flow-diagram.sh:102	Proposed awk prints entire post-prefix remainder as SKIP_REASON	Real sanitizer lines are REASON_TOKEN=<short-token> fence=N line=M (scripts/sanitize-mermaid-fragment.sh:201); fix changes SKIP_REASON from pipe-in-node-label fence to pipe-in-node-label fence=1 line=5, contradicting Approach no contract change and sanitize-mermaid-fragment.md short-token semantics	Strip only the REASON_TOKEN= prefix then truncate at first space (sub(/ .*/,"")) so embedded = in the token is preserved but fence/line metadata stays out; add regression using production-shaped log line
+1	in_scope	important	correctness	scripts/ci-failed-jobs.sh:79-81	Newline stripping in sanitize_diagnostic_line is unreachable on the gh stderr path	while IFS= read -r line splits tmp_stderr on newlines before sanitization runs, so embedded \n never appears in $line; T8 newline assertions would pass without the helper and do not prove the stated split-log-line mitigation	Sanitize before line splitting (e.g., slurp tmp_stderr once, tr -d [:cntrl:], then read) or drop newline claims/tests and document that only intra-line control bytes are in scope
+1	in_scope	important	risk-integration	skills/implement/scripts/test-generate-code-flow-diagram.sh:35-60	Item A test sketch invents write_sanitize_stub run_subject_skip_path assert_file_contains helpers absent from harness	Harness uses inline SANITIZE_REJECT stub and assert_contains only; implementer may stall or duplicate scaffolding inconsistently	Rewrite test sketch to extend existing SANITIZE_REJECT=1 path or add minimal helpers matching current assert_contains/pass/fail style
+1	in_scope	important	correctness	skills/implement/scripts/test-generate-code-flow-diagram.sh:77-82	Regression case uses synthetic REASON_TOKEN=pipe-in-node-label=foo not production log shape	Production rejects emit space-separated fence=/line= metadata; synthetic =foo case would pass while production-shaped lines still change SKIP_REASON under full-remainder awk	Assert SKIP_REASON against a fixture mirroring sanitize-mermaid-fragment.sh output (token plus fence/line suffix) and expected short-token extraction
+1	in_scope	latent	architecture	skills/implement/scripts/generate-code-flow-diagram.sh:102	Plan rejects shared sanitizer despite identical parsing hazard elsewhere	scripts/sanitize-mermaid-fragment.sh:283 uses a different awk idiom for token aggregation; future REASON_TOKEN values with = will diverge across consumers	[OUT_OF_SCOPE] Track aligning token extraction in scripts/sanitize-mermaid-fragment.sh:283 or extracting one portable helper
+1	out_of_scope	latent	architecture	scripts/lib-quiet.sh:97-103	Per-call-site tr -d [:cntrl:] duplicates policy and leaves other larch_err passthrough sites unprotected	Future scripts forwarding external stderr verbatim remain injectable unless each adds its own helper	Consider optional larch_err sanitization flag or always-on C0/DEL strip in lib-quiet.sh with harness coverage
+1	in_scope	nit	correctness	skills/implement/scripts/test-generate-code-flow-diagram.sh:85	Plan claims no-token fallback already covered	Harness has no case asserting SKIP_REASON=sanitizer-rejected when REASON_TOKEN line is absent	Add explicit fallback regression (sanitizer exits 1 without REASON_TOKEN= line)
+1	in_scope	nit	correctness	scripts/test-ci-failed-jobs.sh:44-46	T8 prose expects HTTP 500: Bad Gateway substring	Existing GH_MODE=fail stub prints HTTP 500 only; prose/substring mismatch causes false-negative test design	Align fixture text and assertions (extend fail mode or GH_FAIL_STDERR_FILE fixture)
+
+### 1. correctness — `skills/implement/scripts/generate-code-flow-diagram.sh:102`
+
+The proposed awk prints everything after `REASON_TOKEN=`, but production sanitizer output is documented as `REASON_TOKEN=<short-token> fence=<N> line=<N>` ([`scripts/sanitize-mermaid-fragment.md:44`](scripts/sanitize-mermaid-fragment.md)). That means the fix silently changes live `SKIP_REASON` values (e.g. from `pipe-in-node-label fence` today to `pipe-in-node-label fence=1 line=5` tomorrow) while the plan claims no public contract change.
+
+**Suggested revision:** After stripping the prefix, truncate at the first space so only the short token is emitted while embedded `=` inside the token is preserved. Add a regression fixture using the real log-line shape, not only `pipe-in-node-label=foo`.
+
+### 2. correctness — `scripts/ci-failed-jobs.sh:79-81`
+
+The stated newline-injection mitigation cannot work on the current read path: `while IFS= read -r line` splits `tmp_stderr` before `sanitize_diagnostic_line` runs, so `$line` never contains `\n`. Control-byte stripping within a line is still useful; newline protection is not.
+
+**Suggested revision:** Either slurp and sanitize the whole stderr blob before splitting, or narrow the contract and tests to intra-line C0/DEL bytes only and drop the embedded-newline assertions.
+
+### 3. risk-integration — `skills/implement/scripts/test-generate-code-flow-diagram.sh:35-60`
+
+The Item A test sketch references helpers (`write_sanitize_stub`, `run_subject_skip_path`, `assert_file_contains`) that do not exist. The harness today uses an inline `SANITIZE_REJECT` stub and `assert_contains`.
+
+**Suggested revision:** Rewrite the sketch against the existing harness structure so implementation does not invent parallel scaffolding.
+
+### 4. correctness — plan test sketch / `scripts/sanitize-mermaid-fragment.sh:201`
+
+The regression example `REASON_TOKEN=pipe-in-node-label=foo` does not match how the sanitizer actually emits reject lines (space-separated `fence=` / `line=` metadata). A test built only on the synthetic form can pass while production-shaped output still regresses.
+
+**Suggested revision:** Drive the test from a fixture that mirrors sanitizer output and assert the intended short-token value.
+
+### 5. [OUT_OF_SCOPE] architecture — `scripts/sanitize-mermaid-fragment.sh:283`
+
+The same class of untrusted `REASON_TOKEN` parsing appears in the sanitizer’s warnings-log token aggregation. If tokens ever include `=`, generator and warnings paths will diverge.
+
+**Suggested revision:** Track a follow-up to share one portable token extractor.
+
+### 6. [OUT_OF_SCOPE] architecture — `scripts/lib-quiet.sh:97-103`
+
+Local `sanitize_diagnostic_line` hardens one call site but leaves every other `larch_err "$external"` passthrough to opt in manually. Centralizing C0/DEL stripping in `larch_err` (opt-in or default) would be a stronger systemic fix than a single-file helper.
+
+### 7. nit — `skills/implement/scripts/test-generate-code-flow-diagram.sh`
+
+The plan says the no-token `sanitizer-rejected` fallback is already covered; the harness has no such assertion (only `SKIP_REASON=test-reject` when the stub emits a token).
+
+**Suggested revision:** Add an explicit fallback regression case.
+
+### 8. nit — `scripts/test-ci-failed-jobs.sh:44-46`
+
+T8 prose references `HTTP 500: Bad Gateway`, but `GH_MODE=fail` currently emits `HTTP 500`. Misaligned fixture text invites a brittle or failing test.
+
+**Suggested revision:** Make stub output and assertions match.
