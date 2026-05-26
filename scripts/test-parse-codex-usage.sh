@@ -83,6 +83,11 @@ cat > "$TMP/token-usage-rollup-precedence.jsonl" <<'JSONL'
 JSONL
 run_ok "token-usage-rollup-precedence" "$TMP/token-usage-rollup-precedence.jsonl" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
 
+cat > "$TMP/token-usage-nested-usage.jsonl" <<'JSONL'
+{"type":"token_usage","usage":{"input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}}
+JSONL
+run_ok "token-usage-nested-usage" "$TMP/token-usage-nested-usage.jsonl" $'INPUT=777\nCACHED_INPUT=7000\nOUTPUT=222\nTOTAL=7999'
+
 cat > "$TMP/empty-usage-top-level-fallback.jsonl" <<'JSONL'
 {"type":"token_usage","usage":{},"input_tokens":5,"cached_input_tokens":2,"output_tokens":1}
 JSONL
