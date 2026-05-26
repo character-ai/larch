@@ -368,7 +368,11 @@ if [ "$_ib_rc" -eq 2 ]; then
     IMPLEMENT_TMPDIR=$_ib_tmpdir
   fi
   if [ "$_ib_sf" = "copy-plan" ]; then
-    [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ] && cat "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" || true
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ]; then
+      if ! "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh"; then
+        printf '%s\n' '**⚠ /implement Step 0 plan materialization: copy-plan stderr could not be safely redacted.**'
+      fi
+    fi
     printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not copy the preflight plan into the implement session. Aborting.**'
     exit 2
   fi
@@ -461,7 +465,7 @@ Step 0 dirty-tree recovery gate:
 
 1. Write `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `STATUS=dirty-or-unknown`, `STAGE=step0-plan-materialize`, and `RECOVERY_REQUIRED=true`.
 2. If `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize` is absent, create it and fire `AskUserQuestion` with exactly two operator paths: **Restore a clean tree and continue** / **Cancel this implement run**.
-3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false` and continue.
+3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase plan --resume-plan-tail` with the same Step 0 args (`--caller-env`, `--issue-number`, `--forked-target`, `--upstream-repo`, `--run-id`, `--preflight-tmpdir`) so the bootstrap tail resumes branch capture plus `plan-goals-test` / `plan-review-tally` / `larch:plan` publication inside the existing `IMPLEMENT_TMPDIR`.
 4. On **Cancel this implement run**: preserve `$IMPLEMENT_TMPDIR` for inspection and jump to Step 18 cleanup. Do not enter the Step 2 implementer waterfall on this path.
 
 - If `REPO_UNAVAILABLE=true`: the script prints `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` to stderr; set `repo_unavailable=true` from the parsed KV.
@@ -671,7 +675,7 @@ Steps 0 (plan batches), 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads
 
 ### Plan materialization from issue body
 
-Plan materialization is now fully owned by the foreground `implement-bootstrap.sh --up-to-phase plan` call above. Do not run separate prompt-side blocks for `snapshot-untracked.sh`, `token-ledger.sh` / `timing-ledger.sh` plan-materialization marks, `gh issue view`, `scripts/persist-implement-run-flags.sh`, `check-mid-run-dirty-tree.sh --mode checkpoint`, slug derivation, `create-branch.sh --branch`, `git-current-branch.sh`, `run-step1-plan-log.sh`, `write-tally.sh`, or `tracking-issue-summary.sh upsert-summary` during Step 0.
+Plan materialization is now fully owned by the foreground `implement-bootstrap.sh --up-to-phase plan` call above. Do not run separate prompt-side blocks for `snapshot-untracked.sh`, `token-ledger.sh` / `timing-ledger.sh` plan-materialization marks, `gh issue view`, `scripts/persist-implement-run-flags.sh`, `check-mid-run-dirty-tree.sh --mode checkpoint`, slug derivation, `create-branch.sh --branch`, `git-current-branch.sh`, `run-step1-plan-log.sh`, `write-tally.sh`, or `tracking-issue-summary.sh upsert-summary` during Step 0. The only exception is the dirty-tree recovery continuation above, which re-enters the same bootstrap with `--resume-plan-tail` after the clean checkpoint succeeds.
 
 The bootstrap call materializes `$IMPLEMENT_TMPDIR/plan.txt` from `$PREFLIGHT_TMPDIR/plan-from-issue.txt`, composes `$IMPLEMENT_TMPDIR/feature-description.txt`, binds `POST_PLAN_WORKFLOW_PATH=HARD` through `persist-implement-run-flags.sh`, captures `BRANCH_NAME`, and writes the `plan-goals-test` / `plan-review-tally` batches. Forked-target and metadata-deferred paths still run this phase so Step 2 receives the conventional plan and feature files.
 

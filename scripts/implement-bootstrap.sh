@@ -34,6 +34,7 @@ PREFLIGHT_TMPDIR_OPT=""
 IMPLEMENT_BAIL_REASON=""
 SKIP_CODEX_PROBE_FLAG=false
 SKIP_CURSOR_PROBE_FLAG=false
+RESUME_PLAN_TAIL=false
 
 # Parsed / derived in phase_infra (defaults for tail when phases skip)
 CURRENT_BRANCH=""
@@ -67,7 +68,7 @@ BRANCH_ACTION=""
 PLAN_FILE=""
 
 usage() {
-    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--preflight-tmpdir PATH]"
+    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--preflight-tmpdir PATH] [--resume-plan-tail]"
 }
 
 die_usage() {
@@ -535,74 +536,79 @@ phase_plan_materialize() {
     local persist_rc dirty_out dirty_rc dirty_status
     local issue_title slug branch_name_derived create_out create_rc create_err
     local branch_out branch_rc branch_value
-    local goal_text_raw goal_text run_plan_rc run_plan_err
+    local goal_text_raw goal_text run_plan_rc run_plan_err goal_redact_rc goal_redact_err
     local tally_body_raw tally_body tally_rc tally_err
     local summary_body_raw summary_body summary_rc summary_err
     local summary_args
 
-    snapshot_out="$IMPLEMENT_TMPDIR/untracked-baseline.z"
-    "$SCRIPT_DIR/snapshot-untracked.sh" --output "$snapshot_out" --nul || true
-
-    "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — plan materialization" || true
-    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — plan materialization" || true
-
+    gh_issue_arg=$ISSUE_NUMBER_RESOLVED
+    [ "$FORKED_TARGET" = "true" ] && gh_issue_arg=$ISSUE_NUMBER_OPT
     PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
-    plan_src="$PREFLIGHT_TMPDIR_OPT/plan-from-issue.txt"
-    if ! cp "$plan_src" "$PLAN_FILE" 2>"$IMPLEMENT_TMPDIR/copy-plan.stderr.log"; then
-        emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
-        emit_kv STEP_FAILED copy-plan
-        exit 2
-    fi
-
     feature_file="$IMPLEMENT_TMPDIR/feature-description.txt"
-    gh_err="$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"
-    if [ "$FORKED_TARGET" = "true" ]; then
-        gh_issue_arg="$ISSUE_NUMBER_OPT"
-        if [ -n "$UPSTREAM_REPO_OPT" ]; then
-            gh issue view "$gh_issue_arg" --repo "$UPSTREAM_REPO_OPT" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
+
+    if [ "$RESUME_PLAN_TAIL" != "true" ]; then
+        snapshot_out="$IMPLEMENT_TMPDIR/untracked-baseline.z"
+        "$SCRIPT_DIR/snapshot-untracked.sh" --output "$snapshot_out" --nul || true
+
+        "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — plan materialization" || true
+        "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — plan materialization" || true
+
+        plan_src="$PREFLIGHT_TMPDIR_OPT/plan-from-issue.txt"
+        if ! cp "$plan_src" "$PLAN_FILE" 2>"$IMPLEMENT_TMPDIR/copy-plan.stderr.log"; then
+            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+            emit_kv STEP_FAILED copy-plan
+            exit 2
+        fi
+
+        gh_err="$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"
+        if [ "$FORKED_TARGET" = "true" ]; then
+            if [ -n "$UPSTREAM_REPO_OPT" ]; then
+                gh issue view "$gh_issue_arg" --repo "$UPSTREAM_REPO_OPT" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
+            else
+                gh issue view "$gh_issue_arg" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
+            fi
         else
             gh issue view "$gh_issue_arg" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
         fi
-    else
-        gh_issue_arg="$ISSUE_NUMBER_RESOLVED"
-        gh issue view "$gh_issue_arg" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
-    fi
-    gh_rc=$?
-    if [ "$gh_rc" -ne 0 ]; then
-        emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
-        emit_kv STEP_FAILED gh-issue-view
-        exit 2
-    fi
+        gh_rc=$?
+        if [ "$gh_rc" -ne 0 ]; then
+            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+            emit_kv STEP_FAILED gh-issue-view
+            exit 2
+        fi
 
-    "$SCRIPT_DIR/timing-ledger.sh" workflow-path "HARD" || true
+        "$SCRIPT_DIR/timing-ledger.sh" workflow-path "HARD" || true
 
-    "$SCRIPT_DIR/persist-implement-run-flags.sh" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-        --no-issues false \
-        --workflow-path HARD \
-        >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
-        2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
-    persist_rc=$?
-    if [ "$persist_rc" -ne 0 ]; then
-        STALL_TRACKING=true
-        IMPLEMENT_BAIL_REASON=run-flags-persist-failed
-        return 0
-    fi
-
-    dirty_out=$("$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode checkpoint 2>"$IMPLEMENT_TMPDIR/check-mid-run-dirty-tree.stderr.log")
-    dirty_rc=$?
-    if [ "$dirty_rc" -ne 0 ]; then
-        dirty_status=unknown
-    else
-        dirty_status=$(kv_value_from_block STATUS "$dirty_out")
-        [ -n "$dirty_status" ] || dirty_status=unknown
-    fi
-    case "$dirty_status" in
-        dirty|unknown)
-            IMPLEMENT_BAIL_REASON=dirty-tree
+        "$SCRIPT_DIR/persist-implement-run-flags.sh" \
+            --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+            --no-issues false \
+            --workflow-path HARD \
+            >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
+            2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
+        persist_rc=$?
+        if [ "$persist_rc" -ne 0 ]; then
+            STALL_TRACKING=true
+            IMPLEMENT_BAIL_REASON=run-flags-persist-failed
             return 0
-            ;;
-    esac
+        fi
+
+        dirty_out=$("$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode checkpoint 2>"$IMPLEMENT_TMPDIR/check-mid-run-dirty-tree.stderr.log")
+        dirty_rc=$?
+        if [ "$dirty_rc" -ne 0 ]; then
+            dirty_status=unknown
+        else
+            dirty_status=$(kv_value_from_block STATUS "$dirty_out")
+            [ -n "$dirty_status" ] || dirty_status=unknown
+        fi
+        case "$dirty_status" in
+            dirty|unknown)
+                IMPLEMENT_BAIL_REASON=dirty-tree
+                return 0
+                ;;
+        esac
+    else
+        IMPLEMENT_BAIL_REASON=""
+    fi
 
     if [ "$FORKED_TARGET" != "true" ] && [ "${IS_USER_BRANCH:-false}" != "true" ]; then
         issue_title=$(head -1 "$feature_file" 2>/dev/null || true)
@@ -644,7 +650,20 @@ phase_plan_materialize() {
 
     issue_title=$(head -1 "$feature_file" 2>/dev/null || true)
     goal_text_raw="Implement issue #${gh_issue_arg}: ${issue_title:-planned change}."
-    goal_text=$(printf '%s\n' "$goal_text_raw" | "$SCRIPT_DIR/redact-secrets.sh" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" 2>/dev/null) || goal_text=$goal_text_raw
+    goal_redact_err="$IMPLEMENT_TMPDIR/goal-text-redact.stderr.log"
+    goal_text=$(printf '%s\n' "$goal_text_raw" | "$SCRIPT_DIR/redact-secrets.sh" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" 2>"$goal_redact_err")
+    goal_redact_rc=$?
+    if [ "$goal_redact_rc" -ne 0 ]; then
+        goal_text="Implement issue #${gh_issue_arg}: <REDACTED-TITLE>."
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "Step 0 plan materialization — goal text redaction" \
+            --tool "redact-secrets.sh | redact-tmpdir-paths.sh" \
+            --exit-code "$goal_redact_rc" \
+            --category Warnings \
+            --output-file "$goal_redact_err" \
+            --redact || true
+    fi
     run_plan_err="$IMPLEMENT_TMPDIR/run-step1-plan-log.stderr.log"
     "$SCRIPT_DIR/run-step1-plan-log.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --goal-text "$goal_text" >"$IMPLEMENT_TMPDIR/run-step1-plan-log.out" 2>"$run_plan_err"
     run_plan_rc=$?
@@ -827,6 +846,10 @@ main() {
                 [ $# -ge 2 ] || die_usage "--preflight-tmpdir requires a value"
                 PREFLIGHT_TMPDIR_OPT=$2
                 shift 2
+                ;;
+            --resume-plan-tail)
+                RESUME_PLAN_TAIL=true
+                shift
                 ;;
             --skip-codex-probe)
                 SKIP_CODEX_PROBE_FLAG=true

@@ -17,6 +17,7 @@
 | GP3 | Fork mode emits `BRANCH_SELECTED=forked-target-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, and writes `FORKED_TARGET=true` to session-env. |
 | GP3-upstream-context-fail | Fork mode still continues when `get-issue-context.sh` fails and appends a redacted Warning entry to `execution-issues.md`. |
 | GP-repo-unavail-tracking | Tracking phase with `REPO_UNAVAILABLE=true` emits `BRANCH_SELECTED=repo-unavailable-skip`, empty `ISSUE_NUMBER`, and `DEFERRED=true`. |
+| GP-repo-unavail-plan | Repo-unavailable `--up-to-phase plan` skips plan-materialization helpers entirely and leaves `PLAN_FILE` empty. |
 | GP4 | Infra-only repo-unavailable path emits `REPO_UNAVAILABLE=true` and repo-unavailable warning on stderr. |
 | B1 | Sentinel issue mismatch clears and replaces the sentinel via Branch 2 fresh adoption. |
 | B2 | CLOSED target issue emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed`. |
@@ -28,13 +29,19 @@
 | B5-plan | `larch-log.sh init` failure on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips the phase-3 placeholder. |
 | B5-branch1 | Branch 1 sentinel resume with `larch-log.sh init` failure preserves the sentinel issue/run id while stalling tracking. |
 | B5-plan-green | Phase 3 green path copies the Preflight plan, composes issue context, persists run flags, creates/captures the derived branch, writes plan batches, upserts `larch:plan`, and covers three slug inputs. |
+| B5-plan-best-effort-failures | Non-fatal `run-step1-plan-log.sh`, `write-tally.sh`, and `tracking-issue-summary.sh` failures append Warnings and still return a green Phase 3 tail. |
+| B5-plan-goal-redaction-failure | Goal-text redaction fails closed to a placeholder and appends a Warning instead of logging the raw issue title. |
 | B6-plan-flags | Any non-zero `persist-implement-run-flags.sh` exit emits `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`, sets `STALL_TRACKING=true`, and stops subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree | `STATUS=dirty` and `STATUS=unknown` emit `IMPLEMENT_BAIL_REASON=dirty-tree` without setting `STALL_TRACKING`, and stop subsequent Phase 3 helpers. |
+| B7-plan-dirty-tree probe-failure | Dirty-tree checkpoint probe failure is treated as `STATUS=unknown`, preserving the `dirty-tree` bail and stopping the tail. |
+| B7-plan-dirty-tree resume-tail | `--resume-plan-tail` resumes the post-checkpoint tail inside the same tmpdir after a prior dirty-tree bail, clearing `IMPLEMENT_BAIL_REASON` and avoiding duplicate snapshot / `gh` work. |
 | B8-plan-forked-target | Fork mode still materializes plan/feature files with upstream `gh --repo`, skips branch creation, captures the current branch, and skips the local `larch:plan` upsert. |
 | B9-plan-user-branch | Existing user branch skips branch creation but still writes the local `larch:plan` summary. |
 | B10-plan-missing-preflight-tmpdir | `--up-to-phase plan --issue-number N` without `--preflight-tmpdir` exits 2 with usage. |
 | B11-plan-copy-plan-failure | Missing `plan-from-issue.txt` exits 2 with `STEP_FAILED=copy-plan`. |
 | B12-plan-gh-issue-view-failure | `gh issue view` failure exits 2 with `STEP_FAILED=gh-issue-view`. |
+| B13-plan-branch-create | Branch creation failure stalls tracking with `IMPLEMENT_BAIL_REASON=branch-create-failed` before branch capture or plan logs. |
+| B14-plan-branch-capture | Branch capture failure or empty `BRANCH=` stalls tracking with `IMPLEMENT_BAIL_REASON=branch-create-failed` after create-branch. |
 | B6 | `get-issue-state.sh` failure exits 2 with `STEP_FAILED=get-issue-state`. |
 | B7-non-open-state | Unexpected non-`OPEN`/`CLOSED` issue state exits 2 with `STEP_FAILED=get-issue-state`. |
 | B-sentinel-malformed | Malformed sentinel is cleared and replaced via Branch 2 fresh adoption. |
@@ -51,3 +58,5 @@
 | Edge-NEVER14 | Static grep on live `scripts/implement-bootstrap.sh` forbids append / `cat` heredoc writes to `session-env.sh`. |
 | Edge-breadcrumb-count | `LARCH_QUIET_BREADCRUMBS=1` + `LARCH_QUIET_BREADCRUMB_FD=1` → exactly one `→ step0: infra ready` line. |
 | Edge-breadcrumb-count-adopt | `LARCH_QUIET_BREADCRUMBS=1` + tracking adoption → exactly one `→ step0: tracking adopted` line. |
+| Edge-breadcrumb-count-plan-green | `LARCH_QUIET_BREADCRUMBS=1` + green plan materialization emits one branch/log breadcrumb and one `larch:plan` breadcrumb. |
+| Edge-breadcrumb-count-plan-summary-fail | `LARCH_QUIET_BREADCRUMBS=1` + summary failure emits the branch/log breadcrumb but suppresses the `larch:plan` breadcrumb. |
