@@ -5,7 +5,7 @@ Shared CHANGELOG helpers sourced by `scripts/commit-changelog.sh`, `scripts/impl
 ## API
 
 - `changelog_first_version_heading [path=CHANGELOG.md]` — print the first `## [X.Y.Z]` version (skipping `## [Unreleased]`); empty when absent.
-- `changelog_duplicate_version_heading_count VERSION [path=CHANGELOG.md]` — count of `## [VERSION] - ` headings.
+- `changelog_duplicate_version_heading_count VERSION [path=CHANGELOG.md]` — count of `## [VERSION] -` headings (the `## [VERSION] - YYYY-MM-DD` prefix grammar).
 - `changelog_extract_version_body VERSION DEST [path=CHANGELOG.md]` — extract the body lines under `## [VERSION] - YYYY-MM-DD` (heading excluded) to `DEST`, stripping leading/trailing blank lines. Returns 0 with `DEST` populated when a non-empty body exists, 1 otherwise (and removes `DEST`). Used by `ship-pr.sh ship_pr_stage_rebump_bullets` to preserve bullets before `drop-changelog-commit.sh` strips the companion changelog commit (issue #2952 Bug A).
 - `write_changelog_entry VERSION CATEGORIES_FILE OUTPUT [REPLACES_VERSION=""]` — insert a new `## [VERSION] - today` section with body read from `CATEGORIES_FILE` (`### Category` headers + `- bullet` lines), writing the result to `OUTPUT`. With `REPLACES_VERSION` set and different from `VERSION`, the existing `## [REPLACES_VERSION]` section is replaced wholesale. Returns 0 on success, 3 when no anchor was found, 4 when the target heading already exists multiple times. Originally lived in `implement-finalize.sh`; hoisted so `ship-pr.sh` can reconstruct an entry after the rebase+rebump path drops the companion changelog commit.
 
