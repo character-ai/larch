@@ -1,0 +1,5 @@
+export LARCH_BREADCRUMB_STREAM='<TMPDIR>/breadcrumbs/collect-agent-results.collect-agent-results.15467.ndjson'
+export LARCH_DONE_SENTINEL='<TMPDIR>/breadcrumbs/collect-agent-results.collect-agent-results.15467.done.Wd3eFT'
+export LARCH_STATUS_FILE='<TMPDIR>/breadcrumbs/collect-agent-results.collect-agent-results.15467.status.eDJRfz'
+export LARCH_QUIET_LOG_FILE='<TMPDIR>/breadcrumbs/collect-agent-results.collect-agent-results.15467.quiet.d5aaVU'
+export LARCH_BREADCRUMBS_SURFACED_FILE='<TMPDIR>/breadcrumbs/collect-agent-results.collect-agent-results.15467.surfaced.6g6wsp'

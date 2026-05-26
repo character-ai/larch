@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=2885
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/2885
+ISSUE_1_ID=4522043700
+ISSUE_1_TITLE=[OOS] Dual vendor slots plus per-slot waterfall can double Codex work in narration-only fallback
+ISSUE_1_BLOCKER_LINKS_APPLIED=1

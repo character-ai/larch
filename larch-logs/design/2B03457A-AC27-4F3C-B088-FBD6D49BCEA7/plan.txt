@@ -1,0 +1,163 @@
+# Implementation Plan — #2865 Cursor narration-only outputs bypass waterfall fallback
+
+## Goal
+
+Add a centralized result-pattern gate to `dispatch-with-waterfall.sh` so the existing 3-phase fallback machinery treats `STATUS=OK` outputs that fail a caller-supplied regex as failed slots. Opt the two decompose call-sites into the gate, swap the aggregator's primary tool from Cursor to Codex, and update `decompose-panel-dispatch.sh` so its per-slot panel-row generation consumes the dispatcher's `ALL_OUTPUT_FILES_PATH` resolved paths (otherwise the fallback recovers content but the panel never sees it).
+
+## Files to modify/create
+
+### UPDATED: `scripts/dispatch-with-waterfall.sh`
+
+Add one optional flag, a one-shot prevalidation, and one extra check inside per-phase collection.
+
+- Declare `REQUIRE_RESULT_PATTERN=""` near the other defaults (next to `WATERFALL_PATHS_FILE=""`).
+- Extend the argv parse loop with `--require-result-pattern) REQUIRE_RESULT_PATTERN="${2:?--require-result-pattern requires a value}"; shift 2 ;;`.
+- **Prevalidate the regex once** after argv parse and the existing jq guard, before any slot launches: run `printf '' | grep -E -- "$REQUIRE_RESULT_PATTERN" >/dev/null 2>&1`, capture rc; if rc>1 (grep ERE syntax error), `larch_err "dispatch-with-waterfall.sh: --require-result-pattern is not a valid ERE: $REQUIRE_RESULT_PATTERN"` and `exit 2`. Skip the prevalidation when `REQUIRE_RESULT_PATTERN` is empty.
+- Inside `collect_phase`, modify the per-slot resolution at the `STATUS == OK || STATUS == cap_hit` branch:
+  - When `STATUS == cap_hit`, **bypass** the pattern check entirely and continue settling the slot as today (preserves the existing token-budget skip contract from `launch-review.sh`).
+  - When `STATUS == OK` and `REQUIRE_RESULT_PATTERN` is non-empty: run `grep -Eq -- "$REQUIRE_RESULT_PATTERN" "${rf:-$output}"`. **Branch on grep rc**: rc 0 → accept (fall through to the existing `final_outputs[$idx]` / `final_tools[$idx]` assignment); rc 1 (no match) → push `$idx` into `failed` and `continue` **before** setting `final_outputs` / `final_tools`. The prevalidation above guarantees rc>1 cannot occur at runtime for a syntactically valid pattern; if the resolved file is unreadable, grep emits rc 2 with stderr, which the dispatcher surfaces via the existing `set -euo pipefail` only when not wrapped — keep the per-slot grep wrapped in an `if` so the surrounding loop continues to the next slot, but emit a `larch_err` describing the unreadable path and treat the slot as failed.
+  - When `STATUS == OK` and `REQUIRE_RESULT_PATTERN` is empty, behavior is identical to today.
+- Default behavior (flag unset) is unchanged — additive and backward compatible.
+
+Critical control-flow detail: do **NOT** assign `final_outputs[$idx]` / `final_tools[$idx]` on the pattern-miss branch. The `failed+=("$idx"); continue` must run before any assignment, so subsequent phases overwrite cleanly and the paths-file emit reflects the resolved phase-2/phase-3 path rather than a stale phase-1 narration entry.
+
+Use `${rf:-$output}` (matching the existing OK branch's variable resolution) so retry-path REVIEWER_FILE rewrites (e.g. `<orig>-retry.txt`) are honored exactly like today's OK branch.
+
+### UPDATED: `scripts/dispatch-with-waterfall.md`
+
+Add a **Flags** entry for `--require-result-pattern <regex>` with these properties documented in one short paragraph each:
+
+- ERE syntax (`grep -E`); pre-validated once after argv parse — invalid ERE exits 2 before any slot launches.
+- Applied only to `STATUS=OK` resolutions, not `STATUS=cap_hit` (token-budget skip remains terminal).
+- Pattern misses route through the existing `failed[]` path: phase-1 → phase-2 → phase-3 fallback continues normally. No new exit codes, no new sidecar files.
+- When unset (default), behavior is unchanged.
+
+Add a short **Non-adopters** paragraph naming the two waterfall-using surfaces that intentionally do not opt in for this issue: sketch phase (no waterfall caller; sketches tolerate narration-only as "no contested position" in synthesis) and plan-review (`plan-review-loop.sh` / `dispatch-plan-review-panel.sh`, where `collect-agent-results.sh --structured-reviewer-validation` and downstream parsing perform their own structured checks). The two opt-in callers are `decompose-aggregator.sh` and `decompose-panel-dispatch.sh`, both passing `^[[:space:]]*## Recommendation`.
+
+### UPDATED: `skills/design/scripts/decompose-aggregator.sh`
+
+Two-line change at the aggregator's single-slot row build + waterfall invocation:
+
+- Change `--arg tool cursor \` to `--arg tool codex \` in the `jq -nc … >"$_slots"` call (Fix 1). The aggregator merges 8 panel proposals into one Markdown bundle and benefits more from Codex reliability on the single safety-net slot.
+- Add `--require-result-pattern '^[[:space:]]*## Recommendation' \` to the `"$WATERFALL_SH" …` call (Fix 2 caller adoption). This promotes the existing post-call grep guard at the `AGGREGATOR_STATUS="ok"` check from a silent "OK but unusable" to a proper waterfall fallback. The post-call grep is left in place (it is harmless when the dispatcher gate already accepted the content) and noted as defense-in-depth in the .md.
+
+### UPDATED: `skills/design/scripts/decompose-aggregator.md`
+
+Add one sentence noting the primary tool is Codex (with Cursor → Claude fallback via the shared waterfall) and one sentence noting the recommendation-heading gate is now enforced at the dispatcher boundary (post-call grep retained as defense-in-depth on `AGGREGATOR_STATUS`).
+
+### UPDATED: `skills/design/scripts/decompose-panel-dispatch.sh`
+
+Two changes — one threads the dispatcher gate (Fix 2 caller), one fixes the panel-row resolved-path bug (Theme A) so the dispatcher fallback actually reaches `panel-outputs.ndjson`:
+
+1. Thread `--require-result-pattern '^[[:space:]]*## Recommendation'` into the existing `"$WATERFALL_SH" …` call inside the `_dispatch_out=$(...)` capture so all 8 archetype/vendor slots fall back when narration-only content slips through `STATUS=OK`.
+2. Rewrite the panel-row generation loop (the `while IFS= read -r row … done <"$_manifest"` block that builds `panel-outputs.ndjson`) so it consumes the dispatcher's resolved paths instead of the original manifest output paths:
+   - After parsing `ALL_OUTPUT_FILES_PATH` from `_dispatch_out`, read its line-oriented contents into a Bash 3.2-compatible indexed array (`while IFS= read -r line; do _resolved_paths+=("$line"); done < "$ALL_OUTPUT_FILES_PATH"`) so we never use `mapfile`/`readarray`.
+   - Walk the manifest with a parallel index `_i=0` (one increment per processed row) and resolve the slot's effective output as `_outp_resolved="${_resolved_paths[$_i]:-$_outp}"` (falling back to the original manifest path only when `ALL_OUTPUT_FILES_PATH` is empty or shorter than expected — which would indicate a dispatcher contract regression). When `ALL_OUTPUT_FILES_PATH` is empty/missing AND `_resolved_paths` is empty, emit a single `larch_err` warning and use the manifest path so prior behavior is preserved in the degraded-paths edge case.
+   - Grep and the NDJSON `output` field both use `_outp_resolved`. The recorded `vendor` field stays as `_tool` from the manifest row (vendor-of-record reflects the originally-assigned primary tool; provenance of which phase tool actually produced the content is preserved by phase-suffix filenames in the resolved path).
+
+Both changes live in the same file and ship together.
+
+### UPDATED: `skills/design/references/decompose-panel.md`
+
+Update the prose that describes the aggregator merger as `single-slot Cursor → Codex → Claude waterfall` to `single-slot Codex → Cursor → Claude waterfall`. Add one short sentence noting the dispatcher enforces a recommendation-heading gate at the collection boundary so narration-only "OK" outputs fall through, and a second sentence noting that `panel-outputs.ndjson` rows now reflect the dispatcher's resolved final paths (phase-2/phase-3 fallback content reaches the operator presentation when the primary tool returns narration-only).
+
+### UPDATED: `scripts/test-dispatch-with-waterfall.sh`
+
+Extend stubs and add three new positive cases. The cursor stub embeds caller-supplied content into JSON via `jq`; the codex stub writes it directly:
+
+- **Cursor stub hardening (Theme F)**: replace the raw `printf '{"result":"cursor ok"...}'` with `jq -nc --arg r "${CURSOR_STUB_RESULT_CONTENT:-cursor ok}" '{result:$r,usage:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheWriteTokens:0}}'`. Default value preserves the existing `cursor ok` byte-identically so all existing assertions keep passing. Metacharacters in caller-supplied content (quotes, backslashes, newlines) are safely escaped by `jq`.
+- **Codex stub hardening**: replace `printf 'codex ok\n' > "$out"` with `printf '%s' "${CODEX_STUB_RESULT_CONTENT:-codex ok}$'\n'" > "$out"`. Default preserves `codex ok` + newline byte-identically.
+- **New case 1 — pattern-mismatch fallback (Theme D core)**: a single-slot manifest with `tool=cursor`, run with `CURSOR_STUB_RESULT_CONTENT='narration only, no heading'` and `CODEX_STUB_RESULT_CONTENT=$'## Recommendation\nsplit\n'`, plus `--require-result-pattern '^[[:space:]]*## Recommendation'`. Assert `ALL_OUTPUT_TOOLS=codex` (phase-2 codex took over), `FALLBACK_COUNT=0` (no phase-3 Claude needed), and **`DISPATCH_OK=true`** (per FINDING_27 — guards against partial regressions where KVs look plausible but `DISPATCH_OK` is false).
+- **New case 2 — `STATUS=cap_hit` is terminal under the pattern gate (Theme B)**: stub the launcher path so it emits `STATUS=cap_hit` (extend the cursor stub or use a small shim to fake the collector's `cap_hit` row), with `CURSOR_STUB_RESULT_CONTENT='narration only, no heading'` and `--require-result-pattern '^[[:space:]]*## Recommendation'`. Assert that `FALLBACK_COUNT=0`, the slot does NOT advance to phase-2, and `ALL_OUTPUT_TOOLS=cursor` (cap_hit settles the slot terminally on the assigned primary). Because `collect-agent-results.sh --summary-only` is what emits `STATUS=cap_hit`, the harness uses a small shim to make the stub launcher behave as the launcher does for cap-hit; if that proves intractable in pure stubs, instead unit-test the dispatcher branch by injecting a `STATUS=cap_hit` block via a temporary `COLLECT_AGENT_RESULTS_SUMMARY_OVERRIDE` env var (one-line addition to `dispatch-with-waterfall.sh` reading the override only when set; deferred to follow-up if it adds more code than the test case itself — file as OOS in that case rather than expand scope).
+- **New case 3 — invalid ERE exits 2 before launches (Theme C)**: `--require-result-pattern '['` (deliberately broken ERE). Assert exit code 2, stderr contains the prevalidation message, and no stub launcher ran (no log line in `CODEX_STUB_LOG` / `CURSOR_STUB_LOG`).
+- Default values of the new env vars preserve every existing assertion (`cursor ok` / `codex ok`), so no other test cases change.
+
+### UPDATED: `skills/design/scripts/test-decompose-aggregator.sh`
+
+Extend the existing happy-path stub waterfall to capture the full argv (the stub already logs `"$0 $*"` per line, sufficient for argv grep). Add three assertions after the happy-path `AGGREGATOR_STATUS=ok` check:
+
+- Parse `$D/decompose/aggregator-slots.ndjson` with `jq -r '.tool'` and assert it equals `codex` (Fix 1 regression coverage).
+- Grep `$D/wf.log` for the literal substring `--require-result-pattern` (Fix 2 caller-adoption regression coverage).
+- Grep `$D/wf.log` for the literal substring `^[[:space:]]*## Recommendation` (asserts the correct regex value is threaded, not just the flag).
+
+All three assertions live inside the existing `=== aggregator happy path ===` block; the failed-path block is left untouched.
+
+### UPDATED: `skills/design/scripts/test-decompose-aggregator.md`
+
+One added line noting the harness now verifies the primary-tool selection and the recommendation-heading gate threading.
+
+### UPDATED: `skills/design/scripts/test-decompose-panel-dispatch.sh`
+
+Add three assertions to the existing `=== plan mode: 8 slots + substitution ===` block (the stub waterfall at line 33 already captures argv via `printf '%s\n' "$0 $*" >> "$log"`):
+
+- Grep `$D1/wf.log` for the literal substring `--require-result-pattern` (Theme D — addresses FINDING_2, FINDING_13, FINDING_14, FINDING_20, FINDING_24, FINDING_26).
+- Grep `$D1/wf.log` for the literal substring `^[[:space:]]*## Recommendation` (correct regex threaded).
+- Add one new sub-case in the same block (or a fresh `=== plan mode: resolved-paths panel rows ===` block) where the stub waterfall writes a phase-2 file with valid `## Recommendation` and emits `ALL_OUTPUT_FILES_PATH` pointing at it for a slot whose original phase-1 file remains narration-only. Assert that the resulting `panel-outputs.ndjson` row for that slot has `status="ok"` and `output` equal to the phase-2 path (not the manifest's phase-1 path) — directly covering Theme A's resolved-path fix.
+
+### UPDATED: `skills/design/scripts/test-decompose-panel-dispatch.md`
+
+One added line noting the harness now verifies `--require-result-pattern` threading and resolved-path consumption.
+
+## Approach
+
+Pick the **structural fix at the boundary** rather than per-caller post-grep duplication. The dispatcher already owns the `STATUS=OK`/`cap_hit` ↔ retry-path machinery; introducing the new check at that exact point reuses phase-1 → phase-2 → phase-3 fallback, the WARN threshold, the paths-file emit, dirty-tree sidecars, and the `DISPATCH_OK` semantics with zero contract churn elsewhere.
+
+Make the flag **opt-in by default**: only the two decompose callers (aggregator and panel dispatch) need it, and they share the same regex (`^[[:space:]]*## Recommendation`) that their existing post-dispatch grep guards already encode. Sketch and plan-review collectors remain on today's semantics per the documented Non-adopters paragraph in `dispatch-with-waterfall.md`.
+
+Make the **aggregator primary-tool swap (Fix 1)** orthogonal: it does not depend on Fix 2 to land, and the dispatcher continues to fall through to Cursor on phase 2 and Claude on phase 3 regardless of which external is primary.
+
+**Preserve the token-budget skip contract** (Theme B): `STATUS=cap_hit` is the launcher's explicit "do not run; respect cost cap" sentinel. The pattern gate is `STATUS=OK`-only so cap_hit always settles the slot terminally; the existing token-budget guards keep their meaning.
+
+**Fail loud on operator misconfiguration** (Theme C): an invalid ERE is a caller bug, not a runtime no-match. Prevalidate once at startup and exit 2 with `larch_err` so the operator sees the issue immediately instead of every slot silently burning all three phases.
+
+**Honor the resolved-path contract** (Theme A): when the dispatcher's gate routes a slot through phase 2 / phase 3, the operator-facing panel must see the recovered content. The `ALL_OUTPUT_FILES_PATH` is the existing contract for that — `decompose-panel-dispatch.sh` becomes the second consumer of that contract (the first is `collect-agent-results.sh --paths-file` for plan review). The aggregator does not need a similar update because it consumes the dispatcher's single resolved path directly via `read -r final_out <"$ALL_OUTPUT_FILES_PATH"` already (see existing code at lines 138-141 in `decompose-aggregator.sh`).
+
+**Why the inner-dispatch layer is the right home for this gate** (empirical confirmation from a prior session): a separate `/design` run observed `aggregate-findings.sh`'s outer-fallback path was itself unreliable — `MERGE_PIPELINE_RC=1` (`empty_merge_from_nonempty_input`) in round 1 should have continued to the Codex outer phase but didn't (round 2 did fire). That evidence strengthens the case for a content-aware gate at the inner `dispatch-with-waterfall.sh` boundary rather than reordering or hardening outer-phase fallback chains. Separately, Cursor's narration-only outputs were measured at `outputTokens=6086` with `~106-byte .result` — the model ran to completion and abstained at presentation time, not a zero-output launcher failure. That confirms the right layer is the dispatch-layer pattern check (this plan) and **NOT** a launcher-layer change like swapping `cursor agent --mode plan` to `--mode auto`. The latter would be an upstream Cursor behavior bet; the former is a defensive structural guard that works regardless of upstream model behavior.
+
+## Edge cases
+
+- **`STATUS=cap_hit` with `--require-result-pattern` set**: pattern check is bypassed; slot settles on the assigned tool just as today. The cap-hit harness case asserts no phase-2/phase-3 launch occurs.
+- **`STATUS=OK` with `cap_hit` not in play, pattern matches**: fall through to the existing `final_outputs[$idx]` / `final_tools[$idx]` assignment.
+- **`STATUS=OK` with pattern mismatch**: `failed+=("$idx"); continue` runs BEFORE any `final_outputs` / `final_tools` assignment. Subsequent phases overwrite cleanly; the paths-file emit reflects the resolved phase-2/phase-3 path.
+- **`REVIEWER_FILE` rewrites on retry**: grep `${rf:-$output}` (matching the existing OK branch's variable resolution) so the retried file is what's pattern-checked.
+- **Empty result file with `STATUS=OK`**: `grep -Eq` on an empty file returns 1 — slot correctly falls through. Same behavior as the existing OK path when the file is non-empty but pattern-mismatched.
+- **Pattern is itself empty (`--require-result-pattern ''`)**: parse-loop `${2:?--require-result-pattern requires a value}` rejects empty values with a clear stderr message and exit 2.
+- **Pattern is invalid ERE**: prevalidation runs once after argv parse and emits a clear `larch_err`; exit 2 before any slot launches.
+- **Pattern that always matches (e.g. `.*`)**: behavior reduces to today's: every `STATUS=OK` output is accepted. Documented in the Flags section.
+- **All N tools fail the pattern**: each slot fails phase-1, phase-2, then phase-3 falls back to Claude. If Claude's output also fails the pattern, the slot ends up in `phase3_failed[]` and the existing `DISPATCH_OK=false` + paths-file emission of the phase-3 path apply.
+- **`ALL_OUTPUT_FILES_PATH` empty/missing in `decompose-panel-dispatch.sh`**: indicates a dispatcher contract regression. The loop emits a single `larch_err` warning and falls back to the manifest path so prior behavior is preserved; the linked dispatcher harness case asserts the paths-file is always written when slots run, so the warning is exceptional.
+- **Resolved-paths array shorter than the manifest** (impossible per dispatcher contract — paths-file always has one line per slot): the `${_resolved_paths[$_i]:-$_outp}` fallback keeps the original behavior for any out-of-range index.
+- **Tool stub backward compatibility in `test-dispatch-with-waterfall.sh`**: default env-var values match today's hardcoded strings (`cursor ok` / `codex ok`), so the existing 12+ test cases keep their byte-identical assertions.
+- **Bash 3.2 portability**: panel-dispatch loop uses `while IFS= read -r line; do _resolved_paths+=("$line"); done < "$ALL_OUTPUT_FILES_PATH"`, not `mapfile` / `readarray` (per `BASH_AUTHORING.md` §3).
+
+## Failure modes
+
+1. **Caller threads an invalid ERE**: detected at prevalidation; dispatcher exits 2 with `larch_err` naming the bad pattern. No slot launches. Operator sees the failure immediately rather than silently across all phases.
+2. **Pattern accidentally rejects all legitimate outputs**: every slot fast-fails to Claude on phase-3, `WARN=cost-fallback-exceeded-threshold` fires when `FALLBACK_COUNT > 3`, and the operator sees the existing breadcrumb. Earliest signal: the WARN line in the dispatcher output; deeper signal: `DISPATCH_OK=false` followed by absent `## Recommendation` in the merged output. Mitigation: callers' patterns are short and grep-tested in the harness.
+3. **Dispatcher contract regression where `ALL_OUTPUT_FILES_PATH` is empty**: panel-dispatch falls back to manifest paths with a single `larch_err` warning. Linked dispatcher harness asserts paths-file is always written when slots run, so the warning is an audit trail rather than a silent regression.
+
+## Testing strategy
+
+Three harnesses cover the change end-to-end (no new harness files):
+
+- **`scripts/test-dispatch-with-waterfall.sh`**: env-driven stub content + three new positive cases — (a) `--require-result-pattern` cursor→codex fallback (`ALL_OUTPUT_TOOLS=codex`, `FALLBACK_COUNT=0`, `DISPATCH_OK=true`), (b) `STATUS=cap_hit` terminal under the pattern gate, (c) invalid ERE exits 2 before launches. Existing 12+ cases keep byte-identical assertions because the new env vars default to the prior hardcoded strings.
+- **`skills/design/scripts/test-decompose-aggregator.sh`**: three assertions appended to the happy-path block — `jq -r '.tool'` on `aggregator-slots.ndjson` returns `codex`; `wf.log` contains `--require-result-pattern`; `wf.log` contains `^[[:space:]]*## Recommendation`.
+- **`skills/design/scripts/test-decompose-panel-dispatch.sh`**: three assertions in the existing plan-mode block — `wf.log` contains `--require-result-pattern`; `wf.log` contains the recommendation regex; new sub-case where the stub waterfall emits a phase-2 file via `ALL_OUTPUT_FILES_PATH` and the resulting `panel-outputs.ndjson` row records the phase-2 path (not the manifest's phase-1 path).
+
+Run via `make test-dispatch-with-waterfall test-decompose-aggregator test-decompose-panel-dispatch test-design-structure`, and `make lint` at the end.
+
+## Diff size estimate
+
+- `scripts/dispatch-with-waterfall.sh`: ~25 lines (1 default, 1 argv parse, ~6 lines prevalidation, ~12 lines for the cap_hit-aware grep+continue block, comments).
+- `scripts/dispatch-with-waterfall.md`: ~15 lines (Flags entry + Non-adopters paragraph).
+- `skills/design/scripts/decompose-aggregator.sh`: 2 lines.
+- `skills/design/scripts/decompose-aggregator.md`: ~3 lines.
+- `skills/design/scripts/decompose-panel-dispatch.sh`: ~20 lines (1 threaded flag + ~18 lines for the resolved-path loop rewrite + 1 `larch_err` warning).
+- `skills/design/references/decompose-panel.md`: ~5 lines.
+- `scripts/test-dispatch-with-waterfall.sh`: ~50 lines (stub jq rewrite + three new positive cases).
+- `skills/design/scripts/test-decompose-aggregator.sh`: ~5 lines (three assertions).
+- `skills/design/scripts/test-decompose-aggregator.md`: ~2 lines.
+- `skills/design/scripts/test-decompose-panel-dispatch.sh`: ~30 lines (two argv grep assertions + new resolved-path sub-case).
+- `skills/design/scripts/test-decompose-panel-dispatch.md`: ~2 lines.
+
+diff_lines: 160

@@ -1,0 +1,5 @@
+Exploring the codebase around the waterfall dispatcher, decompose scripts, and launch/collect flow to draft an implementation plan.
+
+Checking whether other callers use `dispatch-with-waterfall` and how the aggregator test validates the tool choice:
+I have enough context on the failure path and the proposed fixes. Creating the implementation plan.
+
