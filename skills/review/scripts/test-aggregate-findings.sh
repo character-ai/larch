@@ -716,7 +716,7 @@ grep -Fq 'AGGREGATED=false' "$TMP/out-zero-pad.env" || fail "padded-attest AGGRE
 grep -Fq 'REASON=validation-exhausted' "$TMP/out-zero-pad.env" || fail "padded-attest REASON"
 cmp -s "$TMP/in3.md" "$ZPAD/in.md" || fail "findings unchanged on padded-attest validator rejection"
 grep -Fq -- '--require-result-pattern' "$ZPAD/dispatch.argv" || fail "padded-attest dispatch missing pattern gate"
-grep -Fq '[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$ZPAD/dispatch.argv" || fail "padded-attest pattern mismatch"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$ZPAD/dispatch.argv" || fail "padded-attest pattern mismatch"
 
 echo "=== merged FINDING blocks plus spurious empty-merge token fails validation ==="
 cp "$TMP/in3.md" "$TMP/in3-spurious.md"
@@ -1151,7 +1151,7 @@ AGGREGATE_STUB_ARGV_LOG="$SIDE/dispatch.argv" \
     --mode diff >"$TMP/out-sidecar.env"
 grep -Fq 'REASON=ok' "$TMP/out-sidecar.env" || fail "sidecar resolution REASON"
 grep -Fq -- '--require-result-pattern' "$SIDE/dispatch.argv" || fail "expected --require-result-pattern threaded to dispatch"
-grep -Fq '[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$SIDE/dispatch.argv" || fail "expected aggregator result pattern"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$SIDE/dispatch.argv" || fail "expected aggregator result pattern"
 
 echo "=== output resolution falls back to ALL_OUTPUT_FILES when sidecar is absent ==="
 LEG="$TMP/legacy-output-resolution"
@@ -1186,7 +1186,7 @@ AGGREGATE_STUB_REQUIRE_PATTERN_LOG="$PAT/require-pattern.txt" \
     --cursor-present true \
     --mode diff >"$TMP/out-pattern-attest.env"
 grep -Fq 'REASON=validation-exhausted' "$TMP/out-pattern-attest.env" || fail "attestation should reach validator narrow-trigger path"
-grep -Fq '^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
+grep -Fq '^(### FINDING_[0-9]+:|LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
 
 echo "=== codex_primary_narration_routes_to_phase2_cursor ==="
 WR="$TMP/codex-primary-phase2"
@@ -1216,7 +1216,7 @@ grep -Fq 'Cursor phase 2 concern' "$WR/in.md" || fail "expected cursor phase2 ba
 grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$WR/aggregator-dispatch.env" || fail "expected cursor final tool"
 grep -Eq '^PHASE2_SLOTS=.+aggregator-output-phase2\.txt' "$WR/aggregator-dispatch.env" || fail "expected phase2 slot output"
 grep -Fq -- '--require-result-pattern' "$WR/dispatch.argv" || fail "phase2 recover dispatch missing pattern gate"
-grep -Fq '[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$WR/dispatch.argv" || fail "phase2 recover pattern mismatch"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$WR/dispatch.argv" || fail "phase2 recover pattern mismatch"
 grep -Fq 'PHASES_ATTEMPTED=' "$TMP/out-wf-rec.env" && fail "PHASES_ATTEMPTED must not be emitted"
 
 echo "=== dispatcher_rejects_pseudo_finding_heading ==="
@@ -1245,7 +1245,7 @@ grep -Fq 'REASON=ok' "$TMP/out-pseudo.env" || fail "pseudo-heading fallback REAS
 grep -Fq 'cursor fallback concern' "$PSE/in.md" || fail "pseudo-heading should fall through to cursor"
 grep -Fq 'ALL_OUTPUT_TOOLS=cursor' "$PSE/aggregator-dispatch.env" || fail "pseudo-heading final tool"
 grep -Fq -- '--require-result-pattern' "$PSE/dispatch.argv" || fail "pseudo-heading dispatch missing pattern gate"
-grep -Fq '[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)' "$PSE/dispatch.argv" || fail "pseudo-heading pattern mismatch"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)' "$PSE/dispatch.argv" || fail "pseudo-heading pattern mismatch"
 
 echo "=== codex_absent_runs_cursor_in_phase2 ==="
 WS="$TMP/waterfall-skip"

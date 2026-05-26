@@ -280,7 +280,7 @@ out=$(jq -r '.output' "$slots")
 mode="${AGGREGATE_STUB_MODE:-ok}"
 case "$mode" in
     fail_dispatch)
-        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
+        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\nALL_OUTPUT_FILES_PATH=\nALL_OUTPUT_TOOLS=\n'
         ;;
     ok)
         cat > "$out" <<'EOF'
@@ -290,7 +290,11 @@ case "$mode" in
 - **Suggested revision**: fix it
 
 EOF
-        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=%s\n' "$out" "${AGGREGATE_STUB_OUTPUT_TOOL:-cursor}"
+        printf '%s\n' "$out" > "$review_tmpdir/aggregate-output-files.txt"
+        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_FILES_PATH=%s\nALL_OUTPUT_TOOLS=%s\n' \
+            "$out" \
+            "$review_tmpdir/aggregate-output-files.txt" \
+            "${AGGREGATE_STUB_OUTPUT_TOOL:-cursor}"
         ;;
     *)
         echo "stub: bad AGGREGATE_STUB_MODE" >&2

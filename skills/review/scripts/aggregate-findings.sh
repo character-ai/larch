@@ -684,7 +684,7 @@ dispatch_args=(
 )
 [[ -n "$DIFF_FILE" ]] && dispatch_args+=(--diff-file "$DIFF_FILE")
 [[ -n "$PLAN_FILE" ]] && dispatch_args+=(--plan-file "$PLAN_FILE")
-dispatch_args+=(--require-result-pattern '^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)')
+dispatch_args+=(--require-result-pattern '^(### FINDING_[0-9]+:|LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED$)')
 
 set +e
 "$DISPATCH_SH" "${dispatch_args[@]}" > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
@@ -748,7 +748,11 @@ case "${MERGE_PIPELINE_RC:-2}" in
         AGGREGATED=false
         REASON="validation-exhausted"
         FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
-        append_warning "- **findings aggregator**: validation exhausted (narrow-trigger empty merge after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+        if grep -Fxq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$FAILURE_LOG" 2>/dev/null; then
+            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger preamble contradiction after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+        else
+            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger empty merge after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+        fi
         emit_result
         exit 0
         ;;
