@@ -1,0 +1,12 @@
+skills/implement/scripts/write-final-report.sh
+skills/implement/scripts/write-final-report.md
+skills/design/scripts/render-final-summary.sh
+skills/design/scripts/render-final-summary.md
+skills/implement/SKILL.md
+skills/design/SKILL.md
+skills/implement/scripts/test-write-final-report.sh
+skills/implement/scripts/test-write-final-report.md
+skills/design/scripts/test-render-final-summary.sh
+skills/design/scripts/test-render-final-summary.md
+scripts/test-render-cost-line-callsites.sh
+scripts/test-render-cost-line-callsites.md

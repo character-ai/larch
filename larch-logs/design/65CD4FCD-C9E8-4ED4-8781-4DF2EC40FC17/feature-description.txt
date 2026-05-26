@@ -1,0 +1,28 @@
+Title: Summary of /implement still sometimes omits costs report
+
+Issue body (from #2837):
+```
+  Run complete. Issue #2822 was implemented and merged as PR #2836.
+
+  Summary:
+  - PR: https://github.com/character-ai/larch/pull/2836 (merged)
+  - Version: 42.5.6 → 42.5.7 (PATCH)
+  - Changes: Added merge_plus_impure_attest success-path test stanza, renamed zero_findings_padded_attest → zero_findings_padded_attest_rejected, created skills/review/scripts/test-aggregate-findings.md sibling stub, updated SKILL.md contract list
+  - Code review: 0/9 accepted (all reviewers confirmed the implementation is correct; 3 OOS items exonerated)
+  - CI: green, merged cleanly
+  - Tracking issue: https://github.com/character-ai/larch/issues/2822 (renamed [DONE])
+```
+
+User-supplied scope extension (from /design argv): "same is true for /design summary"
+
+Combined scope:
+- Bug: the terminal `/implement` post-run summary printed to chat sometimes omits the cost / token-cost report section that should accompany the merge-and-version recap.
+- Scope extension from the user: the same omission also occurs in the terminal `/design` final summary printed to chat. Both code paths should be addressed in this design.
+
+Likely surfaces (to be verified during plan research, not assumed):
+- skills/implement/scripts/write-final-report.sh (and `.md` sibling) — composes the /implement post-merge summary chat block.
+- skills/design/scripts/render-final-summary.sh (and `.md` sibling) — composes the /design `larch:final-summary` chat block.
+- token-ledger.sh / token-report.json — the cost-report source data per session tmpdir.
+- skills/report-tokens — token reporting machinery the summaries may consume.
+
+Plan must surface what code path triggers the omission (env / sentinel / file-presence / ordering bug), and the same root-cause analysis must cover both /implement and /design summary surfaces.
