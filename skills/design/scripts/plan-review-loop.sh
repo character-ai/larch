@@ -99,7 +99,7 @@ write_empty_review_artifacts() {
     } > "$DESIGN_TMPDIR/voting-tally.md"
     _fc_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
     mkdir -p "$(dirname "$_fc_out")"
-    printf '%s\n' 'finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool' > "$_fc_out"
+    emit_findings_classification_header > "$_fc_out"
 }
 
 plan_review_voter_tool_label() {

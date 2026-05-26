@@ -119,7 +119,11 @@ Semantics:
 
 Slot semantics:
 
-- For explicit `--voter` dispatch, `v1`/`v2`/`v3` follow argv order.
+- For explicit `--voter` dispatch, non-`MainAgent` voters preserve canonical
+  tool slots: `Claude -> v1`, `Codex -> v2`, `Cursor -> v3`. Missing slots stay
+  empty instead of compacting later voters leftward.
+- For sole `--voter MainAgent:<PATH>` adjudication, `v1`/`v2`/`v3` remain empty
+  and `voting_result` is derived from the MainAgent vote.
 - For legacy `--voter-files`, slots are inferred from basename/tool heuristics.
 - Missing or degraded rounds preserve empty cells so every data row still has
   the full schema width. <!-- lint-literal-counts: allow fixed TSV schema --> A 0-finding or tally-error round may therefore publish a

@@ -21,8 +21,9 @@
 - Invalid `--voter` slot values exit non-zero with
   `error: invalid voter slot: <value> (must be Claude|Codex|Cursor|MainAgent)`.
 - `--voter MainAgent:<PATH>` is valid only as the sole voter for the 0-judge
-  fallback path. It is not mapped to any `vN_*` columns; TSV rows use
-  `voting_result=rejected`, the literal `classify_result(0,0,0,0)` value.
+  fallback path. It is not mapped to any `vN_*` columns; TSV rows keep the
+  `vN_*` cells empty and derive `voting_result` from the MainAgent vote as a
+  binding single-voter adjudication.
   Mixed MainAgent usage exits with `error: --voter MainAgent is only valid as
   the sole voter (0-judge fallback path)`.
 - `--findings-classification-out FILE` writes the forensic TSV to an explicit
@@ -81,7 +82,7 @@ The regression harnesses are `make test-tally-plan-review` and
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
 
 `test-findings-classification.sh` covers complete ratings, canonical-position
 `--voter` slot filling, legacy `--voter-files` basename fallback, missing
@@ -90,7 +91,7 @@ rows, anchored-vote compatibility, unrecognized votes, lowercase-only axis
 values, duplicate ID last-line-wins, lowercased ballot ids, tab normalization,
 sorted row order, rationale delimiter scoping, cross-parser vote parity,
 quiet-mode parser capture, MainAgent rules, argv mutual exclusion, invalid
-slots, legacy deprecation, and 21-field row preservation.
+slots, legacy deprecation, malicious parser-cell sanitization, and 21-field row preservation.
 
 ## Edit In Sync
 

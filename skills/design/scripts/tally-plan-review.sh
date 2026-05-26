@@ -110,6 +110,8 @@ declare -a SLOT_FILE SLOT_TOOL
 SLOT_FILE[1]=""; SLOT_FILE[2]=""; SLOT_FILE[3]=""
 SLOT_TOOL[1]=""; SLOT_TOOL[2]=""; SLOT_TOOL[3]=""
 MAIN_AGENT_VOTER=""
+TALLY_VOTER_FILE=""
+TALLY_ELIGIBLE_COUNT=0
 
 infer_voter_slot() {
     local path="$1" index="$2" base lower
@@ -217,6 +219,15 @@ if [[ -n "$MAIN_AGENT_VOTER" ]]; then
     fi
 fi
 
+if [[ -n "$MAIN_AGENT_VOTER" ]]; then
+    TALLY_VOTER_FILE="$MAIN_AGENT_VOTER"
+    TALLY_ELIGIBLE_COUNT=1
+else
+    for _p in 1 2 3; do
+        [[ -n "${SLOT_FILE[$_p]}" ]] && TALLY_ELIGIBLE_COUNT=$((TALLY_ELIGIBLE_COUNT + 1))
+    done
+fi
+
 for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
     if [[ ! -r "$voter_file" ]]; then
         larch_err "tally-plan-review.sh: voter file is missing or unreadable: $voter_file"
@@ -264,13 +275,6 @@ rejected_count=0
 score_rows="$WORKDIR/score-rows.tsv"
 : > "$score_rows"
 
-eligible_count=0
-if [[ -z "$MAIN_AGENT_VOTER" ]]; then
-    for _p in 1 2 3; do
-        [[ -n "${SLOT_FILE[$_p]}" ]] && eligible_count=$((eligible_count + 1))
-    done
-fi
-
 sanitize_tsv_cell() {
     printf '%s' "${1:-}" | tr '\t\n' '  '
 }
@@ -300,7 +304,15 @@ write_findings_classification() {
         no=0
         exonerate=0
         judge_error=0
-        if (( eligible_count > 0 )); then
+        if [[ -n "$TALLY_VOTER_FILE" ]]; then
+            vote=$(vote_for_id "$id" "$TALLY_VOTER_FILE")
+            case "$vote" in
+                YES) yes=1 ;;
+                NO) no=1 ;;
+                EXONERATE) exonerate=1 ;;
+                *) judge_error=1 ;;
+            esac
+        elif (( TALLY_ELIGIBLE_COUNT > 0 )); then
             for p in 1 2 3; do
                 voter_file="${SLOT_FILE[$p]}"
                 [[ -n "$voter_file" ]] || continue
@@ -313,13 +325,13 @@ write_findings_classification() {
                 esac
             done
         fi
-        result=$(classify_result "$yes" "$no" "$exonerate" "$eligible_count")
+        result=$(classify_result "$yes" "$no" "$exonerate" "$TALLY_ELIGIBLE_COUNT")
 
         row=("$id" "$reviewer" "$result")
         for p in 1 2 3; do
             voter_file="${SLOT_FILE[$p]}"
             tool="${SLOT_TOOL[$p]}"
-            if [[ -n "$voter_file" && "$eligible_count" -gt 0 ]]; then
+            if [[ -n "$voter_file" && "$TALLY_VOTER_FILE" != "$voter_file" && "$TALLY_ELIGIBLE_COUNT" -gt 0 ]]; then
                 parsed=$(parse_rating_for "$voter_file" "$id")
                 vote=$(vote_for_id "$id" "$voter_file")
                 [[ "$vote" == "JUDGE_ERROR" ]] && vote=""
@@ -344,7 +356,7 @@ write_findings_classification() {
     mv -f "$tmp" "$FINDINGS_CLASSIFICATION_OUT"
 }
 
-if (( eligible_count == 0 )); then
+if (( TALLY_ELIGIBLE_COUNT == 0 )); then
     printf '# Plan Review Voting Tally\n\n' > "$tally_file"
     printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-required.**\n\n' >> "$tally_file"
     write_findings_classification
@@ -355,9 +367,11 @@ fi
 
 {
     printf '# Plan Review Voting Tally\n\n'
-    if (( eligible_count < 3 )); then
-        tier_label="$(panel_tier "$eligible_count")"
-        printf '**⚠ Degraded plan-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$eligible_count" "$tier_label"
+    if [[ -n "$MAIN_AGENT_VOTER" ]]; then
+        printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-adjudicated.**\n\n'
+    elif (( TALLY_ELIGIBLE_COUNT < 3 )); then
+        tier_label="$(panel_tier "$TALLY_ELIGIBLE_COUNT")"
+        printf '**⚠ Degraded plan-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$TALLY_ELIGIBLE_COUNT" "$tier_label"
     fi
     printf '## Findings\n\n'
     printf '| Item | YES | NO | Exon | JERR | Result |\n'
@@ -370,19 +384,29 @@ fi
         no=0
         exonerate=0
         judge_error=0
-        for p in 1 2 3; do
-            voter_file="${SLOT_FILE[$p]}"
-            [[ -n "$voter_file" ]] || continue
-            vote=$(vote_for_id "$id" "$voter_file")
+        if [[ -n "$TALLY_VOTER_FILE" ]]; then
+            vote=$(vote_for_id "$id" "$TALLY_VOTER_FILE")
             case "$vote" in
-                YES) yes=$((yes + 1)) ;;
-                NO) no=$((no + 1)) ;;
-                EXONERATE) exonerate=$((exonerate + 1)) ;;
-                *) judge_error=$((judge_error + 1)) ;;
+                YES) yes=1 ;;
+                NO) no=1 ;;
+                EXONERATE) exonerate=1 ;;
+                *) judge_error=1 ;;
             esac
-        done
+        else
+            for p in 1 2 3; do
+                voter_file="${SLOT_FILE[$p]}"
+                [[ -n "$voter_file" ]] || continue
+                vote=$(vote_for_id "$id" "$voter_file")
+                case "$vote" in
+                    YES) yes=$((yes + 1)) ;;
+                    NO) no=$((no + 1)) ;;
+                    EXONERATE) exonerate=$((exonerate + 1)) ;;
+                    *) judge_error=$((judge_error + 1)) ;;
+                esac
+            done
+        fi
 
-        result=$(classify_result "$yes" "$no" "$exonerate" "$eligible_count")
+        result=$(classify_result "$yes" "$no" "$exonerate" "$TALLY_ELIGIBLE_COUNT")
         printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$judge_error" "$result"
 
         reviewer=$(reviewer_for_block "$block")

@@ -151,6 +151,39 @@ printf '%s\n' "$out_zero" | grep -q '^TALLY_PLAN_REVIEW_STATUS=main-agent-vote-r
 [[ ! -s "$DESIGN_ZERO/accepted-plan-findings.md" ]] || fail "zero voter accepted file should be empty"
 read -r zero_header < "$DESIGN_ZERO/plan-review/round-1/findings-classification.tsv"
 [[ "$zero_header" == "$HEADER" ]] || fail "zero-voter findings-classification header drifted"
+python3 - "$DESIGN_ZERO/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
+assert rows["FINDING_1"]["voting_result"] == "rejected"
+assert rows["FINDING_2"]["voting_result"] == "rejected"
+PY
+
+V_MAIN="$TMPROOT/v-main.txt"
+cat > "$V_MAIN" <<'EOF'
+FINDING_1: YES
+FINDING_2: NO
+OOS_1: YES
+OOS_2: NO
+EOF
+DESIGN_MAIN="$TMPROOT/design-main"
+mkdir -p "$DESIGN_MAIN"
+out_main=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_MAIN" --voter "MainAgent:$V_MAIN")
+printf '%s\n' "$out_main" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "sole MainAgent rerun should finish ok"
+grep -q 'FINDING_1' "$DESIGN_MAIN/accepted-plan-findings.md" || fail "sole MainAgent YES should accept finding"
+grep -q 'FINDING_2' "$DESIGN_MAIN/rejected-findings.md" || fail "sole MainAgent NO should reject finding"
+grep -q 'OOS_1' "$DESIGN_MAIN/oos-accepted-design.md" || fail "sole MainAgent YES should accept non-security OOS"
+python3 - "$DESIGN_MAIN/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
+assert rows["FINDING_1"]["voting_result"] == "accepted"
+assert rows["FINDING_2"]["voting_result"] == "rejected"
+assert rows["OOS_1"]["voting_result"] == "accepted"
+assert rows["OOS_2"]["voting_result"] == "rejected"
+for row in rows.values():
+    assert row["v1_tool"] == row["v2_tool"] == row["v3_tool"] == ""
+PY
 
 V_NEUTRAL="$TMPROOT/v-neutral.txt"
 : > "$V_NEUTRAL"

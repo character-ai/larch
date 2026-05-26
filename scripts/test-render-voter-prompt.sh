@@ -10,6 +10,12 @@ BALLOT="$REPO_ROOT/README.md"
 # Shared tail of both OOS grammar variants — must appear verbatim in four doc/SKILL locations.
 CANONICAL_OOS_DRIFT_MARK='vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.'
 
+assert_sentinel_lines_exclude_axis_tokens() {
+    local out="$1" bad
+    bad=$(grep -E '^\*\*Verify silently\*\*|^\*\*Output ONLY vote lines\.\*\*' <<< "$out" | grep -E 'CORRECTNESS=|SEVERITY=|QUALITY=|UNCERTAIN=' || true)
+    [[ -z "$bad" ]] || { echo "FAIL: sentinel directive leaked axis prose: $bad" >&2; exit 1; }
+}
+
 case_finding_only() {
     local out
     out=$("$RENDER" \
@@ -42,6 +48,7 @@ case_finding_only() {
         || { echo "FAIL: finding-only missing output-only sentinel" >&2; exit 1; }
     grep -Fq 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.' <<< "$out" \
         || { echo "FAIL: finding-only missing diff-plan verification lead-in" >&2; exit 1; }
+    assert_sentinel_lines_exclude_axis_tokens "$out"
 }
 
 case_finding_oos() {
@@ -71,6 +78,7 @@ case_finding_oos() {
         || { echo "FAIL: finding-oos missing output-only sentinel" >&2; exit 1; }
     grep -Fq 'silently inspect the plan or referenced repo files for verification' <<< "$out" \
         || { echo "FAIL: finding-oos plan verification allowance missing" >&2; exit 1; }
+    assert_sentinel_lines_exclude_axis_tokens "$out"
 }
 
 case_canonical_text_drift_guard() {

@@ -177,6 +177,15 @@ assert_cell "$W2/out.tsv" FINDING_1 v2_tool Claude
 assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
 assert_all_rows_21_fields "$W2/out.tsv"
 
+echo "=== explicit slot beats misleading basename heuristic ==="
+W2E="$TMPROOT/case2-explicit"
+mkdir -p "$W2E"
+write_ballot "$W2E/ballot.md"
+cp "$CLAUDE" "$W2E/codex-vote-output.txt"
+"$TALLY" --ballot-file "$W2E/ballot.md" --design-tmpdir "$W2E/design" --findings-classification-out "$W2E/out.tsv" --voter "Claude:$W2E/codex-vote-output.txt" >/dev/null
+assert_cell "$W2E/out.tsv" FINDING_1 v1_tool ""
+assert_cell "$W2E/out.tsv" FINDING_1 v2_tool Claude
+
 echo "=== legacy --voter-files keeps basename fallback ==="
 W2L="$TMPROOT/case2-legacy"
 mkdir -p "$W2L/design/plan-review"
@@ -211,7 +220,7 @@ mkdir -p "$W3"
 write_ballot "$W3/ballot.md"
 printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$W3/voter-main-agent.txt"
 "$TALLY" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3/design" --findings-classification-out "$W3/out.tsv" --voter "MainAgent:$W3/voter-main-agent.txt" >/dev/null
-assert_cell "$W3/out.tsv" FINDING_1 voting_result rejected
+assert_cell "$W3/out.tsv" FINDING_1 voting_result accepted
 assert_cell "$W3/out.tsv" FINDING_1 v1_tool ""
 assert_all_rows_21_fields "$W3/out.tsv"
 : > "$W3/empty-ballot.md"
@@ -254,6 +263,31 @@ assert_parser_vote_matches_vote_for_id "$PV" FINDING_6
 assert_parser_vote_matches_vote_for_id "$PV" FINDING_7
 assert_parser_vote_matches_vote_for_id "$PV2" FINDING_1
 assert_parser_vote_matches_vote_for_id "$PV2" FINDING_2
+
+echo "=== malicious parser output is TSV-sanitized ==="
+STUB_ROOT="$TMPROOT/stub-root"
+mkdir -p "$STUB_ROOT/scripts"
+cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh" "$STUB_ROOT/scripts/lib-quiet.sh"
+cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh" "$STUB_ROOT/scripts/lib-vote-tally.sh"
+cat > "$STUB_ROOT/scripts/parse-judge-vote-and-rating.sh" <<'EOF'
+#!/usr/bin/env bash
+cat <<'OUT'
+PARSED_CORRECTNESS=true
+PARSED_SEVERITY=major
+PARSED_QUALITY=good	with	tab
+PARSED_UNCERTAIN=false
+extra
+line
+OUT
+EOF
+chmod +x "$STUB_ROOT/scripts/parse-judge-vote-and-rating.sh"
+W4S="$TMPROOT/case4-sanitize"
+mkdir -p "$W4S/design"
+write_ballot "$W4S/ballot.md"
+cp "$CLAUDE" "$W4S/claude-vote-output.txt"
+CLAUDE_PLUGIN_ROOT="$STUB_ROOT" "$TALLY" --ballot-file "$W4S/ballot.md" --design-tmpdir "$W4S/design" --findings-classification-out "$W4S/out.tsv" --voter "Claude:$W4S/claude-vote-output.txt" >/dev/null
+assert_cell "$W4S/out.tsv" FINDING_1 v1_quality "good with tab"
+assert_all_rows_21_fields "$W4S/out.tsv"
 
 echo "=== duplicate position rejection and legacy fallback tool identity ==="
 W4="$TMPROOT/case4"
