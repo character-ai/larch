@@ -1638,6 +1638,32 @@ if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
     exit 0
 fi
 if [[ "${1:-}" == "issue" && "${2:-}" == "comment" ]]; then
+    if [[ "$*" == *" --body "* ]]; then
+        printf 'inline --body is forbidden: %s\n' "$*" >&2
+        exit 1
+    fi
+    body_file=""
+    for ((i = 1; i <= $#; i++)); do
+        if [[ "${!i}" == "--body-file" ]]; then
+            next=$((i + 1))
+            body_file="${!next:-}"
+            break
+        fi
+    done
+    if [[ -z "$body_file" ]]; then
+        printf 'missing --body-file: %s\n' "$*" >&2
+        exit 1
+    fi
+    if [[ ! -f "$body_file" ]]; then
+        printf 'body file missing: %s\n' "$body_file" >&2
+        exit 1
+    fi
+    expected='Superseded by #202'
+    actual=$(cat "$body_file")
+    if [[ "$actual" != "$expected" ]]; then
+        printf 'body mismatch: expected %s got %s\n' "$expected" "$actual" >&2
+        exit 1
+    fi
     exit 0
 fi
 if [[ "${1:-}" == "issue" && "${2:-}" == "close" ]]; then

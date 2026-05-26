@@ -140,9 +140,13 @@ PUSH_DONE=false
 ENUM_TOP_TMP=""
 ENUM_RC_TMP=""
 ENUM_PR_TMP=""
+PR_BODY_TMP=""
 # shellcheck disable=SC2317
 wt_cleanup() {
     rm -f "${ENUM_TOP_TMP:-}" "${ENUM_RC_TMP:-}" "${ENUM_PR_TMP:-}" 2>/dev/null || true
+    if [ -n "${PR_BODY_TMP:-}" ]; then
+        rm -f "$PR_BODY_TMP" 2>/dev/null || true
+    fi
     if [[ -n "${WT_DIR:-}" ]]; then
         git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
     fi
@@ -444,6 +448,13 @@ if [[ -n "$REPO" ]]; then
     gh_repo_args+=(--repo "$REPO")
 fi
 
+PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
+    larch_err "design-log-publish: mktemp failed for PR body"
+    emit_publish_result false
+    exit 0
+}
+printf 'Automated design log directory for run %s. Commit uses [skip ci].' "$RUN_ID" >"$PR_BODY_TMP"
+
 if ! git -C "$WT_DIR" push -u origin "$WT_BRANCH" >/dev/null 2>&1; then
     larch_err "design-log-publish: git push failed"
     if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
@@ -460,8 +471,10 @@ create_out=""
 create_out=$(
     gh pr create "${gh_repo_args[@]}" --head "$WT_BRANCH" --base "$ORIGIN_DEFAULT" \
         --title "chore(larch-logs): design run ${RUN_ID}" \
-        --body "Automated design log directory for run ${RUN_ID}. Commit uses [skip ci]." 2>&1
+        --body-file "$PR_BODY_TMP" 2>&1
 ) || create_rc=$?
+rm -f "$PR_BODY_TMP" 2>/dev/null || true
+PR_BODY_TMP=""
 
 PR_NUM=""
 PR_URL=""

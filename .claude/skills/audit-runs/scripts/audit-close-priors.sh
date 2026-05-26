@@ -44,6 +44,13 @@ if [ -z "$OPEN_ISSUES" ]; then
     exit 0
 fi
 
+SUPERSEDE_BODY=$(mktemp "${TMPDIR:-/tmp}/larch-audit-superseded.XXXXXX") || {
+    printf 'BODY_FILE_FAILED=true\nREASON=mktemp failed\n'
+    exit 1
+}
+trap 'rm -f "$SUPERSEDE_BODY"' EXIT
+printf 'Superseded by #%s' "$NEW_ISSUE" >"$SUPERSEDE_BODY"
+
 while IFS= read -r issue_num; do
     [ -z "$issue_num" ] && continue
     # Skip the just-filed report
@@ -52,7 +59,7 @@ while IFS= read -r issue_num; do
     fi
 
     # Post superseded comment
-    if gh issue comment "$issue_num" --repo "$REPO" --body "Superseded by #${NEW_ISSUE}" 2>/dev/null; then
+    if gh issue comment "$issue_num" --repo "$REPO" --body-file "$SUPERSEDE_BODY" 2>/dev/null; then
         # Close the issue
         if gh issue close "$issue_num" --repo "$REPO" 2>/dev/null; then
             printf 'CLOSED_NUMBER=%s\n' "$issue_num"

@@ -1,0 +1,15 @@
+Implemented the file-backed `gh --body` / `--notes` fix.
+
+Changed:
+- Added rule: [.claude/rules/gh-body-file.md](<OPERATOR_REPO_PATH>/.claude/rules/gh-body-file.md)
+- Added fixed Step 5d body file: [l3-velocity-deferral-comment.txt](<OPERATOR_REPO_PATH>/skills/design/references/l3-velocity-deferral-comment.txt)
+- Migrated inline body call sites in `design-log-publish`, audit close-priors, report-tokens issue creation, and `/design` Step 5d.
+- Updated sibling docs and `SECURITY.md`.
+- Extended [scripts/test-design-log-publish.sh](<OPERATOR_REPO_PATH>/scripts/test-design-log-publish.sh) to reject inline `--body` and validate the `--body-file` payload.
+
+Verification:
+- `bash scripts/test-design-log-publish.sh` passed.
+- `bash scripts/relevant-checks.sh` passed after fixing one shellcheck cleanup warning.
+- `git diff --check` passed.
+- Manifest written atomically at `<TMPDIR>/manifest.json`.
+- No `qa-pending.json` written because status is `complete`.

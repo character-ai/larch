@@ -1,0 +1,26 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SECURITY.md is already in paths; redaction is documented for existing gh writers
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- duplicate of FINDING_2; plan text already acknowledges POSIX newline
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- mktemp failure is rare; set -e exit is normal for this small helper
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_5
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_3
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of FINDING_1
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- predates this PR; not a regression introduced here
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- equivalent cleanup form; no behavioral gap
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- cosmetic title punctuation only
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- acceptance-text typo only; not worth a separate GitHub issue
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_18: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms correct flush/close behavior, not a defect
+FINDING_19: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms cleanup on subprocess errors, not a defect
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_17; low operational impact
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive coverage confirmation, not a defect
+FINDING_24: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- indirect gh path already covered via create-one.sh
+FINDING_25: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- script sibling already in paths; low incremental value
+FINDING_26: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- summary observation, not an actionable issue

@@ -983,12 +983,12 @@ When **all** of the following guards succeed in order, post **one** tracking com
 3. Sentinel absent: `test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"`
 4. **Upstream argv pin (same shell snippet as `gh`)**: immediately before the `gh` invocation, assert `[ "$ISSUE_NUMBER" = "2670" ]` again and run **only** the `gh` line below so `--repo character-ai/larch` is always present (never rely on hub default / consumer `origin` for this cross-repo comment).
 
-Post with an **explicit upstream repo** (consumer checkout may not match the tracker default). The `--body` argument MUST be the fixed literal below (or a byte-identical single-quoted copy) — **never** assemble comment text from `plan.txt`, `composed-plan.md`, token reports, or other dynamic session material (secret exfiltration / instruction-injection risk on a public upstream issue).
+Post with an **explicit upstream repo** (consumer checkout may not match the tracker default). The `--body-file` argument MUST be the committed file `skills/design/references/l3-velocity-deferral-comment.txt` — **never** assemble comment text from `plan.txt`, `composed-plan.md`, token reports, or other dynamic session material (secret exfiltration / instruction-injection risk on a public upstream issue).
 
 ```bash
 if [ "$ISSUE_NUMBER" = "2670" ] && [ "${REPO:-}" = "character-ai/larch" ] && test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"; then
   set +e
-  gh issue comment 2672 --repo character-ai/larch --body 'Deferred: L3 per-round velocity between review rounds (>20% plan growth and >10 accepted findings). Normative scope: character-ai/larch issue #2672; see skills/design/references/flags.md (Per-round velocity).' >"$DESIGN_TMPDIR/gh-l3-velocity-comment.log" 2>&1
+  gh issue comment 2672 --repo character-ai/larch --body-file "${CLAUDE_PLUGIN_ROOT}/skills/design/references/l3-velocity-deferral-comment.txt" >"$DESIGN_TMPDIR/gh-l3-velocity-comment.log" 2>&1
   _l3_rc=$?
   set -e
   if [ "$_l3_rc" -eq 0 ]; then
