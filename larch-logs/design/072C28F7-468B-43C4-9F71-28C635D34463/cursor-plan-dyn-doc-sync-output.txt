@@ -1,0 +1,14 @@
+Reviewing the plan against the codebase and design-log documentation.
+Checking top-level symlink handling and other references to render-cache behavior.
+Checking whether the plan-review doc section documents the per-file `-L` recheck for cross-file consistency.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/test-design-log-publish.md:6-10	Plan adds three render-cache symlink harness cases but omits updating the harness coverage paragraph	Contributors read test-design-log-publish.md and believe render-cache lacks symlink-rejection coverage while plan-review has it	Extend the coverage list to mention render-cache symlink rejection (root, intermediate-directory, find→stage race) alongside the existing render-cache recursive-staging line; design-log-publish.md Tests section (102-105) can stay minimal like today
+
+1. **[correctness / in_scope / latent]** [`scripts/test-design-log-publish.md:6-10`](scripts/test-design-log-publish.md) — The plan adds three render-cache symlink rejection cases to `scripts/test-design-log-publish.sh` but does not update the harness companion doc. Line 10 already documents plan-review symlink rejection; after this PR, render-cache will have parallel coverage that the coverage paragraph will not mention. **Suggested revision:** Extend lines 7–10 to include render-cache symlink rejection (root, intermediate-directory, find→stage race), mirroring the plan-review wording.
+
+**Verified (no finding):**
+
+- **Item 5 prose ([`scripts/design-log-publish.md:23-26`](scripts/design-log-publish.md))** — The planned replacement removes the stale “Symlinks at the top level are skipped; `render-cache/` itself must be a real directory” clause and substitutes fail-closed subtree language; root-directory posture moves to the new section’s first bullet.
+- **New “render-cache symlink rejection” section** — Bullets 2 and 4 map exactly to the two proposed code guards (`find "$rc_root" -type l -print -quit` tree-wide reject and per-loop `[[ -L "$f" ]]` recheck). Bullets 1, 3, and 5 document pre-existing guards/design (dir-level check, prefix guard, open schema + suffix denylist), consistent with mirroring the plan-review section structure.
+- **[`scripts/design-log-publish.md:102-105`](scripts/design-log-publish.md) Tests section** — No update required; it already points generically to the harness and does not enumerate plan-review symlink cases either.
+- **Cross-references** — [`scripts/design-log-publish.md:91-92`](scripts/design-log-publish.md) (prefix guard “matching the `render-cache/` guard”) remains accurate post-change; no other sentences in the document understate deeper-symlink rejection once the planned edits land.

@@ -1,0 +1,5 @@
+Exploring the design-log publish script and its tests to compare plan-review vs render-cache staging security.
+
+Checking whether render-cache already has symlink tests and reviewing the happy-path setup:
+Creating the implementation plan from the code review.
+

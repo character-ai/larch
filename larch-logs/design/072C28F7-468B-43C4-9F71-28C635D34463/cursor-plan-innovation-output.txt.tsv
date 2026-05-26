@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	SECURITY.md:139-139	Plan updates design-log-publish.md but not SECURITY.md	SECURITY.md still documents plan-review symlink fail-closed only; render-cache parity is a security-relevant publish-boundary change per AGENTS.md	Add a sentence to the design-log publish bullet that render-cache/ uses the same tree-wide symlink reject and per-file recheck as plan-review/
