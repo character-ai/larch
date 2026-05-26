@@ -61,8 +61,11 @@ if [[ "$base" == "composed-plan.md" ]]; then
     source_kind="composed"
 fi
 
-tsv=$(mktemp "${TMPDIR:-/tmp}/larch-validate-plan.XXXXXX.tsv")
-logtmp=$(mktemp "${TMPDIR:-/tmp}/larch-validate-plan.XXXXXX.log")
+# BSD mktemp (macOS) substitutes X's only when they end the template — putting
+# `.tsv` / `.log` after the X's used the template literally, so concurrent calls
+# from parallel test runs collided on the same path.
+tsv=$(mktemp "${TMPDIR:-/tmp}/larch-validate-plan.tsv.XXXXXX")
+logtmp=$(mktemp "${TMPDIR:-/tmp}/larch-validate-plan.log.XXXXXX")
 trap 'rm -f "$tsv" "${logtmp:+${logtmp}}"' EXIT
 
 "$SCRIPT_DIR/parse-plan-commands.sh" --plan-file "$PLAN_FILE" --output "$tsv" --repo-root "$REPO_ROOT"
