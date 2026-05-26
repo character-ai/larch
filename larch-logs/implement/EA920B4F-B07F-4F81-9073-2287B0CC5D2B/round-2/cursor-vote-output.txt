@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE -- Dual validator/persistence stripping is real but appears intentional; not worth a separate issue for this test-only PR.
+FINDING_2: EXONERATE -- Adjacent success-path coverage matches the plan’s strictest-boundary choice; whitespace gap is minor given shared startswith semantics.
+FINDING_3: EXONERATE -- Generic Makefile wording still satisfies the sibling-doc rule; shard/line citations are optional polish.
+FINDING_4: NO -- Commit title restated with no distinct behavioral defect.
+FINDING_5: NO -- Run-log flush commit cited without a concrete problem in the diff.
+FINDING_6: EXONERATE -- Count/env assertions match existing harness style; content-level checks are out of scope for this targeted fix.
+FINDING_7: EXONERATE -- junk-suffix grep is redundant with cmp but pre-existing; cmp already proves rejection-path cleanliness.
+FINDING_8: EXONERATE -- Edit-in-sync omits self-reference per common stub style; no behavioral impact.

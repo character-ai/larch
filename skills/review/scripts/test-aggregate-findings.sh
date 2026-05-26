@@ -222,7 +222,7 @@ Aggregator narrative: empty merge; prose mentions FINDING_ids.
 
 EOF
                 ;;
-            zero_findings_padded_attest)
+            zero_findings_padded_attest_rejected)
                 cat > "$out" <<'EOF'
 Aggregator narrative: padded empty-merge token line.
 
@@ -239,6 +239,18 @@ EOF
 - **Suggested revision**: fix
 
 LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                ;;
+            merge_plus_impure_attest)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged title
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
+- **Concern**: normalized concern
+- **Suggested revision**: fix
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTEDjunk-suffix
 
 EOF
                 ;;
@@ -688,12 +700,12 @@ cmp -s "$TMP/in3.md" "$TMP/in3-zfn.md" || fail "#2782: findings.md must remain u
 [[ "$(grep -c '^### FINDING_' "$TMP/in3-zfn.md" | tr -d '[:space:]')" == "3" ]] \
     || fail "#2782: original 3 FINDING blocks must survive"
 
-echo "=== zero output accepts whitespace-padded empty-merge attestation (#2536) ==="
+echo "=== zero output rejects whitespace-padded empty-merge attestation for nonempty input (#2536) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero-pad.md"
 write_stub_dispatch
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
 AGGREGATE_STUB_MODE=ok \
-AGGREGATE_STUB_MERGE_KIND=zero_findings_padded_attest \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_padded_attest_rejected \
 LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
 "$AGG" \
     --findings-file "$TMP/in3-zero-pad.md" \
@@ -720,6 +732,25 @@ AGGREGATE_STUB_MERGE_KIND=merge_plus_spurious_attest \
 grep -Fq 'AGGREGATED=false' "$TMP/out-spurious.env" || fail "spurious-attest AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-spurious.env" || fail "spurious-attest REASON"
 cmp -s "$TMP/in3.md" "$TMP/in3-spurious.md" || fail "findings unchanged when spurious attestation with blocks"
+
+echo "=== merged FINDING blocks plus impure adjacent attestation suffix: success path strips suffix line ==="
+cp "$TMP/in3.md" "$TMP/in3-impure-success.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge_plus_impure_attest \
+"$AGG" \
+    --findings-file "$TMP/in3-impure-success.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-impure-success.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-impure-success.env" || fail "merge+impure-attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-impure-success.env" || fail "merge+impure-attest REASON"
+grep -Fq 'MERGED_COUNT=1' "$TMP/out-impure-success.env" || fail "merge+impure-attest MERGED_COUNT"
+grep -Fq 'junk-suffix' "$TMP/in3-impure-success.md" && fail "impure attestation suffix must not survive persisted findings.md on success path"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/in3-impure-success.md" && fail "attestation token (any form) must not survive persisted findings.md on success path"
+[[ "$(grep -c '^### FINDING_' "$TMP/in3-impure-success.md" | tr -d '[:space:]')" == "1" ]] || fail "expected one FINDING block after merge+impure-attest"
 
 echo "=== input reviewer parenthetical suffixes normalize on successful merge ==="
 cat > "$TMP/in3-inparen.md" <<'EOF'
