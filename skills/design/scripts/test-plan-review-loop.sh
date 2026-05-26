@@ -336,6 +336,8 @@ printf '%s\n' "$out2" | grep -q '^WARN=plan-review-tally:' || fail "expected tal
 [[ -f "$D2/voting-tally.md" ]] || fail "voting-tally.md missing after stub tally failure"
 [[ -s "$D2/voting-tally.md" ]] || fail "voting-tally.md empty after stub tally failure"
 grep -q 'Tally aborted' "$D2/voting-tally.md" || fail "stub tally banner missing in voting-tally.md"
+[[ -f "$D2/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing after stub tally failure"
+[[ "$(wc -l < "$D2/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "tally-error TSV should contain header only"
 
 echo "=== stubbed driver: three reviewers each OOS_1 + FINDING_1 (dedup + tally) ==="
 D3="$TMP/z3"

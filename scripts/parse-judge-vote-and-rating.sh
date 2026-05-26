@@ -33,22 +33,21 @@ parsed=$(
       }
       BEGIN {
         reset_fields()
-        prefix="^" id ":[[:space:]]*"
+        upper_id=toupper(id)
       }
-      $0 ~ prefix {
+      toupper($0) ~ ("^" upper_id ":[[:space:]]*") {
         reset_fields()
         line=$0
-        sub(prefix, "", line)
+        sub(/^[^:]+:[[:space:]]*/, "", line)
         scoped=line
         delim=index(scoped, " -- ")
         if (delim > 0) {
           scoped=substr(scoped, 1, delim - 1)
         }
-        token=scoped
-        sub(/[[:space:]].*$/, "", token)
-        upper=toupper(token)
-        if (upper == "YES" || upper == "NO" || upper == "EXONERATE") {
-          vote=upper
+        upper=toupper(scoped)
+        if (match(upper, /^(YES|NO|EXONERATE)([[:space:]-]|$)/)) {
+          vote=substr(upper, RSTART, RLENGTH)
+          sub(/([[:space:]-]).*$/, "", vote)
         }
         n=split(scoped, parts, /[[:space:]]+/)
         for (i = 1; i <= n; i++) {

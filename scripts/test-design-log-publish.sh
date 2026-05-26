@@ -75,6 +75,20 @@ STUB
     chmod +x "$d/gh"
 }
 
+make_find_escape_stub() {
+    local d="$1" real_find="$2"
+    mkdir -p "$d"
+    cat >"$d/find" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "\${ESCAPE_FIND_ROOT:-}" && "\${2:-}" == "-type" && "\${3:-}" == "f" ]]; then
+    printf '%s\n' "\${ESCAPE_FIND_PATH:?}"
+    exit 0
+fi
+exec "$real_find" "\$@"
+EOF
+    chmod +x "$d/find"
+}
+
 setup_clone_with_origin_head() {
     local root="$1"
     local bare="$root/upstream.git"
@@ -439,6 +453,18 @@ cp "$saved_redact" "$orig_redact"
 [[ ! -e "$clone_bcfail/larch-logs/design/RUNBFAIL1/breadcrumbs" ]] || fail "breadcrumb redactor failure should leave no published breadcrumbs"
 
 echo "=== plan-review allowlist rejects unexpected paths and symlinks ==="
+TMPPRE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-empty.XXXXXX")
+clone_pre=$(setup_clone_with_origin_head "$TMPPRE")
+stub_pre="$TMPPRE/stub"
+make_gh_stub "$stub_pre"
+export PATH="$stub_pre:$PATH"
+mkdir -p "$TMPPRE/design/plan-review"
+printf 'body\n' >"$TMPPRE/design/plan.txt"
+out_pre=$(
+    (cd "$clone_pre" && bash "$PUBLISH" --design-tmpdir "$TMPPRE/design" --run-id "RUNPREMPTY1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pre" == *"PUBLISH_OK=true"* ]] || fail "empty plan-review dir should publish: $out_pre"
+
 TMPPR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr.XXXXXX")
 clone_pr=$(setup_clone_with_origin_head "$TMPPR")
 stub_pr="$TMPPR/stub"
@@ -453,6 +479,34 @@ out_pr=$(
 )
 [[ "$out_pr" == *"PUBLISH_OK=false"* ]] || fail "bad plan-review path should fail publish: $out_pr"
 
+TMPPR0=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-zero.XXXXXX")
+clone_pr0=$(setup_clone_with_origin_head "$TMPPR0")
+stub_pr0="$TMPPR0/stub"
+make_gh_stub "$stub_pr0"
+export PATH="$stub_pr0:$PATH"
+mkdir -p "$TMPPR0/design/plan-review/round-0"
+printf 'body\n' >"$TMPPR0/design/plan.txt"
+printf 'bad\n' >"$TMPPR0/design/plan-review/round-0/findings-classification.tsv"
+out_pr0=$(
+    (cd "$clone_pr0" && bash "$PUBLISH" --design-tmpdir "$TMPPR0/design" --run-id "RUNPRZERO1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pr0" == *"PUBLISH_OK=false"* ]] || fail "round-0 plan-review path should fail publish: $out_pr0"
+
+TMPPRROOT=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-rootsym.XXXXXX")
+clone_prroot=$(setup_clone_with_origin_head "$TMPPRROOT")
+stub_prroot="$TMPPRROOT/stub"
+make_gh_stub "$stub_prroot"
+export PATH="$stub_prroot:$PATH"
+mkdir -p "$TMPPRROOT/real-plan-review/round-1"
+mkdir -p "$TMPPRROOT/design"
+printf 'body\n' >"$TMPPRROOT/design/plan.txt"
+printf 'ok\n' >"$TMPPRROOT/real-plan-review/round-1/findings-classification.tsv"
+ln -s "$TMPPRROOT/real-plan-review" "$TMPPRROOT/design/plan-review"
+out_prroot=$(
+    (cd "$clone_prroot" && bash "$PUBLISH" --design-tmpdir "$TMPPRROOT/design" --run-id "RUNPRROOT1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_prroot" == *"PUBLISH_OK=false"* ]] || fail "plan-review root symlink should fail publish: $out_prroot"
+
 TMPPRS=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-sym.XXXXXX")
 clone_prs=$(setup_clone_with_origin_head "$TMPPRS")
 stub_prs="$TMPPRS/stub"
@@ -466,5 +520,38 @@ out_prs=$(
     (cd "$clone_prs" && bash "$PUBLISH" --design-tmpdir "$TMPPRS/design" --run-id "RUNPRSYM1" --issue 4 --repo owner/repo) 2>/dev/null || true
 )
 [[ "$out_prs" == *"PUBLISH_OK=false"* ]] || fail "plan-review symlink should fail publish: $out_prs"
+
+TMPPRMID=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-midsym.XXXXXX")
+clone_prmid=$(setup_clone_with_origin_head "$TMPPRMID")
+stub_prmid="$TMPPRMID/stub"
+make_gh_stub "$stub_prmid"
+export PATH="$stub_prmid:$PATH"
+mkdir -p "$TMPPRMID/real-round-1"
+mkdir -p "$TMPPRMID/design/plan-review"
+printf 'body\n' >"$TMPPRMID/design/plan.txt"
+printf 'ok\n' >"$TMPPRMID/real-round-1/findings-classification.tsv"
+ln -s "$TMPPRMID/real-round-1" "$TMPPRMID/design/plan-review/round-1"
+out_prmid=$(
+    (cd "$clone_prmid" && bash "$PUBLISH" --design-tmpdir "$TMPPRMID/design" --run-id "RUNPRMID1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_prmid" == *"PUBLISH_OK=false"* ]] || fail "plan-review intermediate symlink should fail publish: $out_prmid"
+
+TMPPRESC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-escape.XXXXXX")
+clone_presc=$(setup_clone_with_origin_head "$TMPPRESC")
+stub_presc="$TMPPRESC/stub"
+make_gh_stub "$stub_presc"
+REAL_FIND=$(command -v find)
+make_find_escape_stub "$TMPPRESC/findstub" "$REAL_FIND"
+export PATH="$TMPPRESC/findstub:$stub_presc:$PATH"
+mkdir -p "$TMPPRESC/design/plan-review/round-1"
+printf 'body\n' >"$TMPPRESC/design/plan.txt"
+printf 'ok\n' >"$TMPPRESC/design/plan-review/round-1/findings-classification.tsv"
+export ESCAPE_FIND_ROOT="$(cd "$TMPPRESC/design/plan-review" && pwd -P)"
+export ESCAPE_FIND_PATH="$TMPPRESC/design/plan.txt"
+out_presc=$(
+    (cd "$clone_presc" && bash "$PUBLISH" --design-tmpdir "$TMPPRESC/design" --run-id "RUNPRESC1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+unset ESCAPE_FIND_ROOT ESCAPE_FIND_PATH
+[[ "$out_presc" == *"PUBLISH_OK=false"* ]] || fail "plan-review path escape should fail publish: $out_presc"
 
 echo "All design-log-publish harness assertions passed."

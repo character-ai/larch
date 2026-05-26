@@ -28,8 +28,18 @@ case_finding_only() {
     grep -Fq 'FINDING_N: YES' <<< "$out" || { echo "FAIL: finding-only missing FINDING_N example" >&2; exit 1; }
     grep -Fq 'CORRECTNESS=<true|partially-true|false-positive|uncertain>' <<< "$out" \
         || { echo "FAIL: finding-only missing correctness axis enum" >&2; exit 1; }
+    grep -Fq 'SEVERITY=<blocker|major|minor|nit|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-only missing severity axis enum" >&2; exit 1; }
+    grep -Fq 'QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-only missing quality axis enum" >&2; exit 1; }
     grep -Fq 'UNCERTAIN=<true|false>' <<< "$out" \
         || { echo "FAIL: finding-only missing uncertain axis enum" >&2; exit 1; }
+    grep -Fq 'Use lowercase axis values only.' <<< "$out" \
+        || { echo "FAIL: finding-only missing lowercase-axis instruction" >&2; exit 1; }
+    grep -Fq "Axis tokens must precede any optional \`-- reason\` rationale" <<< "$out" \
+        || { echo "FAIL: finding-only missing rationale delimiter instruction" >&2; exit 1; }
+    grep -Fq '**Output ONLY vote lines.**' <<< "$out" \
+        || { echo "FAIL: finding-only missing output-only sentinel" >&2; exit 1; }
     grep -Fq 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.' <<< "$out" \
         || { echo "FAIL: finding-only missing diff-plan verification lead-in" >&2; exit 1; }
 }

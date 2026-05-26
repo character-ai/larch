@@ -52,34 +52,42 @@ finding_id \t finding_reviewers \t voting_result \t v1_vote \t v1_correctness \t
 
 - `finding_reviewers` is ballot-proposer attribution from
   `reviewer_for_block`; `vN_tool` is the actual runtime voter tool identity
-  supplied by `--voter`. This file is the schema authority for `vN_tool`
-  semantics.
+  supplied by `--voter`.
+- With `--voter`, non-`MainAgent` slots fill strictly by argv dispatch order:
+  first voter -> `v1_*`, second -> `v2_*`, third -> `v3_*`. The `<SLOT>` label
+  in `--voter <SLOT>:<PATH>` is recorded only in `vN_tool`.
+- With legacy `--voter-files`, slot placement still uses basename/tool
+  heuristics (`slotN`/canonical tool names first, then first free slot) because
+  tool identity must be inferred from the file path. This file is the schema
+  authority for `vN_tool` and slot semantics.
 - Rows are emitted in numeric `FINDING_*` order first, then numeric `OOS_*`
   order. Missing judge positions preserve empty cells, including trailing
   empties, so every data row remains 21 fields.
 - Every voter-sourced cell and `finding_reviewers` is normalized with
   `tr '\t\n' '  '` before TSV write; tabs/newlines become spaces rather than
   being deleted.
-- `scripts/parse-judge-vote-and-rating.sh` parses the extended vote/rating
-  line for each voter and ballot id. Malformed or missing vote tokens become
-  empty `vN_vote`, matching `JUDGE_ERROR` semantics for the tally.
+- `scripts/parse-judge-vote-and-rating.sh` parses the extended rating axes for
+  each voter and ballot id. `vN_vote` is sourced from
+  `scripts/lib-vote-tally.sh::vote_for_id` so the forensic TSV and
+  `voting_result` share one vote parser.
 
 ## Makefile Wiring
 
-The regression harness is `make test-tally-plan-review`, wired into `test-harnesses-1`.
+The regression harnesses are `make test-tally-plan-review` and
+`make test-findings-classification`, both wired into `test-harnesses-9`.
 
 ## Harness
 
 `test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
 
-`test-findings-classification.sh` covers complete ratings, position-agnostic
-axes, missing judges, partial rows, 0-judge and 0-finding TSVs, overwrite
-behavior, OOS rows, anchored-vote compatibility, canonical Cursor position
-without Codex, phase-style voter paths, unrecognized votes, lowercase-only
-axis values, duplicate ID last-line-wins, tab normalization, sorted row order,
-rationale delimiter scoping, waterfall fallback tool identity, MainAgent rules,
-argv mutual exclusion, invalid slots, legacy deprecation, and 21-field row
-preservation.
+`test-findings-classification.sh` covers complete ratings, dispatch-order
+`--voter` slot filling, legacy `--voter-files` basename fallback, missing
+judges, partial rows, 0-judge and 0-finding TSVs, overwrite behavior, OOS
+rows, anchored-vote compatibility, unrecognized votes, lowercase-only axis
+values, duplicate ID last-line-wins, lowercased ballot ids, tab normalization,
+sorted row order, rationale delimiter scoping, cross-parser vote parity,
+MainAgent rules, argv mutual exclusion, invalid slots, legacy deprecation, and
+21-field row preservation.
 
 ## Edit In Sync
 

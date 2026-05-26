@@ -10,6 +10,7 @@ CLAUDE_PLUGIN_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT
 TALLY="$SCRIPT_DIR/tally-plan-review.sh"
 PARSER="$CLAUDE_PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh"
+VOTE_LIB="$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -99,6 +100,14 @@ parser_value() {
     awk -F= -v k="$key" '$1 == k { print substr($0, length(k) + 2); exit }' <<< "$output"
 }
 
+assert_parser_vote_matches_vote_for_id() {
+    local voter_file="$1" ballot_id="$2" parsed lib_vote
+    parsed=$("$PARSER" "$voter_file" "$ballot_id")
+    lib_vote=$(bash -c 'source "$1"; vote_for_id "$2" "$3"' _ "$VOTE_LIB" "$ballot_id" "$voter_file")
+    [[ "$(parser_value "$parsed" PARSED_VOTE)" == "${lib_vote/JUDGE_ERROR/}" ]] \
+        || fail "parser/lib vote mismatch for $ballot_id in $voter_file"
+}
+
 echo "=== complete three-judge classification ==="
 W1="$TMPROOT/case1"
 mkdir -p "$W1"
@@ -155,17 +164,29 @@ p6=$("$PARSER" "$PV" FINDING_6)
 p7=$("$PARSER" "$PV" FINDING_7)
 [[ "$(parser_value "$p7" PARSED_QUALITY)" == "weak" ]] || fail "without delimiter last axis token should win"
 
-echo "=== missing judge, canonical cursor slot, and phase path metadata ==="
+echo "=== dispatch-order --voter slots ignore basename heuristics ==="
 W2="$TMPROOT/case2"
 mkdir -p "$W2"
 write_ballot "$W2/ballot.md"
-cp "$CLAUDE" "$W2/claude-vote-output-phase2.txt"
-cp "$CURSOR" "$W2/cursor-vote-output-phase3.txt"
-"$TALLY" --ballot-file "$W2/ballot.md" --design-tmpdir "$W2/design" --findings-classification-out "$W2/out.tsv" --voter "Claude:$W2/claude-vote-output-phase2.txt" --voter "Cursor:$W2/cursor-vote-output-phase3.txt" >/dev/null
+cp "$CLAUDE" "$W2/slot-2-looking-path.txt"
+cp "$CURSOR" "$W2/slot-3-looking-path.txt"
+"$TALLY" --ballot-file "$W2/ballot.md" --design-tmpdir "$W2/design" --findings-classification-out "$W2/out.tsv" --voter "Claude:$W2/slot-2-looking-path.txt" --voter "Cursor:$W2/slot-3-looking-path.txt" >/dev/null
 assert_cell "$W2/out.tsv" FINDING_1 v1_tool Claude
-assert_cell "$W2/out.tsv" FINDING_1 v2_tool ""
-assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
+assert_cell "$W2/out.tsv" FINDING_1 v2_tool Cursor
+assert_cell "$W2/out.tsv" FINDING_1 v3_tool ""
 assert_all_rows_21_fields "$W2/out.tsv"
+
+echo "=== legacy --voter-files keeps basename fallback ==="
+W2L="$TMPROOT/case2-legacy"
+mkdir -p "$W2L/design/plan-review"
+write_ballot "$W2L/ballot.md"
+cp "$CLAUDE" "$W2L/claude-vote-output-phase2.txt"
+cp "$CURSOR" "$W2L/cursor-vote-output-phase3.txt"
+"$TALLY" --ballot-file "$W2L/ballot.md" --design-tmpdir "$W2L/design" --findings-classification-out "$W2L/out.tsv" --voter-files "$W2L/claude-vote-output-phase2.txt" "$W2L/cursor-vote-output-phase3.txt" >/dev/null 2>"$W2L/legacy.err"
+assert_cell "$W2L/out.tsv" FINDING_1 v1_tool Claude
+assert_cell "$W2L/out.tsv" FINDING_1 v2_tool ""
+assert_cell "$W2L/out.tsv" FINDING_1 v3_tool Cursor
+grep -Fq 'deprecated: --voter-files; use --voter <SLOT>:<PATH>' "$W2L/legacy.err" || fail "legacy deprecation warning missing"
 
 echo "=== main-agent and empty-ballot fallback rows ==="
 W3="$TMPROOT/case3"
@@ -188,10 +209,28 @@ order=$(awk -F '\t' 'NR > 1 { print $1 }' "$W3/out.tsv" | paste -sd ' ' -)
 [[ "$order" == "FINDING_1 FINDING_2 FINDING_10 OOS_1 OOS_2 OOS_3" ]] || fail "unexpected row order: $order"
 
 echo "=== anchored vote helper remains compatible ==="
-vote=$(bash -c 'source "$1"; vote_for_id FINDING_1 "$2"' _ "$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh" "$CLAUDE")
+vote=$(bash -c 'source "$1"; vote_for_id FINDING_1 "$2"' _ "$VOTE_LIB" "$CLAUDE")
 [[ "$vote" == "YES" ]] || fail "vote_for_id did not parse extended vote line"
 
-echo "=== waterfall fallback actual tool identity ==="
+echo "=== lowercased ballot ids and vote/parser parity ==="
+PV2="$TMPROOT/parser-votes-lower.txt"
+cat > "$PV2" <<'EOF'
+finding_1: yes CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+finding_2: YES-CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+EOF
+p_lower=$("$PARSER" "$PV2" FINDING_1)
+[[ "$(parser_value "$p_lower" PARSED_VOTE)" == "YES" ]] || fail "lowercased ballot id did not parse"
+[[ "$(parser_value "$p_lower" PARSED_CORRECTNESS)" == "true" ]] || fail "lowercased ballot id correctness missing"
+assert_parser_vote_matches_vote_for_id "$PV" FINDING_2
+assert_parser_vote_matches_vote_for_id "$PV" FINDING_3
+assert_parser_vote_matches_vote_for_id "$PV" FINDING_4
+assert_parser_vote_matches_vote_for_id "$PV" FINDING_5
+assert_parser_vote_matches_vote_for_id "$PV" FINDING_6
+assert_parser_vote_matches_vote_for_id "$PV" FINDING_7
+assert_parser_vote_matches_vote_for_id "$PV2" FINDING_1
+assert_parser_vote_matches_vote_for_id "$PV2" FINDING_2
+
+echo "=== duplicate position rejection and legacy fallback tool identity ==="
 W4="$TMPROOT/case4"
 mkdir -p "$W4"
 write_ballot "$W4/ballot.md"
@@ -201,6 +240,9 @@ cp "$CURSOR" "$W4/cursor-vote-output.txt"
 "$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/design" --findings-classification-out "$W4/out.tsv" --voter "Claude:$W4/claude-vote-output.txt" --voter "Claude:$W4/codex-vote-output.txt" --voter "Cursor:$W4/cursor-vote-output.txt" >/dev/null
 assert_cell "$W4/out.tsv" FINDING_1 v2_tool Claude
 assert_cell "$W4/out.tsv" FINDING_1 v2_vote YES
+"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design2" --findings-classification-out "$W4/legacy2.tsv" --voter-files "$W4/claude-vote-output.txt" "$W4/codex-vote-output.txt" "$W4/cursor-vote-output.txt" >/dev/null 2>"$W4/legacy2.err"
+assert_cell "$W4/legacy2.tsv" FINDING_1 v2_tool Codex
+assert_cell "$W4/legacy2.tsv" FINDING_1 v3_tool Cursor
 
 echo "=== argv diagnostics ==="
 set +e
@@ -226,6 +268,13 @@ set -e
 [[ "$rc" -ne 0 ]] || fail "invalid voter slot should fail"
 grep -Fq 'error: invalid voter slot: Robot (must be Claude|Codex|Cursor|MainAgent)' "$W4/bad3.err" || fail "invalid slot diagnostic missing"
 [[ ! -e "$W4/bad3.tsv" ]] || fail "invalid slot invocation wrote TSV"
+
+set +e
+"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad4" --findings-classification-out "$W4/bad4.tsv" --voter-files "$W4/claude-vote-output.txt" "$W4/claude-vote-output.txt" 2>"$W4/bad4.err" >/dev/null
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "duplicate legacy slot should fail"
+grep -Fq 'error: duplicate voter position 1' "$W4/bad4.err" || fail "duplicate position diagnostic missing"
 
 echo "=== legacy deprecation path ==="
 "$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design" --findings-classification-out "$W4/legacy.tsv" --voter-files "$CLAUDE" "$CODEX" "$CURSOR" 2>"$W4/legacy.err" >/dev/null

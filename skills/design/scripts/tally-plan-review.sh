@@ -153,14 +153,20 @@ position_for_voter() {
 }
 
 assign_voter() {
-    local tool="$1" path="$2" pos
+    local tool="$1" path="$2" pos="${3:-}"
     if [[ "$tool" == "MainAgent" ]]; then
         MAIN_AGENT_VOTER="$path"
         return 0
     fi
-    pos=$(position_for_voter "$tool" "$path")
+    if [[ -z "$pos" ]]; then
+        pos=$(position_for_voter "$tool" "$path")
+    fi
     if [[ "$pos" == "0" ]]; then
         larch_err "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters"
+        exit 2
+    fi
+    if [[ -n "${SLOT_FILE[$pos]}" ]]; then
+        larch_err "error: duplicate voter position $pos"
         exit 2
     fi
     SLOT_FILE[pos]="$path"
@@ -168,6 +174,7 @@ assign_voter() {
 }
 
 if [[ "$SEEN_VOTER" == true ]]; then
+    next_pos=1
     for spec in "${VOTER_SPECS[@]}"; do
         if [[ "$spec" != *:* ]]; then
             larch_err "error: invalid voter slot: $spec (must be Claude|Codex|Cursor|MainAgent)"
@@ -180,7 +187,16 @@ if [[ "$SEEN_VOTER" == true ]]; then
             exit 2
         fi
         VOTER_FILES+=("$path")
-        assign_voter "$slot" "$path"
+        if [[ "$slot" == "MainAgent" ]]; then
+            assign_voter "$slot" "$path"
+            continue
+        fi
+        if (( next_pos > 3 )); then
+            larch_err "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters"
+            exit 2
+        fi
+        assign_voter "$slot" "$path" "$next_pos"
+        next_pos=$((next_pos + 1))
     done
 else
     if [[ "$SEEN_VOTER_FILES" == true ]]; then
@@ -312,7 +328,8 @@ write_findings_classification() {
             tool="${SLOT_TOOL[$p]}"
             if [[ -n "$voter_file" && "$eligible_count" -gt 0 ]]; then
                 parsed=$(parse_rating_for "$voter_file" "$id")
-                vote=$(printf '%s\n' "$parsed" | kv_value PARSED_VOTE)
+                vote=$(vote_for_id "$id" "$voter_file")
+                [[ "$vote" == "JUDGE_ERROR" ]] && vote=""
                 correctness=$(printf '%s\n' "$parsed" | kv_value PARSED_CORRECTNESS)
                 severity=$(printf '%s\n' "$parsed" | kv_value PARSED_SEVERITY)
                 quality=$(printf '%s\n' "$parsed" | kv_value PARSED_QUALITY)

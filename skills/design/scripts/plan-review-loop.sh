@@ -84,6 +84,10 @@ emit_loop_kvs() {
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
 }
 
+emit_findings_classification_header() {
+    printf '%s\n' 'finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool'
+}
+
 write_empty_review_artifacts() {
     local tally_note="$1"
     : > "$DESIGN_TMPDIR/accepted-plan-findings.md"
@@ -657,6 +661,7 @@ if [[ "$_tally_rc" -ne 0 ]]; then
     emit_kv WARN "plan-review-tally: tally-plan-review.sh exited with rc=$_tally_rc"
     TALLY_PLAN_REVIEW_STATUS="tally-error"
     [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+    emit_findings_classification_header > "$_findings_classification_out"
     if [[ ! -s "$VOTING_TALLY_FILE" ]]; then
         {
             printf '# Plan Review Voting Tally\n\n'
