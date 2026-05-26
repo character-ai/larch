@@ -187,6 +187,12 @@ pipe-delimited proposer attribution, and `voting_result` is one of `accepted`,
 voter order after failed/degraded slots are removed. Rating cells are enum-only;
 missing or invalid axis tokens are empty and force `vN_uncertain=true`.
 
+For 0-judge degraded rounds (`TALLY_STATUS=main-agent-vote-required`),
+`voting_result=rejected` is a placeholder TSV sentinel, not a literal panel
+outcome. Those rows intentionally keep empty `vN_*` cells until later
+main-agent adjudication; the accepted/rejected/OOS markdown artifacts are the
+authoritative operator-facing outcome for that degraded round.
+
 `/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, `review-round-summary` for the human-readable round summary, and `review-findings-classification-round-N` for the forensic vote/rating TSV.
 
 ## manifest.json

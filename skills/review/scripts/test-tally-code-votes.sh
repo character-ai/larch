@@ -272,6 +272,9 @@ got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "NEUTRAL_COUNT=
 got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome" "$got" "rejected"
 got=$(awk -F= '$1=="FINDING_2_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records split-panel subtype" "$got" "neutral"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_3 unanimous YES → OOS accepted" "$got" "1"
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'FINDING_2\tCursor-Security\tneutral\tYES\t\t\t\ttrue\tNO\t\t\t\ttrue\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing neutral voting_result row\n'; }
 
 echo "# Case: round 2 expected 3-voter panel does not emit degraded banner when all three judges arrive"
 TMP="$WORKDIR/case2_round2_clean"
@@ -344,6 +347,9 @@ got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXO
 got=$(awk -F= '$1=="FINDING_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome" "$got" "rejected"
 got=$(awk -F= '$1=="FINDING_1_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records exonerated subtype" "$got" "exonerated"
 grep -Fq '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL single EXONERATE not labeled exonerated\n'; }
+classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}' "$out")
+grep -Fq $'FINDING_1\tCodex-Structure\texonerated\tEXONERATE\t\t\t\ttrue\t\t\t\t\t\t\t\t\t\t' "$classification_file" \
+    || { FAIL=1; printf '  FAIL classification TSV missing exonerated voting_result row\n'; }
 
 echo "# Case: 0 voters → main-agent-vote-required"
 TMP="$WORKDIR/case4d"

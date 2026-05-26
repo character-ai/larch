@@ -41,4 +41,4 @@ does not call shell helpers.
 
 The per-position `vN_tool` TSV semantics are owned by
 `skills/design/scripts/tally-plan-review.md`. Regression coverage lives in
-`skills/design/scripts/test-findings-classification.sh`.
+`skills/review/scripts/test-findings-classification.sh`.

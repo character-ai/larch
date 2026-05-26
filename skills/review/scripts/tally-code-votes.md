@@ -68,6 +68,12 @@ Manifest attribution maps output basenames, not slot IDs. Fallback basenames nor
 
 Each `vN_*` group is ordered by effective voter-file iteration order after parse-rate-degraded voters are removed. Votes are `YES`, `NO`, `EXONERATE`, or `JUDGE_ERROR`; missing or unparseable ballot lines are normalized to `JUDGE_ERROR` for effective voter slots. Rating axes are enum-only; missing or unrecognized axis values are recorded as empty and force `vN_uncertain=true`.
 
+When `TALLY_STATUS=main-agent-vote-required` (0 effective judges), data rows keep
+`voting_result=rejected` only as a placeholder TSV sentinel so the forensic
+export has a stable enum. The actual adjudication outcome is deferred to the
+main-agent path and is reflected in the accepted/rejected/OOS artifact files
+rather than this degraded-round TSV.
+
 Single-parse invariant: the TSV and markdown tally both derive each per-voter vote from a single call to `scripts/parse-judge-vote-and-rating.sh`. `vote_for_id` remains the legacy library helper, but the forensic TSV contract is keyed to the parser output so tally counts and `vN_vote` cells cannot drift under missing-line or malformed-line cases.
 
 ## Threshold (delegated to lib-vote-tally.sh)

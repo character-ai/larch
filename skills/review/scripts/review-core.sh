@@ -108,6 +108,25 @@ copy_to_parent() {
     cp "$file" "$(dirname "$SESSION_ENV_PATH")/$name" 2>/dev/null || true
 }
 
+record_findings_classification_round() {
+    local classification_file="$1"
+    local map_file="$REVIEW_TMPDIR/findings-classification-round-map.env" tmp_file
+    [[ -n "$classification_file" ]] || return 0
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/review-core-findings-map.XXXXXX")" || return 1
+    {
+        if [[ -f "$map_file" ]]; then
+            awk -F= -v round_key="FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_${ROUND_NUM}" '
+                $1 != "FINDINGS_CLASSIFICATION_TSV_FILE" && $1 != round_key { print $0 }
+            ' "$map_file"
+        fi
+        printf 'FINDINGS_CLASSIFICATION_TSV_FILE=%s\n' "$classification_file"
+        printf 'FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_%s=%s\n' "$ROUND_NUM" "$classification_file"
+    } > "$tmp_file"
+    mv -f "$tmp_file" "$map_file"
+    emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$classification_file"
+    emit_kv "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_${ROUND_NUM}" "$classification_file"
+}
+
 execution_issues_log() {
     if [[ -n "${LARCH_EXECUTION_ISSUES_LOG:-}" ]]; then
         printf '%s\n' "$LARCH_EXECUTION_ISSUES_LOG"
@@ -451,6 +470,7 @@ if [[ "$findings_count" == "0" ]]; then
     "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
     zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
     zero_findings_classification_tsv_file=$(kv_get "$zero_findings_tally_out" FINDINGS_CLASSIFICATION_TSV_FILE)
+    record_findings_classification_round "$zero_findings_classification_tsv_file"
     zero_tally_file=$(kv_get "$zero_findings_tally_out" TALLY_FILE)
     zero_accepted_file=$(kv_get "$zero_findings_tally_out" ACCEPTED_FINDINGS_FILE)
     zero_tally_file="${zero_tally_file:-$REVIEW_TMPDIR/review-tally.env}"
@@ -490,7 +510,6 @@ if [[ "$findings_count" == "0" ]]; then
     emit_kv PANEL_MODE "$panel_mode"
     emit_kv PANEL_SHAPE "$panel_shape"
     [[ -n "$zero_voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$zero_voting_tally_file"
-    [[ -n "$zero_findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$zero_findings_classification_tsv_file"
     exit 0
 fi
 
@@ -507,9 +526,14 @@ aggregate_args=(
 [[ -n "$PLAN_FILE" ]] && aggregate_args+=(--plan-file "$PLAN_FILE")
 aggregate_stderr="$REVIEW_TMPDIR/review-core-aggregate.stderr"
 set +e
-"$AGGREGATE_FINDINGS_SH" "${aggregate_args[@]}" > "$aggregate_out" 2> >(tee "$aggregate_stderr" >&2)
+"$AGGREGATE_FINDINGS_SH" "${aggregate_args[@]}" > "$aggregate_out" 2>"$aggregate_stderr"
 aggregate_rc=$?
 set -e
+if [[ -s "$aggregate_stderr" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        larch_err "$line"
+    done < "$aggregate_stderr"
+fi
 if [[ "$aggregate_rc" -ne 0 ]]; then
     emit_breadcrumb --category=warn "⚠ review-core: aggregate-findings exited non-zero (rc=$aggregate_rc; see $aggregate_stderr)"
     append_review_execution_issue "- **review-core / aggregate-findings**: subprocess exited with rc=$aggregate_rc (unexpected; see $aggregate_stderr)."
@@ -519,15 +543,23 @@ aggregate_reason=$(kv_get "$aggregate_out" REASON)
 if [[ "$aggregate_reason" == "validation-exhausted" ]]; then
     agg_exhaust_tally="$REVIEW_TMPDIR/review-core-aggregator-exhaust-tally.env"
     agg_exhaust_emit_out="$REVIEW_TMPDIR/review-core-aggregator-exhaust-emit.env"
-    : > "$REVIEW_TMPDIR/accepted-findings.md"
-    : > "$REVIEW_TMPDIR/rejected-findings.md"
-    : > "$REVIEW_TMPDIR/oos-accepted-review.md"
-    cat > "$agg_exhaust_tally" <<EOF
-ACCEPTED_COUNT=0
-REJECTED_COUNT=0
-EXONERATED_COUNT=0
-NEUTRAL_COUNT=0
-EOF
+    agg_exhaust_classification_tsv_file=""
+    tally_args=(
+        --ballot-file "$REVIEW_TMPDIR/findings.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --cursor-available "$CURSOR_AVAILABLE"
+        --codex-available "$CODEX_AVAILABLE"
+        --round-num "$ROUND_NUM"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] && tally_args+=(--scope-files "$SCOPE_FILES")
+    [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && tally_args+=(--plan-file "$PLAN_FILE")
+    [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && tally_args+=(--manifest-file "$panel_manifest")
+    [[ -f "$collector_results_file" ]] && tally_args+=(--collector-results-file "$collector_results_file")
+    [[ "$not_substantive_slots" -gt 0 ]] && tally_args+=(--not-substantive-count "$not_substantive_slots")
+    "$TALLY_VOTES_SH" "${tally_args[@]}" > "$agg_exhaust_tally"
+    agg_exhaust_classification_tsv_file=$(kv_get "$agg_exhaust_tally" FINDINGS_CLASSIFICATION_TSV_FILE)
+    record_findings_classification_round "$agg_exhaust_classification_tsv_file"
     agg_exhaust_emit_args=(
         --tally-file "$agg_exhaust_tally"
         --accepted-findings-file "$REVIEW_TMPDIR/accepted-findings.md"
@@ -559,6 +591,7 @@ EOF
     emit_kv PANEL_MODE "$panel_mode"
     emit_kv PANEL_SHAPE "$panel_shape"
     emit_kv THRESHOLD_REASON aggregation-validation-exhausted
+    [[ -n "$agg_exhaust_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$agg_exhaust_classification_tsv_file"
     exit 2
 fi
 
@@ -636,7 +669,7 @@ yield_tsv_file=$(kv_get "$tally_out" YIELD_TSV_FILE)
 findings_classification_tsv_file=$(kv_get "$tally_out" FINDINGS_CLASSIFICATION_TSV_FILE)
 [[ -n "$voting_skipped_warning" ]] && emit_kv VOTING_SKIPPED_WARNING "$voting_skipped_warning"
 [[ -n "$yield_tsv_file" ]] && emit_kv YIELD_TSV_FILE "$yield_tsv_file"
-[[ -n "$findings_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$findings_classification_tsv_file"
+record_findings_classification_round "$findings_classification_tsv_file"
 accepted_count="${accepted_count:-0}"
 rejected_count="${rejected_count:-0}"
 tally_file="${tally_file:-$REVIEW_TMPDIR/review-tally.env}"

@@ -114,25 +114,12 @@ check_voter_parse_rate() {
     ids_count="${ids_count:-0}"
     [[ "$ids_count" -gt 0 ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     judge_error_count=0
-    local id_line one
+    local id_line parsed one
     while IFS= read -r id_line || [[ -n "$id_line" ]]; do
         [[ -z "$id_line" ]] && continue
-        one=$(
-            awk -v id="$id_line" '
-              BEGIN { result="JUDGE_ERROR" }
-              {
-                upper=toupper($0)
-                prefix="^" toupper(id) ":[[:space:]]*"
-                if (upper ~ (prefix "(YES|NO|EXONERATE)([[:space:]-]|$)")) {
-                    rest=upper; sub(prefix, "", rest)
-                    if (rest ~ /^YES([[:space:]-]|$)/) result="YES"
-                    else if (rest ~ /^NO([[:space:]-]|$)/) result="NO"
-                    else if (rest ~ /^EXONERATE([[:space:]-]|$)/) result="EXONERATE"
-                }
-              }
-              END { print result }
-            ' "$voter_path"
-        )
+        parsed=$("$SCRIPT_DIR_VPR/parse-judge-vote-and-rating.sh" "$voter_path" "$id_line" 2>/dev/null || true)
+        one=$(printf '%s\n' "$parsed" | awk -F= '$1=="PARSED_VOTE"{print $2; exit}')
+        [[ -n "$one" ]] || one="JUDGE_ERROR"
         [[ "$one" == "JUDGE_ERROR" ]] && judge_error_count=$((judge_error_count + 1))
     done <<< "$ids_list"
     # >=80% JUDGE_ERROR threshold

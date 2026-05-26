@@ -92,6 +92,16 @@ IMPLEMENT_TMPDIR="$TMP/ambient-impl" "$TALLY" --ballot-file "$B2/ballot.md" --re
 class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
 [[ "$class_file" == "$B2/findings-classification-round-2.tsv" ]] || fail "standalone session-env path should remain round-scoped: $class_file"
 
+echo "# Fixture B3: round-N tmpdir shape alone uses nested findings-classification.tsv"
+B3="$TMP/impl-shape/round-3"
+mkdir -p "$B3"
+write_ballot "$B3/ballot.md"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n' > "$B3/v1.txt"
+out="$B3/out.env"
+IMPLEMENT_TMPDIR="" "$TALLY" --ballot-file "$B3/ballot.md" --review-tmpdir "$B3" --round-num 3 --voter-files "$B3/v1.txt" > "$out"
+class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
+[[ "$class_file" == "$B3/findings-classification.tsv" ]] || fail "round-N tmpdir should use nested classification filename: $class_file"
+
 echo "# Fixture C: 0-judge path emits rows with empty voter columns"
 C="$TMP/c"
 mkdir -p "$C"
@@ -175,6 +185,26 @@ assert r["v2_correctness"] == "", r
 assert r["v2_severity"] == "", r
 assert r["v2_quality"] == "", r
 assert r["v2_uncertain"] == "true", r
+PY
+
+echo "# Fixture F3: reviewer attribution is formula-neutralized in TSV"
+F3="$TMP/f3"
+mkdir -p "$F3"
+cat > "$F3/ballot.md" <<'EOF'
+### FINDING_1: Spreadsheet payload
+- **Reviewer**: =SUM(1,1)
+- **Concern**: Real issue.
+- **Suggested revision**: Fix it.
+EOF
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$F3/v1.txt"
+out="$F3/out.env"
+IMPLEMENT_TMPDIR="" "$TALLY" --ballot-file "$F3/ballot.md" --review-tmpdir "$F3" --round-num 1 --voter-files "$F3/v1.txt" > "$out"
+class_file=$(kv FINDINGS_CLASSIFICATION_TSV_FILE "$out")
+python3 - "$class_file" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="") as fh:
+    rows = {row["finding_id"]: row for row in csv.DictReader(fh, delimiter="\t")}
+assert rows["FINDING_1"]["reviewer_slots"] == "'=SUM(1|1)", rows["FINDING_1"]
 PY
 
 echo "# Fixture G: malicious rating tokens are sanitized to enum-only TSV cells"

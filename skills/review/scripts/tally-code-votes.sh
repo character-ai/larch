@@ -78,7 +78,12 @@ nested_implement_round() {
     local review_real parent_real impl_real=""
     review_real="$(cd "$REVIEW_TMPDIR" 2>/dev/null && pwd -P)" || return 1
     case "$review_real" in
-        */round-[0-9]*) parent_real="$(dirname "$review_real")" ;;
+        */round-[0-9]*)
+            parent_real="$(dirname "$review_real")"
+            if [[ ! "$parent_real" =~ /round-[0-9]+$ ]]; then
+                return 0
+            fi
+            ;;
         *) return 1 ;;
     esac
     if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
@@ -140,7 +145,12 @@ write_classification_tsv_header() {
 }
 
 sanitize_classification_text_cell() {
-    printf '%s' "${1:-}" | tr '\011\015\012' '   ' | sed 's/[[:space:]]*|[[:space:]]*/|/g'
+    local cell
+    cell=$(printf '%s' "${1:-}" | tr '\011\015\012' '   ' | sed 's/[[:space:]]*|[[:space:]]*/|/g')
+    case "$cell" in
+        [=+-@]*) printf "'%s" "$cell" ;;
+        *) printf '%s' "$cell" ;;
+    esac
 }
 
 reviewer_slots_for_tsv() {
@@ -401,6 +411,9 @@ if (( EFFECTIVE_VOTERS == 0 )); then
     for block in "${block_files[@]+"${block_files[@]}"}"; do
         id=$(basename "$block" .md)
         reviewer=$(reviewer_for_block "$block")
+        # Placeholder row for a 0-judge degraded round; main-agent
+        # adjudication, not this TSV, determines the final accepted/rejected
+        # artifacts.
         write_classification_tsv_row "$id" "$reviewer" rejected
     done
     VOTING_SKIPPED_WARNING="**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"

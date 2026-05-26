@@ -165,6 +165,7 @@ done
 accepted="${TEST_ACCEPTED:-0}"
 rejected="${TEST_REJECTED:-0}"
 status="${TEST_TALLY_STATUS:-ok}"
+round_num="${TEST_ROUND_NUM:-1}"
 if [[ "$voter_count" -eq 0 ]]; then
   status="main-agent-vote-required"
   accepted=0
@@ -183,7 +184,8 @@ else
   : > "$tmp/accepted-findings.md"
 fi
 : > "$tmp/rejected-findings.md"
-printf 'TALLY_STATUS=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nVOTING_TALLY_FILE=%s/voting-tally.md\nTALLY_OK=true\n' "$status" "$accepted" "$rejected" "$tmp" "$tmp" "$tmp" "$tmp"
+printf 'finding_id\treviewer_slots\tvoting_result\n' > "$tmp/findings-classification-round-${round_num}.tsv"
+printf 'TALLY_STATUS=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nVOTING_TALLY_FILE=%s/voting-tally.md\nFINDINGS_CLASSIFICATION_TSV_FILE=%s/findings-classification-round-%s.tsv\nTALLY_OK=true\n' "$status" "$accepted" "$rejected" "$tmp" "$tmp" "$tmp" "$tmp" "$tmp" "$round_num"
 STUB
     cat > "$TMP/emit.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -423,6 +425,11 @@ grep -Fq 'not_substantive=2' "$TMP/zero-degraded/voting-tally.md" || { echo "FAI
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 assert_contains "$out" "ACCEPTED_FINDINGS_FILE=$TMP/fix/accepted-findings.md"
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/fix/findings-classification-round-1.tsv"
+grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/fix/findings-classification-round-1.tsv" "$TMP/fix/findings-classification-round-map.env" || {
+    echo "FAIL: missing round map binding for fix round" >&2
+    exit 1
+}
 
 fix_breadcrumbs_out="$TMP/fix-breadcrumbs.out"
 LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs" >"$fix_breadcrumbs_out"
@@ -461,6 +468,11 @@ if [[ "$rc" -ne 2 ]]; then
     exit 1
 fi
 assert_contains "$out" 'REVIEW_CORE_STATUS=aggregator-validation-exhausted'
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-exhaust-core/findings-classification-round-1.tsv"
+[[ -f "$TMP/agg-exhaust-core/findings-classification-round-map.env" ]] || {
+    echo "FAIL: aggregator exhaustion should persist round classification map" >&2
+    exit 1
+}
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
     "$TMP/agg-exhaust-core/review-summary.json" >/dev/null || { echo "FAIL: agg-exhaust review-summary.json" >&2; exit 1; }
 
