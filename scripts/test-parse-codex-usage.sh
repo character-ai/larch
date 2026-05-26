@@ -151,8 +151,20 @@ run_fail "cache-exceeds-midstream" 1 "$TMP/cache-exceeds-midstream.jsonl" "cache
 run_fail "argv-error" 2 "" "usage error"
 
 set +e
-out=$(env -i HOME="${HOME:-}" TMPDIR="${TMPDIR:-/tmp}" bash "$SCRIPT" "$TMP/cache-math.jsonl" 2>"$TMP/no-jq.err")
+_bash_bin=$(command -v bash)
+_jq_dir=$(dirname "$(command -v jq 2>/dev/null || echo /usr/bin/jq)")
+_no_jq_dir=$(mktemp -d)
+# On Linux, copy dirname into the restricted dir; on macOS the copy is SIP-blocked
+# but jq lives in homebrew so PATH=/bin:/usr/bin already excludes it.
+if { cp "$(command -v dirname)" "$_no_jq_dir/dirname" && \
+     "$_no_jq_dir/dirname" / ; } >/dev/null 2>&1; then
+    out=$(PATH="$_no_jq_dir" "$_bash_bin" "$SCRIPT" "$TMP/cache-math.jsonl" 2>"$TMP/no-jq.err")
+else
+    _filtered_path=$(printf '%s' "$PATH" | tr ':' '\n' | grep -Fxv "$_jq_dir" | tr '\n' ':' | sed 's/:$//')
+    out=$(PATH="$_filtered_path" "$SCRIPT" "$TMP/cache-math.jsonl" 2>"$TMP/no-jq.err")
+fi
 rc=$?
+rm -rf "$_no_jq_dir"
 set -e
 eq "jq-missing rc" "1" "$rc"
 eq "jq-missing stdout" "" "$out"
