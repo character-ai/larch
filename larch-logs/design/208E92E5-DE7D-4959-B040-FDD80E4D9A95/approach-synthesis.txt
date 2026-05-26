@@ -1,0 +1,38 @@
+## Approach Synthesis
+
+**Attribution**: Cursor-Generic returned only exploration metadata (3 narration lines, no proposal). Codex-Generic produced a substantive multi-paragraph sketch covering all 5 items. Synthesis relies on the Codex sketch; Cursor contributed no divergent perspective to weigh.
+
+### Agreement
+
+There is only one substantive sketch, so there is no cross-sketch agreement to surface. The Codex sketch's recommendations align with the Step 1c / Step 1d decisions already recorded by the orchestrator:
+
+- **Item A** (step-7a SKIP_REASON): Codex agrees the fix is to read `kv_value SKIP_REASON "$gen_out"` right after `gen_status`, then use it on `STATUS=skipped`/`STATUS=failed` paths. Keep the small/non-runtime skip-path text untouched because that reason is produced inside Step 7a itself, not by the generator.
+- **Item C** (REASON_TOKEN parser): Codex proposes mirroring the `generate-code-flow-diagram.sh` contract: strip only the `REASON_TOKEN=` prefix, then strip trailing whitespace-delimited metadata, preserving embedded `=` inside the token. Matches the "harden parser only" decision.
+- **Item D** (ci-failed-jobs job_name sanitization): Codex points at lines 131-138 (TSV write + KV emit) as the sites, but recommends sanitizing values BEFORE those sites — consistent with the Round 1 decision to sanitize at the parse boundary around lines 106-110.
+- **Item E** (shared `sanitize_diagnostic_line`): Codex agrees on moving the existing local helper from `ci-failed-jobs.sh:29` into `lib-quiet.sh:97-103` adjacent to `larch_err`, then routing `larch_err` through it.
+- **Item B** (test-step-7a md reconciliation): Codex agrees the md should match the harness, add the two missing cases (`rebase-unexpected-rc`, `quiet-diagram-skip-contract`), and correct the `diagram-failure-sanitizer` wording.
+
+### Divergence
+
+Only one substantive sketch was produced; there are no cross-sketch contested decisions. Cursor's output did not propose an alternative architecture or call out any concern.
+
+### Novel considerations from Codex (incorporate into plan)
+
+- **`larch_errf` carve-out**: Codex flags that `larch_errf` (printf-style) is trickier than `larch_err` because it preserves printf semantics and no implicit newline. Recommendation: leave `larch_errf` unchanged in this PR; only route `larch_err` through the new helper. This is a useful narrowing and should be reflected in the plan.
+- **POSIX/BSD awk compatibility for SKIP_REASON parser**: Codex flags that `SKIP_REASON` parsing must remain POSIX/BSD awk compatible (generator docs already note this). The Item C rewrite must not use GNU-only awk features.
+- **Test-byte-exact risk**: Codex flags that centralizing `larch_err` sanitization could subtly affect harnesses that assert exact stderr bytes — especially diagnostics containing tabs or intentional control-class text. Surface harnesses to re-run: `scripts/test-lib-quiet.sh`, `scripts/test-ci-failed-jobs.sh`, `scripts/test-mermaid-fragments.sh` (if present), `skills/implement/scripts/test-generate-code-flow-diagram.sh`, `skills/implement/scripts/test-step-7a.sh`, plus the required `bash scripts/relevant-checks.sh`.
+- **Pattern note**: The current `larch_err` sites in the codebase forward only fixed strings, so routing them through `sanitize_diagnostic_line` is a no-op for content but documents the policy for new callers.
+
+### Failure mode hints (Edge perspective absent — main agent surfaces)
+
+Since neither sketch was tasked with the Edge personality, the main agent identifies these failure modes inline for plan inclusion:
+
+- Empty `SKIP_REASON` (generator emits `STATUS=skipped` with no reason KV): fall back to `"Code flow diagram not available."` literal as decided in Round 1.
+- `sanitize_diagnostic_line` applied to a `job_name` with all control bytes would emit an empty TSV field; downstream consumers must tolerate empty field values (TSV already supports this).
+- Sanitizer's new parser must still correctly handle the `REASON_TOKEN=foo bar=baz` shape where `foo bar=baz` is the full token — but per Round 1 Item C decision (harden parser only), tokens with embedded `=` aren't currently emitted by sanitize-mermaid-fragment.sh; the parser only needs to tolerate them if they appear.
+
+### Pragmatism/Safety highlights
+
+- All 5 items together are < ~30 LOC of source change plus md/test-md updates. Diff scope is small enough that no decomposition is needed.
+- `step-7a.sh` and `lib-quiet.sh` are widely consumed; touch only the specific lines that the OOS calls out and re-run all relevant offline harnesses.
+- Avoid touching `larch_errf`, `breadcrumb-monitor.sh`, `check-clean-tree.sh`, etc. — they were not in the OOS scope (Round 1 audit decision).

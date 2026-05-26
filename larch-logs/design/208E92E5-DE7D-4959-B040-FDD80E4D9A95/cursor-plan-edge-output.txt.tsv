@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ci-failed-jobs.sh:106-108	Sanitize runs after the only empty-name guard	An all-control-byte gh job name passes `[ -n "$raw_name" ]`, sanitizes to empty, still increments `count` and can emit a blank TSV/`emit` row; Edge cases §2 wrongly claims line 107 catches this	Sanitize first then `[ -n "$raw_name" ] || continue`, or repeat the empty guard immediately after assignment

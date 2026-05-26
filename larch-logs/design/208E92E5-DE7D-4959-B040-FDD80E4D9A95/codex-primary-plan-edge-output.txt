@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lib-quiet.sh:98-103	The larch_err replacement text does not group the sanitized pipeline with the stderr redirection	Applying the plan literally sends the sanitized message to stdout or the quiet log and redirects only the trailing newline to FD 4 or stderr, so user-visible diagnostics become blank or leak onto stdout	Wrap the pipeline and newline in a redirected group for each branch, e.g. { printf '%s' "$*" | sanitize_diagnostic_line; printf '\n'; } >&4 and the same group redirected to >&2
+1	in_scope	important	correctness	scripts/ci-failed-jobs.sh:106-110	The plan sanitizes raw_name after the existing non-empty guard but does not add a second guard	An all-control-byte job name passes the first guard, is sanitized to empty, increments FAILED_JOBS_COUNT, and can emit an empty TSV job field plus an =malformed-job-name tuple	Add [ -n "$raw_name" ] || continue immediately after raw_name=$(printf '%s' "$raw_name" | sanitize_diagnostic_line) and before count=$((count + 1))
+1	in_scope	important	correctness	skills/implement/scripts/test-step-7a.sh:126-135,444-467	The baseline diagram-rejected case is treated as an empty-SKIP_REASON fallback in the plan, but the stub always emits a SKIP_REASON in rejected mode	After Item A, diagram-rejected will write pipe-in-node-label fence=mermaid line=7 to summary-diagrams.md, so keeping the placeholder assertion makes the harness fail	Update the baseline diagram-rejected assertion to expect the stub's default SKIP_REASON, or add an explicit rejected-mode fixture that emits SKIP_REASON= when testing the fallback path
+1	in_scope	nit	correctness	skills/implement/scripts/test-step-7a.md:11-14	The ledger reconciliation leaves stale descriptions saying sanitizer rejections skip summary upsert	The harness asserts tracking-issue-summary.sh is called for rejected cases, so the md ledger remains misleading after the proposed rename pass	Change those descriptions to say the placeholder or SKIP_REASON summary comment is posted, matching test-step-7a.sh assertions
+
+1. [correctness] `scripts/lib-quiet.sh:98-103`: the proposed `larch_err` edit needs grouped redirection. Without it, quiet-mode diagnostics are silently misplaced.
+
+2. [correctness] `scripts/ci-failed-jobs.sh:106-110`: add the post-sanitize empty check before incrementing `count`.
+
+3. [correctness] `skills/implement/scripts/test-step-7a.sh:126-135,444-467`: update the baseline rejected assertion too, because the stub emits a default `SKIP_REASON`.
+
+4. [correctness] `skills/implement/scripts/test-step-7a.md:11-14`: fix the remaining stale “skips summary upsert” descriptions while reconciling the ledger.
