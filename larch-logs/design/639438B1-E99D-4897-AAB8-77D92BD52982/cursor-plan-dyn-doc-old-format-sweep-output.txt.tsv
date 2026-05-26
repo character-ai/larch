@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/tracking-issue-read.md:54-56	Plan broadens Malformed-value redaction at :155 only; Sentinel-parser security note at :54-56 is a second ISSUE_NUMBER+RUN_ID cross-key no-echo summary	Post-PR ADOPTED uses fixed-token errors but :56 still claims only ISSUE_NUMBER and RUN_ID omit malformed bytes; readers miss ADOPTED parity	Extend tracking-issue-read.md update step to include :54-56 (add ADOPTED= alongside ISSUE_NUMBER= and RUN_ID=)

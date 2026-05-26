@@ -1,0 +1,89 @@
+# Implementation Plan: Hardening follow-ups (issue #2878)
+
+Narrow contract-hardening patch covering both OOS items: (1) align the `ADOPTED` validation error in `scripts/tracking-issue-read.sh` with the existing fixed-token no-echo policy already used for `ISSUE_NUMBER` and `RUN_ID` (propagating the new contract through every co-located documentation surface, including the script's own header doc, the inline `--sentinel` branch contract comment, the `.md` sibling's Sentinel-parser security note and Malformed-value redaction bullet, and SECURITY.md's sentinel-reader paragraph); and (2) add a clarifying comment to `scripts/get-issue-context.sh` documenting the intentional divergence between its strict `^[1-9][0-9]*$` regex (rejects #0) and the all-digit `case` guard used by sibling scripts — citing the actually lax peers (`tracking-issue-read.sh` argv `--issue` / sentinel `ISSUE_NUMBER`, `get-issue-state.sh`) rather than `clarify-comment-post.sh` / `clarify-state.sh` which already reject `0` explicitly. No behavior change in `get-issue-context.sh`.
+
+## Files to modify/create
+
+### UPDATED: `scripts/tracking-issue-read.sh`
+
+Three coordinated edits in this single file:
+
+1. **Lines 291-294 — runtime error string**: change the `ADOPTED` validation error to the fixed-token form. Replace `emit_kv ERROR "invalid ADOPTED value in sentinel: '$ADOPTED_VAL' (expected 'true' or 'false' or absent)"` with `emit_kv ERROR "invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'"` — byte-identical structure to the ISSUE_NUMBER and RUN_ID errors at lines 286 and 289. The surrounding `if [[ -n "$ADOPTED_VAL" && "$ADOPTED_VAL" != "true" && "$ADOPTED_VAL" != "false" ]]; then` block, the `emit_kv FAILED true` line, and the trailing `exit 1` are unchanged.
+
+2. **Top-of-file ADOPTED contract block (the long indented `ADOPTED=<true|false|>` paragraph that starts around line ~33 and ends around line ~47, inside the `# Output contract (KEY=value on stdout):` section)**: replace the inline `ERROR=invalid ADOPTED value in sentinel: '<v>'` literal with `ERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'`, mirroring the ISSUE_NUMBER/RUN_ID header text. Drop the parenthetical "(expected 'true' or 'false' or absent)" since the fixed-token form already implies what is invalid. Anchor by the exact `'<v>'` substring (which appears once in the file) when applying the edit.
+
+3. **Lines 250-256 — `--sentinel` branch inline contract comment**: the comment currently reads "ISSUE_NUMBER and RUN_ID are validated only when non-empty. Invalid values use fixed-token ERROR messages so malformed bytes are not echoed into the KEY=VALUE stdout stream." Broaden to include ADOPTED: replace "ISSUE_NUMBER and RUN_ID are validated only when non-empty" with "ISSUE_NUMBER, RUN_ID, and ADOPTED are validated when non-empty (ADOPTED additionally enforces strict equality against `true` / `false`); invalid values use fixed-token ERROR messages so malformed bytes are not echoed into the KEY=VALUE stdout stream." Adjust adjacent wording as needed to keep the bullet list coherent.
+
+The strict-equality accepted-value contract (`true` / `false` / empty/absent), the exit-code surface, and the KV stdout envelope are unchanged across all three edits.
+
+### UPDATED: `scripts/test-tracking-issue-read-sentinel.sh`
+
+Reshape cases (e), (f), (g), (h) to use byte-exact two-line stdout assertions (mirrors cases (i), (o), (aa)) plus belt-and-suspenders negative regression assertions on the raw rejected value. The exact-stdout assertion catches injected extra KV lines or trailing payloads that a contains-only assertion would miss (FINDING_16/17). The negative assertions retain the same quoted-form patterns the leaking envelope used (FINDING_12/15) plus raw-token patterns matching the specificity of cases (p)/(t) (FINDING_18).
+
+- **Case (e)** `ADOPTED=yes` (line 179): replace `assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: 'yes' (expected 'true' or 'false' or absent)")"` with `assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(e) stdout fixed-token envelope"`. Add `assert_not_contains "$LAST_STDOUT" "'yes'" "(e) stdout omits quoted malformed value"` and `assert_not_contains "$LAST_STDOUT" "ADOPTED=yes" "(e) stdout omits raw rejected token"`.
+- **Case (f)** `ADOPTED=TRUE` (lines 184-187): replace the `assert_contains "$LAST_STDOUT" "'TRUE'" "(f) stdout names the rejected value"` line with `assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(f) stdout fixed-token envelope"`. Add `assert_not_contains "$LAST_STDOUT" "'TRUE'" "(f) stdout omits quoted rejected value"` and `assert_not_contains "$LAST_STDOUT" "ADOPTED=TRUE" "(f) stdout omits raw rejected token"`.
+- **Case (g)** `ADOPTED=1` (lines 192-195): replace the `assert_contains "$LAST_STDOUT" "'1'" "(g) stdout names the rejected value"` line with `assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(g) stdout fixed-token envelope"`. Add `assert_not_contains "$LAST_STDOUT" "'1'" "(g) stdout omits quoted rejected value"` (FINDING_12/15 specifically asked for this — the leaking envelope echoes `'1'`, not `ADOPTED=1`, so the quoted form is the load-bearing negative needle) and `assert_not_contains "$LAST_STDOUT" "ADOPTED=1" "(g) stdout omits raw rejected token"` (belt-and-suspenders against future variant leaks).
+- **Case (h)** `ADOPTED=true ` (trailing space, lines 200-203): replace the `assert_contains "$LAST_STDOUT" "'true '" "(h) stdout names the rejected value"` line with `assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(h) stdout fixed-token envelope"`. Add `assert_not_contains "$LAST_STDOUT" "'true '" "(h) stdout omits quoted rejected value"` and `assert_not_contains "$LAST_STDOUT" "ADOPTED=true " "(h) stdout omits raw rejected token"` (the raw-token form is the variant FINDING_18 specifically called out — matches case (p)'s `ADOPTED=yes`-style specificity).
+
+No new test cases are added beyond reshaping (e)/(f)/(g)/(h). Cases (a)-(d), (i)-(z), (aa) are unchanged.
+
+### UPDATED: `scripts/tracking-issue-read.md`
+
+Three coordinated edits in this single file:
+
+1. **Lines 54-56 — Sentinel-parser security note**: the current paragraph says "Malformed `ISSUE_NUMBER=` and `RUN_ID=` values are never echoed verbatim in `ERROR=` output." Broaden to "Malformed `ISSUE_NUMBER=`, `RUN_ID=`, and `ADOPTED=` values are never echoed verbatim in `ERROR=` output." The rest of the sentence about KV stdout injection and the fixed token `'malformed-value-omitted'` being part of the contract applies to all three fields and needs no other change.
+
+2. **Around line 63 — ADOPTED= field contract**: update the fail-closed posture sentence. Replace `ERROR=invalid ADOPTED value in sentinel: '<val>' (expected 'true' or 'false' or absent)` with `ERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'`. Add a short clause noting that, as with ISSUE_NUMBER and RUN_ID, the malformed ADOPTED value is never echoed verbatim. Keep the "Producers writing invalid values see a loud parse failure" sentence — it still applies.
+
+3. **Around line 155 — Malformed-value redaction bullet**: the current bullet says "invalid `ISSUE_NUMBER` and `RUN_ID` errors use the fixed token `'malformed-value-omitted'`". Broaden to "invalid `ISSUE_NUMBER`, `RUN_ID`, and `ADOPTED` errors use the fixed token `'malformed-value-omitted'`".
+
+No other content changes; the strict-equality contract for `true` / `false` / absent is unchanged.
+
+### UPDATED: `scripts/test-tracking-issue-read-sentinel.md`
+
+Update the case table rows for (e), (f), (g), (h) (around lines 32-35) to reflect the byte-exact two-line envelope assertions. Replace the current "envelope names `'TRUE'`" / "envelope names `'1'`" / "envelope names trailing-space value" expected-result descriptions with "exit 1, exact two-line stdout: `FAILED=true` + fixed-token `ERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'`; no verbatim echo of the rejected value (both quoted and raw forms checked)". Case (e) currently says "exact invalid-ADOPTED envelope" — broaden the wording to mention the fixed token explicitly. Add a one-sentence note in the "Contracts pinned" section (around line 9) covering the ADOPTED fixed-token no-echo invariant, mirroring the existing ISSUE_NUMBER / RUN_ID coverage.
+
+### UPDATED: `SECURITY.md`
+
+Update the sentinel-reader paragraph (the one beginning "The local sentinel reader validates non-empty `ISSUE_NUMBER` values as digits only and non-empty `RUN_ID` values against `^[A-Za-z0-9._-]+$`..."). Two changes:
+
+1. Extend the validation enumeration to include ADOPTED. Replace the "validates non-empty `ISSUE_NUMBER` values as digits only and non-empty `RUN_ID` values against `^[A-Za-z0-9._-]+$`" clause with "validates non-empty `ISSUE_NUMBER` values as digits only, non-empty `RUN_ID` values against `^[A-Za-z0-9._-]+$`, and non-empty `ADOPTED` values via strict equality against `true` / `false` (case-strict, no whitespace trimming other than trailing `\r`)".
+2. Extend the fixed-token sentence: replace "Malformed `ISSUE_NUMBER`/`RUN_ID` sentinel `ERROR=` messages use the fixed token `'malformed-value-omitted'` rather than echoing attacker-controlled bytes" with "Malformed `ISSUE_NUMBER`, `RUN_ID`, and `ADOPTED` sentinel `ERROR=` messages use the fixed token `'malformed-value-omitted'` rather than echoing attacker-controlled bytes". Keep the trailing rationale about stdout being parsed as KEY=VALUE.
+
+Required by AGENTS.md's "Update SECURITY.md when security-relevant behavior changes" rule.
+
+### UPDATED: `scripts/get-issue-context.sh`
+
+Add a brief clarifying comment immediately above the `if [[ ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then` block at line 32. The comment must (a) state that GitHub issue numbers are >=1, so this regex deliberately rejects `0` and leading-zero forms; (b) accurately cite the actually-lax peers — `scripts/tracking-issue-read.sh` argv `--issue` validation (line ~231) and `scripts/get-issue-state.sh` (line ~52) both use the bare `case "$ISSUE" in *[!0-9]*)` pattern with no explicit `0` rejection and therefore accept `0`; (c) note that the clarify scripts (`scripts/clarify-comment-post.sh`, `scripts/clarify-state.sh`) use the all-digit `case` pattern followed by an explicit `if [ "$ISSUE" = "0" ]` check, so they reach the same `>=1` semantics through a two-stage guard rather than a regex — listed here only to disambiguate, since their existence might otherwise be read as a precedent for accepting `0`. The comment should explicitly say the divergence with the lax peers is intentional, and that a future hardening pass should align by tightening those peers rather than by loosening this regex. 4-6 lines of comment max. No code change.
+
+## Approach
+
+Follow the exact pattern already established for the ISSUE_NUMBER and RUN_ID validation errors at `scripts/tracking-issue-read.sh:286` and `:289`, and propagate the new ADOPTED contract through every co-located documentation surface so the script header, inline contract comment, the `.md` sibling, and SECURITY.md all tell the same story. The change is a one-line string substitution at the validation site, a small handful of mechanical doc edits in the same file family, the SECURITY.md addition required by the repo's security-update rule, factual edits to the four assertion blocks in the harness (including a switch from contains-only to byte-exact `assert_equal_stdout` for cases (e)/(f)/(g)/(h)), and a documentation-only clarifying comment in `get-issue-context.sh` that accurately cites the lax peers. Nothing about parsing, the strict-equality contract, exit codes, or the KV stdout envelope changes. Several reviewer findings converge on the same gaps, but the textual edits are independent — each finding's mitigation is applied exactly once in the file where the stale text actually lives.
+
+## Edge cases
+
+- Empty / absent `ADOPTED` value remains valid (exit 0, `ADOPTED=` line emitted). Case (c) "absent" and case (d) "explicit empty" must continue to pass — the validation block is only entered when `[[ -n "$ADOPTED_VAL" ]]`.
+- Duplicate `ADOPTED=` lines (case (k)) still resolve via first-match-wins from `grep -m1`. No change.
+- CRLF line endings (case (l)) and leading BOM (case (m)) continue to work because they are handled before the validation block runs.
+- The fixed-token literal `ADOPTED: 'malformed-value-omitted'` uses the same single-quoted form as `ISSUE_NUMBER: 'malformed-value-omitted'` and `RUN_ID: 'malformed-value-omitted'` — verify by grep that the new string appears alongside the existing two.
+- `assert_equal_stdout` for cases (e)/(f)/(g)/(h) pins exactly two lines (`FAILED=true\nERROR=...`). Any extra KV line, trailing whitespace, or appended payload in stdout breaks the assertion — this is the load-bearing protection against future KV-injection regressions even if the fixed-token error is preserved.
+- The negative `assert_not_contains` needles must NOT use bare digits (`"1"`) or bare lowercase words (`"yes"`) — `FAILED=true` already contains `true`, the legitimate `ADOPTED=true` line contains `true`, and small substrings could spuriously match. Use the quoted form (`"'1'"`, `"'true '"`) and/or the raw-token form (`"ADOPTED=1"`, `"ADOPTED=true "`).
+
+## Failure modes
+
+1. **Test assertion drift** — if any of cases (e)/(f)/(g)/(h) misses a sub-edit (especially the `assert_equal_stdout` line switch), CI fails loudly on byte-mismatched assertions. Earliest signal: `make test-tracking-issue-read-sentinel`. Mitigation: read each of the four blocks side-by-side with the existing fixed-token cases (p)/(q)/(t)/(u)/(v)/(w) to confirm the shape matches.
+2. **`.md` sibling drift** — script changes without matching `.md` contract updates trigger the `script-md-siblings` rule violation in CI. Earliest signal: pre-commit hook. Mitigation: update `scripts/tracking-issue-read.md` and `scripts/test-tracking-issue-read-sentinel.md` in the same commit; verify by grep that `'malformed-value-omitted'` appears next to `ADOPTED` in both `.md` files after the edit.
+3. **Stale in-script header / inline contract comments** — if the line-291-294 runtime edit ships without the matching header (lines ~33-47) and inline-comment (lines ~250-256) edits, the source-level contract documentation contradicts the runtime behavior, and a future maintainer could re-introduce the verbatim echo by following the stale comment. Earliest signal: code review (no test catches comment drift directly). Mitigation: grep the file post-edit for the literal substring `'<v>'` — it should not appear anywhere in the file.
+4. **SECURITY.md drift** — if SECURITY.md is not updated, the AGENTS.md rule is violated even though the runtime behavior is correct. Earliest signal: PR review by a maintainer following the security-update rule. Mitigation: grep SECURITY.md post-edit for `ADOPTED` adjacent to `malformed-value-omitted`.
+5. **Inaccurate clarifying comment in get-issue-context.sh** — the original draft incorrectly named `clarify-comment-post.sh` and `clarify-state.sh` as accepting `0`. Both scripts actually reject `0` via an explicit secondary check. If the comment ships with the wrong attribution, it encodes false integration guidance and could mislead a future hardening pass into "fixing" a non-bug. Mitigation: verify the comment's cited peers by inspecting the actual validation block of each named script before committing.
+
+## Testing strategy
+
+- Run `make test-tracking-issue-read-sentinel` to exercise the harness — all 26+ cases ((a)-(z), (aa)) must pass. The reshaped (e)/(f)/(g)/(h) assertions are byte-exact, so any drift in the runtime ERROR text will surface immediately.
+- Run `bash scripts/relevant-checks.sh` for the wider set of pre-commit hooks fired by the touched files (`scripts/tracking-issue-read.sh`, `scripts/test-tracking-issue-read-sentinel.sh`, the two `.md` siblings, `SECURITY.md`, `scripts/get-issue-context.sh`). This includes the `script-md-siblings` rule and shellcheck/markdownlint passes.
+- Spot-grep the touched files after the edits:
+  - `grep -n "'<v>'" scripts/tracking-issue-read.sh scripts/tracking-issue-read.md` — must return zero hits.
+  - `grep -n "malformed-value-omitted" scripts/tracking-issue-read.sh scripts/tracking-issue-read.md scripts/test-tracking-issue-read-sentinel.sh scripts/test-tracking-issue-read-sentinel.md SECURITY.md` — must show ADOPTED context in every file.
+- No new test cases are added. The harness shape stays at the existing count; (e)/(f)/(g)/(h) are reshaped in place from "names the rejected value" via `assert_contains` to "asserts byte-exact two-line envelope" via `assert_equal_stdout` plus belt-and-suspenders negative assertions on both the quoted form and the raw-token form.
+
+diff_lines: 130
