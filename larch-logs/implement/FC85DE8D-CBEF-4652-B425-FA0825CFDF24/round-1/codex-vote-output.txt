@@ -1,0 +1,4 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the generic rejected path is only implicitly covered, but the wording is close enough for an inventory row and a further split would add low-value detail
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the run-log flush is an intentional committed artifact under the documented run-log contract, not an issue-worthy problem
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the omission is real but too fine-grained for the linting inventory row, which already notes rebase failure propagation

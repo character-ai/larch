@@ -1,0 +1,4 @@
+Gathering reviewer source files for verbatim revision quotes and to validate merge groupings.
+Checking harness context for FINDING_1 and whether OOS uses `OOS_N` or `FINDING_N` in the current pipeline.
+Confirming merge logic: one in-scope finding; three OOS clusters. Creating the plan with the full aggregator output.
+
