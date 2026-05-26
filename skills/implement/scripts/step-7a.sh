@@ -60,6 +60,19 @@ kv_value() {
     awk -F= -v key="$key" '$1==key{print substr($0, index($0, "=") + 1); exit}' "$file" 2>/dev/null
 }
 
+is_sanitizer_skip_reason() {
+    local reason=${1:-}
+    case "$reason" in
+        "" ) return 1 ;;
+        sanitizer-rejected|sanitizer-*|*sanitizer-reject*|*pipe-in-node-label*|*br-in-participant-alias*|*dollar-in-participant-alias*|*unclosed-frontmatter*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 is_non_runtime_path() {
     local path=$1 base ext
     case "$path" in
@@ -134,7 +147,7 @@ run_larch_log_write() {
 }
 
 run_log_flush() {
-    local rc out_file
+    local rc out_file status_file
     LOG_FLUSH_STATUS=ok
 
     "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 8 — version bump" || true
@@ -174,17 +187,24 @@ run_log_flush() {
     [ -f "$IMPLEMENT_TMPDIR/manifest-raw.json" ] && run_larch_log_write codex-impl-manifest-raw "$IMPLEMENT_TMPDIR/manifest-raw.json"
 
     out_file="$IMPLEMENT_TMPDIR/capture-session-transcript.log"
+    status_file="$IMPLEMENT_TMPDIR/capture-session-transcript.stdout"
     set +e
-    "$PLUGIN_ROOT/scripts/capture-session-transcript.sh" \
+    LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/capture-session-transcript.sh" \
         --source-file "$LARCH_CLAUDE_SOURCE_FILE" \
         --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
         --skill implement \
         --run-id "$RUN_ID" \
         --no-logs-commit "${no_logs_commit:-false}" \
         --defer-commit "true" \
-        --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" 2>"$out_file"
+        --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" >"$status_file" 2>"$out_file"
     rc=$?
     set +e
+    if [ -f "$status_file" ]; then
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            emit "$line"
+        done <"$status_file"
+    fi
     if [ "$rc" -ne 0 ]; then
         LOG_FLUSH_STATUS=degraded
         append_best_effort_failure "step-7a" "capture-session-transcript.sh" "$rc" "$out_file"
@@ -336,11 +356,16 @@ if is_small_non_runtime_change; then
 else
     gen_out="$IMPLEMENT_TMPDIR/code-flow-diagram.stdout"
     gen_err="$IMPLEMENT_TMPDIR/code-flow-diagram.stderr"
+    gen_skip_reason=""
     set +e
     "$PLUGIN_ROOT/skills/implement/scripts/generate-code-flow-diagram.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$gen_out" 2>"$gen_err"
     gen_rc=$?
     set +e
     gen_status=$(kv_value STATUS "$gen_out")
+    gen_skip_reason=$(kv_value SKIP_REASON "$gen_out")
+    if is_sanitizer_skip_reason "$gen_skip_reason"; then
+        COMMENT_UPSERT_SKIP=true
+    fi
     case "$gen_status" in
         ok)
             DIAGRAM_STATUS=ok

@@ -22,10 +22,11 @@ skills/implement/scripts/step-7a.sh \
 | `DIAGRAM_STATUS` | `ok`, `skipped`, `failed`, or `skip` (`skip` means the small/non-runtime classifier skipped generation) |
 | `DIAGRAM_PATH` | Absolute path to `code-flow-diagram.md`, or empty |
 | `COMMENT_URL` | Tracking issue comment URL, or empty when upsert is gated, skipped, or failed |
+| `SESSION_TRANSCRIPT_STATUS` | Relayed `capture-session-transcript.sh` status lines, when emitted |
 | `LOG_FLUSH_STATUS` | `ok`, `degraded`, `skipped-no-logs-commit`, or `skipped-rebase-checkpoint` |
 | `STEP_7A_BAIL_REASON` | Empty on non-argv paths; `argv` on usage errors |
 
-The helper re-emits the `rebase-checkpoint-probe.sh` KV envelope onto the caller-visible contract stream before its final KV tail.
+The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transcript.sh` KV envelopes onto the caller-visible contract stream before its final KV tail.
 
 ## Exit Codes
 
@@ -45,7 +46,7 @@ The helper re-emits the `rebase-checkpoint-probe.sh` KV envelope onto the caller
 - Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, diagram generation, comment composition/upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
 - `summary-diagrams.md` preserves the existing `larch:diagrams` content shape: Architecture Diagram content or placeholder, blank line, then Code Flow content or placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- `generate-code-flow-diagram.sh` currently emits `STATUS=skipped` only for sanitizer rejection; Step 7a suppresses the `larch:diagrams` upsert on that status and still writes the placeholder body to `summary-diagrams.md`.
+- Step 7a suppresses the `larch:diagrams` upsert when `generate-code-flow-diagram.sh` reports `STATUS=skipped` or emits a sanitizer rejection token via `SKIP_REASON`, and still writes the placeholder body to `summary-diagrams.md`.
 - `LARCH_QUIET_BREADCRUMBS=1` is exported for the 7a.r rebase checkpoint probe.
 - The helper does not write a `diagrams` larch-log batch.
 

@@ -126,7 +126,7 @@ case "${STEP7A_GEN_MODE:-ok}" in
         ;;
     failed)
         printf 'generator helper failed\n' >&2
-        printf 'STATUS=failed\nDIAGRAM_FILE=\nSKIP_REASON=helper-error\n'
+        printf 'STATUS=failed\nDIAGRAM_FILE=\nSKIP_REASON=%s\n' "${STEP7A_GEN_FORCE_SKIP_REASON:-helper-error}"
         ;;
     crash)
         printf 'generator crashed\n' >&2
@@ -336,6 +336,7 @@ assert_contains "DIAGRAM_STATUS=ok" "$out" "green emits diagram ok"
 assert_contains "DIAGRAM_PATH=$CASE_DIR/tmp/code-flow-diagram.md" "$out" "green emits diagram path"
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "green emits comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "green emits log flush ok"
+assert_contains "SESSION_TRANSCRIPT_STATUS=ok" "$out" "green relays transcript status"
 assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
 assert_call_order "$CASE_DIR/calls.log" "token-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
@@ -393,6 +394,16 @@ assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-generation-failure emits
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-generation-failure still posts comment"
 assert_file_contains "Code flow diagram not available." "$CASE_DIR/tmp/summary-diagrams.md" "diagram-generation-failure writes unavailable placeholder"
 assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-generation-failure appends warning"
+
+new_case diagram-failure-sanitizer
+set +e
+out=$(STEP7A_GEN_MODE=failed STEP7A_SANITIZER_TOKEN=pipe-in-node-label STEP7A_GEN_FORCE_SKIP_REASON='pipe-in-node-label fence=mermaid line=7' run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "diagram-failure-sanitizer exits 0"
+assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-failure-sanitizer emits failed"
+assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer skips upsert"
+assert_contains "COMMENT_URL=" "$out" "diagram-failure-sanitizer emits empty comment URL"
 
 new_case upsert-failure
 set +e
