@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- the parser-divergence risk is hypothetical and not worth changing now
+FINDING_5: EXONERATE -- extracting a shared lib for future reuse adds architecture without a current bug
+FINDING_6: EXONERATE -- the new registered harness covers the behavior; duplicating smoke in the old harness is low value
+FINDING_7: YES
+FINDING_8: NO -- the registered test-findings-classification harness already covers --voter and TSV integration
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- the remaining drift guards are minor relative to existing coverage
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: NO -- the parser emits only enum/derived fields from voter files, not arbitrary file content
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- the unreadable-after-precheck race is too narrow and the vote path would already fail
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- nonzero is sufficient here; exact exit-code alignment is too low-value

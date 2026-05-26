@@ -1,0 +1,4 @@
+Aggregating reviewer findings: locating source reviewer outputs and verifying merge targets in the cited code (read-only).
+Checking an example aggregator output format and whether OOS blocks use `OOS_N` or `[OUT_OF_SCOPE]` FINDING headings:
+Producing the normalized aggregator output: 24 raw inputs merge into 17 in-scope findings and 2 OOS blocks.
+

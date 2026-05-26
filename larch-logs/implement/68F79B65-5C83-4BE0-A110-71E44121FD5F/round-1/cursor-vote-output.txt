@@ -1,0 +1,54 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- duplicated loops are small and stable; shared helper adds indirection for little gain today
+FINDING_4: EXONERATE -- header strings match tally today; drift risk is low until schema changes
+FINDING_5: YES
+FINDING_6: EXONERATE -- subprocess-per-cell is correct; batching is optional performance work
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- no-delimiter axis parsing matches the plan’s explicit contract
+FINDING_13: YES
+FINDING_14: EXONERATE -- same low-drift header duplication as FINDING_4
+FINDING_15: YES
+FINDING_16: EXONERATE -- lib-quiet routes emit_kv to FD3 dup of the substitution pipe, so capture should work
+FINDING_17: YES
+FINDING_18: EXONERATE -- ballot attribution is already session-scoped; redaction remains the existing gate
+FINDING_19: EXONERATE -- ballot IDs are fixed FINDING_N/OOS_N tokens, not arbitrary regex input
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- same intentional no-delimiter parsing as FINDING_12
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: EXONERATE -- duplicate header concern; identical string and low immediate risk
+FINDING_37: EXONERATE -- quiet FD3 capture is covered by lib-quiet; extra harness is optional
+FINDING_38: YES
+FINDING_39: NO -- test-render-voter-prompt.md already documents test-harnesses-13, matching the Makefile
+FINDING_40: YES
+FINDING_41: YES
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: YES
+FINDING_45: EXONERATE -- minor second header source; strings currently match
+FINDING_46: YES
+FINDING_47: YES
+FINDING_48: YES
+FINDING_49: EXONERATE -- tab-before-delimiter edge case is unlikely vs prompt’s space-dash-dash-space rule
+FINDING_50: NO -- scout-verified non-issues, not actionable defects
+FINDING_51: NO -- double-space before delimiter works as intended
+FINDING_52: YES
+FINDING_53: NO -- harness case 7 reflects the documented no-delimiter contract
+FINDING_54: YES

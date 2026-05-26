@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- legitimate cleanup concern, but the refactor is not worth raising beyond the concrete slot-index bug.
+FINDING_4: EXONERATE -- minor shell-process overhead is not worth complicating this path.
+FINDING_5: EXONERATE -- the inefficiency is real but too small to warrant a review finding.
+FINDING_6: NO -- the provided plan requires non-zero exits, not exit 1 specifically, and exit 2 is normal argv-validation behavior.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- the harness already includes a quiet-mode parser capture with LARCH_QUIET_DISABLE unset.
+FINDING_11: NO -- MainAgent TSV rows being rejected is documented and harnessed as the intended contract.
+FINDING_12: NO -- the rendered prompt examples use lowercase enum placeholders, and the proposed literal-value assertion is not a meaningful gap.
+FINDING_13: NO -- scripts/test-dispatch-plan-voters.sh already asserts VOTER_N_TOOL KVs for fallback paths.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: NO -- MainAgent TSV rejection is an explicit documented contract, not an accidental analytics bug.
+FINDING_19: EXONERATE -- the whitespace edge case is real but minor and the prompt grammar already requires separated tokens.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: NO -- the missing cases are covered in test-findings-classification.sh rather than test-tally-plan-review.sh.
+FINDING_23: EXONERATE -- the shared header helper keeps the schema centralized enough; invoking tally for header-only exits is unnecessary complexity.
+FINDING_24: NO -- code and diff-plan render the same verification text here, so this is not a concrete behavioral regression.
+FINDING_25: NO -- exit 2 is acceptable argv-validation behavior and the cited plan text does not require exit 1.

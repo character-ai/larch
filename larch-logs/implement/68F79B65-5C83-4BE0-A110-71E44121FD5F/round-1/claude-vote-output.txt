@@ -1,0 +1,54 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- plan explicitly allows inline header as a fallback; the concern is legitimate but the fix introduces indirection for marginal gain
+FINDING_5: YES
+FINDING_6: EXONERATE -- nit-level performance concern; no correctness impact and 90 invocations is not prohibitive for typical panel sizes
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- intentional design: plan states that without `--` the entire post-ID segment is axis-eligible; this is documented behavior
+FINDING_13: YES
+FINDING_14: EXONERATE -- same rationale as FINDING_4; plan sanctions the inline header fallback
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- hardlink attack requires session-write compromise already beyond the threat model; redact pipeline is the primary guard
+FINDING_18: EXONERATE -- informational concern; redacting reviewer attribution would harm utility without clear security benefit
+FINDING_19: EXONERATE -- FINDING_N / OOS_N IDs contain no awk regex metacharacters in practice; concern is not realistic for conforming ballot IDs
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- same as FINDING_12; intentional design for delimiter-free lines
+FINDING_25: YES
+FINDING_26: EXONERATE -- the shard reference in tally-plan-review.md ("test-harnesses-1") is for test-tally-plan-review and remains accurate; test-findings-classification is documented in its own sibling .md
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: EXONERATE -- same as FINDING_4; plan sanctions the inline fallback pattern
+FINDING_37: YES
+FINDING_38: EXONERATE -- exit 2 for invalid args is conventional POSIX usage; callers use `|| true` and the distinction from exit 1 is not load-bearing
+FINDING_39: EXONERATE -- shard reference speculation; no concrete stale value identified
+FINDING_40: YES
+FINDING_41: YES
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: YES
+FINDING_45: EXONERATE -- plan explicitly sanctions inline header as a fallback when tally invocation is too heavy; implementation follows the documented fallback
+FINDING_46: YES
+FINDING_47: YES
+FINDING_48: YES
+FINDING_49: YES
+FINDING_50: NO -- finding explicitly states correct behavior with no defect; nothing to file
+FINDING_51: NO -- finding explicitly states correct behavior; nothing to file
+FINDING_52: YES
+FINDING_53: NO -- finding explicitly states intentional design with no defect; nothing to file
+FINDING_54: YES

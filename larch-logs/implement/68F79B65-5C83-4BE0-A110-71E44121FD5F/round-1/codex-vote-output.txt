@@ -1,0 +1,48 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- legitimate maintainability concern, but extracting a shared tally helper is more complexity than this duplication warrants.
+FINDING_4: EXONERATE -- real drift risk, but header-only duplication is low impact and not worth the proposed plumbing.
+FINDING_5: YES
+FINDING_6: EXONERATE -- the performance cost is bounded and batching would add complexity without clear need.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- parser behavior matches the documented no-delimiter contract, so prompt discipline is enough here.
+FINDING_13: YES
+FINDING_14: EXONERATE -- real drift risk, but low-impact duplication does not justify a structural change.
+FINDING_15: YES
+FINDING_16: NO -- command substitution captures the parser's FD3 output because lib-quiet binds FD3 to the child stdout before redirecting ordinary stdout.
+FINDING_17: NO -- hardlinking does not create a meaningful extra leak path beyond a writer that can already place readable content in the session tree.
+FINDING_18: EXONERATE -- the untrusted log-column risk is covered by the existing publish redaction boundary and does not warrant column-specific handling.
+FINDING_19: EXONERATE -- regex hardening would be cleaner, but normal callers pass constrained ballot IDs and the risk is too marginal.
+FINDING_20: EXONERATE -- render-cache symlinked subdirs can hide optional cache files, but the impact is too low for a separate security issue.
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- without the delimiter, the parser intentionally treats the full line as axis-eligible per the current contract.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: NO -- the plan puts the new TSV and --voter cases in test-findings-classification.sh, not necessarily test-tally-plan-review.sh.
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: EXONERATE -- shared header generation would be cleaner, but this is a low-risk duplication.
+FINDING_37: NO -- test-findings-classification.sh already captures parser output in default quiet mode.
+FINDING_38: NO -- exit 2 is consistent with existing argv-validation conventions and the documented contract only requires non-zero.
+FINDING_39: NO -- scripts/test-render-voter-prompt.md already matches the Makefile shard assignment.
+FINDING_40: YES
+FINDING_41: YES
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: NO -- the new argv/TSV regression surface is covered by test-findings-classification.sh rather than the older tally harness.
+FINDING_45: EXONERATE -- the duplicated zero-findings header is real but not worth a separate out-of-scope issue.
+FINDING_46: YES
+FINDING_47: YES
+FINDING_48: YES

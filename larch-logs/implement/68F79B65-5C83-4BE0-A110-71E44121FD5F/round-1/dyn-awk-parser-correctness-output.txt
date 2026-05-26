@@ -1,0 +1,19 @@
+Reviewing the awk parser in `parse-judge-vote-and-rating.sh` against the plan and `vote_for_id` semantics.
+Verifying vote-token divergence with readonly awk/bash tests:
+### In-Scope Findings
+
+- **correctness** `scripts/parse-judge-vote-and-rating.sh:47-52`, `skills/design/scripts/tally-plan-review.sh:294-319` — Vote extraction in the awk program uses the first whitespace-delimited token (`sub(/[[:space:]].*$/, "", token)`), while `vote_for_id` in `scripts/lib-vote-tally.sh:20-25` accepts `YES|NO|EXONERATE` when immediately followed by `-` or whitespace. A line like `FINDING_1: YES-CORRECTNESS=true SEVERITY=major` yields `PARSED_VOTE=` (empty) and skips the glued `CORRECTNESS=` token, but `vote_for_id` returns `YES`. Tally uses `vote_for_id` for `voting_result` (lines 294–307) and `PARSED_VOTE` for `vN_vote` (lines 314–315), so the TSV can show an empty vote while the row’s `voting_result` reflects a YES—breaking the plan’s parity requirement and corrupting forensic analytics. **Suggested fix:** Parse the vote with the same anchored regex as `vote_for_id` (`^(YES|NO|EXONERATE)([[:space:]-]|$)` on the post-prefix segment, case-insensitive, emit upper-case), or set `vN_vote` from `vote_for_id` and keep the parser for axes only.
+
+- **correctness** `scripts/parse-judge-vote-and-rating.sh:36-38`, `scripts/lib-vote-tally.sh:18-20` — The awk prefix match is case-sensitive on `$0` (`$0 ~ "^" id ":[[:space:]]*"`), but `vote_for_id` matches on `toupper(line)` with `toupper(id)`. A voter line `finding_1: yes CORRECTNESS=true ...` produces empty `PARSED_*` fields while `vote_for_id` still returns `YES`, again splitting `vN_vote` from the vote counts that drive `voting_result`. **Suggested fix:** Match lines case-insensitively (e.g. `toupper($0) ~ "^" toupper(id) ":[[:space:]]*"`) before parsing, mirroring `vote_for_id`.
+
+- **correctness** `scripts/parse-judge-vote-and-rating.sh:43-46` — Rationale scoping uses `index(scoped, " -- ")` (ASCII space–dash–dash–space only). With a tab before `--` (`...\t-- reviewer mentioned QUALITY=weak`), the delimiter is not found; a live check then sets `PARSED_QUALITY=weak` from rationale text instead of the intended pre-delimiter value `good`. Prompts specify ` -- `, but minor formatting drift is plausible in LLM output. **Suggested fix:** Treat `[[:space:]]--[[:space:]]` (any whitespace around `--`) as the delimiter, or normalize tabs to spaces before `index`, and add a harness case for tab-before-`--`.
+
+### Out-of-Scope Observations
+
+- Scout checklist items **parts[1] axis loop**, **`reset_fields` / last-line-wins**, and **`FINDING_1` vs `FINDING_10` prefix collision** behave as intended; no defect found (verified including `FINDING_10` non-match).
+
+- **Double space before `--`** (e.g. `UNCERTAIN=false  -- reason`) still truncates at the delimiter and keeps `PARSED_QUALITY=good`; not a regression.
+
+- `scripts/parse-judge-vote-and-rating.md:34` states the ` -- ` delimiter is the same one `vote_for_id` uses, but `vote_for_id` does not implement `--` scoping—documentation-only inaccuracy.
+
+- Harness case `FINDING_7` (line without `--`, prose `QUALITY=weak`) intentionally parses rationale tokens; that is contract-by-design, not an awk bug.

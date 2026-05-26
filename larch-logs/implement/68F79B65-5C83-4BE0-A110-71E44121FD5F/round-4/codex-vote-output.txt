@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE -- Duplication is real, but refactoring the tally paths is more churn than the current risk warrants.
+FINDING_2: EXONERATE -- Extracting tally internals into the lib is architectural cleanup, not needed for the shipped behavior.
+FINDING_3: YES
+FINDING_4: EXONERATE -- The extra `vote_for_id` calls are inefficient but not significant enough to raise.
+FINDING_5: EXONERATE -- The unused locals are harmless reader noise and not worth a review finding.
+FINDING_6: NO -- Header emission is already centralized through `emit_findings_classification_header`, so the schema-drift claim is not concrete.
+FINDING_7: EXONERATE -- The no-delimiter case follows the documented parser contract; stricter parsing would add more complexity than this edge case warrants.
+FINDING_8: NO -- Current docs/tests intentionally make sole MainAgent adjudication binding; the rejected rows apply to the zero-voter fallback.
+FINDING_9: YES
+FINDING_10: EXONERATE -- Parser/vote divergence is only a hypothetical future risk with no current behavioral failure.
+FINDING_11: NO -- TSV-specific argv and schema cases belong in the dedicated registered `test-findings-classification` harness.
+FINDING_12: NO -- MainAgent is intentionally excluded from `vN_*` rating columns by the current contract.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- The issue is naming/traceability only and not a concrete behavioral or coverage gap worth raising.
+FINDING_17: EXONERATE -- Retry-prefix drift coverage would be nice, but this grep-only nit is too low value.
+FINDING_18: NO -- Reading caller-supplied voter paths is not a concrete security issue in this local tally script.
+FINDING_19: EXONERATE -- Header-only fallback on tally failure is distinguishable through loop status and acceptable for recovery.
+FINDING_20: EXONERATE -- A parser crash producing empty cells is a low-likelihood failure path not worth complicating.
+FINDING_21: EXONERATE -- Hyphen-glued axis tokens are malformed input, and supporting them is not worth extra parser complexity.
+FINDING_22: EXONERATE -- The missing `--verification-context code` renderer test is a minor coverage gap.
+FINDING_23: NO -- The item itself identifies this as an optional single-source cleanup with no functional gap.
+FINDING_24: NO -- The quiet-mode split-test gap is too low-risk to file as an out-of-scope issue.
