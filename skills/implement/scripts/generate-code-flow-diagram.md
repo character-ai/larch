@@ -25,3 +25,8 @@ Output:
 - `SKIP_REASON=<reason-or-empty>`
 
 On success, the promoted file is `$IMPLEMENT_TMPDIR/code-flow-diagram.md`.
+When the Mermaid sanitizer rejects a candidate, `SKIP_REASON` carries the bare
+`REASON_TOKEN` identifier: everything after `REASON_TOKEN=` up to the first
+whitespace, preserving any embedded `=` characters. Trailing sanitizer metadata
+such as `fence=` and `line=` is intentionally omitted. If the sanitizer log has
+no `REASON_TOKEN=` line, the helper falls back to `sanitizer-rejected`.

@@ -34,7 +34,11 @@ printf 'STATUS=OK\n'
 STUB
 cat > "$plugin/scripts/sanitize-mermaid-fragment.sh" <<'STUB'
 #!/usr/bin/env bash
-if [ "${SANITIZE_REJECT:-}" = 1 ]; then printf 'STATUS=rejected\nREASON_TOKEN=test-reject\n'; exit 1; fi
+if [ "${SANITIZE_REJECT:-}" = 1 ]; then
+    printf 'STATUS=rejected\n'
+    printf '%s\n' "${SANITIZE_REASON_LINE:-REASON_TOKEN=test-reject}"
+    exit 1
+fi
 printf 'STATUS=ok\n'
 STUB
 chmod +x "$plugin/scripts/launch-claude-subprocess.sh" "$plugin/scripts/sanitize-mermaid-fragment.sh"
@@ -51,6 +55,24 @@ tmp2="$TMP_ROOT/session2"; mkdir -p "$tmp2"
 out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 "$HELPER" --implement-tmpdir "$tmp2")
 assert_contains 'STATUS=skipped' "$out" 'sanitizer rejection is skippable'
 assert_contains 'SKIP_REASON=test-reject' "$out" 'rejection reason emitted'
+
+tmp3="$TMP_ROOT/session3"; mkdir -p "$tmp3"
+out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
+    SANITIZE_REASON_LINE='REASON_TOKEN=pipe-in-node-label fence=1 line=7' \
+    "$HELPER" --implement-tmpdir "$tmp3")
+assert_contains 'SKIP_REASON=pipe-in-node-label' "$out" 'SKIP_REASON extracts token only from production-shape line'
+
+tmp4="$TMP_ROOT/session4"; mkdir -p "$tmp4"
+out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
+    SANITIZE_REASON_LINE='REASON_TOKEN=pipe-in-node-label=foo fence=1 line=7' \
+    "$HELPER" --implement-tmpdir "$tmp4")
+assert_contains 'SKIP_REASON=pipe-in-node-label=foo' "$out" 'SKIP_REASON preserves embedded = within token'
+
+tmp5="$TMP_ROOT/session5"; mkdir -p "$tmp5"
+out=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" SANITIZE_REJECT=1 \
+    SANITIZE_REASON_LINE='STATUS_DETAIL=other' \
+    "$HELPER" --implement-tmpdir "$tmp5")
+assert_contains 'SKIP_REASON=sanitizer-rejected' "$out" 'SKIP_REASON falls back when REASON_TOKEN absent'
 
 set +e
 bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" 2>/dev/null)
