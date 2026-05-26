@@ -1,0 +1,46 @@
+# Approach Synthesis
+
+## Agreement (between Codex sketch and the codebase-derived constraints)
+
+Only one substantive sketch returned content (Codex; 3191 bytes). The Cursor sketch returned narration-only output (`"Exploring the codebase ... Creating the implementation plan from the codebase review."`) and contributed no architectural input — logged under External Reviewer Issues in `execution-issues.md`. Synthesis therefore proceeds from the single substantive sketch (Codex) plus Round 1 constraints; there are no divergent sketches to reconcile.
+
+The Codex sketch and the locked-in Round 1 architecture converge on a single approach:
+
+- **Single-slot collapse** of `skills/review/scripts/aggregate-findings.sh` modeled on `skills/design/scripts/decompose-aggregator.sh` (post-PR #2895).
+- One `aggregator` slot row: `tool=codex`, `output=$REVIEW_TMPDIR/aggregator-output.txt`.
+- One call to `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh` with the existing `--codex-present` / `--cursor-present` flags plus `--require-result-pattern '^[[:space:]]*### FINDING_[0-9]'`.
+- Delete the outer-phase machinery: `outer_names`, `outer_out_paths`, the `for idx` outer loop, the `slot_tool` per-phase wiring, the `case "$outer_name"` block, the `actual_tool != outer_name → continue` skip path, `PHASES_ATTEMPTED_CSV`, `merge_succeeded`, and `LARCH_AGGREGATE_MAX_OUTER_PHASES`.
+- After dispatch returns, resolve the final candidate from `ALL_OUTPUT_FILES` (first space-separated token) or `ALL_OUTPUT_FILES_PATH`, then run `_agg_pipeline_for_candidate` exactly once.
+- Map `MERGE_PIPELINE_RC` to `REASON`:
+  - `0` → `AGGREGATED=true REASON=ok`.
+  - `2` → `AGGREGATED=false REASON=validation-failed` (legacy single-shot semantics retained; one warning under External Reviewer Issues).
+  - `1` → `AGGREGATED=false REASON=validation-exhausted` (no further retry at the aggregate-findings layer; one consolidated execution-issues entry). This is the post-collapse home for narrow-trigger validator failures (`AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input` and `AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring`).
+- Omit the `PHASES_ATTEMPTED` stdout key — there is no longer a meaningful comma-list of aggregate-level phases. The dispatcher's phase detail remains visible in `aggregator-dispatch.env` via `PHASE1_SLOTS`, `PHASE2_SLOTS`, `PHASE3_SLOTS`, and `ALL_OUTPUT_TOOLS` for diagnosis.
+
+## Architectural justification
+
+- The dispatcher (post-#2895) owns tool-level fallback via its internal phase-1/phase-2/phase-3 chain plus the `--require-result-pattern` gate. Pattern misses route through the same chain. Re-implementing an outer loop on top would duplicate fallback machinery.
+- The pattern gate `'^[[:space:]]*### FINDING_[0-9]'` catches the exact failure mode that motivated this issue (Cursor `--mode plan` narration-only `.result` payloads) at the dispatcher boundary, before the post-dispatch python validator runs. This makes the historical round-1 inconsistency unreachable.
+- `_agg_pipeline_for_candidate` is preserved unchanged in behavior (validate, strip attestation, stage, replace). It runs exactly once after dispatch — semantically equivalent to the inner half of the old outer loop iterations, just without retry across tools.
+- `REASON=validation-exhausted` is preserved as a reachable terminal state. Without it, `review-core.sh:514`'s consumer branch (which emits `REVIEW_CORE_STATUS=aggregator-validation-exhausted`, stalls `/implement` Step 5 under `Tool Failures`, and is referenced by `review-and-fix.sh`, `review-implement-step5-loop.sh`, and `test-review-core.sh`) would never fire — silently breaking downstream contracts.
+
+## Files to modify
+
+- `skills/review/scripts/aggregate-findings.sh` — single-slot dispatch + simplified result mapping. Net negative line count (outer loop machinery removed; single call site added).
+- `skills/review/scripts/aggregate-findings.md` — replace the multi-paragraph outer-waterfall contract with a single-paragraph dispatcher-owned-fallback description. Document that `PHASES_ATTEMPTED` is removed and that `--require-result-pattern '^[[:space:]]*### FINDING_[0-9]'` is the structural gate.
+- `skills/review/scripts/test-aggregate-findings.sh` — delete or rewrite the ~10 `LARCH_AGGREGATE_MAX_OUTER_PHASES=1` cases (the env var no longer exists). Add at least one new positive case asserting: when Cursor primary returns a narration-only output, the dispatcher's internal phase-2 Codex fallback produces a valid `### FINDING_N:` ballot and `AGGREGATED=true REASON=ok` is emitted.
+- `CHANGELOG.md` — Unreleased entry mirroring the #2895 entry style: name the collapse + pattern gate + the deleted env var.
+- `SECURITY.md` — rewrite the line-~81 paragraph that documents the Cursor → Codex → Claude outer waterfall and `LARCH_AGGREGATE_MAX_OUTER_PHASES` so it reflects the dispatcher-owned fallback (the `aggregate-findings.sh` paragraph is the only known prose location for that contract).
+
+## Main tradeoffs and risks
+
+1. **Loss of cross-tool validator-retry semantics** (deliberate). Old design: on `empty_merge_from_nonempty_input` or `preamble_finding_substring`, the outer loop tried the NEXT tool (Codex after Cursor, Claude after Codex) at the python-validator layer. New design: the pattern gate catches structural narration at dispatch; semantic empty merges become single-shot `validation-exhausted` from whichever tool dispatch chose. Mitigation: the pattern gate already catches the dominant failure mode (Cursor narration-only). Semantic empty merges with structurally-correct output are vanishingly rare and the right response is to surface them as `validation-exhausted` rather than burn budget retrying a different tool that would likely fail the same way.
+2. **Test churn**: ~10 cases lose their `LARCH_AGGREGATE_MAX_OUTER_PHASES` setup. Some can be deleted outright (they tested outer-loop bookkeeping that no longer exists), others need re-expression as dispatch-fixtures driving phase-1/phase-2 fallback. Risk: under-coverage of edge paths if cases are simply deleted without replacement. Mitigation: add explicit dispatcher-pattern-mismatch cases that exercise the new fallback equivalence.
+3. **REASON contract**: `validation-exhausted` consumers must continue to see the REASON value. Mitigation: explicit unit test asserting that a narrow-trigger validator failure post-dispatch produces `REASON=validation-exhausted` (not `validation-failed`).
+4. **Acceptance text drift**: the issue's acceptance criteria reference the now-removed outer loop. Mitigation: the composed `larch:plan` Acceptance section rewrites the criteria to match the collapse design before `/implement` runs.
+
+## What's intentionally NOT in scope
+
+- No threading `--require-result-pattern` into other callers (plan-review reviewer slots, code-review per-slot launches, decompose-panel-dispatch which already has its pattern from #2895).
+- No archaeological writeup of why the historical round-1 outer-fallback inconsistency happened (`set -e` vs state vs timing) — Fix 3 has been reframed as pure regression test.
+- No `review-core.sh` / `review-core.md` modifications unless removing genuinely-dead code is warranted (the validation-exhausted branch stays, so likely no edits there).
