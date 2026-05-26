@@ -1,0 +1,392 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:230-257
+- **Concern**: Router-flag recovery guard still keys only on partition_requested OR brainstorm_requested. Scenario: /design --manual with write-run-params.sh failure skips jq merge; manual_gate_b never persisted; operator gets auto-apply despite --manual
+- **Proposed resolution**: Extend the if/elif guard and jq-unavailable warning to include manual_requested; add merge_m arm and --manual-gate-b on the fallback write-run-params.sh call
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:17-18,764-785
+- **Concern**: SKILL.md plan updates are too narrow and leave hard-tier and Step 3 prose contradicting the new default auto-apply mode. Scenario: After the PR, /design --hard would still be documented as per-finding approval and Step 3 would still say revision happens by explicit user choice, while Gate B auto-applies by default
+- **Proposed resolution**: Update every Gate B behavior sentence in SKILL.md, including the hard flag row, Step 3 post-review paragraph, Step 3.5 body, and Round 2 discussion prose, to describe default auto-apply plus --manual opt-out
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/approval-gates.md:5,47-50,76-89
+- **Concern**: The plan rewrites Gate B prompt/invariant sections but misses adjacent normative contract text that still says every reviewer suggestion is prompted and never auto-applied. Scenario: The approval-gates reference would contain mutually exclusive rules, and implementers may preserve the old AskUserQuestion contract despite the new branch
+- **Proposed resolution**: Update the top Contract line, Gate A re-entry prose, and Gate B Presentation/Prompt lead-in to make AskUserQuestion manual-mode-only while preserving Gate A and Gate C prompt contracts
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: docs/skills.md:50-54
+- **Concern**: The public skill catalog is omitted even though it enumerates /design arguments and behavior. Scenario: Consumers reading docs/skills.md will not discover --manual/-m and will see incomplete Gate B behavior after the public flag ships
+- **Proposed resolution**: Add docs/skills.md to UPDATED files and revise the /design Arguments and description alongside README.md
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-design-structure.sh:599-610,689-696
+- **Concern**: Known structural pins for /design flags and run-params are only mentioned conditionally, but this harness definitely needs updates. Scenario: make relevant-checks will fail after SKILL.md gains --manual/-m and --manual-gate-b because the exact allowlist and run-params grep pins still expect only partition/brainstorm
+- **Proposed resolution**: Add scripts/test-design-structure.sh to UPDATED files with explicit --manual/-m argument-hint, allowlist, write-run-params, and jq-merge pins; update its sibling contract if the documented coverage changes
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/test-write-run-params.md:7-13
+- **Concern**: The test harness contract is not included with the write-run-params test changes. Scenario: The shell harness would cover manual_gate_b, but its documented coverage would remain stale and undercut the repo's edit-in-sync convention
+- **Proposed resolution**: Update scripts/test-write-run-params.md to mention --manual-gate-b enum rejection, default false shape, explicit true/false cases, and triple-boolean persistence
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:230-257
+- **Concern**: Router-flag recovery guard still keys only on partition_requested OR brainstorm_requested. Scenario: /design --manual with write-run-params.sh failure never enters jq merge or graceful-degrade rewrite; Gate B reads missing manual_gate_b and auto-applies despite argv
+- **Proposed resolution**: Extend the outer if/elif conditions and merge_p/merge_b-style arms to include manual_requested (and pass --manual-gate-b in the fallback write-run-params.sh call), mirroring partition/brainstorm
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:227-258
+- **Concern**: Manual-only write-params failure can skip flag recovery. Scenario: The current recovery guard is keyed only on partition_requested or brainstorm_requested. If write-run-params fails during a --manual-only run and the plan only adds manual_gate_b inside the merge expression, the block will not run, run-params.json can omit manual_gate_b, and Gate B will default to auto-apply despite the operator opting out.
+- **Proposed resolution**: Revise the plan to explicitly update both outer recovery conditions and the no-jq warning path to include manual_requested, merge manual_gate_b alongside the other booleans, and add a manual-only recovery assertion.
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/approval-gates.md:5, skills/design/SKILL.md:764, skills/design/references/plan-review.md:198-211, skills/design/references/plan-review-quick.md:23-47
+- **Concern**: Stale no-auto-apply contracts remain outside the edited Gate B paragraph. Scenario: Several loaded prompt/reference surfaces still say reviewer suggestions are never auto-applied, plan revision is per explicit user choice, or findings apply only if the user chooses. After the proposed default flip, these contradictions can cause the orchestrator or reviewer-facing templates to preserve the old manual-only behavior.
+- **Proposed resolution**: Expand the plan to update all adjacent no-auto-apply/user-choice wording, not only approval-gates Invariant #4 and SKILL Step 3.5; grep for explicit user choice, only if the user chooses, auto-applied, and never silently applies.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: README.md:59-61, docs/skills.md:50-54
+- **Concern**: Public skill catalog update misses docs/skills.md. Scenario: The plan conditionally updates README when /design flags are enumerated, but docs/skills.md also enumerates the same /design arguments and is linked from README. Leaving it stale means consumers see --manual in one catalog surface but not the detailed skill catalog.
+- **Proposed resolution**: Add docs/skills.md to the plan with the same argument-hint and one-line --manual semantics update as README.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:230-237
+- **Concern**: Router-flag recovery guard and jq merge omit manual-only argv. Scenario: The plan extends the jq merge arms for manual_gate_b but does not require widening the outer if from partition OR brainstorm to include manual_requested. A run with only --manual whose initial write-run-params.sh fails never enters recovery; manual_gate_b is lost and Gate B auto-applies despite --manual.
+- **Proposed resolution**: test-design-structure.sh:692-696 also pins the old two-flag guard string and will fail once manual is wired. Extend the recovery if to partition OR brainstorm OR manual_requested; add --manual-gate-b to the graceful-degrade write-run-params.sh call; update test-design-structure.sh pins for the new guard, merge filter, and --manual-gate-b invocation.
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-design-structure.sh:609-610
+- **Concern**: The plan changes the SKILL.md public flag allowlist but leaves an exact structural pin that will fail when --manual is inserted. Scenario: After SKILL.md changes from `--brainstorm`, `--no-dedup`, and `--run-id` to include `--manual`, `bash scripts/relevant-checks.sh` fails even though the implementation is otherwise correct
+- **Proposed resolution**: Promote scripts/test-design-structure.sh to UPDATED and add pins for argument-hint, allowlist order, flag-table row, write-run-params invocation, recovery merge, flags.md bullet, and approval-gates auto/manual branch
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/approval-gates.md:5
+- **Concern**: Top-level approval-gate contract still says no reviewer suggestion is ever auto-applied and the user is always prompted. Scenario: The proposed Gate B default contradicts the loaded contract before the new Gate B subsection is reached, giving the orchestrator two normative instructions in the same file
+- **Proposed resolution**: Rewrite the header contract as dual-mode: Gate A and Gate C always prompt; Gate B prompts only in manual mode and otherwise auto-applies accepted in-scope findings
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/approval-gates.md:49
+- **Concern**: Gate A re-entry prose says plan modification authority remains with Gate B's user choices and explicitly applied findings. Scenario: In default mode, Gate B has no user choice before plan mutation, so a Gate B(c)/Gate C(b) re-entry after auto-apply would be described by stale manual-only semantics
+- **Proposed resolution**: Update the Gate A re-entry paragraph to distinguish default auto-applied Gate B revisions from manual-mode user-approved revisions, and keep the no-mutation claim scoped to Gate A itself
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: docs/skills.md:50-54
+- **Concern**: The public skill catalog is not in the files-to-modify list even though it enumerates /design flags and behavior. Scenario: README/SKILL.md advertise --manual but docs/skills.md, which is linked as the skill catalog, remains stale and users miss the opt-out
+- **Proposed resolution**: Add docs/skills.md to UPDATED and include --manual / -m in the arguments line plus a short note that it restores the Gate B prompt
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/issue/scripts/add-blocked-by.sh:36
+- **Concern**: The post-PR blocker command names add-blocked-by.sh without the real path, while the /block-issue wrapper uses a different positional interface. Scenario: An implementer following the plan literally runs a nonexistent root helper or mixes the flagged REST helper with the positional block-issue wrapper
+- **Proposed resolution**: Use an exact command: `${CLAUDE_PLUGIN_ROOT}/skills/issue/scripts/add-blocked-by.sh --client-issue 2667 --blocker-issue 2930 --repo character-ai/larch`, or `/larch:block-issue 2667 2930 --repo character-ai/larch`
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/approval-gates.md:5
+- **Concern**: Top-level Contract still says every reviewer suggestion requires a user prompt and nothing is auto-applied. Scenario: Implementers rewrite Invariant #4 and Gate B only; line 5 stays, contradicting default auto-apply and confusing agents that read the Contract block first
+- **Proposed resolution**: Rewrite the Contract paragraph to dual-mode language (Gate B auto-applies by default; Gate A/C unchanged; manual restores the 3-option prompt)
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/references/approval-gates.md:5
+- **Concern**: The plan rewrites Gate B behavior but omits the file-level contract that still says reviewer suggestions are never auto-applied and the user is always prompted.. Scenario: If implementers follow only the listed approval-gates sections, the same normative file will contain contradictory instructions and Gate B may be implemented or later reviewed against the stale no-auto-apply contract.
+- **Proposed resolution**: Add an explicit edit to the top Contract paragraph in approval-gates.md so it describes default auto-apply plus --manual prompt mode.
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:764; skills/design/references/plan-review.md:198-211; skills/design/references/plan-review-quick.md:23-47
+- **Concern**: The plan only updates Step 3.5 prose, but other loaded design prompts still say plan-review findings are applied only by explicit user choice.. Scenario: Full and quick plan-review flows will emit/consume finding artifacts under stale semantics, contradicting the new default auto-apply branch and confusing future edits or prompt execution.
+- **Proposed resolution**: Add these files to the plan and replace explicit-user-choice wording with Gate B mode wording, e.g. Step 3 only collects findings and Gate B applies them according to manual_gate_b.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: scripts/test-design-structure.sh:599-610; scripts/test-design-structure.sh:647-696
+- **Concern**: The plan says to review structural pins only conditionally, but the existing harness has hard-coded /design flag allowlist and run-params persistence literals that will fail once --manual is inserted.. Scenario: make lint will fail even if the implementation itself is correct, because test-design-structure still expects the old --partition/--brainstorm/--no-dedup sequence and two-boolean recovery merge.
+- **Proposed resolution**: Add scripts/test-design-structure.sh to Files to modify and update the literal pins for [--manual|-m], manual_gate_b, the write-run-params invocation, and the three-boolean recovery guard/merge.
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: docs/skills.md:50-54; README.md:59-61
+- **Concern**: The plan conditionally updates README flag enumeration but omits docs/skills.md, which also exposes the /design argument string and public flag summary.. Scenario: Consumer docs will disagree: README may show --manual while docs/skills.md still omits it, or both remain incomplete if implementation treats README as the only docs surface.
+- **Proposed resolution**: Add docs/skills.md to the docs update scope alongside README and document --manual / -m in the same style as --brainstorm.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:227-259
+- **Concern**: Router-flag persistence guard still keys only on partition_requested or brainstorm_requested. Scenario: /design --manual with a failed initial write-run-params.sh never enters the jq-merge/fallback block; manual_gate_b is dropped and Gate B defaults to auto-apply despite argv
+- **Proposed resolution**: Extend the if/elif guards and recovery prose to include manual_requested (e.g. OR manual_requested == true), add merge_m/$merge_m and .manual_gate_b jq arm, pass --manual-gate-b in the fallback write-run-params.sh call, and update the jq-unavailable warning text
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:764
+- **Concern**: Plan misses existing Step 3 prose that still says Gate B revisions require explicit user choice. Scenario: Default no---manual runs can be guided by stale SKILL.md text to keep prompting instead of auto-applying accepted findings
+- **Proposed resolution**: Update this Step 3 paragraph to the same dual-mode contract planned for Step 3.5: default auto-apply, --manual restores explicit Apply all or per-finding Apply
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/approval-gates.md:5;skills/design/references/approval-gates.md:76-80
+- **Concern**: Plan updates Gate B internals but leaves top-level approval-gate contract and Presentation prose contradictory. Scenario: The normative reference would still say no reviewer suggestion is ever auto-applied and that the user is approving via a subsequent AskUserQuestion, conflicting with the new default branch
+- **Proposed resolution**: Revise the header contract and Presentation section to describe dual-mode behavior and make the existing review table/manual approval language explicitly manual-mode only
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:18
+- **Concern**: Plan adds a --manual row but does not revise the --hard tier row that promises per-finding approval. Scenario: Cross-tier uniform default auto-apply is contradicted for --hard, so operators may think hard mode still prompts without --manual
+- **Proposed resolution**: Update tier rows to avoid mode-specific stale claims, e.g. state Gate B handling is controlled by --manual and defaults to auto-apply in all tiers
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: README.md:59-61;docs/skills.md:50-54
+- **Concern**: Plan only conditionally updates README and omits docs/skills.md public skill catalog. Scenario: The new public --manual/-m flag can ship without appearing in the shipped skill catalog and README argument signatures, leaving consumers unaware of the opt-out
+- **Proposed resolution**: Update both README and docs/skills.md argument lines and design prose for --manual/-m; include the default auto-apply behavior and Gate A/Gate C unchanged scope
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: scripts/test-design-structure.sh:196-217
+- **Concern**: Plan leaves structural coverage for the new public flag and stale no-auto prose conditional and manual. Scenario: The default flip is prompt/documentation-driven; write-run-params tests only cover JSON emission, while stale SKILL/approval-gates/public-doc strings can survive relevant-checks
+- **Proposed resolution**: Add test-design-structure or agent-lint assertions for --manual/-m in SKILL.md and flags.md, manual_gate_b in Step 0b and Gate B, and absence/rewrite of stale no-auto/explicit-user-choice phrases
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-doc-surface-sync
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/plan-review.md:198
+- **Concern**: Plan omits this file; line still says Gate B applies findings only per explicit user choice. Scenario: After auto-apply lands, Step 3 tally prose still tells orchestrators Gate B never applies without a user pick; contradicts default auto-apply in approval-gates.md
+- **Proposed resolution**: Add plan-review.md to Files to modify; dual-mode wording (default auto-apply at Gate B; manual mode preserves explicit Apply-all / per-finding choice). Extend grep/reconcile to explicit user choice and never silently applies
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-doc-surface-sync
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:17-18,764
+- **Concern**: 1. SKILL.md has stale Gate B behavior outside the plan's proposed Step 3.5 edit. Scenario: The proposed grep list catches SKILL.md:783 but misses auto-applied/per-finding/explicit-choice language at the flag table and Step 3 paragraph, so the post-PR skill would still say hard uses per-finding approval and that Gate B revisions happen per explicit user choice
+- **Proposed resolution**: Update the --simple/--hard table rows and Step 3 paragraph to describe tier-independent Gate B mode: Step 3/tally never mutate plan.txt, then Gate B auto-applies by default or prompts only when manual_gate_b is true
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-doc-surface-sync
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/approval-gates.md:5,49,78-80,114,128
+- **Concern**: 2. approval-gates.md has multiple stale prompt/user-approval invariants beyond Invariant #4. Scenario: The plan rewrites the Gate B prompt section and invariant #4, but leaves the top contract saying no suggestion is ever auto-applied and the user is always prompted, Presentation saying a subsequent AskUserQuestion always approves findings, Gate C settled paths omitting auto-apply, and re-review prose saying prior feedback is user-approved
+- **Proposed resolution**: Reconcile the whole approval-gates surface: make the top contract dual-mode, scope the existing Presentation/Prompt text to manual mode, add auto-apply to Gate C settled paths, and replace user-approved wording with applied by Gate B according to mode
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-doc-surface-sync
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-design-structure.sh:599-610,689-696
+- **Concern**: 3. Structural lint pins are omitted from the implementation file list and will drift or fail. Scenario: The plan changes SKILL.md argument-hint/public argv sequencing, but scripts/test-design-structure.sh has exact grep pins for the current --brainstorm -> --no-dedup sequence and existing run-params plumbing; make lint can fail or miss the new manual_gate_b contract
+- **Proposed resolution**: Add scripts/test-design-structure.sh (and its md if needed) to Files to modify, update the exact allowlist sequence for --manual/-m, and add pins for the flag-table row, Step 0b parse list, write-run-params invocation, and jq recovery merge
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-dyn-doc-surface-sync
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: docs/workflow-lifecycle.md:92,107-111
+- **Concern**: 4. workflow-lifecycle.md is an omitted public docs surface for the new /design mode. Scenario: The plan conditionally updates README when it enumerates /design flags, but docs/workflow-lifecycle.md also documents standalone /design usage and the /design flag table; after the PR, readers there would not see the manual opt-out for the new default auto-apply behavior
+- **Proposed resolution**: Add docs/workflow-lifecycle.md to reconciliation scope and document --manual/-m either in the standalone /design signature/prose or the Flags table as the Gate B manual-review opt-out
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-run-params-parity
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-design-structure.sh:599-610
+- **Concern**: Findings_21 pins exact argument-hint and public-argv allowlist strings without --manual. Scenario: After SKILL.md inserts [--manual|-m] and extends the allowlist, make lint fails test-design-structure (shard test-harnesses-14)
+- **Proposed resolution**: Add explicit plan steps to update Check FINDING_21: argument-hint pin (604-605), allowlist sequence pin (609-610), and add a compact flag-table row pin for | `--manual` | mirroring the existing --brainstorm pin (653-654)
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-run-params-parity
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-design-structure.sh:599-610,scripts/test-design-structure.sh:647-696
+- **Concern**: test-design-structure.sh already pins the public /design flag surface and run-params recovery plumbing, but the plan only says to review it if pins exist and does not add it to Files to modify/create or enumerate the exact anchor updates.. Scenario: skills/design/SKILL.md changes for --manual, -m, --manual-gate-b, and manual_gate_b will make relevant-checks fail on stale literal pins, or the implementation may omit regression anchors for the new flag.
+- **Proposed resolution**: Add UPDATED scripts/test-design-structure.sh to the plan: extend argument-hint/public allowlist/table/flags.md literal checks for --manual and -m; add a write-run-params invocation pin for --manual-gate-b "$manual_requested"; update the recovery guard literal to include manual_requested; add a jq merge pin for .manual_gate_b with a merge_m arg. No Gate B option-count pin was found in this script.
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-run-params-parity
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:16-20
+- **Concern**: The existing compact flag table encodes old Gate B behavior: --simple says auto-applied findings and --hard says per-finding approval, but the plan's SKILL.md edits only add a new --manual row and Step 3.5 prose.. Scenario: After the PR, --hard defaults to auto-apply too, while manual prompting is controlled by --manual across all tiers; leaving these rows creates contradictory public guidance in the first screen of the skill.
+- **Proposed resolution**: Add explicit plan steps to rewrite the --simple and --hard purpose cells so tier rows describe budgets/reviewer depth only, and state that Gate B mode is controlled by --manual/manual_gate_b.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-run-params-parity
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/approval-gates.md:3-11
+- **Concern**: The top-level approval-gates contract still says no reviewer suggestion is ever auto-applied and the user is always prompted; the plan's approval-gates section enumerates Gate B, zero-findings, invariant #4, and cross-tier changes but not this contract line.. Scenario: Implementing only the enumerated sections leaves the reference self-contradictory: the file would both define default auto-apply and claim auto-apply never happens.
+- **Proposed resolution**: Add an explicit approval-gates.md contract update replacing the no-auto-apply sentence with the new dual-mode rule: Gate B auto-applies by default, --manual prompts, Gate A and Gate C remain prompted.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/approval-gates.md:5
+- **Concern**: Top-level Contract still says every suggestion is user-prompted and never auto-applied. Scenario: Plan rewrites Gate B and Invariant #4 but omits the file-level Contract line; orchestrators loading approval-gates.md first still see a global ban on auto-apply
+- **Proposed resolution**: Rewrite the Contract paragraph (and the AskUserQuestion blanket clause) to describe dual-mode Gate B: default auto-apply unless manual_gate_b is true
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:102
+- **Concern**: skills/design/references/approval-gates.md:86. Scenario: Apply-all pipeline exists only as inline text inside the Apply all bullet; plan allows copy-paste OR optional factoring
+- **Proposed resolution**: Implementer can paraphrase or truncate the auto-apply branch and omit dedup-sweep, dedup-sweep breadcrumb, ACTION=EMIT_PLAN, invoke-plan-validator-if-not-quick.sh, or Step 2b.5 without violating the written plan Mandate a named ### Apply-all body subsection with a stable anchor; require both manual option (a) and auto-apply to say Execute ### Apply-all body verbatim (no OR copy-paste path)
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:100
+- **Concern**: skills/design/references/approval-gates.md:78-80. Scenario: Auto-apply compact list uses 1-2 lines or 200 chars while Presentation requires up to 10 lines for the same Concern field
+- **Proposed resolution**: Inconsistent severity/concern display between modes; auto-apply may hide material concern text operators expect from the manual table Reuse the Presentation Concern truncation rule verbatim in the auto-apply list, or state auto-apply skips ### Presentation and inherits its truncation rules by reference
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:96-113
+- **Concern**: skills/design/references/approval-gates.md:76-84. Scenario: Mode branch is inserted above Prompt but plan leaves ### Presentation unchanged with Always show the table and subsequent AskUserQuestion normative text
+- **Proposed resolution**: Auto-apply runs the full Review table then a second Auto-applying list, or operators treat Presentation as mandatory before every Gate B path including silent auto-apply Scope ### Presentation to manual_gate_b=true only; in auto-apply branch jump from mode read to compact list plus Apply-all body, skipping Presentation and Prompt
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:76-90
+- **Concern**: skills/design/SKILL.md:764. Scenario: Step 3 deferral prose still says plan revision requires explicit user choice only
+- **Proposed resolution**: After PR, Step 3 contradicts default auto-apply at Gate B Update Step 3 plan-revision deferral to the same dual-mode contract as Step 3.5 (default auto-apply; --manual restores explicit choice)
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:90
+- **Concern**: skills/design/SKILL.md:783. Scenario: Step 3.5 edit only replaces the never auto-revised sentence; surrounding text still says presents findings then prompts for Apply all / Go through each
+- **Proposed resolution**: Default runs still narrate a mandatory AskUserQuestion after Gate B despite auto-apply Rewrite the Step 3.5 Gate B paragraph for mode branching: auto-apply prints findings plus breadcrumb then runs Apply-all body; manual preserves the three-option prompt
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: plan.txt:85-89
+- **Concern**: skills/design/SKILL.md:227-257. Scenario: Router-flag jq-merge recovery guard is partition OR brainstorm only; plan extends merge fields but not the if guard
+- **Proposed resolution**: --manual-only run with write-run-params.sh failure drops manual_gate_b; operator passes -m but Gate B auto-applies silently Extend recovery guard and graceful-degrade branch to manual_requested OR manual_gate_b, mirroring partition/brainstorm; add test-design-structure.sh pins for the new literals
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: plan.txt:161
+- **Concern**: scripts/test-design-structure.sh:689-696. Scenario: Structural pins hard-require partition/brainstorm write-run-params and jq-merge strings; plan only says extend if pins exist
+- **Proposed resolution**: CI fails on first make test-design-structure after SKILL.md edits unless pins are updated in the same PR Add three pins: --manual-gate-b in write-run-params invocation, manual_requested in recovery guard, manual_gate_b jq merge arm (mirror FINDING_2754 pattern)
+
+### FINDING_9:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:38-117
+- **Concern**: skills/design/references/plan-review.md:198. Scenario: skills/design/references/plan-review-quick.md:23
+- **Proposed resolution**: Files-to-modify list omits plan-review references that still require explicit user choice at Gate B Step 3 tally instructions contradict post-PR auto-apply default Add UPDATED entries for plan-review.md and plan-review-quick.md aligning Gate B revision authority with dual-mode contract
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:115-117
+- **Concern**: README.md:59. Scenario: docs/skills.md:50
+- **Proposed resolution**: README update is conditional on grep; docs/skills.md flag line is not listed Both consumer docs keep argv lists without --manual after PR is otherwise complete Add mandatory README.md and docs/skills.md updates to the flag enumeration (same position as --brainstorm in each list)
+
+### FINDING_11:
+- **Reviewer(s)**: Cursor-dyn-apply-body-factoring
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: plan.txt:33-34
+- **Concern**: plan.txt:153. Scenario: Failure mode #3 recommends shared subsection and agent-lint anchor but Hard constraints and approval-gates edit allow optional duplication
+- **Proposed resolution**: Mitigation stays advisory while implementation path permits drift Add to Hard constraints: auto-apply and manual Apply all MUST reference a single named Apply-all body subsection; add agent-lint pin in Testing strategy (not optional)
+
+### OOS_1:
+- **Description**: run-params.json read path. Scenario: jq/read failure defaults to auto-apply even when operator intended --manual
+- **Reviewer**: Cursor-dyn-apply-body-factoring
+- **Severity**: latent
+- **Focus area**: security
+- **Location**: plan.txt:137-138
+- **Phase**: design
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-apply-body-factoring
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: <TMPDIR>/plan.txt:96-103,113,153; skills/design/references/approval-gates.md:82-87; scripts/test-design-structure.sh:505-515,633-635
+- **Concern**: The plan says the auto branch may either reuse wording or factor a shared Apply-all body, but does not require a named shared subsection; current approval-gates.md has the full Apply-all pipeline embedded only in the manual prompt option, and current structure tests only grep for ACTION=EMIT_PLAN, invoke-plan-validator-if-not-quick.sh, and Step 2b.5 anywhere in the file.. Scenario: An implementation can add an auto-apply paragraph that copies only “apply every accepted finding” while leaving dedup-sweep, ACTION=EMIT_PLAN, validator dispatch, or Step 2b.5 only in the manual Apply all bullet; existing grep pins still pass because those anchors remain elsewhere, so the new default auto path silently skips required post-apply invariants.
+- **Proposed resolution**: Revise the plan to mandate a concrete `### Apply-all body (shared)` subsection in approval-gates.md containing the exact ordered pipeline: revise plan, dedup sweep, `dedup-sweep:` breadcrumb, `ACTION=EMIT_PLAN`, full-budget validator invocation, Step 2b.5, then Step 3b. Replace manual option (a) and the auto branch with references to that subsection, and update scripts/test-design-structure.sh to assert the shared-section anchor, both call-site references, and token ordering inside that section.
+

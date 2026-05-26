@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:230-257	Router-flag recovery guard still keys only on partition_requested OR brainstorm_requested	/design --manual with write-run-params.sh failure skips jq merge; manual_gate_b never persisted; operator gets auto-apply despite --manual	Extend the if/elif guard and jq-unavailable warning to include manual_requested; add merge_m arm and --manual-gate-b on the fallback write-run-params.sh call
