@@ -1,0 +1,3 @@
+DECISION_1: ANTI_THESIS — Defense B better shows a concrete local ambiguity and frames the terminal sentence as consistency with existing doctrine, while Defense A relies too heavily on absence of an explicit loop directive.
+
+DECISION_2: THESIS — Defense B more directly addresses the confirmed failure window and the cost of adding lifecycle writes, while Defense A’s telemetry case depends on broader instrumentation than the proposed manifest grouping can reliably justify.

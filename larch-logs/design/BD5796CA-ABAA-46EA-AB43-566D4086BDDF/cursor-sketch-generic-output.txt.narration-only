@@ -1,0 +1,3 @@
+Investigating the `/design` skill flow and suspected re-entry mechanisms in the codebase.
+I have enough context. The committed log corpus alone won't catch bail-only re-entries; I'll fold that into the plan.
+

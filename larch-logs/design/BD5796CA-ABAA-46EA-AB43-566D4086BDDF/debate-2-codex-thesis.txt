@@ -1,0 +1,19 @@
+<steelman>
+Telemetry would give future investigators a durable correlation key across issue, argv hash, parent skill, PID lineage, and terminal outcome, which is valuable if the spurious second `/design` entry cannot be reproduced during code review. It also makes recurrence measurable instead of relying on operator reports.
+</steelman>
+<claim>
+Ship the code audit plus the defensive Pre-Step-0 guard without adding new `/design` telemetry, because the bug is an invocation-control failure and the proposed telemetry adds persistent lifecycle writes that do not cover the confirmed re-fire window.
+</claim>
+<evidence>
+`skills/design/SKILL.md:10` states that plan and acceptance are written to the issue body with “no design manifest export,” while `skills/design/SKILL.md:125` and `skills/design/SKILL.md:155-156` show Step 0 already has timing/token ledger side effects before issue flow is fully established. The happy path publishes only after plan write via `skills/design/SKILL.md:972-975`, then Step 6 removes `$DESIGN_TMPDIR` at `skills/design/SKILL.md:1032-1035`; `scripts/design-log-publish.md:3-4` and `scripts/design-log-publish.md:21-22` confirm committed `larch-logs/design/<RUN_ID>/manifest.json` is created by flushing a completed session, not by observing the moment that triggers a second entry.
+</evidence>
+<strongest_concession>
+The best opposing point is that without telemetry, a future recurrence may again lack a compact, machine-readable timeline tying the first `/design` invocation to the second.
+</strongest_concession>
+<counter_to_opposition>
+That concession does not justify Step 0 and Step 6 instrumentation here: the reporter’s confirmed failure mode occurs after logs are flushed, so committed design telemetry would mostly describe the completed first run while increasing the exact `/design` footprint we are trying to keep quiet and non-recursive.
+</counter_to_opposition>
+<risk_if_wrong>
+If code audit and the defensive guard are insufficient, the project may spend another incident cycle reconstructing a spurious re-invocation from chat/session traces instead of a purpose-built manifest timeline.
+</risk_if_wrong>
+RECOMMEND: THESIS

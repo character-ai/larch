@@ -1,0 +1,28 @@
+Both Codex and the Cursor-Generic Claude fallback propose a two-phase design: an investigative pass over the existing /design surface plus a defensive change. They agree on five things and diverge on two.
+
+Agreement:
+1. Two-phase strategy: investigation + a code-level defense.
+2. Primary edit surface is skills/design/SKILL.md plus a small helper under scripts/ or skills/design/scripts/.
+3. The existing Step 0b lifecycle-prefix guard (scripts/lib-title-eligibility.sh) and the in-body larch:plan guard remain unchanged — they are the safety net and they work.
+4. Regression harness is in scope, following the existing test-design-* sibling pattern (test-*.sh + sibling .md + make target).
+5. Narrow blast radius — single skill, single helper, one harness, anti-halt machinery touched only with clear evidence.
+
+Divergence — contested decisions (resolved below):
+
+Codex argues for a Step 6 prompt-contract clarification — make Step 6 an explicit terminal boundary in SKILL.md (no further skill calls, no wakeups, no "continue" prose), pin that wording in test-design-structure.sh, and add lightweight invocation telemetry at Step 0/Step 6 with an audit helper that groups larch-logs/design/<RUN_ID>/manifest.json by issue+time.
+
+Cursor argues that the anti-halt reminder at SKILL.md line 30 is paired with "proceed to Step N+1" directives and Step 6 already has no "continue to Step 7" instruction, so the reminder text per se does not direct re-entry into Step 0 — meaning a Step 6 prompt fix would not stop a stray ScheduleWakeup or a delayed SendMessage reply, both of which live outside SKILL.md prose entirely. Cursor proposes a defensive runtime guard at Pre-Step-0 using a session-cache marker file (~/.cache/larch/sessions/design-completed-<PPID>-<ISSUE_NUMBER>) written at the end of Step 5c when PLAN_WRITE_OK=true && PUBLISH_OK=true, read at Pre-Step-0, with a short TTL.
+
+Synthesis decisions (binding for Step 2b plan):
+
+A. Primary fix is the defensive runtime guard at Pre-Step-0 (Cursor's approach). Mandated by Round 1 Decision 2 regardless of audit findings.
+
+B. Step 6 prompt-contract clarification (Codex's proposal) is deferred unless the code audit produces textual evidence of a specific mis-trigger phrase. Aligned with Round 1 Decision 3.
+
+C. Telemetry (Codex's proposal) is out of scope. Adding new telemetry to /design would expand the skill, which is the opposite of what the user is asking for. If the guard proves inconclusive after landing, telemetry can be filed as a follow-up issue.
+
+D. Audit is code-read-only. Read SKILL.md Step 0b / Step 5 / Step 6 / anti-halt reminder; grep ScheduleWakeup / SendMessage / <<autonomous-loop / cleanup-tmpdir.sh callers across the plugin tree.
+
+E. Regression harness in scope (Round 1 Decision 4), three fixtures: fresh title → passes; [DESIGNED] title → lifecycle hits; session-cache marker present for same PPID+issue → session-cache hits.
+
+These synthesis decisions feed Step 2b plan drafting. The next-cap-5 contested decisions for Step 2a.5 dialectic are listed in contested-decisions.md.
