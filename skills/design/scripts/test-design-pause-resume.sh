@@ -308,7 +308,19 @@ PY
 out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/restore-bad-branch" --issue 9 --repo owner/repo)
 [[ "$out_bad_branch" == *"LOAD_OK=false"* && "$out_bad_branch" == *"ERROR=invalid-recovery-branch"* ]] || fail "bad recovery branch mismatch: $out_bad_branch"
 
+# Reset body to a valid recovery branch for the jq-missing test (the bad-branch
+# test above modified BODY_FILE to have an invalid ref; restore it first).
+make_design_tmpdir "$DESIGN"
+printf 'body\n' >"$BODY_FILE"
+PUBLISH_MODE=recovery bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+# Add a broken jq stub so command -v jq finds it but running it exits non-zero.
+cat >"$STUB/jq" <<'JQ'
+#!/bin/sh
+exit 127
+JQ
+chmod +x "$STUB/jq"
 out_no_jq=$(PATH="$STUB:/bin:/usr/bin:/usr/sbin:/sbin" bash "$LOAD" --design-tmpdir "$TMP/restore-no-jq" --issue 9 --repo owner/repo)
+rm -f "$STUB/jq"
 [[ "$out_no_jq" == *"LOAD_OK=false"* && "$out_no_jq" == *"ERROR=jq-missing"* ]] || fail "jq missing mismatch: $out_no_jq"
 
 echo "=== tmpdir unset fails closed ==="

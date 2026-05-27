@@ -86,7 +86,7 @@ done
 [[ -n "$DESIGN_TMPDIR" ]] || emit_load_fail "tmpdir-unset"
 mkdir -p "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-create-failed"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_load_fail "invalid-issue"
-command -v jq >/dev/null 2>&1 || emit_load_fail "jq-missing"
+jq --null-input 'null' >/dev/null 2>&1 || emit_load_fail "jq-missing"
 
 gh_repo_args=()
 [[ -n "$REPO" ]] && gh_repo_args+=(--repo "$REPO")

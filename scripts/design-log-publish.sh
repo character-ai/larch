@@ -529,7 +529,10 @@ if [[ -z "$_porcelain" ]]; then
     if [[ "$REASON" == "pause" ]]; then
         if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
             if git -C "$REPO_ROOT" diff --quiet "origin/$WT_BRANCH" "origin/$ORIGIN_DEFAULT" -- "larch-logs/design/$RUN_ID" >/dev/null 2>&1; then
-                emit_publish_result true "" ""
+                # No new delta; snapshot already on default branch. Fail closed so
+                # callers get a RECOVERY_BRANCH pointer rather than a silent success.
+                emit_publish_result false
+                emit_kv RECOVERY_BRANCH "$WT_BRANCH"
                 exit 0
             fi
             emit_publish_result false
