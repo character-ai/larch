@@ -3421,6 +3421,56 @@ else
 fi
 rm -rf "$call_dir"
 
+# Vendor verification treats non-fixable failed-job rows as ci-local-unfixable.
+root=$(make_repo vendor_verify_nonfixable_direct)
+tmp=$(make_tmpdir)
+failed_tsv="$tmp/failed-jobs.tsv"
+state_capture="$tmp/state-capture.txt"
+runner="$tmp/vendor-verify-nonfixable.sh"
+printf 'gitleaks\t\tno-local-equivalent\n' > "$failed_tsv"
+cat > "$runner" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+
+emit_breadcrumb() { :; }
+_per_job_argv() { return 1; }
+state_set_many() {
+    while [ "$#" -gt 0 ]; do
+        printf '%s=%s\n' "$1" "$2" >> "$STATE_CAPTURE"
+        shift 2
+    done
+}
+
+eval "$(
+    awk '
+        /^_sanitize_bail_list\(\)/ { capture=1 }
+        capture && /^run_per_job_local_fix_loop\(\)/ { exit }
+        capture { print }
+    ' "$SHIP_PR_SUBJECT"
+)"
+_verify_failed_jobs_locally ci-initial "$FAILED_JOBS_TSV"
+STUB
+chmod +x "$runner"
+set +e
+SHIP_PR_SUBJECT="$root/scripts/ship-pr.sh" \
+STATE_CAPTURE="$state_capture" \
+IMPLEMENT_TMPDIR="$tmp" \
+FAILED_JOBS_TSV="$failed_tsv" \
+    bash "$runner" >"$tmp/out" 2>&1
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 3 "vendor_verify_nonfixable_direct exits 3"
+if grep -Fxq "BAIL_REASON=ci-local-unfixable:gitleaks" "$state_capture" \
+    && detail_file=$(awk -F= '$1=="BAIL_FAILURE_DETAIL_LOG" { print substr($0, index($0,"=")+1); exit }' "$state_capture") \
+    && [ -s "$detail_file" ] \
+    && grep -Fxq 'gitleaks' "$detail_file"; then
+    ok "vendor_verify_nonfixable_direct records sanitized bail detail"
+else
+    fail "vendor_verify_nonfixable_direct should record ci-local-unfixable bail detail"
+    sed 's/^/    state: /' "$state_capture" 2>/dev/null || true
+    sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
+fi
+
 # Vendor verification exhaustion exits 3 with ci-local-unfixable and never pushes.
 root=$(make_repo vendor_verify_local_exhausts)
 tmp=$(make_tmpdir)

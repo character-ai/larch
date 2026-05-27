@@ -68,9 +68,10 @@ Behavior:
    or checked-out submodule-path edits before staging.
    If `HEAD` changed, accept the new commit only when all three invariants hold:
    the pre-dispatch baseline was clean, the symbolic branch is unchanged, and
-   the baseline `HEAD` is an ancestor of the current `HEAD`. Detached `HEAD`,
-   branch switches, history rewrites, and dirty-baseline `HEAD` movement still
-   fail closed with `FAILURE_REASON=head-changed-after-dispatch`.
+   the current `HEAD` is a direct single-parent child of the baseline `HEAD`.
+   Detached `HEAD`, branch switches, history rewrites, merge commits,
+   same-branch multi-commit advancement, and dirty-baseline `HEAD` movement
+   still fail closed with `FAILURE_REASON=head-changed-after-dispatch`.
 7. If dispatch succeeds but there are no post-dispatch paths beyond the
    baseline, emit
    `LINT_FIX_STATUS=no-changes`.
