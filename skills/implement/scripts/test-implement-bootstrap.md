@@ -34,7 +34,7 @@
 | B6-plan-flags | Any non-zero `persist-implement-run-flags.sh` exit emits `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`, sets `STALL_TRACKING=true`, and stops subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree | `STATUS=dirty` and `STATUS=unknown` emit `IMPLEMENT_BAIL_REASON=dirty-tree` without setting `STALL_TRACKING`, and stop subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree probe-failure | Dirty-tree checkpoint probe failure is treated as `STATUS=unknown`, preserving the `dirty-tree` bail and stopping the tail. |
-| B7-plan-dirty-tree resume-tail | `--resume-plan-tail` resumes the post-checkpoint tail inside the same tmpdir after a prior dirty-tree bail, clearing `IMPLEMENT_BAIL_REASON` and avoiding duplicate snapshot / `gh` work. |
+| B7-plan-dirty-tree resume-tail | `--resume-plan-tail` re-runs the dirty-tree checkpoint inside the same tmpdir after a prior dirty-tree bail: clean resumes the post-checkpoint tail, dirty/unknown preserves `IMPLEMENT_BAIL_REASON=dirty-tree`, and both paths avoid duplicate snapshot / `gh` work. |
 | B8-plan-forked-target | Fork mode still materializes plan/feature files with upstream `gh --repo`, skips branch creation, captures the current branch, and skips the local `larch:plan` upsert. |
 | B9-plan-user-branch | Existing user branch skips branch creation but still writes the local `larch:plan` summary. |
 | B10-plan-missing-preflight-tmpdir | `--up-to-phase plan --issue-number N` without `--preflight-tmpdir` exits 2 with usage. |

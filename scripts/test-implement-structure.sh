@@ -359,14 +359,43 @@ grep -Fq "$time0_plan_bootstrap" "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must retain timing-ledger implement Step 0 — plan materialization mark"
 grep -Fq "Plan materialization is now fully owned by the foreground \`implement-bootstrap.sh --up-to-phase plan\` call above." "$SKILL_MD" \
   || fail "SKILL.md must pin plan materialization ownership to implement-bootstrap.sh"
+grep -Fq '_ib_preflight=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain the _ib_preflight argv array"
+read -r preflight_wire_line <<'EOF'
+[ -n "${PREFLIGHT_TMPDIR:-}" ] && _ib_preflight+=(--preflight-tmpdir "$PREFLIGHT_TMPDIR")
+EOF
+grep -Fq "$preflight_wire_line" "$SKILL_MD" \
+  || fail "SKILL.md must wire PREFLIGHT_TMPDIR through _ib_preflight"
+read -r preflight_expand_line <<'EOF'
+"${_ib_preflight[@]+"${_ib_preflight[@]}"}"
+EOF
+if [ "$(grep -cF "$preflight_expand_line" "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must expand _ib_preflight in both bootstrap invocations"
+fi
 grep -Fq -- '--resume-plan-tail' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document --resume-plan-tail"
 grep -Fq '.dirty-tree-prompted-step0-plan-materialize' "$SKILL_MD" \
   || fail "SKILL.md must retain the dirty-tree resume sentinel contract"
 grep -Fq 'dirty-tree-detected.env' "$SKILL_MD" \
   || fail "SKILL.md must retain the dirty-tree recovery env contract"
+read -r resume_recheck_line <<'EOF'
+The resumed bootstrap tail re-runs `check-mid-run-dirty-tree.sh --mode checkpoint` internally before any Phase 3 tail helper
+EOF
+grep -Fq "$resume_recheck_line" "$SKILL_MD" \
+  || fail "SKILL.md must document the internal dirty-tree re-check on resume"
 grep -Fq 'export IMPLEMENT_TMPDIR' "$SKILL_MD" \
   || fail "SKILL.md dirty-tree recovery must export IMPLEMENT_TMPDIR before resume"
+read -r target_issue_line <<'EOF'
+_ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
+EOF
+grep -Fq "$target_issue_line" "$SKILL_MD" \
+  || fail "SKILL.md dirty-tree recovery must reuse TARGET_ISSUE_NUMBER fallback"
+read -r bootstrap_rc_guard_line <<'EOF'
+if [ "$_ib_rc" -eq 2 ]; then
+EOF
+if [ "$(grep -cF "$bootstrap_rc_guard_line" "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md dirty-tree recovery must mirror the bootstrap exit-2 wrapper"
+fi
 grep -Fq "while IFS= read -r _ib_line || [ -n \"\$_ib_line\" ]; do" "$SKILL_MD" \
   || fail "SKILL.md dirty-tree recovery must re-parse resume bootstrap stdout"
 grep -Fq "BRANCH_NAME=*) BRANCH_NAME=\${_ib_tok#BRANCH_NAME=} ;;" "$SKILL_MD" \

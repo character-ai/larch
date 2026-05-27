@@ -1051,6 +1051,56 @@ else
 fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
+# --- B7-plan-dirty-tree resume tail re-bails when still dirty ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResumeRetry --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree resume re-bail first pass exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree resume re-bail first pass bail"
+out=$(SANDBOX_DIRTY_STATUS=unknown IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResumeRetry --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree resume re-bail exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree resume re-bail keeps bail"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'check-mid-run-dirty-tree --mode checkpoint' || true)" -eq 2 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-plan-dirty-tree resume re-bail reruns dirty checkpoint"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-plan-dirty-tree resume re-bail reruns dirty checkpoint"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch"
+assert_not_contains "git-current-branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch capture"
+assert_not_contains "run-step1-plan-log" "$invoke" "B7-plan-dirty-tree resume re-bail no plan log"
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
 # --- B7-plan-dirty-tree resume tail missing tmpdir ---
 build_sandbox
 write_preflight_plan

@@ -187,6 +187,27 @@ ensure_untracked_baseline_snapshot() {
     "$SCRIPT_DIR/snapshot-untracked.sh" --output "$snapshot_out" --nul || true
 }
 
+run_dirty_tree_checkpoint() {
+    local dirty_out dirty_rc dirty_status
+
+    dirty_out=$("$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode checkpoint 2>"$IMPLEMENT_TMPDIR/check-mid-run-dirty-tree.stderr.log")
+    dirty_rc=$?
+    if [ "$dirty_rc" -ne 0 ]; then
+        dirty_status=unknown
+    else
+        dirty_status=$(kv_value_from_block STATUS "$dirty_out")
+        [ -n "$dirty_status" ] || dirty_status=unknown
+    fi
+    case "$dirty_status" in
+        dirty|unknown)
+            IMPLEMENT_BAIL_REASON=dirty-tree
+            return 1
+            ;;
+    esac
+    IMPLEMENT_BAIL_REASON=""
+    return 0
+}
+
 tracking_init_failed() {
     IMPLEMENT_BAIL_REASON=tracking-init-failed
     STALL_TRACKING=true
@@ -582,7 +603,7 @@ phase_tracking() {
 
 phase_plan_materialize() {
     local plan_src gh_issue_arg feature_file gh_rc gh_err
-    local persist_rc dirty_out dirty_rc dirty_status
+    local persist_rc
     local issue_title slug branch_name_derived create_out create_rc create_err
     local branch_out branch_rc branch_value
     local goal_text_raw goal_text run_plan_rc run_plan_err goal_redact_rc goal_redact_err
@@ -641,23 +662,9 @@ phase_plan_materialize() {
             IMPLEMENT_BAIL_REASON=run-flags-persist-failed
             return 0
         fi
-
-        dirty_out=$("$SCRIPT_DIR/check-mid-run-dirty-tree.sh" --mode checkpoint 2>"$IMPLEMENT_TMPDIR/check-mid-run-dirty-tree.stderr.log")
-        dirty_rc=$?
-        if [ "$dirty_rc" -ne 0 ]; then
-            dirty_status=unknown
-        else
-            dirty_status=$(kv_value_from_block STATUS "$dirty_out")
-            [ -n "$dirty_status" ] || dirty_status=unknown
-        fi
-        case "$dirty_status" in
-            dirty|unknown)
-                IMPLEMENT_BAIL_REASON=dirty-tree
-                return 0
-                ;;
-        esac
-    else
-        IMPLEMENT_BAIL_REASON=""
+    fi
+    if ! run_dirty_tree_checkpoint; then
+        return 0
     fi
 
     if [ "$FORKED_TARGET" != "true" ] && [ "${IS_USER_BRANCH:-false}" != "true" ]; then

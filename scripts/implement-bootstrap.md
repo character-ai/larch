@@ -15,7 +15,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--upstream-repo` | no | `OWNER/REPO` | Required by callers in fork mode when upstream issue context should be fetched. Validated as one owner/repo slash with GitHub-safe characters. |
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
 | `--preflight-tmpdir` | with `--issue-number` when `--up-to-phase` is `plan`, `coder`, or `all` | path | Directory containing `plan-from-issue.txt` from Preflight. |
-| `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh` and resumes only the Phase 3 tail after the clean checkpoint succeeds. |
+| `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh`, re-runs the dirty-tree checkpoint, and resumes only the Phase 3 tail after that checkpoint succeeds. |
 
 ## Inputs (Phase 1)
 
@@ -88,7 +88,7 @@ Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_
 | `adopted-issue-is-pr` | Branch 2 verified the target number is a pull request, not an issue. |
 | `tracking-init-failed` | `RUN_ID` derivation failed or `larch-log.sh init` failed; `STALL_TRACKING=true`. Closed / PR bails clear `ISSUE_NUMBER` in the final KV tail; stalled tracking preserves a resolved issue number when available. |
 | `run-flags-persist-failed` | `persist-implement-run-flags.sh` returned non-zero; `STALL_TRACKING=true`. |
-| `dirty-tree` | `check-mid-run-dirty-tree.sh --mode checkpoint` reported `STATUS=dirty` or `STATUS=unknown`; no stall flag so the orchestrator can route to dirty-tree recovery, then re-enter with `--resume-plan-tail` inside the existing `IMPLEMENT_TMPDIR`. |
+| `dirty-tree` | `check-mid-run-dirty-tree.sh --mode checkpoint` reported `STATUS=dirty` or `STATUS=unknown`; no stall flag so the orchestrator can route to dirty-tree recovery, then re-enter with `--resume-plan-tail` inside the existing `IMPLEMENT_TMPDIR` for another checkpoint before any Phase 3 tail helper runs. |
 | `branch-create-failed` | `create-branch.sh --branch` returned non-zero, or `git-current-branch.sh` could not capture a non-empty branch name after plan materialization; `STALL_TRACKING=true`. |
 | `not-yet-implemented-phase-4` | Stub `phase_coder_select`. |
 
