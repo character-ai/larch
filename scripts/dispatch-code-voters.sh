@@ -241,7 +241,7 @@ fi
 # FINDING_1: re-evaluate size-based statuses AFTER the wait barrier so a
 # voter whose output became visible during the wait is correctly classified.
 [[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
-[[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
+[[ "$VOTER_2_STATUS" == "skipped" || -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
 [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
 
 VOTER_1_PARSE_RATE_STATUS="SKIPPED"

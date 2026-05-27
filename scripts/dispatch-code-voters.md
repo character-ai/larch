@@ -37,7 +37,7 @@ A `voter1_rc=1` exit with non-zero `output_bytes` and empty launcher-stderr indi
 
 ## Voter `.done` sentinel barrier
 
-Before assigning size-based `failed` statuses, the dispatcher waits for the `.done` sentinel for each launched voter by calling [scripts/wait-for-reviewers.sh](wait-for-reviewers.md). The barrier is deliberately positioned after voter path/tool/status binding and before any `-s` output checks, so outputs that become visible while their sentinel is still pending are re-evaluated after completion (#2973).
+Before assigning size-based `failed` statuses, the dispatcher waits for the `.done` sentinel for each launched voter by calling [scripts/wait-for-reviewers.sh](wait-for-reviewers.md). The barrier is deliberately positioned after voter path/tool/status binding and before any `-s` output checks, so outputs that become visible while their sentinel is still pending are re-evaluated after completion (#2973). Slots already marked `skipped` are preserved across the post-barrier size pass; an intentionally skipped Voter 2 is never downgraded to `failed` just because its output path is empty.
 
 The wait captures stdout because `wait-for-reviewers.sh` reports `TIMEOUT <idx> <basename>` rows on stdout and exits 0 for normal timeout operation. Timeout rows are logged with `larch_err`; exit 1 is treated separately as a usage/config error and is also logged. Both paths are non-blocking: the dispatcher proceeds with whatever files exist and lets the post-barrier size checks preserve degraded-quorum behavior. The default timeout is 60 seconds and can be overridden with `LARCH_VOTER_WAIT_TIMEOUT`. The branch uses `if/fi` guards so the normal `_wait_rc=0` path remains safe under `set -e`.
 

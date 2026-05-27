@@ -84,6 +84,67 @@ STUB_WATERFALL
     chmod +x "$root/scripts/dispatch-with-waterfall.sh"
 }
 
+make_voter1_synth_done_plugin_root() {
+    local root="$1"
+    mkdir -p "$root/scripts" "$root/skills/shared/scripts"
+    ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
+    ln -sf "$REPO_ROOT/scripts/lib-voter-parse-rate.sh" "$root/scripts/lib-voter-parse-rate.sh"
+    ln -sf "$REPO_ROOT/scripts/parse-judge-vote-and-rating.sh" "$root/scripts/parse-judge-vote-and-rating.sh"
+    ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
+    ln -sf "$REPO_ROOT/scripts/dispatch-code-voters.sh" "$root/scripts/dispatch-code-voters.sh"
+    cat > "$root/skills/shared/scripts/render-voter-prompt.sh" <<'STUB_RENDER'
+#!/usr/bin/env bash
+printf 'stub voter prompt\n'
+STUB_RENDER
+    chmod +x "$root/skills/shared/scripts/render-voter-prompt.sh"
+    cat > "$root/scripts/launch-claude-review.sh" <<'STUB_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output|--output-file) output="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$output" ]] || exit 2
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$output"
+(
+    sleep "${LARCH_VOTER1_DONE_DELAY:-1}"
+    printf '0\n' > "${output}.done"
+) >/dev/null 2>&1 &
+exit 0
+STUB_CLAUDE
+    chmod +x "$root/scripts/launch-claude-review.sh"
+    cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
+#!/usr/bin/env bash
+set -euo pipefail
+review_tmpdir=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slots-file)
+            review_tmpdir="$(dirname "${2:?}")"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+[[ -n "$review_tmpdir" ]] || exit 2
+v2="$review_tmpdir/codex-vote-output.txt"
+v3="$review_tmpdir/cursor-vote-output.txt"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$v2"
+printf '0\n' > "${v2}.done"
+printf 'FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$v3"
+printf '0\n' > "${v3}.done"
+printf 'ALL_OUTPUT_FILES=%s %s\n' "$v2" "$v3"
+printf 'ALL_OUTPUT_TOOLS=codex cursor\n'
+printf 'DISPATCH_OK=true\n'
+STUB_WATERFALL
+    chmod +x "$root/scripts/dispatch-with-waterfall.sh"
+}
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/dispatch-code-voters.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-code-voters.XXXXXX")"
@@ -339,6 +400,71 @@ grep -Fq 'DISPATCH_OK=true' <<< "$out" \
     || { echo "FAIL: immediate wait gate should survive normal _wait_rc=0 path" >&2; exit 1; }
 grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
     || { echo "FAIL: immediate wait gate expected voter2 launched" >&2; exit 1; }
+
+hook_d5="$TMP/case-dispatch-hook.hook"
+printf 'exit 143\n' > "$hook_d5"
+hook_review_tmp="$TMP/hook-review"
+out=$(PATH="$STUB_BIN:$PATH" \
+    LARCH_ALLOW_TEST_HOOKS=1 \
+    LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$hook_d5" \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$hook_review_tmp" --codex-available false --cursor-available true)
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: launch-review hook path should still publish voter3 done/output before dispatch tallies" >&2; exit 1; }
+grep -Fq 'VOTER_3_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+    || { echo "FAIL: launch-review hook path should surface raw cursor JSON as NOT_SUBSTANTIVE instead of failed" >&2; exit 1; }
+grep -Fq '"result":"POST-PROCESSED OK"' "$hook_review_tmp/cursor-vote-output.txt" \
+    || { echo "FAIL: launch-review hook path should preserve raw cursor JSON output for the parse-rate check" >&2; exit 1; }
+require_voter_paths_file_nonempty "happy-launch-review-hook" "$out"
+
+voter1_plugin="$TMP/voter1-plugin"
+make_voter1_synth_done_plugin_root "$voter1_plugin"
+voter1_tmp="$TMP/voter1-synth-done"
+mkdir -p "$voter1_tmp"
+voter1_start=$(date +%s)
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$voter1_plugin" \
+    LARCH_VOTER1_DONE_DELAY=1 \
+    "$voter1_plugin/scripts/dispatch-code-voters.sh" \
+        --ballot-file "$BALLOT" \
+        --review-tmpdir "$voter1_tmp" \
+        --codex-available true \
+        --cursor-available true)
+voter1_end=$(date +%s)
+grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: delayed voter1 .done synthesis path should keep voter1 launched" >&2; exit 1; }
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" \
+    || { echo "FAIL: delayed voter1 .done synthesis path should keep substantive voter1 output parseable" >&2; exit 1; }
+[[ -f "$voter1_tmp/claude-vote-output.txt.done" ]] \
+    || { echo "FAIL: delayed voter1 .done synthesis path should publish a done sentinel" >&2; exit 1; }
+if (( voter1_end - voter1_start >= 1 )); then
+    echo "FAIL: delayed voter1 .done synthesis path should not block on the late launcher-owned sentinel" >&2
+    exit 1
+fi
+require_voter_paths_file_nonempty "happy-voter1-synth-done" "$out"
+
+wait_timeout_tmp="$TMP/wait-timeout"
+timeout_stderr="$TMP/wait-timeout.stderr"
+mkdir -p "$wait_timeout_tmp"
+PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$wait_plugin" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    LARCH_VOTER_WAIT_TIMEOUT=1 \
+    LARCH_WAIT_BARRIER_MODE=timeout \
+    LARCH_WAIT_BARRIER_VOTER2="$wait_timeout_tmp/codex-vote-output.txt" \
+    LARCH_WAIT_BARRIER_VOTER3="$wait_timeout_tmp/cursor-vote-output.txt" \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$wait_timeout_tmp" --codex-available true --cursor-available true \
+    > "$TMP/wait-timeout.out" 2> "$timeout_stderr"
+out=$(cat "$TMP/wait-timeout.out")
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" \
+    || { echo "FAIL: wait timeout path should fail the missing voter2 output" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=failed' <<< "$out" \
+    || { echo "FAIL: wait timeout path should fail the missing voter3 output" >&2; exit 1; }
+grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 1/3 effective judges produced output.**' <<< "$out" \
+    || { echo "FAIL: wait timeout path should emit a 1/3 degraded panel warning" >&2; exit 1; }
+grep -Fq 'dispatch-code-voters.sh: voter sentinel TIMEOUT 2 codex-vote-output.txt' "$timeout_stderr" \
+    || { echo "FAIL: wait timeout path should log voter2 TIMEOUT rows from wait-for-reviewers stdout" >&2; exit 1; }
+grep -Fq 'dispatch-code-voters.sh: voter sentinel TIMEOUT 3 cursor-vote-output.txt' "$timeout_stderr" \
+    || { echo "FAIL: wait timeout path should log voter3 TIMEOUT rows from wait-for-reviewers stdout" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then

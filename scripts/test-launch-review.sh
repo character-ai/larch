@@ -1398,6 +1398,17 @@ set -euo pipefail
 if [[ -n "${CURSOR_STUB_PID_FILE:-}" ]]; then
     printf '%s\n' "$$" > "$CURSOR_STUB_PID_FILE"
 fi
+if [[ -n "${CURSOR_STUB_FD0_LOG:-}" ]]; then
+    python3 - <<'PY' > "$CURSOR_STUB_FD0_LOG"
+import os
+for candidate in ("/dev/fd/0", "/proc/self/fd/0"):
+    try:
+        print(os.readlink(candidate))
+        break
+    except OSError:
+        continue
+PY
+fi
 if [[ -n "${CURSOR_STUB_PROMPT_LOG:-}" ]]; then
     last=""
     for arg in "$@"; do
@@ -1450,11 +1461,18 @@ assert_equals "case A done code" "0" "$(cat "${OUT_A}.done")"
 # Case B: successful runs enrich .meta with outer-launcher replay keys and
 # persist the original unwrapped prompt byte-for-byte.
 OUT_B="$TMPDIR/cursor-b.txt"
-PATH="$STUB_BIN:$PATH" "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "original prompt" >/dev/null 2>"$TMPDIR/case-b.stderr"
+FD0_B="$TMPDIR/cursor-b.fd0"
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_FD0_LOG="$FD0_B" \
+    "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "original prompt" >/dev/null 2>"$TMPDIR/case-b.stderr"
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
 assert_grep "case B cursor success sidecar marker" "cursor-status: ok" "${OUT_B}.sidecar"
+if [[ "$(cat "$FD0_B")" == "/dev/null" ]]; then
+    fail "case B cursor control must inherit live stdin; fd0 unexpectedly resolved to /dev/null"
+else
+    pass
+fi
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay
 # via --prompt-file without double-prepending the HARD CONSTRAINTS block.

@@ -259,7 +259,7 @@ Test scope (Round 1 Decision 6: offline regression tests only) adds bash-stub-ba
 - `bash scripts/test-run-external-agent.sh` passes with five new test cases (FINDING_3).
 - `bash scripts/test-launch-review.sh` passes with two new sidecar marker assertions.
 - `bash scripts/relevant-checks.sh` (or `make lint`) passes.
-- The Step 5b OOS filing creates a follow-up issue tracking "Investigate breadcrumb-monitor early-exit cascade in /implement Step 5 (sentinel inheritance / `LARCH_BREADCRUMBS_SURFACED_FILE` non-empty)."
+- The Step 5b OOS filing created follow-up issue [#3005](https://github.com/character-ai/larch/issues/3005) tracking "Investigate breadcrumb-monitor early-exit cascade in /implement Step 5 (sentinel inheritance / `LARCH_BREADCRUMBS_SURFACED_FILE` non-empty)."
 - No changes to `scripts/wait-for-reviewers.sh` (reuse only; its contract is unchanged).
 - No changes to `scripts/dispatch-with-waterfall.sh` (its `wait $pid` already provides per-phase synchrony; the new wait is the cross-phase barrier).
 - No changes to `scripts/tally-code-votes.sh` (it reads only `.txt` outputs, not sidecars — verified).
