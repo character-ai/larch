@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:79-113,310-314	Tally error fallback is specified inside a trap that is registered after several planned-covered exit paths and checks $? after cleanup work	Early argv/ballot failures exit before the EXIT trap exists, and a cleanup body that runs rm before checking $? will see rm's status instead of the script's failing status, so TALLY_PLAN_REVIEW_STATUS=tally-error is still missing on some non-zero exits	Register the EXIT trap before argv validation with WORKDIR initialized empty, capture rc at the first line of cleanup, guard rm with [[ -n ${WORKDIR:-} ]], then emit tally-error when rc is non-zero and the success guard is false
+1	in_scope	latent	risk-integration	scripts/dispatch-plan-voters.sh:211-236	The proposed per-voter KV helper does not account for the existing interleaved stdout contract including VOTER_PATHS_FILE	Replacing the current emit block with three per-slot helper calls either drops VOTER_PATHS_FILE or changes the byte-order the plan says must remain stable	Keep VOTER_PATHS_FILE emission and current ordering inline, or make the helper block-level with all three voter records plus plan_voter_paths_file so it can reproduce the existing sequence exactly
+
+1. **[correctness] `skills/design/scripts/tally-plan-review.sh:79-113,310-314`**
+   Concern: the always-emit plan is not sufficient as written. The current trap is installed only after `WORKDIR` creation, but several non-zero exits the plan explicitly wants covered happen before that. Also, checking `$?` “at the end of cleanup” is unsafe unless the original rc is saved before `rm -rf`.
+   Suggested revision: install the trap early, initialize `WORKDIR=""`, capture `local rc=$?` first in `cleanup`, guard the removal, and base fallback emission on that captured rc.
+
+2. **[risk-integration] `scripts/dispatch-plan-voters.sh:211-236`**
+   Concern: the proposed `voter_coverage_emit_voter_kvs` shape is per-slot, while the current contract is not purely per-slot: `VOTER_PATHS_FILE` is emitted between voter path/tool/status groups.
+   Suggested revision: either leave the emit block inline, or make the helper responsible for the whole existing output sequence so it preserves `VOTER_PATHS_FILE` and byte-order.

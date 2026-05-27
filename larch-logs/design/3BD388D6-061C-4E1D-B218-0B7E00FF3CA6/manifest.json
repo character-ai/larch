@@ -1,0 +1,21 @@
+{
+  "schema_version": 2,
+  "skill": "design",
+  "run_id": "3BD388D6-061C-4E1D-B218-0B7E00FF3CA6",
+  "operator_cwd": "<OPERATOR_CWD>",
+  "operator_repo_root": "<REPO_ROOT>",
+  "parent_skill": null,
+  "issue_number": 2869,
+  "larch_version": "45.1.0",
+  "model_roster": {
+    "main": "unknown"
+  },
+  "effort": "max",
+  "started_at": "2026-05-27T20:06:06Z",
+  "updated_at": "2026-05-27T20:06:17Z",
+  "attempt": 1,
+  "superseded_by": null,
+  "stalled_at_step": null,
+  "steps_ran": {},
+  "flags": {}
+}
