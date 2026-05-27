@@ -139,7 +139,7 @@ rm -f "$orchestrator_missing_file/skills/design/SKILL.md"
 write_file "$external_bad" "skills/design/references/brainstorm-prompts.md" "$(repeat_line "$external_style_line" 2)"
 
 assert_lint_ok compliant "$compliant"
-assert_lint_fails_for external-bad "$external_bad" "skills/design/references/brainstorm-prompts.md: missing external-prompt readability-style directive"
+assert_lint_fails_for external-bad "$external_bad" "skills/design/references/brainstorm-prompts.md: expected 3 external-prompt readability-style directives, found 2" "skills/design/references/brainstorm-prompts.md: missing external-prompt readability-style directive"
 assert_lint_fails_for orchestrator-bad "$orchestrator_bad" "skills/design/SKILL.md: expected 4 orchestrator-inline readability-style directives, found 0" "skills/design/SKILL.md: missing orchestrator-inline readability-style directive"
 assert_lint_fails_for orchestrator-partial "$orchestrator_partial" "skills/design/SKILL.md: expected 4 orchestrator-inline readability-style directives, found 3" "skills/design/SKILL.md: missing orchestrator-inline readability-style directive"
 assert_lint_fails_for orchestrator-missing-file "$orchestrator_missing_file" "skills/design/SKILL.md: missing orchestrator-inline readability-style directive" "skills/design/SKILL.md: expected 4 orchestrator-inline readability-style directives"

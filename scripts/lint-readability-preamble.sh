@@ -86,6 +86,9 @@ EOF
                 esac
                 if [ "$count" = "${expected_count:-1}" ]; then
                     ok=true
+                else
+                    printf '%s\n' "$path: expected ${expected_count:-1} external-prompt readability-style directives, found ${count:-0}" >&2
+                    count_message_emitted=true
                 fi
                 ;;
             orchestrator-inline)
