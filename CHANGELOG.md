@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [45.1.15] - 2026-05-27
+
+### Changed
+
+- Added a standalone /design plan revision waterfall that launches Codex, Cursor, then Claude with a composed prompt file and unconditional lib-quiet KV status output.
+- Implemented canonical plan-path validation, unified-diff/file-replacement candidate validation, snapshot restore, heading preservation, and ACTION=EMIT_PLAN gating.
+- Added sibling docs plus a fully mocked eleven-case harness covering promotion, validation, revert, prompt-source, and argv failure contracts, wired into Makefile and test-harnesses-9.
+
 ## [45.1.14] - 2026-05-27
 
 ### Changed
