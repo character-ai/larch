@@ -1,0 +1,10 @@
+=== aggregate-findings.sh references ===
+    1614
+=== --findings-file references ===
+     196
+=== --review-tmpdir references ===
+     290
+=== --allow-findings-outside-tmpdir references ===
+       0
+=== aggregate-findings.sh location ===
+./skills/review/scripts/aggregate-findings.sh

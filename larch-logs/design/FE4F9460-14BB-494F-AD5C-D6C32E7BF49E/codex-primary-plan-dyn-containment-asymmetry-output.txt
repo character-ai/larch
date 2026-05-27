@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review/scripts/aggregate-findings.sh:28-40	Plan advertises an equals-form escape-hatch hint that the proposed parser will reject	The plan's containment error says use --allow-findings-outside-tmpdir=true, but the argv case it proposes only accepts --allow-findings-outside-tmpdir true; following the hint hits unknown option	Change the hint/docs to the space-separated form or add parser support and tests for --allow-findings-outside-tmpdir=true
+1	in_scope	important	correctness	skills/review/scripts/aggregate-findings.sh:44-69	Invalid new flag values can be consumed by containment before boolean validation if implemented at the planned validation slot	Current containment runs before the existing boolean validation block; adding validation after lines 66-69 means --allow-findings-outside-tmpdir maybe with an outside file returns the containment error instead of the promised must be true or false diagnostic	Move ALLOW_FINDINGS_OUTSIDE_TMPDIR validation before the containment case, or make the containment branch run only after an explicit true false validation
+1	out_of_scope	latent	security	skills/review/scripts/aggregate-findings.sh:159-167,682-685,720-745,646-679	[OUT_OF_SCOPE] Existing artifact-name collisions are not guarded by _cand_canon	Passing --findings-file as $REVIEW_TMPDIR/aggregator-prompt.md truncates the ballot while building the prompt; passing aggregator-output.txt can make validation compare output to itself, and the post-dispatch candidate containment check still passes because the path is under tmpdir	Track a follow-up to reject --findings-file canonical paths that equal reserved aggregator artifacts such as aggregator-prompt.md, aggregator-output*.txt, slots, dispatch env, and validator sidecars
+1	in_scope	important	security	AGENTS.md:18-20	Plan says no SECURITY.md update for a security-relevant containment relaxation	The proposed flag allows an opt-in successful mv -f rewrite of a regular non-symlink findings file outside --review-tmpdir, changing the documented trust boundary	Revise the plan to update SECURITY.md with the input-only escape hatch, symlink limits, outside overwrite behavior, and same-UID/operator trust assumptions
+
+1. **[correctness] `skills/review/scripts/aggregate-findings.sh:28-40`**  
+Concern: the proposed error hint uses `--allow-findings-outside-tmpdir=true`, but the planned parser case only accepts `--allow-findings-outside-tmpdir true`.  
+Suggested revision: either change the hint/docs to the supported space-separated syntax, or support both forms and add a regression for the hinted equals form.
+
+2. **[correctness] `skills/review/scripts/aggregate-findings.sh:44-69`**  
+Concern: current code canonicalizes and rejects containment before the existing boolean validations. If the new validation is added “after the existing block,” an invalid outside invocation can be treated as false by the containment gate before it is rejected as invalid.  
+Suggested revision: validate `ALLOW_FINDINGS_OUTSIDE_TMPDIR` immediately after argv parsing and before lines 46-62.
+
+3. **[OUT_OF_SCOPE] [security] `skills/review/scripts/aggregate-findings.sh:159-167,682-685,720-745,646-679`**  
+Concern: I did find same-path artifact scenarios, but they are pre-existing under-tmpdir collisions rather than newly introduced outside-tmpdir behavior. `aggregator-prompt.md` can be the findings file and be truncated during prompt construction; `aggregator-output.txt` can be both input and candidate while `_cand_canon` still passes.  
+Suggested revision: file a follow-up to reserve aggregator artifact basenames/canonical paths and reject `--findings-file` collisions before any writes.
+
+4. **[security] `AGENTS.md:18-20`**  
+Concern: the plan explicitly skips `SECURITY.md`, but the change relaxes a path containment boundary and permits opt-in in-place rewrites outside the review tmpdir on successful aggregation.  
+Suggested revision: add a SECURITY.md trust-model note for the flag, including symlink rejection, post-dispatch strictness, and the outside-file clobber behavior.
+
+Evidence map: symlink rejection is `skills/review/scripts/aggregate-findings.sh:50-53`; `_findings_canon` canonicalization and containment case are `:54-62`; `_cand_canon` candidate containment is `:735-745` after candidate selection at `:720-734`. Today neither symlink rejection nor `_cand_canon` reads `ALLOW_FINDINGS_OUTSIDE_TMPDIR`; the plan gates only the rejection arm of the `_findings_canon` case.

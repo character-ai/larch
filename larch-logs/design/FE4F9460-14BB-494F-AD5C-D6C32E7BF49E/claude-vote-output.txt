@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- output containment check is unconditional and independently tested; flag=true variant adds belt-and-suspenders coverage beyond the planned minimal pair without proportional risk reduction
+FINDING_5: EXONERATE CORRECTNESS=uncertain SEVERITY=major QUALITY=good UNCERTAIN=true -- stub reviewer-label behavior not verified from plan text; implementer catches fixture/stub mismatch during harness execution
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly includes --allow-findings-outside-tmpdir true in the smoke test so containment is bypassed before disabled early-exit; reviewer appears to have missed the flag in the smoke description
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan deliberately limits to minimal test pair and documents edge-case behavior in plan prose; adding two more cases exceeds stated scope
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly acknowledges mv-f blast radius and defers staging responsibility to callers; no in-scope change warranted
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true -- set -euo pipefail is standard for this repo; if harness carries it, expected-exit-2 call aborts before stderr and cmp assertions run; plan does not specify guarded invocation pattern
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

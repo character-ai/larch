@@ -1,0 +1,16 @@
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-harness-evidence	dyn-codex-plan-harness-evidence	codex	<TMPDIR>/codex-primary-plan-dyn-harness-evidence-output.txt	ok
+plan-dyn-flag-grammar-parity	dyn-codex-plan-flag-grammar-parity	codex	<TMPDIR>/codex-primary-plan-dyn-flag-grammar-parity-output.txt	ok
+plan-dyn-containment-asymmetry	dyn-codex-plan-containment-asymmetry	codex	<TMPDIR>/codex-primary-plan-dyn-containment-asymmetry-output.txt	ok
+plan-arch	cursor-plan-arch	codex	<TMPDIR>/cursor-plan-arch-output.txt	reused	codex-plan-arch
+plan-edge	cursor-plan-edge	codex	<TMPDIR>/cursor-plan-edge-output.txt	reused	codex-plan-edge
+plan-pragmatic	cursor-plan-pragmatic	codex	<TMPDIR>/cursor-plan-pragmatic-output.txt	reused	codex-plan-pragmatic
+plan-requirements	cursor-plan-requirements	codex	<TMPDIR>/cursor-plan-requirements-output.txt	reused	codex-plan-requirements
+plan-dyn-harness-evidence	dyn-cursor-plan-harness-evidence	codex	<TMPDIR>/cursor-plan-dyn-harness-evidence-output.txt	reused	dyn-codex-plan-harness-evidence
+plan-dyn-flag-grammar-parity	dyn-cursor-plan-flag-grammar-parity	codex	<TMPDIR>/cursor-plan-dyn-flag-grammar-parity-output.txt	reused	dyn-codex-plan-flag-grammar-parity
+plan-dyn-containment-asymmetry	dyn-cursor-plan-containment-asymmetry	codex	<TMPDIR>/cursor-plan-dyn-containment-asymmetry-output.txt	reused	dyn-codex-plan-containment-asymmetry

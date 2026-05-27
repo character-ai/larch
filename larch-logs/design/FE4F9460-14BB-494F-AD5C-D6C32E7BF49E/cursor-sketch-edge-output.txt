@@ -1,0 +1,36 @@
+Reviewing the aggregator script, its tests, and call sites to analyze edge cases and failure modes.
+## Edge-case / failure-mode analysis
+
+### 1. Key architectural decisions (defensive design)
+
+The approved design keeps a **split trust model**: relax only the **input ballot path** (`--findings-file`), not the **vendor output path** or **write targets inside the session tmpdir**. That matches how the script actually behaves today: early gates at lines 46–62 canonicalize with `pwd -P` and reject symlinks unconditionally; dispatch artifacts (`aggregator-prompt.md`, `validate_py`, candidate resolution) stay under `--review-tmpdir`; and the post-dispatch check at lines 735–744 still requires the LLM candidate under `REVIEW_TMPDIR_CANON`. Default-off `true|false` parsing (same grammar as `--codex-present`) preserves byte-equivalent behavior for `review-core.sh` and current `plan-review-loop.sh`, which both pass `findings*.md` inside the same tmpdir. Failures before dispatch should remain **exit 2** (operator misconfiguration), not the non-fatal `REASON=*` / exit 0 path used after dispatch—`review-core.sh` already treats non-zero aggregate exit as unexpected.
+
+The important semantic shift is that when the flag is on, **`mv -f "$merged_tmp" "$FINDINGS_FILE"` (line 678) may overwrite a file outside the agg tmpdir**—exactly what the multi-round layout needs (`round-N/findings-in-scope.md` read while `--review-tmpdir` is `round-N/agg-in-scope/`). That is intentional but increases blast radius: a bad merge corrupts the round’s canonical in-scope ballot, not just a disposable staging copy. The design correctly treats the explicit flag as the audit signal (no extra stderr/breadcrumb), but implementers should document in `aggregate-findings.md` that opt-in callers should prefer **staging copies** or pre-aggregator snapshots if they need rollback, because validator failure already leaves the input unchanged but success always clobbers in place.
+
+### 2. Files to modify and fragile areas
+
+| Surface | Role | Fragility |
+|--------|------|-----------|
+| `skills/review/scripts/aggregate-findings.sh` | Argv parse, flag-gated `case "$_findings_canon"`, `usage()`, rejection hint | **Lines 54–62** (prefix containment via `"$REVIEW_TMPDIR_CANON"/*`) and **line 50** (symlink ban)—do not weaken the latter. **Line 678** becomes dangerous for out-of-tmpdir inputs. **Lines 735–744** must stay strict or output could escape the agg sandbox even with relaxed input. |
+| `skills/review/scripts/aggregate-findings.md` | Contract / escape hatch | Currently states `--findings-file` must be under `$REVIEW_TMPDIR` (line 8); must clarify **input-only** relaxation vs unchanged output containment to avoid operator confusion. |
+| `skills/review/scripts/test-aggregate-findings.sh` | Regression | **No containment tests exist today**—the proposed pair is necessary but thin; see risks below. |
+
+**Out of scope (by design) but coupled:** future multi-round loop callers (not wired in this partition). Current `plan-review-loop.sh` passes both paths under `DESIGN_TMPDIR`, so this partition unblocks **R4/FINDING_2-style** layouts only after a later caller passes `--allow-findings-outside-tmpdir=true`. `SECURITY.md` (pre-vote aggregation bullet) still describes session-local `findings.md` only—consider a one-line note when the flag ships so security reviewers know input paths may lie outside the agg subdir while prompts/outputs remain tmpdir-scoped.
+
+### 3. Main risks, failure modes, and mitigations
+
+| Risk | Failure mode | Mitigation |
+|------|----------------|------------|
+| **Accidental opt-in** | Wrapper exports flag or copy-pastes `true` into a `/review` path; aggregator reads/writes ballots outside the review tmpdir tree. | Default `false`; strict `true\|false` validation; no wiring in `review-core.sh` / `plan-review-loop.sh` in this partition. Reject unknown flag values with exit 2 before dispatch. |
+| **In-place overwrite of shared round state** | Success overwrites `round-N/findings-in-scope.md`; bad LLM output destroys deduped source for retries/next round. | Document caller contract: snapshot or stage under `agg-in-scope/` when immutability matters; rely on existing fail-closed validator + unchanged input on failure. |
+| **Asymmetric containment surprise** | Operator enables flag but vendor output lands outside `--review-tmpdir` → `REASON=dispatch-failed`, ballot unchanged—looks like “flag didn’t work.” | Error text and docs must state flag applies only to **`--findings-file`**, not aggregator output. |
+| **Symlink / path tricks** | Attacker or tool writes symlink ballot pointing outside tmpdir. | Keep line 50 unconditional; add harness case: `flag=true` + symlink → still exit 2. |
+| **Prefix false positive/negative** | Sibling paths like `/tmp/review` vs `/tmp/review-extra`—current `/*` suffix pattern is safe; avoid loosening to substring checks. | Keep existing `case` pattern; only gate the rejection branch. |
+| **`--review-tmpdir` missing at check time** | `cd "$REVIEW_TMPDIR"` fails at line 46 before `mkdir -p` at line 159. | Callers must create `agg-in-scope/` before invoke (multi-round layout responsibility); test rejection path with existing tmpdir. |
+| **Insufficient test coverage** | Only “allowed with flag / rejected without” misses symlink-with-flag, invalid flag values, and “output still must be under tmpdir.” | Extend harness beyond the minimal pair: symlink+flag, bad flag token, and optional dispatch stub proving outside **candidate** still fails. |
+| **TOCTOU between canonicalize and `cat`/`mv`** | Ballot swapped after check (pre-existing). | Accept as existing threat model; flag doesn’t materially worsen it; symlink ban remains the main structural guard. |
+| **Hint on wrong errors** | Appending bypass hint to non-containment failures confuses debugging. | Add hint **only** to the containment `larch_err` at line 59, not symlink or missing-file errors. |
+
+**Implementation ordering (defensive):** parse and validate the new flag → resolve `REVIEW_TMPDIR_CANON` → symlink check (unchanged) → canonicalize findings path → flag-gated containment `case` → existing boolean/mode validation → rest of pipeline unchanged. That preserves cheap fail-closed behavior and avoids dispatching LLM work on misconfigured argv.
+
+**Harness note:** rejection without the flag can use a real file with ≥2 `### FINDING_` blocks outside `$TMP` and expect exit 2 + hint substring; the allow case needs the stub dispatch path (as other tests do) so execution passes the early gate and reaches a controlled exit 0 path.
