@@ -1,0 +1,21 @@
+Implemented #2970.
+
+Changed the `/design` and `/implement` contracts so the orchestrator emits the full persisted final-summary body verbatim at top chat, gated on non-empty summary files. Also updated `/implement` Step 17/18 sentinel logic to track body emission and compare Step 18 against `$IMPLEMENT_TMPDIR/.step18-prebody` with `cmp -s`.
+
+Updated docs/tests/changelog across:
+- [skills/design/SKILL.md](<OPERATOR_REPO_PATH>/skills/design/SKILL.md)
+- [skills/implement/SKILL.md](<OPERATOR_REPO_PATH>/skills/implement/SKILL.md)
+- [scripts/test-render-cost-line-callsites.sh](<OPERATOR_REPO_PATH>/scripts/test-render-cost-line-callsites.sh)
+- [scripts/test-implement-structure.sh](<OPERATOR_REPO_PATH>/scripts/test-implement-structure.sh)
+- sibling docs, `docs/linting.md`, and `CHANGELOG.md`
+
+Verification:
+- `bash scripts/test-render-cost-line-callsites.sh` passed
+- `bash scripts/test-design-structure.sh` passed
+- `bash scripts/test-implement-structure.sh` passed
+- `git diff --check` passed
+- `bash scripts/relevant-checks.sh` initially failed on shellcheck SC2016 in the new retired-prose literal array; fixed and reran successfully
+
+Wrote the required manifest atomically at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.
+
+Manual `/design` or `/implement` smoke was not run in this session.

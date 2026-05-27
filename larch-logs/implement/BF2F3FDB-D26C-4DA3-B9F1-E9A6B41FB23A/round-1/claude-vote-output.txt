@@ -1,0 +1,14 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- anti-halt (line 31) and end-of-step-5 (line 1040) prose were both updated with MUST-emit language; the residual "prints to chat" framing is accurate since the script still runs inside a Bash tool call whose output is chat-visible; all four critical contract sites are correctly updated
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- branch mixing is a done fact and the CHANGELOG entries are already separated under distinct version sections; no actionable fix remains
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- inherent architectural constraint (Bash fences cannot verify orchestrator action); same root cause as FINDING_5; separate issue would yield redundant prose-only fix
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- CI cannot mechanically verify LLM orchestrator top-chat emission; requesting tighter mechanical guarantees is infeasible by design
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- six retired-phrase guards cover the main regression vectors; adding exhaustive near-duplicate variants yields diminishing returns
+OOS_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_11: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=no-fix UNCERTAIN=true -- speculative; mitigations unchanged; no actionable finding
+OOS_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
