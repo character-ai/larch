@@ -295,38 +295,38 @@
       {
         "step": "Step 4 — commit implementation",
         "totals": {
-          "input": 2,
-          "cache_read": 383319,
-          "cache_create": 537,
-          "cache_create_5m": 537,
+          "input": 6,
+          "cache_read": 1154762,
+          "cache_create": 3347,
+          "cache_create_5m": 3347,
           "cache_create_1h": 0,
-          "output": 352,
-          "total": 384210
+          "output": 3008,
+          "total": 1161123
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 2,
-              "cache_read": 383319,
-              "cache_create": 537,
-              "cache_create_5m": 537,
+              "input": 6,
+              "cache_read": 1154762,
+              "cache_create": 3347,
+              "cache_create_5m": 3347,
               "cache_create_1h": 0,
-              "output": 352,
-              "total": 384210
+              "output": 3008,
+              "total": 1161123
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 94,
-      "cache_read": 14001773,
-      "cache_create": 371871,
-      "cache_create_5m": 371871,
+      "input": 98,
+      "cache_read": 14773216,
+      "cache_create": 374681,
+      "cache_create_5m": 374681,
       "cache_create_1h": 0,
-      "output": 43195,
-      "total": 14416933
+      "output": 45851,
+      "total": 15193846
     }
   },
   "codex": {
@@ -556,12 +556,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 94,
-    "cache_read": 14001773,
-    "cache_create_5m": 371871,
+    "input": 98,
+    "cache_read": 14773216,
+    "cache_create_5m": 374681,
     "cache_create_1h": 0,
-    "output": 43195,
-    "total": 14416933
+    "output": 45851,
+    "total": 15193846
   },
   "BUCKETS_codex": {
     "input": 239379,
