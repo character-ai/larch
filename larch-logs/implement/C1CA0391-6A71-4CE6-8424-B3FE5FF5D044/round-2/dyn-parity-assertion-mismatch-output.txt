@@ -1,0 +1,15 @@
+Reviewing the branch diff and tracing how `ALL_OUTPUT_TOOLS` is set in the phase1-OK dedup test.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+The plan/issue text calls for `assert_line "ALL_OUTPUT_TOOLS=codex cursor"` on the `slots-dedup-phase1-ok.ndjson` block, but the branch correctly uses `ALL_OUTPUT_TOOLS=codex codex` at `scripts/test-dispatch-with-waterfall.sh:472` (and the same expectation at `:418`, `:445`, `:501` for other grouped-dedup scenarios).
+
+That matches dispatcher behavior, not the plan typo. `ALL_OUTPUT_TOOLS` is emitted from `final_tools` (`scripts/dispatch-with-waterfall.sh:556`). On grouped dedup reuse, `reuse_slot_result` sets `final_tools[idx]="$source_tool"` (`scripts/dispatch-with-waterfall.sh:324`), i.e. the donor’s tool (`codex`), not the manifest’s primary tool (`cursor` for `phase1-cursor`).
+
+For `slots-dedup-phase1-ok.ndjson` (`scripts/test-dispatch-with-waterfall.sh:449-455`): slot `phase1-codex` settles in phase 1 via Codex (`final_tools[0]=codex`); slot `phase1-cursor` fails phase 1 (cursor stub `narration only`), then phase-2 grouped dedup reuses the ledger `ok` row from `phase1-codex` (`DEDUPE_REUSED_TOOL=codex` at `:475`), so `final_tools[1]=codex`. Expected KV: `codex codex`.
+
+Contrast the non-grouped harness at `scripts/test-dispatch-with-waterfall.sh:91-104` (`slots-phase1-ok.ndjson`, no `fallback_group`): each slot keeps its own settling tool → `ALL_OUTPUT_TOOLS=codex cursor`. Using `codex cursor` on the dedup test would assert the wrong contract and would fail against correct behavior.
+
+Production fixes (`: >"$GROUP_LEDGER"` at `scripts/dispatch-with-waterfall.sh:181`; cap_hit ledger gate at `:401-402`) align with the issue description and with the outer terminal-status gate at `:382`. No additional correctness defects found in the scout focus area for this branch diff.

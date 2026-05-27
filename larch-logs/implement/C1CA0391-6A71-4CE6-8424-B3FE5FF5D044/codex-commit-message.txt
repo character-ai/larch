@@ -1,0 +1,3 @@
+Fix waterfall fallback_group ledger reuse
+
+Truncate grouped dispatch ledgers at invocation start and record cap_hit terminal results so grouped peers can dedupe correctly.

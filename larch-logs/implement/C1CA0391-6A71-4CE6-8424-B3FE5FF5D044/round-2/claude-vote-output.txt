@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- missing comment is too minor for a standalone GitHub issue
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- if dedup-a is recreated fresh before dedup-b's ledger check, stale ledger points to fresh content and the test may pass on buggy code
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- red-green verification is standard practice and does not warrant a standalone issue
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- slots directory is a controlled tmpdir; attacker-controlled symlink plant threat is too weak for this deployment context
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- single-runner invariant prevents concurrent same-directory use in practice
+FINDING_9: EXONERATE CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=true -- concern is vague and unrelated to this PR's changes; not verifiable from the diff
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan spec was wrong but implementation is correct; historical plan drift does not warrant a separate issue
