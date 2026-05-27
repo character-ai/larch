@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- legitimate drift risk; shared-fragment extraction is follow-up, not required for this PR
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- subprocess clause is in shared PROMPT today; extra per-role greps add harness cost for a refactor not present
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot line is a commit title, not a defect in the diff
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot line is a log-commit label, not a code concern
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational commit summary, not an actionable finding
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documents an existing safeguard (blank line + check-generators), not a problem
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- states current shared-PROMPT layout is adequate, not a defect
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- accepted Option 2 tradeoff already scoped in the plan
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- real residual risk but explicitly accepted for #2991; not worth a separate issue from this review
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional larch-logs convention, not a functional defect to file
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- prompt-only guard without recovery is the accepted scope; recovery/TTY is follow-up
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_2; current shared PROMPT placement makes fix-only grep optional
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- make lint-only/pre-commit omit check-generators; drift can ship until test-harnesses-13 in CI
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- schema and digest were updated together here; paired harness is optional follow-up
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security scope summary, not a vulnerability
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms quoting is safe; not a finding
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- secrets review found no issue
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive trust-boundary assessment, not a defect
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- same accepted prompt-only scope as FINDING_11; no launcher change required here
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- proactive-only bail token is expected; post-crash classification is optional observability follow-up
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- read_stdout ban is tied to held-child sessions; narrowing scope is speculative without observed false bails
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- third duplicate of fix-only harness nit; not warranted for current layout
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- issue-plan sed snippet can drift from shipped sessions\.\*\*/ pattern and cause copy-paste regressions
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- correctly notes #2973 ordering is operator process, not a plan-fidelity gap in this diff

@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- three-copy prose drift is a real latent risk but an intentional design choice for different audiences; suggested revision is non-actionable
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- clause is currently outside the role-gated branch so fix-only pin is sufficient today; concern is speculative future-refactor risk
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding body is just a commit title with no concern stated; not a real problem
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding body is just a commit title with no concern stated
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding body confirms the implementation is correct; no problem raised
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding confirms the blank-line invariant holds and drift is caught by check-generators.sh; no problem
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding confirms the fix-only pin is sufficient; no problem raised
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding restates the explicitly accepted design tradeoff; not a new concern
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- not a problem, just explaining larch-logs convention; nothing to file
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- recovery branch fix is explicitly out of scope per Round 1 Decision 1; concern is the accepted Option 2 tradeoff
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same as FINDING_2; speculative future-refactor risk, not a current defect
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security review confirms no new surfaces; not a finding
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms quoting is correct; no problem
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms no secrets; no problem
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms trust boundaries are correct; no problem
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- prompt-only scope is the accepted Option 2 design; recovery branch is explicitly out of scope
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- token is proactive-only by design; post-crash classification requires launcher changes explicitly out of scope
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- "poll with read_stdout" phrasing already targets the held-child pattern; over-broad concern is speculative
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same speculative future-refactor risk as FINDING_2 and FINDING_12
+FINDING_23: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms blocked-by relationship is correctly handled; no problem to file

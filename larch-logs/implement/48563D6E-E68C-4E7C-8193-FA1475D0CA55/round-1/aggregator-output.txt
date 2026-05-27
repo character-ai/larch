@@ -1,0 +1,79 @@
+### FINDING_1: CI fixer subprocess guidance can drift from implementer guard
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/launch-codex-ci.sh` carries a separate prose copy of subprocess discipline. Future edits could update the base implementer guard or generated Codex implementer while leaving the CI fixer wording weaker or stale.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_2: CI rendered-prompt test only pins the fix role
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: The subprocess-prohibition assertion checks only the `fix` rendered prompt even though the shared prompt is used by multiple CI roles. A future role-gated refactor could drop the clause for `resolve-conflict`, `bump-classify`, or `changelog-draft` without failing this harness.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_3: Prompt-only guard does not recover the original crash mode
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: Hard guard #9 reduces likelihood through prompt discipline, but launchers and `step2-implement.sh` remain unchanged. If Codex still calls `write_stdin` on a closed/non-TTY session, it can crash before writing a manifest and leave the original #2991 stall mode observable.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_4: Bail token is proactive-only for write_stdin failures
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: `interactive-subprocess-unsupported` is available when the agent proactively bails, but a reactive `write_stdin` crash can still kill Codex before manifest write. Operators may not see the new stable token for the original incident unless crash classification is added elsewhere.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_5: read_stdout prohibition may be broader than necessary
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: The guard may cause Codex to bail on legitimate single-shot `exec_command` plus `read_stdout` patterns that do not involve an interactive held child session.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_6: [OUT_OF_SCOPE] Residual runtime risk remains by design
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: Even with Hard guard #9, Codex can still hit the original `write_stdin failed: stdin is closed` crash if it ignores the prompt. `step2-implement.sh` and `launch-codex-implement.sh` have no new recovery path, so this PR should be treated as likelihood reduction rather than full closure of #2991’s stall mode.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_7: [OUT_OF_SCOPE] larch-logs bulk is not functionally reviewed
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: Large `larch-logs/` design and implement commits are intentional run artifacts per project convention and were not reviewed for functional correctness.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_8: [OUT_OF_SCOPE] lint-only path skips generator drift check
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `make lint-only` or pre-commit-only workflows can skip `check-generators`, allowing base or generator edits to drift from generated artifacts until the fuller harness runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_9: [OUT_OF_SCOPE] schema and digest bail-token sync lacks automation
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: There is no automated paired check that the schema and digest stay synchronized for the `interactive-subprocess-unsupported` bail token.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_10: [OUT_OF_SCOPE] issue plan snippet has stale sed pattern
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: The issue plan block’s `generate-cursor-implementer.sh` snippet still shows `sessions\*\*/` while the committed generator uses the working `sessions\.\*\*/` form, creating future copy-paste regression risk.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_11: [OUT_OF_SCOPE] landing order remains blocked on #2973
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: The plan notes a dependency on #2973, and this PR correctly leaves `scripts/run-external-agent.sh` untouched. Landing order remains an operator concern rather than a diff-local plan-fidelity issue.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.

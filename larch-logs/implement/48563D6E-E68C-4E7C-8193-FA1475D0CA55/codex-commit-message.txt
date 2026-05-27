@@ -1,0 +1,7 @@
+Prohibit Codex interactive subprocess sessions
+
+Add a Codex implementer hard guard for unsupported persistent interactive subprocess sessions, including the stable interactive-subprocess-unsupported bail token.
+
+Carry the same subprocess-tool discipline into the Codex CI fixer prompt and update the manifest schema docs.
+
+Regenerate the Codex implementer prompt, strip the Codex-only guard from the Cursor generator output, and pin the behavior in the implementer and CI launcher harnesses.
