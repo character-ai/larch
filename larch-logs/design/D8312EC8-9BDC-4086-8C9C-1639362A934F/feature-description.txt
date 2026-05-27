@@ -1,0 +1,128 @@
+[DESIGNING] [BUG] [URGENT] dispatch-with-waterfall.sh fallback_group ledger: append-only across runs + cap_hit missing ok rows
+
+Two correctness bugs in `scripts/dispatch-with-waterfall.sh` introduced by #2898 (the `fallback_group` dedup mechanism). Both were identified during the #2898 code review (FINDING_1 and FINDING_2 from the round-1 Cursor panel) and fixes were produced by Codex but never committed because the Codex session was interrupted by a stdin error before writing the completion manifest.
+
+The uncommitted fixes exist verbatim in the working tree on `main` — this issue tracks landing them.
+
+---
+
+## Bug A — GROUP_LEDGER is append-only across dispatcher invocations (scripts/dispatch-with-waterfall.sh:185-189)
+
+### Symptom
+
+When `fallback_group` is in use, re-running `dispatch-with-waterfall.sh` on the same `--slots-file` directory (e.g., a retry after a failed round, or a second `/design` or `/implement` panel dispatch reusing the same `DECOMP_DIR` / `DESIGN_TMPDIR`) reads stale `ok` rows from a previous run. The dedup mechanism then treats a prior pass's Codex result as "already settled" and copies obsolete output to peer slots without launching Codex again.
+
+**Concrete example**: `/design` retry after a failed round — first run's Codex output is stale (session ended mid-stream, truncated, or from a different plan version); second run re-uses it via the ledger without re-querying Codex.
+
+### Root cause
+
+At `scripts/dispatch-with-waterfall.sh:185-189`, `GROUP_LEDGER` is only `touch`ed (via the `REUSED_INDICES_FILE` init path) — it is never truncated on a new dispatcher invocation when `has_fallback_groups=true`:
+
+```bash
+# CURRENT (buggy):
+if [[ "$has_fallback_groups" == "true" ]]; then
+    resolved_slots_file=$(resolve_existing_path "$SLOTS_FILE")
+    GROUP_LEDGER="$(dirname "$resolved_slots_file")/waterfall-group-results.tsv"
+    REUSED_INDICES_FILE="$(dirname "$resolved_slots_file")/.waterfall-reused-indices"
+    : >"$REUSED_INDICES_FILE"   # ← truncates reused-indices, but NOT GROUP_LEDGER
+fi
+```
+
+`GROUP_LEDGER` is an `>>` append-only file. When the same `slots-file` directory is reused across invocations (the common case for retried panels), rows from previous runs accumulate. The `find_group_ok_for_tool` lookup in `collect_phase` then matches against those stale rows and bypasses phase-2 Codex launch.
+
+### Suggested fix
+
+Add `: >"$GROUP_LEDGER"` alongside the existing `REUSED_INDICES_FILE` truncation (one line, already in the working tree):
+
+```bash
+# FIXED:
+if [[ "$has_fallback_groups" == "true" ]]; then
+    resolved_slots_file=$(resolve_existing_path "$SLOTS_FILE")
+    GROUP_LEDGER="$(dirname "$resolved_slots_file")/waterfall-group-results.tsv"
+    REUSED_INDICES_FILE="$(dirname "$resolved_slots_file")/.waterfall-reused-indices"
+    : >"$GROUP_LEDGER"           # ← truncate ledger on every new dispatch
+    : >"$REUSED_INDICES_FILE"
+fi
+```
+
+---
+
+## Bug B — cap_hit terminal phase-1 successes do not write ledger ok rows (scripts/dispatch-with-waterfall.sh:397-402)
+
+### Symptom
+
+When a grouped slot's primary tool (Codex) finishes phase-1 with `STATUS=cap_hit` (budget ceiling reached but output was produced), its ledger row is not written. A peer grouped slot's phase-2 then finds no matching `ok` row for the same tool and launches a redundant second Codex job — doubling vendor cost for what is semantically a settled result.
+
+### Root cause
+
+In `collect_phase` at `scripts/dispatch-with-waterfall.sh:397-402`, the ledger append is guarded by `status == "OK"` only:
+
+```bash
+# CURRENT (buggy):
+if [[ "$status" == "OK" ]]; then
+    append_group_ledger_ok "$idx" "$tool" "${final_outputs[$idx]}"
+fi
+```
+
+`cap_hit` is a legitimate terminal phase-1 outcome — the external implementer produced output that passed the `--require-result-pattern` check, just with a budget warning attached. The dedup mechanism should treat it identically to `OK` for ledger purposes.
+
+### Suggested fix
+
+Extend the condition to include `cap_hit` (one-character change, already in the working tree):
+
+```bash
+# FIXED:
+if [[ "$status" == "OK" || "$status" == "cap_hit" ]]; then
+    append_group_ledger_ok "$idx" "$tool" "${final_outputs[$idx]}"
+fi
+```
+
+---
+
+## Test improvements (scripts/test-dispatch-with-waterfall.sh)
+
+The working tree also contains three new test cases covering these bugs, already passing locally:
+
+1. **Two-run dedup regression**: runs the same grouped manifest twice, asserting that the second invocation re-launches Codex (not reuses stale output). Catches Bug A.
+2. **cap_hit grouped dedup**: asserts that a `cap_hit` phase-1 result writes an ok ledger row so the peer slot is reused without a second Codex launch. Catches Bug B.
+3. **Additional assertions on existing phase-1-OK+phase-1-fail test**: adds `assert_line "ALL_OUTPUT_TOOLS=codex cursor"` and `DISPATCH_OK=true` (output-shape parity), plus a content check on the reused output file.
+
+---
+
+## What to do
+
+1. Run `git diff HEAD scripts/dispatch-with-waterfall.sh scripts/test-dispatch-with-waterfall.sh` — both files have the exact fixes and tests uncommitted in the working tree.
+2. Commit both files with a message referencing this issue.
+3. Verify `bash scripts/test-dispatch-with-waterfall.sh` passes (it does on the current working tree).
+
+This is a two-line production fix plus test coverage. No design changes needed.
+
+---
+
+## Context
+
+- Introduced by: #2898 (PR #2960, v42.5.35)
+- Identified by: Cursor review panel FINDING_1 (ledger truncation) and FINDING_2 (cap_hit rows)
+- Fixes produced by: Codex during the #2898 `/implement` run; not committed due to stdin error interrupting Codex before manifest write
+- Current status: fixes and tests are verbatim in working tree on `main` as uncommitted changes
+
+---
+
+## How the fixes ended up uncommitted (root cause of this situation)
+
+During the #2898 `/implement` run, Codex was the selected implementer (availability waterfall resolved to Codex). Codex ran for ~10 minutes, implemented all plan items, and then began iterating on review findings — including FINDING_1 (ledger truncation) and FINDING_2 (cap_hit rows) — which is when it produced the two-line fix and the three new test cases now in the working tree.
+
+At ~10 minutes, the Codex `exec` session received a fatal stdin error:
+
+```
+ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session;
+rerun exec_command with tty=true to keep stdin open
+```
+
+This error fired because the Codex CLI (`codex exec --full-auto`) was launched inside a Bash tool call with `run_in_background: true`. When the breadcrumb monitor (the foreground pairing script) completed its work and the shell exited, the stdin file descriptor inherited by Codex's process was closed. Codex was still in the middle of running `make lint-foreground-markers` at that point and had not yet written its `manifest.json` (the completion artifact the dispatcher reads to determine `STATUS=complete`).
+
+Because `manifest.json` was absent when the dispatcher checked, the dispatcher fell back to `STATUS=claude_fallback`. The orchestrator then ran Step 3 (relevant checks) and Step 4 (commit) against the Codex-modified working tree, but the commit was created from the state *before* Codex's final fixup round — i.e., the state after the initial implementation but before the review-finding fixes. The two-line production fix and the test additions that Codex wrote in its final iteration were present in the working tree but not yet staged, so they were not picked up by the `commit-implementation.sh` invocation.
+
+After the merge (PR #2960), NEVER #19 prohibits further commits on `main`, leaving the two files in a permanently dirty working tree state until manually committed via a follow-up issue (this one).
+
+**The underlying `run_in_background: true` + Codex stdin interaction** is a known limitation: backgrounding a shell that runs `codex exec` closes stdin for the Codex child when the monitor exits. This is tracked separately; the short-term mitigation is to extend the breadcrumb monitor's timeout so it does not exit before Codex finishes writing the manifest.
