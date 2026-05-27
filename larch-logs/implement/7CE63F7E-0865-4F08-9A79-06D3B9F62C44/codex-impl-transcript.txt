@@ -1,0 +1,15 @@
+Implemented #2996 and wrote the manifest to `<TMPDIR>/manifest.json`.
+
+Key changes:
+- Enforced top-level Family B writer `&` + PID capture + post-monitor `wait` in `scripts/lint-foreground-markers.sh`.
+- Swept the documented Family B fences to the two-branch `monitor_rc` / `writer_rc` pattern.
+- Fixed `collect-agent-results.sh` EXIT trap composition so the done sentinel is written on normal exit.
+- Added `scripts/test-background-monitor-wait.sh` plus docs, Makefile wiring, relevant-checks routing, and agent-lint allowlist.
+- Updated the contract docs in `BASH_AUTHORING.md`, `scripts/breadcrumb-monitor.md`, linting docs, and AGENTS.md.
+
+Validation passed:
+- `make test-background-monitor-wait test-collect-agent-results test-lint-foreground-markers lint-foreground-markers`
+- `make test-harness-shards-coverage`
+- `make lint-bash32`
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`

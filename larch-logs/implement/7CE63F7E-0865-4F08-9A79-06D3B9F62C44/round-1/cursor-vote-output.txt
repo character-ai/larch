@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- wording already matches the three-non-blank-line lint window; example shows monitor_rc on line two after capture
+FINDING_4: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- harness-only kill with guarded fallback in isolated test tmpdir
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- plan edge cases already document monitor exit 2 leaving the writer running as accepted residual risk
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- Step 8+ prose treats non-zero monitor_rc as infrastructure stall distinct from writer status-file routing
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- post-monitor wait and writer_rc propagation make wrapper exit authoritative for orchestrators following the new fences
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

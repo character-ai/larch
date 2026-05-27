@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "AGENTS.md", "lines_added": 1, "lines_removed": 0},
+    {"path": "BASH_AUTHORING.md", "lines_added": 36, "lines_removed": 3},
+    {"path": "Makefile", "lines_added": 5, "lines_removed": 1},
+    {"path": "agent-lint.toml", "lines_added": 5, "lines_removed": 0},
+    {"path": "docs/linting.md", "lines_added": 2, "lines_removed": 1},
+    {"path": "scripts/breadcrumb-monitor.md", "lines_added": 21, "lines_removed": 0},
+    {"path": "scripts/collect-agent-results.sh", "lines_added": 1, "lines_removed": 1},
+    {"path": "scripts/lint-foreground-markers.md", "lines_added": 21, "lines_removed": 12},
+    {"path": "scripts/lint-foreground-markers.sh", "lines_added": 163, "lines_removed": 1},
+    {"path": "scripts/relevant-checks.sh", "lines_added": 51, "lines_removed": 0},
+    {"path": "scripts/test-background-monitor-wait.md", "lines_added": 21, "lines_removed": 0},
+    {"path": "scripts/test-background-monitor-wait.sh", "lines_added": 167, "lines_removed": 0},
+    {"path": "scripts/test-collect-agent-results.sh", "lines_added": 18, "lines_removed": 0},
+    {"path": "scripts/test-lint-foreground-markers.md", "lines_added": 15, "lines_removed": 6},
+    {"path": "scripts/test-lint-foreground-markers.sh", "lines_added": 245, "lines_removed": 23},
+    {"path": "skills/design/SKILL.md", "lines_added": 28, "lines_removed": 4},
+    {"path": "skills/design/references/brainstorm.md", "lines_added": 28, "lines_removed": 4},
+    {"path": "skills/design/references/dialectic-execution.md", "lines_added": 28, "lines_removed": 4},
+    {"path": "skills/design/references/plan-review.md", "lines_added": 33, "lines_removed": 6},
+    {"path": "skills/implement/SKILL.md", "lines_added": 57, "lines_removed": 9},
+    {"path": "skills/research/references/research-phase.md", "lines_added": 14, "lines_removed": 2},
+    {"path": "skills/research/references/validation-phase.md", "lines_added": 14, "lines_removed": 2},
+    {"path": "skills/shared/dialectic-protocol.md", "lines_added": 14, "lines_removed": 2},
+    {"path": "skills/shared/external-reviewers.md", "lines_added": 14, "lines_removed": 2}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-background-monitor-wait.sh",
+    "scripts/test-background-monitor-wait.md",
+    "scripts/test-collect-agent-results.sh",
+    "scripts/test-lint-foreground-markers.sh",
+    "scripts/test-lint-foreground-markers.md"
+  ],
+  "summary_bullets": [
+    "Enforce the top-level Family B writer contract in lint-foreground-markers: shell ampersand, PID capture, same-fence monitor, and post-monitor wait with identifier matching.",
+    "Sweep Family B Markdown fences to the canonical monitor_rc/writer_rc wrapper so writer exits propagate and monitor failures stay visible.",
+    "Fix collect-agent-results.sh EXIT trap composition so the quiet done sentinel is written on normal exit.",
+    "Add the background-monitor wait regression harness and route it through Makefile, relevant-checks, docs, and agent-lint allowlists."
+  ],
+  "commit_message": "Prevent orphaned Family B background writers (#2996)\n\nEnforce and document the canonical background+monitor wrapper for top-level Family B writers: shell-background the writer, capture its PID, run breadcrumb-monitor in the foreground, then wait on the writer while preserving writer and monitor exit semantics. Sweep skill fences to that shape, fix collect-agent-results.sh done-trap composition, and add regression coverage for early sentinels, writer exit propagation, monitor failures, and bounded timeout reaping.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {"questions": []}
+}
