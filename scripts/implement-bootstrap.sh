@@ -610,8 +610,8 @@ phase_tracking() {
                 BRANCH_SELECTED=branch-1-resume
                 ISSUE_NUMBER_RESOLVED=$sentinel_issue
                 RUN_ID=$sentinel_run_id
-                run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
+                run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 emit_tracking_breadcrumb_if_enabled
                 return 0
             fi
@@ -657,6 +657,7 @@ phase_tracking() {
 
     BRANCH_SELECTED=branch-2-adopt
     ISSUE_NUMBER_RESOLVED=$ISSUE_NUMBER_OPT
+    rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 2 adopt"
     if ! RUN_ID=$(resolve_run_id); then
         tracking_init_failed
         return 0
@@ -677,7 +678,6 @@ phase_tracking() {
         return 0
     fi
 
-    rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 2 adopt"
     emit_tracking_breadcrumb_if_enabled
     return 0
 }

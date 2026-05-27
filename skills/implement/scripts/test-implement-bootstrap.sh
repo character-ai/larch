@@ -776,7 +776,7 @@ assert_contains "DEFERRED=true" "$out" "B4 deferred"
 assert_not_contains "STALL_TRACKING=true" "$out" "B4 no stall"
 assert_not_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B4 no tracking-init-failed bail"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_not_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4 no rename"
+assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4 rename fires before post-tracking-issue"
 if [ ! -f "$SANDBOX_TMP/parent-issue.md" ]; then
     PASS=$((PASS + 1))
     echo "PASS: B4 no sentinel"
@@ -813,6 +813,7 @@ else
     echo "FAIL: B4-plan feature-description.txt materialized"
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4-plan rename fires before post-tracking-issue"
 assert_contains "gh issue view 123" "$invoke" "B4-plan gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-plan persist invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -842,6 +843,7 @@ else
     echo "FAIL: B4-all feature-description.txt materialized"
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4-all rename fires before post-tracking-issue"
 assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
