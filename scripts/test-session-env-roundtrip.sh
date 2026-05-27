@@ -301,10 +301,6 @@ else
 fi
 
 # ------------------------------------------------------------
-# Summary
-# ------------------------------------------------------------
-
-# ------------------------------------------------------------
 # G. session-setup.sh — cache-root mtime touch behavior
 # ------------------------------------------------------------
 
@@ -353,6 +349,27 @@ design_tmpdir="$TMPDIR_TEST/design-tmpdir"
 design_home="$TMPDIR_TEST/design-home"
 mkdir -p "$design_tmpdir"
 mkdir -p "$design_home"
+
+if err=$(HOME="$design_home" CLAUDE_PLUGIN_ROOT="/tmp/bad plugin-root" "$WRITE_DESIGN_CURRENT_ENV_SCRIPT" \
+    --output "$design_out" \
+    --design-tmpdir "$design_tmpdir" \
+    --session-id test-design-roundtrip \
+    --claude-pid 7654321 2>&1); then
+    fail "H.0a CLAUDE_PLUGIN_ROOT with space accepted by write-design-current-env"
+else
+    assert_contains "H.0a error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
+fi
+
+if err=$(HOME="$design_home" CLAUDE_PLUGIN_ROOT="relative/plugin-root" "$WRITE_DESIGN_CURRENT_ENV_SCRIPT" \
+    --output "$design_out" \
+    --design-tmpdir "$design_tmpdir" \
+    --session-id test-design-roundtrip \
+    --claude-pid 7654321 2>&1); then
+    fail "H.0b relative CLAUDE_PLUGIN_ROOT accepted by write-design-current-env"
+else
+    assert_contains "H.0b error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
+fi
+
 numeric_root="$TMPDIR_TEST/cache/42.5.38"
 mkdir -p "$numeric_root"
 touch -t 200001010001 -- "$numeric_root"
@@ -390,6 +407,10 @@ if HOME="$design_home" CLAUDE_PLUGIN_ROOT="$non_numeric_root" "$WRITE_DESIGN_CUR
 else
     fail "H.2 non-numeric CLAUDE_PLUGIN_ROOT write-design-current-env invocation failed"
 fi
+
+# ------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------
 
 echo "test-session-env-roundtrip.sh: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

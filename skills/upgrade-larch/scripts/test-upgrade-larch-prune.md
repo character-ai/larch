@@ -15,8 +15,10 @@ Covered cases:
 - cap-only pruning: with 10 cached versions after install, remove the two oldest so 8 cached versions remain
 - multiple pinned oldest versions: when the two oldest cached versions are pinned, keep both and remove the next oldest unpinned versions so the cache still ends at 8 total
 - mtime-ascending pruning: when semver order and mtime order disagree, remove the oldest-touched cache directory first
+- sparse used versions across a large semver jump: keep the oldest touched directories even when higher semver directories are otherwise pruneable
 - mtime tiebreaker: when multiple oldest entries have the same mtime, remove the lexicographically earliest version basename first
 - stat fallback: `STAT_FAIL_VERSION` makes the PATH-shimmed `stat` fail both GNU `-c` and BSD `-f` probes for one version, which should sort as mtime `0` and prune first without crashing
+- stat garbage fallback: `STAT_GNU_F_GARBAGE_VERSION` makes the GNU probe fail and the BSD fallback print non-numeric garbage, which should also sort as mtime `0` and prune first without crashing
 
 Existing cache-cap cases seed directory mtimes with explicit `touch -t` values so assertions do not depend on filesystem creation timing. The harness installs a PATH-local `stat` shim through `write_stub_stat` to exercise cross-platform fallback behavior while delegating ordinary calls to `/usr/bin/stat`.
 
