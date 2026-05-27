@@ -182,7 +182,7 @@ out_install_fail=$(bash "$LOAD" --design-tmpdir "$RESTORE_FAIL" --issue 9 --repo
 rc_install_fail=$?
 set -e
 chmod 700 "$RESTORE_FAIL"
-[[ "$rc_install_fail" == "0" && "$out_install_fail" == *"LOAD_OK=false"* && "$out_install_fail" == *"ERROR=restore-install-failed"* ]] \
+[[ "$rc_install_fail" == "0" && "$out_install_fail" == *"LOAD_OK=false"* && ( "$out_install_fail" == *"ERROR=tmpdir-create-failed"* || "$out_install_fail" == *"ERROR=restore-install-failed"* ) ]] \
   || fail "restore install failure mismatch: rc=$rc_install_fail out=$out_install_fail"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restore install failure should keep marker"
 

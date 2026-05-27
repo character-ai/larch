@@ -1266,6 +1266,8 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
 11. If step 4 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 9 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
 At the Step 5c success boundary on any path where `PLAN_WRITE_OK=true`, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` after the Step 5c work succeeds and before entering Step 5d.
 
+### 5d — Final warning replay + footer
+
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
