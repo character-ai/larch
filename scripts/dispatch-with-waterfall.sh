@@ -307,28 +307,28 @@ find_group_ok_for_tool() {
     [[ -n "$GROUP_LEDGER" && -f "$GROUP_LEDGER" ]] || return 1
     awk -F '\t' -v g="$group" -v t="$tool" '
         $1 == g && $3 == t && $5 == "ok" {
-            print $2 "\t" $4 "\t" $3
-            exit 0
+            line = $2 "\t" $4 "\t" $3
         }
+        END { if (line) print line }
     ' "$GROUP_LEDGER"
 }
 
 reuse_slot_result() {
     local idx="$1" source_slot_name="$2" source_output_path="$3" source_tool="$4"
     local target="${slot_outputs[$idx]}"
-    mkdir -p "$(dirname "$target")"
-    cp -p "$source_output_path" "$target"
+    mkdir -p "$(dirname "$target")" || return 1
+    cp -p "$source_output_path" "$target" || { rm -f "$target" 2>/dev/null || true; return 1; }
     {
         printf 'DEDUPE_REUSED_FROM=%s\n' "$source_slot_name"
         printf 'DEDUPE_REUSED_TOOL=%s\n' "$source_tool"
-    } >"${target}.dedup"
+    } >"${target}.dedup" || { rm -f "$target" "${target}.dedup" 2>/dev/null || true; return 1; }
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
         "${slot_fallback_groups[$idx]}" \
         "${slot_names[$idx]}" \
         "$source_tool" \
         "$target" \
         reused \
-        "$source_slot_name" >>"$GROUP_LEDGER"
+        "$source_slot_name" >>"$GROUP_LEDGER" || { rm -f "$target" "${target}.dedup" 2>/dev/null || true; return 1; }
     emit_kv DEDUPE_REUSED true
     emit_kv DEDUPE_REUSED_FROM "$source_slot_name"
     emit_kv DEDUPE_REUSED_TOOL "$source_tool"
@@ -496,8 +496,11 @@ for grouped_idx in "${phase2_grouped[@]+"${phase2_grouped[@]}"}"; do
         source_row="$(find_group_ok_for_tool "$group" "$alt" || true)"
         if [[ -n "$source_row" ]]; then
             IFS=$'\t' read -r source_slot source_output source_tool <<<"$source_row"
-            reuse_slot_result "$idx" "$source_slot" "$source_output" "$source_tool"
-            continue
+            # Stale or otherwise unreadable reuse outputs fall through to the
+            # standard phase-2 relaunch path below.
+            if reuse_slot_result "$idx" "$source_slot" "$source_output" "$source_tool"; then
+                continue
+            fi
         fi
         reset_phase
         out=$(output_for_phase "${slot_outputs[$idx]}" phase2)

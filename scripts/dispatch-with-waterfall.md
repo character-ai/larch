@@ -30,7 +30,8 @@ Grouped dedup:
 - The ledger schema is TSV: `group<TAB>slot_name<TAB>tool<TAB>output_path<TAB>status`, with optional sixth `source_slot` only for reused rows.
 - `status` is a single token: `ok` for a fresh successful result, `reused` when a slot copied another slot's result.
 - Phase-1 and phase-2 `STATUS=OK` results for grouped slots append `ok` rows.
-- Phase-2 launches are serialized within each `fallback_group`. Before launching a grouped phase-2 slot, the dispatcher looks for an existing `ok` row for the same group and fallback tool. If found, it copies that output to the slot's phase-1 output path, records final bookkeeping, and skips the launch.
+- Phase-2 launches are serialized within each `fallback_group`. Before launching a grouped phase-2 slot, the dispatcher looks for the most recent existing `ok` row for the same group and fallback tool, so a fresh post-relaunch result supersedes any older row. If found, it copies that output to the slot's phase-1 output path, records final bookkeeping, and skips the launch.
+- If the phase-2 reuse copy fails for any `cp` failure mode, most commonly a stale ledger row whose source output has been deleted, the dispatcher falls through to a normal phase-2 relaunch on the fallback tool rather than aborting under `set -e`.
 - Ungrouped phase-2 slots remain on the legacy parallel path.
 - Reused slots write `${output}.dedup` with exactly:
 

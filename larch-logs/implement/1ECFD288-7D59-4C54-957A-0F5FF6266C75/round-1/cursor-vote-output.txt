@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- three guarded failure paths; a shared cleanup helper adds more abstraction than the duplication costs
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cp-failure regression matches plan scope; extra stubbed sidecar/ledger failures are optional hardening
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same-run stale reuse is covered by the in-run cp-fail scenario; second invocation intentionally models cross-run behavior
+OOS_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ledger path trust is a pre-existing hardening gap, not introduced or worsened by this change
+OOS_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- hypothetical future misuse; plan and regression already document the required if-call contract
+OOS_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

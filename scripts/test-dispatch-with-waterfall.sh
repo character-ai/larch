@@ -15,6 +15,7 @@ export LARCH_TRANSIENT_RETRY_DELAY=0
 
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"
+REAL_CP="$(command -v cp)"
 cat > "$STUB_BIN/codex" <<'STUB'
 #!/usr/bin/env bash
 out=""
@@ -40,6 +41,10 @@ if [[ "${CODEX_STUB_FAIL:-false}" == "true" ]]; then
 fi
 # Default preserves prior `codex ok\n` byte-identically; callers can pass
 # CODEX_STUB_RESULT_CONTENT (no trailing newline) to inject other content.
+if [[ "${CODEX_STUB_RESULT_INCLUDE_BASENAME:-false}" == "true" ]]; then
+    printf '## Recommendation\nfresh %s\n' "$(basename "$out")" > "$out"
+    exit 0
+fi
 printf '%s\n' "${CODEX_STUB_RESULT_CONTENT:-codex ok}" > "$out"
 STUB
 cat > "$STUB_BIN/cursor" <<'STUB'
@@ -69,7 +74,23 @@ if [[ "${CLAUDE_STUB_FAIL:-false}" == "true" ]]; then
 fi
 printf 'claude ok\n'
 STUB
-chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
+cat > "$STUB_BIN/cp" <<'STUB'
+#!/usr/bin/env bash
+real_cp="${LARCH_TEST_REAL_CP:-/bin/cp}"
+counter="${CP_STUB_FAIL_COUNTER:-}"
+target_contains="${CP_STUB_FAIL_TARGET_CONTAINS:-}"
+if [[ "${1:-}" == "-p" && -n "$counter" && -n "$target_contains" && "$*" == *"$target_contains"* ]]; then
+    n=0
+    [[ -f "$counter" ]] && n=$(cat "$counter" 2>/dev/null || echo 0)
+    case "$n" in ''|*[!0-9]*) n=0 ;; esac
+    printf '%s\n' "$((n + 1))" > "$counter"
+    if [[ "$n" -eq 0 ]]; then
+        exit 73
+    fi
+fi
+exec "$real_cp" "$@"
+STUB
+chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude" "$STUB_BIN/cp"
 
 prompt="$TMPROOT/prompt.txt"
 printf 'vote\n' > "$prompt"
@@ -516,6 +537,46 @@ assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
 [[ "$(counter_value "$codex_dedup_second_counter")" == "1" ]] || { echo "FAIL: grouped rerun should launch fresh codex once" >&2; cat "$codex_dedup_second_log" >&2; exit 1; }
 grep -Fq 'second split' "$TMPROOT/dedup-b.txt" || { echo "FAIL: rerun reused stale grouped output" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-dedup-cp-fail.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/cp-fail-a.txt" --arg pf "$prompt" \
+        '{slot:"cp-fail-a",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-fail-g"}'
+    jq -cn --arg out "$TMPROOT/cp-fail-b.txt" --arg pf "$prompt" \
+        '{slot:"cp-fail-b",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-fail-g"}'
+    jq -cn --arg out "$TMPROOT/cp-fail-c.txt" --arg pf "$prompt" \
+        '{slot:"cp-fail-c",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-fail-g"}'
+} >"$manifest"
+codex_cp_fail_log="$TMPROOT/codex-cp-fail.log"
+codex_cp_fail_counter="$TMPROOT/codex-cp-fail.count"
+cp_fail_counter="$TMPROOT/cp-fail.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    LARCH_TEST_REAL_CP="$REAL_CP" \
+    CP_STUB_FAIL_COUNTER="$cp_fail_counter" \
+    CP_STUB_FAIL_TARGET_CONTAINS="$TMPROOT/cp-fail-b.txt" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_INCLUDE_BASENAME=true \
+    CODEX_STUB_LOG="$codex_cp_fail_log" \
+    CODEX_STUB_COUNTER="$codex_cp_fail_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex codex codex" "$out"
+[[ "$(counter_value "$codex_cp_fail_counter")" == "2" ]] || { echo "FAIL: cp-failure grouped reuse should launch codex twice" >&2; cat "$codex_cp_fail_log" >&2; exit 1; }
+[[ "$(counter_value "$cp_fail_counter")" == "1" ]] || { echo "FAIL: cp shim should fail exactly one reuse copy" >&2; exit 1; }
+grep -Fq 'fresh cp-fail-a-phase2.txt' "$TMPROOT/cp-fail-a-phase2.txt" || { echo "FAIL: cp-fail donor output missing fresh content" >&2; exit 1; }
+grep -Fq 'fresh cp-fail-b-phase2.txt' "$TMPROOT/cp-fail-b-phase2.txt" || { echo "FAIL: cp-fail relaunched slot output missing fresh content" >&2; exit 1; }
+grep -Fq 'fresh cp-fail-b-phase2.txt' "$TMPROOT/cp-fail-c.txt" || { echo "FAIL: cp-fail later slot did not reuse most recent fresh output" >&2; cat "$TMPROOT/cp-fail-c.txt" >&2; exit 1; }
+! grep -Fq 'fresh cp-fail-a-phase2.txt' "$TMPROOT/cp-fail-c.txt" || { echo "FAIL: cp-fail later slot reused stale donor output" >&2; cat "$TMPROOT/cp-fail-c.txt" >&2; exit 1; }
+[[ ! -f "$TMPROOT/cp-fail-b.txt.dedup" ]] || { echo "FAIL: relaunched slot must not keep a dedup sidecar" >&2; exit 1; }
+[[ -f "$TMPROOT/cp-fail-c.txt.dedup" ]] || { echo "FAIL: later slot should dedup against relaunched output" >&2; exit 1; }
+grep -Fxq 'DEDUPE_REUSED_FROM=cp-fail-b' "$TMPROOT/cp-fail-c.txt.dedup" || { echo "FAIL: most recent ok row should supersede stale donor" >&2; cat "$TMPROOT/cp-fail-c.txt.dedup" >&2; exit 1; }
 
 manifest="$TMPROOT/slots-dedup-phase1-ok.ndjson"
 {
