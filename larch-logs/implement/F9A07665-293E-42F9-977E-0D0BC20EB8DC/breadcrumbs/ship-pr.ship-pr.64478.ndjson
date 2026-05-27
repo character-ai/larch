@@ -1,1 +1,8 @@
 larch:bc t=2026-05-27T08:43:38Z d=0 p=64578 s=ship-pr.sh c=progress text=→ ship-pr: opening PR
+larch:bc t=2026-05-27T08:43:49Z d=0 p=64578 s=ship-pr.sh c=progress text=→ ship-pr: PR #3024 opened
+larch:bc t=2026-05-27T08:43:54Z d=0 p=64578 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-27T08:43:54Z d=0 p=73956 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-27T08:43:57Z d=0 p=73956 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-27T08:44:11Z d=0 p=73956 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-27T08:44:24Z d=0 p=73956 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-27T08:44:38Z d=0 p=73956 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (44s, 3 polls)
