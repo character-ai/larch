@@ -13,6 +13,19 @@ DESIGN_TMPDIR=""
 ISSUE=""
 REPO=""
 
+resolve_repo() {
+    local repo="${1:-}" resolved=""
+    if [[ -n "$repo" ]]; then
+        printf '%s\n' "$repo"
+        return 0
+    fi
+    if resolved=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) && [[ -n "$resolved" ]]; then
+        printf '%s\n' "$resolved"
+        return 0
+    fi
+    return 1
+}
+
 usage() {
     larch_err "Usage: design-pause-save.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]"
 }
@@ -65,7 +78,7 @@ STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 
 STEP=""
 while IFS=$'\t' read -r step_id _step_name || [[ -n "$step_id" ]]; do
-    [[ -z "$step_id" || "$step_id" == "step" || "$step_id" == 0* || "$step_id" == "5" ]] && continue
+    [[ -z "$step_id" || "$step_id" == "step" || "$step_id" == "0" || "$step_id" == "5" ]] && continue
     if [[ ! -f "$DESIGN_TMPDIR/.completed/step-$step_id" ]]; then
         STEP="$step_id"
         break
@@ -79,6 +92,10 @@ if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; t
 fi
 BRAINSTORM_DONE=false
 [[ -f "$DESIGN_TMPDIR/.brainstorm-done" ]] && BRAINSTORM_DONE=true
+
+if resolved_repo=$(resolve_repo "$REPO"); then
+    REPO="$resolved_repo"
+fi
 
 gh_repo_args=()
 [[ -n "$REPO" ]] && gh_repo_args+=(--repo "$REPO")
@@ -111,8 +128,10 @@ fi
 
 {
     printf 'STEP=%s\n' "$STEP"
+    printf 'ISSUE_NUMBER=%s\n' "$ISSUE"
     printf 'SESSION_ID=%s\n' "$RUN_ID"
     printf 'RUN_ID=%s\n' "$RUN_ID"
+    [[ -n "$REPO" ]] && printf 'REPO=%s\n' "$REPO"
     printf 'TIER=%s\n' "$TIER"
     printf 'BRAINSTORM_DONE=%s\n' "$BRAINSTORM_DONE"
     printf 'BODY_HASH=%s\n' "$BODY_HASH"

@@ -16,6 +16,9 @@ design-pause-load.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]
 The loader reads the issue body, extracts the marker payload, and validates all
 git-sensitive values before any fetch:
 
+- `ISSUE_NUMBER` must match the caller's `--issue`.
+- `REPO`, when present, must match the caller repo (explicit `--repo` or
+  resolved hub default).
 - `RUN_ID` must pass `larch_log_slug_is_valid`.
 - `STEP` must appear in `skills/design/scripts/step-name-registry.tsv`.
 - `LOG_RECOVERY_BRANCH`, when present, must pass `git check-ref-format --branch`
@@ -26,12 +29,14 @@ Mismatch emits `WARN=body-drift` and continues; the marker remains the authority
 
 Snapshot fetch uses `git fetch origin <ref>` followed by local
 `git archive <ref> larch-logs/design/<RUN_ID>/ | tar -x --strip-components=3 -C
-<tmpdir>`. `LOG_RECOVERY_BRANCH` is fetched first when present; otherwise the
-origin default branch is used.
+<staging-tmpdir>`. `LOG_RECOVERY_BRANCH` is fetched first when present;
+otherwise the origin default branch is used.
 
-After extraction, `plan.txt`, `run-params.json`, and `pause-state.txt` must exist
-at the tmpdir root. Missing artifacts emit `LOAD_OK=false`
-`ERROR=missing-restored-artifact`.
+After extraction, `plan.txt`, `run-params.json`, and `pause-state.txt` must
+exist at the staging root. Missing artifacts emit `LOAD_OK=false`
+`ERROR=missing-restored-artifact`. The marker is deleted before the staged
+restore is copied into the caller tmpdir, so delete failures leave no ambiguous
+partially-restored state behind.
 
 ## Output Contract
 

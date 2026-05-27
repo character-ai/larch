@@ -40,6 +40,29 @@ validate_plain_value() {
     esac
 }
 
+validate_repo_value() {
+    local value="$1"
+    case "$value" in
+        ""|--*|*../*|*\\*|*$'\n'*|*$'\r'*|/*)
+            emit_load_fail "invalid-repo"
+            ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || emit_load_fail "invalid-repo"
+}
+
+resolve_repo() {
+    local repo="${1:-}" resolved=""
+    if [[ -n "$repo" ]]; then
+        printf '%s\n' "$repo"
+        return 0
+    fi
+    if resolved=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) && [[ -n "$resolved" ]]; then
+        printf '%s\n' "$resolved"
+        return 0
+    fi
+    return 1
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?--design-tmpdir requires a value}"; shift 2 ;;
@@ -62,7 +85,8 @@ payload_tmp=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-payload.XXXXXX")
 stripped_tmp=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-stripped.XXXXXX")
 delete_out=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-delete-out.XXXXXX")
 delete_err=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-delete-err.XXXXXX")
-trap 'rm -f "$body_tmp" "$payload_tmp" "$stripped_tmp" "$delete_out" "$delete_err"' EXIT
+restore_tmp=$(mktemp -d "${TMPDIR:-/tmp}/design-pause-load-restore.XXXXXX")
+trap 'rm -f "$body_tmp" "$payload_tmp" "$stripped_tmp" "$delete_out" "$delete_err"; rm -rf "$restore_tmp"' EXIT
 
 if ! gh issue view "$ISSUE" "${gh_repo_args[@]}" --json body | jq -r '.body // ""' > "$body_tmp"; then
     emit_load_fail "issue-body-read-failed"
@@ -91,6 +115,21 @@ TIER=$(kv_get TIER "$payload_tmp")
 BRAINSTORM_DONE=$(kv_get BRAINSTORM_DONE "$payload_tmp")
 BODY_HASH=$(kv_get BODY_HASH "$payload_tmp")
 LOG_RECOVERY_BRANCH=$(kv_get LOG_RECOVERY_BRANCH "$payload_tmp")
+MARKER_ISSUE=$(kv_get ISSUE_NUMBER "$payload_tmp")
+MARKER_REPO=$(kv_get REPO "$payload_tmp")
+
+validate_plain_value issue-number "$MARKER_ISSUE"
+if [[ "$MARKER_ISSUE" != "$ISSUE" ]]; then
+    emit_load_fail "issue-mismatch"
+fi
+
+if [[ -n "$MARKER_REPO" ]]; then
+    validate_repo_value "$MARKER_REPO"
+    CURRENT_REPO=$(resolve_repo "$REPO") || emit_load_fail "repo-unresolved"
+    if [[ "$MARKER_REPO" != "$CURRENT_REPO" ]]; then
+        emit_load_fail "repo-mismatch"
+    fi
+fi
 
 validate_plain_value run-id "$RUN_ID"
 if ! larch_log_slug_is_valid "$RUN_ID"; then
@@ -147,12 +186,12 @@ else
     archive_ref="origin/$ORIGIN_DEFAULT"
 fi
 
-if ! git -C "$REPO_TOP" archive "$archive_ref" "larch-logs/design/$RUN_ID/" | tar -x --strip-components=3 -C "$DESIGN_TMPDIR"; then
+if ! git -C "$REPO_TOP" archive "$archive_ref" "larch-logs/design/$RUN_ID/" | tar -x --strip-components=3 -C "$restore_tmp"; then
     emit_load_fail "snapshot-extract-failed"
 fi
 
 for required in plan.txt run-params.json pause-state.txt; do
-    [[ -f "$DESIGN_TMPDIR/$required" ]] || emit_load_fail "missing-restored-artifact"
+    [[ -f "$restore_tmp/$required" ]] || emit_load_fail "missing-restored-artifact"
 done
 
 delete_args=(
@@ -164,6 +203,10 @@ delete_args=(
 [[ -n "$REPO" ]] && delete_args+=(--repo "$REPO")
 if ! "${delete_args[@]}" > "$delete_out" 2> "$delete_err"; then
     emit_load_fail "marker-delete-failed"
+fi
+
+if ! cp -R "$restore_tmp"/. "$DESIGN_TMPDIR"/; then
+    emit_load_fail "restore-install-failed"
 fi
 
 emit_kv LOAD_OK true

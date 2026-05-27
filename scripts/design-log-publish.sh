@@ -168,8 +168,12 @@ if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
     emit_publish_result false
     exit 0
 fi
+REMOTE_BRANCH_EXISTS=false
 if [[ "$REASON" == "pause" ]]; then
     git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
+        REMOTE_BRANCH_EXISTS=true
+    fi
 fi
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$WT_BRANCH"; then
     if ! git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1; then
@@ -190,7 +194,11 @@ if ! mkdir -p "$WT_DIR"; then
     emit_publish_result false
     exit 0
 fi
-if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "origin/$ORIGIN_DEFAULT" >/dev/null 2>&1; then
+WT_BASE_REF="origin/$ORIGIN_DEFAULT"
+if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+    WT_BASE_REF="origin/$WT_BRANCH"
+fi
+if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "$WT_BASE_REF" >/dev/null 2>&1; then
     larch_err "design-log-publish: git worktree add failed"
     emit_publish_result false
     exit 0
@@ -508,6 +516,20 @@ if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
     exit 0
 fi
 if [[ -z "$_porcelain" ]]; then
+    if [[ "$REASON" == "pause" ]]; then
+        if git -C "$REPO_ROOT" cat-file -e "origin/$ORIGIN_DEFAULT:larch-logs/design/$RUN_ID/manifest.json" 2>/dev/null; then
+            emit_publish_result true "" ""
+            exit 0
+        fi
+        if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+            emit_publish_result false
+            emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+            exit 0
+        fi
+        larch_err "design-log-publish: pause publish produced no committed snapshot on origin/$ORIGIN_DEFAULT"
+        emit_publish_result false
+        exit 0
+    fi
     emit_publish_result true "" ""
     exit 0
 fi

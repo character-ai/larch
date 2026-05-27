@@ -300,8 +300,43 @@ printf 'done\n' >"$TMPPAUSE/design/.completed/step-1c"
 git -C "$clone_pause" pull -q origin main
 [[ -f "$clone_pause/larch-logs/design/RUNPAUSE1/.completed/step-1c" ]] || fail "pause .completed sentinel missing"
 jq -e '.paused == true' "$clone_pause/larch-logs/design/RUNPAUSE1/manifest.json" >/dev/null || fail "pause manifest missing paused=true"
-# shellcheck disable=SC2016 # fixed literal in design-log-publish.sh source.
-grep -Fq 'pause design run ${RUN_ID}' "$PUBLISH" || fail "pause commit subject branch missing in script"
+git -C "$clone_pause" fetch -q origin larch-log-design-RUNPAUSE1:larch-log-design-RUNPAUSE1
+pause_subject=$(git -C "$clone_pause" log -1 --format=%s larch-log-design-RUNPAUSE1)
+[[ "$pause_subject" == "chore(larch-logs): pause design run RUNPAUSE1 [skip ci]" ]] || fail "pause commit subject mismatch: $pause_subject"
+
+echo "=== pause publish rejects no-op snapshot delta ==="
+TMPPAUSE_NOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-noop.XXXXXX")
+clone_pause_noop=$(setup_clone_with_origin_head "$TMPPAUSE_NOOP")
+stub_pause_noop="$TMPPAUSE_NOOP/stub"
+make_gh_stub "$stub_pause_noop"
+date_stub="$TMPPAUSE_NOOP/date-stub"
+mkdir -p "$date_stub"
+cat >"$date_stub/date" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-u" && "${2:-}" == "+%Y-%m-%dT%H:%M:%SZ" ]]; then
+    printf '%s\n' '2026-01-01T00:00:00Z'
+    exit 0
+fi
+exec /bin/date "$@"
+EOF
+chmod +x "$date_stub/date"
+export PATH="$date_stub:$stub_pause_noop:$PATH"
+export TEST_CLONE_ROOT="$clone_pause_noop"
+export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSENOOP1"
+unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPPAUSE_NOOP/design/.completed"
+printf 'p\n' >"$TMPPAUSE_NOOP/design/plan.txt"
+printf 'done\n' >"$TMPPAUSE_NOOP/design/.completed/step-1c"
+(
+    cd "$clone_pause_noop" || exit 1
+    out_pause_seed=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo)
+    [[ "$out_pause_seed" == *"PUBLISH_OK=true"* ]] || fail "pause seed publish failed: $out_pause_seed"
+)
+git -C "$clone_pause_noop" pull -q origin main
+out_pause_noop=$(
+    cd "$clone_pause_noop" && bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo
+)
+[[ "$out_pause_noop" == *"PUBLISH_OK=false"* ]] || fail "pause no-op snapshot should fail closed: $out_pause_noop"
 
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")

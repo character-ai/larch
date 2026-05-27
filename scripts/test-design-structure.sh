@@ -655,10 +655,38 @@ assert_bash_fences_have_pause_check() {
 }
 
 assert_step_completion_sentinels() {
-  local step
+  local step start_pat end_pat start_line end_line section
   for step in 1c 1d 1d.5 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b 5b 5c 5d 6; do
-    grep -Fq ".completed/step-$step" "$SKILL_MD" \
-      || fail "(21) SKILL.md missing .completed sentinel for step $step"
+    case "$step" in
+      1c) start_pat='<!-- step:1c'; end_pat='<!-- step:1d' ;;
+      1d) start_pat='<!-- step:1d —'; end_pat='<!-- step:1d.5' ;;
+      1d.5) start_pat='<!-- step:1d.5'; end_pat='<!-- step:1e' ;;
+      1e) start_pat='<!-- step:1e'; end_pat='<!-- step:2a' ;;
+      2a) start_pat='<!-- step:2a —'; end_pat='### 2a.5' ;;
+      2a.5) start_pat='### 2a.5'; end_pat='<!-- step:2b' ;;
+      2b) start_pat='<!-- step:2b —'; end_pat='### Step 2b.5' ;;
+      2b.5) start_pat='### Step 2b.5'; end_pat='<!-- step:3' ;;
+      3) start_pat='<!-- step:3 —'; end_pat='<!-- step:3.5' ;;
+      3.5) start_pat='<!-- step:3.5'; end_pat='<!-- step:3b' ;;
+      3b) start_pat='<!-- step:3b'; end_pat='<!-- step:4 —' ;;
+      4) start_pat='<!-- step:4 —'; end_pat='<!-- step:4b' ;;
+      4b) start_pat='<!-- step:4b'; end_pat='### 5b' ;;
+      5b) start_pat='### 5b'; end_pat='### 5c' ;;
+      5c) start_pat='### 5c'; end_pat='### 5d' ;;
+      5d) start_pat='### 5d'; end_pat='<!-- step:6' ;;
+      6) start_pat='<!-- step:6'; end_pat='' ;;
+    esac
+    start_line=$(grep -nF "$start_pat" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+    [[ -n "$start_line" ]] || fail "(21) SKILL.md missing start anchor for step $step"
+    if [[ -n "$end_pat" ]]; then
+      end_line=$(grep -nF "$end_pat" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+      [[ -n "$end_line" ]] || fail "(21) SKILL.md missing end anchor for step $step"
+      section=$(sed -n "${start_line},$((end_line - 1))p" "$SKILL_MD")
+    else
+      section=$(sed -n "${start_line},\$p" "$SKILL_MD")
+    fi
+    printf '%s\n' "$section" | grep -Fq ".completed/step-$step" \
+      || fail "(21) SKILL.md missing step-local .completed sentinel for step $step"
   done
 }
 

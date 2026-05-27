@@ -15,7 +15,9 @@ design-pause-save.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]
 The script sources `PATH/source-env.sh` when present and uses `SESSION_ID` as
 the run id. It computes `STEP` by walking
 `skills/design/scripts/step-name-registry.tsv` in file order and selecting the
-first step whose `.completed/step-<id>` sentinel is absent.
+first step whose `.completed/step-<id>` sentinel is absent. The marker payload
+also binds the snapshot to `ISSUE_NUMBER=<argv --issue>` and, when repository
+identity can be resolved, `REPO=<owner/repo>`.
 
 ## Output Contract
 
@@ -28,7 +30,9 @@ Failures` when enough tmpdir context exists.
 If `design-log-publish.sh --reason pause` emits `PUBLISH_OK=false` with a
 non-empty `RECOVERY_BRANCH`, that branch is recorded as `LOG_RECOVERY_BRANCH`
 inside `pause-state.txt` before the marker is written. If publish fails without
-a recovery branch, no marker is written.
+a recovery branch, no marker is written. A pause publish that produces no new
+committed snapshot delta now fails closed the same way, so `/larch:pause` does
+not leave behind a marker that points at a non-materialized run snapshot.
 
 Normal invocation is synchronous from `/larch:pause`. The `/design` Bash prelude
 may also invoke it defensively when `.pause-requested` exists.
