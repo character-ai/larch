@@ -1,0 +1,17 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- four-arm recovery and in-memory manual_requested pin address the write/jq-failure cases; auto-apply on unreadable run-params without --manual is normative degrade per plan
+FINDING_3: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- opening sentence is broad but the same paragraph immediately documents auto-apply vs manual branches
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- structural pins cover recovery literals; executable jq-failure simulation is disproportionate for this skill surface
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- orchestration behavior is covered by manual smoke in plan; end-to-end Gate B automation is not the repo pattern here
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- intentional product default with Gate C final approval and SECURITY.md trust-boundary callout
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- generic doc-sync reminder, not a defect in the current diff
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- re-entry prose records agreement in discussion-round2.md and defers reconcile to the next Gate B iteration
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- blocked-by edge is an explicit post-PR operator step in plan acceptance, not missing implementation code

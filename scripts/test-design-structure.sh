@@ -623,8 +623,8 @@ grep -Fq '[--brainstorm]' "$SKILL_MD" \
 grep -Fq "\`-p\`, \`--partition\`" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing -p/--partition"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq '`--partition`, `--brainstorm`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md public argv allowlist missing --brainstorm sequence"
+grep -Fq '`--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md public argv allowlist missing --brainstorm/--manual sequence"
 grep -Fq "\`--trivial\` and \`-p\` / \`--partition\` are mutually exclusive" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing trivial vs partition mutual-exclusion prose"
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
@@ -706,8 +706,8 @@ grep -Fq '# Background pair required: see BASH_AUTHORING.md §4' "$BRAINSTORM_MD
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
   || fail "(2754) SKILL.md write-run-params invocation missing --brainstorm-requested"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt
-grep -Fq -- '[[ "$partition_requested" == true || "$brainstorm_requested" == true ]]' "$SKILL_MD" \
-  || fail "(2754) SKILL.md recovery guard missing partition OR brainstorm"
+grep -Fq -- '[[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]]' "$SKILL_MD" \
+  || fail "(2754) SKILL.md recovery guard missing partition OR brainstorm OR manual"
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$SKILL_MD" \
   || fail "(2754) SKILL.md jq merge missing brainstorm_requested arm"
@@ -719,6 +719,127 @@ for _bk in cursor-brainstorm codex-brainstorm; do
   grep -Fq "$_bk" "$TIMING_KINDS_SH" \
     || fail "(2754) scripts/lib-timing-kinds.sh missing timing kind: $_bk"
 done
+
+# Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.
+grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \
+  || fail "(2930) SKILL.md argument-hint missing [--manual|-m] between brainstorm and no-dedup"
+# shellcheck disable=SC2016 # Markdown literal contains backticks and "$manual" text intentionally.
+grep -Fq 'Parse public flags (`--trivial|--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`)' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md Step 0b public-flag parse list missing --manual|-m"
+# shellcheck disable=SC2016 # Markdown table cell literal
+grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
+  || fail "(2930) SKILL.md compact flag table missing --manual/-m row"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
+grep -Fq -- '--manual-gate-b "$manual_requested"' "$SKILL_MD" \
+  || fail "(2930) SKILL.md write-run-params invocation missing --manual-gate-b"
+# shellcheck disable=SC2016 # Markdown literal; backticks are prose, not shell expansion.
+grep -Fq 'append `--manual-requested true` only when `manual_requested=true`' "$SKILL_MD" \
+  || fail "(FINDING_16) SKILL.md must omit --manual-requested on non-manual runs"
+# shellcheck disable=SC2016 # jq filter literal
+grep -Fq -- 'manual_gate_b = $merge_m' "$SKILL_MD" \
+  || fail "(FINDING_14) SKILL.md jq merge must overwrite manual_gate_b from current argv state"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
+grep -Fq -- '--manual-gate-b "${manual_requested:-false}"' "$SKILL_MD" \
+  || fail "(2930) SKILL.md fallback write-run-params call missing --manual-gate-b"
+grep -Fq 'partition, brainstorm, and/or manual requested but jq is unavailable' "$SKILL_MD" \
+  || fail "(2930) SKILL.md jq-unavailable warning missing manual"
+# shellcheck disable=SC2016 # flags.md list marker uses backticks
+grep -Fq '`--manual` / `-m`:' "$FLAGS_MD" \
+  || fail "(2930) flags.md missing --manual/-m bullet anchor"
+grep -Fq '### Apply-all body' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing Apply-all body heading"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing Apply-all body references"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+apply_all_reference_count=$(grep -Fc 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD")
+[[ "$apply_all_reference_count" -ge 2 ]] \
+  || fail "(2930) approval-gates.md must reference Apply-all body from both auto-apply and manual Apply all paths"
+grep -Fq 'Determine Gate B mode only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle.' "$APPROVAL_MD" \
+  || fail "(FINDING_1) approval-gates.md must resolve Gate B mode before mode-specific presentation"
+zero_findings_line=$(grep -nF '### Zero-findings short-circuit' "$APPROVAL_MD" | head -1 | cut -d: -f1 || true)
+mode_line=$(grep -nF '#### Gate B mode (auto-apply vs manual)' "$APPROVAL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$zero_findings_line" && -n "$mode_line" ]] \
+  || fail "(FINDING_2) approval-gates.md must contain both zero-findings and Gate B mode headings"
+if (( zero_findings_line >= mode_line )); then
+  fail "(FINDING_2) approval-gates.md must place zero-findings before Gate B mode resolution"
+fi
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_gate_b=true` immediately' "$APPROVAL_MD" \
+  || fail "(FINDING_2) approval-gates.md missing MANUAL_REQUESTED session-env fallback"
+# shellcheck disable=SC2016 # Markdown literal; jq program is prose, not command substitution
+grep -Fq "jq -r '.manual_gate_b // false'" "$APPROVAL_MD" \
+  || fail "(FINDING_9) approval-gates.md must pin jq -r '.manual_gate_b // false' for missing/null coercion"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'When `manual_gate_b=false`, execute the auto-apply path:' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing unique auto-apply mode branch anchor"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'When `manual_gate_b=true`, print a table under the header `## Plan Review Findings — Review`' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing manual mode presentation branch"
+grep -Fq '## Plan Review Findings — Auto-applying' "$APPROVAL_MD" \
+  || fail "(FINDING_7) approval-gates.md missing Gate B auto-apply header pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'let `manual_requested=true` force `manual_gate_b=true`' "$APPROVAL_MD" \
+  || fail "(FINDING_13) approval-gates.md missing defensive in-memory manual_requested pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'defaulting to auto-apply unless a true-only manual override is already present' "$APPROVAL_MD" \
+  || fail "(FINDING_1) approval-gates.md missing degraded-path auto-apply fallback pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'Session env and in-memory state are true-only overrides; persisted `run-params.json` remains the canonical source for proving `manual_gate_b=false`.' "$APPROVAL_MD" \
+  || fail "(FINDING_12) approval-gates.md must pin the Gate B mode precedence chain"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'Do not run a separate rollback pass inside Gate B based on `discussion-round2.md`.' "$APPROVAL_MD" \
+  || fail "(FINDING_13) approval-gates.md must forbid Gate B rollback from discussion-round2.md"
+grep -Fq '### Shared post-apply pipeline' "$APPROVAL_MD" \
+  || fail "(FINDING_3) approval-gates.md missing shared post-apply pipeline heading"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'then Execute `### Shared post-apply pipeline` verbatim' "$APPROVAL_MD" \
+  || fail "(FINDING_19) approval-gates.md one-by-one path must call the shared post-apply pipeline verbatim"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+shared_pipeline_reference_count=$(grep -Fc 'Execute `### Shared post-apply pipeline` verbatim' "$APPROVAL_MD")
+[[ "$shared_pipeline_reference_count" -eq 2 ]] \
+  || fail "(FINDING_20) approval-gates.md must reference the shared post-apply pipeline from exactly two Gate B call sites"
+
+grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit will pass straight through to Step 3b' "$PLAN_REVIEW_MD" \
+  || fail "(FINDING_6) plan-review.md missing zero-findings Gate B forwarding pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are plan-review prose, not command substitution
+grep -Fq 'findings are surfaced to Gate B, which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_MD" \
+  || fail "(FINDING_6) plan-review.md missing Gate B dual-mode application pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are quick-plan-review prose, not command substitution
+grep -Fq 'findings flow to Gate B (Step 3.5), which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_QUICK_MD" \
+  || fail "(FINDING_6) plan-review-quick.md missing Gate B dual-mode application pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
+grep -Fq 'When Gate B resolves `manual_gate_b=false`, it applies every accepted in-scope finding to `plan.txt`' "$SKILL_MD" \
+  || fail "(FINDING_7) SKILL.md Step 3 missing auto-apply pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
+grep -Fq 'it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation' "$SKILL_MD" \
+  || fail "(FINDING_7) SKILL.md Step 3.5 missing zero-findings-before-mode pin"
+step0b_second_bash=$(awk '
+  /^### 0b / { flag=1; next }
+  /^### Final summary block$/ && flag { flag=0 }
+  flag && /^```bash$/ { c++; next }
+  flag && c == 1 && /^```$/ { c=0; next }
+  flag && c == 1 { print }
+' "$SKILL_MD")
+[[ -n "$step0b_second_bash" ]] \
+  || fail "(FINDING_13) could not extract Step 0b run-params bash block"
+printf '%s\n' "$step0b_second_bash" | grep -Fq 'write-design-current-env.sh' \
+  || fail "(FINDING_13) Step 0b run-params bash block must refresh current-design-env before write-run-params"
+# shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
+printf '%s\n' "$step0b_second_bash" | grep -Fq -- '--issue-number "$ISSUE_NUMBER"' \
+  || fail "(FINDING_13) Step 0b current-design-env refresh must pass --issue-number"
+# shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
+printf '%s\n' "$step0b_second_bash" | grep -Fq -- '--claude-pid "$PPID"' \
+  || fail "(FINDING_13) Step 0b current-design-env refresh must pass --claude-pid \"\$PPID\""
+printf '%s\n' "$step0b_second_bash" | grep -Fq '_wdce_step0b_args+=(--manual-requested true)' \
+  || fail "(FINDING_13) Step 0b current-design-env refresh must add --manual-requested only on manual runs"
+step0b_refresh_line=$(printf '%s\n' "$step0b_second_bash" | grep -nF 'write-design-current-env.sh' | head -1 | cut -d: -f1 || true)
+step0b_run_params_line=$(printf '%s\n' "$step0b_second_bash" | grep -nF 'write-run-params.sh' | head -1 | cut -d: -f1 || true)
+[[ -n "$step0b_refresh_line" && -n "$step0b_run_params_line" ]] \
+  || fail "(FINDING_13) could not locate Step 0b refresh and write-run-params lines"
+if (( step0b_refresh_line >= step0b_run_params_line )); then
+  fail "(FINDING_13) Step 0b must refresh current-design-env before write-run-params"
+fi
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned across 4 prose locations.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

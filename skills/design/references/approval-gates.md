@@ -2,13 +2,13 @@
 
 **Consumer**: `/design` Step 1e (Gate A — discussion-mode loop), Step 3.5 (Gate B — post-review chooser), and Step 4b (Gate C — final-approval loop).
 
-**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. No reviewer suggestion is ever auto-applied — the user is always prompted. Each gate uses `AskUserQuestion` and may loop back to an earlier gate; reviewers always see the latest plan with all user-approved prior feedback applied.
+**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A (scope discussion) and Gate C (final approval) always prompt the user. Gate B's behavior depends on `manual_gate_b` (set via `--manual` / `-m`): when `true`, the existing 3-option `AskUserQuestion` fires; when `false` (default), Gate B auto-applies every accepted in-scope finding after printing a compact findings list. Gate A and Gate C always use `AskUserQuestion`; Gate B uses `AskUserQuestion` only in manual mode and may otherwise auto-apply. Reviewers always see the latest plan with all user-approved or auto-applied prior feedback applied.
 
 **When to load**: before executing Step 1e, Step 3.5, or Step 4b.
 
 **Binding convention**: single normative source for the three gate prompts, their per-tier behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
 
-**Cross-tier invariant**: the gates apply uniformly across `--trivial`, `--simple`, and `--hard`. In `--trivial` and `--simple`, Gate A short-circuits on the first prompt (one round of "ready for review?"); in `--hard`, Gate A may iterate. Gate B and Gate C apply identically in all three tiers — the only difference is the source of findings (Gate B reads `accepted-plan-findings.md` produced by either `plan-review.md` full panel or `plan-review-quick.md` self-review).
+**Cross-tier invariant**: the gates apply uniformly across `--trivial`, `--simple`, and `--hard`. In `--trivial` and `--simple`, Gate A short-circuits on the first prompt (one round of "ready for review?"); in `--hard`, Gate A may iterate. Gate B and Gate C apply identically in all three tiers — the only difference is the source of findings (Gate B reads `accepted-plan-findings.md` produced by either `plan-review.md` full panel or `plan-review-quick.md` self-review). The auto-apply default and the `--manual` opt-out apply uniformly across `--trivial`, `--simple`, and `--hard`. In `--trivial` the source of `accepted-plan-findings.md` is the quick self-review (`plan-review-quick.md`); in `--simple` and `--hard` it is the full 10-reviewer panel. Gate B's mode branch reads `manual_gate_b` identically in all three tiers.
 
 ---
 
@@ -46,7 +46,7 @@ When the user picks **Discuss more**, the orchestrator either (a) asks the user 
 
 ### Re-entry from Gate B(c) or Gate C(b)
 
-When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") or Gate C option (b) ("discuss further"), the orchestrator is now post-plan. Write any new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` rather than `discussion-round1.md` (Round 1 is closed once Step 2a begins). The plan-modification authority remains with Gate B's user choices — Gate A re-entries do NOT silently revise `plan.txt`. If the user agrees during discussion that a specific Gate B finding should now be applied, record the agreement in `discussion-round2.md` and apply it explicitly during the subsequent Gate B(b) iteration or Gate B(a) batch.
+When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") or Gate C option (b) ("discuss further"), the orchestrator is now post-plan. Write any new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` rather than `discussion-round1.md` (Round 1 is closed once Step 2a begins). On a Gate B(c) / Gate C(b) re-entry to Gate A, `discussion-round2.md` is evidence for the user-approved discussion outcome, not a patch instruction file. Gate A may revise `plan.txt` directly only for user-resolved design decisions recorded during that discussion flow (per `discussion-rounds.md`); Gate B remains the only place that applies accepted review findings. Do not run a separate rollback pass inside Gate B based on `discussion-round2.md`. If the discussion changes the plan after a prior auto-apply or changes whether an earlier finding should still stand, proceed through Gate A's normal "Ready for review" exit so Step 3 re-runs against the revised plan and regenerates `accepted-plan-findings.md` before any later Gate B entry.
 
 **Show latest design proposal branch (re-entry only)**: when the user picks Show latest design proposal on Shape 2, the orchestrator reads `$DESIGN_TMPDIR/plan.txt` and prints its content under a `## Latest Design Plan` header, then immediately re-fires the same 3-option Gate A `AskUserQuestion` until the user picks Ready for review or Discuss more. The Show-plan branch performs no state mutation and writes nothing to `discussion-round2.md`. If `$DESIGN_TMPDIR/plan.txt` is missing or empty on re-entry (should not happen — re-entry is post-plan by definition), print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt anyway.
 
@@ -73,20 +73,40 @@ For each accepted in-scope finding in `$DESIGN_TMPDIR/accepted-plan-findings.md`
 
 When the concern text is ambiguous, prefer the lower bucket and surface the ambiguity in the displayed description. Never invent severity for findings not present in the file.
 
+### Zero-findings short-circuit
+
+When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds directly to Step 3b. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path. Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence.
+
+#### Gate B mode (auto-apply vs manual)
+
+Determine Gate B mode only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle. Resolve the mode defensively in this order: first, if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_gate_b=true` immediately; second, if the in-memory boolean `manual_requested` from Step 0b is still bound, let `manual_requested=true` force `manual_gate_b=true` without consulting `run-params.json`; third, read `manual_gate_b` from `$DESIGN_TMPDIR/run-params.json` using `jq -r '.manual_gate_b // false'` so missing/null coerces to `false`. The persisted value follows one canonical write rule from Step 0b recovery: `partition_requested` / `brainstorm_requested` are true-only merges, but `manual_gate_b` is overwritten from the current run's `manual_requested` value so omitting `--manual` clears stale persisted manual mode instead of preserving it accidentally. Session env and in-memory state are true-only overrides; persisted `run-params.json` remains the canonical source for proving `manual_gate_b=false`. If `run-params.json` cannot be read, `jq` is unavailable, or the mode cannot otherwise be confirmed from persisted state, print `**⚠ 3.5: Gate B — could not confirm manual_gate_b from persisted state (<reason>); defaulting to auto-apply unless a true-only manual override is already present.**`, append that warning under `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `append-tool-failure.sh` when possible, and continue with `manual_gate_b=false`.
+
 ### Presentation
 
-Print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
+When `manual_gate_b=true`, print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
 
-**Always show the table**. The user must see what they are approving via the subsequent `AskUserQuestion`. After the accepted-findings table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
+When `manual_gate_b=false`, do **not** print the full review table above. The compact findings list in the auto-apply path below is the visibility surface for accepted findings on that branch; print rejected/OOS sections there once.
 
 ### Prompt
 
+When `manual_gate_b=false`, execute the auto-apply path:
+
+1. Print a compact findings list under `## Plan Review Findings — Auto-applying`: one row per finding showing `FINDING_N | Severity | Reviewer(s) | <1-line concern excerpt>`. Use the same severity rubric and the same concern text source as the review table; truncate to the first 1-2 lines or 200 characters, whichever is shorter. Never paraphrase.
+2. Also print the rejected and OOS sections for context (same reads from `rejected-findings.md` / `oos.md` as the presentation table).
+3. Execute `### Apply-all body` verbatim.
+
+When `manual_gate_b=true`, fire the `AskUserQuestion` block below verbatim.
+
 `AskUserQuestion` with exactly three options:
 
-- **Apply all** — Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`). Before re-emitting `ACTION=EMIT_PLAN`, perform a duplicate-content sweep on the freshly revised `plan.txt`: re-read the file, use your own reasoning to identify semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once — not just byte-identical text). Preserve intentional repetition where the same content appears in distinct context sections (e.g., a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section. Rewrite `plan.txt` via the Write tool with duplicates removed. Then print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran). Only after the breadcrumb proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b). Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
-- **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. After all findings resolved, revise `plan.txt` to incorporate only the applied subset. Before re-emitting `ACTION=EMIT_PLAN`, perform a duplicate-content sweep on the freshly revised `plan.txt`: re-read the file, use your own reasoning to identify semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once — not just byte-identical text). Preserve intentional repetition where the same content appears in distinct context sections (e.g., a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section. Rewrite `plan.txt` via the Write tool with duplicates removed. Then print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran). Only after the breadcrumb proceed to `ACTION=EMIT_PLAN`, then when `review_budget` is `full` run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt"` as above, then run **Step 2b.5** as above, then proceed to Step 3b when Step 2b.5 returns. The Step 2b.5 call fires **once** per Gate B settled path (after the batch `EMIT_PLAN`), not once per per-finding apply. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path).
+- **Apply all** — Execute `### Apply-all body` verbatim. The dedup-sweep, shared post-apply pipeline, `ACTION=EMIT_PLAN`, validator invocation, and Step 2b.5 all run there.
+- **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path). Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below; the Step 2b.5 call fires **once** per Gate B settled path, not once per per-finding apply.
 - **Switch to discussion mode** — Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
 Question text: `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"` Header: `"Plan findings"`. Substitute the actual counts before asking.
+
+### Apply-all body
+
+Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`), then Execute `### Shared post-apply pipeline` verbatim.
 
 ### One-by-one iteration prompt
 
@@ -97,11 +117,20 @@ Question text: `"FINDING_<N> [<Severity>] — <reviewer>: <one-line concern summ
 - **Skip** — record in the skipped set; the finding moves from accepted to rejected.
 - **Switch to discussion mode** — abort iteration; exit to Gate A; do NOT revise `plan.txt`.
 
-After iteration completes (all findings answered without an early abort), the orchestrator revises `plan.txt` per the applied set only. Before re-emitting `ACTION=EMIT_PLAN`, perform a duplicate-content sweep on the freshly revised `plan.txt`: re-read the file, use your own reasoning to identify semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once — not just byte-identical text). Preserve intentional repetition where the same content appears in distinct context sections (e.g., a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section. Rewrite `plan.txt` via the Write tool with duplicates removed. Then print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran). Only after the breadcrumb write the per-finding outcomes back to `$DESIGN_TMPDIR/accepted-plan-findings.md` (apply set retained) and `$DESIGN_TMPDIR/rejected-findings.md` (skip set appended with `Reason not implemented: rejected by user during one-by-one review`).
+After iteration completes (all findings answered without an early abort), the orchestrator revises `plan.txt` per the applied set only, writes the per-finding outcomes back to `$DESIGN_TMPDIR/accepted-plan-findings.md` (apply set retained) and `$DESIGN_TMPDIR/rejected-findings.md` (skip set appended with `Reason not implemented: rejected by user during one-by-one review`), then Execute `### Shared post-apply pipeline` verbatim.
 
-### Zero-findings short-circuit
+### Shared post-apply pipeline
 
-When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds directly to Step 3b. No prompt fires; Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence.
+After the chosen findings have been applied to `plan.txt` (either the full accepted set or the one-by-one applied subset), run the same post-apply sequence for both Gate B branches:
+
+1. Re-read the freshly revised `plan.txt` and perform a duplicate-content sweep using your own reasoning to identify semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once — not just byte-identical text).
+2. Preserve intentional repetition where the same content appears in distinct context sections (for example, a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section.
+3. Rewrite `plan.txt` via the Write tool with duplicates removed.
+4. Print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran).
+5. Only after the breadcrumb proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
+6. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
+7. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
+8. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
 
 ### Gate B plan revision and Step 2b.5
 
@@ -111,7 +140,7 @@ Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partiti
 
 ## Gate C — Final-Approval Loop (Step 4b)
 
-**When**: after Step 4 (rejected-findings report) completes. Step 4 is reached on every Gate B settled path: Apply all → Step 3b → Step 4 → Step 4b; Go through each (without abort) → Step 3b → Step 4 → Step 4b; zero-findings short-circuit → Step 3b → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" exits to Gate A and never reaches Gate C until the user later picks "Ready for review" + the new review completes its own Gate B settled path. Gate C is also re-entered from Gate C(b) "discuss further" → Gate A loop → eventual re-review → Step 4 → Step 4b.
+**When**: after Step 4 (rejected-findings report) completes. Step 4 is reached on every Gate B settled path: auto-apply → Step 3b → Step 4 → Step 4b; Apply all → Step 3b → Step 4 → Step 4b; Go through each (without abort) → Step 3b → Step 4 → Step 4b; zero-findings short-circuit → Step 3b → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" exits to Gate A and never reaches Gate C until the user later picks "Ready for review" + the new review completes its own Gate B settled path. Gate C is also re-entered from Gate C(b) "discuss further" → Gate A loop → eventual re-review → Step 4 → Step 4b.
 
 ### Presentation
 
@@ -125,7 +154,7 @@ Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partiti
 
 - **Approve final design** — exit Gate C; proceed to Step 5b publish (compose `composed-plan.md`, write `larch:plan` block to issue, run `design-log-publish.sh`, rename tracking issue).
 - **Discuss further** — re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`.
-- **Re-run review panel** — re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
+- **Re-run review panel** — re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
 
 Question text: `"Final design plan is ready. Approve, discuss further, or re-run the review panel against this plan?"` Header: `"Final design"`.
 
@@ -145,4 +174,4 @@ When the user picks **Approve final design**, proceed to Step 5b. The skill no l
 
 3. **Discussion outputs accumulate**: `discussion-round1.md` is written by Step 1d / Gate A on first-time entry. `discussion-round2.md` accumulates entries across all Gate A re-entries from Gate B(c) / Gate C(b). Both files remain readable inputs to subsequent plan revisions.
 
-4. **No-auto-apply contract**: at no point does `/design` revise `plan.txt` from review findings without the user explicitly picking Gate B option (a) "apply all" or Gate B option (b) per-finding apply. The plan-review tally script writes artifact files only; it does not revise `plan.txt`.
+4. **Gate B apply contract**: in default auto-apply mode (no `--manual` flag), Gate B revises `plan.txt` by applying every accepted in-scope finding after the compact findings list, with no user prompt. In manual mode (`--manual` set), Gate B revises `plan.txt` only when the user explicitly picks option (a) Apply all or option (b) per-finding Apply. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. The mode is sticky for the entire `/design` run with this precedence chain: sourced `MANUAL_REQUESTED=true` override, then in-memory `manual_requested=true` override, then persisted `run-params.json` as the authority when it is readable, else the default auto-apply contract (`manual_gate_b=false`) remains in force.

@@ -1,0 +1,17 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- next sentence in Step 3.5 clarifies mode-specific behavior; approval-gates.md is the normative source
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- argument-hint, flag-table row, and write-run-params invocation are all pinned; Step 0b.1 parse-text gap is marginal
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- executable test for orchestrator-prose jq-merge recovery would require integration harness disproportionate to risk; literal-string pins are the correct check here
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pinning exact warning text is over-specification for this risk level
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- systemic pre-existing testing gap for /design prose; this PR does not worsen it
+OOS_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- risk explicitly documented in SECURITY.md update; --manual opt-out and Gate C final approval are direct mitigations already in this PR
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- standard ongoing doc-maintenance concern; SECURITY.md was updated in this PR
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- argv value is always persisted to run-params.json; cosmetic imprecision does not affect functionality
+OOS_16: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Pre-Step-0 handles mutual-exclusion checks only; --manual has no mutual exclusion so absence is correct behavior
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

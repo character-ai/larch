@@ -195,7 +195,7 @@ Axis tokens must precede any optional `-- reason`; the parser ignores axis-looki
 
 If any in-scope findings were **accepted by vote**:
 1. Print them under a `## Plan Review Findings (Voted In)` header with vote counts.
-2. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Gate B — Post-Review Chooser) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`. **Do NOT revise `$DESIGN_TMPDIR/plan.txt`** in this step — plan revision is owned by Gate B per explicit user choice (Apply all or per-finding Apply). Step 3 only collects findings; it never silently applies them.
+2. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Gate B — Post-Review Chooser) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`. **Do NOT revise `$DESIGN_TMPDIR/plan.txt`** in this step — findings are surfaced to Gate B, which applies them per `manual_gate_b` mode as documented in `approval-gates.md` §Gate B. Step 3 only collects findings; it never applies them directly.
 
 **OOS items accepted by vote**: These are accepted for GitHub issue filing, NOT for plan revision. Write accepted OOS items to `$DESIGN_TMPDIR/oos-accepted-design.md` using the `oos-accepted-design.md` format block below, excluding security-tagged findings. Security-tagged findings are held locally and NEVER written to this public OOS issue artifact (per SECURITY.md). The canonical token match is `focus-area\s*=\s*security` anywhere inside the accepted `### OOS_N:` block, case-insensitively, with optional whitespace around `=`; if prose indicates security without the literal token, apply the same "if uncertain whether security, do not file publicly" guidance. **Match discrimination (false-positive guard)**: for every literal occurrence of the canonical token in the block, classify as **fenced** when inside an inline backtick code span or triple-backtick fenced code region, and **unfenced** otherwise. Route as security only when at least one unfenced occurrence exists; if every occurrence is fenced, the block is meta-discussion and routes through the normal public OOS path. **Security counter-invariant**: real security findings MUST include at least one unfenced occurrence.
 
@@ -208,7 +208,7 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 ```markdown
 ### FINDING_N: <title>
 - **Concern**: <what was raised>
-- **Proposed resolution**: <suggested change to the plan; applied at Step 3.5 Gate B only if the user chooses to apply this finding>
+- **Proposed resolution**: <suggested change to the plan; surfaced to Step 3.5 Gate B for application per `manual_gate_b` mode>
 ```
 
 ### Accepted OOS format (byte-preserved)

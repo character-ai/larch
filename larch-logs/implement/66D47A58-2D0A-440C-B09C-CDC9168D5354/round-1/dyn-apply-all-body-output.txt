@@ -1,0 +1,22 @@
+Reviewing the branch diff and `approval-gates.md` apply-all-body architecture.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+The branch-and-reuse invariant for Gate B “Apply all” is implemented as specified:
+
+1. **`### Apply-all body` exists** at `skills/design/references/approval-gates.md:104-106` as a stable `###` heading under Gate B.
+2. **Auto-apply call site** (`approval-gates.md:93`) is only `Execute ### Apply-all body verbatim` for apply steps; pre-apply visibility (breadcrumb, compact list, rejected/OOS) is steps 1–3 before that reference, not between it and Step 3b.
+3. **Manual “Apply all” call site** (`approval-gates.md:99`) delegates apply steps via the same verbatim reference; trailing prose only points at the subsection, it does not inline duplicate apply logic.
+4. **Subsection ordering** (`approval-gates.md:106`) preserves the required sequence: apply findings → dedup-sweep → `dedup-sweep:` breadcrumb → `ACTION=EMIT_PLAN` → `invoke-plan-validator-if-not-quick.sh` (when `review_budget=full`) → Step 2b.5 → Step 3b.
+5. **Structural pin** in `scripts/test-design-structure.sh:743-751` checks heading presence, reference existence, and `grep -Fc 'Execute ### Apply-all body verbatim'` ≥ 2 (exactly two in `approval-gates.md` today: lines 93 and 99).
+
+Commits on branch: `d998883b` (feature), `6b40eb3a` (larch-logs).
+
+### Out-of-Scope Observations
+
+- **architecture** `skills/design/references/approval-gates.md:76-93` — Unconditional `### Presentation` (full `## Plan Review Findings — Review` table plus rejected/OOS) runs before the mode branch, while the auto-apply path adds a second accepted-findings display (`## Plan Review Findings — Auto-applying`) and re-prints rejected/OOS (step 3). That conflicts with line 80 (“the same table doubles as the apply-visibility list”) and can triple-print findings context on default runs. This does not break Apply-all body reuse, but it is a normative layering inconsistency worth reconciling (e.g., mode-conditional Presentation or drop auto-apply steps 2–3 when Presentation already ran).
+
+- **architecture** `skills/design/references/approval-gates.md:131` — Gate C “settled path” enumeration lists “Apply all” and “Go through each” but not the default auto-apply settled path, even though `SKILL.md` Step 3.5 already names auto-apply as a settled outcome. Minor downstream doc drift.
+
+- **architecture** `skills/design/references/approval-gates.md:100-117` — “Go through each” still carries a full inline dedup-sweep → `EMIT_PLAN` → validator → Step 2b.5 pipeline parallel to `### Apply-all body` (pre-existing pattern; not introduced by this branch’s apply-all factoring).

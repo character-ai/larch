@@ -1,0 +1,23 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- line 31 of plan-review-quick.md still reads "after completing the review and plan revision"
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Gate C "When" paragraph lists Apply-all/Go-through-each/zero-findings paths but omits the new default auto-apply settled path
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- approval-gates.md line 145 still says "all user-approved prior feedback" not "user-approved (or auto-applied)"
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- cosmetic duplication in the cross-tier paragraph; both sentences are informative and the overlap is minor
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- --simple row "auto-applied findings" implies tier-specific auto-apply behavior when it is actually flag-controlled
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- "Go through each" keeps its own inline dedup/EMIT_PLAN separate from the named Apply-all body, creating a future-drift surface
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- fail-open to auto-apply when operator explicitly passed --manual violates stated intent
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SKILL.md Step 3.5 says "silently revises" but approval-gates.md requires breadcrumb and compact findings list
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- write-run-params.sh require_enum validates the field at write time; non-boolean JSON is a theoretical-only scenario
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- structural pins are the appropriate test mechanism for LLM-orchestrated behavior; E2E Gate B mode branching requires a full integration harness
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- no structural pin for the defensive `jq -r '.manual_gate_b // false'` read idiom in approval-gates.md
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- accepted-plan-findings.md is the AI's own aggregated output; Gate C human review is the effective guard; adding untrusted-data markup is disproportionate
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- AGENTS.md requires SECURITY.md updates for security-relevant behavior changes; Gate B auto-apply default and fail-open degradation qualify
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Gate B already prints the compact findings list before auto-applying; Gate C "Other" provides full-plan access; no new risk introduced
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same-UID trust model is inherited from existing partition_requested/brainstorm_requested fields; not a new concern introduced by this change
+FINDING_18: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- State Invariant #2 ensures fresh accepted-plan-findings.md before each Gate B entry; the described stale-artifact mechanism does not occur
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- blocker wiring is explicitly a post-PR step in the plan; its absence from the diff is correct
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL.md Step 4b still says "approved-by-user prior feedback" on the Re-run review panel path
+FINDING_21: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- "single normative source for the three gate prompts" is slightly stale now that Gate B default has no prompt
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- "Post-Review Chooser" still describes the mode-selection logic; renaming is cosmetic and not worth a GitHub issue
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation that no contradictions were found; not a problem requiring a GitHub issue

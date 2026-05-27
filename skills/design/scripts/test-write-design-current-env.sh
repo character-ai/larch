@@ -38,6 +38,7 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --output "$out_file" \
     --design-tmpdir "$design_tmpdir" \
     --session-id "ABC-123" \
+    --manual-requested true \
     --claude-pid "$TEST_CLAUDE_PID" \
     --codex-present true \
     --cursor-present false \
@@ -54,12 +55,13 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$DESIGN_TMPDIR" = "$design_tmpdir" ] || exit 11
     [ "$SESSION_TMPDIR" = "$design_tmpdir" ] || exit 12
     [ "$SESSION_ID" = "ABC-123" ] || exit 13
-    [ "$ISSUE_NUMBER" = "2588" ] || exit 14
-    [ "$CODEX_PRESENT" = "true" ] || exit 15
-    [ "$CURSOR_PRESENT" = "false" ] || exit 16
-    [ "$CODEX_AVAILABLE" = "true" ] || exit 17
-    [ "$CURSOR_AVAILABLE" = "false" ] || exit 18
-    [ "$CLAUDE_PLUGIN_ROOT" = "$REPO_ROOT" ] || exit 19
+    [ "$MANUAL_REQUESTED" = "true" ] || exit 14
+    [ "$ISSUE_NUMBER" = "2588" ] || exit 15
+    [ "$CODEX_PRESENT" = "true" ] || exit 16
+    [ "$CURSOR_PRESENT" = "false" ] || exit 17
+    [ "$CODEX_AVAILABLE" = "true" ] || exit 18
+    [ "$CURSOR_AVAILABLE" = "false" ] || exit 19
+    [ "$CLAUDE_PLUGIN_ROOT" = "$REPO_ROOT" ] || exit 20
 ) || fail "case1: sourcing did not set expected vars (subshell exit $?)"
 
 # Stable symlink should point at the output
@@ -212,5 +214,77 @@ done
     grep -q "WARNING=.*claude-pid omitted" "$_shim_err" || \
         fail "case8: stderr missing transition warning"
 ) || fail "case8: shim subshell failed (exit $?)"
+
+# Case 9 — omitted manual flag leaves MANUAL_REQUESTED unset
+case9_dir="$TMPROOT/case9"
+design9="$case9_dir/design"
+out9="$case9_dir/source-env.sh"
+mkdir -p "$design9"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out9" \
+    --design-tmpdir "$design9" \
+    --session-id "NO-MANUAL" \
+    --claude-pid "$TEST_CLAUDE_PID"
+(
+    set -u
+    # shellcheck disable=SC1090,SC2153
+    source "$out9"
+    [ "${MANUAL_REQUESTED+x}" != x ] || exit 91
+) || fail "case9: omitted --manual-requested should leave MANUAL_REQUESTED unset (subshell exit $?)"
+
+# Case 10 — explicit false is accepted and exported literally
+case10_dir="$TMPROOT/case10"
+design10="$case10_dir/design"
+out10="$case10_dir/source-env.sh"
+mkdir -p "$design10"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out10" \
+    --design-tmpdir "$design10" \
+    --session-id "MANUAL-FALSE" \
+    --manual-requested false \
+    --claude-pid "$TEST_CLAUDE_PID"
+(
+    # shellcheck disable=SC1090,SC2153
+    source "$out10"
+    [ "$MANUAL_REQUESTED" = "false" ] || exit 101
+) || fail "case10: explicit false manual flag was not preserved (subshell exit $?)"
+
+# Case 11 — invalid manual-requested enum rejected
+bad_manual_err="$TMPROOT/wdce-bad-manual.err"
+if CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+        --output "$TMPROOT/bad-manual.sh" \
+        --design-tmpdir "$TMPROOT/bad-manual-dir" \
+        --session-id "BAD-MANUAL" \
+        --manual-requested maybe \
+        --claude-pid "$TEST_CLAUDE_PID" \
+        2>"$bad_manual_err"; then
+    fail "case11: invalid --manual-requested value was accepted"
+fi
+grep -q "Invalid --manual-requested" "$bad_manual_err" || \
+    fail "case11: invalid --manual-requested missing expected error"
+
+# Case 12 — re-run without manual flag clears stale true from the rewritten env file
+case12_dir="$TMPROOT/case12"
+design12="$case12_dir/design"
+out12="$case12_dir/source-env.sh"
+mkdir -p "$design12"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out12" \
+    --design-tmpdir "$design12" \
+    --session-id "MANUAL-TRUE" \
+    --manual-requested true \
+    --claude-pid "$TEST_CLAUDE_PID"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out12" \
+    --design-tmpdir "$design12" \
+    --session-id "MANUAL-CLEARED" \
+    --claude-pid "$TEST_CLAUDE_PID"
+(
+    set -u
+    # shellcheck disable=SC1090,SC2153
+    source "$out12"
+    [ "$SESSION_ID" = "MANUAL-CLEARED" ] || exit 121
+    [ "${MANUAL_REQUESTED+x}" != x ] || exit 122
+) || fail "case12: stale MANUAL_REQUESTED=true was not cleared by omitted follow-up write (subshell exit $?)"
 
 echo "PASS: test-write-design-current-env.sh"

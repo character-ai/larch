@@ -5,7 +5,7 @@ Regression harness for `scripts/write-design-current-env.sh`.
 ## Coverage
 
 1. Sourceable output sets `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`,
-   `ISSUE_NUMBER`, reviewer booleans, and `CLAUDE_PLUGIN_ROOT` exactly as
+   `MANUAL_REQUESTED`, `ISSUE_NUMBER`, reviewer booleans, and `CLAUDE_PLUGIN_ROOT` exactly as
    passed; PID-keyed stable symlink `current-design-env-<pid>.sh` points at
    `--output`.
 2. Shell-quoting via `printf '%q'` survives a `--design-tmpdir` value

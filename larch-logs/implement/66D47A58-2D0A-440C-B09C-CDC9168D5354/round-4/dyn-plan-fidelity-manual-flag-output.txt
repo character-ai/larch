@@ -1,0 +1,17 @@
+Reviewing the branch diff and key recovery-block sections against the plan.
+Checking whether the jq-unavailable path leaves `--manual` runs without durable state:
+### In-Scope Findings
+
+- **architecture** `SECURITY.md:39` and `skills/design/references/approval-gates.md:78` — Gate B mode resolution has conflicting degraded-path contracts. `SECURITY.md` says runs without a known `--manual` request “may fall back to auto-apply” when `run-params.json` or `jq` is unavailable. `approval-gates.md` requires failing closed to `manual_gate_b=true` whenever persisted state cannot prove `false`, which forces the 3-option Gate B prompt even on default (no `--manual`) runs after a `run-params.json` read/`jq` failure. That contradicts the feature default and the acceptance criterion that missing/null `manual_gate_b` coerces to `false`. **Suggested fix:** Pick one degraded-path policy and align both surfaces. Either (a) document in `SECURITY.md` that unproven `false` always means manual prompts (and drop “fall back to auto-apply”), or (b) change `approval-gates.md` so auto-apply is used when `MANUAL_REQUESTED` is unset, in-memory `manual_requested` is not true, and only `jq -r '.manual_gate_b // false'` on a readable file can select manual—matching the original plan edge case and the public default.
+
+### Out-of-Scope Observations
+
+- **Step 0b four-arm router-flag recovery is complete** in `skills/design/SKILL.md:231-265`: outer guard ORs `manual_requested`; jq merge includes `--argjson merge_m`; `elif` warning names manual; graceful-degrade passes `--manual-gate-b "${manual_requested:-false}"`. No missing arm for the load-bearing `--manual`-only write-failure case.
+
+- **`manual_gate_b = $merge_m` vs plan’s `(.manual_gate_b == true or $merge_m)` is an intentional architectural asymmetry**, pinned in `scripts/test-design-structure.sh:739-740`. Partition/brainstorm use sticky OR because brainstorm can be title-auto-enabled without argv; `manual_gate_b` is argv-only, so recovery overwrites from current argv rather than preserving a stale `true` during a non-manual run. Semantically appropriate; not a regression.
+
+- **`write-design-current-env.sh` and SKILL.md Step 0b are consistent**: `--manual-requested true` is appended only when `manual_requested=true`; the writer exports `MANUAL_REQUESTED` only when non-empty (`scripts/write-design-current-env.sh:126`), so non-manual runs do not stamp `MANUAL_REQUESTED=false` into session env. That pairs with Gate B’s `MANUAL_REQUESTED=true` first precedence in `approval-gates.md:78`.
+
+- **Triple-layer Gate B resolution** (session env → in-memory `manual_requested` → `run-params.json`) is coherent for `/design`’s inline orchestrator model; durable state for subshells is `run-params.json` plus optional `MANUAL_REQUESTED` in `source-env.sh`, not bash variables from Step 0b’s fenced block.
+
+**Branch commits (since merge-base with main):** `d998883b` initial implementation; `bea84804`, `b7f0d76b`, `ca9f64df` address review rounds; `6b40eb3a` implement run log.

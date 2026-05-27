@@ -40,7 +40,8 @@ jq -e '
   .review_budget == "quick" and
   .workflow_path == "SIMPLE" and
   .partition_requested == false and
-  .brainstorm_requested == false
+  .brainstorm_requested == false and
+  .manual_gate_b == false
 ' --arg reason "$reason" "$OUT" >/dev/null || fail "valid JSON did not match expected schema"
 
 if "$WRITER" \
@@ -101,7 +102,8 @@ jq -e '
   .workflow_path == "SIMPLE" and
   .sketch_budget == 0 and
   .partition_requested == false and
-  .brainstorm_requested == false
+  .brainstorm_requested == false and
+  .manual_gate_b == false
 ' "$TMPROOT/trivial.json" >/dev/null \
     || fail "trivial preset JSON did not match expected classification fields"
 
@@ -127,6 +129,18 @@ if "$WRITER" \
     --brainstorm-requested maybe \
     --output "$TMPROOT/bad-brainstorm.json" >/dev/null 2>&1; then
     fail "invalid brainstorm-requested was accepted"
+fi
+
+if "$WRITER" \
+    --classification SIMPLE \
+    --reason bad \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --manual-gate-b maybe \
+    --output "$TMPROOT/bad-manual-gate-b.json" >/dev/null 2>&1; then
+    fail "invalid manual-gate-b was accepted"
 fi
 
 if "$WRITER" \
@@ -166,15 +180,126 @@ jq -e '.brainstorm_requested == true' "$TMPROOT/brainstorm-true.json" >/dev/null
 
 "$WRITER" \
     --classification SIMPLE \
-    --reason "FINDING_15 both flags" \
+    --reason "manual Gate B on" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --manual-gate-b true \
+    --output "$TMPROOT/manual-gate-b-true.json" >/dev/null
+jq -e '.manual_gate_b == true' "$TMPROOT/manual-gate-b-true.json" >/dev/null \
+    || fail "--manual-gate-b true did not set JSON true"
+
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "manual Gate B off" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --manual-gate-b false \
+    --output "$TMPROOT/manual-gate-b-false.json" >/dev/null
+jq -e '.manual_gate_b == false' "$TMPROOT/manual-gate-b-false.json" >/dev/null \
+    || fail "--manual-gate-b false did not set JSON false"
+
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "FINDING_15 all flags" \
     --source caller-forwarded \
     --sketch-budget 2 \
     --review-budget quick \
     --workflow-path SIMPLE \
     --partition-requested true \
     --brainstorm-requested true \
-    --output "$TMPROOT/both-flags-true.json" >/dev/null
-jq -e '.partition_requested == true and .brainstorm_requested == true' "$TMPROOT/both-flags-true.json" >/dev/null \
-    || fail "partition + brainstorm both true was not persisted"
+    --manual-gate-b true \
+    --output "$TMPROOT/all-flags-true.json" >/dev/null
+jq -e '.partition_requested == true and .brainstorm_requested == true and .manual_gate_b == true' "$TMPROOT/all-flags-true.json" >/dev/null \
+    || fail "partition + brainstorm + manual Gate B all true was not persisted"
+
+# FINDING_8: Step 0b manual-only recovery must preserve manual_gate_b=true
+# even when the initial write-run-params attempt failed and the recovery path
+# recreates or merges the file later.
+partition_requested=false
+brainstorm_requested=false
+manual_requested=true
+design_classification=HARD
+design_classification_reason='run-params write failed; router-flag recovery'
+sketch_budget=4
+review_budget=full
+workflow_path=HARD
+
+recovery_missing="$TMPROOT/recovery-missing.json"
+if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]] && command -v jq >/dev/null 2>&1; then
+    if [[ -f "$recovery_missing" ]]; then
+        fail "recovery-missing fixture unexpectedly existed before fallback path"
+    else
+        "$WRITER" \
+            --classification "${design_classification:-HARD}" \
+            --reason "${design_classification_reason:-run-params write failed; router-flag recovery}" \
+            --source caller-forwarded \
+            --sketch-budget "${sketch_budget:-4}" \
+            --review-budget "${review_budget:-full}" \
+            --workflow-path "${workflow_path:-HARD}" \
+            --partition-requested "${partition_requested:-false}" \
+            --brainstorm-requested "${brainstorm_requested:-false}" \
+            --manual-gate-b "${manual_requested:-false}" \
+            --output "$recovery_missing" >/dev/null
+    fi
+fi
+jq -e '.manual_gate_b == true' "$recovery_missing" >/dev/null \
+    || fail "manual-only recovery fallback did not preserve manual_gate_b=true"
+
+recovery_merge="$TMPROOT/recovery-merge.json"
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "seed file before merge recovery" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --manual-gate-b false \
+    --output "$recovery_merge" >/dev/null
+
+_rp_merge="$TMPROOT/recovery-merge.tmp.json"
+if jq -c \
+    --argjson merge_p false \
+    --argjson merge_b false \
+    --argjson merge_m true \
+    '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' \
+    "$recovery_merge" >"$_rp_merge"; then
+    mv -f "$_rp_merge" "$recovery_merge"
+else
+    fail "manual-only recovery merge jq path failed"
+fi
+jq -e '.manual_gate_b == true' "$recovery_merge" >/dev/null \
+    || fail "manual-only recovery merge did not preserve manual_gate_b=true"
+
+# FINDING_2: stale persisted manual mode must be cleared when the current run
+# omits --manual; manual_gate_b is overwritten from current argv state rather
+# than OR-merged like partition/brainstorm.
+recovery_manual_clear="$TMPROOT/recovery-manual-clear.json"
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "seed stale manual mode before merge recovery" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --manual-gate-b true \
+    --output "$recovery_manual_clear" >/dev/null
+
+_rp_merge="$TMPROOT/recovery-manual-clear.tmp.json"
+if jq -c \
+    --argjson merge_p false \
+    --argjson merge_b false \
+    --argjson merge_m false \
+    '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' \
+    "$recovery_manual_clear" >"$_rp_merge"; then
+    mv -f "$_rp_merge" "$recovery_manual_clear"
+else
+    fail "stale-manual recovery merge jq path failed"
+fi
+jq -e '.manual_gate_b == false' "$recovery_manual_clear" >/dev/null \
+    || fail "stale persisted manual_gate_b=true was not cleared by current-run manual_requested=false"
 
 echo "PASS: test-write-run-params.sh"

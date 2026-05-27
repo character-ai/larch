@@ -6,6 +6,7 @@
 #   write-design-current-env.sh --output <path> \
 #                               --design-tmpdir <path> \
 #                               --session-id <id> \
+#                               [--manual-requested <true|false>] \
 #                               [--codex-present <true|false>] \
 #                               [--cursor-present <true|false>] \
 #                               [--codex-available <true|false>] \
@@ -40,6 +41,7 @@ larch_quiet_init
 OUTPUT=""
 DESIGN_TMPDIR_ARG=""
 SESSION_ID=""
+MANUAL_REQUESTED=""
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
 CODEX_AVAILABLE=""
@@ -54,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --output)           OUTPUT="$2"; shift 2 ;;
     --design-tmpdir)    DESIGN_TMPDIR_ARG="$2"; shift 2 ;;
     --session-id)       SESSION_ID="$2"; shift 2 ;;
+    --manual-requested) MANUAL_REQUESTED="$2"; shift 2 ;;
     --codex-present)    CODEX_PRESENT="$2"; shift 2 ;;
     --cursor-present)   CURSOR_PRESENT="$2"; shift 2 ;;
     --codex-available)  CODEX_AVAILABLE="$2"; shift 2 ;;
@@ -80,6 +83,7 @@ validate_bool codex-present "$CODEX_PRESENT"
 validate_bool cursor-present "$CURSOR_PRESENT"
 validate_bool codex-available "$CODEX_AVAILABLE"
 validate_bool cursor-available "$CURSOR_AVAILABLE"
+validate_bool manual-requested "$MANUAL_REQUESTED"
 
 if [[ -n "$ISSUE_NUMBER" && ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
   larch_err "ERROR=Invalid --issue-number: must be a non-negative integer"
@@ -136,6 +140,7 @@ build_export() {
   build_export DESIGN_TMPDIR "$DESIGN_TMPDIR_ARG"
   build_export SESSION_TMPDIR "$DESIGN_TMPDIR_ARG"
   build_export SESSION_ID "$SESSION_ID"
+  [[ -n "$MANUAL_REQUESTED" ]] && build_export MANUAL_REQUESTED "$MANUAL_REQUESTED"
   [[ -n "$ISSUE_NUMBER" ]] && build_export ISSUE_NUMBER "$ISSUE_NUMBER"
   [[ -n "$CODEX_PRESENT" ]] && build_export CODEX_PRESENT "$CODEX_PRESENT"
   [[ -n "$CURSOR_PRESENT" ]] && build_export CURSOR_PRESENT "$CURSOR_PRESENT"
