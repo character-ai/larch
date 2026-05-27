@@ -352,6 +352,8 @@ fallback_stage1=$(WFR_STAGE1_CALLS_FILE="$stage1_calls" CLAUDE_PLUGIN_ROOT="$plu
 assert_contains '- **Cost**: N/A' "$fallback_stage1" 'renderer fallback stage1 prints cost N/A'
 assert_contains '- **Warnings**: 1' "$fallback_stage1" 'renderer fallback stage1 refreshes warning count'
 assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage1" 'renderer fallback stage1 keeps sentinel'
+assert_not_contains '<!-- larch:final-summary-fallback v1 -->' "$fallback_stage1" 'stage1 must not carry degraded-fallback marker'
+assert_not_contains '**⚠ Degraded fallback' "$fallback_stage1" 'stage1 must not carry degraded-fallback banner'
 test "$(wc -l <"$stage1_calls" | tr -d ' ')" = "2" || fail 'renderer fallback stage1 must invoke renderer twice'
 [ ! -e "$impl_bl/wfr-fallback-stage1.log" ] || fail 'renderer fallback stage1 must not retain fallback stderr sidecar'
 
@@ -363,6 +365,9 @@ chmod +x "$plugin/scripts/render-run-summary.sh"
 rm -f "$impl_bl/execution-issues.md"
 fallback_stage2=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-fallback-stage2.md" \
       "$HELPER" --implement-tmpdir "$impl_bl" --print-stdout 2>/dev/null)
+assert_contains '**⚠ Degraded fallback' "$fallback_stage2" 'renderer fallback stage2 emits degraded banner'
+assert_contains '<!-- larch:final-summary-fallback v1 -->' "$fallback_stage2" 'renderer fallback stage2 emits fallback HTML marker'
+assert_contains '<!-- larch:run-summary v=1 -->' "$fallback_stage2" 'renderer fallback stage2 keeps sentinel'
 assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered implement schema' \
     '## /implement run run-bl — bailed' \
     '- **Outcome**: bailed' \
@@ -377,7 +382,19 @@ assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered
     '- **Exec issues**: 0' \
     '- **Warnings**: 2' \
     "- **Run logs**: \`larch-logs/implement/run-bl/\`" \
-    '<!-- larch:run-summary v=1 -->'
+    '<!-- larch:run-summary v=1 -->' \
+    '<!-- larch:final-summary-fallback v1 -->'
+stage2_nonempty="$(printf '%s\n' "$fallback_stage2" | awk 'NF { print; n++; if (n == 2) exit }')"
+stage2_line1="$(printf '%s\n' "$stage2_nonempty" | sed -n '1p')"
+stage2_line2="$(printf '%s\n' "$stage2_nonempty" | sed -n '2p')"
+case "$stage2_line1" in '## /implement run '*) stage2_heading_ok=true ;; *) stage2_heading_ok=false ;; esac
+case "$stage2_line2" in \*\*⚠\ Degraded\ fallback*) stage2_banner_ok=true ;; *) stage2_banner_ok=false ;; esac
+if [ "$stage2_heading_ok" = true ] && [ "$stage2_banner_ok" = true ]; then
+    pass 'renderer fallback stage2 places degraded banner after heading'
+else
+    fail 'renderer fallback stage2 must place degraded banner after heading'
+    printf 'ACTUAL: %s\n' "$fallback_stage2" >&2
+fi
 assert_not_contains '- **PR**:' "$fallback_stage2" 'renderer fallback stage2 omits PR when N/A'
 assert_contains '### Warnings' "$(cat "$impl_bl/execution-issues.md")" 'renderer fallback stage2 records warning section'
 cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"

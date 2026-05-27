@@ -210,8 +210,18 @@ CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb" 2>/dev/null
 grep -Fq -- '💰 TOTAL' "$D/final-summary.md" || fail 'renderer-fail post path must preserve prior usable cost line'
 grep -Fq -- '## /design run RUN-FB — approved' "$D/final-summary.md" || fail 'renderer-fail post path must refresh title/run id'
+grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail fallback missing degraded banner'
+grep -Fq -- '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" || fail 'renderer-fail fallback missing fallback marker'
+grep -Fq -- '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'renderer-fail fallback missing run-summary marker'
 grep -Fq -- '- **Exec issues**: 0' "$D/final-summary.md" || fail 'renderer-fail post path must refresh exec issue count'
 grep -Fq -- '- **Warnings**: 1' "$D/final-summary.md" || fail 'renderer-fail post path must refresh warning count'
+fb_nonempty="$(awk 'NF { print; n++; if (n == 3) exit }' "$D/final-summary.md")"
+fb_line1="$(printf '%s\n' "$fb_nonempty" | sed -n '1p')"
+fb_line2="$(printf '%s\n' "$fb_nonempty" | sed -n '2p')"
+fb_line3="$(printf '%s\n' "$fb_nonempty" | sed -n '3p')"
+[ "$fb_line1" = '## /design run RUN-FB — approved' ] || fail 'renderer-fail fallback first non-empty line must be heading'
+case "$fb_line2" in \*\*⚠\ Degraded\ fallback*) ;; *) fail 'renderer-fail fallback second non-empty line must be degraded banner' ;; esac
+case "$fb_line3" in '- **Mode**:'*|'- **Outcome**:'*) ;; *) fail 'renderer-fail fallback third non-empty line must be first schema bullet' ;; esac
 if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit PR bullet'; fi
 if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit Code review bullet'; fi
 cmp -s "$D/final-summary.md" "$std_fb" || fail 'renderer-fail fallback stdout/file mismatch'

@@ -54,6 +54,20 @@ bullet, no Code review bullet, and the
 unless post phase already had a usable cost line, in which case only that line
 is preserved.
 
+The self-composed fallback body is intentionally distinguishable from a full
+renderer body: it places `**⚠ Degraded fallback — full renderer failed; warning
+recorded in execution issues.**` immediately after the `## /design run ...`
+heading, with one blank line on each side, and emits
+`<!-- larch:final-summary-fallback v1 -->` directly after the existing
+`<!-- larch:run-summary v=1 -->` marker. The heading remains the first
+non-empty line so first-line outcome parsers in
+`scripts/verify-run-log-completeness.sh` and
+`.claude/skills/audit-runs/scripts/audit-scan-run.sh` keep anchoring on the
+terminal outcome. Fallback still exits 0, and Warning recording through
+`append-tool-failure.sh` is unchanged; the banner says "execution issues"
+without a filename because design tmpdirs use `execution-issues.md` while
+published implement logs use `execution-issues.ndjson`.
+
 ## PHASE=post print path
 
 Post phase prints `final-summary.md` exactly once via the FD-3-aware chat loop.

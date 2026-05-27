@@ -359,6 +359,7 @@ compose_self_fallback() {
     local out_file="$DESIGN_TMPDIR/final-summary.md"
     {
         printf '## /design run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
+        printf '%s\n\n' '**⚠ Degraded fallback — full renderer failed; warning recorded in execution issues.**'
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${MODE_STR:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
@@ -383,6 +384,7 @@ compose_self_fallback() {
         printf -- '- **Warnings**: %s\n' "${WARNINGS:-0}"
         printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_PATH:-N/A}"
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
+        printf '%s\n' '<!-- larch:final-summary-fallback v1 -->'
         if [ "$OUTCOME" = "cancelled-outline" ]; then
             printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate'
         fi
