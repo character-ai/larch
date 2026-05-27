@@ -1,0 +1,56 @@
+Reviewing the plan and tracing test paths for `REASON=validation-exhausted` assertions.
+Checking padded-attestation handling and whether the shell wrapper treats `empty_merge_from_nonempty_input` differently after the fix.
+Verifying whether the plan addresses the #2536 test or stderr-token assertions elsewhere:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review/scripts/test-aggregate-findings.sh:578-593	Flip inventory omits the #2536 zero_findings stub case that duplicates zero_findings_input_nonempty	Same AGGREGATE_STUB_MERGE_KIND=zero_findings + in3.md path reaches empty_merge_from_nonempty_input today; after validator return-0 it will emit REASON=ok and overwrite findings.md while the test still asserts AGGREGATED=false REASON=validation-exhausted and cmp unchanged ballot	Add skills/review/scripts/test-aggregate-findings.sh:578-593 to the flip inventory (or consolidate/remove as duplicate of #2782/#2939): assert REASON=ok AGGREGATED=true MERGED_COUNT=0 empty stripped FINDINGS_FILE; drop unchanged-ballot cmp
+2	in_scope	important	correctness	skills/review/scripts/test-aggregate-findings.sh:707-708	Plan flips zero_findings_input_nonempty REASON but does not retire the AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input stderr assertion	After the validator branch returns 0 that machine token is no longer emitted; grep at 707-708 fails even if REASON=ok assertions are updated	Explicitly remove or replace lines 707-708 with an assertion that stderr lacks AGGREGATOR_VALIDATION_FAILED= and optionally checks the new attestation-only success diagnostic from the plan
+3	in_scope	important	correctness	plan.txt:71-72	Edge-case prose misstates padded-attestation validator path	Plan claims whitespace-padded lines are stripped as impure so has_attest_line is false and REASON=validation-failed applies; aggregate-findings.sh:266-269 treats trim-only padding as exact attestation (st == EMPTY_MERGE_ATTESTATION) so zero_findings_padded_attest_rejected still hits the attestation-only branch	Revise edge-case bullet to match line_has_impure_empty_merge_attestation (suffix drift only); keep padded-attest flip to REASON=ok as planned at test-aggregate-findings.sh:726
+4	in_scope	nit	architecture	skills/review/scripts/aggregate-findings.md:27	Doc update scoped only to line ~32 leaves stale narrow-trigger bullet at line 27	Line 27 still pairs empty_merge_from_nonempty_input with REASON=validation-exhausted after the fix; contract readers misdiagnose attestation-only success	Extend aggregate-findings.md update to line 27: attestation-only nonempty-input success is REASON=ok; validation-exhausted narrow-trigger is preamble_finding_substring only
+5	in_scope	latent	code-quality	skills/review/scripts/aggregate-findings.sh:636-759	Shell narrow-trigger grep and non-preamble validation-exhausted warning become dead after fix	empty_merge_from_nonempty_input is never emitted on failure; grep alternation and else-branch warning at 759 are unreachable but harmless	Optionally narrow grep to preamble_finding_substring only and adjust warning text in the same commit; not required for functional fix
+6	out_of_scope	latent	security	SECURITY.md:81	SECURITY.md still describes empty_merge_from_nonempty_input as validation-exhausted	Security reviewers may believe attestation-only duplicate merge still stalls Step 5	File follow-up to align SECURITY.md aggregation bullet with post-#2939 semantics
+
+## Findings
+
+**1. [correctness] `skills/review/scripts/test-aggregate-findings.sh:578-593` — Omitted flip for duplicate attestation-only path**
+
+The plan’s flip inventory names only `zero_findings_input_nonempty` (~693), `pattern-attest` (~1196), and `padded-attest` (~726). The earlier block at 578–593 uses the **identical** fixture: `AGGREGATE_STUB_MERGE_KIND=zero_findings` against a copy of `in3.md` (three structured findings), stub output with exact `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`, and asserts `REASON=validation-exhausted` at line 591. That path enters the validator’s `if not blocks:` branch with `has_attest_line` true and no preamble signal—the same `empty_merge_from_nonempty_input` branch the plan changes to `return 0`. After the fix this test will fail on `AGGREGATED=false`, `REASON=validation-exhausted`, and `cmp` unchanged ballot (593).
+
+**Suggested revision:** Add 578–593 to the test flip list (or delete/consolidate as redundant with the #2782/#2939 case and the proposed new round-trip test).
+
+**2. [correctness] `skills/review/scripts/test-aggregate-findings.sh:707-708` — Stale stderr token assertion not called out**
+
+The `zero_findings_input_nonempty` block asserts `AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input` in `aggregator-validate.stderr`. The plan replaces that validator return-1 with return-0 and a different stderr diagnostic; the token will not appear. The plan’s new round-trip test says “no `AGGREGATOR_VALIDATION_FAILED=` line” but does not instruct removing 707–708 from the existing test.
+
+**Suggested revision:** Explicitly drop or invert the 707–708 grep as part of the #2782 flip.
+
+**3. [correctness] Plan edge-case § padded attestation (lines 71–72) — Wrong path analysis**
+
+Current code at `aggregate-findings.sh:266-269` defines impure attestation as trimmed text that **starts with** the token but is **not exactly** the token. The padded stub (`  LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED  `) strips to an exact match, so it is **not** dropped by `drop_impure_empty_merge_attestation_lines` and `has_attest_line` is true (529–530). The test at 726 therefore reaches `empty_merge_from_nonempty_input` today, not the no-attestation `validation-failed` path. The plan’s flip of padded-attest to `REASON=ok` is **correct**; the edge-case prose claiming validation-failed is **incorrect** and could cause implementer confusion.
+
+**Suggested revision:** Fix the edge-case bullet to describe suffix-drift impurity only; confirm flip to `REASON=ok` for line 726.
+
+**4. [architecture] `skills/review/scripts/aggregate-findings.md:27` — Incomplete contract doc scope**
+
+The plan updates the three-path bullet at ~line 32 but line 27’s “Narrow-trigger validator outcome” still lists `empty_merge_from_nonempty_input` → `REASON=validation-exhausted`.
+
+**Suggested revision:** Update line 27 in the same doc pass.
+
+**5. [code-quality] `skills/review/scripts/aggregate-findings.sh:636-759` — Stale narrow-trigger plumbing (latent)**
+
+After the fix, `empty_merge_from_nonempty_input` is never emitted; the grep alternation at 636 and the non-preamble validation-exhausted warning at 759 become dead. Functionally harmless.
+
+**Suggested revision:** Optional cleanup in the same PR or a follow-up.
+
+## REASON=validation-exhausted audit (plan classification check)
+
+| Line | Test | Stub / path | Reaches changed branch? | Plan classification |
+|------|------|-------------|-------------------------|---------------------|
+| 591 | #2536 zero output | `zero_findings` + `in3.md` | **Yes** — attestation-only | **Omitted** (should flip to ok) |
+| 706 | #2782 zero_findings_input_nonempty | `zero_findings` + `in3.md` | **Yes** | Flip to ok — **correct** |
+| 726 | padded-attest | `zero_findings_padded_attest_rejected` | **Yes** — trim-only padding is exact attestation | Flip to ok — **correct** (edge prose wrong) |
+| 1104 | preamble contradiction | `preamble_contradiction` | **No** — `preamble_finding_substring` first | Unchanged — **correct** |
+| 1119 | numbered prose | `numbered_prose_contradiction` | **No** — preamble path | Unchanged — **correct** |
+| 1137 | validation-exhausted waterfall | `preamble_contradiction` + exec log | **No** — preamble path | Unchanged — **correct** |
+| 1196 | pattern-attest | `zero_findings` + `in3.md` | **Yes** | Flip to ok — **correct** |
+
+**Summary:** The plan correctly classifies five of six affected assertions but **omits line 591**, leaving at least one CI failure after the validator fix. Preamble and waterfall cases (1104, 1119, 1137) are correctly left unchanged.

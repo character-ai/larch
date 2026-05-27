@@ -1,0 +1,169 @@
+# Plan — Fix attestation-only duplicate-merge to yield REASON=ok (#2939)
+
+## Approach
+
+The bug is a validator-semantics defect inside the embedded `aggregate-validate.py` heredoc in `skills/review/scripts/aggregate-findings.sh`. When aggregator output contains the `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` line (possibly preceded by allowed narrative) and zero `### FINDING_<digits>:` blocks while input had structured findings, the validator's `if not blocks:` branch falls through to the `empty_merge_from_nonempty_input` narrow-trigger, which surfaces as `REASON=validation-exhausted`. The contract documented in `agents/orchestrator-aggregator.md` (lines 47-49) explicitly permits "brief narrative explaining the empty merge (optional)" before the attestation line. The plan for #2881 stated this case should yield `MERGE_PIPELINE_RC=0 → REASON=ok` with `MERGED_COUNT=0`.
+
+The fix has three coordinated pieces:
+
+1. **Validator (Python heredoc)**: in the `if not blocks:` branch, replace the unconditional `empty_merge_from_nonempty_input` return-1 path with a structural success predicate. The new ordering inside the branch is: (a) preamble-contradiction check (unchanged); (b) **new** nonconforming-heading-with-attestation rejection so malformed pseudo-headings like `### FINDING_1 not-a-valid-heading` combined with attestation cannot be accepted; (c) no-attestation rejection (unchanged); (d) attestation-only success path → `return 0` with an auditable stderr diagnostic. The orchestrator-aggregator prompt at `agents/orchestrator-aggregator.md:47-49` explicitly allows narrative before the attestation line, so the validator must accept narrative+attestation; downstream cleanup is handled by the strip path (piece 2).
+
+2. **Strip path (shell wrapper)**: change the zero-block fallback in `_agg_pipeline_for_candidate` so the persisted `findings.md` is **always whitespace-only** when the success path produces zero merged blocks. Replace the current conditional `[[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"` (which only writes `\n` when the strip emptied merged_tmp) with an unconditional `printf '\n' >"$merged_tmp"` inside the `count_finding_blocks "$cand" -eq 0` branch. This guarantees no allowed-narrative prose leaks into the persisted ballot regardless of what the validator accepted. The unconditional overwrite is bounded by the `count_finding_blocks "$cand" -eq 0` guard, so the existing `merge_plus_impure_attest` success path (1 block + impure attestation suffix) is unaffected.
+
+3. **Tests, docs, security, CHANGELOG**: flip in-place every test currently asserting `REASON=validation-exhausted` for the now-accepted scenarios (`zero_findings` #2536, `zero_findings_input_nonempty` #2782, `zero_findings_padded_attest_rejected` #2536) to expect `REASON=ok`, `AGGREGATED=true`, `MERGED_COUNT=0`, and a whitespace-only persisted `findings.md`. Add three new tests: a canonical round-trip success (pure attestation only), a pseudo-heading-with-attestation rejection (FINDING_3 regression), and a narrative-with-attestation success that asserts the persisted ballot is whitespace-only (FINDING_2 regression). Update `aggregate-findings.md`, sibling `test-aggregate-findings.md`, `SECURITY.md`, and add a `CHANGELOG.md` entry.
+
+The downstream consumer surface (`review-core.sh:542-543`) branches only on `REASON=validation-exhausted`; all other reasons fall through to the normal voting flow, where `tally-code-votes.sh:128-130` uses `shopt -s nullglob` to handle a zero-block ballot cleanly (no accepted findings, no rejected findings, no crash). The voter dispatch step still launches 3 voters with an empty ballot — that wasted-token inefficiency is filed as OOS_2 (Cursor-Pragmatic) and is out of scope for this PR.
+
+## Files to modify/create
+
+### UPDATED: `skills/review/scripts/aggregate-findings.sh`
+Two coordinated changes:
+
+**Change A — Python heredoc validator (inside `cat > "$validate_py" <<'PY' … PY`, in the `main()` function's `if not blocks:` branch).** Replace the existing four-path structure (preamble / no-attest / empty_merge_from_nonempty_input return-1) with five paths in this order:
+
+1. **Preamble-contradiction (unchanged)** — when `has_preamble_finding_signal(outtext) and not has_nonconforming_finding_heading_markers(outtext)`, emit `AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring` and `return 1`. Narrow-trigger; maps to `REASON=validation-exhausted`. Behavior unchanged.
+
+2. **Nonconforming heading with attestation (NEW rejection)** — when `has_nonconforming_finding_heading_markers(outtext) and has_attest_line`, emit `AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation` and `return 1`. Maps to `REASON=validation-exhausted` via the same shell wrapper narrow-trigger grep. This explicitly rejects malformed outputs like `### FINDING_1 not-a-valid-heading` + attestation (FINDING_3). The narrow-trigger grep in `_agg_pipeline_for_candidate` (line 636) must be updated to also match the new token (see Change B below).
+
+3. **No-attestation (unchanged)** — when `not has_attest_line`, emit the existing human-readable diagnostic ("zero merged FINDING blocks while input had findings; output must include a line whose trimmed text equals %r …") and `return 1`. Single-shot `REASON=validation-failed`. Behavior unchanged; covers nonconforming + no-attest path too (path 2 short-circuits only when attestation is present).
+
+4. **Nonconforming heading without attestation (unchanged)** — when `has_nonconforming_finding_heading_markers(outtext) and not has_attest_line`, this case is already covered by path 3 above (no_attest_line short-circuits the same diagnostic path). The existing test at line 647-660 (`zero_findings_nonconforming_heading`) and line 662-675 (`zero_findings_nospace_pseudo_heading`) continue to assert `REASON=validation-failed` and pass under the new ordering because they all use fixtures without attestation.
+
+5. **Attestation-only success (NEW)** — the remaining case is `not blocks AND has_attest_line AND no preamble contradiction AND no nonconforming heading`. Emit an auditable stderr diagnostic (e.g., `print("attestation-only empty merge accepted (input %d FINDING blocks → 0 merged blocks)" % len(input_blocks(intext)), file=sys.stderr)`) and `return 0`. The shell wrapper's case branch at line 745-751 produces `MERGED_COUNT=0`, `AGGREGATED=true`, `REASON=ok`.
+
+The branch order above is critical: preamble runs first to preserve existing narrow-trigger behavior; nonconforming-with-attestation runs before no-attestation so the new rejection emits its specific machine token; no-attestation captures both no-attestation cases (with or without nonconforming markers).
+
+**Change B — Narrow-trigger grep in `_agg_pipeline_for_candidate`.** Update line 636 from:
+
+```bash
+if grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|empty_merge_from_nonempty_input)$' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
+```
+
+to include the new `nonconforming_heading_with_attestation` token:
+
+```bash
+if grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|nonconforming_heading_with_attestation)$' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
+```
+
+The `empty_merge_from_nonempty_input` token is removed because the new validator no longer emits it; future grep hits on that string would be stale.
+
+**Change C — Strip-path unconditional whitespace overwrite in `_agg_pipeline_for_candidate`.** Replace the existing zero-block fallback at lines 665-667:
+
+```bash
+if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
+    [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
+fi
+```
+
+with an unconditional overwrite inside the same guard:
+
+```bash
+if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
+    # Zero-block success path (validator returned 0 on attestation-only output, possibly with
+    # allowed narrative per agents/orchestrator-aggregator.md). Force whitespace-only persisted
+    # ballot so non-finding narrative does not leak into downstream voting/UI.
+    printf '\n' >"$merged_tmp"
+fi
+```
+
+This guarantees `findings.md` after a zero-block success contains exactly `\n` (no narrative, no impurity), addressing FINDING_2 (Codex-Arch/Codex-Edge/Codex-Innovation/Codex-Pragmatic/Codex-dyn-test-flip-inventory). The `count_finding_blocks "$cand" -eq 0` guard preserves the `merge_plus_impure_attest` success path (1 block + impure suffix → strip removes suffix, keeps block) unchanged.
+
+After Change A's success branch returns 0 and Change C's overwrite runs, the existing case branch at line 745-751 produces `MERGED_COUNT=0`, `AGGREGATED=true`, `REASON=ok`. The case branch text "validation-exhausted" still fires for path 2 (`nonconforming_heading_with_attestation`) via the updated narrow-trigger grep — but its warning message text should also be lightly updated to describe the broader narrow-trigger family (preamble OR nonconforming) instead of "narrow-trigger preamble contradiction" only. Specifically, update the case-1 (MERGE_PIPELINE_RC=1) warning at lines 752-762 so the message distinguishes both narrow-trigger reasons (e.g., `if grep -Fxq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$FAILURE_LOG" …` keeps its current message; add an `elif grep -Fxq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' …` arm with a message like "validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation); leaving findings.md unchanged"). The existing fallback `else` arm becomes unreachable once the validator no longer emits `empty_merge_from_nonempty_input`; either delete that arm or keep it as a defensive catch-all with a generic message — pick whichever is cleaner during implementation.
+
+### UPDATED: `skills/review/scripts/test-aggregate-findings.sh`
+Flip three existing tests in place and add three new test cases.
+
+**Flips** (each assertion change updates the surrounding test header comment to reference #2939 corrected semantics):
+
+- Lines 578-593 (`=== zero output FINDING blocks fails closed when input had findings (#2536) ===`): flip to "succeeds with attestation when input had findings (#2536 #2939 supersede)" or merge with the line 693 test (the reviewers suggested either flip or merge; pick flip-and-merge for locality). After the flip: assert `AGGREGATED=true`, `REASON=ok`, `MERGED_COUNT=0`, `INPUT_COUNT=3` (unchanged — input count is independent of merge outcome). Replace the `cmp -s "$TMP/in3.md" "$TMP/in3-zero.md"` "findings unchanged" assertion with an assertion that the persisted findings file is whitespace-only (e.g., `[[ "$(tr -d '[:space:]' < "$TMP/in3-zero.md" | wc -c | tr -d ' ')" == "0" ]] || fail "findings.md must be whitespace-only after zero-block success"`).
+
+- Lines 693-712 (`=== zero_findings_input_nonempty rejected: input had findings, output empty + attestation => validation-exhausted (#2782) ===`): flip to "accepted: input had findings, output empty + attestation => REASON=ok (#2939; supersedes #2782)". Change `REASON=validation-exhausted` → `REASON=ok`; change `AGGREGATED=false` → `AGGREGATED=true`; add `MERGED_COUNT=0` assertion; remove the `AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input` assertion (the token no longer exists); replace the "findings unchanged" cmp and "original 3 FINDING blocks must survive" check with the whitespace-only assertion on the persisted file. If the line 578-593 case is merged into this one, delete lines 578-593 and consolidate; otherwise both blocks flip independently with locality-preserving comment markers.
+
+- Lines 713-727 (`=== zero output rejects whitespace-padded empty-merge attestation for nonempty input (#2536) ===`): flip to "accepts whitespace-padded empty-merge attestation for nonempty input (#2939; supersedes #2536 padded-attest rejection)". Change `REASON=validation-exhausted` → `REASON=ok`; change `AGGREGATED=false` → `AGGREGATED=true`; add `MERGED_COUNT=0` assertion; replace the "findings unchanged" cmp with the whitespace-only assertion on the persisted file. The stub fixture (`zero_findings_padded_attest_rejected`) has whitespace-padded attestation that is NOT impure under the existing `line_has_impure_empty_merge_attestation` (which uses `line.strip()`), so `has_attest_line` stays True, the new success branch fires, and the strip-path Change C overwrites the persisted file with `\n` — addressing FINDING_7 (Cursor-Pragmatic + dyn voters).
+
+**Preservation checks** (DO NOT flip):
+
+- Line 595-628 (`zero_findings_no_attest`): narrative only, no attestation. Falls into path-3 no-attestation rejection. Still asserts `REASON=validation-failed`. Behavior unchanged.
+- Lines 630-645 (`zero_findings_impure_attest`): narrative + impure attestation. `drop_impure_empty_merge_attestation_lines` removes the impure line; remaining narrative has no attestation → path-3 rejection. Still asserts `REASON=validation-failed`. Behavior unchanged.
+- Lines 647-660 (`zero_findings_nonconforming_heading`): narrative + `### FINDING_1 not-a-valid-heading` (no colon, no attestation). `has_nonconforming=True`, `has_attest_line=False` → path-2 short-circuits only when attestation present; falls into path-3 no-attestation rejection. Still asserts `REASON=validation-failed`. Behavior unchanged.
+- Lines 662-675 (`zero_findings_nospace_pseudo_heading`): narrative + `###FINDING_1:` (no space after `###`, no attestation). Same path-3 rejection. Behavior unchanged.
+- Lines 677-691 (`zero_findings_prose_finding_ids`): narrative + `### FINDING_ids are stable across reviewers.` (no digits after FINDING_, no attestation). The preamble signal `_PREAMBLE_FINDING_SIGNAL` does not match `FINDING_ids` (it requires `[0-9N]`). `has_nonconforming=False`, `has_attest_line=False` → path-3 rejection. Still asserts `REASON=validation-failed`. Behavior unchanged.
+- Lines 1100-1150 (preamble narrow-trigger tests `pream`, `numpr`): assert `REASON=validation-exhausted` for narration containing `### FINDING_24:` or bare `(FINDING_24–28)` IDs. These hit the path-1 preamble rejection unchanged. Behavior unchanged.
+- Line 1122-1140 (waterfall validation-exhausted test): uses an output combining attestation with prose containing `FINDING_N` references → path-1 preamble rejection fires first. Behavior unchanged.
+- Lines 1180-1210 (`pattern-attest` test): pattern gate accepts full-line attestation and reaches validator. Under the new behavior this case becomes `REASON=ok`. **Flip required**: change the surrounding "narrow-trigger empty merge" comment and the `REASON=validation-exhausted` assertion to `REASON=ok` plus `AGGREGATED=true` plus `MERGED_COUNT=0` plus whitespace-only persisted file. Verify the fixture's narrative content does not include any `### FINDING_<digits>:` heading or bare `FINDING_<digits>` numbered ID (the preamble check would still reject); if it does, that's a separate failure path and the test stays as a preamble-rejection variant — inspect the fixture during implementation and choose the correct flip target.
+
+**New tests** (add adjacent to the flipped tests for locality):
+
+- `zero_findings_round_trip_pure_attestation_success`: stub fixture emits exactly the bare attestation line with no narrative and no other prose. Assert `AGGREGATED=true`, `REASON=ok`, `MERGED_COUNT=0`, whitespace-only persisted `findings.md`, and absence of any `AGGREGATOR_VALIDATION_FAILED=` line in stderr/diag.
+- `zero_findings_nonconforming_with_attestation_rejected` (FINDING_3 regression): stub fixture emits narrative + `### FINDING_1 not-a-valid-heading` + attestation line. Assert `AGGREGATED=false`, `REASON=validation-exhausted`, presence of `AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation` in `aggregator-validate.stderr`, and that the original findings.md content is preserved unchanged.
+- `zero_findings_narrative_plus_attestation_succeeds_whitespace_only_persist` (FINDING_2 regression): stub fixture emits multi-paragraph narrative + attestation line (mirroring the orchestrator-aggregator.md example layout at lines 51-55). Assert `AGGREGATED=true`, `REASON=ok`, `MERGED_COUNT=0`, AND that the persisted `findings.md` contains no characters from the narrative (whitespace-only assertion using `tr -d '[:space:]' | wc -c == 0`).
+
+### UPDATED: `skills/review/scripts/aggregate-findings.md`
+Two paragraph-level updates:
+
+- Line 27 (narrow-trigger summary paragraph): currently lists `preamble_finding_substring` and `empty_merge_from_nonempty_input` as narrow-trigger validator outcomes. Update to list `preamble_finding_substring` and the **new** `nonconforming_heading_with_attestation`; remove `empty_merge_from_nonempty_input`. Clarify that attestation-only output with allowed narrative is now an accepted success path (`REASON=ok`).
+- Line 32 (third paragraph listing the three fail-closed paths): change path (2) from "exact attestation token is present but merge output is still empty → `validation-exhausted`" to "exact attestation token plus nonconforming pseudo-heading without a valid block → `validation-exhausted`". Add a new success-path paragraph describing the attestation-only success: when zero `### FINDING_<digits>:` blocks AND `has_attest_line=True` AND no preamble contradiction AND no nonconforming heading, the validator returns 0; the shell wrapper's strip path then writes `findings.md` as whitespace-only (preserving the duplicate-merge semantic without leaking narrative). Reference #2939; cross-reference #2881 (planned this behavior) and #2782 (encoded the now-corrected bug as a test).
+
+### UPDATED: `skills/review/scripts/test-aggregate-findings.md`
+Update the **Coverage** bullet list:
+
+- Replace the `zero_findings_padded_attest_rejected` reference with `zero_findings_padded_attest` (or a new name reflecting acceptance, e.g., `zero_findings_padded_attest_accepted`) and describe its new ok-path semantics.
+- Add a coverage bullet for the three new test cases (pure-attestation round-trip success, nonconforming-with-attestation rejection, narrative-with-attestation success + whitespace-only persistence).
+- Update the "Edit-in-sync rule" section to call out the SECURITY.md and CHANGELOG.md touch points when changing the empty-merge contract.
+
+### UPDATED: `SECURITY.md`
+Update the long paragraph at the **Pre-vote findings aggregation** section (around the prose mentioning `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`, `empty_merge_from_nonempty_input`, and `validation-exhausted`):
+
+- Replace the description "`AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input` (narrow-trigger, `validation-exhausted`) when the exact attestation token is present" with the corrected semantic: attestation-only output (with optional allowed narrative per `agents/orchestrator-aggregator.md`) is now an accepted success path that produces `REASON=ok` and a whitespace-only persisted ballot. The narrow-trigger family now consists of `preamble_finding_substring` and the new `nonconforming_heading_with_attestation`.
+- Preserve the "near-token attestation variants whose trimmed line starts with the token but is not exactly the token are dropped" sentence — that impure-suffix protection is unchanged.
+- Cite #2939 inline (use the issue number, not a line number — per `.claude/rules/drift-prone-prose-in-docs.md`).
+
+### UPDATED: `CHANGELOG.md`
+Add an entry under the next release header describing the fix:
+
+- "**fix(aggregate-findings)**: attestation-only duplicate-merge yields `REASON=ok` with whitespace-only persisted ballot, not `REASON=validation-exhausted`. Pseudo-headings combined with attestation are explicitly rejected via the new `nonconforming_heading_with_attestation` narrow-trigger. Closes #2939; reverses the #2782-encoded behavior and completes the #2881 plan."
+
+Follow the existing `CHANGELOG.md` style and ordering conventions.
+
+## Edge cases
+
+- **Exact-line attestation only with nonempty input** → RC=0 (new success). Strip path's Change C unconditionally writes `\n`; FINDINGS_FILE = `\n`. Downstream voters see an empty ballot and produce no findings.
+- **Narrative + attestation line (orchestrator-aggregator template-compliant output)** → RC=0 (new success). Narrative survives the strip (it doesn't start with the attestation token), but Change C unconditionally overwrites merged_tmp with `\n`, so FINDINGS_FILE = `\n`. No narrative leakage.
+- **Whitespace-padded attestation line** (leading or trailing spaces only around the exact token) → `line.strip() == EMPTY_MERGE_ATTESTATION` so `line_has_impure_empty_merge_attestation` returns False; `drop_impure_empty_merge_attestation_lines` keeps the line; `has_attest_line` is True. Falls into the new success branch → RC=0 / REASON=ok. (Corrects the original plan's misclassification per FINDING_7.)
+- **Impure attestation** (suffix or adjacent junk, e.g., `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix` or `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTEDjunk`) → `drop_impure_empty_merge_attestation_lines` removes the impure line. With no other attestation line, `has_attest_line` is False → path-3 no-attestation rejection (REASON=validation-failed) unchanged.
+- **Attestation + preamble contradiction** (attestation + prose like `### FINDING_24:` or `(FINDING_24-28)`) → path-1 preamble rejection fires first; unchanged behavior.
+- **Attestation + nonconforming pseudo-heading** (e.g., `### FINDING_1 not-a-valid-heading` + attestation, or `###FINDING_1:` + attestation) → path-2 NEW rejection with `nonconforming_heading_with_attestation` → REASON=validation-exhausted. Addresses FINDING_3.
+- **Attestation + spurious FINDING blocks** (e.g., 1 valid block + attestation line) → already rejected at line 532-538 by the existing `blocks and has_attest_line` early branch ("empty-merge attestation %r must not appear when merged FINDING blocks exist"). Unchanged.
+- **No attestation + zero blocks + nonempty input** → path-3 no-attestation rejection. Unchanged.
+- **No attestation + zero blocks + nonconforming heading** → path-3 no-attestation rejection (the nonconforming check at path-2 is gated on `has_attest_line`, so a no-attest fixture still gets the more informative no-attestation diagnostic). Existing tests at lines 660 and 675 continue to pass unchanged.
+- **Empty input + zero blocks + attestation** → input_slot_set is empty → "no input reviewer labels" rejection at line 526-527 fires first. Unchanged.
+- **All-OOS input + attestation-only output** → `non_oos_input_slots` is empty, `oos_only_slots` non-empty. The `if not blocks:` branch enters the new success path; the `oos_only_slots` check at line 595-603 only fires when `blocks` is non-empty. Validates correctly.
+- **Findings.md pre-existing content** → the wrapper's `mv -f "$merged_tmp" "$FINDINGS_FILE"` at line 674 overwrites unconditionally. Whitespace-only findings.md is the intended end state.
+
+## Failure modes
+
+1. **Loosened validator drops narrative findings if a bad aggregator emits the attestation token without doing real dedup work**. Mitigations: (a) the attestation token is required by the orchestrator-aggregator prompt and the `--require-result-pattern` pattern gate, both of which are exercised in CI; (b) preamble-contradiction detection still rejects outputs that mention real FINDING IDs in prose; (c) the new path-2 nonconforming-heading rejection catches malformed pseudo-headings; (d) downstream voters see an empty ballot and exit cleanly — there is no "silent data corruption" beyond the missing findings, which is itself the contract semantic ("all findings were duplicates"). Earliest warning signal: a run with `REASON=ok` and `MERGED_COUNT=0` while reviewer outputs in `$REVIEW_TMPDIR/aggregator-input.md` clearly had distinct concerns. The three new tests pin the canonical valid case and the two new rejection variants.
+
+2. **Test-assertion flip lands but adjacent tests are not updated, causing CI to fail in unexpected ways**. Mitigation: after edits, `grep -n 'validation-exhausted' skills/review/scripts/test-aggregate-findings.sh` to confirm every remaining hit is for a preamble or nonconforming-with-attestation rejection (not for an attestation-only case). Run `bash skills/review/scripts/test-aggregate-findings.sh` locally before pushing.
+
+3. **SECURITY.md and aggregate-findings.md drift from validator behavior**. Mitigation: update SECURITY.md, aggregate-findings.md, sibling test-aggregate-findings.md, and CHANGELOG.md in the same commit as the script change. Cite #2939 in all four touch points.
+
+4. **`empty_merge_from_nonempty_input` token references remain elsewhere in the codebase**. Mitigation: after the change, `grep -rn 'empty_merge_from_nonempty_input' --include='*.sh' --include='*.py' --include='*.md' .` and confirm no surviving references except possibly historic comments or PR descriptions. (Pre-existing larch-logs snapshots contain stale references and are intentionally not edited per repo convention.)
+
+## Testing strategy
+
+1. `bash skills/review/scripts/test-aggregate-findings.sh` — all flipped assertions pass; all preservation-checked tests still pass; three new tests pass.
+2. `bash scripts/relevant-checks.sh` (per repo policy) — green.
+3. `make lint` (or equivalent pre-commit hook coverage) — green; in particular, agent-lint S030 and any aggregate-findings-related script-md-sibling rules pass.
+4. Manual verification: construct a small mock review where the aggregator returns "narrative + attestation" output and verify the run completes with `REVIEW_CORE_STATUS != aggregator-validation-exhausted`, no accepted findings, no rejected findings, no false-alarm warnings in `execution-issues.md`, and the persisted `findings.md` containing only whitespace.
+
+## Diff size estimate
+
+- `skills/review/scripts/aggregate-findings.sh` — ~25 lines changed (validator heredoc + narrow-trigger grep + strip path + warning message arm).
+- `skills/review/scripts/test-aggregate-findings.sh` — ~70-90 lines changed (3 flipped tests + 3 new tests + comment updates + assertion strengthening).
+- `skills/review/scripts/aggregate-findings.md` — ~15 lines changed (lines 27 and 32 paragraph rewrites + new success-path paragraph).
+- `skills/review/scripts/test-aggregate-findings.md` — ~10 lines changed (coverage bullet updates + edit-in-sync rule).
+- `SECURITY.md` — ~5 lines changed (Pre-vote findings aggregation paragraph update).
+- `CHANGELOG.md` — ~3 lines added (new fix entry).
+
+diff_lines: 150
