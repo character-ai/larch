@@ -336,12 +336,11 @@ _ib_run_id=()
 [ -n "${RUN_ID:-}" ] && _ib_run_id+=(--run-id "$RUN_ID")
 _ib_preflight=()
 [ -n "${PREFLIGHT_TMPDIR:-}" ] && _ib_preflight+=(--preflight-tmpdir "$PREFLIGHT_TMPDIR")
-# Foreground required: see BASH_AUTHORING.md §4
-set +e
-_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase plan "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}")
-_ib_rc=$?
-set -e
-if [ "$_ib_rc" -eq 2 ]; then
+_ib_handle_bootstrap_exit2() {
+  _ib_tmpdir=$(printf '%s\n' "$_ib_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
+  if [ -n "$_ib_tmpdir" ]; then
+    IMPLEMENT_TMPDIR=$_ib_tmpdir
+  fi
   _ib_sf=$(printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
   if [ "$_ib_sf" = "session-entry-gate" ]; then
     printf '%s\n' "$_ib_out" | grep '^GATE_ERROR=' || true
@@ -363,10 +362,6 @@ if [ "$_ib_rc" -eq 2 ]; then
     printf '%s\n' '**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel'\''s issue.**'
     exit 2
   fi
-  _ib_tmpdir=$(printf '%s\n' "$_ib_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-  if [ -n "$_ib_tmpdir" ]; then
-    IMPLEMENT_TMPDIR=$_ib_tmpdir
-  fi
   if [ "$_ib_sf" = "copy-plan" ]; then
     if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ]; then
       if ! "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh"; then
@@ -386,6 +381,14 @@ if [ "$_ib_rc" -eq 2 ]; then
     exit 2
   fi
   exit 2
+}
+# Foreground required: see BASH_AUTHORING.md §4
+set +e
+_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase plan "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}")
+_ib_rc=$?
+set -e
+if [ "$_ib_rc" -eq 2 ]; then
+  _ib_handle_bootstrap_exit2
 fi
 _ib_kv_scan() {
   _ib_line=$1
@@ -493,50 +496,7 @@ _ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase p
 _ib_rc=$?
 set -e
 if [ "$_ib_rc" -eq 2 ]; then
-  _ib_sf=$(printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-  if [ "$_ib_sf" = "session-entry-gate" ]; then
-    printf '%s\n' "$_ib_out" | grep '^GATE_ERROR=' || true
-    printf '%s\n' '**⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.**'
-    exit 2
-  fi
-  if [ "$_ib_sf" = "session-setup" ]; then
-    printf '%s\n' "$_ib_out" | grep '^PREFLIGHT_ERROR=' || true
-    printf '%s\n' '**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**'
-    exit 2
-  fi
-  if [ "$_ib_sf" = "get-issue-state" ]; then
-    printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true
-    printf '%s\n' '**⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**'
-    exit 2
-  fi
-  if [ "$_ib_sf" = "issue-number-required-for-resume" ]; then
-    printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true
-    printf '%s\n' '**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel'\''s issue.**'
-    exit 2
-  fi
-  _ib_tmpdir=$(printf '%s\n' "$_ib_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-  if [ -n "$_ib_tmpdir" ]; then
-    IMPLEMENT_TMPDIR=$_ib_tmpdir
-  fi
-  if [ "$_ib_sf" = "copy-plan" ]; then
-    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ]; then
-      if ! "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh"; then
-        printf '%s\n' '**⚠ /implement Step 0 plan materialization: copy-plan stderr could not be safely redacted.**'
-      fi
-    fi
-    printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not copy the preflight plan into the implement session. Aborting.**'
-    exit 2
-  fi
-  if [ "$_ib_sf" = "gh-issue-view" ]; then
-    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ]; then
-      if ! "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh"; then
-        printf '%s\n' '**⚠ /implement Step 0 plan materialization: gh issue view failed and stderr could not be safely redacted.**'
-      fi
-    fi
-    printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not read the issue title/body. Aborting.**'
-    exit 2
-  fi
-  exit 2
+  _ib_handle_bootstrap_exit2
 fi
 while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do
   _ib_kv_scan "$_ib_line"

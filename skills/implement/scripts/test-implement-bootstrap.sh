@@ -465,11 +465,16 @@ STUB
 
     cat >"$SANDBOX/scripts/redact-tmpdir-paths.sh" <<'STUB'
 #!/usr/bin/env bash
+input=$(cat)
+if [ -n "${SANDBOX_REDACT_TMPDIR_MATCH:-}" ] && printf '%s' "$input" | grep -qF -- "$SANDBOX_REDACT_TMPDIR_MATCH"; then
+  printf 'redact tmpdir failure\n' >&2
+  exit "${SANDBOX_REDACT_TMPDIR_EXIT:-1}"
+fi
 if [ "${SANDBOX_REDACT_TMPDIR_EXIT:-0}" -ne 0 ]; then
   printf 'redact tmpdir failure\n' >&2
   exit "$SANDBOX_REDACT_TMPDIR_EXIT"
 fi
-cat
+printf '%s' "$input"
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/redact-tmpdir-paths.sh"
@@ -897,6 +902,7 @@ do
     fi
     invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
     assert_contains "token-ledger mark implement Step 0 — plan materialization" "$invoke" "B5-plan-green $expected_slug token mark"
+    assert_contains "timing-ledger mark implement Step 0 — plan materialization" "$invoke" "B5-plan-green $expected_slug timing mark"
     assert_contains "timing-ledger workflow-path HARD" "$invoke" "B5-plan-green $expected_slug workflow-path HARD"
     assert_order "snapshot-untracked" "gh issue view 123" "$invoke" "B5-plan-green $expected_slug snapshot before gh"
     assert_order "gh issue view 123" "persist-implement-run-flags" "$invoke" "B5-plan-green $expected_slug gh before persist"
@@ -935,6 +941,20 @@ invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "--goal-text Implement issue #123: <REDACTED-TITLE>." "$invoke" "B5-plan-goal-redaction-failure fail-closed placeholder"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "Step 0 plan materialization — goal text redaction" "$issues" "B5-plan-goal-redaction-failure warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-summary-redaction-failure ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_REDACT_TMPDIR_MATCH='Plan materialized for run' SANDBOX_REDACT_TMPDIR_EXIT=13 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runSummaryRedact --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-summary-redaction-failure exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "Step 0 plan materialization — larch:plan summary redaction" "$issues" "B5-plan-summary-redaction-failure warning"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-summary-redaction-failure summary invoked"
+assert_not_contains '→ step0: larch:plan posted' "$out" "B5-plan-summary-redaction-failure no breadcrumb without breadcrumbs enabled"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B6-plan-flags ---
@@ -1112,6 +1132,19 @@ assert_not_contains "snapshot-untracked" "$invoke" "B7-plan-dirty-tree resume ta
 assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume tail missing tmpdir no branch"
 rm -rf "$SANDBOX"
 
+# --- B7-plan-dirty-tree resume tail missing session-env ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+rm -f "$SANDBOX_TMP/session-env.sh"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResume --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B7-plan-dirty-tree resume tail missing session-env exit 2"
+assert_contains "--resume-plan-tail requires \$IMPLEMENT_TMPDIR/session-env.sh" "$out" "B7-plan-dirty-tree resume tail missing session-env usage"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume tail missing session-env no branch"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B8-plan-forked-target ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -1121,6 +1154,7 @@ out=$(run_bootstrap --up-to-phase plan --forked-target true --upstream-repo upst
 assert_rc "$rc" 0 "B8-plan-forked-target exit 0"
 assert_contains "BRANCH_SELECTED=forked-target-skip" "$out" "B8-plan-forked-target branch selected"
 assert_contains "DEFERRED=true" "$out" "B8-plan-forked-target deferred"
+assert_contains "RUN_ID=sessstub" "$out" "B8-plan-forked-target run id derived"
 assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B8-plan-forked-target plan file"
 assert_contains "BRANCH_NAME=main" "$out" "B8-plan-forked-target branch name"
 assert_line "BRANCH_ACTION=" "$out" "B8-plan-forked-target empty action"
@@ -1140,6 +1174,7 @@ else
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "gh issue view 123 --repo upstream/repo" "$invoke" "B8-plan-forked-target gh upstream"
+assert_contains "write-tally --log-root $SANDBOX_TMP/larch-logs --skill implement --run-id sessstub" "$invoke" "B8-plan-forked-target tally run id"
 assert_not_contains "create-branch --branch" "$invoke" "B8-plan-forked-target no branch create"
 assert_not_contains "tracking-issue-summary upsert-summary" "$invoke" "B8-plan-forked-target no plan summary"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -1537,6 +1572,34 @@ if [ "$n" -eq 0 ]; then
 else
     FAIL=$((FAIL + 1))
     echo "FAIL: Edge-breadcrumb-count-plan-summary-fail expected 0 larch plan breadcrumbs got $n"
+fi
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- Edge-breadcrumb-count-plan-log-fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(SANDBOX_RUN_PLAN_LOG_EXIT=5 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlanLogFail --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+assert_rc "$rc" 0 "Edge-breadcrumb-count-plan-log-fail exit 0"
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch testuser/test-feature-123 + plan logged' || true)
+if [ "$n" -eq 0 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-log-fail no + plan logged variant"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-log-fail expected 0 + plan logged variants got $n"
+fi
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch testuser/test-feature-123' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-log-fail plain branch breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-log-fail plain branch breadcrumb expected 1 got $n"
 fi
 rm -rf "$SANDBOX_TMP" "$SANDBOX"
 

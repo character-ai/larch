@@ -137,6 +137,24 @@ valid_issue_number() {
     esac
 }
 
+resolve_run_id() {
+    local candidate=""
+
+    if [ -n "${RUN_ID_OPT:-}" ]; then
+        candidate=$RUN_ID_OPT
+    elif valid_run_id "${RUN_ID:-}"; then
+        candidate=$RUN_ID
+    else
+        candidate=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+        if ! valid_run_id "$candidate"; then
+            candidate=${LARCH_TOKEN_SESSION_ID:-}
+        fi
+    fi
+
+    valid_run_id "$candidate" || return 1
+    printf '%s\n' "$candidate"
+}
+
 emit_skip_breadcrumb_if_enabled() {
     local reason=$1
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
@@ -526,6 +544,11 @@ phase_tracking() {
         if [ "$read_rc" -eq 0 ] && [ "$read_failed" != "true" ] && [ "$sentinel_adopted" = "true" ] \
             && valid_issue_number "$sentinel_issue" && valid_run_id "$sentinel_run_id"; then
             if [ -n "$ISSUE_NUMBER_OPT" ] && [ "$sentinel_issue" != "$ISSUE_NUMBER_OPT" ]; then
+                if [ "$RESUME_PLAN_TAIL" = "true" ]; then
+                    larch_err "**⚠ Step 0 tracking: --resume-plan-tail requires the adopted tracking sentinel to match --issue-number.**"
+                    emit_kv STEP_FAILED resume-plan-tail-sentinel
+                    exit 2
+                fi
                 larch_err "**⚠ Step 0 tracking: sentinel mismatch (sentinel has #$sentinel_issue, argv requested #$ISSUE_NUMBER_OPT). Clearing sentinel and re-adopting.**"
                 rm -f "$sentinel"
             else
@@ -538,9 +561,18 @@ phase_tracking() {
                 return 0
             fi
         else
+            if [ "$RESUME_PLAN_TAIL" = "true" ]; then
+                larch_err "**⚠ Step 0 tracking: --resume-plan-tail requires a valid adopted tracking sentinel.**"
+                emit_kv STEP_FAILED resume-plan-tail-sentinel
+                exit 2
+            fi
             larch_err "**⚠ Step 0 tracking: malformed tracking sentinel. Clearing sentinel and re-adopting.**"
             rm -f "$sentinel"
         fi
+    elif [ "$RESUME_PLAN_TAIL" = "true" ]; then
+        larch_err "**⚠ Step 0 tracking: --resume-plan-tail requires \$IMPLEMENT_TMPDIR/parent-issue.md.**"
+        emit_kv STEP_FAILED resume-plan-tail-sentinel
+        exit 2
     fi
 
     [ -n "$ISSUE_NUMBER_OPT" ] || return 0
@@ -570,13 +602,7 @@ phase_tracking() {
 
     BRANCH_SELECTED=branch-2-adopt
     ISSUE_NUMBER_RESOLVED=$ISSUE_NUMBER_OPT
-    if [ -n "$RUN_ID_OPT" ]; then
-        RUN_ID=$RUN_ID_OPT
-    else
-        RUN_ID=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
-        [ -n "$RUN_ID" ] || RUN_ID=${LARCH_TOKEN_SESSION_ID:-}
-    fi
-    if ! valid_run_id "$RUN_ID"; then
+    if ! RUN_ID=$(resolve_run_id); then
         tracking_init_failed
         return 0
     fi
@@ -615,6 +641,9 @@ phase_plan_materialize() {
     [ "$FORKED_TARGET" = "true" ] && gh_issue_arg=$ISSUE_NUMBER_OPT
     PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
     feature_file="$IMPLEMENT_TMPDIR/feature-description.txt"
+    if ! valid_run_id "${RUN_ID:-}"; then
+        RUN_ID=$(resolve_run_id 2>/dev/null || true)
+    fi
 
     if [ "$RESUME_PLAN_TAIL" != "true" ]; then
         ensure_untracked_baseline_snapshot
@@ -781,19 +810,19 @@ phase_plan_materialize() {
             printf "- Plan file: \`%s\`\n" "${PLAN_FILE:-}"
         } >"$summary_body_raw"
         summary_body="$IMPLEMENT_TMPDIR/larch-plan-summary.md"
-        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$summary_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$summary_body" 2>/dev/null; then
+        summary_err="$IMPLEMENT_TMPDIR/tracking-issue-summary.stderr.log"
+        summary_redact_err="$IMPLEMENT_TMPDIR/larch-plan-summary.redact.stderr.log"
+        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$summary_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$summary_body" 2>"$summary_redact_err"; then
             "$SCRIPT_DIR/append-tool-failure.sh" \
                 --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
                 --site "Step 0 plan materialization — larch:plan summary redaction" \
                 --tool "redact-secrets.sh | redact-tmpdir-paths.sh" \
                 --exit-code 1 \
                 --category Warnings \
-                --output-file "$summary_body_raw" \
+                --output-file "$summary_redact_err" \
                 --redact || true
-            emit_plan_materialize_breadcrumbs_if_enabled
-            return 0
+            cp "$summary_body_raw" "$summary_body" 2>/dev/null || true
         fi
-        summary_err="$IMPLEMENT_TMPDIR/tracking-issue-summary.stderr.log"
         summary_args=(upsert-summary --issue "$ISSUE_NUMBER_RESOLVED" --marker "<!-- larch:plan v1 runid=$RUN_ID -->" --content-file "$summary_body")
         "$SCRIPT_DIR/tracking-issue-summary.sh" "${summary_args[@]}" >"$IMPLEMENT_TMPDIR/tracking-issue-summary.out" 2>"$summary_err"
         summary_rc=$?
