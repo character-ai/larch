@@ -1,0 +1,20 @@
+Implemented the `/design` readability preamble work and wrote the required manifest at `<TMPDIR>/manifest.json` with `status=complete`. No `qa-pending.json` was written because QA is not needed.
+
+Key changes:
+- Added `skills/design/references/readability-style.md`.
+- Added `scripts/lint-readability-preamble.sh` plus docs and harness.
+- Wired readability directives/tokens through the `/design` prompt surfaces.
+- Added runtime substitution in `skills/design/scripts/render-plan-review-prompt.sh`.
+- Wired lint into `.pre-commit-config.yaml`, `Makefile`, and `agent-lint.toml`.
+
+Verification passed:
+- `make lint-readability-preamble`
+- `make test-lint-readability-preamble`
+- `make test-plan-review-prompt`
+- `make test-brainstorm-prompts`
+- `make test-references-headers`
+- `make test-harness-shards-coverage`
+- `make lint-bash32`
+- `pre-commit run lint-readability-preamble --all-files`
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`
