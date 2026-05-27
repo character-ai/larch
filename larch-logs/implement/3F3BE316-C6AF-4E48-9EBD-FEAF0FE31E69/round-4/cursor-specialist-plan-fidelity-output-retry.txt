@@ -1,0 +1,38 @@
+Reviewing branch changes against the implementation plan: reading the diff, commit history, and key files.
+Diff is large—likely includes run logs. Focusing on plan-relevant files.
+Reviewed commits `a1c16629` through `454232e9` (feature work in `04cd7969` plus three review-fix rounds) against the implementation plan. Plan-relevant surface is **11 files, ~1526 lines**; the precomputed diff is mostly `larch-logs/` noise.
+
+## Plan fidelity summary
+
+The branch implements the planned stall-recovery stack: helper + contracts + allowlists + orchestrator reference + Step 18a/18b split + harness + `lib-larch-dev-clone.sh` + `SECURITY.md` + `Makefile` wiring. Classifier branches, exit codes, retry caps, sanitization, and harness coverage align with the plan; `retry-policy` is a documented extension that `references/stall-recovery.md` requires.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) — Acceptance criterion #10 (manual integration) — The plan requires a **manual** synthetic-stall run proving Step 18a fires, consumer `## Action required — file larch bug` prints under `LARCH_STALL_RECOVERY_DRY_RUN=1`, and no real issue is filed; with dry-run off in a larch dev clone, exactly one issue via `/larch:issue --input-file`. The branch ships helper dry-run KVs and harness case 18 (`gh` stub), but there is **no** run log, PR note, or committed artifact demonstrating the full orchestrator path. **Scenario:** PR merges as “complete” while Step 18a dispatch/issue-filing regressions stay undetected until production stalls. **Suggested fix:** Run the manual checklist from acceptance #10 and record results (PR test plan or implement run log); keep `make test-stall-recovery-report` as the offline gate.
+
+### Out-of-Scope Observations
+
+1. **architecture** `larch-logs/design/*` — Large design-run log commits on the branch predate the stall-recovery feature; per review instructions, not plan drift for this feature.
+
+2. **code-quality** `scripts/check-stale-plugin.md` — Updated alongside `check-stale-plugin.sh` refactor but not listed in the plan file table; behavior matches via shared `is_larch_dev_clone()`.
+
+## Requirement traceability (condensed)
+
+| Plan requirement | Status |
+|------------------|--------|
+| Step 18a/18b in `SKILL.md`, NEVER #21, title-prefix → 18a disk state | Met |
+| `stall-recovery-report.sh` subcommands + exit codes 0/1/2/3 | Met (+ documented `retry-policy`) |
+| `stall-recovery-report.md` caps + allowlists (single source) | Met |
+| `stall-recovery-report-allowlists.tsv` + `lint` parity | Met |
+| `references/stall-recovery.md` 9-step procedure + safety constraints | Met |
+| `lib-larch-dev-clone.sh` + `check-stale-plugin.sh` refactor | Met |
+| Harness 21 core cases (+ extended edge cases) | Met |
+| `Makefile` `.PHONY`, `harness-timer.sh`, shard 5 only | Met |
+| `SECURITY.md` stall recovery section | Met |
+| Acceptance #10 manual integration | **Not evidenced** |
+| Acceptance #11 `relevant-checks.sh` | Not run in this review |
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	Acceptance criterion #10 (manual integration)	The plan requires a demonstrated manual synthetic-stall integration test (Step 18a prose, consumer Action-required block under LARCH_STALL_RECOVERY_DRY_RUN=1, no gh issue create; larch-dev-clone path files one issue via /larch:issue --input-file). The branch only provides script-level dry-run KVs and harness case 18 (gh stub), with no recorded end-to-end orchestrator run.	A reviewer or operator treats the feature as complete and merges without exercising Step 18a; orchestrator-level regressions (skip gate, wrong consumer vs dev-clone path, Skill invocation under dry-run) reach production on the first real stall.	Execute acceptance #10 manually before merge sign-off; document outcomes in the PR test plan or an implement run log. Keep make test-stall-recovery-report as the offline regression gate.
+```

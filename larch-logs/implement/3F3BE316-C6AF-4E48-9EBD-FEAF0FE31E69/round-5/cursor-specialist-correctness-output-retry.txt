@@ -1,0 +1,36 @@
+Reviewing branch changes against the plan: reading the precomputed diff, commit history, and key implementation files.
+Diff is large (likely larch-logs). Focusing on feature files from the plan.
+Reviewed branch commits from `04cd7969` through `b5bb2c53` (feature files only; larch-logs excluded per review scope). Below are correctness findings against the plan.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`, plan-correctness) — `skills/implement/references/stall-recovery.md:15-22` with `skills/implement/scripts/stall-recovery-report.sh:253-261,358-364` — The same-cause alternate path is effectively unreachable. `same-cause-repeat` is only set after `record-attempt` leaves `attempt_count >= 1`, but Step 5/6 gate on `retry-policy --class "$FAILURE_CLASS"` with `MAX_ATTEMPTS=1` for `same-cause-repeat` and the global `attempt_count`, so `1 >= 1` always routes to terminal failure before the Step 6 alternate strategy (reread plan, restart step). **Concrete scenario:** a step-8 `transient-infra` stall dispatches `ship-pr.sh`, fails, `record-attempt` sets `attempt_count=1`, re-classify returns `FAILURE_CLASS=same-cause-repeat` / `RESUME_HINT=none`; the next `retry-policy` check treats the cap as exhausted and skips the one allowed alternate restart, contradicting the retry table (“1 attempt with alternate strategy”). **Suggested fix:** decouple the alternate-strategy budget from total `attempt_count` (e.g., count only `outcome=alternate` attempts, or compare `attempt_count` against the pre–same-cause class cap until one `alternate` attempt is recorded); add a harness case that simulates the full classify → record → re-classify → cap-check sequence.
+
+2. **Latent** (`correctness`, plan) — `skills/implement/scripts/stall-recovery-report.sh:192-210` — `resume_hint_for` maps unknown `STALL_STEP` values (e.g. `12d`, `bump-branch-guard`) to `none`, which matches current tests (`case20a`), but any future stall marker that should resume ship-pr will fail closed to terminal handling unless added to the numeric step list. **Concrete scenario:** a new `mark_stall` token that should retry step 8 is classified with a recoverable `FAILURE_CLASS` yet gets `RESUME_HINT=none`, so recovery never re-invokes `ship-pr.sh`. **Suggested fix:** document the closed step map in `stall-recovery-report.md` and add a structure test that greps `exit_stall`/`mark_stall` call sites against the classifier step allowlist.
+
+3. **Nit** (`correctness`, completeness w.r.t. plan) — `skills/implement/scripts/stall-recovery-report.sh:351-355` — When every `STALL_TRACKING` layer is false, `classify` still emits `FAILURE_CLASS=unrecoverable` instead of a distinct “no stall” outcome. Safe while only called from Step 18a with a true layer, but a mistaken caller would get a misleading class. **Suggested fix:** either document that `classify` requires a true stall layer or short-circuit with a dedicated KV when `STALL_TRACKING` is false.
+
+### Out-of-Scope Observations
+
+1. **architecture** `skills/implement/references/stall-recovery.md` (whole file) — Step 18a recovery (dispatch, caps, atomic `STALL_TRACKING` clear) is orchestrator prose only; the helper does not enforce it. A model that skips or reorders sub-steps would not be caught by `test-stall-recovery-report.sh`. Out of scope because the plan chose prompt-side orchestration, but it amplifies finding #1 until a mechanical guard exists.
+
+### Plan verification summary
+
+| Acceptance area | Status |
+|-----------------|--------|
+| Step 18a/18b split, NEVER #21, three-layer resolve | Present in `SKILL.md` |
+| Helper subcommands (incl. `retry-policy`) + contracts | Present; offline harness is broad |
+| Allowlists, `lint` parity, SECURITY.md | Present |
+| `lib-larch-dev-clone.sh` + `check-stale-plugin.sh` refactor | Present; behavior preserved |
+| Makefile harness shard | Present on `test-harnesses-5` |
+| Same-cause alternate recovery | **Gap** (finding #1) |
+
+Commits on branch (since merge-base with `main`): `b5bb2c53`, `20a7e8c0`, `7d7abc4c`, `454232e9`, `9a9ba911`, `26d5da69`, `4849b6c3`, `91ce717e`, `04cd7969`, plus design larch-log chores.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/references/stall-recovery.md:15-22	Same-cause alternate restart is gated by retry-policy MAX_ATTEMPTS=1 against global attempt_count after the repeat-triggering attempt is already recorded.	After one failed recovery dispatch, re-classify yields same-cause-repeat with attempt_count=1; 1>=1 skips Step 6 alternate strategy and goes straight to terminal failure despite the plan allowing one alternate restart.	Track alternate-strategy attempts separately (e.g. outcome=alternate only) or apply same-cause cap only to redispatch, not the alternate path; add an integration harness for classify→record→re-classify→cap-check.
+1	in_scope	latent	correctness	skills/implement/scripts/stall-recovery-report.sh:192-210	resume_hint_for fail-closes unlisted STALL_STEP tokens to none.	A new mark_stall step label not in the 2/5/8-15 list gets RESUME_HINT=none even when FAILURE_CLASS is recoverable, blocking ship-pr redispatch.	Document and test-sync allowed STALL_STEP values with ship-pr mark_stall call sites.
+1	in_scope	nit	correctness	skills/implement/scripts/stall-recovery-report.sh:351-355	classify forces FAILURE_CLASS=unrecoverable when STALL_TRACKING is false on all layers.	A hypothetical caller invoking classify without a true stall layer gets unrecoverable instead of a no-stall signal, misrouting recovery.	Document precondition or emit explicit not-stalled KVs when stall_tracking is false.
+1	out_of_scope	latent	architecture	skills/implement/references/stall-recovery.md	Recovery dispatch and atomic stall clearing are prompt-enforced only.	Orchestrator can skip alternate strategy or clear in-memory STALL_TRACKING before disk without script-level failure.	Accept as plan trade-off or add a small state-machine script later; out of scope for helper-only review.
+```
