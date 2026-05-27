@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Enforce the top-level Family B writer contract in lint-foreground-markers: shell ampersand, PID capture, same-fence monitor, and post-monitor wait with identifier matching.
+- Sweep Family B Markdown fences to the canonical monitor_rc/writer_rc wrapper so writer exits propagate and monitor failures stay visible.
+- Fix collect-agent-results.sh EXIT trap composition so the quiet done sentinel is written on normal exit.
+- Add the background-monitor wait regression harness and route it through Makefile, relevant-checks, docs, and agent-lint allowlists.
 - Closed: #2995
 
 ## [43.0.0] - 2026-05-27
