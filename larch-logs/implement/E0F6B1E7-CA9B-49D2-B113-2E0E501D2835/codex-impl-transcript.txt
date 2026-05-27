@@ -1,0 +1,15 @@
+Implemented the Gate A/Gate C “See full plan” plan.
+
+Changed:
+- [approval-gates.md](<OPERATOR_REPO_PATH>/skills/design/references/approval-gates.md:47): Gate A label rename and drop-on-reprompt contract.
+- [approval-gates.md](<OPERATOR_REPO_PATH>/skills/design/references/approval-gates.md:149): Gate C four-option prompt, cap-aware behavior, and unchanged `Other` escape path.
+- [SKILL.md](<OPERATOR_REPO_PATH>/skills/design/SKILL.md:451): Step 1e and Step 4b prose aligned.
+- [emit-design-plan-preview.sh](<OPERATOR_REPO_PATH>/skills/design/scripts/emit-design-plan-preview.sh:87): Gate C large-plan note now points to `See full plan`.
+- [test-design-structure.sh](<OPERATOR_REPO_PATH>/scripts/test-design-structure.sh:55) and [test-emit-design-plan-preview.sh](<OPERATOR_REPO_PATH>/skills/design/scripts/test-emit-design-plan-preview.sh:80): updated and added literal pins.
+
+Verification:
+- `bash skills/design/scripts/test-emit-design-plan-preview.sh` passed.
+- `bash scripts/test-design-structure.sh` passed.
+- `bash scripts/relevant-checks.sh` passed after fixing initial ShellCheck SC2016 annotations for intentional Markdown literals.
+
+Wrote the completion manifest at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.
