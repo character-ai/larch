@@ -1,0 +1,136 @@
+### FINDING_1: First-time flow can still fall into Gate A after outline approval
+- **Reviewer(s)**: Cursor-Arch, Codex-Edge, Codex-Innovation, Cursor-Pragmatic, Cursor-dyn-gate-a-residual-reachability, Codex-dyn-gate-a-residual-reachability
+- **Severity**: important
+- **Concern**: The proposed first-time path still leaves Step 1e reachable after Step 1d.7 approval through sequential prose, anti-halt pins, or missing entry guards, causing duplicate Gate A prompts or bypassing the intended replacement of first-time Gate A.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add Step 1e entry: Shape 2 only on Gate B(c)/Gate C(b); forward Approve skips Step 1e to 2a; do not skip Gate A from sentinel alone
+  - From Codex-Edge: Change the sequential first-time path to 1d.7→2a and document Step 1e as a non-sequential re-entry target only; do not add a test requiring 1d.7→1e.
+  - From Codex-Innovation: Update the anti-halt prose and structural test to pin the explicit branch: 1d.7 Approve jumps to Step 2a, Cancel exits, and Step 1e is entered only from Gate B(c) or Gate C(b) re-entry paths
+  - From Cursor-Pragmatic: Add Step 1e entry guard: when `$DESIGN_TMPDIR/.outline-approved` exists, `plan.txt` absent, and entry is not Gate B(c)/Gate C(b) re-entry, print a skip breadcrumb and `proceed to Step 2a` without executing Gate A; pin in the new `test-design-structure.sh` Check
+  - From Cursor-dyn-gate-a-residual-reachability: Add Step 1e entry guard: when `$DESIGN_TMPDIR/.outline-approved` exists, `plan.txt` absent, and entry is not Gate B(c)/Gate C(b) re-entry, print a skip breadcrumb and `proceed to Step 2a` without executing Gate A; pin in the new `test-design-structure.sh` Check
+  - From Codex-dyn-gate-a-residual-reachability: Change the planned sequence to 1d→1d.5→1d.7→2a and document Gate B(c)/Gate C(b)→1e as explicit re-entry control flow only
+
+### FINDING_2: Pre-outline handoffs still target Step 1e
+- **Reviewer(s)**: Codex-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Cursor-Requirements, Cursor-dyn-gate-a-residual-reachability, Codex-dyn-gate-a-residual-reachability
+- **Severity**: important
+- **Concern**: Brainstorm and discussion-round control-flow references still route skip, terminal, short-circuit, or cap paths directly to Step 1e, allowing first-time runs to bypass the new Step 1d.7 outline gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add these references to the UPDATED set and change first-time next-step prose to Step 1d.7, preserving Step 1d.5 before outline when brainstorm is enabled; add structure-test pins that reject stale first-time "proceed to Step 1e" references.
+  - From Cursor-Edge: Add brainstorm.md to the plan as UPDATED: change all Step 1e handoffs to Step 1d.7; keep Step 1e only for Gate B(c)/Gate C(b) re-entry semantics
+  - From Codex-Edge: Update brainstorm.md skip/complete targets to Step 1d.7, or phrase them as return to the next SKILL.md step after 1d.5; add the structural check to pin this.
+  - From Cursor-Innovation: Add go to Step 1d.7 (or continue to Step 1d.7 in the same turn) on all skip/terminal paths; update Consumer header before Step 1e to before Step 1d.7
+  - From Cursor-Requirements: Add brainstorm.md to Files to modify: Consumer header (before Step 1d.7 / Gate A re-entry); entry-guard skips → Step 1d.7; terminal path → continue to Step 1d.7 in the same turn; pin literals in test-design-structure.sh
+  - From Cursor-dyn-gate-a-residual-reachability: Add brainstorm.md to plan: retarget skip/terminal to Step 1d.7; update consumer header line 3; extend test-design-structure Check to grep new literals
+  - From Cursor-dyn-gate-a-residual-reachability: Update discussion-rounds.md exits to Step 1d.7; replace always-fires-1e prose; pin in new structure Check
+  - From Codex-dyn-gate-a-residual-reachability: Update brainstorm.md consumer/entry-guard/terminal handoff prose so every Step 1d.5 exit goes to Step 1d.7
+  - From Codex-dyn-gate-a-residual-reachability: Add discussion-rounds.md to the plan and retarget these first-time exits to the next SKILL.md step, Step 1d.5, which then proceeds to Step 1d.7
+
+### FINDING_3: Approved outline refinements are not consumed downstream
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Innovation
+- **Severity**: important
+- **Concern**: The outline/refine loop writes approved direction only to design-outline.md while downstream sketching and plan drafting do not read that artifact, so approved user refinements can be dropped.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Either make design-outline.md a non-published but load-bearing input to Step 2a feature-context substitution and Step 2b plan drafting, or normalize approved refinements into existing durable inputs such as discussion-round1.md before proceeding; keep it out of composed-plan.md and the GitHub larch:plan block.
+  - From Codex-Edge: Either make design-outline.md a non-published input to Step 2a/2b/Step 3 feature context, or persist each approved refinement back into discussion-round1.md as user-sourced scope decisions.
+  - From Codex-Innovation: Make Refine updates append authoritative decisions to discussion-round1.md or another downstream-consumed file, or explicitly include approved outline/refinement context in Step 2a and Step 2b while keeping it out of composed-plan.md
+
+### FINDING_4: Approval-gates reference still documents first-time Gate A
+- **Reviewer(s)**: Codex-Arch, Codex-Pragmatic, Codex-Requirements, Cursor-dyn-gate-a-residual-reachability, Codex-dyn-gate-a-residual-reachability
+- **Severity**: important
+- **Concern**: approval-gates.md retains first-time Gate A language in When, cross-tier, loop-exit, re-prompt, or state-invariant sections, making executors think Step 1e still fires on first-time runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Rewrite Gate A as re-entry-only in the Consumer/When/cross-tier/loop-exit/state-invariant sections; describe Shape 1 as historical/replaced reference only, and make Step 1d.7 Approve route directly to Step 2a.
+  - From Codex-Pragmatic: Expand the approval-gates.md edits to update the cross-tier invariant, discussion sub-round shape text, and loop-exit bullets so Step 1e is documented as re-entry only and Shape 1 is explicitly replaced by Step 1d.7
+  - From Codex-Requirements: Revise Gate A docs to say Step 1e is re-entry-only from Gate B(c) or Gate C(b); make Step 1d.7 Approve and existing-sentinel paths explicitly jump to Step 2a; add a structural or smoke assertion that first-time Step 1e is skipped
+  - From Cursor-dyn-gate-a-residual-reachability: Extend approval-gates.md edits: cross-tier first-time → 1d.7; loop exit first-time via outline; Discuss-more Shape 1 only on post-plan re-entry
+  - From Codex-dyn-gate-a-residual-reachability: Update or delete all first-time Gate A language in approval-gates.md, not only the Shape 1 and per-tier subsection
+
+### FINDING_5: Outline asks for implementation approach before divergent sketches
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Concern**: The pre-sketch outline gate can ask the main orchestrator to propose or secure approval for an implementation direction before the external sketch panel, undermining Step 2a’s anti-anchoring purpose.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Replace Approach sketch with Alternatives to explore or Evaluation criteria before Step 2a, and defer concrete approach selection until sketches and dialectic have run
+
+### FINDING_6: Existing structure check pins the stale 1d.5 to 1e sequence
+- **Reviewer(s)**: Codex-Pragmatic, Cursor-dyn-gate-a-residual-reachability
+- **Severity**: important
+- **Concern**: The current structure test still expects the old 1c→1d→1d.5→1e anti-halt sequence, so relevant checks can fail once Step 1d.7 is inserted.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Update the existing Check 19 assertion to expect 1c→1d→1d.5→1d.7→1e or remove it in favor of the new outline check, keeping a single authoritative sequence pin
+  - From Cursor-dyn-gate-a-residual-reachability: Update Check 2754 grep to 1c→1d→1d.5→1d.7→1e or drop redundant substring in favor of new Check only if 2754 removed
+
+### FINDING_7: Already-planned ad-hoc Q&A can skip the every-run outline
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The already-planned ad-hoc Q&A branch can exit after brainstorm and final summary without reaching Step 1d.7, contradicting the every-run outline requirement.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Explicitly exclude already-planned ad-hoc Q&A from the every-run claim, or invoke Step 1d.7 before that branch's terminal hygiene when the user is meant to see an outline
+
+### FINDING_8: Public and flag docs still say brainstorm runs before Gate A
+- **Reviewer(s)**: Codex-Requirements, Cursor-dyn-gate-a-residual-reachability
+- **Severity**: important
+- **Concern**: flags and public docs still describe --brainstorm as running before Gate A, conflicting with the new sequence where brainstorm precedes Step 1d.7 and first-time Gate A is replaced.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Update flags.md, the SKILL flag-table row, README.md, and docs/skills.md wording to say brainstorm runs before the Step 1d.7 outline gate, with Gate A first-time replaced
+  - From Cursor-dyn-gate-a-residual-reachability: Reword to before Step 1d.7 outline approval (Gate A re-entry only post-plan)
+
+### FINDING_9: Repo-mandated validation is missing from the plan
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The testing strategy lists targeted tests and manual smoke but omits the repository-required bash scripts/relevant-checks.sh or make lint after changes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add bash scripts/relevant-checks.sh or make lint to Testing strategy and Acceptance after the targeted tests
+
+### FINDING_10: Non-publication of outline artifact lacks validation
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: latent
+- **Concern**: The plan requires design-outline.md and outline headers to stay out of published artifacts, but the testing strategy does not verify composed-plan.md or the GitHub larch:plan block.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add a manual smoke assertion or structural test that Step 5c composition does not read design-outline.md and the produced composed-plan.md/larch:plan body contains no outline header
+
+### FINDING_11: cancelled-outline enum placement is internally inconsistent
+- **Reviewer(s)**: Cursor-dyn-enum-placement-drift, Codex-dyn-enum-placement-drift
+- **Severity**: important
+- **Concern**: The plan gives conflicting insertion locations for cancelled-outline across SKILL.md and render-final-summary.sh, risking divergent enum ordering, documentation, or shell case behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-enum-placement-drift: Unify on one insertion rule in both subsections; e.g. SKILL.md …| cancelled-decompose | cancelled-outline | cancelled-plan-size-hard | … and shell …|cancelled-plan-size-hard|cancelled-outline|cancelled-decompose|… (file-order slot between those two tokens on skills/design/scripts/render-final-summary.sh:44)
+  - From Codex-dyn-enum-placement-drift: Revise the plan to distinguish the two existing conventions: add cancelled-outline between cancelled-decompose and cancelled-plan-size-hard only in SKILL.md Step 0b, whose cancelled list is alphabetical-ish today; for render-final-summary.sh either insert it according to the existing script/test-matrix sequence and update test-render-final-summary.sh the same way, or explicitly plan a normalization of all enum lists to one shared alphabetical order.
+
+### FINDING_12: Outline cancel hygiene lacks the final-summary invocation contract
+- **Reviewer(s)**: Cursor-dyn-cancel-invocation-contract, Codex-dyn-cancel-invocation-contract
+- **Severity**: important
+- **Concern**: The proposed design-outline.md cancel path mentions cancellation summary handling but does not spell out the existing render-final-summary.sh contract, so implementers may omit required flags or environment and produce broken or incomplete summaries.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-cancel-invocation-contract: Expand §9 to: export SUMMARY_OUTCOME=cancelled-outline; run SKILL.md ### Final summary block fence (skills/design/SKILL.md:270-285) not a bare helper call—sources current-design-env, passes --outcome from SUMMARY_OUTCOME, --mode from jq .design_classification on run-params.json, DESIGN_TMPDIR/ISSUE_NUMBER/SESSION_ID, optional --repo, --post-publish-only
+  - From Codex-dyn-cancel-invocation-contract: Revise the proposed cancel hygiene to require executing the exact SKILL.md Final summary block or explicitly list: SUMMARY_OUTCOME=cancelled-outline, --outcome, --mode derived from $DESIGN_TMPDIR/run-params.json with N/A fallback, DESIGN_TMPDIR, SESSION_ID, ISSUE_NUMBER, optional --repo, and --post-publish-only.
+
+### FINDING_13: Step 1d.7 refine yield is not covered by anti-halt exceptions
+- **Reviewer(s)**: Cursor-dyn-gate-a-residual-reachability, Codex-dyn-gate-a-residual-reachability
+- **Severity**: latent
+- **Concern**: The new outline refine flow can yield to the user, but the global anti-halt exception still names only Step 1d.5, creating a conflict for Step 1d.7 refine turns.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-gate-a-residual-reachability: Add Step 1d.7 narrow exception beside 1d.5 in anti-halt paragraph referencing design-outline.md
+  - From Codex-dyn-gate-a-residual-reachability: Revise the global anti-halt paragraph to include Step 1d.7’s refine-yield exception and keep the no ScheduleWakeup/polling prohibition intact
+
+### FINDING_14: New structure checks do not pin residual handoff routes
+- **Reviewer(s)**: Cursor-dyn-gate-a-residual-reachability
+- **Severity**: latent
+- **Concern**: The proposed new structure check omits brainstorm and discussion-round handoff literals, allowing stale Step 1e routes to be reintroduced without CI failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-gate-a-residual-reachability: Add grep pins for brainstorm continue/skip targets and discussion-rounds proceed-to-1d.7 strings### OOS_1:
+- **Description**: [OUT_OF_SCOPE] FINDING_4: Public docs will still describe brainstorm as running before Gate A. Scenario: The proposed runtime change inserts Step 1d.7 after brainstorm and removes first-time Gate A, but adjacent public and flag docs still say brainstorm runs before Gate A. This is not core execution, but it leaves consumer-facing workflow docs stale.
+- **Reviewer**: Codex-Arch
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: README.md:61; docs/skills.md:54; skills/design/references/flags.md:21
+- **Phase**: design
+
+### OOS_2:
+- **Description**: 4. [OUT_OF_SCOPE] Consumer docs still describe --brainstorm as running before Gate A, with no outline gate mention. Scenario: After the PR lands, docs will point users at the old Gate A flow and omit the new approval checkpoint
+- **Reviewer**: Codex-Edge
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: README.md:59-61; docs/skills.md:50-54
+- **Phase**: design
+

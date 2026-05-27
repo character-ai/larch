@@ -1,0 +1,261 @@
+## Plan
+
+
+## Goal
+
+After the design discussion concludes (Step 1d Round 1, optionally followed by Step 1d.5 brainstorm), the main orchestrator produces a concise design outline (short bulleted lists), persists it to `$DESIGN_TMPDIR/design-outline.md`, prints it to chat under `## Proposed Design Outline`, and prompts the user with **Approve outline / Refine outline / Cancel** before launching the expensive sketch + dialectic + plan phase. The new gate **replaces Gate A's first-time-entry behavior**: on the first-time path, Step 1d.7 is the only direction-setting gate; Step 1e Gate A is reached **only** via re-entry from Gate B(c) or Gate C(b) (Shape 2, the 3-option re-entry prompt remains unchanged).
+
+The outline fires on **every new-plan `/design` run** (regardless of `--brainstorm` / tier), one-shot per run, and is **session-internal**: it is never written to `composed-plan.md`, the `larch:plan` GitHub block, or consumed by `/implement`. **Excluded** from the every-run claim: the Step 0b already-planned ad-hoc Q&A-only branch (option (b) on the already-planned router), which produces no new plan and exits without invoking Step 1d.7.
+
+The outline is **load-bearing** for downstream Step 2a sketches and Step 2b plan drafting (additive feature-context input, same pattern as `brainstorm.md`) so user refinements approved at Step 1d.7 are honored by subsequent stages.
+
+## Files to modify/create
+
+### NEW: `skills/design/references/design-outline.md`
+
+Single normative source for Step 1d.7 behavior. Mirrors the structural style of `skills/design/references/brainstorm.md` (consumer/contract/when-to-load header; entry guard; output artifact; prompt loop; cancel hygiene).
+
+Sections (~120-150 lines):
+
+1. **Header**: Consumer (`/design` Step 1d.7 — before Step 1e Gate A re-entry), Contract (one-shot per invocation via `$DESIGN_TMPDIR/.outline-approved`; produces `$DESIGN_TMPDIR/design-outline.md`; **load-bearing for Step 2a / Step 2b feature-context substitution**; never written to `composed-plan.md` or `larch:plan`), When to load (only when Step 1d.7 executes), Binding convention.
+2. **Anti-halt override (Step 1d.7 only)**: scoped exception mirroring brainstorm — after printing the outline, the orchestrator may yield the turn for the Refine free-form follow-up; **no** `ScheduleWakeup` / wall-clock sleep polling / Monitor-driven polling. (FINDING_13 — global anti-halt paragraph in SKILL.md must list Step 1d.7 alongside Step 1d.5.)
+3. **Entry guard**:
+   - If `$DESIGN_TMPDIR/.outline-approved` exists → print `⏩ 1d.7: outline — skipped (already approved; .outline-approved present)` and **proceed to Step 2a** (NOT to Step 1e). Use `proceed to Step 2a` wording so the anti-halt continuation rule pins to the correct successor.
+   - Otherwise print `> **🔶 /design 1d.7: outline**` and continue.
+4. **Inputs**:
+   - `$DESIGN_TMPDIR/feature-description.txt` (always)
+   - `$DESIGN_TMPDIR/discussion-round1.md` (when present)
+   - `$DESIGN_TMPDIR/brainstorm.md` (when present and non-empty)
+5. **Outline schema** (Step 1c Decision 7): five short bulleted sections totaling ~15-25 lines, maximally simple but complete:
+
+   ```markdown
+   ## Proposed Design Outline
+
+   ### Goals
+   - 2-3 bullets
+
+   ### Non-goals
+   - 2-3 bullets
+
+   ### Approach sketch
+   - 3-5 bullets — name the direction (which surfaces, which gate, which file), NOT a fully-baked architecture. The sketch panel (Step 2a) and dialectic (Step 2a.5) explore concrete alternatives; the outline names the conceptual direction the user has agreed to.
+
+   ### Surfaces in scope
+   - file or directory names; conceptual surfaces, not full diff paths
+
+   ### Open questions
+   - 1-3 bullets (optional)
+   ```
+
+   No prose paragraphs.
+
+6. **Output**: write the outline to `$DESIGN_TMPDIR/design-outline.md`, then print the file contents to chat. The file begins with the `## Proposed Design Outline` header.
+7. **Approval prompt** (`AskUserQuestion`):
+   - Question: `"Here is the proposed design direction. Approve and proceed to sketches + plan, refine the outline, or cancel?"`
+   - Header: `"Design outline"`
+   - Options:
+     - **Approve outline** — write `$DESIGN_TMPDIR/.outline-approved` sentinel and **proceed to Step 2a** (the orchestrator MUST go to Step 2a, NOT Step 1e). Anti-halt continuation pins this transition explicitly.
+     - **Refine outline** — enter the Refine loop (below).
+     - **Cancel** — Cancel hygiene (below).
+8. **Refine loop**:
+   - Free-form prompt to the user: `"What would you like to refine? (Add ideas, remove items, adjust direction, narrow scope, etc.)"`
+   - Receive operator message; mutate `$DESIGN_TMPDIR/design-outline.md` accordingly (orchestrator-side rewrite). Preserve the 5-section schema.
+   - Reprint the updated outline to chat under `## Updated Design Outline` (changed sections only is fine for compactness; full reprint is acceptable and simpler).
+   - Re-fire the same Approve / Refine / Cancel prompt.
+   - Loop until Approve or Cancel.
+   - Anti-halt: the free-form ask may yield the turn between operator messages (anti-halt override scoped to Step 1d.7 only, same pattern as brainstorm).
+9. **Cancel hygiene** — execute the **SKILL.md `### Final summary block` fence** (Step 0b), do **not** call `render-final-summary.sh` directly. Concretely (FINDING_12 informational context):
+   - Export `SUMMARY_OUTCOME=cancelled-outline`.
+   - Run the **`### Final summary block`** fenced bash block from `SKILL.md` Step 0b. That block sources `current-design-env`, derives `--mode` via `jq .design_classification // "N/A" run-params.json`, passes `DESIGN_TMPDIR` / `ISSUE_NUMBER` / `SESSION_ID` as env (and optional `--repo` when set), and invokes `render-final-summary.sh --outcome "$SUMMARY_OUTCOME" --mode <mode> ${REPO:+--repo "$REPO"} --post-publish-only`.
+   - Then print `**ℹ /design cancelled by operator (outline gate).**`.
+   - Exit 0. `$DESIGN_TMPDIR` is preserved (Step 6 cleanup requires `PLAN_WRITE_OK=true` which is unset on this path).
+10. **Downstream consumer contract (additive)**:
+   - **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, if `design-outline.md` exists and is non-empty, **prepend** a concise `## Approved direction (outline)` section to the feature text **inside the substitution string** (do not replace the issue body file). Stack alongside the brainstorm digest when both are present.
+   - **Step 2a.5**: dialectic synthesis MAY incorporate the outline as binding direction context (treated like Round 1 user-resolved decisions, not optional).
+   - **Step 2b**: read `design-outline.md` when present; honor approved Goals/Non-goals/Surfaces as binding scope; let Approach sketch inform the plan structure without locking in specific architecture choices (sketches own architecture).
+   - **Step 3**: `plan-review-loop.sh` (or its equivalent feature-context build path) MAY merge non-empty `design-outline.md` into the feature-context file passed to reviewers, alongside `brainstorm.md`. (Implementation note: if `plan-review-loop.sh` does not already accept an outline file, defer this to a follow-up issue; for L1, Step 2a/2b consumption is sufficient because reviewers see the resulting plan which reflects the outline.)
+11. **Never-written-to-GitHub invariant**: `design-outline.md` is NOT included in `composed-plan.md`, the `larch:plan` issue body block, the design-log publish bundle (`larch-logs/design/<RUN_ID>/`), or any `/implement`-consumed artifact. Explicitly document this in the contract section.
+
+### UPDATED: `skills/design/SKILL.md`
+
+Edits:
+
+1. **Anti-halt sequence** (single line near top of file): replace `1c→1d→1d.5→1e→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6` with `1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6`. **Note**: Step 1e is intentionally removed from the sequential list (it becomes a non-sequential re-entry target). Update the surrounding prose: in the same paragraph, add `Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1.`
+2. **Anti-halt narrow exception list**: extend the existing `**Narrow exception — Step 1d.5 only**` paragraph to read `**Narrow exception — Step 1d.5 and Step 1d.7 only**`. Add the corresponding sentence: `After printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per references/design-outline.md; do **not** use ScheduleWakeup, scripted sleep polling loops, or Monitor-driven polling waits on this lane.` (FINDING_13)
+3. **New Step 1d.7 block** inserted between the existing `<!-- step:1d.5 — Brainstorm Panel -->` block and `<!-- step:1e — Discussion Mode Gate (Gate A) -->` block. Body:
+
+   ```
+   <!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
+
+   ```bash
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.7 — outline" || true
+   ```
+
+   **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard).
+   ```
+
+4. **Step 1e prose rewrite** (FINDING_1, FINDING_4): replace the existing first-time-entry line `When the user picks **Ready for review** on first-time entry from Step 1d / Step 1d.5, proceed to Step 2a.` with:
+
+   `Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the post-plan loops). First-time entry from Step 1d / Step 1d.5 is handled by the **Step 1d.7 outline-approval gate**, which replaces Gate A Shape 1.`
+
+   Add an explicit Step 1e **entry guard** (FINDING_1, suggested by Cursor-Pragmatic and Cursor-dyn-gate-a): `If \`$DESIGN_TMPDIR/.outline-approved\` exists AND \`$DESIGN_TMPDIR/plan.txt\` does NOT exist AND control did not arrive from Gate B(c)/Gate C(b) re-entry, print \`⏩ 1e: gate A — first-time entry handled by Step 1d.7; proceed to Step 2a\` and proceed to Step 2a without firing the Gate A prompt. This guard prevents stale first-time control flow from accidentally falling into Gate A after outline approval.`
+
+   Keep the existing re-entry prose for Shape 2 unchanged.
+
+5. **`SUMMARY_OUTCOME` enum (Step 0b Orchestrator contract — FINDING_11)**: insert `cancelled-outline` between `cancelled-decompose` and `cancelled-plan-size-hard` in the documented enum list, matching the alphabetical-within-cancelled-* convention already used in that file. Updated list: `cancelled-already-planned | cancelled-clarify | cancelled-decompose | cancelled-outline | cancelled-plan-size-hard | cancelled-sprawl | cancelled-tier-gate | cancelled-title-filter | approved | approved-partition | failed-plan-write`. (The `render-final-summary.sh` enum uses a different file-order convention — see render-final-summary.sh entry below for its placement rule.)
+
+6. **Already-planned ad-hoc Q&A branch (FINDING_7)**: in Step 0b sub-step 4 (already-planned router) option **(b) ad-hoc Q&A only**, add an explicit exclusion sentence: `Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.` Place this immediately after the existing brainstorm-MANDATORY sentence in that branch.
+
+7. **Brainstorm flag-table description (FINDING_8)**: in the Flags table near the top of SKILL.md, update the `--brainstorm` row's `Purpose` from `Request Step **1d.5** brainstorm ideation before Gate A` to `Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan)`.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+Rewrite Gate A section as **re-entry-only** (FINDING_4):
+
+1. **Gate A — Discussion Mode Loop (Step 1e) section**, **When** subsection: rewrite to `**Re-entry-only**. Gate A is reached **only** from Gate B option (c) "switch to discussion mode" or Gate C option (b) "discuss further" (post-plan). First-time entry from Step 1d / Step 1d.5 is replaced by the **Step 1d.7 outline-approval gate** — see \`${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md\`.`
+
+2. **Behavior subsection**: delete or relocate the **Shape 1 — first-time entry** subsection. Replace with a one-line cross-reference: `**First-time entry**: handled by Step 1d.7 outline-approval, not by Gate A. See \`design-outline.md\` for the Approve/Refine/Cancel prompt.` Keep **Shape 2 — re-entry from Gate B(c) or Gate C(b)** subsection unchanged.
+
+3. **Per-tier behavior** subsection: replace the "fire after Step 1d" language with `Gate A fires only on re-entry. First-time entry across all three tiers (`--trivial` / `--simple` / `--hard`) is handled by Step 1d.7 outline-approval.`
+
+4. **Discussion sub-round body** subsection: update the "fire the same Gate A shape as the prior prompt" language to clarify that Gate A re-entries always use Shape 2 (because first-time entry is replaced by Step 1d.7).
+
+5. **Loop exit** subsection: update bullet `First-time entry (from Step 1d): proceed to Step 2a (sketches).` to `First-time entry: handled by Step 1d.7 outline-approval; Approve → Step 2a, Cancel → exit, Refine → loop.` Keep the re-entry bullet (`Re-entry (from Gate B or Gate C): proceed directly to Step 3 (plan review) with the current $DESIGN_TMPDIR/plan.txt. Do NOT re-run sketches or dialectic.`) unchanged.
+
+6. **State invariants across gates** section: review and update item 3 (Discussion outputs accumulate) wording where applicable; ensure invariants still hold given Gate A is re-entry-only.
+
+### UPDATED: `skills/design/references/brainstorm.md` (FINDING_2, FINDING_14)
+
+Edits to retarget post-brainstorm handoffs from Step 1e to Step 1d.7:
+
+1. **Consumer header (line 3)**: update `runs after Step **1d** (Round 1 discussion) and before Step **1e** (Gate A)` to `runs after Step **1d** (Round 1 discussion) and before Step **1d.7** (Design Outline — Gate A re-entry only post-plan)`.
+2. **Entry guard skip messages**: update `⏩ 1d.5: brainstorm — skipped` and `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)` skip-target prose to reference `Step 1d.7` as the successor on skip paths. Keep the literal breadcrumb strings exactly identical (they are pinned by `test-design-structure.sh` Check 2754), but update any surrounding prose like `**skip** this entire step (go to Step **1e**)` to `**skip** this entire step (go to Step **1d.7**)`.
+3. **Terminal path in Free-form discussion loop**: update `When the loop ends via terminal path, ensure .brainstorm-done exists before entering Step **1e**.` to `before entering Step **1d.7**`.
+
+### UPDATED: `skills/design/references/discussion-rounds.md` (FINDING_2, FINDING_14)
+
+Edits to retarget Step 1d exit handoffs from Step 1e to Step 1d.7:
+
+1. **Step 1d short-circuit prose**: update `If the feature is straightforward with fewer than 2 scope decision branches, print \`⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)\` and proceed to Step 1e (Gate A).` to `... and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off.` Adjust to match the actual control flow (1d → 1d.5 if brainstorm else → 1d.7).
+2. **Step 1d cap prose**: update `If more than 7 decision branches remain after 7 questions, print: \`⏩ Remaining scope questions deferred to implementation.\` and proceed to Step 1e (Gate A) — users may pick "Discuss more" there to surface any deferred branches before sketches launch.` to point at Step 1d.7 as the next step (and update the "users may pick Discuss more" note to reference the outline Refine option instead).
+3. **Step 1d "After each AskUserQuestion answer" prose**: update `… apply the same semantic sprawl heuristic as Step 1c (Split / Cancel only, no Continue; on Cancel export SUMMARY_OUTCOME=cancelled-sprawl and run ### Final summary block). Cap: at most once per Step 1d invocation for this heuristic — if it already fired during Step 1c or earlier in Step 1d, do not re-fire.` — no change needed to this; the sprawl heuristic is independent of the Step 1e routing change. Just verify the routing references in the surrounding prose.
+
+### UPDATED: `skills/design/scripts/step-name-registry.tsv`
+
+Insert one row between `1d.5\tbrainstorm` and `1e\tgate A`:
+
+```
+1d.7	outline
+```
+
+### UPDATED: `skills/design/scripts/render-final-summary.sh`
+
+Add `cancelled-outline` to the outcome enum on **line 44** (FINDING_11). The existing enum order is file-order (NOT alphabetical-within-cancelled). Append `cancelled-outline` to the end of the cancelled cluster, immediately before `failed-plan-write`:
+
+```
+approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|failed-plan-write) ;;
+```
+
+This **intentionally** uses a different position than the SKILL.md enum list (which uses alphabetical-within-cancelled). Both placements are acceptable because (a) the shell `case` pattern uses pipes — order is irrelevant for matching; (b) the SKILL.md list is documentation, where alphabetical aids reader scanning. Document this two-convention rule with an inline comment immediately above the case line: `# Enum order is file-order (newest entries appended before failed-plan-write); SKILL.md Step 0b uses alphabetical-within-cancelled documentation order. Both forms accept the same token set.`
+
+### UPDATED: `skills/design/scripts/render-final-summary.md`
+
+Append `Step 1d.7 outline cancel (cancelled-outline)` to the **Callers** list so the docs reflect the new caller. Add a one-line note about the two-convention enum-order rule documented in the SH file (cross-reference).
+
+### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
+
+Add an outcome row exercising `--outcome cancelled-outline` (mirroring the existing `cancelled-decompose` / `cancelled-sprawl` test rows). The new row asserts the helper exits 0 and the rendered body contains the expected outcome label and `Step 1d.7` / outline phrasing.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+Add one new Check block (next available Check number) that pins (FINDING_6, FINDING_14):
+
+1. `<!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->` anchor in `skills/design/SKILL.md` between the existing 1d.5 and 1e anchors.
+2. `1d.7\toutline` row in `skills/design/scripts/step-name-registry.tsv`.
+3. Existence and shape of `skills/design/references/design-outline.md`:
+   - File exists.
+   - Contains `> **🔶 /design 1d.7: outline**` banner literal.
+   - Contains `⏩ 1d.7: outline — skipped (already approved; .outline-approved present)` skip-breadcrumb literal.
+   - Contains `$DESIGN_TMPDIR/.outline-approved` sentinel reference.
+   - Contains `proceed to Step 2a` skip-handoff phrase (NOT `proceed to Step 1e`).
+4. **Updated anti-halt sequence** in `SKILL.md`: must contain `1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6` (i.e., Step 1e removed from the sequential path). Reject any presence of `1c→1d→1d.5→1e` (stale form).
+5. **Anti-halt narrow exception**: `SKILL.md` must contain `**Narrow exception — Step 1d.5 and Step 1d.7 only**` (or equivalent listing both steps).
+6. `approval-gates.md`: Gate A "When" section text contains `Re-entry-only` (or equivalent first-time-excluding phrasing). Reject any first-time-Gate-A language like `first-time entry from Step 1d / Step 1d.5, proceed to Step 2a` (replace with re-entry-only narrative). Gate A section must cross-reference `design-outline.md`.
+7. `brainstorm.md`: post-1d.5 handoff prose mentions `Step 1d.7` (not `Step 1e`) as the successor on skip/terminal/non-brainstorm paths. (FINDING_2, FINDING_14: pin literals like `before entering Step **1d.7**`.)
+8. `discussion-rounds.md`: Step 1d short-circuit and cap exit prose mentions `Step 1d.7` (or `Step 1d.5` when brainstorm is enabled) as the successor, NOT `Step 1e`. (FINDING_2, FINDING_14)
+9. `SUMMARY_OUTCOME` enum in `render-final-summary.sh` includes `cancelled-outline` (anywhere in the cancelled cluster).
+10. `SKILL.md` Step 0b `Orchestrator contract` enum list includes `cancelled-outline` placed between `cancelled-decompose` and `cancelled-plan-size-hard`.
+11. **Update existing Check 19 / Check 2754** (FINDING_6): change the `grep -Fq '1c→1d→1d.5→1e'` assertion to `grep -Fq '1c→1d→1d.5→1d.7→2a'` (the new authoritative sequence pin). Either replace the literal in Check 19, or remove it from Check 19 and own the assertion in the new Check.
+
+Model the new Check after Check 19 (#2754, which pins the brainstorm step shape). Suggested Check number: next available (likely #2974 to match this issue).
+
+### UPDATED: `README.md` (FINDING_8)
+
+Update any mention of `--brainstorm` flowing "before Gate A" to "before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan)". Likely 1-2 lines around line 59-61 per the OOS_2 location hint.
+
+### UPDATED: `docs/skills.md` (FINDING_8)
+
+Same wording update as `README.md`. Likely 1-2 lines around line 50-54.
+
+### UPDATED: `skills/design/references/flags.md` (FINDING_8)
+
+Update the `--brainstorm` row description and any post-1d.5-routing prose to reference Step 1d.7 outline-approval as the next step, NOT Gate A. Specifically the line near 21: `When set, Step **1d.5** runs after Round 1 discussion and before Gate A` → `... and before Step **1d.7** outline-approval (Gate A re-entry only post-plan)`.
+
+## Approach
+
+- The new step is **orchestrator-side only** — no new shell helper script. Outline generation is short bulleted markdown the main agent composes inline using `feature-description.txt` + `discussion-round1.md` + optional `brainstorm.md` as input context. No new SH/test machinery besides the structure-check pin and the test-render-final-summary row.
+- The outline-approval gate is wired as a thin reference file (`design-outline.md`) that the orchestrator loads at Step 1d.7, mirroring how Step 1d.5 (brainstorm) is wired via `brainstorm.md`. SKILL.md stays small (Step 1d.7 is ~12 lines of marker + bash prelude + MANDATORY pointer).
+- The `.outline-approved` sentinel mirrors `.brainstorm-done` — one-shot per `/design` run. Re-entries from Gate B(c) / Gate C(b) go directly to Step 1e Gate A Shape 2, never re-firing Step 1d.7.
+- **Downstream consumption (FINDING_3)**: design-outline.md is additive feature-context for Step 2a sketches and Step 2b plan drafting (mirroring the brainstorm.md pattern), so the Refine loop's approved direction propagates correctly. The outline never reaches `composed-plan.md` or the GitHub `larch:plan` block.
+- **Gate A re-entry safety (FINDING_1)**: Step 1e adds a defensive entry guard so even if a future edit accidentally routes first-time control to Step 1e, the guard skips it (the outline approval is the authoritative first-time gate). The structure check pins both the routing change and the guard.
+- **Handoff retargeting (FINDING_2)**: brainstorm.md and discussion-rounds.md own the prose that historically said "before Gate A" / "proceed to Step 1e". These references all retarget to Step 1d.7. Test-design-structure.sh pins the new literals to prevent regression.
+
+## Edge cases
+
+- **Empty inputs**: if `discussion-round1.md` is missing (Round 1 short-circuited with zero scope decisions) and brainstorm is off, the outline draws only from `feature-description.txt`. This is fine — the outline still has Goals / Non-goals / Approach sketch from the feature description itself.
+- **Refine loop with terse response**: if the operator's free-form refine reply is empty or non-actionable (e.g., "looks fine"), the outline is reprinted unchanged and the Approve/Refine/Cancel prompt is re-fired. The Refine loop must not silently approve.
+- **Cancel during Refine**: the orchestrator must remain in the Refine loop until the operator explicitly picks Approve or Cancel on the AskUserQuestion. Operator messages mid-loop are interpreted as refinement requests, never as cancellation (matches brainstorm.md's branch-order classify-message-first pattern).
+- **Brainstorm + outline interaction**: when brainstorm runs, `.brainstorm-done` and `.outline-approved` are written sequentially. Both sentinels persist for the lifetime of `$DESIGN_TMPDIR`. No interaction between them — outline generation may read `brainstorm.md` if present, but the gates are independent.
+- **Tier interaction**: outline-approval fires unconditionally regardless of `--trivial` / `--simple` / `--hard`. Trivial-tier runs (which skip sketches + 10-reviewer panel) still get an outline-approval gate.
+- **`--partition` and outline**: the outline-approval gate fires before sketches; `--partition` routes to the decomposition panel at Step 2b.5. The outline still fires on `--partition` runs (the user sees direction first, then decomposition fires later if the plan ends up large). No interaction.
+- **Already-planned ad-hoc Q&A** (FINDING_7): the outline does **not** fire on the Step 0b option (b) Q&A-only branch. This is an explicit exclusion documented in SKILL.md and design-outline.md (the "every-run" claim applies only to runs that produce a new plan).
+- **Gate B(c) / Gate C(b) re-entry**: Step 1e Gate A Shape 2 fires as today; Step 1d.7 is **not** re-entered (sentinel guards it). User sees the 3-option Shape 2 prompt (Show latest design proposal / Ready for review / Discuss more), all of which operate on the existing `plan.txt`.
+- **`/implement` consumption**: `/implement` reads the `larch:plan` block from the issue body. Since the outline is never written there, `/implement` is invariant under this change.
+
+## Failure modes
+
+1. **Outline drift from feature description**: the orchestrator could compose an outline that misrepresents the user's intent (e.g., wrong goals). Earliest warning signal: the user picks Refine multiple times. Mitigation: the orchestrator must compose the outline strictly from `feature-description.txt` + Round 1 decisions, not from speculation; the user's Refine answers are authoritative; downstream Step 2a/2b read the approved outline so refinements propagate.
+2. **`.outline-approved` sentinel staleness across re-entry**: by design, the sentinel blocks regeneration. If a user picks Gate C(c) "Re-run review panel" and later wishes to refresh the outline, they must restart `/design`. Mitigation: clear language in `design-outline.md` saying outline is one-shot.
+3. **`SUMMARY_OUTCOME` enum desync** (FINDING_11): SKILL.md docs vs `render-final-summary.sh` regex use different orderings. If a future contributor reorders one without the other, future enum additions may drift further. Mitigation: the test-design-structure.sh Check pins the enum membership (not ordering), so functional correctness is preserved. The inline comment in `render-final-summary.sh` documents the two-convention rule.
+4. **Step 1e residual reachability** (FINDING_1): if a future edit reintroduces a first-time path to Step 1e (e.g., via a new handoff in brainstorm.md or discussion-rounds.md), the new structure-check pins (FINDING_14) reject the regression. The Step 1e entry guard (in SKILL.md Step 1e prose) is a runtime defense in depth.
+5. **Stale public docs** (FINDING_8): README.md / docs/skills.md / flags.md describing `--brainstorm` as preceding Gate A would mislead users. Mitigated by the doc updates in this plan and by OOS_2 follow-up.
+
+## Testing strategy
+
+- **`scripts/test-design-structure.sh`**: new Check block (per the UPDATED section above) covers anchor placement, registry row, anti-halt sequence updates (incl. removal of Step 1e from the sequential path), gate-shape replacement, handoff-route retargeting in brainstorm.md and discussion-rounds.md, enum membership, and step entry guards.
+- **`skills/design/scripts/test-render-final-summary.sh`**: new outcome row asserts `cancelled-outline` is a valid input that produces the expected output structure.
+- **`scripts/test-design-structure.sh` updated Check 19 / Check 2754** (FINDING_6): the existing anti-halt-sequence assertion is updated from `1c→1d→1d.5→1e` to `1c→1d→1d.5→1d.7→2a` so the test passes after the new step lands. Without this update, CI would break on landing.
+- **Repo-required validation** (FINDING_9): run **`bash scripts/relevant-checks.sh`** (or `make lint`, which exercises the same pre-commit hooks repo-wide) after every edit pass. This catches markdown-lint, shellcheck, and any structure-test regressions introduced by the changes.
+- **Manual smoke test** (post-implementation): run `/design --simple <issue-N>` against a fresh issue; verify (a) the outline appears under `## Proposed Design Outline` after Step 1d Round 1 (or Step 1d.5 brainstorm), (b) the AskUserQuestion fires with Approve/Refine/Cancel, (c) Approve writes `.outline-approved`, proceeds directly to Step 2a, and Step 1e Gate A is NEVER prompted on first-time entry, (d) Refine loops and mutates the file, (e) Cancel runs the Final summary block fence (SKILL.md `### Final summary block`) with `cancelled-outline` and exits 0 with `$DESIGN_TMPDIR` preserved, (f) re-entries from Gate C(b) hit Gate A Shape 2 (NOT Step 1d.7), (g) the design-outline.md content is reflected in Step 2a sketch prompts (additive context) and Step 2b plan drafting.
+- **No new offline runtime harness** needed beyond the test-design-structure.sh Check and the render-final-summary.sh test row — outline generation is orchestrator-side prose composition, not amenable to mechanical unit testing.
+
+
+## Acceptance
+
+
+A `/design` run with this change is considered successful when:
+
+1. After Step 1d Round 1 (and Step 1d.5 brainstorm when enabled) settles, the orchestrator prints `> **🔶 /design 1d.7: outline**`, writes `$DESIGN_TMPDIR/design-outline.md` with the 5-section schema (`## Proposed Design Outline` header followed by Goals / Non-goals / Approach sketch / Surfaces in scope / Open questions), prints the outline body to chat, and fires the Approve / Refine / Cancel `AskUserQuestion`.
+2. **Approve** writes `$DESIGN_TMPDIR/.outline-approved`, prints a brief acknowledgment breadcrumb, and **proceeds directly to Step 2a (sketches)**, skipping Step 1e Gate A. Step 1e Gate A is never prompted on first-time entry.
+3. **Refine** loops: free-form ask → mutate `design-outline.md` → reprint → re-prompt. Loop terminates only on Approve or Cancel. Approved refinements are reflected in `design-outline.md` and are consumed by Step 2a sketch prompts and Step 2b plan drafting (additive feature-context, same pattern as `brainstorm.md`).
+4. **Cancel** executes the SKILL.md `### Final summary block` fence (`SUMMARY_OUTCOME=cancelled-outline`), prints `**ℹ /design cancelled by operator (outline gate).**`, exits 0, and preserves `$DESIGN_TMPDIR`.
+5. On a subsequent re-entry path from Gate B(c) or Gate C(b), Step 1e Gate A Shape 2 fires as today; Step 1d.7 is **not** re-entered (sentinel guards it).
+6. The outline is **not** included in `composed-plan.md`, the `larch:plan` block written to GitHub at Step 5c, or the design-log publish bundle; `/implement` consumption is unchanged.
+7. The Step 0b already-planned ad-hoc Q&A-only branch does NOT invoke Step 1d.7 (documented exclusion).
+8. `scripts/test-design-structure.sh` and `skills/design/scripts/test-render-final-summary.sh` pass with the new and updated Checks.
+9. `bash scripts/relevant-checks.sh` (or `make lint`) passes after all edits.
+10. README.md / docs/skills.md / skills/design/references/flags.md describe `--brainstorm` as preceding Step 1d.7 outline-approval (Gate A re-entry only post-plan).
+
+
+diff_lines: 320

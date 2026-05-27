@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Approach sketch is deliberately conceptual per plan; changing the schema conflicts with the stated design intent of direction-checkpoint before sketches
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_8: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- design-outline.md non-consumption is explicitly stated in the plan; adding a negative-assertion test for an already-prohibited pattern adds complexity without proportionate value
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- "Run the Final summary block from SKILL.md Step 0b" is the established pattern for all cancel paths; spelling out the full arg list would duplicate SKILL.md
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
