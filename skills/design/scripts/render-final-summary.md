@@ -3,9 +3,13 @@
 **Purpose**: `/design` terminal summary dispatcher. Gathers token/timing JSON,
 parses `execution-issues.md`, `voting-tally.md`, accepted findings, and OOS URLs,
 then invokes `scripts/render-run-summary.sh --skill design` and (post-publish
-phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=… -->`
-via `scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only
-this helper).
+phase) renders the body to `final-summary.md`, streams it via stdout (or FD 3
+when `LARCH_QUIET_PID=$$`), and upserts
+`<!-- larch:final-summary v1 runid=… -->` via
+`scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only this
+helper). The calling skill's orchestrator then emits the full file body
+verbatim as plain chat markdown so the block is visible at top chat without
+depending on Bash-tool UI expansion.
 
 ## Callers (eleven)
 
@@ -66,6 +70,15 @@ is preserved.
 Post phase prints `final-summary.md` exactly once via the FD-3-aware chat loop.
 The renderer itself is not called with `--print-stdout`, so the file and chat
 body share one source and fallback bodies are printed through the same path.
+
+## Top-chat visibility contract
+
+This script writes the canonical block to disk and to its print stream. The
+calling `/design` orchestrator, per `skills/design/SKILL.md` anti-halt prose, is
+responsible for reading `$DESIGN_TMPDIR/final-summary.md` after the Bash call
+and emitting its full body verbatim at top chat when the file is non-empty. FD-3
+versus stdout only controls the renderer stream; the orchestrator emission is
+the top-chat visibility channel.
 
 ## Exec issues / warnings (FINDING_13)
 

@@ -1,6 +1,6 @@
 # write-final-report.sh (`/implement`)
 
-Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to chat via `--print-stdout`.
+Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to the renderer print stream via `--print-stdout`. Top-chat visibility is owned by the `/implement` orchestrator, which emits the persisted `summary-final.md` body verbatim after the Bash call per `skills/implement/SKILL.md`.
 
 The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`scripts/token-cost.sh`](../../../scripts/token-cost.sh) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md).
 
@@ -45,7 +45,7 @@ write-final-report.sh --implement-tmpdir PATH [--comment-only] [--print-stdout]
 
 ### `--print-stdout`
 
-When set, the script exports `PRINT_STDOUT=true` and prints the rendered markdown body to FD **3** when `lib-quiet.sh` owns the session (`LARCH_QUIET_PID=$$`), else to **stdout**. Status KV lines go to FD **4** (quiet session) or **stderr** (non-quiet), via `emit_kv_out`.
+When set, the script exports `PRINT_STDOUT=true` and prints the rendered markdown body to FD **3** when `lib-quiet.sh` owns the session (`LARCH_QUIET_PID=$$`), else to **stdout**. Status KV lines go to FD **4** (quiet session) or **stderr** (non-quiet), via `emit_kv_out`. This is the renderer's print mechanism; top-chat visibility is achieved by the orchestrator emitting the persisted `$IMPLEMENT_TMPDIR/summary-final.md` body verbatim after the Bash call (per `skills/implement/SKILL.md` Step 17 / Step 18 prose). The FD-3-vs-stdout choice remains relevant for lib-quiet-aware callers, but it is not the primary top-chat visibility channel. The canonical tmpdir basename is `summary-final.md`, distinct from the committed `larch-logs/implement/<RUN_ID>/final-summary.md` run-log artifact.
 
 ### Key-value contract (`emit` / `emit_kv_out`)
 

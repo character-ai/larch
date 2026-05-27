@@ -34,25 +34,55 @@ pass 'render-final-summary per-bucket argv shape'
 # shellcheck disable=SC2016
 grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
 # shellcheck disable=SC2016
-grep -Fq 'if grep -Fq -- '\''- **Cost**:'\'' "$IMPLEMENT_TMPDIR/summary-final.md" 2>/dev/null; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on cost line presence'
-grep -Fq '_wfr_args+=(--print-stdout)' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must only request --print-stdout when .step17-printed is absent'
+grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on non-empty summary body'
 # shellcheck disable=SC2016
-grep -Fq '_wfr_emit_cost=false' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must initialize cost emit guard'
+grep -Fq 'if [ ! -f "$IMPLEMENT_TMPDIR/.step17-emitted" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must only request --print-stdout when .step17-emitted is absent'
 # shellcheck disable=SC2016
-grep -Fq 'if [ "$_wfr_printed" = false ] && [ -n "$_wfr_new_cost" ] && [ "$_wfr_new_cost" != "$_wfr_prev_cost" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must compare refreshed cost to pre-Step-18 cost'
+grep -Fq '_wfr_emit_body=false' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must initialize body emit guard'
 # shellcheck disable=SC2016
-grep -Fq 'if [ "$_wfr_emit_cost" = true ] && [ -n "$_wfr_new_cost" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must gate .step17-printed on emit guard plus present cost line'
+grep -Fq 'cmp -s "$IMPLEMENT_TMPDIR/.step18-prebody" "$IMPLEMENT_TMPDIR/summary-final.md"' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must compare refreshed body to pre-Step-18 snapshot'
 # shellcheck disable=SC2016
-grep -Fq 'Immediately after the Step 17 Bash block returns, if the script succeeded and `summary-final.md` contains a line beginning with `- **Cost**:`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 verbatim cost-line emit prose'
+grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
-grep -Fq 'When Step 18 `write-final-report.sh` succeeds with a present `- **Cost**:` line in `$IMPLEMENT_TMPDIR/summary-final.md`, the orchestrator MUST emit that single verbatim `- **Cost**:` line as plain chat text when either condition holds: Step 18 passed `--print-stdout` because `$IMPLEMENT_TMPDIR/.step17-printed` was absent, or the refreshed cost line changed from the pre-Step-18 value.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 18 verbatim cost-line emit prose'
-grep -Fq 'The cost line is the sole exception under NEVER #20.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 cost-line exception prose'
+step18_block=$(sed -n '/"_wfr_args=(--implement-tmpdir "\\$IMPLEMENT_TMPDIR")"/,/^```$/p' "$REPO/skills/implement/SKILL.md")
+# shellcheck disable=SC2016
+if printf '%s\n' "$step18_block" | grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-emitted"'; then
+    fail 'Step 18 Bash block must not touch .step17-emitted before orchestrator emit'
+fi
+# shellcheck disable=SC2016
+grep -Fq 'the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 full-body emit prose'
+# shellcheck disable=SC2016
+grep -Fq 'the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown when either condition holds' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 18 full-body emit prose'
+# shellcheck disable=SC2016
+grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of $IMPLEMENT_TMPDIR/summary-final.md' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 full-body exception prose'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'
 grep -Fq 'SUMMARY_MODE_STRING=N/A' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must default SUMMARY_MODE_STRING to N/A'
 grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
-grep -Fq 'After every `render-final-summary.sh --post-publish-only` invocation in `/design`' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish cost-line emit prose'
+grep -Fq 'the orchestrator MUST read $DESIGN_TMPDIR/final-summary.md and emit its full body verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish full-body emit prose'
+# shellcheck disable=SC2016
+grep -Fq 'The only orchestrator-text addition permitted after that helper returns is the shared verbatim full-body emission of `$DESIGN_TMPDIR/final-summary.md`, gated on helper exit 0 and that file being non-empty.' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-halt helper-exit gate'
+# shellcheck disable=SC2016
+grep -Fq 'If the helper exits 0 and $DESIGN_TMPDIR/final-summary.md is non-empty, apply the shared post-publish full-body emit rule immediately after this callsite' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin Step 5c item 10 shared full-body emit prose'
+# shellcheck disable=SC2016
+grep -Fq 'The shared post-publish/full-body emit rule runs only when the helper exited 0 and `$DESIGN_TMPDIR/final-summary.md` is non-empty' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin final recap helper-exit gate'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-recap prose'
-pass 'SKILL.md cost-line callsite contracts pinned'
+pass 'SKILL.md full-body summary callsite contracts pinned'
+
+# shellcheck disable=SC2016
+retired_prose=(
+  'emit exactly that one line'
+  'emit that single verbatim'
+  'single extracted `- **Cost**:`'
+  'The cost line is the sole exception'
+  'orchestrator emits the single verbatim cost line'
+  'single verbatim cost-line emit'
+)
+for retired in "${retired_prose[@]}"; do
+  if git -C "$REPO" grep -Fq -- "$retired" skills/design/SKILL.md skills/implement/SKILL.md; then
+    fail "retired cost-line-only prose remains: $retired"
+  fi
+done
+pass 'retired cost-line-only prose absent from SKILL.md'
 
 printf 'PASS: test-render-cost-line-callsites.sh\n'
