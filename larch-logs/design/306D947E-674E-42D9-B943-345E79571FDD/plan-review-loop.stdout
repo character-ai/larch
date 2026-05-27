@@ -1,0 +1,13 @@
+WARN=plan-review-tsv: empty or missing structured reviewer rows for <TMPDIR>/cursor-plan-arch-output.txt
+WARN=plan-review-tsv: empty or missing structured reviewer rows for <TMPDIR>/cursor-plan-innovation-output.txt
+WARN=plan-review-tsv: empty or missing structured reviewer rows for <TMPDIR>/cursor-plan-pragmatic-output.txt
+WARN=plan-review-tsv: empty or missing structured reviewer rows for <TMPDIR>/cursor-plan-dyn-evidence-alignment-output.txt
+WARN=plan-review-tsv: empty or missing structured reviewer rows for <TMPDIR>/codex-primary-plan-dyn-evidence-alignment-output.txt
+LOOP_STATUS=complete
+ACCEPTED_COUNT=1
+DEGRADED_PANEL=0
+ROUNDS_COMPLETED=1
+AGGREGATOR_STATUS=ok
+TALLY_PLAN_REVIEW_STATUS=ok
+VOTING_TALLY_FILE=<TMPDIR>/voting-tally.md
+VOTER_1_PARSE_RATE_STATUS=OK
