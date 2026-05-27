@@ -1,0 +1,32 @@
+Reviewing the plan against `scripts/larch-log.sh` — reading the plan and tracing `round_artifact_included` case ordering.
+Checking related patterns, timing kinds, and integration points the plan references.
+Verifying bash case pattern semantics and whether committed JSONL goes through redaction.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	SECURITY.md:34-37	Plan allowlists hyphen Codex JSONL in committed run logs but does not update SECURITY.md	SECURITY.md states raw Codex --json streams (*.events.jsonl) are session-local and excluded from larch-logs publication; after the PR, *-codex-events.jsonl would be publishable while policy text still claims all Codex JSONL event streams stay tmpdir-only	Add a SECURITY.md subsection distinguishing excluded *.events.jsonl (dot, launcher-style) from allowlisted *-codex-events.jsonl (hyphen, redacted via stage_round_artifact), and note prompt/token leakage posture
+2	in_scope	important	correctness	scripts/test-larch-log.sh:127-135	Proposed tests call round_artifact_included directly but the function is not invokable from harnesses	round_artifact_included is defined inside scripts/larch-log.sh:67-102 and the script dispatches on argv at lines 237-241 with no main guard; sourcing runs the dispatcher and cannot call the helper in isolation	Specify write-round integration cases (extend scripts/test-larch-log.sh:783-849): stage scout-archetype-yield.tsv and *-codex-events.jsonl under --source-dir, assert files land in round-N; stage foo.events.jsonl and assert it is omitted
+3	in_scope	latent	correctness	scripts/larch-log.sh:67-102	Plan edge case misstates default TSV handling	Edge case claims *.tsv is not in the default deny; line 98 *) return 1 denies every basename not matched earlier, so scout-archetype-yield.tsv is denied today only by the catch-all, not a TSV-specific rule	Reword the edge-case bullet to say only findings-classification.tsv is currently allowlisted and scout-archetype-yield.tsv is denied by *) until added to the line 89 alternation
+4	in_scope	nit	correctness	scripts/larch-log.sh:84-86	Item C has no write-round e2e in the plan (only optional codex staging)	Unit-style allowlist checks can pass while write-round copy/redact path regressions for scout-archetype-yield.tsv go undetected	Add a required write-round fixture row in scripts/test-larch-log.sh (alongside scout-round1-manifest.json at :790-792) that stages scout-archetype-yield.tsv and asserts it appears under round-1/
+
+**Glob-pattern verification (plan claims vs `scripts/larch-log.sh`)**
+
+The plan’s case-ordering and wildcard analysis matches the current tree:
+
+1. **`*.events.jsonl` at line 70** — Bash `case` alternation uses fnmatch; the pattern requires the suffix `.events.jsonl` (literal dot before `events`). `coder-codex-events.jsonl`, `codex-events.jsonl`, and `foo-codex-events.jsonl` end in `-events.jsonl`, not `.events.jsonl`, so they do **not** match line 70.
+
+2. **Include reachability** — First match wins; lines 70–87 exclude first, line 89 includes next, line 98 `*)` denies the rest. Hyphen-named files that skip 70–87 can be allowed by extending the line 89 alternation; a dot-named `foo.events.jsonl` matched at line 70 cannot be rescued by a later include on line 89 (plan’s architectural decision is correct).
+
+3. **`scout-archetype-yield.tsv`** — No pattern on lines 70–87 matches it (`*.tsv` is absent). It is denied today only by the `*)` arm at line 98, not by a TSV-specific exclusion. Adding the literal to line 89 is structurally sufficient.
+
+4. **`*.tsv` “not in default deny”** — Misleading wording only (finding 3); behavior is catch-all deny until explicitly allowlisted.
+
+**Numbered findings**
+
+1. **[security]** [SECURITY.md](SECURITY.md):34-37 — Publishing hyphen Codex JSONL via the proposed allowlist conflicts with the documented “session-local only” policy for Codex event streams; update SECURITY.md when landing Item B allowlist changes.
+
+2. **[correctness]** [scripts/test-larch-log.sh](scripts/test-larch-log.sh):127-135 (plan) — `round_artifact_included` is not callable from external harnesses; use `write-round` staging tests like the existing block at lines 783–849.
+
+3. **[correctness]** Plan edge case / [scripts/larch-log.sh](scripts/larch-log.sh):98 — Clarify that unknown `.tsv` files are denied by `*)`, not by a missing `*.tsv` exclusion pattern.
+
+4. **[correctness]** [scripts/larch-log.sh](scripts/larch-log.sh):84-86 / plan Item C tests — Add a write-round e2e for `scout-archetype-yield.tsv`, not only direct allowlist assertions.
+
+**[OUT_OF_SCOPE]** [scripts/design-log-publish.sh](scripts/design-log-publish.sh):202 — Parallel `*.events.jsonl` denylist; hyphen `*-codex-events.jsonl` files are out of scope for design publish in this plan but could matter if design staging ever adopts hyphen naming.
