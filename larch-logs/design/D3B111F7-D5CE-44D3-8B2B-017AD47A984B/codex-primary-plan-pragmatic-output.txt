@@ -1,0 +1,25 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/test-implement-bootstrap.sh:549-551	Plan adds tracking ledger marks but does not update existing assertions that require those marks to be absent	make test-implement-bootstrap will fail as soon as phase_tracking starts calling token-ledger.sh and timing-ledger.sh	Revise the GP-adopt assertions to expect the new Step 0 tracking issue marks, and optionally add skip-branch assertions only if needed
+1	in_scope	nit	architecture	skills/implement/scripts/test-implement-bootstrap.sh:1418-1427	Plan asks for a new non-OPEN/non-CLOSED issue-state case that already exists	Implementing the plan literally duplicates coverage in a SIMPLE lane	Drop this proposed new case and keep the existing B7-non-open-state coverage
+1	in_scope	nit	architecture	skills/implement/scripts/test-implement-bootstrap.sh:1537-1548	Plan asks for a new resume-without-issue-number case that already exists	Implementing the plan literally duplicates coverage and the sibling doc already indexes the case	Drop this proposed new case and keep the existing B-issue-required-for-resume coverage
+1	in_scope	important	correctness	skills/implement/scripts/write-final-report.sh:186-190	Plan says corrupt all-zero token data should continue reporting $0.00, but the current rendering guard treats all-zero totals as unavailable	The proposed warning-only change leaves TOKEN_DATA_AVAILABLE=false, so run_body_render passes --cost-unavailable and emits Cost: N/A instead of the planned $0.00 output	Align the plan with the existing contract by warning about Cost: N/A, or explicitly set TOKEN_DATA_AVAILABLE=true for the corrupt-zero branch if $0.00 is the required output
+
+1. **[correctness] `skills/implement/scripts/test-implement-bootstrap.sh:549-551`**  
+The plan adds `token-ledger.sh mark "Step 0 — tracking issue"` and `timing-ledger.sh mark "Step 0 — tracking issue"` to `phase_tracking`, but the current GP-adopt harness explicitly asserts those lines are absent. `make test-implement-bootstrap` will fail unless the plan updates those assertions.
+
+Suggested revision: replace the two `assert_not_contains` checks with positive assertions for the new marks. Add skip-path checks only if they are materially needed.
+
+2. **[architecture] `skills/implement/scripts/test-implement-bootstrap.sh:1418-1427`**  
+The proposed non-`OPEN`/non-`CLOSED` case is already present as `B7-non-open-state`.
+
+Suggested revision: remove that case from the plan to keep this SIMPLE lane minimum-change.
+
+3. **[architecture] `skills/implement/scripts/test-implement-bootstrap.sh:1537-1548`**  
+The proposed Branch-1 resume-without-`--issue-number` case is already present as `B-issue-required-for-resume`.
+
+Suggested revision: remove that case from the plan and avoid duplicating the existing sibling doc row.
+
+4. **[correctness] `skills/implement/scripts/write-final-report.sh:186-190`**  
+The corrupt-zero detector plan says the report should continue showing `$0.00`, but the current script only enables cost rendering when bucket or total token sums are nonzero. With all three totals at zero, `TOKEN_DATA_AVAILABLE` remains false and `run_body_render` emits `- **Cost**: N/A`.
+
+Suggested revision: either change the warning/expectation to match the current `N/A` behavior, or explicitly mark corrupt-zero data as available if `$0.00` is the required post-change contract.

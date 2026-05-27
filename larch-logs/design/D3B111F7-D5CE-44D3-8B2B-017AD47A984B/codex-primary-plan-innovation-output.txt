@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/implement/scripts/test-implement-bootstrap.sh:540-551	Plan adds tracking ledger marks but leaves existing negative assertions intact	GP-adopt will now log token-ledger and timing-ledger Step 0 tracking issue marks, so make test-implement-bootstrap fails on the current assert_not_contains checks	Update those assertions to expect the new marks, or remove the obsolete negative checks
+1	in_scope	important	code-quality	skills/implement/scripts/test-implement-bootstrap.sh:1418-1427; skills/implement/scripts/test-implement-bootstrap.sh:1537-1547; skills/implement/scripts/test-implement-bootstrap.md:49-58	Plan asks for two new bootstrap cases that already exist	The PR would add duplicate coverage and duplicate doc rows instead of preserving the SIMPLE minimum-change contract	Revise Item C to verification-only for these two cases and skip edits to the harness/doc rows unless the existing assertions are insufficient
+1	in_scope	important	correctness	skills/implement/scripts/write-final-report.sh:179-190; skills/implement/scripts/write-final-report.sh:377-395	Corrupt-zero warning text conflicts with current rendering path	When all token totals and buckets are zero, TOKEN_DATA_AVAILABLE remains false and write-final-report passes --cost-unavailable, so the summary reports Cost: N/A while the proposed warning says reporting $0.00	Choose one contract: either change the warning to match N/A, or explicitly keep TOKEN_DATA_AVAILABLE true for this corrupt-zero path and add a focused test that proves the summary reports $0.00
+
+1. **[risk-integration]** `skills/implement/scripts/test-implement-bootstrap.sh:540-551`  
+Concern: the plan’s ledger-mark addition conflicts with existing GP-adopt assertions that require those exact marks to be absent.  
+Suggested revision: update or remove the obsolete negative assertions as part of the same two-line ledger change.
+
+2. **[code-quality]** `skills/implement/scripts/test-implement-bootstrap.sh:1418-1427`, `skills/implement/scripts/test-implement-bootstrap.sh:1537-1547`, `skills/implement/scripts/test-implement-bootstrap.md:49-58`  
+Concern: the two requested “new” error-path cases already exist and are already indexed in the sibling doc.  
+Suggested revision: treat Item C as already satisfied, except for any assertion adjustment directly required by the new ledger marks.
+
+3. **[correctness]** `skills/implement/scripts/write-final-report.sh:179-190`, `skills/implement/scripts/write-final-report.sh:377-395`  
+Concern: the proposed warning says `$0.00`, but the current zero-token path renders cost unavailable.  
+Suggested revision: align the warning and rendering contract before implementing the detector.

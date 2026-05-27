@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- B7-non-open-state and B-issue-required-for-resume already cover Item C's two proposed cases
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- bootstrap marks plus SKILL.md:683-686 would duplicate marks and fail GP-adopt negative assertions
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- all-zero totals set TOKEN_DATA_AVAILABLE=false so render emits Cost: N/A, not $0.00
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan still hardcodes #1-#9 once but also defers case list to harness md as SoT
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- bootstrap calls $SCRIPT_DIR/get-issue-state.sh; B7 already uses LARCH_TEST_ISSUE_STATE on the sandbox stub
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Step 17 replays summary-final.md stdout; stderr-only warning is not operator-visible
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- jq //0 treats absent codex/cursor totals as zero, so single-agent zero runs can false-trigger
