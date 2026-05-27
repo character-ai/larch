@@ -1,0 +1,14 @@
+Implemented the issue #3013 follow-ups and wrote the completion manifest at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.
+
+Changed:
+- [scripts/ship-pr.sh](<OPERATOR_REPO_PATH>/scripts/ship-pr.sh): vendor failed-job verification now bails on non-fixable rows; postmerge comments corrected.
+- [scripts/merge-pr.sh](<OPERATOR_REPO_PATH>/scripts/merge-pr.sh): named UNKNOWN retry constants and post-force-push `BEHIND` short-circuit.
+- Added harness coverage in `test-merge-pr`, `test-ship-pr`, and `test-lint-fix-loop`.
+- Updated sibling docs and [SECURITY.md](<OPERATOR_REPO_PATH>/SECURITY.md) to match the actual fail-closed contracts.
+
+Verification passed:
+- `bash scripts/test-merge-pr.sh`
+- `bash scripts/test-lint-fix-loop.sh`
+- `bash scripts/test-ship-pr.sh --section fix-loop`
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`

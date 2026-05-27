@@ -22,7 +22,8 @@ It copies the state-machine script into disposable git repositories with stubbed
 - inner local fix loop: exit `0` when first 2 vendor attempts fail but the 3rd succeeds; exit `4` (stall) when all 5 vendor attempts fail
 - CI vendor verification after per-job fallback:
   `vendor_verify_local_pass`, `vendor_verify_local_exhausts`,
-  `vendor_verify_head_changed`, `vendor_verify_sweep_regression`,
+  `vendor_verify_nonfixable_direct`, `vendor_verify_head_changed`,
+  `vendor_verify_sweep_regression`,
   `vendor_verify_empty_tsv`, and
   `vendor_verify_rc2_on_gh_logs_failed_branch`
 - `_RCC_MAX_ITER` budget behavior:

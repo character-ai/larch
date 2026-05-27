@@ -261,6 +261,22 @@ assert_stdout_matches() {
     fi
 }
 
+assert_stdout_line_count() {
+    local case_name="$1"
+    local pattern="$2"
+    local expected="$3"
+    local label="$4"
+
+    local actual
+    actual="$(grep -Ec "$pattern" "$TMPDIR_BASE/$case_name/stdout.log" 2>/dev/null || true)"
+    if [[ "$actual" == "$expected" ]]; then
+        ok "$label"
+    else
+        fail "$label (expected $expected, got $actual)"
+        sed 's/^/    stdout: /' "$TMPDIR_BASE/$case_name/stdout.log"
+    fi
+}
+
 assert_command_count() {
     local case_name="$1"
     local log_name="$2"
@@ -414,6 +430,21 @@ assert_stdout_contains "unknown_state_recovers_behind" "MERGE_RESULT=main_advanc
 assert_stdout_contains "unknown_state_recovers_behind" "ERROR=" "G4: BEHIND recovery preserves empty ERROR"
 assert_no_merge_commands "unknown_state_recovers_behind" "G4: BEHIND recovery skips merge commands"
 assert_command_count "unknown_state_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "3" "G4: pr view called 3x before BEHIND recovery"
+
+run_case "empty_state_recovers_clean" \
+    env GH_MERGE_STATE=__EMPTY__ STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=__EMPTY__ GH_VIEW_FLIP_AT_CALL=3 GH_VIEW_FLIP_MERGE_STATE=CLEAN GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "empty_state_recovers_clean" "MERGE_RESULT=admin_merged" "G5: empty resolving to CLEAN proceeds to admin merge"
+assert_command_count "empty_state_recovers_clean" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "3" "G5: pr view called 3x before CLEAN recovery"
+assert_command_count "empty_state_recovers_clean" "gh.log" "pr merge 123 --repo owner/repo --squash --admin" "1" "G5: admin merge runs after CLEAN recovery"
+
+run_case "empty_state_recovers_behind" \
+    env GH_MERGE_STATE=__EMPTY__ STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=__EMPTY__ GH_VIEW_FLIP_AT_CALL=3 GH_VIEW_FLIP_MERGE_STATE=BEHIND GH_CHECKS_JSON='[{"name":"ci","bucket":"pending"}]' GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "empty_state_recovers_behind" "MERGE_RESULT=main_advanced" "G6: empty resolving to BEHIND emits main_advanced"
+assert_stdout_contains "empty_state_recovers_behind" "ERROR=" "G6: BEHIND recovery preserves empty ERROR"
+assert_no_merge_commands "empty_state_recovers_behind" "G6: BEHIND recovery skips merge commands"
+assert_command_count "empty_state_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "3" "G6: pr view called 3x before BEHIND recovery"
 
 echo
 echo "Sub-test H: same-version gate stops duplicate bump merges"
@@ -620,6 +651,51 @@ run_case "post_force_push_unknown_retry_success" \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
 assert_stdout_contains "post_force_push_unknown_retry_success" "MERGE_RESULT=admin_merged" "Q1: UNKNOWN after force-push resolves on retry → admin_merged"
 assert_command_count "post_force_push_unknown_retry_success" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "Q2: pr view called 5x (initial + post-force-push + 3 retries)"
+
+echo
+echo "Sub-test Q2: post-force-push UNKNOWN can resolve to BEHIND"
+run_case "post_force_push_unknown_recovers_behind" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    GH_VIEW_SECOND_HEAD_OID=cccc3333 \
+    GH_VIEW_SECOND_MERGE_STATE=UNKNOWN \
+    GH_VIEW_FLIP_AT_CALL=5 \
+    GH_VIEW_FLIP_MERGE_STATE=BEHIND \
+    GH_CHECKS_SECOND_JSON='[{"name":"ci","bucket":"pending"}]' \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    STUB_PUSH_EXIT=0 \
+    STUB_BRANCH_NAME=feature-branch \
+    STUB_REMOTE_OID=cccc3333 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "post_force_push_unknown_recovers_behind" "MERGE_RESULT=main_advanced" "Q2a: UNKNOWN after force-push resolving to BEHIND emits main_advanced"
+assert_stdout_contains "post_force_push_unknown_recovers_behind" "ERROR=" "Q2b: post-force-push BEHIND recovery preserves empty ERROR"
+assert_no_merge_commands "post_force_push_unknown_recovers_behind" "Q2c: post-force-push BEHIND skips merge commands"
+assert_command_count "post_force_push_unknown_recovers_behind" "gh.log" "pr checks 123 --repo owner/repo --json name,state,bucket,link" "1" "Q2d: post-force-push BEHIND skips the second CI check"
+assert_command_count "post_force_push_unknown_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "Q2e: pr view called 5x before BEHIND recovery"
+assert_stdout_line_count "post_force_push_unknown_recovers_behind" '^ERROR=$' "1" "Q2f: post-force-push BEHIND emits exactly one empty ERROR line"
+
+echo
+echo "Sub-test Q2g: post-force-push EMPTY state recovers to BEHIND (Inline-triage rule 2: FINDING_8)"
+run_case "post_force_push_empty_recovers_behind" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    GH_VIEW_SECOND_HEAD_OID=cccc3333 \
+    GH_VIEW_SECOND_MERGE_STATE=__EMPTY__ \
+    GH_VIEW_FLIP_AT_CALL=5 \
+    GH_VIEW_FLIP_MERGE_STATE=BEHIND \
+    GH_CHECKS_SECOND_JSON='[{"name":"ci","bucket":"pending"}]' \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    STUB_PUSH_EXIT=0 \
+    STUB_BRANCH_NAME=feature-branch \
+    STUB_REMOTE_OID=cccc3333 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "post_force_push_empty_recovers_behind" "MERGE_RESULT=main_advanced" "Q2g: empty after force-push resolving to BEHIND emits main_advanced"
+assert_stdout_contains "post_force_push_empty_recovers_behind" "ERROR=" "Q2h: post-force-push empty BEHIND recovery preserves empty ERROR"
+assert_no_merge_commands "post_force_push_empty_recovers_behind" "Q2i: post-force-push empty BEHIND skips merge commands"
+assert_command_count "post_force_push_empty_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "Q2j: pr view called 5x before BEHIND recovery from empty"
+assert_stdout_line_count "post_force_push_empty_recovers_behind" '^ERROR=$' "1" "Q2k: post-force-push empty BEHIND emits exactly one empty ERROR line"
 
 echo
 echo "Sub-test R: post-force-push UNKNOWN persists, fails after 3 retries (#2342)"

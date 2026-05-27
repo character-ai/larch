@@ -1987,13 +1987,19 @@ _verify_failed_jobs_locally() {
         [[ -n "$job_name" ]] || continue
         job_token=$job_name
         [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
-        [[ "$class" == "fixable" ]] || continue
-        if _per_job_argv "$job_name" "$shard"; then
-            fixable_jobs+=("$job_name")
-            fixable_shards+=("$shard")
-        else
-            unfixable+=("$job_token")
-        fi
+        case "$class" in
+            fixable)
+                if _per_job_argv "$job_name" "$shard"; then
+                    fixable_jobs+=("$job_name")
+                    fixable_shards+=("$shard")
+                else
+                    unfixable+=("$job_token")
+                fi
+                ;;
+            *)
+                unfixable+=("$job_token")
+                ;;
+        esac
     done < "$failed_jobs_tsv"
 
     for i in "${!fixable_jobs[@]}"; do
@@ -3166,7 +3172,8 @@ run_postmerge_phase() {
     [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
     # Finalize manifest to status=done here so the update survives if the
     # LLM session ends before prompt-side Step 18 teardown runs. The tmpdir
-    # manifest and final-summary.md are updated in place; no post-merge git
+    # manifest and tmpdir summary-final.md are updated in place (run-log mirror
+    # at final-summary.md when not --comment-only); no post-merge git
     # commit is made (policy: NEVER commit after post-merge-sentinel exists,
     # see skills/implement/SKILL.md NEVER #19).
     local flush_run_id pr_num manifest_path_pm flush_issue_num recovery_ok
@@ -3228,8 +3235,8 @@ run_postmerge_phase() {
             final_report_rc=1
             final_report_output=""
             if [ "$manifest_ok" = true ]; then
-                # Re-render final-summary.md under $IMPLEMENT_TMPDIR now that MERGE_RESULT is set
-                # in state, so tmpdir final-summary.md / report output aligns with merged OUTCOME
+                # Re-render summary-final.md under $IMPLEMENT_TMPDIR now that MERGE_RESULT is set
+                # in state, so tmpdir summary-final.md / run-log final-summary.md mirror align with merged OUTCOME
                 # (pre-merge pass wrote bailed). NEVER #19: no post-merge git commit publishes this.
                 fail_file=$(failure_capture_path postmerge)
                 with_transient_retry transient_envelope_predicate_none "$fail_file" \

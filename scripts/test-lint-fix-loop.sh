@@ -348,6 +348,32 @@ EOF
     chmod +x "$path"
 }
 
+write_wrapper_two_commits_same_branch() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+printf 'stub two commits\n' > "$output"
+printf 'first-change\n' > tracked.txt
+git add tracked.txt
+git commit -q -m "stub first commit"
+printf 'second-change\n' > second.txt
+git add second.txt
+git commit -q -m "stub second commit"
+EOF
+    chmod +x "$path"
+}
+
 run_case() {
     local fixture_scripts="$1" repo="$2" session="$3" checks_log="$4" wrapper="$5" site="${6:-step3}" target_args_file="${7:-}"
     local rc=0 out
@@ -629,6 +655,29 @@ assert_contains "$case1e_out" 'LINT_FIX_STATUS=failed' "case1e status"
 assert_contains "$case1e_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1e reason"
 case1e_dirty=$(cd "$REPO1E" && git diff --name-only)
 [[ "$case1e_dirty" == "tracked.txt" ]] || fail "case1e expected dirty tracked.txt to survive, got: $case1e_dirty"
+
+# Case 1f: same-branch two-commit advancement still fails closed.
+CASE1F="$TMPROOT/case1f"
+REPO1F="$CASE1F/repo"
+SCRIPTS1F="$CASE1F/scripts"
+SESSION1F="$CASE1F/session"
+CHECKS1F="$CASE1F/checks.log"
+WRAPPER1F="$CASE1F/wrapper.sh"
+make_repo "$REPO1F"
+make_fixture_scripts "$SCRIPTS1F"
+make_session "$SESSION1F"
+printf 'synthetic checks failure\n' > "$CHECKS1F"
+write_wrapper_two_commits_same_branch "$WRAPPER1F"
+
+case1f_result=$(run_case "$SCRIPTS1F" "$REPO1F" "$SESSION1F" "$CHECKS1F" "$WRAPPER1F")
+case1f_rc=$(printf '%s\n' "$case1f_result" | sed -n '1p')
+case1f_out=$(printf '%s\n' "$case1f_result" | sed -n '2,$p')
+[[ "$case1f_rc" == "1" ]] || fail "case1f expected rc 1, got $case1f_rc"
+assert_contains "$case1f_out" 'LINT_FIX_STATUS=failed' "case1f status"
+assert_contains "$case1f_out" 'FAILURE_REASON=head-changed-after-dispatch' "case1f reason"
+if printf '%s\n' "$case1f_out" | grep -Fq 'LINT_FIX_DELTA_PATHS_FILE='; then
+    fail "case1f should not export LINT_FIX_DELTA_PATHS_FILE"
+fi
 
 # Case 2: helper-owned commit fails; staged delta paths must be reset.
 CASE2="$TMPROOT/case2"
