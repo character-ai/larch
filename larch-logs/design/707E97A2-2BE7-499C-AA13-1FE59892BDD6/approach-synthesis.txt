@@ -1,0 +1,54 @@
+# Approach Synthesis (Step 2a.4)
+
+Both quick-mode sketches (Codex-Generic + Cursor-Generic Claude-fallback) converged on essentially the same architecture, fully aligned with the operator-approved direction from the brainstorm Proposed Solution. There are no architectural contests; the synthesis is essentially the union of their concrete mechanism choices, with the brainstorm's binding constraints intact.
+
+## Where the sketches agree
+
+1. **Trigger plumbing.** A new `/larch:pause` skill (~30 lines) sources the PID-keyed env symlink (`~/.cache/larch/sessions/current-design-env-$PPID.sh`) to find the live session, then writes two sentinels: `$DESIGN_TMPDIR/.pause-requested` (preferred, in-session) and `~/.cache/larch/sessions/pause-requested-<ISSUE>.flag` (machine-wide fallback for when the env symlink is stale). The skill exits without waiting.
+2. **Pause check at Bash boundary.** `/design`'s SKILL.md prelude gains a single-line pause-check that fires before each Bash block body. When `.pause-requested` exists, it `exec`s `scripts/design-pause-save.sh`, which terminates the orchestrator cleanly after committing state.
+3. **Pause-save order: publish first, marker last.** `design-pause-save.sh` calls `scripts/design-log-publish.sh --reason pause` (new flag) FIRST to commit bulk artifacts to `larch-logs/design/<RUN_ID>/`. Only on `PUBLISH_OK=true` does it then write the tiny `<!-- larch:design-pause -->` marker block to the issue body via the new `scripts/named-block-write.sh`. The marker write is the atomic commit point — its presence is the sole signal "this is paused".
+4. **Marker payload.** The block contains: `STEP=<next-unfinished-step-id>`, `SESSION_ID`, `RUN_ID`, `TIER`, `BRAINSTORM_DONE`, `BODY_HASH` (sha256 of issue body sans-marker for the warn-on-drift check), `PAUSED_AT` (ISO-8601). Total well under 1 KB.
+5. **Resume detection in Step 0b.** After `session-setup.sh` allocates a fresh `$DESIGN_TMPDIR`, Step 0b inspects the issue body for `<!-- larch:design-pause -->`. When present, `scripts/design-pause-load.sh` (a) verifies `BODY_HASH` and warns-but-continues on mismatch (Decision 8 — marker wins), (b) fetches the `larch-logs/design/<RUN_ID>/` tree via `git fetch origin && git show origin/<default>:larch-logs/design/<RUN_ID>/…`, restoring artifacts into the fresh `$DESIGN_TMPDIR`, (c) atomically deletes the pause marker via `named-block-write.sh --marker design-pause --content-file /dev/null` (empty content + present = delete), and (d) hands control to `design-driver.sh --resume-from "$STEP"`.
+6. **Shared helper surface (Decision 4).** `scripts/named-block-write.sh` is the generalized block-edit primitive extracted from `plan-block-write.sh`. The original `plan-block-write.sh` becomes a 5-line thin wrapper (`exec named-block-write.sh --marker plan "$@"`) that preserves its bit-for-bit stdout contract (`WRITTEN/MODE/MARKERS_PRESENT/BODY_BYTES`). `/implement` and `/review` later wire their own `*-pause-save.sh` / `*-pause-load.sh` on top of the same `named-block-write.sh` + log-branch pattern.
+7. **`design-driver.sh --resume-from` extension.** Recognize step-IDs like `1c`, `1d`, `1d.5`, `1e`, `2a`, `2a.5`, `2b`, `2b.5`, `3`, `3.5`, `3b`, `4`, `4b`, `5`, `6` in addition to the existing ACTION names. A step-id regex (`^[0-9]+[a-z]?(\.[0-9]+)?$`) branches into step-id mode and normalizes via `step-name-registry.tsv`. Existing ACTION replay (EMIT_PLAN, VALIDATE_PLAN_COMMANDS, TALLY, FINALIZE) is preserved.
+8. **In-flight externals abandoned (Decision 5).** Pause sets `STEP` to the *step about to start* (next unfinished sentinel), not the step currently in-flight. Resume re-launches that step fresh. The Bash-boundary pause check guarantees pause never fires inside a Bash invocation, so partial Bash-tool output is impossible by construction; only mid-step prose work between Bash calls is at risk, and that worst case is one step of lost work per Decision 5.
+9. **Idempotent `design-log-publish.sh --reason pause`.** The new `--reason` flag (default `final`) differs from the existing path in: commit subject (`chore(larch-logs): pause design run ${RUN_ID} [skip ci]`), an extra `paused=true` field in `manifest.json`, and idempotent overwrite of an already-published `RUN_ID` (pause-publish is a snapshot, not a finalize). Default `final` preserves existing behavior bit-for-bit.
+10. **Title stays `[DESIGNING]` while paused.** `design-pause-save.sh` does NOT rename the issue; `[DESIGNED]` is reserved for Step 5c after Gate C approval. The marker block is the durable "paused" signal, distinct from the title-state machine.
+11. **Concurrent-edit policy (Decision 8).** `BODY_HASH` mismatch on load fires `**⚠ Issue body changed since pause — resuming anyway**` and proceeds (marker wins). No refuse-on-drift behavior.
+
+## Where the sketches diverge
+
+Effectively nowhere material. Codex emphasized a "next resumable step derived from sentinel scan" approach; Cursor-fallback proposed a `$DESIGN_TMPDIR/.completed/<step>` sentinel convention to formalize that. Both agree the **mechanism** is "track last-completed step → resume at next unfinished step". The `.completed/<step>` directory is a useful concrete naming convention — adopt it. Existing sentinels (`.brainstorm-done`, `.step3-entry-plan-printed`) are already de-facto step-completion markers; the new `.completed/` directory generalizes them without requiring renames (both old sentinels remain valid and are also read by the resume logic).
+
+## Files to modify or create (consolidated)
+
+**Create**:
+- `scripts/named-block-write.sh` — parameterized block-edit primitive (`--marker NAME`, `--content-file` empty = delete, `--issue`, `--repo`).
+- `scripts/named-block-write.md` — sibling contract.
+- `scripts/design-pause-save.sh` — composes redacted pause-state, publishes log snapshot, writes marker, logs failures via `append-tool-failure.sh`.
+- `scripts/design-pause-save.md` — sibling contract.
+- `scripts/design-pause-load.sh` — reads marker, verifies hash, restores tmpdir, removes marker, prints `STEP=` for parent.
+- `scripts/design-pause-load.md` — sibling contract.
+- `skills/pause/SKILL.md` — registers `/larch:pause` (~30 lines).
+- `scripts/test-design-pause-resume.sh` — round-trip + drift + delete + degraded-publish coverage.
+- `scripts/test-design-pause-resume.md` — sibling contract.
+
+**Modify**:
+- `scripts/plan-block-write.sh` — collapse to thin wrapper `exec "$SCRIPT_DIR/named-block-write.sh" --marker plan "$@"`.
+- `scripts/plan-block-write.md` — update to note the named-block delegation.
+- `scripts/design-log-publish.sh` — add `--reason {final,pause}` (default `final`); commit subject, manifest `paused=true`, idempotent overwrite on pause.
+- `scripts/design-log-publish.md` — document the new flag and pause semantics.
+- `skills/design/scripts/design-driver.sh` — extend `--resume-from` to recognize step IDs.
+- `skills/design/scripts/design-driver.md` — document the extended enum.
+- `skills/design/scripts/test-design-driver.sh` — cover step-id resume.
+- `skills/design/SKILL.md` — add Step 0b resume-detection sub-step + Bash-prelude pause-check + Anti-pattern "NEVER skip the pause-check sentinel".
+- `AGENTS.md` — add `larch:design-pause` to canonical-marker catalog reference.
+
+**Approximate net diff size**: ~700-1000 changed/added lines, weighted toward new scripts + their `.md` siblings + the test harness. SKILL.md and AGENTS.md edits are small.
+
+## Failure modes (from sketches)
+
+1. **Partial pause-save** (publish succeeded, marker write failed) — mitigated by publish-first ordering; absent marker means "no pause", which is the safer default.
+2. **Log-publish blocked** (admin merge disabled, branch protection drift) — fall back to `RECOVERY_BRANCH=` (existing `design-log-publish.sh` emission) and record it inside the marker so resume can fetch from the recovery branch.
+3. **Pause requested mid-Bash-tool** — sentinel only consulted between Bash calls; mid-tool pause is silently deferred until the tool returns. Worst case: one step of lost work, consistent with Decision 5.
+4. **Body-hash drift** — warn-and-proceed per Decision 8; never refuse.

@@ -1,0 +1,24 @@
+Grounding framings in the existing `/design` workflow and pause-related patterns before drafting ideation options.
+## 1. Issue-anchored workflow checkpoint
+
+`/design` pause/resume is a **named checkpoint** on the feature issue—the same anchor that already holds `larch:plan` and clarify threads. Pausing is the operator saying “stop here on purpose,” not the system inferring failure; the issue records *where* the workflow was (step, gates, tier flags) so a later `/design <N>` can re-enter without treating the run as finished or abandoned. The temp directory is optional acceleration; GitHub is the durable checkpoint tape. Resume is “continue from the bookmark,” not “start a new design run,” until Step 6 completes and `[DESIGNING]` can become `[DESIGNED]`.
+
+## 2. Cross-machine serialization protocol
+
+Conceptually, pause/resume adds a **wire format** beside the existing plan-block family: a redacted, machine-readable snapshot of orchestration state posted to the issue so any clone, machine, or session can deserialize intent. `/design` stays a stateless skill in the prompt; **state lives in the protocol**, not in Claude’s context window or `$DESIGN_TMPDIR`. Escape/Ctrl-C is the encode trigger; plain `/design <N>` is the decode trigger with auto-detection. In-flight externals are deliberately excluded from the serialized world—resume replays from a clean external slate, not half-finished agent output.
+
+## 3. Cooperative hibernate (not crash recovery)
+
+Pause behaves like **hibernate**: the operator freezes the run at an arbitrary step (mid-sketch, mid-panel, mid-gate) and expects the same logical process to wake later. It is explicitly **not** SIGSTOP on a live subprocess tree or automatic crash-recovery when the terminal dies—no silent “we noticed you left.” Ownership sits with the user: only an intentional interrupt plus an explicit pause intent creates a resumable marker. Unbounded pause→resume cycles mean the feature models long-running design work as a series of sleeps, not a single sitting.
+
+## 4. GitHub issue as the system of record
+
+The framing treats the tracking issue as a **small database row** for design-in-progress: title/status (`[DESIGNING]`), body markers (`larch:design-pause` alongside future `larch:plan`), and comments as auxiliary facts. `$DESIGN_TMPDIR` is a cache that may be rebuilt or discarded; the issue row is authoritative for “is this paused?” and “from which step?” Concurrent human edits to the body are a known conflict class—automation warns but the pause marker wins, like a optimistic-lock field on a document. That makes resume a read-modify-continue on shared infrastructure, not a private session file.
+
+## 5. Shared “workflow suspend” primitive for larch
+
+At the product level, pause/resume is a **reusable suspend primitive** under `scripts/`, born in `/design` but shaped so `/implement` and `/review` can adopt the same grammar later without this issue implementing those adopters. `/design` becomes the reference consumer: serialize phase/step, abandon externals, auto-resume on the same argv shape. The mental model is one library, many long-running skills—design is the first workflow that needed multi-day, multi-machine continuity. Users learn one pattern: interrupt when you need to leave; re-invoke the same skill on the same issue to continue.
+
+## 6. Explicit abandonment boundary for partial work
+
+Another lens emphasizes **what pause is not saving**: in-flight Cursor/Codex/sketch launches are torn down and discarded, so resume never tries to graft stale partial transcripts onto a fresh panel. Pause captures **orchestration decisions and artifacts already landed** (questions answered, synthesis written, gates passed), not the live fleet of agents. That frames the feature as hygiene for distributed design—checkpoint the durable narrative on GitHub, reboot the expensive parallel layer on resume. Mid-sketch pause means “we know we were in Step 2a slot 3”; it does not mean “reattach to agent job X.”

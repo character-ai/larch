@@ -1,0 +1,48 @@
+You are the **Codex / scope** ideation slot. Read the feature context and any Round-1 discussion excerpt you are given. Produce **3–6** **scope alternatives** (minimal vs moderate vs ambitious, or orthogonal splits) with one paragraph each naming tradeoffs and what each scope explicitly excludes. Do not collapse to one recommendation. Do NOT modify repository files.
+
+## Feature context
+
+> Brainstorm how to add ability to pause to /design, so it can save its state in issue, retain temp directory, and resume later
+
+This is GitHub issue #2959 in the larch repo (`/Users/zhupanov/larch8`). larch is a Claude Code plugin. `/design` is a multi-step workflow that takes a feature issue through clarifying questions, sketch agents, dialectic debate, full plan drafting, a 10-reviewer plan review panel (or 2-sketch + quick review under `--simple`), Gate B/C user approvals, and writes a `larch:plan` block back into the issue.
+
+## Round 1 user-resolved scope (binding constraints)
+
+1. **Cross-session full restore** — state must live in the issue, not local disk.
+2. **User-initiated pause** via Esc/Ctrl-C then explicit "pause" message.
+3. **Pause anywhere** including mid-external-reviewer.
+4. **Shared helper** for `/implement` and `/review` future adoption.
+5. **Abandon in-flight externals** on pause; re-launch on resume.
+6. **Auto-detect resume** via `/design <N>` reading issue markers.
+7. **Unbounded cycles** (pause → resume → pause → …).
+8. **Concurrent edits**: warn but proceed; marker wins.
+9. **Always-on**, no flag gate.
+
+## Codebase points relevant to scoping
+
+- Step 0a writes `$DESIGN_TMPDIR/source-env.sh` and a `current-design-env-$PPID.sh` symlink.
+- Per-step artifacts include `feature-description.txt`, `run-params.json`, `discussion-round1.md`, `brainstorm.md`, sketch outputs (`*-sketch-*-output.txt`), `approach-synthesis.txt`, `contested-decisions.md`, `dialectic-resolutions.md`, `plan.txt`, plan-review reviewer outputs, `voting-tally.md`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `composed-plan.md`, `final-summary.md`, `execution-issues.md`, `token-ledger.json`.
+- GitHub issue body has a soft cap (~65 KB raw). Comments have similar caps.
+- `plan-block-write.sh` reads/writes `<!-- larch:plan -->` blocks; the same mechanism can host other named blocks.
+- `redact-secrets.sh` filters before publishing to GH.
+- `design-log-publish.sh` already publishes `$DESIGN_TMPDIR` artifacts under `larch-logs/design/<RUN_ID>/` via a disposable worktree.
+- `design-driver.sh --resume-from STEP` supports action-replay (currently only used for the FINALIZE/EMIT_PLAN/VALIDATE/TALLY substeps).
+
+## Your task
+
+Produce 3–6 distinct **scope alternatives**, ordered from leanest to most ambitious or as orthogonal splits. For each:
+
+- One paragraph (3–6 sentences) describing the scope.
+- Name 1–2 tradeoffs (what it gains, what it costs).
+- Name what it explicitly excludes.
+
+Suggested axes you may explore (or invent your own):
+
+- **Granularity**: checkpoint-only vs anywhere (the user said anywhere — but you may sketch the "anywhere + best-effort" vs "anywhere strict" sub-scopes).
+- **State medium**: issue body only, vs issue body + comments, vs issue body + companion gist/branch, vs issue body + log-publish branch (`larch-logs/design/…`) already used by `design-log-publish.sh`.
+- **Per-artifact persistence**: stream every artifact write into the issue, vs periodic snapshot at step boundaries, vs only on pause request.
+- **Resume reconstruction**: full DESIGN_TMPDIR rebuild from issue, vs minimal "just enough to re-enter the right Step" with re-derivation of intermediate artifacts (re-launch sketches, etc.).
+- **Helper API surface**: just save/restore primitives, vs save/restore + step-boundary callbacks, vs full lifecycle SDK with hooks.
+- **Reuse-by-other-skills timing**: ship adopters now (Decision 4 says don't), vs ship hooks now and ports later, vs reserve a generic API but don't expose any hooks beyond /design's needs.
+
+Do NOT pick a winner. Do NOT design the implementation. Just delimit the scope envelopes. Respond as text; no file writes.

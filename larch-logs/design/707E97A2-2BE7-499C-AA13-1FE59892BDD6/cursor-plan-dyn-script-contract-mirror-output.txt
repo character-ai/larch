@@ -1,0 +1,30 @@
+Reviewing the plan against the repository: reading the plan file and the scripts it references.
+## Findings
+
+1. **[correctness]** `plan.txt:80` — Edge case claims `named-block-write.sh` inherits `gh issue edit` retry logic from `plan-block-write.sh`, but the current writer has a single attempt (`scripts/plan-block-write.sh:213-216`) with no retry loop. Operators may expect transient rate-limit recovery that does not exist.
+
+2. **[correctness]** `plan.txt:11,48` vs `scripts/plan-block-write.sh:169-197` — “Bit-for-bit” preservation of the stdout contract is undermined if `named-block-write.sh` implements `MODE=removed` for `/dev/null` (or “empty” content) when markers are present: today that path produces `MODE=replaced` with an empty inner block, not deletion. The thin `exec` wrapper would forward `/dev/null` and change observable `MODE=` for any caller that ever uses it on `plan-block-write.sh`.
+
+3. **[correctness]** `plan.txt:23,26` — Delete semantics say “`--content-file` is empty **or** `/dev/null`” without defining whether a zero-byte regular file counts. Treating any empty file as delete would make Step 5c (`composed-plan.redacted.md` accidentally empty) delete the `larch:plan` block instead of writing an empty block; the plan should pin delete to `/dev/null` only (or an explicit flag).
+
+4. **[correctness]** `plan.txt:26` — Contract doc says “four malformed exit conditions”; `plan-block-write.sh` emits **five** tokens (`multiple-start`, `multiple-end`, `start-without-end`, `end-without-start`, `end-before-start` at `scripts/plan-block-write.sh:90-110`). `scripts/test-plan-block.sh` exercises all five; under-documenting risks dropping `end-before-start` in the extraction.
+
+5. **[security]** `plan.txt:21-23` — `--marker NAME` is interpolated into `grep -E` patterns (`scripts/plan-block-write.sh:20-21` style) with no stated allowlist. Values containing regex metacharacters (`.`, `+`, etc.) could mis-classify bodies or match wrong lines; restrict markers to `^[a-z0-9][a-z0-9-]*$` (covers `plan` and `design-pause`).
+
+6. **[architecture]** `plan.txt:33-34` vs `scripts/plan-block-read.sh:20-21` — `design-pause-load.sh` will hand-parse `<!-- larch:design-pause:… -->` via `gh issue view` instead of reusing shared classify/extract logic. Marker-boundary drift vs `named-block-write.sh` (whitespace-tolerant regex) can cause `BODY_HASH` mismatch or failed resume; consider `named-block-read.sh --marker design-pause` or shared classify sourced from the write primitive.
+
+7. **[risk-integration]** `plan.txt:92` — Testing strategy says the pause harness is “Registered in `Makefile`”, but `### Files to modify/create` has no `Makefile` entry. Without a `test-design-pause-resume` target on a `test-harnesses-N` shard, CI will not run cases (c)–(f) including `/dev/null` → `MODE=removed`.
+
+8. **[nit]** `plan.txt:48` — After `exec` to `named-block-write.sh`, stderr/usage strings will say `named-block-write.sh` instead of `plan-block-write.sh` (`scripts/plan-block-write.sh:123,133-137`). Callers/tests only grep stdout KV lines today; still a debugging ergonomics change worth noting in `scripts/plan-block-write.md`.
+
+**Caller audit (documented CLI only):** `skills/design/SKILL.md:972` (`--issue`, `--content-file`), clarify prose at `:193`, `scripts/test-plan-block.sh`, `scripts/test-design-structure.sh:251`; no CI or `scripts/` callers use undocumented flags. `skills/implement/SKILL.md:1881` lists the helper but does not invoke it.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:80	Claims gh issue edit retry is inherited from plan-block-write	Transient gh rate limits still fail on first error; operators expect documented retry	Remove the retry claim or implement the same retry policy in named-block-write.sh and document it in named-block-write.md
+1	in_scope	important	correctness	plan.txt:11,48	Bit-for-bit stdout contract conflicts with MODE=removed via exec wrapper	plan-block-write with /dev/null and present markers returns MODE=removed not MODE=replaced	Limit delete semantics to named-block-write --marker design-pause only; in named-block-write reject /dev/null when --marker plan
+1	in_scope	important	correctness	plan.txt:23,26	Delete trigger ambiguous for zero-byte content files	Accidental empty composed-plan.redacted.md deletes larch:plan instead of writing empty block	Document and implement delete only for --content-file /dev/null (or explicit --remove flag)
+1	in_scope	important	correctness	plan.txt:26	Malformed-token count says four not five	end-before-start handling dropped in extraction or docs	Align named-block-write.md with five tokens and keep scripts/test-plan-block.sh coverage
+1	in_scope	important	security	plan.txt:21-23	No --marker allowlist before grep -E interpolation	Regex metacharacters in marker break classification or match wrong lines	Validate --marker against ^[a-z0-9][a-z0-9-]*$ before building MARK_START/MARK_END
+1	in_scope	important	architecture	plan.txt:33-34	design-pause-load hand-parses markers instead of shared classify	Resume BODY_HASH or STEP wrong when marker whitespace differs from writer	Share classify/extract with named-block-write or add named-block-read.sh
+1	in_scope	important	risk-integration	plan.txt:92	Makefile registration asserted but not listed in files to modify	Pause/resume harness never runs in make lint	Add Makefile target and register on a test-harnesses-N shard like test-plan-block
+1	in_scope	nit	code-quality	plan.txt:48	exec wrapper changes stderr script name prefix	Operators grep logs for plan-block-write.sh and miss failures	Note in plan-block-write.md that errors originate from named-block-write.sh or preserve larch_err prefix in wrapper

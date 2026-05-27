@@ -1,0 +1,26 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/plan-block-write.sh:169-196; <TMPDIR>/plan.txt:21-22	Empty-content delete semantics are not bit-for-bit compatible with plan-block-write.sh	Today an empty content file still produces a canonical empty larch:plan block and MODE=replaced or MODE=appended; the proposed named-block-write.sh removes an existing block and emits MODE=removed, so plan-block-write.sh --content-file /dev/null would silently delete the plan	Make deletion an explicit flag or opt-in mode used only by design-pause callers; keep --marker plan wrapper preserving empty-block replace/append and add regression cases to scripts/test-plan-block.sh
+1	in_scope	important	security	scripts/plan-block-write.sh:20-23; <TMPDIR>/plan.txt:21-25	Marker parameterization lacks a validation or escaping contract	Current regex constants are safe because plan is literal; a generic --marker NAME interpolated into grep -E can make regex metacharacters match or replace the wrong marker family	Specify and test either a fixed marker registry {plan,design-pause} or strict NAME validation plus ERE escaping before constructing MARK_START and MARK_END
+1	in_scope	latent	risk-integration	scripts/plan-block-write.sh:156-160,213-216; <TMPDIR>/plan.txt:79-80	Plan relies on inherited gh retry behavior that does not exist	The current writer performs one gh issue view and one gh issue edit; extracting it as-is will not handle transient rate limits despite the pause edge case claiming retry coverage	Add explicit bounded retry/backoff to named-block-write.sh if pause requires it, or revise the edge-case/failure-mode text and tests to reflect single-shot behavior
+1	in_scope	latent	architecture	.claude/rules/gh-body-file.md:136-141; <TMPDIR>/plan.txt:21-25	The new gh body writer is not added to the path-triggered body-file rule	.named-block-write.sh will become the shared gh issue edit --body-file implementation, but future edits to it will not trigger the repository rule that enforces body-file and redaction practices	Add scripts/named-block-write.sh and scripts/named-block-write.md to .claude/rules/gh-body-file.md frontmatter
+1	in_scope	important	risk-integration	Makefile:4,176-177; <TMPDIR>/plan.txt:42-45,90-94	New pause/resume harness is promised but Makefile is not in the modification list	CI will not run skills/design/scripts/test-design-pause-resume.sh unless Makefile gains a target and shard wiring	Add UPDATED: Makefile to the plan and register test-design-pause-resume in the appropriate harness shard
+
+1. **[correctness] `scripts/plan-block-write.sh:169-196`**
+Concern: the proposed generic delete behavior is not compatible with the current `plan-block-write.sh` empty-content behavior. Current code always builds `CANON_START`, optional inner content, and `CANON_END`, then replaces or appends that block. It never treats an empty file or `/dev/null` as removal.
+Suggested revision: make deletion explicit, for example `named-block-write.sh --delete`, and have `plan-block-write.sh` call only the legacy replace/append path.
+
+2. **[security] `scripts/plan-block-write.sh:20-23`**
+Concern: the current grammar constants are regex literals only because `plan` is hard-coded. The plan introduces arbitrary `--marker NAME` without requiring validation or escaping.
+Suggested revision: constrain marker names to a registry or a strict safe character class before using them in `grep -E`, and add negative tests for regex metacharacters.
+
+3. **[risk-integration] `scripts/plan-block-write.sh:156-160,213-216`**
+Concern: the plan says pause marker writes inherit `gh issue edit` retry logic, but the current writer has no retry sequence.
+Suggested revision: either implement retry in `named-block-write.sh` with tests, or remove the retry claim and keep pause failure handling single-shot.
+
+4. **[architecture] `.claude/rules/gh-body-file.md:136-141`**
+Concern: the new shared writer will own a sensitive `gh ... --body-file` call but is not added to the rule frontmatter that keeps future edits under the body-file/redaction reminder.
+Suggested revision: add `scripts/named-block-write.sh` and `.md` to that rule.
+
+5. **[risk-integration] `Makefile:4,176-177`**
+Concern: the plan promises the new pause/resume harness is registered in CI, but it does not list `Makefile` as updated.
+Suggested revision: add the Makefile target and shard entry explicitly.

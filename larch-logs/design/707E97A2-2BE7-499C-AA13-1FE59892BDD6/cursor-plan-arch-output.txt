@@ -1,0 +1,49 @@
+Exploring codebase files referenced in the plan to validate contracts and integration points.
+Review findings on the proposed pause/resume plan:
+
+1. **[architecture]** `skills/design/SKILL.md` Step 0b — Sub-step **0b.6** is placed before clarify (3), already-planned (4), tier gate (5), and `write-run-params.sh` (6), but resume routing only says to skip **0c+**. On `LOAD_OK=true`, those later **0b** substeps can still run and overwrite restored `run-params.json`, re-trigger clarify/already-planned prompts, or reset tier flags.
+
+2. **[correctness]** `scripts/design-pause-load.sh` (proposed) — `git archive --remote origin … | tar -x -C "$DESIGN_TMPDIR"` is not viable on GitHub (no `git-upload-archive`). Resume fetch will fail in normal clones.
+
+3. **[correctness]** `scripts/design-pause-load.sh` (proposed) — Published artifacts live under `larch-logs/design/<RUN_ID>/` ([`docs/run-logs.md`](docs/run-logs.md)), not at `$DESIGN_TMPDIR` top level. Blind `tar -x` into `$DESIGN_TMPDIR` leaves files under a nested prefix instead of restoring `run-params.json`, `.brainstorm-done`, etc.
+
+4. **[integration]** [`scripts/design-log-publish.sh`](scripts/design-log-publish.sh) — Publish copies only maxdepth-1 **files** plus `plan-review/` and `render-cache/` ([`scripts/design-log-publish.md`](scripts/design-log-publish.md)); it does not stage `$DESIGN_TMPDIR/.completed/`. New `.completed/step-*` sentinels (and repeat-pause STEP recompute after resume) will not round-trip, conflicting with “preserved through the log-branch snapshot” and test (f) unbounded cycles.
+
+5. **[architecture]** `scripts/design-pause-load.sh` (proposed) — SKILL.md calls `design-pause-load.sh --issue $ISSUE_NUMBER` only; the script must take `--design-tmpdir` (the fresh dir from Step 0a) and likely `--repo` for forked targets. Without that, load target is undefined.
+
+6. **[integration]** [`skills/pause/SKILL.md`](skills/pause/SKILL.md) — `/larch:pause` sources `current-design-env-$PPID.sh` and requires `ISSUE_NUMBER`, but [`skills/design/SKILL.md`](skills/design/SKILL.md) only **may** re-invoke `write-design-current-env.sh` with `--issue-number` after 0b; Step 0a never writes it. Pause can report “no live session” while `/design` is active.
+
+7. **[integration]** [`scripts/design-log-publish.sh`](scripts/design-log-publish.sh):159-169 — Pause idempotent overwrite covers local `branch -D` only. The existing “branch already checked out in another worktree” guard still fails republish for the same `RUN_ID`, blocking the second pause in a cycle.
+
+8. **[correctness]** [`scripts/design-log-publish.sh`](scripts/design-log-publish.sh):441-443 — Empty `git status --porcelain` returns `PUBLISH_OK=true` without applying `--reason pause` / `.paused=true`. Repeat pause on an unchanged tree can skip manifest pause metadata.
+
+9. **[code-quality]** Plan failure modes reference `PAUSE_OK=false` / `ERROR=…` from `design-pause-save.sh`, but the NEW script spec only documents exit 0 and omits stdout KV lines the orchestrator must parse after `exec`.
+
+10. **[correctness]** `scripts/design-pause-save.sh` (proposed) — “Lexicographically-smallest unfinished step” should be “first registry row in [`step-name-registry.tsv`](skills/design/scripts/step-name-registry.tsv) without `step-<id>` sentinel”; string sort diverges from workflow order for some IDs.
+
+11. **[architecture]** [`skills/design/scripts/step-name-registry.tsv`](skills/design/scripts/step-name-registry.tsv) — Step **0c** exists in SKILL.md but has no registry row; plan leaves add as conditional. Pause STEP breadcrumbs should require the `0c` row.
+
+[OUT_OF_SCOPE] **[security]** `SECURITY.md` — No trust-model note for new `pause-requested-<ISSUE>.flag` files beside `current-design-env-<PID>.sh` (same `~/.cache/larch/sessions/` surface).
+
+[OUT_OF_SCOPE] **[architecture]** [`docs/issue-anchored-plan.md`](docs/issue-anchored-plan.md) — `larch:design-pause` body marker not added to the LIVE wire-format doc (only AGENTS.md catalog).
+
+[OUT_OF_SCOPE] **[integration]** [`scripts/test-design-log-publish.sh`](scripts/test-design-log-publish.sh) / `Makefile` — No plan update to cover `--reason pause` branches (idempotent branch, commit subject, `manifest.paused`).
+
+[OUT_OF_SCOPE] **[integration]** [`scripts/test-design-structure.sh`](scripts/test-design-structure.sh) — No structural pin for the two-line Bash prelude + anti-pattern #7; regression risk across ~30 prelude copies.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/design/SKILL.md:186-210	Resume sub-step 0b.6 does not skip clarify already-planned tier or run-params substeps	LOAD_OK=true restores snapshot then 0b.3-6 overwrite run-params.json or re-prompt canceling resume	When LOAD_OK=true after 0b.6 skip 0b.3-6 jump to STEP and refresh write-design-current-env from restored KV only
+1	in_scope	important	correctness	scripts/design-pause-load.sh:1-1	Proposed fetch uses git archive --remote against GitHub	Normal github.com clones cannot upload-archive resume always errors snapshot-not-found	Use git fetch then git checkout or git show ref path into DESIGN_TMPDIR per existing repo patterns
+1	in_scope	important	correctness	scripts/design-pause-load.sh:1-1	tar -x into DESIGN_TMPDIR preserves larch-logs/design/RUN_ID prefix	Restored tree lacks top-level run-params.json and step sentinels orchestrator expects	After fetch copy or strip-components=3 from archive tree into DESIGN_TMPDIR root
+1	in_scope	important	integration	scripts/design-log-publish.sh:272-289	Publish path never stages DESIGN_TMPDIR/.completed	Second pause after resume loses step sentinels STEP miscomputed test f fails	Add .completed tree to pause publish staging or persist full step map in marker KV
+1	in_scope	important	architecture	scripts/design-pause-load.sh:1-1	Missing --design-tmpdir and --repo in load contract	SKILL passes only --issue load cannot target fresh Step 0a tmpdir	Document and implement --design-tmpdir required optional --repo mirror design-pause-save
+1	in_scope	important	integration	skills/pause/SKILL.md:1-1	Pause skill requires ISSUE_NUMBER in sourced env file	/larch:pause after Step 0a before env refresh prints no live session while design runs	Mandate write-design-current-env --issue-number bash block immediately after 0b.1 binds issue
+1	in_scope	important	integration	scripts/design-log-publish.sh:159-169	Pause idempotent overwrite omits worktree-already-checked-out guard	Second pause for same RUN_ID hits PUBLISH_OK=false when branch still in worktree list	On --reason pause force-remove stale worktree before branch delete recreate
+1	in_scope	important	correctness	scripts/design-log-publish.sh:441-443	Empty porcelain early exit skips pause manifest metadata	Repeat pause with no file changes returns success without paused=true in manifest	On --reason pause still jq-set manifest.paused even when porcelain empty
+1	in_scope	important	code-quality	scripts/design-pause-save.sh:1-1	PAUSE_OK stdout contract in failure modes absent from NEW script spec	Orchestrator cannot surface marker-write-failed after exec	Align design-pause-save.md with PAUSE_OK ERROR KV lines matching failure modes section
+1	in_scope	latent	correctness	scripts/design-pause-save.sh:28-28	Lexicographically-smallest step wording conflicts with registry-order intent	Wrong STEP recorded at pause boundary skews resume routing	Walk step-name-registry.tsv in file order pick first missing step-id sentinel
+1	in_scope	nit	architecture	skills/design/scripts/step-name-registry.tsv:1-17	Step 0c in SKILL.md has no registry row	0c omitted from pause STEP vocabulary and breadcrumbs	Add explicit 0c row plan currently leaves conditional
+1	out_of_scope	nit	security	SECURITY.md:51-51	No trust note for pause-requested issue flag files	Same-UID cache tampering undocumented for new marker	Document alongside current-design-env trust paragraph
+1	out_of_scope	nit	architecture	docs/issue-anchored-plan.md:49-71	larch:design-pause not in LIVE wire-format doc	Implement and operators lack normative marker rules	Add design-pause block section parallel to larch:plan
+1	out_of_scope	latent	integration	scripts/test-design-log-publish.sh:1-1	No harness plan for --reason pause branches	Pause publish regressions slip past CI	Extend test-design-log-publish or test-design-pause-resume stubs
+1	out_of_scope	latent	integration	scripts/test-design-structure.sh:299-300	No structural pin for two-line prelude	Drift drops pause-check from subset of Bash blocks	Add grep pin for pause-check alongside current-design-env prelude

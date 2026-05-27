@@ -1,0 +1,41 @@
+Reading the implementation plan and exploring the referenced codebase paths.
+1. **[correctness]** `skills/design/SKILL.md:186-189` + `scripts/lib-title-eligibility.sh:12` — Resume is specified after sub-step **2.5**, but `[DESIGNING]` is in `LARCH_TITLE_LIFECYCLE_REJECT_REGEX`. Any pause after Step **0b.5.5** (normal path) leaves `[DESIGNING]` on the title, so a smoke-test-style `/design <N>` re-entry is refused before sub-step **0b.6** runs.
+
+2. **[correctness]** `scripts/design-pause-load.sh` (proposed) — `git archive … larch-logs/design/<RUN_ID> | tar -x -C "$DESIGN_TMPDIR"` preserves the `larch-logs/design/<RUN_ID>/` prefix. Publish stages into that tree (`scripts/design-log-publish.sh:269-288`), so restore lands under a nested path instead of `$DESIGN_TMPDIR/run-params.json`, `.completed/`, etc.
+
+3. **[correctness]** `scripts/design-log-publish.sh:272-289` vs plan Approach §sentinels — Publish only stages **top-level files** (`find … -maxdepth 1 -type f`). `$DESIGN_TMPDIR/.completed/` is a directory and is **not** published. Claiming per-step sentinels are “preserved through the log-branch snapshot” is inaccurate; only marker KVs (`STEP`, `BRAINSTORM_DONE`, …) can drive resume.
+
+4. **[risk-integration]** `skills/pause/SKILL.md` (proposed) + `skills/design/SKILL.md:176` — `/larch:pause` requires `ISSUE_NUMBER` from `current-design-env-$PPID.sh`, but Step **0a** writer omits `--issue-number`, and Step **0b** only mentions an optional follow-up writer in prose (no pinned bash block). Pause during Steps **1c+** can falsely report “no live /design session” while `DESIGN_TMPDIR` exists.
+
+5. **[correctness]** `skills/design/SKILL.md:192-201` vs proposed Step **0b.6** — On `LOAD_OK=true`, the plan jumps to orchestrator step `STEP` but does not short-circuit Step **0b** clarify / already-planned / tier-gate / **5.5** rename. A paused issue can re-enter clarify handling or duplicate `[DESIGNING]` rename instead of restoring in-flight state.
+
+6. **[architecture]** `skills/design/SKILL.md:117-169` + proposed `design-pause-load.sh` — Step **0a** always allocates a new `SESSION_ID` via `session-setup.sh` before resume load. The plan must specify binding restored `RUN_ID`/`SESSION_ID` from load stdout (and/or argv `--run-id`) **before** any publish, and refreshing `write-design-current-env.sh` afterward; otherwise pause snapshots and resume publishes can diverge.
+
+7. **[risk-integration]** `scripts/design-log-publish.sh:159-162` — Idempotent local branch delete (proposed `--reason pause`) does not address “branch already checked out in another worktree”. Repeat pause on the same `RUN_ID` after a failed/stale publish can still emit `PUBLISH_OK=false` with no marker write.
+
+8. **[correctness]** proposed `design-pause-load.sh` — Prefer `git fetch` + `git archive` on a local ref over `git archive --remote` (removed/unsupported on many modern Git builds). Plan should match existing repo patterns (no current `git archive` usage).
+
+9. **[risk-integration]** `skills/design/SKILL.md:68-72` + `Makefile:368-369` — Prelude change is one new line in **every** Step **1c–6** bash fence (~31 occurrences) plus anti-pattern text; the plan does not require a `test-design-structure.sh` pin (cf. prior prelude regressions). Easy to ship a partial SKILL update.
+
+10. **[risk-integration]** `skills/design/scripts/test-design-pause-resume.sh` (proposed) + `Makefile` — Harness is “registered alongside `test-*`” but no `test-harnesses-N` shard is named; risk of CI never running it (same class as prior `test-design-reentry-guard` wiring gaps).
+
+11. **[latent]** `scripts/design-log-publish.sh:441-443` — No-op publish (`git status` empty) returns `PUBLISH_OK=true` without refreshing `manifest.json` `paused=true` when `--reason pause`. Repeated pause cycles may omit the documented manifest signal.
+
+[OUT_OF_SCOPE] `docs/issue-anchored-plan.md` — No `larch:design-pause` marker documented alongside `larch:plan` / clarification wire format; operators/implement tooling lack a normative spec for the new body block.
+
+[OUT_OF_SCOPE] `README.md:32-80` — Skills table omits `/larch:pause`; discoverability gap for a new public skill surface.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:186-189	Resume after lifecycle filter conflicts with [DESIGNING] reject	Paused run cannot re-enter via /design N; 0b.6 never runs	Exempt [DESIGNING] when design-pause marker present, or run resume detection before 2.5 lifecycle-reject
+1	in_scope	important	correctness	scripts/design-pause-load.sh:1	Archive extract preserves larch-logs/ prefix under tmpdir	Restore leaves files under nested larch-logs/design/RUN_ID not tmpdir root	Strip prefix on extract or copy archived files to DESIGN_TMPDIR root after tar
+1	in_scope	important	correctness	scripts/design-log-publish.sh:272-289	.completed/ not published with pause snapshot	Sentinel-based idempotency lost after load; plan claim is false	Publish .completed on pause reason, or drop sentinel-restore claim and rely only on marker KVs
+1	in_scope	important	risk-integration	skills/pause/SKILL.md:1	ISSUE_NUMBER absent from sourced session env until optional writer refresh	/larch:pause no-ops during active design after 1c	Mandate write-design-current-env --issue-number bash block in Step 0b after bind, or derive issue from tmpdir artifact in pause skill
+1	in_scope	important	correctness	skills/design/SKILL.md:192-201	Resume omits Step 0b router short-circuit	Reloaded run hits clarify/tier/rename instead of STEP	On LOAD_OK=true skip 0b sub-steps 3-6 and jump to STEP per stdout
+1	in_scope	important	architecture	skills/design/SKILL.md:117-169	New SESSION_ID from 0a before load restores old RUN_ID	Pause republish targets wrong run directory	After load set SESSION_ID/RUN_ID from marker; pass --run-id on 0a when resuming; refresh source-env
+1	in_scope	important	risk-integration	scripts/design-log-publish.sh:159-162	Pause idempotent branch delete ignores active worktree	Same RUN_ID republish fails PUBLISH_OK=false	Teardown stale worktree for larch-log-design-RUN_ID before recreate, or document operator cleanup
+1	in_scope	important	correctness	scripts/design-pause-load.sh:1	git archive --remote in load path	Resume fails on GitHub/Git versions without remote archive	Fetch recovery/default ref locally then git archive from local object
+1	in_scope	important	risk-integration	skills/design/SKILL.md:68-72	Prelude pause-check not structurally pinned across all bash blocks	Some steps miss pause line; pause silently dropped	Add test-design-structure check counting two-line prelude from Step 1c onward
+1	in_scope	nit	risk-integration	Makefile:1	test-design-pause-resume not assigned to test-harnesses-N	Harness never runs in CI	Register target on test-harnesses-14 or -20 with harness-timer.sh
+1	in_scope	latent	scripts/design-log-publish.sh:441-443	Empty porcelain early exit skips paused manifest field	manifest.json lacks paused=true on no-op republish	When reason=pause still jq-set .paused=true even if commit skipped
+1	out_of_scope	latent	architecture	docs/issue-anchored-plan.md:1	No normative design-pause body marker doc	Operators lack wire-format spec for new block	Add design-pause section parallel to larch:plan markers
+1	out_of_scope	nit	architecture	README.md:32-80	/larch:pause missing from skills table	Users may not discover pause skill	Add README/docs.skills.md row for /larch:pause

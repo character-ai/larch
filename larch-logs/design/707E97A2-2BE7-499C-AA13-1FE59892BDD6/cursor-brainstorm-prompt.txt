@@ -1,0 +1,40 @@
+You are the **Cursor / framing** ideation slot for an early design brainstorm. Read the feature context and any Round-1 discussion excerpt you are given. Produce **3–6** distinct **feature framings** — different ways to describe what we are building and why it matters — without picking a single implementation. Each framing should be one short paragraph. Stay additive: do not claim the user chose a scope. Do NOT modify repository files.
+
+## Feature context
+
+> Brainstorm how to add ability to pause to /design, so it can save its state in issue, retain temp directory, and resume later
+
+This is the GitHub issue #2959 in the larch repo. larch is a Claude Code plugin (skills + scripts) under `/Users/zhupanov/larch8`. The `/design` skill is a multi-step workflow (Steps 0 → 6) that takes a feature issue from clarifying questions through reviewer panels to an approved implementation plan written back into the issue body as a `larch:plan` block.
+
+## Round 1 user-resolved scope (binding constraints — do not contradict)
+
+1. **Cross-session full restore.** All state must live on GitHub (issue body and/or comments) so resume works from any machine even if `$DESIGN_TMPDIR` is gone.
+2. **Trigger.** User presses Escape or Ctrl-C at any point and explicitly asks to pause. Not automatic crash-recovery.
+3. **Pause granularity.** Anywhere — including mid-sketch and mid-plan-reviewer.
+4. **Generalization.** Build a shared helper (under `scripts/`) that `/implement` and `/review` can later adopt; do not implement those adopters here.
+5. **In-flight externals.** Abandon — kill the launcher, discard partial output, re-launch fresh on resume.
+6. **Resume grammar.** Plain `/design <N>` auto-detects paused state and resumes. No explicit flag.
+7. **Cycles.** Unbounded pause → resume → pause → resume.
+8. **Concurrent issue-body edits.** Warn but continue; paused-state marker wins.
+9. **Rollout.** Always-on once landed; no feature flag.
+
+## Existing-codebase touchpoints (do not invent — these exist)
+
+- `skills/design/SKILL.md` defines steps 0–6 and the prelude env-file pattern (`~/.cache/larch/sessions/current-design-env-$PPID.sh`).
+- `skills/design/scripts/design-driver.sh --resume-from STEP` already supports action-level replay for EMIT_PLAN / VALIDATE_PLAN_COMMANDS / FINALIZE / TALLY.
+- `/implement` uses `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel + `ship-pr-state.sh` with `PHASE` resume.
+- `scripts/plan-block-write.sh` writes a `larch:plan` block to issue body (`<!-- larch:plan -->` / `<!-- /larch:plan -->`). Same marker family fits a `larch:design-pause` block.
+- Tracking-issue title transitions `[DESIGNING]` → `[DESIGNED]` via `scripts/tracking-issue-write.sh`.
+- `scripts/redact-secrets.sh` already exists for filtering before issue writes.
+
+## Your task
+
+Produce 3–6 distinct **framings** of what `/design` pause/resume IS conceptually — different mental models / metaphors for thinking about this feature. For each framing, give one short paragraph (3–6 sentences). Do NOT pick a winner. Do NOT propose implementation details. Examples of framing axes (you may use these or invent your own):
+
+- Is it a "session continuation" primitive, a "workflow checkpoint" primitive, or a "serialization protocol"?
+- Is the issue body acting as a database, a queue, a snapshot file, or a distributed-systems "log"?
+- Is `/design` becoming "stateful" or is the state always externalized?
+- Is pause more like SIGSTOP, hibernate, browser-tab "save and reopen", or VM-snapshot?
+- Is the user the "owner" of the pause point, or is the system?
+
+Output your framings as a bare list, each titled, one paragraph each. No file writes; respond with text only.
