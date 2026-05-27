@@ -301,7 +301,7 @@ invoke_render() {
     if [ "$_cost_unavailable" = true ]; then
         render_cost_args=(--cost-unavailable)
     else
-        render_cost_args=("${COST_ARGS[@]}")
+        render_cost_args=(${COST_ARGS[@]+"${COST_ARGS[@]}"})
     fi
     if [ "$OUTCOME" = "cancelled-outline" ]; then
         printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate' >"$note_file"
@@ -335,7 +335,8 @@ invoke_render() {
         --run-logs-path "$RUN_LOGS_PATH"
         --output-file "$out_file"
     )
-    "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${render_cost_args[@]}" "${note_args[@]}"
+    # Bash 3.2 + nounset requires the safe-empty array idiom; see BASH_AUTHORING.md §3.
+    "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" ${render_cost_args[@]+"${render_cost_args[@]}"} ${note_args[@]+"${note_args[@]}"}
 }
 
 append_render_warning() {
