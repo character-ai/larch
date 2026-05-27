@@ -1,0 +1,57 @@
+Propose a high-level implementation approach for this feature:
+
+# Issue #2959: Add pause/resume to /design
+
+The /design skill in the larch Claude Code plugin (repo: character-ai/larch, working tree: /Users/zhupanov/larch8) is a multi-step workflow (Steps 0 → 6) that takes a feature issue through clarifying questions, optional brainstorm, sketches, dialectic, plan drafting, plan review, gates B/C, and finalize. The user wants to pause this workflow mid-run and resume it later, possibly on a different machine.
+
+## Brainstorm context (operator-approved direction)
+
+After Round 1 discussion and a 3-slot brainstorm panel, the operator approved this composite proposed solution (some rework on resume is acceptable; simplicity and minimum-change is paramount):
+
+**Mechanism**:
+1. Tiny `<!-- larch:design-pause -->` marker block in the issue body holds only a pointer (~300 bytes): `STEP=<step-id>`, `SESSION_ID`, `RUN_ID`, `TIER`, `BRAINSTORM_DONE`, `BODY_HASH`, `PAUSED_AT`.
+2. Bulk artifacts (sketches, plan.txt, reviewer outputs, ledgers) are committed to the **existing** `larch-logs/design/<RUN_ID>/` branch via the **existing** `scripts/design-log-publish.sh` (today only runs end-of-design — extend to also run on pause via `--reason pause`).
+3. User triggers pause by hitting Esc to interrupt Claude, then invoking a new tiny skill `/larch:pause` (~30 lines). That skill writes `$DESIGN_TMPDIR/.pause-requested` + `~/.cache/larch/sessions/pause-requested-<ISSUE>.flag`, then exits.
+4. `/design` SKILL.md gets a between-Bash-boundary sentinel check: after every Bash call returns, the orchestrator checks `.pause-requested`; if present, run pause-save and exit. The "anywhere" requirement collapses to "anywhere a step boundary fires" — mid-Bash Esc means worst-case one step of lost work.
+5. Resume: `/design <N>` reads issue body for `larch:design-pause`; if present, fetches log-branch snapshot, restores `$DESIGN_TMPDIR`, uses `design-driver.sh --resume-from STEP` (extended to recognize all major step IDs like `1c`, `1d`, `2a`, `2b`, `3`, `3.5`, `3b`, `4`, `4b`) to skip to the named step, atomically removes the pause marker before continuing.
+6. Shared helper surface: 4 new scripts `scripts/design-pause-save.sh`, `scripts/design-pause-load.sh`, `scripts/named-block-write.sh` (extracted from `plan-block-write.sh` block-edit logic), `skills/pause/SKILL.md`. Plus 2 modified: `design-log-publish.sh` (--reason pause), `design-driver.sh` (extended --resume-from). Plus 1 test harness.
+
+## Binding constraints from Round 1 (must respect)
+
+1. Cross-session full restore — state lives on GitHub (issue body and log-branch); resume works from any machine.
+2. User-initiated pause via Esc + explicit "pause" request. Not crash-recovery.
+3. Pause anywhere — including mid-sketch and mid-plan-reviewer. (Honored via Bash-boundary sentinel + step-level resume.)
+4. Build a shared helper under `scripts/` that `/implement` and `/review` can later adopt. No adopter code in this issue.
+5. Abandon in-flight externals on pause; re-launch fresh on resume.
+6. Auto-detect resume — plain `/design <N>` reads issue marker.
+7. Unbounded pause/resume cycles.
+8. Concurrent issue-body edits: warn but the paused-state marker wins.
+9. Always-on. No feature flag.
+
+## Existing codebase touchpoints (reuse — do not duplicate)
+
+- `scripts/plan-block-write.sh` — already writes `<!-- larch:plan -->` blocks. Extract reusable block-edit logic into a new `scripts/named-block-write.sh` so both `larch:plan` and `larch:design-pause` use it.
+- `scripts/design-log-publish.sh` — already publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR.
+- `scripts/redact-secrets.sh` — already used before any issue write; must be used by pause-save.
+- `skills/design/scripts/design-driver.sh` — already supports `--resume-from STEP` for ACTION-sequence replay (EMIT_PLAN, VALIDATE_PLAN_COMMANDS, FINALIZE, TALLY). Needs to extend the step enum.
+- `scripts/session-setup.sh` — allocates fresh `$DESIGN_TMPDIR` on each run (reuse on resume).
+- `~/.cache/larch/sessions/current-design-env-$PPID.sh` — stable session handle the pause skill uses to find the live run.
+- `scripts/tracking-issue-write.sh` — manages `[DESIGNING]` ↔ `[DESIGNED]` title transitions. Issue stays at `[DESIGNING]` while paused.
+- `scripts/append-tool-failure.sh` — pause-save / load failures use this logger.
+- Existing `parent-issue.md` sentinel + `ship-pr-state.sh PHASE` resume patterns in `/implement` — informative reference, not directly reused.
+
+## Step IDs in /design (for the --resume-from enum)
+
+`0` (setup), `1c` (questions), `1d` (discussion r1), `1d.5` (brainstorm), `1e` (gate A), `2a` (sketches), `2a.5` (dialectic), `2b` (full plan), `2b.5` (plan size), `3` (plan review), `3.5` (gate B), `3b` (arch diagram), `4` (rejected findings), `4b` (gate C), `5` (finalize), `6` (cleanup). Sentinels for `.brainstorm-done`, `.step3-entry-plan-printed`, `.dirty-tree-prompted-*` already exist; pause/resume must preserve them.
+
+## Your task
+
+Explore the codebase. Write **2-3 paragraphs** covering:
+
+1. **Key architectural decisions and approach** — within the operator-approved direction, name the exact mechanism choices: how does `.pause-requested` propagate? How does `design-log-publish.sh --reason pause` differ from the existing end-of-design commit? How is `named-block-write.sh` factored from `plan-block-write.sh`? How does `--resume-from` extend its step enum? How does `/larch:pause` find the live session? When does the resume detection fire in Step 0b? Be concrete.
+
+2. **Which files/modules to modify and why** — give an exact list of files to create or modify with one-line rationale each. Prefer minimum-change. Reuse existing helpers.
+
+3. **Main tradeoffs and risks** — name the top 3 implementation risks (e.g., partial-state on crash mid-pause-save, log-publish PR being blocked, in-flight Bash tools that don't honor sentinel between exit and next Bash call, hash mismatch on issue body causing user confusion, etc.). For each, name a mitigation.
+
+Do NOT modify files. Output text only.

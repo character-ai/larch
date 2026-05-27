@@ -1,0 +1,704 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:186-210
+- **Concern**: Resume sub-step 0b.6 does not skip clarify already-planned tier or run-params substeps. Scenario: LOAD_OK=true restores snapshot then 0b.3-6 overwrite run-params.json or re-prompt canceling resume
+- **Proposed resolution**: When LOAD_OK=true after 0b.6 skip 0b.3-6 jump to STEP and refresh write-design-current-env from restored KV only
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-load.sh:1-1
+- **Concern**: Proposed fetch uses git archive --remote against GitHub. Scenario: Normal github.com clones cannot upload-archive resume always errors snapshot-not-found
+- **Proposed resolution**: Use git fetch then git checkout or git show ref path into DESIGN_TMPDIR per existing repo patterns
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-load.sh:1-1
+- **Concern**: tar -x into DESIGN_TMPDIR preserves larch-logs/design/RUN_ID prefix. Scenario: Restored tree lacks top-level run-params.json and step sentinels orchestrator expects
+- **Proposed resolution**: After fetch copy or strip-components=3 from archive tree into DESIGN_TMPDIR root
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/design-pause-load.sh:1-1
+- **Concern**: Missing --design-tmpdir and --repo in load contract. Scenario: SKILL passes only --issue load cannot target fresh Step 0a tmpdir
+- **Proposed resolution**: Document and implement --design-tmpdir required optional --repo mirror design-pause-save
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-log-publish.sh:441-443
+- **Concern**: Empty porcelain early exit skips pause manifest metadata. Scenario: Repeat pause with no file changes returns success without paused=true in manifest
+- **Proposed resolution**: On --reason pause still jq-set manifest.paused even when porcelain empty
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: scripts/design-pause-save.sh:1-1
+- **Concern**: PAUSE_OK stdout contract in failure modes absent from NEW script spec. Scenario: Orchestrator cannot surface marker-write-failed after exec
+- **Proposed resolution**: Align design-pause-save.md with PAUSE_OK ERROR KV lines matching failure modes section
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-save.sh:28-28
+- **Concern**: Lexicographically-smallest step wording conflicts with registry-order intent. Scenario: Wrong STEP recorded at pause boundary skews resume routing
+- **Proposed resolution**: Walk step-name-registry.tsv in file order pick first missing step-id sentinel
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: skills/design/scripts/step-name-registry.tsv:1-17
+- **Concern**: Step 0c in SKILL.md has no registry row. Scenario: 0c omitted from pause STEP vocabulary and breadcrumbs
+- **Proposed resolution**: Add explicit 0c row plan currently leaves conditional
+
+### OOS_1:
+- **Description**: No trust note for pause-requested issue flag files. Scenario: Same-UID cache tampering undocumented for new marker
+- **Reviewer**: Cursor-Arch
+- **Severity**: nit
+- **Focus area**: security
+- **Location**: SECURITY.md:51-51
+- **Phase**: design
+
+### OOS_2:
+- **Description**: larch:design-pause not in LIVE wire-format doc. Scenario: Implement and operators lack normative marker rules
+- **Reviewer**: Cursor-Arch
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: docs/issue-anchored-plan.md:49-71
+- **Phase**: design
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/pause/SKILL.md:NEW; skills/design/SKILL.md:158-176
+- **Concern**: /larch:pause depends on ISSUE_NUMBER in current-design-env but the plan does not make issue-number rehydration mandatory after Step 0b binds the issue. Scenario: The new pause skill sources current-design-env-$PPID.sh and treats unset ISSUE_NUMBER as no live session, so a normal /design run can never be paused even after the issue is known
+- **Proposed resolution**: Add a required Step 0b writer refresh immediately after issue binding using write-design-current-env.sh --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID", and cover it in the pause harness
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/design-driver.md:16-19; skills/design/scripts/design-driver.sh:170-176
+- **Concern**: Planned top-of-step sentinels under .completed invert the existing completion contract. Scenario: Pause during an in-flight step marks that step complete before its artifacts exist, so design-pause-save computes the next step and resume skips required work
+- **Proposed resolution**: Keep .completed for after-success completion only; use a separate .entered or .current-step sentinel for observability, and compute resume from registry-ordered completed sentinels
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-load.sh:NEW; scripts/design-log-publish.sh:418-434
+- **Concern**: Planned git archive extraction restores the log directory path, not the design tmpdir contents. Scenario: Load extracts larch-logs/design/<RUN_ID>/... under the fresh DESIGN_TMPDIR, leaving expected files like plan.txt and run-params.json missing at tmpdir root
+- **Proposed resolution**: Archive from branch:larch-logs/design/<RUN_ID>/ or extract with the correct --strip-components count, then assert required restored files before LOAD_OK=true
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/design-log-publish.sh:469-505
+- **Concern**: The pause idempotency plan handles only existing local branches, not existing remote pause branches or open PRs. Scenario: After a pause publish reaches RECOVERY_BRANCH because merge is blocked, a later pause of the same RUN_ID recreates a local branch from origin/default and push fails against the existing remote branch
+- **Proposed resolution**: For --reason pause, explicitly update the existing remote branch with --force-with-lease or detect and reuse/update the open PR; preserve recovery output when the remote update fails
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/design-pause-save.sh:NEW; scripts/design-pause-load.sh:NEW; scripts/design-log-publish.sh:42-48; scripts/plan-block-write.md:9-15
+- **Concern**: New pause helpers do not thread --repo through issue and publish operations. Scenario: Forked or nested sessions can read/write the pause marker or publish logs against the gh hub default instead of the issue repository
+- **Proposed resolution**: Add --repo to design-pause-save.sh and design-pause-load.sh, pass it through to named-block-write.sh, gh issue view, and design-log-publish.sh, and have SKILL.md resolve REPO before pause save/load
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: scripts/named-block-write.sh:NEW; scripts/plan-block-write.sh:174-187; scripts/plan-block-write.md:13-18
+- **Concern**: Empty-content delete semantics conflict with the promised bit-for-bit plan-block-write wrapper contract. Scenario: Current plan-block-write.sh replaces a present block with empty inner content and emits MODE=replaced, but delegating to named-block-write would remove the larch:plan block and emit MODE=removed
+- **Proposed resolution**: Make deletion explicit, for example --delete, or have plan-block-write.sh pass a compatibility flag that preserves empty-content replacement and the existing MODE set
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: latent
+- **Focus area**: security
+- **Location**: scripts/named-block-write.sh:NEW
+- **Concern**: Generic --marker is not specified as validated before being embedded in regexes and HTML marker literals. Scenario: A future caller can pass marker text with regex metacharacters, whitespace, or larch namespace punctuation and corrupt block classification or issue-body marker structure
+- **Proposed resolution**: Validate marker names against a strict allowlist such as ^[A-Za-z0-9][A-Za-z0-9_-]*$ and fail before any gh calls; keep the documented marker registry in sync
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:186-191
+- **Concern**: Resume sub-step 0b.6 is placed after the lifecycle title filter that rejects [DESIGNING]. Scenario: Paused runs keep [DESIGNING] per plan; re-/design hits sub-step 2.5 and exits 1 before design-pause-load ever runs
+- **Proposed resolution**: Insert 0b.6 immediately after issue fetch (sub-step 2) and before sub-step 2.5, or add an explicit bypass in 2.5 when <!-- larch:design-pause:start --> is present (DESIGNING only)
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:9,17,61; skills/design/SKILL.md:185-190
+- **Concern**: Resume detection is placed after the lifecycle-title reject while paused issues intentionally keep [DESIGNING]. Scenario: Re-running /design on a paused issue exits at the title filter before design-pause-load.sh can see the marker, making every paused run non-resumable
+- **Proposed resolution**: Move pause-marker detection before lifecycle rejection, or add a narrowly scoped title-filter bypass when larch:design-pause is present and design-pause-load succeeds
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:15,27-28
+- **Concern**: Step sentinels are described as .completed files written at step entry. Scenario: Pause after entering Step 2a but before completing sketches marks step-2a present, so save records 2a.5 or later and resume skips unfinished work, causing missing or stale artifacts
+- **Proposed resolution**: Write .completed/step-<id> only after the step completes, or use separate .entered sentinels and compute resume from the last completed step
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:33-34; skills/design/SKILL.md:348,972
+- **Concern**: Archive restore extracts larch-logs/design/<RUN_ID> under DESIGN_TMPDIR instead of restoring its contents. Scenario: Later steps look for $DESIGN_TMPDIR/run-params.json, plan.txt, composed-plan.md, etc.; after load they would instead be nested under $DESIGN_TMPDIR/larch-logs/design/<RUN_ID>/ and resume would fail or start with missing inputs
+- **Proposed resolution**: Extract with component stripping, e.g. tar -x -C "$DESIGN_TMPDIR" --strip-components=3 after archiving larch-logs/design/<RUN_ID>, and cover this in the round-trip harness
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: plan.txt:39-40,60-61; skills/design/SKILL.md:155-176
+- **Concern**: /larch:pause depends on ISSUE_NUMBER in current-design-env, but the plan does not add a required env refresh after issue binding. Scenario: Current Step 0a writes source-env.sh before ISSUE_NUMBER exists; /larch:pause later sources that file, sees ISSUE_NUMBER unset, and reports no live design session instead of writing .pause-requested
+- **Proposed resolution**: Add a mandatory write-design-current-env.sh re-invocation immediately after Step 0b binds ISSUE_NUMBER, passing --issue-number "$ISSUE_NUMBER" and --claude-pid "$PPID", before any pauseable Step 1c+ boundary
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: plan.txt:80; scripts/plan-block-write.sh:213-216
+- **Concern**: The plan relies on inherited gh issue edit retry logic that the existing writer does not have. Scenario: A transient rate-limit or network failure during marker write fails immediately; this contradicts the proposed edge-case contract and leaves pause recovery weaker than documented
+- **Proposed resolution**: Either add bounded retry/backoff to named-block-write.sh and test it, or change the edge-case contract to say marker writes fail fast and are retried only by re-invoking /larch:pause
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:180-210
+- **Concern**: Step 0b.6 resume is placed before clarify/already-planned/tier sub-steps 3-6 but only says to skip 0c onward. Scenario: On LOAD_OK=true after a mid-run pause, sub-steps 3-5 can still run (re-clarify, already-planned AskUserQuestion, tier gate) and undo paused state
+- **Proposed resolution**: Specify that 0b.6 runs in a dedicated bash fence immediately after title filter; on LOAD_OK=true skip 0b.3-0b.6 and jump to STEP routing; add harness asserting clarify/tier are not re-entered when marker was present
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-load.sh (NEW); scripts/design-log-publish.sh:269-284
+- **Concern**: Load restores the archived run under the wrong directory shape. Scenario: `design-log-publish.sh` commits artifacts under `larch-logs/design/$RUN_ID`, but the planned `git archive ... larch-logs/design/<RUN_ID> | tar -x -C "$DESIGN_TMPDIR"` leaves files nested under `$DESIGN_TMPDIR/larch-logs/design/<RUN_ID>/`; resumed `/design` steps then cannot find `$DESIGN_TMPDIR/run-params.json`, `plan.txt`, `feature-description.txt`, etc.
+- **Proposed resolution**: Extract with `tar --strip-components=3 -C "$DESIGN_TMPDIR"` or archive from inside the run directory, and assert the load harness checks restored files at the tmpdir root.
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/design-log-publish.sh:269-284
+- **Concern**: Paused progress sentinels are not included in the published snapshot. Scenario: The plan puts step state under `$DESIGN_TMPDIR/.completed/`, but the publisher only stages maxdepth-1 files plus specific allowlisted dirs; after resume, a second pause cannot recompute the correct next unfinished step, breaking the planned unbounded pause/resume cycle.
+- **Proposed resolution**: Add an explicit pause-mode allowlist for `.completed/` or store all resume progress in a top-level persisted state file; cover a real publish-load-publish cycle in the harness.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:343-365; scripts/design-pause-save.sh (NEW)
+- **Concern**: Step-entry sentinels make mid-step pauses resume too far ahead. Scenario: Several `/design` steps contain multiple Bash boundaries; if a sentinel is written at step entry, a pause requested after the first Step 2a block but before sketch artifacts exist will record Step 2a as done and resume at Step 2a.5 or later with missing `approach-synthesis.txt` / `contested-decisions.md`.
+- **Proposed resolution**: Write checkpoint sentinels only after each step reaches a restart-safe completion point, or store an explicit `resume_step` before entering each non-idempotent block.
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:158-176; scripts/write-design-current-env.sh:61-122
+- **Concern**: `/larch:pause` depends on `ISSUE_NUMBER`, but the plan does not make refreshing it mandatory. Scenario: The current Step 0 writer omits `--issue-number`; the contract only says it may be appended later. The new pause skill sources only `current-design-env-$PPID.sh`, so it can report “no live /design session” or call pause-save with an empty issue even while `/design` is running.
+- **Proposed resolution**: Add a required Step 0b refresh immediately after issue binding, passing `--issue-number "$ISSUE_NUMBER"` with the same reviewer flags and `--claude-pid "$PPID"`; add a pause skill harness for this path.
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/design-log-publish.sh:159-169,469-477
+- **Concern**: Pause idempotency only handles local branch reuse, not the remote recovery branch. Scenario: The plan changes existing-branch handling around the local branch deletion path, but repeated pause after a merge failure leaves `origin/larch-log-design-$RUN_ID`; the current push is a plain `git push -u`, so the next snapshot can be rejected before PR recovery.
+- **Proposed resolution**: For `--reason pause`, handle existing remote refs explicitly with `--force-with-lease` or a delete-and-push protocol, and test the `RECOVERY_BRANCH` then repause same `RUN_ID` case.
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: latent
+- **Focus area**: security
+- **Location**: scripts/named-block-write.sh (NEW)
+- **Concern**: Generic marker names need validation before being interpolated into marker regexes. Scenario: The new helper is meant to be reused by `/implement` and `/review`; without a strict marker allowlist or `^[a-z][a-z0-9-]*$` validation, a bad marker can broaden matching and replace or delete unrelated larch blocks.
+- **Proposed resolution**: Validate `--marker` against a small registry (`plan`, `design-pause` initially) or a strict slug regex before building regexes or canonical marker strings.
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: Makefile:4,67-82,386-387
+- **Concern**: New pause/resume harness is not listed in files to update for CI registration. Scenario: The testing strategy says the new harness is registered in Makefile, but the file list omits `Makefile`; without that target and shard entry, `make lint` / `relevant-checks` may not exercise the new offline round trip.
+- **Proposed resolution**: Add `Makefile` to the plan with `test-design-pause-resume` target and shard membership, plus any lint allowlist/docs updates needed for the new script sibling.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:186-189
+- **Concern**: Resume after lifecycle filter conflicts with [DESIGNING] reject. Scenario: Paused run cannot re-enter via /design N; 0b.6 never runs
+- **Proposed resolution**: Exempt [DESIGNING] when design-pause marker present, or run resume detection before 2.5 lifecycle-reject
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-load.sh:1
+- **Concern**: Archive extract preserves larch-logs/ prefix under tmpdir. Scenario: Restore leaves files under nested larch-logs/design/RUN_ID not tmpdir root
+- **Proposed resolution**: Strip prefix on extract or copy archived files to DESIGN_TMPDIR root after tar
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-log-publish.sh:272-289
+- **Concern**: .completed/ not published with pause snapshot. Scenario: Sentinel-based idempotency lost after load; plan claim is false
+- **Proposed resolution**: Publish .completed on pause reason, or drop sentinel-restore claim and rely only on marker KVs
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/pause/SKILL.md:1
+- **Concern**: ISSUE_NUMBER absent from sourced session env until optional writer refresh. Scenario: /larch:pause no-ops during active design after 1c
+- **Proposed resolution**: Mandate write-design-current-env --issue-number bash block in Step 0b after bind, or derive issue from tmpdir artifact in pause skill
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:192-201
+- **Concern**: Resume omits Step 0b router short-circuit. Scenario: Reloaded run hits clarify/tier/rename instead of STEP
+- **Proposed resolution**: On LOAD_OK=true skip 0b sub-steps 3-6 and jump to STEP per stdout
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:117-169
+- **Concern**: New SESSION_ID from 0a before load restores old RUN_ID. Scenario: Pause republish targets wrong run directory
+- **Proposed resolution**: After load set SESSION_ID/RUN_ID from marker; pass --run-id on 0a when resuming; refresh source-env
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/design-log-publish.sh:159-162
+- **Concern**: Pause idempotent branch delete ignores active worktree. Scenario: Same RUN_ID republish fails PUBLISH_OK=false
+- **Proposed resolution**: Teardown stale worktree for larch-log-design-RUN_ID before recreate, or document operator cleanup
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-load.sh:1
+- **Concern**: git archive --remote in load path. Scenario: Resume fails on GitHub/Git versions without remote archive
+- **Proposed resolution**: Fetch recovery/default ref locally then git archive from local object
+
+### FINDING_9:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:68-72
+- **Concern**: Prelude pause-check not structurally pinned across all bash blocks. Scenario: Some steps miss pause line; pause silently dropped
+- **Proposed resolution**: Add test-design-structure check counting two-line prelude from Step 1c onward
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: Makefile:1
+- **Concern**: test-design-pause-resume not assigned to test-harnesses-N. Scenario: Harness never runs in CI
+- **Proposed resolution**: Register target on test-harnesses-14 or -20 with harness-timer.sh
+
+### OOS_1:
+- **Description**: No normative design-pause body marker doc. Scenario: Operators lack wire-format spec for new block
+- **Reviewer**: Cursor-Pragmatic
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: docs/issue-anchored-plan.md:1
+- **Phase**: design
+
+### OOS_2:
+- **Description**: /larch:pause missing from skills table. Scenario: Users may not discover pause skill
+- **Reviewer**: Cursor-Pragmatic
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: README.md:32-80
+- **Phase**: design
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: AGENTS.md:58, skills/design/SKILL.md:66-74
+- **Concern**: Pause is modeled as a separate slash skill that only writes sentinels, but /design is inline and has no independent runner after Esc interrupts the turn. Scenario: After the user presses Esc and invokes /larch:pause, the original /design orchestration may already be cancelled, so no later Bash boundary observes .pause-requested and no checkpoint is saved
+- **Proposed resolution**: Make /larch:pause perform design-pause-save.sh directly from the sourced session env, or change the trigger to an in-band /design checkpoint mechanism that does not require a cancelled turn to continue
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:176-185
+- **Concern**: ISSUE_NUMBER is not actually persisted into current-design-env after issue binding. Scenario: The proposed /larch:pause skill sources current-design-env-$PPID.sh and treats missing ISSUE_NUMBER as no live design session, so valid /design runs can be unpausable
+- **Proposed resolution**: Add an explicit Step 0b writer re-invocation immediately after ISSUE_NUMBER is bound, passing --issue-number "$ISSUE_NUMBER" and --claude-pid "$PPID"; cover this in the pause harness
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/plan-block-write.sh:169-196
+- **Concern**: Generic delete-on-empty semantics would break plan-block-write.sh compatibility. Scenario: Current plan-block-write.sh writes an empty larch:plan block when content-file is empty; the proposed wrapper over named-block-write.sh would delete an existing plan block instead, violating the bit-for-bit stdout/behavior contract
+- **Proposed resolution**: Make deletion explicit, for example --delete or /dev/null-only for non-plan callers, and keep marker=plan empty files writing start/end markers as today
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:340-430
+- **Concern**: Step-entry sentinels cannot identify the next unfinished step safely. Scenario: A pause during Step 2a after the entry sentinel is written but before sketches are collected would record Step 2a.5 or later, skipping abandoned in-flight sketch work on resume
+- **Proposed resolution**: Use completion sentinels written only after each step's durable outputs are complete, or track current-step separately and resume from the current step when its completion sentinel is absent
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/design-log-publish.sh:469-506
+- **Concern**: --reason pause idempotency only addresses local branch reuse, not existing remote recovery branches. Scenario: If a previous pause publish pushed larch-log-design-<RUN_ID> but merge failed, a later pause cycle with the same RUN_ID hits the existing remote branch and push fails before emitting RECOVERY_BRANCH, breaking the planned unbounded pause/resume cycles
+- **Proposed resolution**: For --reason pause, handle remote branch reuse explicitly with fetch plus force-with-lease/update, or use unique per-snapshot recovery branch names and persist the selected branch in the marker
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/design-pause-load.sh
+- **Concern**: The proposed loader uses git archive --remote origin <branch>, which is not a reliable GitHub transport path. Scenario: Resume can fail against normal GitHub origins even when the snapshot branch exists, because GitHub remotes generally do not provide upload-archive service
+- **Proposed resolution**: Fetch the branch/ref locally, then archive or checkout from FETCH_HEAD or refs/remotes/origin/<branch>; test against a non-file remote stub path, not only a local repository
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: Makefile:43-82
+- **Concern**: The plan adds test-design-pause-resume.sh but omits Makefile changes from the file list. Scenario: New pause/resume coverage may exist but not run under make lint/test-harnesses, so regressions in the new workflow can ship
+- **Proposed resolution**: Include Makefile in the plan, add a test-design-pause-resume target, and place it in one test-harnesses-N shard so scripts/relevant-checks.sh exercises it
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-log-publish.sh:272-289
+- **Concern**: .completed/ progress sentinels are not staged into the published snapshot. Scenario: Pause-save computes STEP from $DESIGN_TMPDIR/.completed/step-* but publish only copies maxdepth-1 files plus plan-review/render-cache/breadcrumbs; after load the tmpdir lacks sentinels so a later pause in the same resumed session mis-computes STEP and the round-trip harness case (f) cannot hold
+- **Proposed resolution**: Extend design-log-publish.sh --reason pause (or always) to stage .completed/ into RUN_DEST, or persist progress solely in the marker/KV file and stop depending on unpublished sentinels; assert in test-design-pause-resume.sh
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-load.sh (NEW); scripts/design-log-publish.sh:269
+- **Concern**: Planned git archive restore keeps the larch-logs/design/<RUN_ID> prefix under DESIGN_TMPDIR. Scenario: Resume expects $DESIGN_TMPDIR/run-params.json and plan.txt at tmpdir root; tar -x -C "$DESIGN_TMPDIR" without strip leaves nested larch-logs/design/<RUN_ID>/ and steps fail or appear fresh
+- **Proposed resolution**: Archive/extract with strip-components=3 (or publish a flat bundle) and add harness assertions on restored root paths
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:60-74; skills/pause/SKILL.md (NEW)
+- **Concern**: /larch:pause requires ISSUE_NUMBER in current-design-env but the plan never mandates refreshing the writer after Step 0b binds the issue. Scenario: Step 0a writes source-env without ISSUE_NUMBER; optional follow-up is only "may be appended"; /larch:pause sources env, sees unset ISSUE_NUMBER, prints no live session and never writes .pause-requested
+- **Proposed resolution**: Add a mandatory write-design-current-env.sh re-invocation (with --issue-number and --claude-pid) immediately after ISSUE_NUMBER is bound in Step 0b, before any pauseable Step 1c+ boundary
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:180-223 (proposed 0b.6)
+- **Concern**: Resume path omits SESSION_ID/RUN_ID rebind, run-params restore, and skipping the rest of Step 0b. Scenario: Fresh session-setup allocates a new SESSION_ID while the marker carries the original RUN_ID; continuing 0b tier gate / write-run-params overwrites snapshot run-params and publish targets the wrong log path
+- **Proposed resolution**: On LOAD_OK=true: restore into $DESIGN_TMPDIR, re-export SESSION_ID/RUN_ID/TIER/BRAINSTORM_DONE from marker, re-run write-design-current-env.sh, skip 0b items 3-6, then branch to STEP
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan-review-feature-context.txt:109-114; skills/design/SKILL.md (proposed 0b.6)
+- **Concern**: Feature requires Step 0 to honor pause-requested-<ISSUE>.flag when tmpdir is gone; plan only resumes from the issue-body marker. Scenario: Operator Esc + /larch:pause then starts a new /design before the next Step 1c+ Bash check runs save: flag exists but no larch:design-pause block yet, so 0b.6 treats the run as fresh and discards the pause intent
+- **Proposed resolution**: In Step 0b before clarify: if pause-requested flag exists and marker absent, either run design-pause-save from a still-live env or fail-closed with an explicit retry message; clear the flag after successful save
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:15; plan-review-feature-context.txt:37-39
+- **Concern**: Entry-time .completed/step-* sentinels plus "next unfinished" STEP drift from "re-run the interrupted step". Scenario: Entry sentinel at Step 2a makes step-2a present while sketches are in flight; save records STEP=2a.5 and resume skips the interrupted step entirely instead of replaying it per the lean composite
+- **Proposed resolution**: Write completion sentinels only after restart-safe outputs exist, or record STEP as the current in-flight step when pause fires and route resume to re-enter that step
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:4,67-82,176-177; plan.txt:90-92
+- **Concern**: Testing strategy claims Makefile registration but Makefile is not in the file list. Scenario: New pause/resume and named-block-write regressions may not run under make lint / relevant-checks
+- **Proposed resolution**: Add UPDATED Makefile with test-design-pause-resume target on a test-harnesses-N shard; extend scripts/test-design-log-publish.sh for --reason pause
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/design-log-publish.sh:469-506
+- **Concern**: --reason pause idempotency only covers local branch -D reuse, not an existing remote larch-log-design-<RUN_ID>. Scenario: Second pause after a pushed-but-unmerged snapshot can fail git push before RECOVERY_BRANCH is emitted, breaking unbounded pause cycles
+- **Proposed resolution**: For --reason pause add fetch/force-with-lease or per-snapshot recovery branch names; persist the chosen branch in LOG_RECOVERY_BRANCH and test publish-fail-republish
+
+### FINDING_9:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/named-block-write.sh (NEW); scripts/plan-block-write.sh:169-176
+- **Concern**: Marker delete via --content-file /dev/null is specified but current plan-block-write always rewrites an empty block. Scenario: Atomic resume delete in design-pause-load.sh would leave an empty larch:design-pause block or MODE=replaced instead of MODE=removed, causing re-detection loops
+- **Proposed resolution**: Implement empty+present => delete (MODE=removed) in named-block-write.sh and cover with test-design-pause-resume.sh case (c)
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md (proposed 0b.6)
+- **Concern**: Route directly to STEP has no per-step resume contract. Scenario: Implementer must guess whether to re-launch sketches, skip gates, or honor BRAINSTORM_DONE/TIER from the marker
+- **Proposed resolution**: Add a short resume-routing table (or references section) listing per STEP id: prerequisites, artifacts that must exist, and what to re-derive per Decision 5
+
+### FINDING_11:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/design-pause-save.sh (NEW); plan.txt:80-84
+- **Concern**: PAUSE_OK/ERROR stdout is referenced in failure modes but not defined in the save script contract. Scenario: Orchestrator and operators cannot parse pause-save failures consistently
+- **Proposed resolution**: Document and emit PAUSE_OK=true|false plus ERROR= on design-pause-save.sh stdout mirroring PUBLISH_OK patterns
+
+### OOS_1:
+- **Description**: No plan to document larch:design-pause alongside larch:plan in the live wire-format doc. Scenario: Future /implement or tooling readers lack a normative marker spec for pause blocks
+- **Reviewer**: Cursor-Requirements
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: docs/issue-anchored-plan.md:49-60
+- **Phase**: design
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:176-184,296-345
+- **Concern**: Plan adds /larch:pause reliance on ISSUE_NUMBER in current-design-env but never adds the required Step 0b writer refresh after issue binding. Scenario: /larch:pause sources current-design-env-$PPID, sees DESIGN_TMPDIR but no ISSUE_NUMBER, and reports no live design session; if .pause-requested exists, the pause-check can also fail on unbound ISSUE_NUMBER
+- **Proposed resolution**: Add an explicit Step 0b action after ISSUE_NUMBER is bound to re-run write-design-current-env.sh with --issue-number "$ISSUE_NUMBER" and --claude-pid "$PPID"; refresh/regenerate source-env after successful pause load as well
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:296-1040, scripts/design-log-publish.sh:269-289
+- **Concern**: Plan says new .completed step sentinels drive resume STEP selection, but the concrete SKILL.md update lists only prelude/resume/anti-pattern changes, and design-log-publish only stages top-level files plus selected directories. Scenario: design-pause-save cannot compute the next unfinished step reliably; even if sentinels are written, pause snapshots omit .completed so subsequent pause/resume cycles lose progress state
+- **Proposed resolution**: Add explicit sentinel writes at every step-entry Bash block, extend the publish/load contract to include .completed with symlink/path validation, and test that .completed survives save/load cycles
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/design-log-publish.sh:269-289
+- **Concern**: Planned design-pause-load archive extraction restores the log directory shape rather than the DESIGN_TMPDIR root. Scenario: The command git archive ... larch-logs/design/<RUN_ID> | tar -x -C <fresh-DESIGN_TMPDIR> creates fresh-DESIGN_TMPDIR/larch-logs/design/<RUN_ID>/plan.txt, so resumed /design steps look in $DESIGN_TMPDIR/plan.txt and fail or start from incomplete state
+- **Proposed resolution**: Archive the contents with path rewriting or extract with the correct strip-components behavior, then assert required root files such as plan.txt/run-params.json/pause-state.txt exist before deleting the marker
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/design-log-publish.sh:71-75,136
+- **Concern**: Plan parses RUN_ID, STEP, and LOG_RECOVERY_BRANCH from an issue-body marker but does not require validation before using them in git fetch/archive and resume routing. Scenario: A user-editable issue body can inject malformed refs, option-looking tree-ish values, path traversal run IDs, or unsupported STEP values into local git commands or prompt-side control flow
+- **Proposed resolution**: Validate RUN_ID with the existing larch_log_slug_is_valid contract, STEP against step-name-registry.tsv, and LOG_RECOVERY_BRANCH with git check-ref-format plus the expected larch-log-design prefix; reject option-looking or path-containing values before any git command
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:4,41-43,82,agent-lint.toml:888-893
+- **Concern**: Testing strategy says the new pause/resume harness is registered, but Makefile and agent-lint are not in the plan's file list. Scenario: New acceptance coverage may never run under make lint/test-harnesses, and the new Makefile-only harness can trip agent-lint dead-script checks
+- **Proposed resolution**: Add Makefile target, PHONY entry, shard membership, and agent-lint exclusions for skills/design/scripts/test-design-pause-resume.sh and its sibling md
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: README.md:36-67,docs/skills.md:1-17
+- **Concern**: Plan adds a shipped /larch:pause skill but omits the consumer skill catalog docs. Scenario: New command ships without appearing in README or docs/skills.md, making the user-facing pause mechanism hard to discover
+- **Proposed resolution**: Update README skill table and docs/skills.md with /pause arguments, behavior, and source link alongside skills/pause/SKILL.md
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:80
+- **Concern**: Claims gh issue edit retry is inherited from plan-block-write. Scenario: Transient gh rate limits still fail on first error; operators expect documented retry
+- **Proposed resolution**: Remove the retry claim or implement the same retry policy in named-block-write.sh and document it in named-block-write.md
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:11,48
+- **Concern**: Bit-for-bit stdout contract conflicts with MODE=removed via exec wrapper. Scenario: plan-block-write with /dev/null and present markers returns MODE=removed not MODE=replaced
+- **Proposed resolution**: Limit delete semantics to named-block-write --marker design-pause only; in named-block-write reject /dev/null when --marker plan
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:23,26
+- **Concern**: Delete trigger ambiguous for zero-byte content files. Scenario: Accidental empty composed-plan.redacted.md deletes larch:plan instead of writing empty block
+- **Proposed resolution**: Document and implement delete only for --content-file /dev/null (or explicit --remove flag)
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:26
+- **Concern**: Malformed-token count says four not five. Scenario: end-before-start handling dropped in extraction or docs
+- **Proposed resolution**: Align named-block-write.md with five tokens and keep scripts/test-plan-block.sh coverage
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: security
+- **Location**: plan.txt:21-23
+- **Concern**: No --marker allowlist before grep -E interpolation. Scenario: Regex metacharacters in marker break classification or match wrong lines
+- **Proposed resolution**: Validate --marker against ^[a-z0-9][a-z0-9-]*$ before building MARK_START/MARK_END
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:33-34
+- **Concern**: design-pause-load hand-parses markers instead of shared classify. Scenario: Resume BODY_HASH or STEP wrong when marker whitespace differs from writer
+- **Proposed resolution**: Share classify/extract with named-block-write or add named-block-read.sh
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: plan.txt:92
+- **Concern**: Makefile registration asserted but not listed in files to modify. Scenario: Pause/resume harness never runs in make lint
+- **Proposed resolution**: Add Makefile target and register on a test-harnesses-N shard like test-plan-block
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-dyn-script-contract-mirror
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: plan.txt:48
+- **Concern**: exec wrapper changes stderr script name prefix. Scenario: Operators grep logs for plan-block-write.sh and miss failures
+- **Proposed resolution**: Note in plan-block-write.md that errors originate from named-block-write.sh or preserve larch_err prefix in wrapper
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/plan-block-write.sh:169-196; <TMPDIR>/plan.txt:21-22
+- **Concern**: Empty-content delete semantics are not bit-for-bit compatible with plan-block-write.sh. Scenario: Today an empty content file still produces a canonical empty larch:plan block and MODE=replaced or MODE=appended; the proposed named-block-write.sh removes an existing block and emits MODE=removed, so plan-block-write.sh --content-file /dev/null would silently delete the plan
+- **Proposed resolution**: Make deletion an explicit flag or opt-in mode used only by design-pause callers; keep --marker plan wrapper preserving empty-block replace/append and add regression cases to scripts/test-plan-block.sh
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/plan-block-write.sh:20-23; <TMPDIR>/plan.txt:21-25
+- **Concern**: Marker parameterization lacks a validation or escaping contract. Scenario: Current regex constants are safe because plan is literal; a generic --marker NAME interpolated into grep -E can make regex metacharacters match or replace the wrong marker family
+- **Proposed resolution**: Specify and test either a fixed marker registry {plan,design-pause} or strict NAME validation plus ERE escaping before constructing MARK_START and MARK_END
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-script-contract-mirror
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: scripts/plan-block-write.sh:156-160,213-216; <TMPDIR>/plan.txt:79-80
+- **Concern**: Plan relies on inherited gh retry behavior that does not exist. Scenario: The current writer performs one gh issue view and one gh issue edit; extracting it as-is will not handle transient rate limits despite the pause edge case claiming retry coverage
+- **Proposed resolution**: Add explicit bounded retry/backoff to named-block-write.sh if pause requires it, or revise the edge-case/failure-mode text and tests to reflect single-shot behavior
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-dyn-script-contract-mirror
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: .claude/rules/gh-body-file.md:136-141; <TMPDIR>/plan.txt:21-25
+- **Concern**: The new gh body writer is not added to the path-triggered body-file rule. Scenario: .named-block-write.sh will become the shared gh issue edit --body-file implementation, but future edits to it will not trigger the repository rule that enforces body-file and redaction practices
+- **Proposed resolution**: Add scripts/named-block-write.sh and scripts/named-block-write.md to .claude/rules/gh-body-file.md frontmatter
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-dyn-script-contract-mirror
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:4,176-177; <TMPDIR>/plan.txt:42-45,90-94
+- **Concern**: New pause/resume harness is promised but Makefile is not in the modification list. Scenario: CI will not run skills/design/scripts/test-design-pause-resume.sh unless Makefile gains a target and shard wiring
+- **Proposed resolution**: Add UPDATED: Makefile to the plan and register test-design-pause-resume in the appropriate harness shard
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-step-registry-coverage
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/step-name-registry.tsv:1-17
+- **Concern**: Registry collapses Step 5 to a single `5` row while SKILL.md defines separate 5b/5c/5d sub-steps with distinct Bash entry points (skills/design/SKILL.md:902-1003). Scenario: A pause during 5b OOS filing or mid-5c publish writes `step-5` at Step 5 entry; `design-pause-save.sh` then emits STEP=6 and resume skips OOS filing and `larch:plan` publish
+- **Proposed resolution**: Add `5b`, `5c`, and (if pausable) `5d` rows; write `touch "$DESIGN_TMPDIR/.completed/step-<id>"` at each sub-step entry Bash block, not only the Step 5 timing fence at :895-897
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-step-registry-coverage
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:891-978; skills/design/scripts/step-name-registry.tsv:16-17
+- **Concern**: Finalize substeps are not represented in the registry. Scenario: With a single step-5 sentinel written at Step 5 entry, a pause during OOS filing or plan publication can compute Step 6 as next unfinished and skip 5b/5c work
+- **Proposed resolution**: Do not use one entry sentinel for all Step 5, or add routed registry/sentinel coverage for 5b, 5c, and 5d with save/resume tests
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-step-registry-coverage
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:305-325; skills/design/references/brainstorm.md:84-153; skills/design/references/sketch-launch.md:52-108; skills/design/references/dialectic-execution.md:47-233; skills/design/references/decompose-panel.md:34-177
+- **Concern**: Referenced step bodies contain Bash boundaries but the plan updates only SKILL.md. Scenario: A pause request inside brainstorm, sketch launch, dialectic, or split-path reference bodies is not checked at those Bash boundaries, so pause can be delayed or state can be saved after more work than intended
+- **Proposed resolution**: Add the referenced files to the plan and insert the canonical pause-check/sentinel prelude at every runtime Bash block, or centralize the prelude in a shared sourced helper used by those blocks
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-step-registry-coverage
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:158-176; scripts/write-design-current-env.sh:116-123
+- **Concern**: /larch:pause needs ISSUE_NUMBER in current-design-env but Step 0 writes env before issue binding. Scenario: The proposed pause skill treats missing ISSUE_NUMBER as no live design session, so pause can no-op after issue binding unless another writer refresh occurs
+- **Proposed resolution**: Add a Step 0b follow-up write-design-current-env.sh invocation immediately after ISSUE_NUMBER is bound, passing --issue-number "$ISSUE_NUMBER" and --claude-pid "$PPID"
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-prelude-injection-audit
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:66-72
+- **Concern**: Canonical prelude is documentation only; ~29 executable fences duplicate the env-source line inline. Scenario: The plan's UPDATED item (1) reads as one edit to "the canonical Bash-block prelude," but changing only the ### Bash block prelude section does not propagate; pause-check would be missing on most Bash boundaries
+- **Proposed resolution**: Promote a documented two-line prelude (source + pause-check) at :66-72, then require the same pair prepended to every ```bash fence from Step 1c through Step 6 (enumerate ~29 instances at :299-1039 plus nested fences at :648-650, :851-853, :913-915)
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-prelude-injection-audit
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:66-74,296-330,340-450,519-650,682-725,775-949,1028-1039
+- **Concern**: Finding 1: SKILL.md is not backed by a single propagated Bash-prelude template; it currently has 31 Bash source-prelude blocks in SKILL.md, including the canonical sample at 66-74 and 28 Step 1c-through-Step 6 inline repetitions. Scenario: The proposed “extend the canonical Bash-block prelude” edit can update only the prose/sample at 66-74 while leaving the executable inline fences unchanged, so pause requests are missed at any unedited Bash boundary
+- **Proposed resolution**: Update the plan to state explicitly that the prelude is duplicated inline, enumerate every Step 1c-through-Step 6 instance to patch, and require a grep/harness check that no current-design-env-$PPID.sh Bash fence lacks the pause-check line
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-prelude-injection-audit
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/references/brainstorm.md:76-130; skills/design/references/plan-review.md:87-105
+- **Concern**: Finding 2: Referenced design sub-files also house Bash blocks carrying the same env-source prelude, but the plan only lists skills/design/SKILL.md for the prelude change. Scenario: Step 1d.5 invokes brainstorm.md and Step 3 reads plan-review.md; their collection fences at brainstorm.md:85, brainstorm.md:116, and plan-review.md:94 would not run the pause-save check after /larch:pause
+- **Proposed resolution**: Update the file list and implementation steps to include skills/design/references/brainstorm.md and skills/design/references/plan-review.md, or explicitly justify excluding illustrative fences and add tests/documentation so runtime collection snippets still get the pause-check behavior
+

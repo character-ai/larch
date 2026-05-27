@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:186-191	Resume sub-step 0b.6 is placed after the lifecycle title filter that rejects [DESIGNING]	Paused runs keep [DESIGNING] per plan; re-/design hits sub-step 2.5 and exits 1 before design-pause-load ever runs	Insert 0b.6 immediately after issue fetch (sub-step 2) and before sub-step 2.5, or add an explicit bypass in 2.5 when <!-- larch:design-pause:start --> is present (DESIGNING only)
