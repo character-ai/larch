@@ -169,7 +169,7 @@ fi
 if [[ "$PUBLISH_OK" != "true" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
     if [[ -n "$RECOVERY_BRANCH" ]]; then
-        if [[ "$RECOVERY_BRANCH" == "larch-log-design-$RUN_ID" ]]; then
+        if [[ "$RECOVERY_BRANCH" == "larch-log-design-$RUN_ID" || "$RECOVERY_BRANCH" == "larch-log-design-recovery-$RUN_ID" ]]; then
             printf 'LOG_RECOVERY_BRANCH=%s\n' "$RECOVERY_BRANCH" >> "$state_tmp"
         else
             emit_kv LOG_RECOVERY_BRANCH "$RECOVERY_BRANCH"

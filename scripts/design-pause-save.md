@@ -31,10 +31,12 @@ If `design-log-publish.sh --reason pause` emits `PUBLISH_OK=false` with a
 non-empty `RECOVERY_BRANCH`, that branch is recorded as `LOG_RECOVERY_BRANCH`
 inside `pause-state.txt`, written into the marker payload, and surfaced on
 stdout as `WARN=recovery-branch-only` plus `LOG_RECOVERY_BRANCH=<branch>`
-before the marker is written. If publish fails without a recovery branch, no
-marker is written. A pause publish that produces no new committed snapshot
-delta now fails closed the same way, so `/larch:pause` does not leave behind a
-marker that points at a non-materialized run snapshot.
+before the marker is written. This applies to both remote recovery refs
+(`larch-log-design-<RUN_ID>`) and local-only push-failure recovery refs
+(`larch-log-design-recovery-<RUN_ID>`). If publish fails without a recovery
+branch, no marker is written. A pause publish that produces no new committed
+snapshot delta now fails closed the same way, so `/larch:pause` does not leave
+behind a marker that points at a non-materialized run snapshot.
 
 Normal invocation is synchronous from `/larch:pause`. The `/design` Bash
 prelude may also invoke it defensively when `.pause-requested` exists, and

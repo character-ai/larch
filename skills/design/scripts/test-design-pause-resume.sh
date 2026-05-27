@@ -87,6 +87,12 @@ if [[ "\${1:-}" == "-C" ]]; then
     rev-parse) printf '%s\n' "$TMP/repo"; exit 0 ;;
     symbolic-ref) printf '%s\n' 'refs/remotes/origin/main'; exit 0 ;;
     fetch) printf '%s\n' "\$*" >>"$FETCH_LOG"; exit 0 ;;
+    show-ref)
+      if [[ "\${2:-}" == "--verify" && "\${3:-}" == "--quiet" && "\${4:-}" == "refs/heads/larch-log-design-recovery-RUNPAUSE1" ]]; then
+        exit 0
+      fi
+      exit 1
+      ;;
     archive)
       ref="\$2"
       path="\$3"
@@ -177,6 +183,7 @@ set -e
 chmod 700 "$RESTORE_FAIL"
 [[ "$rc_install_fail" == "0" && "$out_install_fail" == *"LOAD_OK=false"* && "$out_install_fail" == *"ERROR=restore-install-failed"* ]] \
   || fail "restore install failure mismatch: rc=$rc_install_fail out=$out_install_fail"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restore install failure should keep marker"
 
 echo "=== multi-sentinel registry order and multi-cycle idempotency ==="
 DESIGN_MULTI="$TMP/design-multi"
@@ -279,8 +286,11 @@ make_design_tmpdir "$DESIGN"
 printf 'body\n' >"$BODY_FILE"
 out_local_recovery=$(PUBLISH_MODE=local-recovery bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo)
 [[ "$out_local_recovery" == *"LOG_RECOVERY_BRANCH=larch-log-design-recovery-RUNPAUSE1"* ]] || fail "local recovery branch should surface to caller: $out_local_recovery"
-[[ "$out_local_recovery" == *"PAUSE_OK=false"* && "$out_local_recovery" == *"ERROR=publish-local-recovery-only"* ]] || fail "local recovery publish failure mismatch: $out_local_recovery"
-! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "local recovery failure must not write marker"
+[[ "$out_local_recovery" == *"PAUSE_OK=true"* && "$out_local_recovery" == *"WARN=recovery-branch-only"* ]] || fail "local recovery publish should stay resumable: $out_local_recovery"
+grep -Fq 'LOG_RECOVERY_BRANCH=larch-log-design-recovery-RUNPAUSE1' "$BODY_FILE" || fail "local recovery branch missing from marker"
+: >"$FETCH_LOG"
+bash "$LOAD" --design-tmpdir "$TMP/restore-local-recovery" --issue 9 --repo owner/repo >/dev/null
+! grep -Fq 'fetch origin larch-log-design-recovery-RUNPAUSE1' "$FETCH_LOG" || fail "local recovery load should not fetch origin"
 
 echo "=== mismatched recovery branch and jq missing fail closed ==="
 make_design_tmpdir "$DESIGN"
@@ -326,12 +336,29 @@ PRELUDEENV
 prelude_out=$(
   HOME="$PRELUDE_HOME" bash -c '
     [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && LARCH_PAUSE_REQUIRE_SUCCESS=1 exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
     printf "PRELUDE_CONTINUED\n"
   '
 )
 [[ "$prelude_out" == *"PRELUDE_SAVE=--design-tmpdir $PRELUDE_DESIGN --issue 9 --repo owner/repo"* ]] || fail "prelude did not exec save helper with repo binding: $prelude_out"
 [[ "$prelude_out" != *"PRELUDE_CONTINUED"* ]] || fail "prelude should exec instead of continuing"
+
+cat >"$PRELUDE_PLUGIN/scripts/design-pause-save.sh" <<'PRELUDEFAIL'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'PAUSE_OK=false\nERROR=stubbed-failure\n'
+exit "${LARCH_PAUSE_REQUIRE_SUCCESS:-0}"
+PRELUDEFAIL
+chmod +x "$PRELUDE_PLUGIN/scripts/design-pause-save.sh"
+set +e
+HOME="$PRELUDE_HOME" bash -c '
+  [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && LARCH_PAUSE_REQUIRE_SUCCESS=1 exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  printf "PRELUDE_CONTINUED\n"
+' >/dev/null
+prelude_fail_rc=$?
+set -e
+[[ "$prelude_fail_rc" == "1" ]] || fail "prelude should fail closed when pause save returns PAUSE_OK=false"
 
 echo "=== value validation and missing artifact ==="
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=8\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
@@ -353,7 +380,25 @@ out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/bad-branch" --issue 9 --repo
 rm -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/plan.txt"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing=$(bash "$LOAD" --design-tmpdir "$TMP/missing" --issue 9 --repo owner/repo)
-[[ "$out_missing" == *"ERROR=missing-restored-artifact"* ]] || fail "missing artifact mismatch: $out_missing"
+[[ "$out_missing" == *"LOAD_OK=true"* && "$out_missing" == *"STEP=1d"* ]] || fail "early-step restore should not require plan.txt: $out_missing"
+
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_missing_plan_late=$(bash "$LOAD" --design-tmpdir "$TMP/missing-plan-late" --issue 9 --repo owner/repo)
+[[ "$out_missing_plan_late" == *"ERROR=missing-restored-artifact"* ]] || fail "late-step restore should require plan.txt: $out_missing_plan_late"
+
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=RUNPAUSE1\nTIER=SIMPLE\nBRAINSTORM_DONE=true\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_valid_marker=$(bash "$LOAD" --design-tmpdir "$TMP/valid-marker-fields" --issue 9 --repo owner/repo)
+[[ "$out_valid_marker" == *"LOAD_OK=true"* && "$out_valid_marker" == *"SESSION_ID=RUNPAUSE1"* && "$out_valid_marker" == *"TIER=SIMPLE"* && "$out_valid_marker" == *"BRAINSTORM_DONE=true"* ]] \
+  || fail "valid marker fields mismatch: $out_valid_marker"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=OTHER\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_bad_session=$(bash "$LOAD" --design-tmpdir "$TMP/bad-session" --issue 9 --repo owner/repo)
+[[ "$out_bad_session" == *"ERROR=invalid-session-id"* ]] || fail "bad session validation mismatch: $out_bad_session"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nTIER=bad\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_bad_tier=$(bash "$LOAD" --design-tmpdir "$TMP/bad-tier" --issue 9 --repo owner/repo)
+[[ "$out_bad_tier" == *"ERROR=invalid-tier"* ]] || fail "bad tier validation mismatch: $out_bad_tier"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nBRAINSTORM_DONE=maybe\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_bad_brainstorm=$(bash "$LOAD" --design-tmpdir "$TMP/bad-brainstorm" --issue 9 --repo owner/repo)
+[[ "$out_bad_brainstorm" == *"ERROR=invalid-brainstorm-done"* ]] || fail "bad brainstorm validation mismatch: $out_bad_brainstorm"
 
 echo "=== marker delete failure leaves installed state + marker for retry ==="
 make_design_tmpdir "$DESIGN"
@@ -363,7 +408,7 @@ FAIL_RESTORE="$TMP/delete-fail-restore"
 mkdir -p "$FAIL_RESTORE"
 out_delete_fail=$(GH_EDIT_FAIL=1 bash "$LOAD" --design-tmpdir "$FAIL_RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_delete_fail" == *"ERROR=marker-delete-failed"* ]] || fail "delete failure mismatch: $out_delete_fail"
-[[ ! -f "$FAIL_RESTORE/plan.txt" ]] || fail "marker delete failure should leave tmpdir untouched"
+[[ -f "$FAIL_RESTORE/plan.txt" ]] || fail "marker delete failure should keep installed restore"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should remain after delete failure"
 
 echo "=== marker name validation ==="

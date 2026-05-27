@@ -143,10 +143,31 @@ if ! awk -F '\t' -v step="$STEP" '$1 == step { found=1 } END { exit(found ? 0 : 
     emit_load_fail "invalid-step"
 fi
 
+if [[ -n "$SESSION_ID" ]]; then
+    validate_plain_value session-id "$SESSION_ID"
+    [[ "$SESSION_ID" == "$RUN_ID" ]] || emit_load_fail "invalid-session-id"
+fi
+
+if [[ -n "$TIER" ]]; then
+    case "$TIER" in
+        TRIVIAL_DOC_ONLY|SIMPLE|HARD|unknown) ;;
+        *) emit_load_fail "invalid-tier" ;;
+    esac
+fi
+
+if [[ -n "$BRAINSTORM_DONE" ]]; then
+    case "$BRAINSTORM_DONE" in
+        true|false) ;;
+        *) emit_load_fail "invalid-brainstorm-done" ;;
+    esac
+fi
+
 if [[ -n "$LOG_RECOVERY_BRANCH" ]]; then
     validate_plain_value recovery-branch "$LOG_RECOVERY_BRANCH"
     expected_recovery_branch="larch-log-design-$RUN_ID"
-    [[ "$LOG_RECOVERY_BRANCH" == "$expected_recovery_branch" ]] || emit_load_fail "invalid-recovery-branch"
+    expected_local_recovery_branch="larch-log-design-recovery-$RUN_ID"
+    [[ "$LOG_RECOVERY_BRANCH" == "$expected_recovery_branch" || "$LOG_RECOVERY_BRANCH" == "$expected_local_recovery_branch" ]] \
+        || emit_load_fail "invalid-recovery-branch"
     if ! git check-ref-format --branch "$LOG_RECOVERY_BRANCH" >/dev/null 2>&1; then
         emit_load_fail "invalid-recovery-branch"
     fi
@@ -169,10 +190,17 @@ REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_TOP=""
 
 archive_ref=""
 if [[ -n "$LOG_RECOVERY_BRANCH" ]]; then
-    if ! git -C "$REPO_TOP" fetch origin "$LOG_RECOVERY_BRANCH" >/dev/null 2>&1; then
-        emit_load_fail "snapshot-not-found"
+    if [[ "$LOG_RECOVERY_BRANCH" == "larch-log-design-recovery-$RUN_ID" ]]; then
+        if ! git -C "$REPO_TOP" show-ref --verify --quiet "refs/heads/$LOG_RECOVERY_BRANCH"; then
+            emit_load_fail "snapshot-not-found"
+        fi
+        archive_ref="$LOG_RECOVERY_BRANCH"
+    else
+        if ! git -C "$REPO_TOP" fetch origin "$LOG_RECOVERY_BRANCH" >/dev/null 2>&1; then
+            emit_load_fail "snapshot-not-found"
+        fi
+        archive_ref="FETCH_HEAD"
     fi
-    archive_ref="FETCH_HEAD"
 else
     ORIGIN_DEFAULT=$(
         git -C "$REPO_TOP" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
@@ -189,9 +217,21 @@ if ! git -C "$REPO_TOP" archive "$archive_ref" "larch-logs/design/$RUN_ID/" | ta
     emit_load_fail "snapshot-extract-failed"
 fi
 
-for required in manifest.json plan.txt run-params.json pause-state.txt; do
+plan_required=true
+if awk -F '\t' -v step="$STEP" '
+    $1 == step { step_nr=NR }
+    $1 == "2b" { plan_nr=NR }
+    END { exit !(step_nr > 0 && plan_nr > 0 && step_nr <= plan_nr) }
+' "$STEP_REGISTRY"; then
+    plan_required=false
+fi
+
+for required in manifest.json run-params.json pause-state.txt; do
     [[ -f "$restore_tmp/$required" ]] || emit_load_fail "missing-restored-artifact"
 done
+if [[ "$plan_required" == true ]]; then
+    [[ -f "$restore_tmp/plan.txt" ]] || emit_load_fail "missing-restored-artifact"
+fi
 
 RESTORED_ISSUE=$(kv_get ISSUE_NUMBER "$restore_tmp/pause-state.txt")
 validate_plain_value restored-issue-number "$RESTORED_ISSUE"
@@ -230,12 +270,13 @@ delete_args=(
     --issue "$ISSUE"
 )
 [[ -n "$REPO" ]] && delete_args+=(--repo "$REPO")
-if ! "${delete_args[@]}" > "$delete_out" 2> "$delete_err"; then
-    emit_load_fail "marker-delete-failed"
-fi
 
 if ! cp -R "$restore_tmp"/. "$DESIGN_TMPDIR"/; then
     emit_load_fail "restore-install-failed"
+fi
+
+if ! "${delete_args[@]}" > "$delete_out" 2> "$delete_err"; then
+    emit_load_fail "marker-delete-failed"
 fi
 
 emit_kv LOAD_OK true
