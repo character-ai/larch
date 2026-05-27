@@ -1,0 +1,14 @@
+Implemented the doc-only sweep and wrote the complete manifest atomically at:
+
+`<TMPDIR>/manifest.json`
+
+Changes made:
+- Added `make test-stall-recovery-report` to `docs/linting.md`.
+- Corrected the `/design` final-summary reference from Step 5c item 9 to item 10.
+- Added the canonical `CLAUDE_PLUGIN_ROOT` Bash prelude section to `skills/implement/SKILL.md`.
+
+Verification passed:
+- `bash scripts/relevant-checks.sh`
+- `make test-stall-recovery-report`
+- Plan invariant: `grep -c 'awk.*LARCH_CLAUDE_PLUGIN_ROOT=' skills/implement/SKILL.md` is `44`
+- `qa-pending.json` was not written because status is `complete`.
