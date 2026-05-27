@@ -1,0 +1,21 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- hook and cursor-delay paths exercise launch-review promotion; codex shares the same promote helper.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- FINDING_* comments are panel traceability, not a functional defect.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated sidecar markers are a small DRY nit, not worth blocking.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- TIMEOUT grep duplication is real but shared-helper extraction is optional.
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- post-barrier Voter 1 backfill is intentional for launcher gaps after TIMEOUT logging.
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- progress/diagnostics on stderr are real; contract doc should state the channel explicitly.
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- branch bundles #2973 voter fixes with version bump, telemetry/parser work, and large implement run logs.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- skipped handling is defensive; no producer today is not a runtime bug.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- parse-rate relaunch still writes retry .done immediately, bypassing the new voter wait barrier.
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- several scripts still call codex exec directly and miss the shared stdin guard.
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cursor control deliberately asserts non-/dev/null; stronger fd inheritance probe is optional.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- second-resolution timing is a known flake risk but acceptable for this harness.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan scoped offline harness tests; missing Step 5 integration is follow-up, not a gap in delivered scope.
+FINDING_14: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- happy shard was split; no evidence it already exceeds CI budget.
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- test-launch-review.md has orphaned bullets after the sidecar-marker entry.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- collect-agent-results strips test hooks on retry but initial launches can still inherit them.
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- raw Codex JSONL beside outputs can hold prompts/tool output until tmpdir cleanup.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- awk+eval is test-only and low risk.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- size-only post-barrier checks match degraded-quorum design; parse-rate retries handle bad output later.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- breadcrumb-monitor cascade is already tracked in #3005 per plan OOS.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- compressed coverage paragraph is a doc readability nit, not a behavioral gap.
