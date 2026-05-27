@@ -1,0 +1,47 @@
+Reading the implementation plan and exploring cited codebase paths (read-only).
+Exploring codebase paths cited in the plan to validate contracts and find gaps.
+Checking a few more integration points:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/dispatch-plan-review-panel.sh:54-58	Dynamic prompts reuse shared tail via tail -n +2 on renderer stdout	Prepended SIMPLE/HARD tier-emphasis lines are stripped from dynamic reviewer prompts; static slots get emphasis, dynamic slots do not — biased voting across slot types	Refactor shared prompt tail into a dedicated section (e.g. render-plan-review-prompt.sh --section shared-only) or pass --design-tmpdir and duplicate full shared block in write_dynamic_prompt without tail -n +2
+2	in_scope	important	correctness	plan.txt:11-12	Gate C cap counts Step 3 entries; tier text says Re-run cap: 3	Operators expect three Re-run clicks (four panels) but get three total panel executions (two re-runs) — silent off-by-one	Define cap as re-run selections only (increment on Gate C(c), not Step 3 entry) OR rename tier-gate copy to Total review rounds: 3 and hide when count >= cap before the next Step 3
+3	in_scope	important	risk-integration	skills/design/SKILL.md:724-734	Step 3 fenced bash still hardcodes --round-num 1	Counter file and plan-review-loop.md contract never wire up; round labels and any round-scoped artifacts stay at 1 across re-entries	Add fenced bash: read/increment review-round-count.txt, pass --round-num "$count" to plan-review-loop.sh; pin in test-design-structure.sh
+4	in_scope	important	risk-integration	skills/design/scripts/render-plan-review-prompt.sh:13-41	Renderer has no run-params input path	Plan says read design_classification from $DESIGN_TMPDIR/run-params.json but argv is only --archetype/--vendor/--plan-file — emphasis cannot be selected mechanically	Add --design-tmpdir DIR (or honor DESIGN_TMPDIR) and jq design_classification; extend test-plan-review-prompt.sh with fixture run-params for SIMPLE vs HARD prefix assertions
+5	in_scope	important	risk-integration	skills/design/scripts/test-plan-review-prompt.sh:1-87	Harness not listed in Files to modify	Tier-emphasis testing strategy has no enforced regression; CI can ship broken or absent prefixes	Add UPDATED entry for test-plan-review-prompt.sh (+ .md): fixture run-params.json, assert Tier emphasis: SIMPLE/HARD and locked bias phrases per classification
+6	in_scope	important	risk-integration	Makefile:406-407	Deleted harness still in make lint graph	Removing scripts without dropping test-read-design-review-budget-invoke target breaks make lint	Remove Makefile target, test-harnesses-12 prerequisite, docs/linting.md row, and agent-lint.toml entries for deleted invoke/read-budget harness files
+7	in_scope	important	code-quality	scripts/test-design-structure.sh:144-656	Structural pin migration underspecified	Deleting plan-review-quick.md and renaming validator fail checks 7b, 13q, FINDING_2678, --trivial mutual-exclusion pins, invoke-plan-validator-if-not-quick pins	Expand test-design-structure.sh task: replace pins with NO_SKETCHES_CLASSIFIED_SIMPLE, invoke-plan-validator.sh, Gate C cap prose, --trivial hard-error; delete quick-mode existence checks
+8	in_scope	important	security	plan.txt:16-17	SIMPLE reviewer prefix biases toward EXONERATE	Security-tagged findings may be downgraded as scope creep under Prefer EXONERATE on nits and When in doubt, EXONERATE	Carve out security focus_area in SIMPLE prefix (never EXONERATE security); or require YES for any security-classified concern regardless of tier emphasis
+9	in_scope	latent	architecture	plan.txt:164-165	Edge case cites read-design-classification helper	No such script exists today; implementers grep and improvise inconsistent jq fallbacks	Add skills/design/scripts/read-design-classification.sh (python3→jq→grep) or delete helper name and point all callers at one jq snippet in SKILL.md
+10	in_scope	important	architecture	scripts/timing-ledger.sh:176-188	Plan updates timing-ledger to read run-params; ledger never does	Dead or mis-aimed work; design runs still omit workflow TSV rows (unknown in timing-report-final.json)	After write-run-params.sh in Step 0b, call timing-ledger.sh workflow-path with jq -r .design_classification; drop fictional run-params read inside timing-ledger unless adding it deliberately
+11	in_scope	nit	correctness	scripts/test-timing-report.sh:1-60	Plan updates test-timing-report run-params fixtures	Harness uses ledger TSV only — no run-params.json fixtures; listed change is a no-op or wrong file	Remove test-timing-report.sh from run-params fixture task or add a new test that exercises design_classification→workflow ledger row if introduced
+12	in_scope	important	architecture	plan.txt:11-12	Gate C cap is AskUserQuestion-only	No mechanical enforcement if the orchestrator ignores approval-gates.md — unbounded re-run cost remains	Add scripts/design-review-round-cap.sh (read counter + classification, emit HIDE_RERUN=true) and require SKILL.md Step 4b to branch on its stdout before Gate C prompt
+13	in_scope	latent	architecture	skills/design/SKILL.md:92	NEVER #1 still documents TRIVIAL_DOC_ONLY / sketch_budget carve-out	Post-PR skill text contradicts two-tier SIMPLE/HARD model and renamed sentinel	Rewrite NEVER #1 to SIMPLE skip-sketches branch and NO_SKETCHES_CLASSIFIED_SIMPLE; remove TRIVIAL_DOC_ONLY and sketch_budget vocabulary
+
+**1. [correctness] Dynamic reviewers miss tier emphasis** — `dispatch-plan-review-panel.sh` builds dynamic prompts with `append_shared_prompt_tail`, which pipes `render-plan-review-prompt.sh` through `tail -n +2` to drop the archetype `full_role` line. If tier emphasis is prepended as new leading lines, dynamic slots lose that block while static slots retain it, producing inconsistent review bias (plan claims single entry point at `render-plan-review-prompt.sh`).
+
+**2. [correctness] Gate C “re-run cap” semantics** — Counter increments on every Step 3 entry (including the first panel). With cap=3 and hide when `counter == cap`, operators get three total panel runs, not three re-runs after the first. Tier-gate copy (“Re-run cap: 3”) likely over-promises. Stronger alternative: increment only when the user selects Gate C(c).
+
+**3. [risk-integration] Step 3 bash block not wired** — Plan updates `plan-review-loop.sh` to take `--round-num` from `review-round-count.txt` but the normative fenced block in `skills/design/SKILL.md` still passes `--round-num 1` and has no increment script.
+
+**4. [risk-integration] Renderer contract incomplete** — `render-plan-review-prompt.sh` cannot read `run-params.json` without a new `--design-tmpdir` (or env) argument; plan omits that API change.
+
+**5. [risk-integration] Missing harness in file list** — Testing strategy requires tier-emphasis phrases in prompts, but `test-plan-review-prompt.sh` is not in Files to modify.
+
+**6. [risk-integration] Lint graph cleanup** — Deleting `read-design-review-budget.sh` / `test-read-design-review-budget-invoke.sh` without Makefile, `docs/linting.md`, and `agent-lint.toml` updates will break `make lint`.
+
+**7. [code-quality] Structural pins** — `test-design-structure.sh` has many pins beyond those enumerated (plan-review-quick existence, validator script name, `--trivial` mutual exclusion). Plan’s failure-mode #1 understates the grep surface.
+
+**8. [security] SIMPLE EXONERATE bias** — Reviewer prefix instructs EXONERATE when in doubt; security findings may be treated as scope creep. Needs an explicit security carve-out in the SIMPLE emphasis block.
+
+**9. [architecture] Fictional helper** — Edge cases reference `read-design-classification` but no script exists; add one or standardize inline jq.
+
+**10. [architecture] Timing workflow row** — `timing-ledger.sh` does not read `run-params.json` today; `/design` never records `workflow-path` in the ledger. Plan should add a post-write `timing-ledger.sh workflow-path "$(jq -r .design_classification …)"` call, not a nonexistent ledger JSON reader.
+
+**11. [correctness] Spurious test-timing-report task** — `test-timing-report.sh` has no run-params fixtures; listed update is misplaced.
+
+**12. [architecture] Prompt-only cap** — Gate C hide-option is prose-only; a small cap helper would match larch’s mechanical-contract style and resist orchestrator drift.
+
+**13. [architecture] NEVER #1 drift** — Still describes `TRIVIAL_DOC_ONLY` / `sketch_budget=0`; must align with SIMPLE sentinel rename.
+
+**[OUT_OF_SCOPE]** **Alternative tier model** (`plan.txt:7-8`): Instead of making new SIMPLE run the full 10-reviewer panel with EXONERATE bias, a third **FAST** tier (validator + reduced panel or scout-only) could preserve cost control for doc-only work without resurrecting `--trivial` naming — product trade-off, not required for #2956.
+
+**[OUT_OF_SCOPE]** **Cap in schema v2** (`plan.txt:22-29`): Add `review_round_cap` to `run-params.json` so scripts and reports read one field instead of duplicating 3/5 in prose (`scripts/write-run-params.sh`, `approval-gates.md`).

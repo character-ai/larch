@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	Makefile:67,406-407	Makefile still wires deleted harness into lint	After deleting test-read-design-review-budget-invoke.sh, make test-harnesses-12 / make lint runs a missing script and fails	Add UPDATED Makefile: remove test-read-design-review-budget-invoke from test-harnesses-12 (line 67), delete the target (406-407), and drop it from the .PHONY list (line 4)

@@ -1,0 +1,49 @@
+Reading the plan and searching the repo for references to symbols the plan removes or renames.
+Searching for references in files not listed in the plan:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	Makefile:67,406-407	Deleted harness still wired into make lint	test-harnesses-12 and test-read-design-review-budget-invoke target invoke skills/design/scripts/test-read-design-review-budget-invoke.sh after file deletion	Remove target from test-harnesses-12 .PHONY list and delete test-read-design-review-budget-invoke recipe; add UPDATED Makefile to plan
+2	in_scope	important	correctness	agent-lint.toml:896,1264	agent-lint exclude list still names deleted harness files	agent-lint.toml references paths that no longer exist after DELETED test-read-design-review-budget-invoke.*	Remove both paths from agent-lint.toml exclude list (or repoint if a replacement harness is added)
+3	in_scope	important	correctness	docs/linting.md:217	Lint docs still document deleted make target	Row documents make test-read-design-review-budget-invoke and read-design-review-budget.sh; plan only says drop sketch_budget/review_budget mentions elsewhere	Remove or rewrite the harness table row; document replacement coverage (e.g. invoke-plan-validator.sh via test-design-driver / new harness)
+4	in_scope	important	correctness	scripts/test-effort-prose.sh:15	Harness file list still requires deleted plan-review-quick.md	make test-effort-prose greps a fixed FILES array including skills/design/references/plan-review-quick.md	Remove plan-review-quick.md from FILES; add UPDATED scripts/test-effort-prose.sh to plan
+5	in_scope	important	correctness	scripts/test-design-structure.sh:242-244,372-382,709-736	Structural pins require plan-review-quick.md to exist	Checks 7b, 13q, and FINDING_2678 location 4 fail when plan-review-quick.md is deleted; plan mentions test-design-structure.sh but not these checks explicitly	Extend test-design-structure.sh task: delete checks 7b/13q and FINDING_2678 quick path; retarget FINDING_2678 to three locations only
+6	in_scope	important	correctness	scripts/test-design-structure.sh:501-577,511-522	Literal pins still grep invoke-plan-validator-if-not-quick.sh	Rename to invoke-plan-validator.sh is incomplete without updating awk/grep pins in SKILL.md, approval-gates.md, and discussion-rounds.sh structural tests	Add explicit pin renames for invoke-plan-validator.sh across checks 14b10-14b11 and 14c14d-14c14h
+7	in_scope	important	risk-integration	(plan) Files to modify	Deleting test-read-design-review-budget-invoke removes only automated coverage of validator dispatch	Plan deletes harness with no NEW test-invoke-plan-validator.sh or expanded test-design-driver cases for unconditional VALIDATE_PLAN_COMMANDS	Add replacement harness or extend test-design-driver.sh to assert invoke-plan-validator.sh always calls design-driver on SIMPLE and HARD fixtures
+8	in_scope	important	architecture	scripts/timing-ledger.sh:176-188,skills/design/SKILL.md	Plan claims timing-ledger reads run-params workflow_path but it does not; /design never records workflow-path	timing-ledger.sh only appends workflow rows from argv; design SKILL has no timing-ledger.sh workflow-path call so design timing-report.json stays workflow_path unknown	Either add Step 0b bash to call timing-ledger.sh workflow-path from design_classification, or narrow plan timing-ledger/timing-report edits to doc/JSON field naming only
+9	in_scope	important	correctness	docs/voting-process.md:7	Still links plan-review-quick.md and --quick plan review	Normative voting doc describes Claude-only quick path via deleted reference file	Add UPDATED docs/voting-process.md: both tiers use full 3-voter panel; remove plan-review-quick.md link
+10	in_scope	important	architecture	.claude/rules/topology-generation.md:10	path-triggered rule still lists deleted plan-review-quick.md	Rule paths: glob includes skills/design/references/plan-review-quick.md	Remove that path from paths: list when file is DELETED
+11	in_scope	important	correctness	skills/design/references/plan-review.md:140	Still gates description on review_budget=full	Prose says Step 3 (review_budget=full) runs voting; contradicts unconditional full panel after tier collapse	Update plan-review.md Step 3 opener to design_classification SIMPLE|HARD (full panel always)
+12	in_scope	latent	correctness	(plan) Edge cases	References read-design-classification helper that does not exist in repo	No script or shared helper by that name; Gate C cap and render-plan-review-prompt rely on ad hoc jq	Specify inline jq in SKILL.md or add NEW scripts/read-design-classification.sh to file list and harnesses
+13	in_scope	latent	correctness	skills/design/scripts/render-final-summary.sh:56,240	workflow_path jq and --trivial plan-review line not in plan	After v2 run-params, jq .workflow_path is always unknown; MODE_STR trivial branch is dead but misleading	Add render-final-summary.sh to plan: read design_classification; drop trivial plan_line branch
+14	in_scope	latent	architecture	skills/shared/topology.tsv:1,3,15	Topology rows for zero_slots, quick_slots, quick_mode remain	Plan says remove quick_mode/sketch_budget rows but does not name design.sketch.zero_slots or require SIMPLE replacement row	Explicitly delete/rename zero_slots and quick_slots; add SIMPLE no-sketch row if docs/topology.md should link it
+15	[OUT_OF_SCOPE]	latent	correctness	CHANGELOG.md:323-339,2033,2029	Historical changelog entries cite deleted symbols	Not runtime breakage; confuses grep-based audits	Optional follow-up changelog note in same PR or leave as history
+16	[OUT_OF_SCOPE]	latent	correctness	larch-logs/design/*/run-params.json	Historical run-params retain v1 fields	Committed logs are artifacts; no code reads them for live /design	No change required unless log refresh is in scope
+
+1. **[correctness] `Makefile:67,406-407`** — `make lint` still runs `test-read-design-review-budget-invoke`, which executes the deleted harness script. Add `Makefile` to the plan’s file list and remove the target from `test-harnesses-12`.
+
+2. **[correctness] `agent-lint.toml:896,1264`** — Exclude entries point at deleted `test-read-design-review-budget-invoke` paths. Remove or update those entries when the harness is removed.
+
+3. **[correctness] `docs/linting.md:217`** — The harness table row still documents `make test-read-design-review-budget-invoke` and `read-design-review-budget.sh`. The plan’s `docs/linting.md` bullet does not require removing this row. Delete or replace it with the new validator contract.
+
+4. **[correctness] `scripts/test-effort-prose.sh:15`** — The `FILES` array still lists `plan-review-quick.md`, so `make test-effort-prose` will fail once that file is deleted. Add this script to the plan.
+
+5. **[correctness] `scripts/test-design-structure.sh:242-244,372-382,709-736`** — Checks **7b**, **13q**, and **FINDING_2678** location 4 require `plan-review-quick.md` to exist. The plan updates `test-design-structure.sh` but does not call out deleting these checks (only generic pin updates). Enumerate their removal in the plan.
+
+6. **[correctness] `scripts/test-design-structure.sh:501-577,511-522`** — Multiple grep/awk pins still require the literal `invoke-plan-validator-if-not-quick.sh`. The rename to `invoke-plan-validator.sh` must update checks **14b10**, **14b11**, **14c14d–14c14h**, not only SKILL prose.
+
+7. **[risk-integration] (plan) Files to modify** — Deleting `test-read-design-review-budget-invoke.sh` removes the only harness that exercises validator gating and `read-design-review-budget.sh` fallbacks. Add a replacement harness or extend `test-design-driver.sh` for unconditional `invoke-plan-validator.sh` dispatch on v2 fixtures.
+
+8. **[architecture] `scripts/timing-ledger.sh:176-188`, `skills/design/SKILL.md`** — The plan says `timing-ledger.sh` should read `workflow_path` from `run-params.json`, but the script only records `workflow-path` from argv and `/design` never calls that subcommand. Design timing JSON will keep `"workflow_path":"unknown"` unless Step 0b records tier via `timing-ledger.sh workflow-path "$(jq … design_classification)"` or the plan narrows timing changes to documentation only.
+
+9. **[correctness] `docs/voting-process.md:7`** — Still describes Claude-only `--quick` plan review via `plan-review-quick.md`. Not in the plan’s file list. Update to reflect full panel for both SIMPLE and HARD.
+
+10. **[architecture] `.claude/rules/topology-generation.md:10`** — Path-triggered rule still lists deleted `plan-review-quick.md`. Remove from `paths:` when the file is deleted.
+
+11. **[correctness] `skills/design/references/plan-review.md:140`** — Step 3 description is still conditioned on `review_budget=full`. Plan updates `plan-review.md` for tier emphasis but should explicitly drop `review_budget` gating language.
+
+12. **[correctness] (plan) Edge cases** — References `read-design-classification` helper with no matching script in the repo. Specify inline `jq` in SKILL.md or add a new `read-design-classification.sh` plus tests to the file list.
+
+13. **[correctness] `skills/design/scripts/render-final-summary.sh:56,240`** — Plan swaps `workflow_path` → `design_classification` in narrative for `render-final-summary.sh` but the file list already includes it; ensure the implementation removes `.workflow_path` jq and the `*--trivial*` plan-review line.
+
+14. **[architecture] `skills/shared/topology.tsv:1,3,15`** — Rows `design.sketch.zero_slots`, `design.sketch.quick_slots`, and `design.plan_review.quick_mode` remain and still point at quick/trivial paths. Plan should name each row to delete or replace for SIMPLE (0 sketches) vs HARD (4).
+
+**[OUT_OF_SCOPE] `CHANGELOG.md` / `larch-logs/**`** — Historical mentions of deleted symbols in changelog and committed run logs do not break post-PR runtime; track only if you want grep-clean history.
