@@ -1,0 +1,13 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- omission in secondary prose; primary docs (SKILL.md rows 701-702, implement-bootstrap.md) were updated; marginal value to file separately
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- explicitly accepted trade-off in the plan edge cases; SKILL.md updated to reference the implication; fix belongs in a separate follow-up if operator friction is observed
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- plan explicitly scoped out title reset as accepted trade-off; not a defect against plan; future issue if product requires rollback
+FINDING_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- meta process concern about branch structure, not actionable as a code finding
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing design noted as pre-existing in the finding itself; not introduced by this change
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documented pre-existing behavior; not introduced or worsened by this change
+FINDING_13: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- meta-comment about reviewer output quality, not a distinct behavioral finding against the implementation

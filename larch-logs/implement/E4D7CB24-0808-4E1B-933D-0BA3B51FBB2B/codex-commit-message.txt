@@ -1,0 +1,3 @@
+Rename implement issues before tracking metadata
+
+Move the existing implementing-title rename earlier in implement bootstrap so Branch 1 resume runs it before larch-log init and Branch 2 adopt runs it immediately after open-issue validation. Update the behavior docs and POSTED=false harness assertions to reflect that the rename is attempted before metadata posting/defer handling.

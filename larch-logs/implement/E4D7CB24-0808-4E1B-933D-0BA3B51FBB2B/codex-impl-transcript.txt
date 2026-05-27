@@ -1,0 +1,12 @@
+Implemented the plan and wrote the manifest at `<TMPDIR>/manifest.json`.
+
+Changed:
+- [scripts/implement-bootstrap.sh](<OPERATOR_REPO_PATH>/scripts/implement-bootstrap.sh:610): Branch 1 resume now renames before `larch-log.sh init`; Branch 2 adopt renames immediately after open-issue validation.
+- [skills/implement/SKILL.md](<OPERATOR_REPO_PATH>/skills/implement/SKILL.md:714) and [scripts/implement-bootstrap.md](<OPERATOR_REPO_PATH>/scripts/implement-bootstrap.md:97): docs now reflect the earlier rename, including `POSTED=false`.
+- [skills/implement/scripts/test-implement-bootstrap.sh](<OPERATOR_REPO_PATH>/skills/implement/scripts/test-implement-bootstrap.sh:753): B4/B4-plan/B4-all now assert the rename happened.
+
+Validation passed:
+- `bash skills/implement/scripts/test-implement-bootstrap.sh` -> `PASS=382 FAIL=0`
+- `bash scripts/relevant-checks.sh` -> passed
+
+No `qa-pending.json` was written because status is `complete`.
