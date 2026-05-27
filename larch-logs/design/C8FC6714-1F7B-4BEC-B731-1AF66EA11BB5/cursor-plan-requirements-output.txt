@@ -1,0 +1,44 @@
+Reviewing the plan against requirements: reading the plan file and exploring referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/shared/external-reviewers.md:44-68	Family B collect-agent-results fence omitted from Markdown sweep list	Lint scans skills/shared/*.md; fence stays without shell & PID capture and wait after monitor, so copied examples still allow wrapper exit before collector finishes	Add skills/shared/external-reviewers.md to Files to modify and apply the canonical writer-& PID wait pattern to the Collection fence
+2	in_scope	important	correctness	skills/shared/dialectic-protocol.md:260-285	Judge-collection Family B fence omitted from sweep list	Same lint surface as external-reviewers; dialectic judge collection prose remains the orphan-vulnerable shape	Add skills/shared/dialectic-protocol.md to the sweep; update the Collecting Judge Results fence (and any duplicate collector fences in that file)
+3	in_scope	important	correctness	skills/design/references/plan-review.md:157-170	dispatch-plan-voters fence uses synchronous command substitution not background &	Plan requires IDENT=$! after anchor; here _plan_voter_dispatch=$(dispatch-plan-voters.sh ...) runs synchronously so $! is not the dispatcher PID and wait would not couple to the long runner	Restructure fence: dispatch-plan-voters.sh ... & then VOTER_DISPATCH_PID=$! (or equivalent) eval stdout if still required then monitor then wait "$VOTER_DISPATCH_PID"; document this variant in BASH_AUTHORING.md and lint helper
+4	in_scope	important	correctness	skills/implement/SKILL.md:883-894,1147-1158,1452-1475	Sweep does not require shell & on writer lines before $! capture	Current fences rely on Tool JSON run_in_background only; adding VAR=$! without trailing & on the writer captures the wrong job (or an earlier background job) and wait does not fix #2996	Add explicit sweep rule: every top-level Family B writer invocation line in the fence must end with & immediately before the IDENT=$! line; make lint fail (not warn-only per Failure modes #1) when anchor lacks & before capture
+5	in_scope	important	architecture	scripts/lint-foreground-markers.sh:702-705	Plan claims wiring pid/wait checks into existing shell-file scan path but only scan_shell_file_for_unset_before_nested_child runs today	Decision 5 requires enforcement in shell scripts; implementer may only extend unset scanner and ship without pid/wait coverage in .sh files	Add a dedicated scan_shell_file_for_family_b_pid_capture_and_wait (or extend shell scan loop) that applies fence_has_family_b_pid_capture_and_wait to tracked scripts/*.sh and skills/*/scripts/*.sh when they contain top-level Family B writer plus breadcrumb-monitor pairs
+6	in_scope	important	architecture	docs/linting.md:17,scripts/lint-foreground-markers.md:1-24	Contract docs not listed for new wait invariant	Decision 5 and repo edit-in-sync norms; operators reading linting.md still see foreground-marker wording only and miss pid-capture-plus-wait requirement	Update docs/linting.md Family B row and scripts/lint-foreground-markers.md to document pid capture wait ordering and cross-link BASH_AUTHORING.md section 4
+7	in_scope	latent	correctness	plan.txt:159-166,feature-description Decision 6	test-background-monitor-wait harness spec verifies positive case only; negative without-wait case not required in harness	Regression could pass while orphan path regresses if someone deletes wait from fences but harness still passes	Add second subtest in scripts/test-background-monitor-wait.sh that runs the same fake writer/monitor pair without wait and asserts wrapper returns early (or document explicit deferral to lint-only if intentionally omitted)
+8	in_scope	nit	architecture	plan.txt:165-166	Testing strategy says register harness in scripts/relevant-checks.sh	Harnesses enter Makefile test-harnesses-N shards only; relevant-checks.sh delegates to pre-commit and does not enumerate test-* targets	Mirror test-breadcrumb-monitor: add Makefile test-background-monitor-wait target assign to a test-harnesses-N shard and run make test-harness-shards-coverage; drop relevant-checks.sh registration wording
+9	in_scope	nit	completeness	skills/implement/SKILL.md:66	NEVER #16 still describes background+monitor only not post-monitor wait on writer PID	Authors following NEVER #16 may omit wait even after BASH_AUTHORING.md update	Extend NEVER #16 How to apply with shell & writer PID=$! monitor wait "$PID" 2>/dev/null || true for top-level Family B writers
+10	out_of_scope	nit	completeness	AGENTS.md:1-80	Family B denylist bullet does not mention wait discipline	Minor operator drift vs BASH_AUTHORING.md after fix	Optional follow-up: add one sentence to AGENTS.md Family B bullet referencing wait after breadcrumb-monitor per BASH_AUTHORING.md section 4
+
+## Numbered findings
+
+**1. [correctness] Missing sweep: `skills/shared/external-reviewers.md`**  
+The plan’s documentation sweep lists design/implement/research references but not `skills/shared/external-reviewers.md`, which already contains a full `collect-agent-results.sh` + `breadcrumb-monitor.sh` fence (lines 44–68). `lint-foreground-markers.sh` scans `skills/shared/*.md`, so after the lint change lands this file will fail until updated, but the plan does not schedule that edit.
+
+**2. [correctness] Missing sweep: `skills/shared/dialectic-protocol.md`**  
+Same gap for the judge-collection fence at lines 260–285. This is a first-class Family B pair on the same lint surface as the files the plan does list.
+
+**3. [correctness] `dispatch-plan-voters` fence shape in `plan-review.md`**  
+The voter-dispatch reference fence (lines 157–170) runs `dispatch-plan-voters.sh` inside `$(...)` synchronously, then `eval`, then the monitor. The plan’s canonical contract assumes `writer &` then `IDENT=$!`. Without restructuring, a naïve `wait` on `$!` would not wait on the long-running dispatcher, and the orphan bug can persist for plan-review voting.
+
+**4. [correctness] Shell `&` not explicit in sweep rules**  
+Post-change fences in `skills/implement/SKILL.md` (e.g. Step 2 dispatch ~883–894, Step 5 ~1147–1158, ship-pr ~1452–1475) use Tool JSON `run_in_background: true` but no shell `&` on the writer line. Issue #2996’s root cause and the plan’s worked example both require backgrounding in the wrapper shell; `$!` only binds to the writer when that line ends with `&`. Failure modes §1 says “warn (not fail) on missing `&`”, which conflicts with making `$!`+`wait` reliable. The sweep should require `&` and the linter should fail closed on missing `&` for top-level Family B anchors.
+
+**5. [architecture] Shell-script lint path misdescribed**  
+The plan says to wire the new helper into “the existing shell-file scan path” around line 496, but the shell loop at lines 702–705 only calls `scan_shell_file_for_unset_before_nested_child`. Decision 5 requires pid/wait enforcement in shell scripts, not only Markdown fences—add an explicit new shell scanner (or extend the shell loop) rather than assuming the fence scanner already covers `.sh` files.
+
+**6. [architecture] Lint contract docs omitted**  
+`docs/linting.md` (line 17) and `scripts/lint-foreground-markers.md` still describe the pre-wait Family B contract. With Decision 5, these should be updated in the same change set as `BASH_AUTHORING.md` and the linter.
+
+**7. [correctness] Regression harness scope vs Decision 6**  
+Decision 6 asks for a harness that simulates early monitor exit and proves the parent waits for the background PID. The plan’s harness description ends by verifying only the positive (`wait` present) case. Add an explicit negative subtest (no `wait` → wrapper returns before writer) or state that lint fixtures alone satisfy Decision 6.
+
+**8. [architecture] Wrong hook for harness registration**  
+Testing strategy points at `scripts/relevant-checks.sh` for `test-background-monitor-wait`. Harnesses are registered via `Makefile` `test-harnesses-N` shards (see `test-breadcrumb-monitor` in `test-harnesses-18`). Update the plan to name the Makefile target and shard assignment only.
+
+**9. [completeness] `NEVER #16` not updated**  
+Decision 4 calls for normative prose so authors follow `wait` by default. The plan updates `BASH_AUTHORING.md` and fences but not `skills/implement/SKILL.md` NEVER #16, which remains the most visible implement orchestration rule and still omits post-monitor `wait`.
+
+**[OUT_OF_SCOPE] 10. `AGENTS.md` Family B bullet**  
+Optional doc alignment: mention wait-after-monitor for the five top-level writers so AGENTS.md stays consistent with §4 after implementation.

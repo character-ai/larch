@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:49-52	Helper bullets omit optional `local` before `<IDENT>=$!` while Edge cases require it	Shell functions using `local FAMILY_B_PID=$!` fail the new invariant despite being idiomatic and called out in plan.txt:144-145	Add `(local[[:space:]]+)?` to the PID-capture pattern in the helper spec and in `fence_has_family_b_pid_capture_and_wait`; add a harness fixture with `local VAR=$!`

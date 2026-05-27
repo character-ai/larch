@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:50-65; skills/implement/SKILL.md:1452-1467	PID-capture rule is anchored to the first physical invocation line	Multi-line Family B commands such as ship-pr.sh have many argument lines, so a correct PID capture after the command would be more than 3 lines below the anchor and fail the proposed lint rule	Define the check relative to the merged logical command end, require the shell ampersand on that command, and add a multiline Step 8-style positive fixture
+1	in_scope	important	risk-integration	skills/shared/external-reviewers.md:44-68; skills/shared/dialectic-protocol.md:260-285	Documentation sweep omits linted shared Markdown fences	scripts/lint-foreground-markers.sh scans skills/shared/*.md, so these existing collect-agent-results.sh fences would fail or remain stale after the new wait invariant lands	Add the shared files to the plan and sweep every matching skills/shared/*.md Family B fence, not only skill-specific reference files
+1	in_scope	latent	architecture	scripts/lint-foreground-markers.sh:676-679; plan.txt:51	The plan relies on a next-fenced-block wait allowance that the linter does not currently model	The current scanner only evaluates the current fence body and uses the post-fence window for contradiction prose, so cross-fence monitor/wait support would require new pending-anchor state and tests	Prefer requiring capture, monitor, and wait in the same fence; otherwise explicitly design and test a pending-anchor lookahead path
+1	in_scope	important	risk-integration	scripts/relevant-checks.sh:116-118; .pre-commit-config.yaml:126-133; plan.txt:79-87	New regression harness is not actually wired into relevant-checks by Makefile registration alone	relevant-checks delegates to pre-commit on changed files and never invokes Makefile targets, so test-background-monitor-wait would run in make lint but not in the requested relevant-checks path	Add a local pre-commit hook or explicit relevant-checks routing for the new harness, plus a relevant-checks test proving the intended path runs
+1	in_scope	latent	correctness	plan.txt:73-76	Fake-writer harness pseudocode can model the wrong process lifetime	If the fake writer backgrounds sleep, writes the sentinel, and exits immediately, wait on the writer PID returns immediately and does not validate the intended top-level-writer coupling	Make the fake top-level writer write the sentinel early and then remain alive until a delayed marker or child wait completes; assert wrapper completion occurs after that marker
+
+1. **[correctness]** `plan.txt:50-65`  
+The proposed PID-capture invariant counts from the anchor’s invocation line, but the real call sites are multi-line commands. `skills/implement/SKILL.md:1452-1467` has a long `ship-pr.sh` invocation; a correct `SHIP_PR_PID=$!` after the command would be far outside the 3-line window. Base the rule on the merged logical command end and add a multiline fixture.
+
+2. **[risk-integration]** `skills/shared/external-reviewers.md:44-68`, `skills/shared/dialectic-protocol.md:260-285`  
+The sweep list misses shared Markdown files that the linter scans. These fences invoke `collect-agent-results.sh` and would need the same `&`, PID capture, and `wait` shape. Add them to the plan.
+
+3. **[architecture]** `scripts/lint-foreground-markers.sh:676-679`  
+The plan references a next-fenced-block allowance, but the current linter does not associate a later fence body with an earlier anchor. Keep the new contract same-fence unless the plan adds explicit pending-anchor state and tests.
+
+4. **[risk-integration]** `scripts/relevant-checks.sh:116-118`, `.pre-commit-config.yaml:126-133`  
+Registering `test-background-monitor-wait` only in the Makefile will not make it run through `scripts/relevant-checks.sh`, which delegates to pre-commit. Add the intended hook/routing or remove the relevant-checks claim.
+
+5. **[correctness]** `plan.txt:73-76`  
+The fake-writer harness needs to keep the top-level writer process alive after the sentinel is written. Otherwise `wait "$PID"` can return immediately and the test won’t cover the orphan scenario.

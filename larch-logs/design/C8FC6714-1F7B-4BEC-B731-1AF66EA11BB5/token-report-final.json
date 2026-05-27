@@ -1,0 +1,124 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 127,
+          "cache_read": 22009034,
+          "cache_create": 1254169,
+          "cache_create_5m": 1254169,
+          "cache_create_1h": 0,
+          "output": 113874,
+          "total": 23377204
+        },
+        "skills": [
+          {
+            "skill": "inferred:design Step 0 — session setup",
+            "totals": {
+              "input": 96,
+              "cache_read": 15445271,
+              "cache_create": 1083911,
+              "cache_create_5m": 1083911,
+              "cache_create_1h": 0,
+              "output": 93010,
+              "total": 16622288
+            }
+          },
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 9,
+              "cache_read": 834980,
+              "cache_create": 123447,
+              "cache_create_5m": 123447,
+              "cache_create_1h": 0,
+              "output": 6775,
+              "total": 965211
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 22,
+              "cache_read": 5728783,
+              "cache_create": 46811,
+              "cache_create_5m": 46811,
+              "cache_create_1h": 0,
+              "output": 14089,
+              "total": 5789705
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 127,
+      "cache_read": 22009034,
+      "cache_create": 1254169,
+      "cache_create_5m": 1254169,
+      "cache_create_1h": 0,
+      "output": 113874,
+      "total": 23377204
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 1257744,
+          "output": 65656,
+          "total": 7547144
+        }
+      }
+    ],
+    "totals": {
+      "input": 1257744,
+      "output": 65656,
+      "total": 7547144
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 951635,
+          "output": 92811,
+          "total": 10449726
+        }
+      }
+    ],
+    "totals": {
+      "input": 951635,
+      "output": 92811,
+      "total": 10449726
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 127,
+    "cache_read": 22009034,
+    "cache_create_5m": 1254169,
+    "cache_create_1h": 0,
+    "output": 113874,
+    "total": 23377204
+  },
+  "BUCKETS_codex": {
+    "input": 1257744,
+    "cached_input": 6223744,
+    "output": 65656,
+    "total": 7547144
+  },
+  "BUCKETS_cursor": {
+    "input": 951635,
+    "cache_read": 9405280,
+    "output": 92811,
+    "total": 10449726
+  }
+}

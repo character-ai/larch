@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/shared/external-reviewers.md:44-67	Lint-scanned shared doc with collect-agent-results.sh background+monitor fence omitted from sweep list	Implementer updates 11 listed skill/reference files but leaves this canonical template fence without `&` / `$!` / `wait`; `make lint-foreground-markers` fails on merge or partial sweep	Add skills/shared/external-reviewers.md to Files to modify with the same wait pattern as other collector fences

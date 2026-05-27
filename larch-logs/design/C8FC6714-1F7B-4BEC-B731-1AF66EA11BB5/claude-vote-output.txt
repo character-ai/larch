@@ -1,0 +1,23 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- set -euo pipefail surfaces monitor failures before the wait line; the fix adds complexity for a scenario already observable via breadcrumbs
+FINDING_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- trap at collect-agent-results.sh line 310 replaces the larch_quiet__exit_combo EXIT trap set by larch_quiet_append_done_trap, preventing done-sentinel write on normal exit
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan adds shell & so $! is reliable; LARCH_PAIRED_PID_FILE approach adds complexity without clear benefit
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- alternative design approach; plan explicitly decided not to modify breadcrumb-monitor.sh
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- scan_shell_file_for_unset_before_nested_child only checks unset LARCH_PAIRED_PID_FILE, not PID/wait enforcement
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan's warn-only for missing & is inconsistent with the fail-closed PID/wait invariant
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- ship-pr.sh exit codes 3/4/5/6 drive downstream routing; wait || true silently discards them without documenting LARCH_STATUS_FILE as authoritative
+FINDING_14: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the five top-level Family B writer fences do not use stdout command substitution; concern is about hypothetical patterns outside plan scope
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- existing positive fixtures for top-level Family B writers lack & + PID=$! + wait and will fail once new invariant is added
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- docs/linting.md is a canonical source per AGENTS.md and should document the new lint invariant and harness target
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan mentions local PID capture in edge cases but the lint helper spec uses bare <IDENT>=$! regex, omitting the optional local qualifier
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- plan specifies three wait forms but only one positive fixture planned
+FINDING_19: YES CORRECTNESS=true SEVERITY=latent QUALITY=excellent UNCERTAIN=false -- failure mode 2 in plan (identifier mismatch) has no planned regression fixture despite being explicitly described
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- monitor SIGTERM/SIGKILL escalation handles live writers; wait returns immediately for already-reaped PIDs
+FINDING_21: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- harness checks timing/orphan but not wrapper exit propagation for representative ship-pr exit codes
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- scripts/lint-foreground-markers.md sibling must be updated per script-md-siblings rule when linter behavior changes
+OOS_2: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- AGENTS.md documents the background+monitor pair convention and omitting the wait requirement leaves contributors without the full contract
