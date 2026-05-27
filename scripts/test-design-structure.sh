@@ -389,6 +389,15 @@ grep -Fq '$DESIGN_TMPDIR/.outline-approved' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md missing .outline-approved sentinel reference"
 grep -Fq 'proceed to Step 2a' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md missing Step 2a skip handoff"
+grep -Fq 'approved outline + existing plan; stay on post-plan path' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing stale-sentinel post-plan recovery guard"
+# shellcheck disable=SC2016 # Markdown literal includes backticks and emoji intentionally.
+grep -Fq 'print `✅ 1d.7: outline approved — proceeding to sketches`' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing outline-approve acknowledgment breadcrumb"
+grep -Fq 'This sentinel is written **only** on explicit Approve.' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md must pin approve-only sentinel writes"
+grep -Fq 'The already-planned ad-hoc Q&A-only branch does **not** invoke this file.' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md must exclude ad-hoc Q&A-only runs from outline gating"
 if grep -Fq 'proceed to Step 1e' "$DESIGN_OUTLINE_MD"; then
   fail "(2974) design-outline.md must not hand off outline approval to Step 1e"
 fi
@@ -423,6 +432,14 @@ grep -Fq 'cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard
   || fail "(2974) SKILL.md SUMMARY_OUTCOME enum missing cancelled-outline in documented order"
 grep -Fq 'first-time entry handled by Step 1d.7; proceed to Step 2a' "$SKILL_MD" \
   || fail "(2974) SKILL.md missing Step 1e defensive entry guard"
+grep -Fq 'outline not yet approved; return to Step 1d.7' "$SKILL_MD" \
+  || fail "(2974) SKILL.md Step 1e must return pre-plan missing-outline flows to Step 1d.7"
+# shellcheck disable=SC2016 # Markdown literal includes a literal env-var reference.
+grep -Fq 'When `$DESIGN_TMPDIR/plan.txt` exists, stay on the post-plan gate path — never route back to Step 2a from Step 1e.' "$SKILL_MD" \
+  || fail "(2974) SKILL.md Step 1e must not re-enter sketches once plan.txt exists"
+# shellcheck disable=SC2016 # Markdown literal includes a literal env-var reference.
+grep -Fq 'exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists' "$SKILL_MD" \
+  || fail "(2974) SKILL.md must require .outline-approved for downstream outline consumption"
 echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 
 # Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.

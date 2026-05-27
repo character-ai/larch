@@ -51,6 +51,10 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-OUTLINE" \
     "$SUBJECT" --outcome cancelled-outline --mode SIMPLE --post-publish-only >"$outline_std" 2>/dev/null
 grep -Fq -- '- **Outcome**: cancelled-outline' "$D/final-summary.md" || fail 'cancelled-outline missing Outcome bullet'
 grep -Fq -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" || fail 'cancelled-outline missing Step 1d.7 outline phrasing'
+outline_sentinel_line=$(grep -nF '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+outline_note_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+[[ -n "$outline_sentinel_line" && -n "$outline_note_line" && "$outline_note_line" -gt "$outline_sentinel_line" ]] \
+    || fail 'cancelled-outline note must be appended after sentinel'
 cmp -s "$D/final-summary.md" "$outline_std" || fail 'cancelled-outline stdout/file mismatch'
 pass 'cancelled-outline outcome renders'
 
@@ -396,6 +400,7 @@ for summary_outcome in \
     cancelled-sprawl \
     cancelled-plan-size-hard \
     cancelled-decompose \
+    cancelled-outline \
     failed-plan-write
 do
     session="RUN-MATRIX-${summary_outcome}"
@@ -416,7 +421,7 @@ do
         grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
     fi
 done
-pass 'ten-outcome post-publish matrix'
+pass 'eleven-outcome post-publish matrix'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
 pass 'render-final-summary append warning redacts stderr'

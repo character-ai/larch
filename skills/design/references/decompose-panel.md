@@ -75,7 +75,7 @@ Options (labels may mention degraded counts per §2):
 
 1. **Pick a single archetype’s split** → continue to stage 1.
 2. **Let aggregator pick optimal split** → run §5 then return to stage 1 with the aggregator’s Markdown as the active “vendor proposal” for a synthetic **aggregator** row (operator still confirms in stage 2 if multiple vendors existed — for aggregator there is only one bundle).
-3. **Refine plan myself (return to caller)** — jump back to the invoking step without filing (Step **2b.5** from Gate B returns toward Step 3 / Gate B per existing SKILL routing; sprawl from **1c**/**1d** returns to the sprawl gate that invoked this procedure).
+3. **Refine plan myself (return to caller)** — jump back to the invoking step without filing (Step **2b.5** from Gate B returns toward Step 3 / Gate B per existing SKILL routing; sprawl from **1c** returns to the Step 1c / Step 1d pre-plan flow; sprawl from **1d** returns to the pre-plan path that re-enters **Step 1d.7** outline approval, not Gate A).
 4. **Cancel** — export `SUMMARY_OUTCOME=cancelled-decompose`, run the **Final summary block**, print `**ℹ /design cancelled by operator (decomposition panel).**`, exit **0**.
 
 ### Stage 1 — archetype picker

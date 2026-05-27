@@ -352,9 +352,6 @@ compose_self_fallback() {
     {
         printf '## /design run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
-        if [ "$OUTCOME" = "cancelled-outline" ]; then
-            printf -- '- **Cancel site**: Step 1d.7 outline gate\n'
-        fi
         printf -- '- **Mode**: %s\n' "${MODE_STR:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
         printf -- '- **Duration**: %s\n' "${DURATION:-N/A}"
@@ -378,6 +375,9 @@ compose_self_fallback() {
         printf -- '- **Warnings**: %s\n' "${WARNINGS:-0}"
         printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_PATH:-N/A}"
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
+        if [ "$OUTCOME" = "cancelled-outline" ]; then
+            printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate'
+        fi
     } > "$out_file"
 }
 
