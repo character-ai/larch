@@ -1,5 +1,7 @@
 # Discussion Rounds Reference
 
+**MANDATORY — READ ENTIRE FILE before composing Step 1c clarifying questions, Step 1d discussion-round writes, or the post-plan Round 2 sub-round body: `skills/design/references/readability-style.md`.**
+
 **Consumer**: `/design` Steps 1c, 1d, and the post-plan discussion sub-round body invoked by Step 1e Gate A on re-entry from Gate B(c) / Gate C(b).
 
 **Contract**: owns the three discussion-round bodies (Step 1c clarifying questions, Step 1d round 1, and the post-plan Round 2 body) with their decision-tree walks, question caps, output schemas (`$DESIGN_TMPDIR/discussion-round1.md`, `$DESIGN_TMPDIR/discussion-round2.md`), and the terse-answer rule. Round 2 is no longer an auto-step at Step 3.5 — Step 3.5 is now Gate B (the post-review chooser, see `approval-gates.md`). The Round 2 body remains the normative template for the discussion sub-round that Gate A executes on each "Discuss more" iteration when re-entered post-plan.

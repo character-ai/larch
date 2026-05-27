@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+# Offline regression harness for lint-readability-preamble.sh.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+LINT="$SCRIPT_DIR/lint-readability-preamble.sh"
+
+fail() {
+    printf '%s\n' "FAIL: $1" >&2
+    exit 1
+}
+
+TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-readability-lint-test.XXXXXX")"
+trap 'rm -rf "$TMPROOT"' EXIT
+
+external_paths="
+skills/design/references/brainstorm-prompts.md
+skills/design/references/sketch-prompts.md
+skills/design/references/dialectic-debate.md
+skills/design/references/plan-review.md
+"
+
+orchestrator_paths="
+skills/design/SKILL.md
+skills/design/references/design-outline.md
+skills/design/references/brainstorm.md
+skills/design/references/sketch-launch.md
+skills/design/references/dialectic-execution.md
+skills/design/references/approval-gates.md
+skills/design/references/discussion-rounds.md
+"
+
+# shellcheck disable=SC2016 # literal prompt token fixture, not shell expansion.
+external_style_line='Style requirements: `<READABILITY_STYLE>`.'
+# shellcheck disable=SC2016 # literal prompt token fixture, not shell expansion.
+plan_review_style_line='Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.'
+# shellcheck disable=SC2016 # literal Markdown/backtick fixture, not shell expansion.
+orchestrator_style_line='**MANDATORY — READ ENTIRE FILE before composing fixture text: `skills/design/references/readability-style.md`.**'
+
+write_file() {
+    local root="$1"
+    local rel="$2"
+    local body="$3"
+    mkdir -p "$(dirname "$root/$rel")"
+    printf '%s\n' "$body" > "$root/$rel"
+}
+
+populate_fixture() {
+    local root="$1"
+    local missing_external="${2:-}"
+    local missing_orchestrator="${3:-}"
+    local rel
+
+    for rel in $external_paths; do
+        if [ "$rel" = "$missing_external" ]; then
+            write_file "$root" "$rel" "External prompt without the token."
+        elif [ "$rel" = "skills/design/references/plan-review.md" ]; then
+            write_file "$root" "$rel" "$plan_review_style_line"
+        else
+            write_file "$root" "$rel" "$external_style_line"
+        fi
+    done
+
+    for rel in $orchestrator_paths; do
+        if [ "$rel" = "$missing_orchestrator" ]; then
+            write_file "$root" "$rel" "Inline composition without the directive."
+        else
+            write_file "$root" "$rel" "$orchestrator_style_line"
+        fi
+    done
+}
+
+assert_lint_ok() {
+    local label="$1"
+    local root="$2"
+    local out="$TMPROOT/${label}.out"
+    local err="$TMPROOT/${label}.err"
+    bash "$LINT" --root "$root" >"$out" 2>"$err" || fail "$label: expected lint success: $(cat "$err")"
+    [ ! -s "$err" ] || fail "$label: expected empty stderr"
+}
+
+assert_lint_fails_for() {
+    local label="$1"
+    local root="$2"
+    local expected="$3"
+    local out="$TMPROOT/${label}.out"
+    local err="$TMPROOT/${label}.err"
+    local rc
+
+    set +e
+    bash "$LINT" --root "$root" >"$out" 2>"$err"
+    rc=$?
+    set -e
+
+    [ "$rc" -ne 0 ] || fail "$label: expected lint failure"
+    grep -Fq -- "$expected" "$err" || fail "$label: stderr missing '$expected': $(cat "$err")"
+}
+
+compliant="$TMPROOT/compliant"
+external_bad="$TMPROOT/external-bad"
+orchestrator_bad="$TMPROOT/orchestrator-bad"
+
+populate_fixture "$compliant"
+populate_fixture "$external_bad" "skills/design/references/brainstorm-prompts.md"
+populate_fixture "$orchestrator_bad" "" "skills/design/SKILL.md"
+
+assert_lint_ok compliant "$compliant"
+assert_lint_fails_for external-bad "$external_bad" "skills/design/references/brainstorm-prompts.md: missing external-prompt readability-style directive"
+assert_lint_fails_for orchestrator-bad "$orchestrator_bad" "skills/design/SKILL.md: missing orchestrator-inline readability-style directive"
+
+printf '%s\n' "test-lint-readability-preamble: ok"

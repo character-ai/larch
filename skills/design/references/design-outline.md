@@ -39,6 +39,8 @@ The outline must be grounded in these inputs. Do not introduce speculative goals
 
 ---
 
+**MANDATORY — READ ENTIRE FILE before composing the outline: `skills/design/references/readability-style.md`.**
+
 ## Outline schema
 
 Write `$DESIGN_TMPDIR/design-outline.md` with this exact top-level structure. Keep it to short bullets only, about 15-25 total lines. No prose paragraphs.

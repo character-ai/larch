@@ -125,6 +125,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: lint-readability-preamble
+        name: lint readability preamble references
+        entry: bash scripts/lint-readability-preamble.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  - repo: local
+    hooks:
       - id: lint-foreground-markers
         name: Lint foreground markers for blocking Family B script fences
         entry: bash scripts/lint-foreground-markers.sh

@@ -126,6 +126,11 @@ suppress = [
 # `make lint` between bash32 and lint-only). scripts/test-lint-foreground-markers.sh
 # is its black-box harness. Same Makefile-only reachability pattern as lint-bash32.
 #
+# scripts/lint-readability-preamble.sh is a pre-commit / Makefile-only lint for
+# /design readability prompt registrations. scripts/test-lint-readability-preamble.sh
+# is its black-box harness. Both are excluded with sibling docs because agent-lint
+# does not treat pre-commit or Makefile wiring as structured runtime invocation.
+#
 # scripts/test-parse-prose-blockers.sh is the regression harness for
 # scripts/parse-prose-blockers.sh (Makefile `test-parse-prose-blockers`).
 # scripts/parse-prose-blockers.sh is invoked only from scripts/blocker-helpers.sh
@@ -833,6 +838,10 @@ exclude = [
   "scripts/lint-foreground-markers.md",
   "scripts/test-lint-foreground-markers.sh",
   "scripts/test-lint-foreground-markers.md",
+  "scripts/lint-readability-preamble.sh",
+  "scripts/lint-readability-preamble.md",
+  "scripts/test-lint-readability-preamble.sh",
+  "scripts/test-lint-readability-preamble.md",
   "scripts/test-parse-prose-blockers.sh",
   "scripts/parse-prose-blockers.sh",
   "scripts/blocker-helpers.sh",

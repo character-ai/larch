@@ -18,6 +18,15 @@ trap 'rm -rf "$TMPROOT"' EXIT
 
 PLAN_FILE="$TMPROOT/plan.txt"
 printf 'Implement reviewer prompt consolidation in skills/design/SKILL.md and scripts/launch-review.sh.\n' > "$PLAN_FILE"
+READABILITY_STYLE_FILE="$TMPROOT/readability-style.md"
+cat >"$READABILITY_STYLE_FILE" <<'EOF'
+# Fixture Readability Style
+
+Write with Strunk & White discipline.
+
+Use precedence: code references > meaning > brevity.
+EOF
+export READABILITY_STYLE_FILE
 SIMPLE_DT="$TMPROOT/simple-design"
 HARD_DT="$TMPROOT/hard-design"
 mkdir -p "$SIMPLE_DT" "$HARD_DT"
@@ -83,6 +92,10 @@ for archetype in "${archetypes[@]}"; do
         assert_contains "$vendor/$archetype no-findings mutual exclusion" "no TSV records" "$out"
         assert_contains "$vendor/$archetype hard tier emphasis" "Tier emphasis: HARD" "$out"
         assert_count "$vendor/$archetype hard tier emphasis count" "Tier emphasis: HARD" 1 "$out"
+        assert_contains "$vendor/$archetype readability Strunk" "Strunk & White" "$out"
+        assert_contains "$vendor/$archetype readability precedence" "code references > meaning > brevity" "$out"
+        ! grep -Fq '<READABILITY_STYLE>' "$out" \
+            || fail "$vendor/$archetype: rendered prompt still contains literal <READABILITY_STYLE>"
     done
 done
 

@@ -9,6 +9,7 @@
 - Every prompt includes `{"no_issues_found": true}` as the canonical no-findings sentinel instruction. `NO_ISSUES_FOUND` remains validator-supported only for backward compatibility.
 - Both Cursor and Codex prompts include the full `full_role` personality prose and a TSV structured-record block contract so all archetype outputs can pass through `collect-agent-results.sh --structured-reviewer-validation`.
 - `--design-tmpdir <path>` or `DESIGN_TMPDIR` is required. The renderer reads `run-params.json` through `scripts/read-design-classification.sh`.
+- The renderer reads `skills/design/references/readability-style.md` (or `READABILITY_STYLE_FILE` in tests) and substitutes every `<READABILITY_STYLE>` token before writing stdout. If the file is missing or empty, it warns on stderr and leaves the prompt otherwise valid.
 - The output order is `<role-line>\n<tier-emphasis>\n<rest-of-prompt>`. `dispatch-plan-review-panel.sh` strips only line 1 with `tail -n +2`, preserving the tier emphasis for dynamic prompts.
 - If `run-params.json` is missing or invalid, classification defaults to HARD and the reader prints a warning to stderr.
 - Invalid arguments exit 2 with diagnostics on stderr.
@@ -28,6 +29,6 @@ Run `make test-plan-review-prompt` or `bash skills/design/scripts/test-plan-revi
 
 ## Edit In Sync
 
-Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/scripts/test-plan-review-prompt.sh`, `Makefile`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, or output invariants.
+Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/references/readability-style.md`, `skills/design/scripts/test-plan-review-prompt.sh`, `Makefile`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, readability substitution, or output invariants.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

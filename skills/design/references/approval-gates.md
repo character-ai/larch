@@ -1,5 +1,7 @@
 # Approval Gates Reference
 
+**MANDATORY — READ ENTIRE FILE before composing Gate A discussion prose, Gate B findings presentation and apply-all rewrite, or Gate C approval prose: `skills/design/references/readability-style.md`.**
+
 **Consumer**: `/design` Step 1e (Gate A — discussion-mode loop), Step 3.5 (Gate B — post-review chooser), and Step 4b (Gate C — final-approval loop).
 
 **Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A is the **post-plan re-entry** discussion prompt, Gate C is the final approval prompt, and Gate B's behavior depends on `manual_gate_b` (set via `--manual` / `-m`): when `true`, the existing 3-option `AskUserQuestion` fires; when `false` (default), Gate B auto-applies every accepted in-scope finding after printing a compact findings list. Gate A and Gate C use `AskUserQuestion` on their reachable paths; Gate B uses `AskUserQuestion` only in manual mode and may otherwise auto-apply. Reviewers always see the latest plan with all user-approved or auto-applied prior feedback applied.

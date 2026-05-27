@@ -27,6 +27,8 @@ Launch failures (non-zero `launch-review.sh` exit before the collector runs) con
 
 > **Competition notice**: Your findings will be voted on by a panel (normally Claude Code Reviewer subagent, Codex, Cursor) using YES/NO/EXONERATE. Acceptance follows the Voting Protocol tiers: 3 voters require 2+ YES, 2 voters require unanimous YES, 1 voter is a binding single vote, and 0 voters requires main-agent adjudication. Focus on high-quality, actionable findings. Concerns that are valid but not actionable in this PR may still be exonerated rather than penalized. Out-of-scope observations use the same scoring shape: accepted OOS items earn +1 point and are filed as GitHub issues, neutral or exonerated OOS items score 0, and rejected OOS items cost -1 point.
 
+Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.
+
 ---
 
 ## Dynamic plan-review archetypes (optional)
