@@ -159,6 +159,36 @@ _rcc_handle_fix_status() {
     esac
 }
 
+normalize_rcc_max_iter() {
+    local raw=${1:-}
+    awk -v raw="$raw" '
+        BEGIN {
+            if (raw !~ /^[0-9]+$/) {
+                print 3
+                exit
+            }
+            gsub(/^0+/, "", raw)
+            if (raw == "") {
+                print 3
+                exit
+            }
+            if (length(raw) > 1) {
+                print 6
+                exit
+            }
+            if (raw < 1) {
+                print 3
+                exit
+            }
+            if (raw > 6) {
+                print 6
+                exit
+            }
+            print raw
+        }
+    '
+}
+
 run_captured_cmd_then_fix_loop() {
     local attempt max_iter fail_file redacted_log fix_out fix_rc
     local empty_failures=0
@@ -171,15 +201,13 @@ run_captured_cmd_then_fix_loop() {
     _RCC_LAST_FIX_RC=0
     _RCC_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/rcc-delta-paths-$$-$RANDOM.txt"
     : > "$_RCC_DELTA_PATHS_FILE"
-    max_iter=${_RCC_MAX_ITER:-3}
+    max_iter=$(normalize_rcc_max_iter "${_RCC_MAX_ITER:-3}")
 
     if [ "$dispatch_first" = "1" ]; then
         redacted_log_for_dispatch="${_RCC_INITIAL_REDACTED_LOG:-}"
     fi
 
-    for attempt in 1 2 3; do
-        [ "$attempt" -le "$max_iter" ] || break
-
+    for ((attempt=1; attempt<=max_iter; attempt++)); do
         if [ "$dispatch_first" = "1" ]; then
             # dispatch-first pattern: lint-fix dispatch on the prior redacted log, then rerun the captured cmd
             if [ -z "$redacted_log_for_dispatch" ] || [ ! -f "$redacted_log_for_dispatch" ]; then
@@ -1770,8 +1798,8 @@ _stage_and_push_ci_fixes() {
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1}
-    local rc fail_file tool_label plan_file checks_site delta_paths_file
+    local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1} failed_jobs_tsv=${5:-}
+    local rc fail_file tool_label plan_file checks_site delta_paths_file verify_rc
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     local gh_logs_capture_redacted _failure_log_args=()
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
@@ -1859,6 +1887,14 @@ run_ci_fix_vendor() {
     fi
 
     checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
+    _verify_failed_jobs_locally "$phase" "$failed_jobs_tsv"
+    verify_rc=$?
+    case "$verify_rc" in
+        0) ;;
+        2) return 2 ;;
+        4) return 4 ;;
+        *) return 1 ;;
+    esac
     _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"
 }
 
@@ -1929,6 +1965,110 @@ _sanitize_bail_list() {
     tr -cd '[:alnum:]_,-'
 }
 
+_verify_failed_jobs_locally() {
+    local phase=$1 failed_jobs_tsv=${2:-}
+    local job_name shard class job_token args_file verify_log detail_file tsv_line
+    local fixable_jobs=() fixable_shards=() phase_a_ok_jobs=() phase_a_ok_shards=() unfixable=()
+    local i sanitized
+
+    if [ -z "$failed_jobs_tsv" ] || [ ! -f "$failed_jobs_tsv" ] || ! grep -q '[^[:space:]]' "$failed_jobs_tsv"; then
+        emit_breadcrumb --category=warn "⚠ ship-pr: no failed-jobs TSV; skipping per-job verification (falling back to relevant-checks.sh only)"
+        return 0
+    fi
+
+    ALL_LINT_FIX_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/${phase}-vendor-verify-lint-fix-delta-paths.txt"
+    LAST_LINT_FIX_DELTA_PATHS_FILE=""
+    : > "$ALL_LINT_FIX_DELTA_PATHS_FILE"
+
+    while IFS= read -r tsv_line || [[ -n "$tsv_line" ]]; do
+        job_name=$(printf '%s\n' "$tsv_line" | awk -F '\t' '{print $1}')
+        shard=$(printf '%s\n' "$tsv_line" | awk -F '\t' '{print $2}')
+        class=$(printf '%s\n' "$tsv_line" | awk -F '\t' '{print $3}')
+        [[ -n "$job_name" ]] || continue
+        job_token=$job_name
+        [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
+        [[ "$class" == "fixable" ]] || continue
+        if _per_job_argv "$job_name" "$shard"; then
+            fixable_jobs+=("$job_name")
+            fixable_shards+=("$shard")
+        else
+            unfixable+=("$job_token")
+        fi
+    done < "$failed_jobs_tsv"
+
+    for i in "${!fixable_jobs[@]}"; do
+        job_name=${fixable_jobs[$i]}
+        shard=${fixable_shards[$i]}
+        job_token=$job_name
+        [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
+        _per_job_argv "$job_name" "$shard" || { unfixable+=("$job_token"); continue; }
+        args_file="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-args.txt"
+        _write_per_job_args_file "$args_file"
+        _PJL_LOG_PATH="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}.verify.log"
+        _PJL_JOB_TOKEN="$job_token"
+        _RCC_PHASE="$phase"
+        _RCC_RERUN_FN=_run_per_job_command_capture
+        _RCC_SITE=ship-pr-ci-per-job
+        _RCC_TARGET_CMD_ARGS_FILE="$args_file"
+        _RCC_MAX_ITER=${LARCH_CI_LOCAL_FIX_ITER:-6}
+        verify_log="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-verify.log"
+        if _run_per_job_command_once "$verify_log"; then
+            phase_a_ok_jobs+=("$job_name")
+            phase_a_ok_shards+=("$shard")
+            continue
+        fi
+        run_captured_cmd_then_fix_loop
+        case "$_RCC_STATUS" in
+            ok)
+                append_unique_paths_file "$ALL_LINT_FIX_DELTA_PATHS_FILE" "$_RCC_DELTA_PATHS_FILE"
+                phase_a_ok_jobs+=("$job_name")
+                phase_a_ok_shards+=("$shard")
+                ;;
+            head-changed)
+                return 2
+                ;;
+            main-agent-required|dispatch-failed|exhausted|no-changes-stale)
+                unfixable+=("$job_token")
+                ;;
+            *)
+                unfixable+=("$job_token")
+                ;;
+        esac
+    done
+
+    for i in "${!phase_a_ok_jobs[@]}"; do
+        job_name=${phase_a_ok_jobs[$i]}
+        shard=${phase_a_ok_shards[$i]}
+        job_token=$job_name
+        [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
+        _per_job_argv "$job_name" "$shard" || { unfixable+=("$job_token"); continue; }
+        _PJL_JOB_TOKEN="$job_token"
+        verify_log="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-verify.log"
+        if ! _run_per_job_command_once "$verify_log"; then
+            return 4
+        fi
+    done
+
+    if [[ -s "$ALL_LINT_FIX_DELTA_PATHS_FILE" ]]; then
+        LAST_LINT_FIX_DELTA_PATHS_FILE="$ALL_LINT_FIX_DELTA_PATHS_FILE"
+    fi
+
+    if [[ "${#unfixable[@]}" -gt 0 ]]; then
+        detail_file="$IMPLEMENT_TMPDIR/ci-local-unfixable-${phase}-verify.txt"
+        : > "$detail_file"
+        for job_token in "${unfixable[@]}"; do
+            sanitized=$(printf '%s\n' "$job_token" | _sanitize_bail_list)
+            [ -n "$sanitized" ] || sanitized=unknown
+            printf '%s\n' "$sanitized" >> "$detail_file"
+        done
+        sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
+        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        exit 3
+    fi
+
+    return 0
+}
+
 run_per_job_local_fix_loop() {
     local phase=$1 failed_jobs_tsv=$2
     local job_name shard class job_token args_file verify_log detail_file tsv_line
@@ -1975,7 +2115,7 @@ run_per_job_local_fix_loop() {
         _RCC_RERUN_FN=_run_per_job_command_capture
         _RCC_SITE=ship-pr-ci-per-job
         _RCC_TARGET_CMD_ARGS_FILE="$args_file"
-        _RCC_MAX_ITER=3
+        _RCC_MAX_ITER=${LARCH_CI_LOCAL_FIX_ITER:-6}
         run_captured_cmd_then_fix_loop
         case "$_RCC_STATUS" in
             ok)
@@ -2052,9 +2192,10 @@ run_evaluate_failure() {
     # a 3-tier inner waterfall: Cursor → Codex → Claude = up to 9 launcher calls
     # per phase, down from 15 today); the persisted FIX_ATTEMPTS counter still
     # tracks successful fix pushes across the wider phase for reporting/state purposes.
-    local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc ci_failed_out ci_failed_rc ci_failed_count ci_failed_capture ci_failed_tsv checks_site per_job_rc per_job_verification_retry
+    local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc ci_failed_out ci_failed_rc ci_failed_count ci_failed_capture ci_failed_tsv checks_site per_job_rc per_job_verification_retry vendor_rc
     _fix_attempt=0
     while [ "$_fix_attempt" -lt "$_max_fix" ]; do
+        vendor_rc=
         state_set_many BAIL_REASON "" BAIL_FAILURE_DETAIL_LOG ""
         # Detached-HEAD guard before each vendor+push attempt.
         if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
@@ -2116,13 +2257,47 @@ run_evaluate_failure() {
             fi
             if [[ "$per_job_verification_retry" == true ]]; then
                 :
-            elif run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc"; then
-                state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
-                return 0
+            else
+                if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc" "$ci_failed_tsv"; then
+                    vendor_rc=0
+                else
+                    vendor_rc=$?
+                fi
+                case "$vendor_rc" in
+                    0)
+                        state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                        return 0
+                        ;;
+                    2)
+                        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-head-changed || echo 12-head-changed)"
+                        ;;
+                    4)
+                        per_job_verification_retry=true
+                        ;;
+                    *)
+                        ;;
+                esac
             fi
-        elif run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc"; then
-            state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
-            return 0
+        else
+            if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc" ""; then
+                vendor_rc=0
+            else
+                vendor_rc=$?
+            fi
+            case "$vendor_rc" in
+                0)
+                    state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                    return 0
+                    ;;
+                2)
+                    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-head-changed || echo 12-head-changed)"
+                    ;;
+                4)
+                    per_job_verification_retry=true
+                    ;;
+                *)
+                    ;;
+            esac
         fi
         if [ "$(read_state BAIL_REASON)" = "first-fixer-non-health" ]; then
             exit 3
