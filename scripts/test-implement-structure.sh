@@ -49,6 +49,19 @@ grep -Fq 'then run **post-dispatch branch assertion** (external-implementer path
   || fail "SKILL.md must retain post-dispatch branch assertion contract (git-current-branch.sh + CURRENT_BRANCH_POST_DISPATCH)"
 grep -Fq 'FINAL_BAIL_REASON=main-branch-post-dispatch' "$SKILL_MD" \
   || fail "SKILL.md must document FINAL_BAIL_REASON=main-branch-post-dispatch (post-dispatch mismatch bail)"
+STALL_RECOVERY_MD="$REPO_ROOT/skills/implement/references/stall-recovery.md"
+grep -Fq 'BAIL_FAILURE_DETAIL_LOG' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must route BAIL_FAILURE_DETAIL_LOG into Step 18a classification"
+grep -Fq '[--failure-detail-log "$VALIDATED_BAIL_FAILURE_DETAIL_LOG"]' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must document validated --failure-detail-log handoff for classify"
+grep -Fq 'retry-policy --class "$FAILURE_CLASS"' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must mechanically gate dispatch with retry-policy"
+grep -Fq 'If `attempt_count >= MAX_ATTEMPTS`, do not dispatch; continue directly to terminal-failure handling.' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must fail closed when retry caps are exhausted before dispatch"
+grep -Fq 'PHASE=ci-initial' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md terminal-failure path must seed canonical Step-8-shaped state"
+grep -Fq 'BAIL_FAILURE_DETAIL_LOG=' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md terminal-failure path must preserve or seed BAIL_FAILURE_DETAIL_LOG"
 
 if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' \
     "$SKILL_MD" \
