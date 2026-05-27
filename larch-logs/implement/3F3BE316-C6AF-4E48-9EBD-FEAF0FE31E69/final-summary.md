@@ -1,6 +1,6 @@
-## /implement run 3F3BE316-C6AF-4E48-9EBD-FEAF0FE31E69 — bailed
+## /implement run 3F3BE316-C6AF-4E48-9EBD-FEAF0FE31E69 — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 02:34:49
@@ -11,7 +11,7 @@
 - **Code review**: 60/97 accepted
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/3015\\n-
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/3F3BE316-C6AF-4E48-9EBD-FEAF0FE31E69/`
 
 <!-- larch:run-summary v=1 -->
