@@ -219,7 +219,7 @@ LAST_PROGRESS_MINUTE=0
 # Use 10s intervals for more responsive timeout detection.
 while kill -0 "$PID" 2>/dev/null; do
     if [ "$SECONDS" -ge "$TIMEOUT_SECONDS" ]; then
-        echo "⚠ ${TOOL_NAME} agent: TIMED OUT after $(( TIMEOUT_SECONDS / 60 )) minutes, killing"
+        echo "⚠ ${TOOL_NAME} agent: TIMED OUT after $(( TIMEOUT_SECONDS / 60 )) minutes, killing" >&2
         kill "$PID" 2>/dev/null
         sleep 5
         kill -9 "$PID" 2>/dev/null || true
@@ -229,7 +229,7 @@ while kill -0 "$PID" 2>/dev/null; do
         if [ -f "$OUTPUT_FILE" ]; then
             OUTPUT_SIZE=$(wc -c < "$OUTPUT_FILE" | tr -d ' ')
         fi
-        echo "❌ ${TOOL_NAME} agent: TIMED OUT (exit code 124, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)"
+        echo "❌ ${TOOL_NAME} agent: TIMED OUT (exit code 124, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
         # Write diagnostic file for callers
         echo "Timed out after ${SECONDS}s (limit: ${TIMEOUT_SECONDS}s). Process was killed after exceeding the timeout. Output size: ${OUTPUT_SIZE} bytes." >> "${OUTPUT_FILE}.diag"
         EXIT_CODE=124
@@ -243,7 +243,7 @@ while kill -0 "$PID" 2>/dev/null; do
     # within a minute window, but tests run with 0.05s).
     elapsed_minute=$(( SECONDS / 60 ))
     if [ "$elapsed_minute" -ge 1 ] && [ "$elapsed_minute" != "$LAST_PROGRESS_MINUTE" ]; then
-        echo "⏳ ${TOOL_NAME} agent: still running (${elapsed_minute}m elapsed)"
+        echo "⏳ ${TOOL_NAME} agent: still running (${elapsed_minute}m elapsed)" >&2
         LAST_PROGRESS_MINUTE="$elapsed_minute"
     fi
 done
@@ -258,22 +258,22 @@ if [ -f "$OUTPUT_FILE" ]; then
 fi
 
 if [ "$EXIT_CODE" -ne 0 ]; then
-    echo "❌ ${TOOL_NAME} agent: FAILED (exit code ${EXIT_CODE}, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)"
+    echo "❌ ${TOOL_NAME} agent: FAILED (exit code ${EXIT_CODE}, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
     DIAG_DETAIL=""
     if [ "$OUTPUT_SIZE" -gt 0 ]; then
-        echo "--- ${TOOL_NAME} output (last 5 lines) ---"
-        tail -5 "$OUTPUT_FILE"
-        echo "--- end ---"
+        echo "--- ${TOOL_NAME} output (last 5 lines) ---" >&2
+        tail -5 "$OUTPUT_FILE" >&2
+        echo "--- end ---" >&2
         DIAG_DETAIL=" Last output: $(tail -1 "$OUTPUT_FILE" | head -c 200 | tr '|' ' ')"
     fi
     # Write diagnostic file for callers
     echo "Failed with exit code ${EXIT_CODE} after ${SECONDS}s. Output size: ${OUTPUT_SIZE} bytes.${DIAG_DETAIL}" >> "${OUTPUT_FILE}.diag"
 elif [ "$OUTPUT_SIZE" -eq 0 ]; then
-    echo "⚠ ${TOOL_NAME} agent: completed but OUTPUT IS EMPTY (exit code 0, ${SECONDS}s elapsed)"
-    echo "This typically means ${TOOL_NAME} exited without producing output."
+    echo "⚠ ${TOOL_NAME} agent: completed but OUTPUT IS EMPTY (exit code 0, ${SECONDS}s elapsed)" >&2
+    echo "This typically means ${TOOL_NAME} exited without producing output." >&2
     # Write diagnostic file for callers
     echo "Process exited successfully (code 0) after ${SECONDS}s but produced no output. This typically means the tool started but did not generate a response." >> "${OUTPUT_FILE}.diag"
 else
-    echo "✓ ${TOOL_NAME} agent: completed (exit code 0, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)"
+    echo "✓ ${TOOL_NAME} agent: completed (exit code 0, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
 fi
 exit "$EXIT_CODE"

@@ -393,6 +393,32 @@ grep -Fq 'CODER_TOOL=cursor' <<< "$out" || fail "codex fallback telemetry should
 jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review_fix" and .total==1050)' "$codex_fallback_ledger" >/dev/null \
     || fail "codex fallback telemetry token ledger row"
 
+work_codex_unset_root="$TMP/codex-telemetry-unset-root"
+make_work_repo "$work_codex_unset_root"
+implement_tmp="$work_codex_unset_root/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+codex_unset_root_ledger="$TMP/codex-telemetry-unset-root-ledger.jsonl"
+set +e
+out=$(
+    cd "$work_codex_unset_root" && \
+    unset CLAUDE_PLUGIN_ROOT && \
+    LARCH_TOKEN_LEDGER="$codex_unset_root_ledger" \
+    CURSOR_API_KEY=test-cursor-key \
+    TEST_AGENT_BEHAVIOR=codex-success \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$REPO_ROOT/scripts/scrub-submodule-paths.sh}" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id codex-telemetry-unset-root-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "codex telemetry unset root expected exit 0 got $rc"; }
+grep -Fq 'CODER_TOOL=codex' <<< "$out" || fail "codex telemetry unset root tool"
+[[ -s "$implement_tmp/round-1/coder-codex.events.jsonl" ]] || fail "codex telemetry unset root events missing"
+jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review_fix" and .total==1050)' "$codex_unset_root_ledger" >/dev/null \
+    || fail "codex telemetry unset root token ledger row"
+
 cat > "$TMP/review-core-capture-dynamic-stub.sh" <<'EOF_CORE_DYNAMIC'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -664,6 +690,8 @@ set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "compose-fail expected exit 0 got $rc"; }
 [[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/code-review-tally.json" ]] || fail "compose-fail must skip tally batch write"
 [[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/review-findings-full.jsonl" ]] || fail "compose-fail must skip findings batch write"
+grep -Fq 'failed to compose review findings for summary derivation; preserving vote tally in summary' <<< "$out" \
+    || fail "compose-fail warning breadcrumb"
 
 work_claude="$TMP/claude-removed"
 make_work_repo "$work_claude"
@@ -707,6 +735,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "all-fail early breadcrumb expected exit 2 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "all-fail early breadcrumb status"
+grep -Fq 'coder dispatch failed (both codex and cursor)' <<< "$out" || fail "all-fail early breadcrumb warning"
 
 work_sub="$TMP/submodule-violation"
 make_work_repo "$work_sub"
@@ -2481,7 +2510,7 @@ set -e
 if grep -Fq '→ review-and-fix: dispatching coder' <<< "$out"; then
     pass "breadcrumb coder-dispatch"
 else
-    pass "breadcrumb coder-dispatch not surfaced in this quiet environment"
+    fail "breadcrumb coder-dispatch missing"
 fi
 
 work_breadcrumb_no_changes="$TMP/breadcrumb-no-changes"
@@ -2499,7 +2528,7 @@ set -e
 if grep -Fq 'coder dispatch exited 0 but did not modify the working tree' <<< "$out"; then
     pass "breadcrumb no-changes"
 else
-    pass "breadcrumb no-changes not surfaced in this quiet environment"
+    fail "breadcrumb no-changes missing"
 fi
 fi  # end section: dispatch (breadcrumb additions)
 

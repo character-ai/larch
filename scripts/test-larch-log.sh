@@ -58,6 +58,28 @@ assert_append_rejects_markdown() {
     assert_contains "$out" "json-lines sanitizer rejected $batch" "$label error mentions json-lines sanitizer"
 }
 
+assert_round_artifact_included() {
+    local name="$1" expected="$2" label="$3"
+    local rc=0
+    if bash -c '
+        eval "$(awk '"'"'
+            /^round_artifact_included\(\)/ { in_fn=1 }
+            in_fn { print }
+            in_fn && /^}/ { exit }
+        '"'"' "$1")"
+        round_artifact_included "$2"
+    ' bash "$LARCH_LOG" "$name" >/dev/null 2>&1; then
+        rc=0
+    else
+        rc=$?
+    fi
+    if [ "$rc" = "$expected" ]; then
+        pass "$label"
+    else
+        fail "$label (expected rc=$expected got rc=$rc for $name)"
+    fi
+}
+
 echo "=== init creates manifest ==="
 out="$("$LARCH_LOG" init --skill implement --run-id abc123 --issue 1438)"
 assert_contains "$out" "LOG_WRITTEN=true" "init writes"
@@ -124,6 +146,11 @@ echo "=== exists reports path without writing ==="
 out="$("$LARCH_LOG" exists --skill implement --run-id abc123 --batch execution-issues)"
 assert_contains "$out" "LOG_WRITTEN=false" "exists no write"
 assert_contains "$out" "UNCHANGED=true" "exists found"
+
+echo "=== round artifact allowlist pins direct inclusion decisions ==="
+assert_round_artifact_included "scout-archetype-yield.tsv" "0" "round artifact includes scout-archetype-yield.tsv"
+assert_round_artifact_included "coder-codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
+assert_round_artifact_included "reviewer-output.txt" "0" "round artifact includes reviewer output txt"
 
 echo "=== manifest updates mutable fields ==="
 out="$("$LARCH_LOG" manifest --skill implement --run-id abc123 --field status=done --field pr_number=99)"

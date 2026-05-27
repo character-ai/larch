@@ -122,6 +122,16 @@ if [[ -f "${CODEX_OUTPUT%.txt}.sidecar" ]]; then
 else
     fail "codex sidecar should exist"
 fi
+if grep -Fq '"type":"token_usage"' "${CODEX_OUTPUT%.txt}.sidecar"; then
+    fail "codex sidecar must not contain token_usage JSONL"
+else
+    pass
+fi
+if grep -Fq 'codex sidecar diagnostic' "${CODEX_OUTPUT%.txt}.sidecar"; then
+    pass
+else
+    fail "codex sidecar should keep stderr diagnostics"
+fi
 if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_negotiation" and .input==100 and .cache_read==900 and .output==50 and .total==1050)' "$CODEX_LEDGER" >/dev/null; then
     pass
 else
