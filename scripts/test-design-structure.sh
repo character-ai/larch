@@ -623,8 +623,8 @@ grep -Fq '[--brainstorm]' "$SKILL_MD" \
 grep -Fq "\`-p\`, \`--partition\`" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing -p/--partition"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq '`--partition`, `--brainstorm`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md public argv allowlist missing --brainstorm sequence"
+grep -Fq '`--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md public argv allowlist missing --brainstorm/--manual sequence"
 grep -Fq "\`--trivial\` and \`-p\` / \`--partition\` are mutually exclusive" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing trivial vs partition mutual-exclusion prose"
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
@@ -706,8 +706,8 @@ grep -Fq '# Background pair required: see BASH_AUTHORING.md §4' "$BRAINSTORM_MD
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
   || fail "(2754) SKILL.md write-run-params invocation missing --brainstorm-requested"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt
-grep -Fq -- '[[ "$partition_requested" == true || "$brainstorm_requested" == true ]]' "$SKILL_MD" \
-  || fail "(2754) SKILL.md recovery guard missing partition OR brainstorm"
+grep -Fq -- '[[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]]' "$SKILL_MD" \
+  || fail "(2754) SKILL.md recovery guard missing partition OR brainstorm OR manual"
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$SKILL_MD" \
   || fail "(2754) SKILL.md jq merge missing brainstorm_requested arm"
@@ -719,6 +719,40 @@ for _bk in cursor-brainstorm codex-brainstorm; do
   grep -Fq "$_bk" "$TIMING_KINDS_SH" \
     || fail "(2754) scripts/lib-timing-kinds.sh missing timing kind: $_bk"
 done
+
+# Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.
+grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \
+  || fail "(2930) SKILL.md argument-hint missing [--manual|-m] between brainstorm and no-dedup"
+# shellcheck disable=SC2016 # Markdown table cell literal
+grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
+  || fail "(2930) SKILL.md compact flag table missing --manual/-m row"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
+grep -Fq -- '--manual-gate-b "$manual_requested"' "$SKILL_MD" \
+  || fail "(2930) SKILL.md write-run-params invocation missing --manual-gate-b"
+# shellcheck disable=SC2016 # jq filter literal
+grep -Fq -- 'manual_gate_b = (.manual_gate_b == true or $merge_m)' "$SKILL_MD" \
+  || fail "(2930) SKILL.md jq merge missing manual_gate_b arm"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
+grep -Fq -- '--manual-gate-b "${manual_requested:-false}"' "$SKILL_MD" \
+  || fail "(2930) SKILL.md fallback write-run-params call missing --manual-gate-b"
+grep -Fq 'partition, brainstorm, and/or manual requested but jq is unavailable' "$SKILL_MD" \
+  || fail "(2930) SKILL.md jq-unavailable warning missing manual"
+# shellcheck disable=SC2016 # flags.md list marker uses backticks
+grep -Fq '`--manual` / `-m`:' "$FLAGS_MD" \
+  || fail "(2930) flags.md missing --manual/-m bullet anchor"
+grep -Fq '### Apply-all body' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing Apply-all body heading"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing Apply-all body references"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+apply_all_reference_count=$(grep -Fc 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD")
+[[ "$apply_all_reference_count" -ge 2 ]] \
+  || fail "(2930) approval-gates.md must reference Apply-all body from both auto-apply and manual Apply all paths"
+grep -Fq 'manual_gate_b=false' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing auto-apply mode branch"
+grep -Fq 'manual_gate_b=true' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing manual mode branch"
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned across 4 prose locations.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

@@ -17,10 +17,11 @@ WORKFLOW_PATH=""
 OUTPUT=""
 PARTITION_REQUESTED=""
 BRAINSTORM_REQUESTED=""
+MANUAL_GATE_B=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path> [--partition-requested <true|false>] [--brainstorm-requested <true|false>]
+usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path> [--partition-requested <true|false>] [--brainstorm-requested <true|false>] [--manual-gate-b <true|false>]
 USAGE
 }
 
@@ -60,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --brainstorm-requested)
             BRAINSTORM_REQUESTED="${2:?--brainstorm-requested requires a value}"
+            shift 2
+            ;;
+        --manual-gate-b)
+            MANUAL_GATE_B="${2:?--manual-gate-b requires a value}"
             shift 2
             ;;
         --help|-h)
@@ -118,6 +123,10 @@ if [[ -n "$BRAINSTORM_REQUESTED" ]]; then
     require_enum "--brainstorm-requested" "$BRAINSTORM_REQUESTED" true false
 fi
 
+if [[ -n "$MANUAL_GATE_B" ]]; then
+    require_enum "--manual-gate-b" "$MANUAL_GATE_B" true false
+fi
+
 case "$OUTPUT" in
     /*) ;;
     *)
@@ -147,6 +156,7 @@ jq -n \
     --arg workflow_path "$WORKFLOW_PATH" \
     --arg partition_requested "${PARTITION_REQUESTED:-false}" \
     --arg brainstorm_requested "${BRAINSTORM_REQUESTED:-false}" \
+    --arg manual_gate_b "${MANUAL_GATE_B:-false}" \
     '{
       schema_version: 1,
       design_classification: $classification,
@@ -156,7 +166,8 @@ jq -n \
       review_budget: $review_budget,
       workflow_path: $workflow_path,
       partition_requested: ($partition_requested == "true"),
-      brainstorm_requested: ($brainstorm_requested == "true")
+      brainstorm_requested: ($brainstorm_requested == "true"),
+      manual_gate_b: ($manual_gate_b == "true")
     }' > "$TMP"
 
 mv "$TMP" "$OUTPUT"
