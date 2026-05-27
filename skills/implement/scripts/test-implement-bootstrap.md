@@ -32,13 +32,16 @@
 | B5-coder-implicit-cursor | Phase 4 green path with both external implementers available emits `coder=cursor` and no `coder_fallback`. |
 | B5-coder-implicit-codex | Phase 4 implicit path with Cursor unavailable and Codex available emits `coder=codex`, prints the Cursor→Codex warning, and appends a Warning. |
 | B5-coder-implicit-claude | Phase 4 implicit path with both external implementers unavailable emits `coder=claude` and `coder_fallback=true`. |
+| B5-coder-explicit-claude-happy | Explicit `--coder=claude` emits `coder=claude` without setting `coder_fallback=true`, even when both external implementers are unavailable. |
 | B5-coder-explicit-unavailable | Explicit unavailable `--coder=cursor` emits `IMPLEMENT_BAIL_REASON=coder-unavailable`, `STALL_TRACKING=true`, and no `coder`. |
+| B5-coder-skip-missing-feature-description | `--resume-plan-tail` with an adopted sentinel but missing `feature-description.txt` preserves the existing `PLAN_FILE` and skips coder selection instead of emitting a fallback coder. |
 | B5-plan-best-effort-failures | Non-fatal `run-step1-plan-log.sh`, `write-tally.sh`, and `tracking-issue-summary.sh` failures append Warnings and still return a green Phase 3 tail. |
 | B5-plan-goal-redaction-failure | Goal-text redaction fails closed to a placeholder and appends a Warning instead of logging the raw issue title. |
 | B6-plan-flags | Any non-zero `persist-implement-run-flags.sh` exit emits `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`, sets `STALL_TRACKING=true`, and stops subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree | `STATUS=dirty` and `STATUS=unknown` emit `IMPLEMENT_BAIL_REASON=dirty-tree` without setting `STALL_TRACKING`, and stop subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree probe-failure | Dirty-tree checkpoint probe failure is treated as `STATUS=unknown`, preserving the `dirty-tree` bail and stopping the tail. |
 | B7-plan-dirty-tree resume-tail | `--resume-plan-tail` re-runs the dirty-tree checkpoint inside the same tmpdir after a prior dirty-tree bail: clean resumes the post-checkpoint tail, dirty/unknown preserves `IMPLEMENT_BAIL_REASON=dirty-tree`, and both paths avoid duplicate snapshot / `gh` work. |
+| B7-coder-dirty-tree resume tail | Dirty-tree recovery coverage reaches `--up-to-phase coder`: after a clean resume checkpoint, the harness verifies the coder phase runs and emits the selected implementer. |
 | B4-plan-dirty-resume | `POSTED=false` + dirty-tree bail resumes Phase 3 tail from existing plan artifacts without requiring a tracking sentinel, and still avoids duplicate snapshot / `gh` work. |
 | B8-plan-forked-target | Fork mode still materializes plan/feature files with upstream `gh --repo`, skips branch creation, captures the current branch, and skips the local `larch:plan` upsert. |
 | B9-plan-user-branch | Existing user branch skips branch creation but still writes the local `larch:plan` summary. |
@@ -68,4 +71,5 @@
 | Edge-breadcrumb-count-adopt | `LARCH_QUIET_BREADCRUMBS=1` + tracking adoption → exactly one `→ step0: tracking adopted` line. |
 | Edge-breadcrumb-count-plan-green | `LARCH_QUIET_BREADCRUMBS=1` + green plan materialization emits one branch/log breadcrumb and one `larch:plan` breadcrumb. |
 | Edge-breadcrumb-count-plan-summary-fail | `LARCH_QUIET_BREADCRUMBS=1` + summary failure emits the branch/log breadcrumb but suppresses the `larch:plan` breadcrumb. |
+| B4-all-breadcrumb | `LARCH_QUIET_BREADCRUMBS=1` + widened `DEFERRED=true` `--up-to-phase all` path still emits the coder breadcrumb once. |
 | Edge-breadcrumb-count-coder-green | `LARCH_QUIET_BREADCRUMBS=1` + green coder phase emits exactly five `→ step0:` breadcrumbs, including one `coder=cursor` breadcrumb. |

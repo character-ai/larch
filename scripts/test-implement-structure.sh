@@ -430,6 +430,20 @@ grep -Fq "**⚠ Foreground required — do NOT set \`run_in_background: true\`.*
   || fail "SKILL.md must retain the Step 0 foreground-required warning"
 grep -Fq 'Dirty-tree recovery bootstrap fence:' "$SKILL_MD" \
   || fail "SKILL.md must retain the dirty-tree recovery bootstrap fence"
+grep -Fq '_ib_run_bootstrap() {' "$SKILL_MD" \
+  || fail "SKILL.md must retain the Step 0 bootstrap wrapper"
+grep -Fq '_ib_parse_bootstrap_out() {' "$SKILL_MD" \
+  || fail "SKILL.md must retain the Step 0 bootstrap KV parser wrapper"
+grep -Fq '_ib_run_bootstrap --resume-plan-tail' "$SKILL_MD" \
+  || fail "SKILL.md must reuse the bootstrap wrapper for dirty-tree resume"
+grep -Fq '_ib_parse_bootstrap_out' "$SKILL_MD" \
+  || fail "SKILL.md must re-parse bootstrap KV after dirty-tree resume"
+if grep -Fq 'not-yet-implemented-phase-' "$SKILL_MD"; then
+  fail "SKILL.md must not reintroduce not-yet-implemented phase bail placeholders"
+fi
+# shellcheck disable=SC2016 # literal source text, not shell.
+grep -Fq 'emit_breadcrumb "→ step0: coder=${coder}"' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must retain the coder breadcrumb literal"
 grep -Fq 'Review/fix and other fixer lanes remain Codex-first' "$REPO_ROOT/SECURITY.md" \
   || fail "SECURITY.md must document Codex-first fixer adjacency"
 grep -Fq "Operators who want Codex on \`/implement\` can pin it explicitly with \`--coder=codex\`." "$REPO_ROOT/SECURITY.md" \

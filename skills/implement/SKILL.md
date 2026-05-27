@@ -326,6 +326,15 @@ _ib_preflight=()
 [ -n "${PREFLIGHT_TMPDIR:-}" ] && _ib_preflight+=(--preflight-tmpdir "$PREFLIGHT_TMPDIR")
 _ib_coder=()
 [ -n "${coder:-}" ] && _ib_coder+=(--coder "$coder")
+_ib_run_bootstrap() {
+  set +e
+  _ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase coder "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_coder[@]+"${_ib_coder[@]}"}" "$@")
+  _ib_rc=$?
+  set -e
+  if [ "$_ib_rc" -eq 2 ]; then
+    _ib_handle_bootstrap_exit2
+  fi
+}
 _ib_handle_bootstrap_exit2() {
   _ib_tmpdir=$(printf '%s\n' "$_ib_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
   [ -n "$_ib_tmpdir" ] && IMPLEMENT_TMPDIR=$_ib_tmpdir
@@ -363,15 +372,17 @@ _ib_handle_bootstrap_exit2() {
   esac
   exit 2
 }
+_ib_parse_bootstrap_out() {
+  while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do _ib_kv_scan "$_ib_line"; done <<EOF
+$(printf '%s\n' "$_ib_out")
+EOF
+  export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
+  export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+  export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE IMPLEMENT_BAIL_REASON coder coder_fallback codex_available cursor_available
+}
 # Foreground required: see BASH_AUTHORING.md §4
 # phase-anchor: implement-bootstrap Step 0 through coder select
-set +e
-_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase coder "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_coder[@]+"${_ib_coder[@]}"}")
-_ib_rc=$?
-set -e
-if [ "$_ib_rc" -eq 2 ]; then
-  _ib_handle_bootstrap_exit2
-fi
+_ib_run_bootstrap
 _ib_kv_scan() {
   _ib_line=$1; [ -z "$_ib_line" ] && return 0
   _ib_rest="$_ib_line"
@@ -387,12 +398,7 @@ _ib_kv_scan() {
     esac
   done
 }
-while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do _ib_kv_scan "$_ib_line"; done <<EOF
-$(printf '%s\n' "$_ib_out")
-EOF
-export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
-export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE IMPLEMENT_BAIL_REASON coder coder_fallback codex_available cursor_available
+_ib_parse_bootstrap_out
 ```
 
 Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-bootstrap.md` is the behavior contract; `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`) is the offline regression harness. Routing after parsing:
@@ -400,7 +406,7 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 | Condition | Routing |
 |---|---|
 | `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty | Continue to Rebase Macro 1.r, then Step 2 with `--coder "$coder"`. |
-| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, re-run the same bootstrap with `--resume-plan-tail` inside the existing tmpdir. |
+| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, re-run `_ib_run_bootstrap --resume-plan-tail` inside the existing tmpdir, then re-run `_ib_parse_bootstrap_out` before re-evaluating the routing table. |
 | `IMPLEMENT_BAIL_REASON=coder-unavailable` | `STALL_TRACKING=true`; skip to Step 18 cleanup. |
 | `IMPLEMENT_BAIL_REASON=adopted-issue-closed` or `adopted-issue-is-pr` | Skip to Step 18 cleanup. |
 | `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `run-flags-persist-failed`, or `branch-create-failed` | `STALL_TRACKING=true`; skip to Step 18 cleanup. |
@@ -410,7 +416,8 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 Dirty-tree recovery bootstrap fence:
 
 ```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase coder "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_coder[@]+"${_ib_coder[@]}"}" --resume-plan-tail
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" _ib_run_bootstrap --resume-plan-tail
+_ib_parse_bootstrap_out
 ```
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit Cursor → Codex → Claude waterfall arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.

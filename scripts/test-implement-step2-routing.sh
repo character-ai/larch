@@ -6,6 +6,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 BOOTSTRAP_SH="$REPO_ROOT/scripts/implement-bootstrap.sh"
+BOOTSTRAP_MD="$REPO_ROOT/scripts/implement-bootstrap.md"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
 
 fail() {
@@ -30,7 +31,7 @@ assert_not_contains() {
 }
 
 assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selection pointer"
-assert_contains "$IMPLEMENT_SKILL" 'Cursor → Codex → Claude' "implement waterfall"
+assert_contains "$BOOTSTRAP_MD" 'Cursor → Codex → Claude' "implement waterfall"
 assert_contains "$IMPLEMENT_SKILL" '--up-to-phase coder' "Step 0 bootstrap coder phase"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
 assert_contains "$BOOTSTRAP_SH" '--coder=${tool} requested but ${tool_caps} runtime probe failed' "explicit runtime unavailable bail"
@@ -49,6 +50,8 @@ assert_contains "$BOOTSTRAP_SH" '[ -z "${PLAN_FILE:-}" ]' "missing-plan empty PL
 assert_contains "$BOOTSTRAP_SH" '[ ! -f "${PLAN_FILE:-/nonexistent}" ]' "missing-plan unreadable PLAN_FILE guard"
 # shellcheck disable=SC2016 # literal source text, not shell.
 assert_contains "$BOOTSTRAP_SH" '[ ! -f "${IMPLEMENT_TMPDIR:-/nonexistent}/feature-description.txt" ]' "missing-plan feature-description guard"
+# shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
+assert_contains "$BOOTSTRAP_MD" 'REPO_UNAVAILABLE` / missing-plan skip is enforced inside `phase_coder_select` itself' "missing-plan skip authority"
 assert_contains "$IMPLEMENT_SKILL" 'does not route the implementer' "diff_lines informational non-routing clause"
 
 assert_contains "$DESIGN_SKILL" 'diff_lines: <N>' "design plan diff_lines"

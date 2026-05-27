@@ -858,6 +858,27 @@ assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
 assert_not_contains '→ step0: coder=' "$out" "B4-all no coder breadcrumb without breadcrumbs enabled"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B4-all-breadcrumb POSTED=false deferred guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runDeferredBreadcrumb --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+assert_rc "$rc" 0 "B4-all-breadcrumb exit 0"
+assert_contains "DEFERRED=true" "$out" "B4-all-breadcrumb deferred"
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=cursor' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-all-breadcrumb coder breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-all-breadcrumb coder breadcrumb expected 1 got $n"
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B5 larch-log init fail ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -1086,6 +1107,30 @@ assert_line "coder_fallback=" "$out" "B5-coder-explicit-codex-happy no fallback"
 assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-explicit-codex-happy no bail"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B5-coder-explicit-claude-happy ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=false
+echo CURSOR_PRESENT=false
+echo CODEX_BINARY_FOUND=false
+echo CURSOR_BINARY_FOUND=false
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicitClaude --preflight-tmpdir "$SANDBOX/preflight" --coder claude 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-explicit-claude-happy exit 0"
+assert_line "coder=claude" "$out" "B5-coder-explicit-claude-happy coder"
+assert_line "coder_fallback=" "$out" "B5-coder-explicit-claude-happy no fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-explicit-claude-happy no bail"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B5-coder-explicit-unavailable-binary-missing ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -1218,7 +1263,59 @@ assert_rc "$rc" 0 "B5-coder-skip-repo-unavailable exit 0"
 assert_line "PLAN_FILE=" "$out" "B5-coder-skip-repo-unavailable empty plan"
 assert_line "coder=" "$out" "B5-coder-skip-repo-unavailable empty coder"
 assert_line "coder_fallback=" "$out" "B5-coder-skip-repo-unavailable empty fallback"
+assert_not_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-skip-repo-unavailable no coder-unavailable bail"
+assert_not_contains '→ step0: coder=' "$out" "B5-coder-skip-repo-unavailable no coder breadcrumb"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-skip-missing-feature-description ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCoderMissingFeature --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-feature-description setup plan exit 0"
+rm -f "$SANDBOX_TMP/feature-description.txt"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderMissingFeature --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-feature-description exit 0"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B5-coder-skip-missing-feature-description keeps plan file"
+assert_line "coder=" "$out" "B5-coder-skip-missing-feature-description empty coder"
+assert_line "coder_fallback=" "$out" "B5-coder-skip-missing-feature-description empty fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-skip-missing-feature-description empty bail"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'gh issue view 123' || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B5-coder-skip-missing-feature-description no second gh"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B5-coder-skip-missing-feature-description no second gh"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
 # --- B5-plan-best-effort-failures ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
@@ -1489,6 +1586,55 @@ fi
 assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch"
 assert_not_contains "git-current-branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch capture"
 assert_not_contains "run-step1-plan-log" "$invoke" "B7-plan-dirty-tree resume re-bail no plan log"
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B7-coder-dirty-tree resume tail reaches coder phase ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase coder --issue-number 123 --run-id runDirtyResumeCoder --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-coder-dirty-tree resume first pass exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-coder-dirty-tree resume first pass bail"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase coder --issue-number 123 --run-id runDirtyResumeCoder --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-coder-dirty-tree resume tail exit 0"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B7-coder-dirty-tree resume tail clears bail"
+assert_line "coder=cursor" "$out" "B7-coder-dirty-tree resume tail reaches coder"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B7-coder-dirty-tree resume tail keeps original tmpdir"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'check-mid-run-dirty-tree --mode checkpoint' || true)" -eq 2 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-coder-dirty-tree resume tail reruns dirty checkpoint"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-coder-dirty-tree resume tail reruns dirty checkpoint"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
 # --- B7-plan-dirty-tree resume tail missing tmpdir ---

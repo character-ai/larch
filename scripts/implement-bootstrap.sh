@@ -933,12 +933,9 @@ phase_coder_select() {
     "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — coder select" || true
     LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — coder select" || true
 
-    local codex_present cursor_present codex_binary_found cursor_binary_found
-    codex_present=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "")
-    cursor_present=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "")
+    local codex_binary_found cursor_binary_found
     codex_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
     cursor_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
-    : "$codex_present" "$cursor_present"
 
     if [ -n "$CODER_OPT" ]; then
         _phase_coder_explicit "$CODER_OPT" "$codex_binary_found" "$cursor_binary_found"
