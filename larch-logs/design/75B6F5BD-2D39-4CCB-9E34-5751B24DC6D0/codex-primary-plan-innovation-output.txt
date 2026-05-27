@@ -1,0 +1,6 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/write-final-report.sh:443-477; docs/run-logs.md:38-43	Proposed fallback banner points readers to execution-issues.md, but committed implement run logs expose execution-issues.ndjson instead	A reader opening larch-logs/implement/<RUN_ID>/final-summary.md or the tracking comment sees "see execution-issues.md Warnings" and looks for a sibling file that is not part of the committed implement log	Use artifact-neutral banner text such as "full renderer failed; warning recorded in execution issues" or mention execution-issues.md / execution-issues.ndjson, then keep the tests on the degraded-fallback substring and marker
+
+1. [correctness] `skills/implement/scripts/write-final-report.sh:443-477`, `docs/run-logs.md:38-43`
+
+The plan applies the exact banner text `see execution-issues.md Warnings` to implement fallback summaries, but implement committed logs list `execution-issues.ndjson`, not `execution-issues.md`. That makes the new in-body pointer misleading for the durable `final-summary.md` audience. Revise the banner to avoid a specific filename, or name both artifacts.
