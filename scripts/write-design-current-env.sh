@@ -108,6 +108,23 @@ if [[ "$OUTPUT" != /* ]]; then
   exit 1
 fi
 
+if [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]]; then
+  if [[ ${#CLAUDE_PLUGIN_ROOT_VALUE} -gt 512 || ! "$CLAUDE_PLUGIN_ROOT_VALUE" =~ ^[A-Za-z0-9_./~+-]+$ ]]; then
+    larch_err "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must match ^[A-Za-z0-9_./~+-]{1,512}$"
+    exit 1
+  fi
+  if [[ "$CLAUDE_PLUGIN_ROOT_VALUE" != /* ]]; then
+    larch_err "ERROR=Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path"
+    exit 1
+  fi
+fi
+
+# Refresh executing larch cache-directory mtime after validation. Best-effort;
+# helper silently no-ops on non-numeric paths or missing directories.
+# shellcheck source=scripts/lib-larch-cache-touch.sh
+source "$SCRIPT_DIR/lib-larch-cache-touch.sh"
+larch_touch_executing_cache_root --path "$CLAUDE_PLUGIN_ROOT_VALUE"
+
 build_export() {
   local key="$1" val="$2"
   printf 'export %s=%q\n' "$key" "$val"

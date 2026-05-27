@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+# Coverage includes active-session pins plus mtime-based prune ordering:
+# deterministic touch -t seeding, lexicographic equal-mtime tiebreaks, and
+# STAT_FAIL_VERSION forcing both stat probes to fail for one cache directory.
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/upgrade-larch/scripts/upgrade-larch.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-upgrade-larch-prune.XXXXXX")
@@ -120,6 +124,26 @@ EOF
     chmod +x "$path"
 }
 
+write_stub_stat() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="${*: -1}"
+if [[ -n "${STAT_FAIL_VERSION:-}" && "$target" == */"$STAT_FAIL_VERSION" ]]; then
+    for arg in "$@"; do
+        case "$arg" in
+            -c|-f) exit 1 ;;
+        esac
+    done
+fi
+
+/usr/bin/stat "$@"
+EOF
+    chmod +x "$path"
+}
+
 run_case() {
     local name="$1"
     local work="$TMP/$name"
@@ -131,6 +155,7 @@ run_case() {
     local xdg_cache_home="$work/xdg-cache"
     local fallback_session_roots
     local plugin_root session_idx tmp_session_name
+    local _seed_idx _ts _override _override_version _override_ts
     local output rc
 
     mkdir -p "$home/.claude/plugins" "$bin" "$cache_root" "$sessions_root" "$xdg_cache_home"
@@ -140,11 +165,25 @@ run_case() {
     write_stub_claude "$bin/claude"
     write_stub_gh "$bin/gh"
     write_stub_rm "$bin/rm"
+    write_stub_stat "$bin/stat"
     cat > "$state_file" <<STATE
 INSTALLED_VERSION="${INITIAL_INSTALLED_VERSION:-}"
 STATE
     for version in ${CACHED_VERSIONS:-}; do
         mkdir -p "$cache_root/$version"
+    done
+    _seed_idx=0
+    for version in ${CACHED_VERSIONS:-}; do
+        _seed_idx=$((_seed_idx + 1))
+        printf -v _ts '20%02d01010001' "$((10 + _seed_idx))"
+        touch -t "$_ts" -- "$cache_root/$version"
+    done
+    for _override in ${CACHE_MTIME_OVERRIDES:-}; do
+        _override_version="${_override%%:*}"
+        _override_ts="${_override#*:}"
+        [[ -n "$_override_version" && -n "$_override_ts" ]] || continue
+        [[ -d "$cache_root/$_override_version" ]] || continue
+        touch -t "$_override_ts" -- "$cache_root/$_override_version"
     done
     session_idx=0
     for version in ${SESSION_PINNED_VERSIONS:-}; do
@@ -189,7 +228,9 @@ STATE
             GH_OUTPUT="${GH_OUTPUT:-}" \
             INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
             RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
+            STAT_FAIL_VERSION="${STAT_FAIL_VERSION:-}" \
             LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="$fallback_session_roots" \
+            LARCH_BREADCRUMB_STREAM='' \
             LARCH_QUIET_BREADCRUMBS=1 \
             "$SCRIPT" 2>&1
         )
@@ -203,7 +244,9 @@ STATE
             TEST_CACHE_DIR="$cache_root" \
             GH_OUTPUT="${GH_OUTPUT:-}" \
             INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
+            STAT_FAIL_VERSION="${STAT_FAIL_VERSION:-}" \
             LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="$fallback_session_roots" \
+            LARCH_BREADCRUMB_STREAM='' \
             LARCH_QUIET_BREADCRUMBS=1 \
             "$SCRIPT" 2>&1
         )
@@ -387,5 +430,52 @@ done
 assert_contains "$CASE_OUTPUT" "Warning: failed to prune cached larch version '29.1.21'." "cap-prune-rm-failure-skips-retry warning"
 assert_occurrences "$CASE_OUTPUT" "Warning: failed to prune cached larch version '29.1.21'." 1 "cap-prune-rm-failure-skips-retry warning count"
 unset RM_FAIL_VERSION
+
+GH_OUTPUT=$'42.0.10\n'
+INITIAL_INSTALLED_VERSION="42.0.5"
+PLUGIN_ROOT_VERSION="42.0.5"
+INSTALL_RESULT_VERSION="42.0.10"
+CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
+SET_LARCH_SESSIONS_DIR=1
+unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION STAT_FAIL_VERSION
+export CACHE_MTIME_OVERRIDES="42.0.9:200001010001 42.0.1:209901010001"
+run_case mtime-asc-evicts-oldest-touched
+[[ "$CASE_RC" -eq 0 ]] || fail "mtime-asc-evicts-oldest-touched exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/42.0.9" ]] || fail "mtime-asc-evicts-oldest-touched should prune newest semver with oldest mtime"
+[[ -d "$CASE_CACHE_ROOT/42.0.1" ]] || fail "mtime-asc-evicts-oldest-touched should keep oldest semver with newest mtime"
+[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "mtime-asc-evicts-oldest-touched should keep latest"
+unset CACHE_MTIME_OVERRIDES
+
+GH_OUTPUT=$'42.1.0\n'
+INITIAL_INSTALLED_VERSION="42.0.5"
+PLUGIN_ROOT_VERSION="42.0.5"
+INSTALL_RESULT_VERSION="42.1.0"
+CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.7 42.0.8 42.0.9"
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
+SET_LARCH_SESSIONS_DIR=1
+unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION STAT_FAIL_VERSION
+export CACHE_MTIME_OVERRIDES="42.0.1:209901010001 42.0.2:209901010001 42.0.3:209901010001 42.0.4:209901010001 42.0.5:209901010001 42.0.7:200001010001 42.0.8:200001010001 42.0.9:200001010001"
+run_case mtime-tiebreaker-lexicographic-basename
+[[ "$CASE_RC" -eq 0 ]] || fail "mtime-tiebreaker-lexicographic-basename exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/42.0.7" ]] || fail "mtime-tiebreaker-lexicographic-basename should prune lexicographically earliest equal-mtime version"
+[[ -d "$CASE_CACHE_ROOT/42.0.8" ]] || fail "mtime-tiebreaker-lexicographic-basename should keep 42.0.8"
+[[ -d "$CASE_CACHE_ROOT/42.0.9" ]] || fail "mtime-tiebreaker-lexicographic-basename should keep 42.0.9"
+unset CACHE_MTIME_OVERRIDES
+
+GH_OUTPUT=$'42.0.10\n'
+INITIAL_INSTALLED_VERSION="42.0.9"
+PLUGIN_ROOT_VERSION="42.0.9"
+INSTALL_RESULT_VERSION="42.0.10"
+CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
+SET_LARCH_SESSIONS_DIR=1
+STAT_FAIL_VERSION="42.0.5"
+unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION
+run_case stat-fallback-mtime-zero
+[[ "$CASE_RC" -eq 0 ]] || fail "stat-fallback-mtime-zero exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/42.0.5" ]] || fail "stat-fallback-mtime-zero should prune stat-failed version first"
+[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "stat-fallback-mtime-zero should keep latest"
+unset STAT_FAIL_VERSION
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'

@@ -22,6 +22,11 @@ Callers that evaluate the session-env output inherit a session-scoped cache for
 `scripts/render-specialist-prompt.sh`; the renderer creates the directory
 lazily and falls back to uncached rendering if the directory cannot be created.
 
+On every invocation, the script sources `scripts/lib-larch-cache-touch.sh` and
+invokes `larch_touch_executing_cache_root` best-effort so the executing larch
+cache root mtime is refreshed once per session boot. `/upgrade-larch` consumes
+that mtime when pruning old cache directories.
+
 ## Reviewer Presence Contract
 
 When `--check-reviewers` is passed, setup invokes `scripts/check-reviewers.sh` and emits `CODEX_PRESENT`, `CURSOR_PRESENT`, backward-compatible `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` aliases, and `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` (whether `command -v` succeeded). `*_PRESENT` reflects the **runtime health probe** (or a fresh TTL stamp); `*_BINARY_FOUND` distinguishes "binary missing" from "binary present but probe failed / skipped / timed out / auth".
@@ -42,4 +47,4 @@ run-log batches. Missing paths and copy failures are ignored.
 
 ## Edit-in-sync
 
-Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer presence semantics. Update `scripts/write-session-id.sh` when changing session-id ownership or idempotency.
+Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer presence semantics. Update `scripts/write-session-id.sh` when changing session-id ownership or idempotency. Update `scripts/lib-larch-cache-touch.sh` and `skills/upgrade-larch/scripts/upgrade-larch.sh` when changing cache-root touch semantics.

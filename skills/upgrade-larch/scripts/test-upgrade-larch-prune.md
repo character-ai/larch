@@ -1,6 +1,6 @@
 # test-upgrade-larch-prune.sh
 
-Standalone regression harness for `/upgrade-larch` cache pruning around active session pins.
+Standalone regression harness for `/upgrade-larch` cache pruning around active session pins and mtime-based retention.
 
 The harness runs `skills/upgrade-larch/scripts/upgrade-larch.sh` end-to-end in a temporary home with stubbed `claude` and `gh` binaries. It writes synthetic `session-env.sh` files containing `LARCH_CLAUDE_PLUGIN_ROOT` into explicit `LARCH_SESSIONS_DIR`, default XDG cache roots, and `/tmp` fallback session roots, sets `LARCH_UPGRADE_FALLBACK_SESSION_ROOTS` so non-fallback cases are isolated from unrelated host `/tmp` state, then asserts that pruning preserves any cached version named by a parseable current-user-owned session plugin root when the cache exceeds the retention cap. It also verifies that the executing cached plugin version is preserved even when no session env exists.
 
@@ -14,6 +14,11 @@ Covered cases:
 - current-user-owned `/tmp` fallback session root: preserve an old version pinned by a parseable fallback `session-env.sh`, and keep other old versions while under cap
 - cap-only pruning: with 10 cached versions after install, remove the two oldest so 8 cached versions remain
 - multiple pinned oldest versions: when the two oldest cached versions are pinned, keep both and remove the next oldest unpinned versions so the cache still ends at 8 total
+- mtime-ascending pruning: when semver order and mtime order disagree, remove the oldest-touched cache directory first
+- mtime tiebreaker: when multiple oldest entries have the same mtime, remove the lexicographically earliest version basename first
+- stat fallback: `STAT_FAIL_VERSION` makes the PATH-shimmed `stat` fail both GNU `-c` and BSD `-f` probes for one version, which should sort as mtime `0` and prune first without crashing
+
+Existing cache-cap cases seed directory mtimes with explicit `touch -t` values so assertions do not depend on filesystem creation timing. The harness installs a PATH-local `stat` shim through `write_stub_stat` to exercise cross-platform fallback behavior while delegating ordinary calls to `/usr/bin/stat`.
 
 This harness exists alongside `test-upgrade-larch.sh`, which covers stable release selection, idempotency, verification, prune fallback, and `gh` stderr redaction.
 

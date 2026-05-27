@@ -10,6 +10,8 @@
 #   C. write-session-env.sh validates and persists PREV_IMPLEMENT_TMPDIR.
 #   D. write-session-env.sh validates and persists CLAUDE_PLUGIN_ROOT.
 #   E. write-session-env.sh validates and persists LARCH_DYNAMIC_ARCHETYPES_MAX.
+#   F. write-session-env.sh refreshes numeric cache-root mtimes and no-ops for
+#      non-numeric plugin-root basenames.
 
 set -euo pipefail
 
@@ -31,6 +33,20 @@ assert_contains() {
         *"$2"*) pass ;;
         *) fail "$1: missing '$2' in: $3" ;;
     esac
+}
+
+stat_mtime() {
+    local path="$1"
+    local mt
+    if mt=$(stat -c '%Y' -- "$path" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$mt"
+        return 0
+    fi
+    if mt=$(stat -f '%m' -- "$path" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$mt"
+        return 0
+    fi
+    printf '0\n'
 }
 
 TMPDIR_TEST="$(mktemp -d "${TMPDIR:-/tmp}/test-session-env-roundtrip.XXXXXX")"
@@ -239,6 +255,42 @@ if err=$("$WRITE_SCRIPT" \
     fail "E.2 invalid dynamic-archetypes accepted"
 else
     assert_contains "E.2 error message" "Invalid --dynamic-archetypes" "$err"
+fi
+
+# ------------------------------------------------------------
+# F. write-session-env.sh — cache-root mtime touch behavior
+# ------------------------------------------------------------
+
+numeric_root="$TMPDIR_TEST/cache/42.5.36"
+mkdir -p "$numeric_root"
+touch -t 200001010001 -- "$numeric_root"
+before=$(stat_mtime "$numeric_root")
+if CLAUDE_PLUGIN_ROOT="$numeric_root" "$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false 2>/dev/null; then
+    after=$(stat_mtime "$numeric_root")
+    if [[ "$after" -gt "$before" ]]; then
+        pass
+    else
+        fail "F.1 numeric CLAUDE_PLUGIN_ROOT mtime was not refreshed (before=$before after=$after)"
+    fi
+else
+    fail "F.1 numeric CLAUDE_PLUGIN_ROOT writer invocation failed"
+fi
+
+non_numeric_root="$TMPDIR_TEST/cache/dev-checkout"
+mkdir -p "$non_numeric_root"
+touch -t 200001010001 -- "$non_numeric_root"
+before=$(stat_mtime "$non_numeric_root")
+if CLAUDE_PLUGIN_ROOT="$non_numeric_root" "$WRITE_SCRIPT" \
+    --output "$OUT" --repo a/b --repo-unavailable false 2>/dev/null; then
+    after=$(stat_mtime "$non_numeric_root")
+    if [[ "$after" -eq "$before" ]]; then
+        pass
+    else
+        fail "F.2 non-numeric CLAUDE_PLUGIN_ROOT mtime changed (before=$before after=$after)"
+    fi
+else
+    fail "F.2 non-numeric CLAUDE_PLUGIN_ROOT writer invocation failed"
 fi
 
 # ------------------------------------------------------------

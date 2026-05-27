@@ -22,6 +22,9 @@ session-env script pair:
   rejects unsafe or relative paths.
 - **E. `write-session-env.sh`** — `--dynamic-archetypes` accepts `0..8`,
   persists `LARCH_DYNAMIC_ARCHETYPES_MAX`, and rejects out-of-range values.
+- **F. `write-session-env.sh`** — numeric-basename `CLAUDE_PLUGIN_ROOT`
+  directories have their mtime refreshed via `scripts/lib-larch-cache-touch.sh`,
+  while non-numeric basenames no-op and keep their old mtime.
 
 ## Inputs / outputs
 
@@ -45,3 +48,5 @@ asserts every `test-*` recipe is covered by exactly one shard.
   fixtures in section A.
 - New validated flags or environment-derived keys on `write-session-env.sh` —
   extend the writer sections with the same accept / reject pattern.
+- Cache-root touch semantics change — update section F and
+  `scripts/lib-larch-cache-touch.sh` together.
