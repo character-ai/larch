@@ -315,6 +315,13 @@ append_emergency_bypass_log_if_present() {
 
     if [ "$append_rc" -ne 0 ]; then
         fallback_entry="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-entry.XXXXXX")" || return 1
+        redact_source="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-fallback.XXXXXX")" || {
+            rm -f "$fallback_entry"
+            return 1
+        }
+        if ! redact_file_best_effort "$bypass_log" "$redact_source"; then
+            printf '%s\n' '<redaction failed; raw emergency bypass log omitted>' >"$redact_source"
+        fi
         {
             if [ "$append_rc" -eq 99 ]; then
                 printf '%s\n' '- **Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight invalid-format (exit 99)**:'
@@ -322,8 +329,8 @@ append_emergency_bypass_log_if_present() {
                 printf '%s\n' '- **Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight bypassed (fallback append; helper failed)**:'
             fi
             printf '  ```\n'
-            cat "$bypass_log"
-            if [ -s "$bypass_log" ] && [ "$(tail -c 1 "$bypass_log" | wc -c | tr -d ' ')" != "0" ]; then
+            cat "$redact_source"
+            if [ -s "$redact_source" ] && [ "$(tail -c 1 "$redact_source" | wc -c | tr -d ' ')" != "0" ]; then
                 printf '\n'
             fi
             printf '  ```\n'
@@ -332,6 +339,7 @@ append_emergency_bypass_log_if_present() {
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --category Warnings \
             --entry-file "$fallback_entry"
+        rm -f "$redact_source"
         rm -f "$fallback_entry"
     fi
 

@@ -1037,6 +1037,42 @@ assert_contains "BYPASS kind=missing-plan issue=123" "$issues" "B5-plan-emergenc
 assert_contains "EMERGENCY_REQUESTED=true" "$(cat "$SANDBOX_TMP/run-flags.sh")" "B5-plan-emergency run flags"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B5-plan-emergency-malformed-plan ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+printf 'BYPASS kind=malformed-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyMalformed --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency-malformed-plan exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "BYPASS kind=malformed-plan issue=123" "$issues" "B5-plan-emergency-malformed-plan warning content"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-emergency-audit-refuse ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+printf 'BYPASS kind=audit-refuse issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyAuditRefuse --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency-audit-refuse exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "BYPASS kind=audit-refuse issue=123" "$issues" "B5-plan-emergency-audit-refuse warning content"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-bypass-log ignored when emergency false ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runNonEmergencyBypass --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-bypass-log ignored when emergency false exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_not_contains "BYPASS kind=missing-plan issue=123" "$issues" "B5-plan-bypass-log ignored when emergency false no warning content"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B5-plan-emergency-invalid-format ---
 
 
