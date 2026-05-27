@@ -354,6 +354,24 @@ fi
 : > "${findings:?}"
 printf 'AGGREGATED=true\nINPUT_COUNT=2\nMERGED_COUNT=0\nREASON=ok\n'
 STUB
+cat > "$TMP/aggregate-zero-success-missing-count-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+findings=""
+review_tmpdir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --findings-file) findings="$2"; shift 2 ;;
+    --review-tmpdir) review_tmpdir="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
+  printf 'aggregate\n' >> "${review_tmpdir:?}/invoke-order.log"
+fi
+: > "${findings:?}"
+printf 'AGGREGATED=true\nINPUT_COUNT=2\nREASON=ok\n'
+STUB
     chmod +x "$TMP"/*.sh
 }
 
@@ -507,6 +525,19 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero/findings-classi
 }
 [[ ! -s "$TMP/agg-zero/accepted-findings.md" ]] || { echo "FAIL: agg-zero accepted-findings.md should remain empty" >&2; exit 1; }
 [[ -f "$TMP/agg-zero/voting-tally.md" ]] || { echo "FAIL: agg-zero missing voting-tally.md" >&2; exit 1; }
+
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 REVIEW_CORE_AGGREGATE_FINDINGS_SH="$TMP/aggregate-zero-success-missing-count-stub.sh" run_core "$TMP/agg-zero-missing-count")
+assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
+if grep -Fq 'REVIEW_CORE_STATUS=zero-findings' <<< "$out"; then
+    echo "FAIL: agg-zero-missing-count should not degrade to zero-findings when MERGED_COUNT is absent" >&2
+    exit 1
+fi
+[[ -f "$TMP/agg-zero-missing-count/dispatch-voters.log" ]] || { echo "FAIL: agg-zero-missing-count should dispatch voters" >&2; exit 1; }
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero-missing-count/findings-classification-round-1.tsv"
+grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero-missing-count/findings-classification-round-1.tsv" "$TMP/agg-zero-missing-count/findings-classification-round-map.env" || {
+    echo "FAIL: agg-zero-missing-count round map missing round-1 binding" >&2
+    exit 1
+}
 
 set +e
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_THRESHOLD_OK=false TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 run_core "$TMP/panel-failed")
