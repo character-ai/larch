@@ -8,7 +8,11 @@
 
 **Binding convention**: single normative source for the three gate prompts, their per-tier behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
 
-**Cross-tier invariant**: the gates apply uniformly across `--trivial`, `--simple`, and `--hard`. Gate A is re-entry-only after a plan exists; first-time direction-setting is handled by Step 1d.7 outline-approval across all tiers. Gate B and Gate C apply identically in all three tiers — the only difference is the source of findings (Gate B reads `accepted-plan-findings.md` produced by either `plan-review.md` full panel or `plan-review-quick.md` self-review). The auto-apply default and the `--manual` opt-out apply uniformly across `--trivial`, `--simple`, and `--hard`. In `--trivial` the source of `accepted-plan-findings.md` is the quick self-review (`plan-review-quick.md`); in `--simple` and `--hard` it is the full 10-reviewer panel. Gate B's mode branch reads `manual_gate_b` identically in all three tiers.
+**Cross-tier invariant**: Gates apply uniformly across `--simple` and `--hard`. Gate B reads `accepted-plan-findings.md` produced by the full `plan-review.md` panel on both tiers. The auto-apply default and the `--manual` opt-out apply uniformly across both tiers. Gate B's mode branch reads `manual_gate_b` identically in both tiers.
+
+## Per-tier review-round cap
+
+Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-numeric as 0; log Warning if non-numeric) and `design_classification` via `read-design-classification.sh`. Cap: SIMPLE = 3, HARD = 5. When counter >= cap, the "Re-run review panel" option is omitted from the Gate C `AskUserQuestion`; only Approve / Discuss further remain, and any Gate C re-prompt after `Other` must preserve that omission. Step 3 also enforces the cap at every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits to Gate C with the breadcrumb `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**` when counter >= cap. SKILL.md Step 3 is the sole writer of the counter; `plan-review-loop.sh` is stateless w.r.t. the file. Gate A "Discuss more" loops remain uncapped.
 
 ---
 
@@ -146,7 +150,7 @@ Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partiti
 
 - **Approve final design** — exit Gate C; proceed to Step 5b publish (compose `composed-plan.md`, write `larch:plan` block to issue, run `design-log-publish.sh`, rename tracking issue).
 - **Discuss further** — re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`.
-- **Re-run review panel** — re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
+- **Re-run review panel** — offer this option only when the current review-round count is still below the tier cap. Re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
 
 Question text: `"Final design plan is ready. Approve, discuss further, or re-run the review panel against this plan?"` Header: `"Final design"`.
 
