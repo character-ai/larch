@@ -41,9 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [43.0.1] - 2026-05-27
 
-### Changed
+### Added
 
-- Closed: #2974
+- `/design` now inserts a **Step 1d.7 outline-approval gate** between the Round 1 discussion (and optional Step 1d.5 brainstorm) and the sketch + plan phase. After discussion settles, the orchestrator composes a concise 5-section design outline (`## Proposed Design Outline` with Goals / Non-goals / Approach sketch / Surfaces in scope / Open questions), writes it to `$DESIGN_TMPDIR/design-outline.md`, and presents an **Approve / Refine / Cancel** prompt. Approve writes the `.outline-approved` sentinel and proceeds directly to Step 2a (sketches); Refine loops until the operator is satisfied; Cancel runs the standard final-summary block with `SUMMARY_OUTCOME=cancelled-outline`. Gate A (Step 1e) is now **re-entry-only** (reached only from Gate B(c) or Gate C(b) post-plan); first-time direction-setting is owned exclusively by Step 1d.7. The approved outline is additive feature-context for Step 2a sketch prompts and Step 2b plan drafting (same pattern as `brainstorm.md`). The `--brainstorm` flag now runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (not before Gate A). New `cancelled-outline` outcome added to `render-final-summary.sh` and the `SUMMARY_OUTCOME` enum. Closes #2974.
 
 ## [43.0.0] - 2026-05-27
 
