@@ -1,0 +1,3 @@
+Fix readability preamble lint directive counts
+
+Require orchestrator-inline manifest rows to match expected directive counts and cover count mismatch versus missing-file failures in the harness.

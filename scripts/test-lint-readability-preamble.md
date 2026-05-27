@@ -8,11 +8,13 @@ It proves the lint accepts a fully compliant fixture and rejects each supported 
 
 ## Fixture Shape
 
-The harness builds three temporary fixture roots:
+The harness builds temporary fixture roots for:
 
 - compliant: every manifest file contains the required line for its variant.
 - external-prompt non-compliant: one external prompt file omits the `<READABILITY_STYLE>` line.
-- orchestrator-inline non-compliant: one inline composition file omits the MANDATORY readability directive.
+- orchestrator-inline non-compliant: one inline composition file has no MANDATORY readability directive.
+- orchestrator-inline partial-count: a multi-directive inline composition file has fewer MANDATORY readability directives than the manifest requires.
+- orchestrator-inline missing-file: a manifest-row file is absent from the fixture root.
 
 Each fixture mirrors only the paths named in the lint manifest.
 
@@ -22,7 +24,8 @@ The harness asserts:
 
 - compliant fixture exits 0 with empty stderr.
 - the external-prompt failure exits non-zero and names the offending path.
-- the orchestrator-inline failure exits non-zero and names the offending path.
+- orchestrator-inline count failures exit non-zero and report expected/found counts.
+- the absent orchestrator-inline file exits non-zero with the generic missing-directive message.
 
 ## Edit-in-sync
 
