@@ -686,7 +686,7 @@ PY
             rm -f "$merged_tmp"
             MERGE_PIPELINE_FAILURE_KIND="move-failed"
             MERGE_PIPELINE_RC=2
-            append_warning "- **findings aggregator**: failed to replace --findings-file after successful validation; leaving original findings.md unchanged. $(failure_see_phrase "$REVIEW_TMPDIR/aggregator-mv.stderr")"
+            append_warning "- **findings aggregator**: failed to replace --findings-file after successful validation; leaving original --findings-file unchanged. $(failure_see_phrase "$REVIEW_TMPDIR/aggregator-mv.stderr")"
             return 0
         fi
     else

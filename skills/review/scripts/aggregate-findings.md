@@ -5,7 +5,7 @@
 ## CLI
 
 ```text
---findings-file PATH      (required) ballot path under $REVIEW_TMPDIR (unless --allow-findings-outside-tmpdir=true)
+--findings-file PATH      (required) ballot path under $REVIEW_TMPDIR (unless --allow-findings-outside-tmpdir true)
 --review-tmpdir DIR       (required) review tmpdir
 --codex-present true|false
 --cursor-present true|false

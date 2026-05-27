@@ -588,6 +588,43 @@ grep -Fq 'REASON=dispatch-failed' "$TMP/out-outside-output.env" || fail "outside
 grep -Fq 'aggregator output path resolves outside --review-tmpdir' "$TMP/execution-issues.md" || fail "outside output containment warning missing"
 cmp -s "$TMP_OUTSIDE/outside-output-test-orig.md" "$TMP_OUTSIDE/outside-output-test.md" || fail "outside input clobbered on dispatch-fail"
 
+echo "=== outside findings opt-in preserves original input on move failure ==="
+cat > "$TMP_OUTSIDE/outside-move-fail.md" <<'EOF'
+### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+
+### FINDING_3: Dup C
+- **Reviewer**: cursor-c-output.txt
+- **Concern**: same bug again
+- **Suggested revision**: fix
+
+EOF
+cp "$TMP_OUTSIDE/outside-move-fail.md" "$TMP_OUTSIDE/outside-move-fail-orig.md"
+chmod u-w "$TMP_OUTSIDE"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge \
+"$AGG" \
+    --findings-file "$TMP_OUTSIDE/outside-move-fail.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --allow-findings-outside-tmpdir true >"$TMP/out-outside-move-fail.env"
+chmod u+w "$TMP_OUTSIDE"
+grep -Fq 'AGGREGATED=false' "$TMP/out-outside-move-fail.env" || fail "outside move-fail AGGREGATED"
+grep -Fq 'REASON=dispatch-failed' "$TMP/out-outside-move-fail.env" || fail "outside move-fail REASON"
+cmp -s "$TMP_OUTSIDE/outside-move-fail-orig.md" "$TMP_OUTSIDE/outside-move-fail.md" || fail "outside move-fail clobbered original findings file"
+grep -Fq 'failed to replace --findings-file after successful validation; leaving original --findings-file unchanged.' "$TMP/execution-issues.md" || fail "outside move-fail warning missing generic findings-file wording"
+
 echo "=== stub merges 3 findings into 1 ==="
 cat > "$TMP/in3.md" <<'EOF'
 ### FINDING_1: Dup A
