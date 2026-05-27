@@ -1,0 +1,34 @@
+v1	mark	1779856213	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1779856488	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779856788	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1779856828	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779856962	implement	-	codex	codex-sketch-innovation	1779856901	1779856962	61	codex-sketch-innovation-output.txt	0	complete
+v1	vendor	1779856965	implement	-	codex	codex-sketch-pragmatic	1779856903	1779856964	61	codex-sketch-pragmatic-output.txt	0	complete
+v1	vendor	1779857028	implement	-	cursor	cursor-sketch-arch	1779856896	1779857028	132	cursor-sketch-arch-output.txt	0	complete
+v1	vendor	1779857091	implement	-	cursor	cursor-sketch-edge	1779856898	1779857091	193	cursor-sketch-edge-output.txt	0	complete
+v1	mark	1779858054	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1779858178	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779858455	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779858707	implement	-	codex	codex-phase1-dyn-codex-plan-seam-integrity	1779858604	1779858707	103	codex-primary-plan-dyn-seam-integrity-output.txt	0	complete
+v1	vendor	1779858739	implement	-	cursor	cursor-phase1-dyn-cursor-plan-tally-math	1779858604	1779858739	135	cursor-plan-dyn-tally-math-output.txt	0	complete
+v1	vendor	1779858757	implement	-	cursor	cursor-phase1-dyn-cursor-plan-schema-drift	1779858604	1779858757	153	cursor-plan-dyn-schema-drift-output.txt	0	complete
+v1	vendor	1779858757	implement	-	codex	codex-phase1-dyn-codex-plan-schema-drift	1779858604	1779858757	153	codex-primary-plan-dyn-schema-drift-output.txt	0	complete
+v1	vendor	1779858769	implement	-	codex	codex-phase1-dyn-codex-plan-tally-math	1779858604	1779858769	165	codex-primary-plan-dyn-tally-math-output.txt	0	complete
+v1	vendor	1779858786	implement	-	codex	codex-phase1-codex-plan-innovation	1779858604	1779858786	182	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779858796	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779858604	1779858796	192	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779858796	implement	-	cursor	cursor-phase1-dyn-cursor-plan-seam-integrity	1779858604	1779858796	192	cursor-plan-dyn-seam-integrity-output.txt	0	complete
+v1	vendor	1779858797	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779858604	1779858797	193	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779858798	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779858604	1779858798	194	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779858805	implement	-	codex	codex-phase1-codex-plan-edge	1779858604	1779858805	201	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779858809	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779858604	1779858809	205	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779858819	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779858604	1779858819	215	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779858828	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779858604	1779858828	224	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779858849	implement	-	codex	codex-phase1-codex-plan-arch	1779858604	1779858849	245	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779858857	implement	-	codex	codex-phase1-codex-plan-requirements	1779858604	1779858857	253	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779859028	implement	-	codex	codex-phase1-aggregator	1779858867	1779859028	161	aggregator-output.txt	0	complete
+v1	vendor	1779859555	implement	-	cursor	cursor-phase1-voter-3	1779859443	1779859555	112	cursor-vote-output.txt	0	complete
+v1	vendor	1779859595	implement	-	codex	codex-phase1-voter-2	1779859443	1779859595	152	codex-vote-output.txt	0	complete
+v1	mark	1779860171	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779860231	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779860239	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779861343	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

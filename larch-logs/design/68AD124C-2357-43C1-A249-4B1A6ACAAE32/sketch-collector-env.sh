@@ -1,0 +1,6 @@
+export LARCH_BREADCRUMB_STREAM='<TMPDIR>/breadcrumbs/collect-agent-results.sketch.38480.ndjson'
+export LARCH_DONE_SENTINEL='<TMPDIR>/breadcrumbs/collect-agent-results.sketch.38480.done'
+export LARCH_STATUS_FILE='<TMPDIR>/breadcrumbs/collect-agent-results.sketch.38480.status'
+export LARCH_QUIET_LOG_FILE='<TMPDIR>/breadcrumbs/collect-agent-results.sketch.38480.quiet'
+export LARCH_BREADCRUMBS_SURFACED_FILE='<TMPDIR>/breadcrumbs/collect-agent-results.sketch.38480.surfaced'
+export LARCH_PAIRED_PID_FILE='<TMPDIR>/breadcrumbs/collect-agent-results.sketch.38480.pid'

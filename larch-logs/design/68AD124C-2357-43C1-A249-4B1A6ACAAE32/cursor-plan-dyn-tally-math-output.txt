@@ -1,0 +1,62 @@
+Reviewing the plan and tally rule definitions against edge-case distributions.
+Searching for the issue description and related tally/voter precedent in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:87-89,203	Formal tally rule contradicts 0-2-1 edge-case expectation	For 0 BETTER + 2 TIE + 1 WORSE: successful=3 (TIE included), worse_count=1, better_count=0; rule (successful==3 AND worse_count>better_count) yields WORSE-majority but Edge cases line 203 expects NOT_WORSE	Replace the successful==3 clause with strict majority among successful assessors, e.g. worse_count*2 > successful (TIE counts toward successful but not toward worse_count/better_count); pin 0-2-1 expecting NOT_WORSE in test-tally-plan-assessor.sh
+1	in_scope	important	correctness	plan.txt:5,85-89,203	Approach summary WORSE>BETTER conflicts with tie-aware edge cases for 3-successful panels	Approach line 5 and tally lines 85-88 define 3-successful WORSE-majority as strict worse_count>better_count, which fires on a lone WORSE when better_count=0 even with 2 TIEs; edge rationale says TIE does not count as WORSE	Unify normative spec: either document that 3-successful requires worse_count>=2 (true majority) or drop/revise the 0-2-1 NOT_WORSE expectation; reflect the chosen rule identically in tally-plan-assessor.sh, tally-plan-assessor.md, and assessor.md worked examples
+1	in_scope	important	correctness	plan.txt:85-89,137,203	Test harness pins 0-2-1 NOT_WORSE while also citing strict WORSE>BETTER boundary	Implementing lines 87-88 literally makes test-tally-plan-assessor.sh fail on the line-203 0-2-1 case; line 137 simultaneously demands strict WORSE>BETTER boundary tests and pinning 0-2-1 as NOT_WORSE	Resolve rule first, then align test-tally-plan-assessor.sh cases: if 0-2-1 stays NOT_WORSE, tests must assert worse_count*2>successful (or equivalent), not bare worse_count>better_count
+1	in_scope	latent	correctness	feature-description.txt:5,28,194,plan.txt:85-89	Issue majority-vote / WORSE>BETTER language misaligns with 3/2/1/0 sub-rules when TIEs present	Issue line 5 says majority-vote; embedded plan line 28 uses WORSE>BETTER only; embedded edge line 194 lists 0-3-0 all-TIE as NOT_WORSE (consistent with both rules) but 0-2-1-equivalent would be WORSE under WORSE>BETTER; current plan adds degraded unanimous sub-rules for 2/1 successful but leaves 3-successful on WORSE>BETTER	Document in assessor.md that TIE is included in EFFECTIVE_ASSESSORS/successful but excluded from worse/better numerators, and that WORSE-majority requires a strict majority of successful assessors (not merely WORSE>BETTER among non-TIE votes)
+1	in_scope	latent	correctness	plan.txt:203,feature-description.txt:194	BETTER-TIE-WORSE tuple notation is transposed between documents	Plan edge line 203 uses 0-0-3 for three WORSE (expected WORSE); issue edge line 194 uses 0-3-0 for all-TIE (expected NOT_WORSE); same triple format, opposite positions	Standardize on one canonical BETTER-TIE-WORSE label everywhere (assessor.md, edge cases, tests); add explicit 0-3-0 all-TIE to plan Edge cases alongside all-tie harness case
+
+## Mechanical tally audit
+
+**Exact rule (proposed `tally-plan-assessor.sh`, plan.txt:87-89):**
+- `successful` = count of assessors with parseable BETTER/WORSE/TIE (TIE **included** in `successful`, excluded from `worse_count`/`better_count`).
+- WORSE-majority when: `(successful==3 AND worse_count>better_count)` OR `(successful==2 AND worse_count==2)` OR `(successful==1 AND worse_count==1)`.
+- Otherwise NOT_WORSE.
+
+**TIE resolution:** TIE votes count toward `successful` / `EFFECTIVE_ASSESSORS` but not toward `worse_count` or `better_count`.
+
+### Named distributions — plan Edge cases (line 203)
+
+| Distribution | successful | W/B/T | Mechanical rule result | Stated expected | Consistent? |
+|---|---|---|---|---|---|
+| 1-1-1 | 3 | 1/1/1 | NOT_WORSE (1>1 false) | NOT_WORSE | Yes |
+| 0-2-1 | 3 | 0/2/1 | **WORSE** (1>0 true) | NOT_WORSE | **No** |
+| 0-0-3 (3 WORSE) | 3 | 0/0/3 | WORSE (3>0) | WORSE | Yes |
+| 2-of-2 unanimous WORSE | 2 | 0/0/2 | WORSE (worse==2) | WORSE | Yes |
+| 1-of-1 WORSE | 1 | 0/0/1 | WORSE (worse==1) | WORSE | Yes |
+| 1-of-2 WORSE | 2 | varies/1 WORSE | NOT_WORSE (worse≠2) | NOT_WORSE | Yes |
+
+### Named distributions — issue description (feature-description.txt:194)
+
+| Distribution | Mechanical rule result | Issue expected | Consistent with issue? |
+|---|---|---|---|
+| 1-1-1 | NOT_WORSE | not worse | Yes |
+| 1-2-0 (1B/2T/0W) | NOT_WORSE (0>1 false) | not worse | Yes |
+| **0-3-0 (all TIE)** | NOT_WORSE (0>0 false) | not worse | Yes |
+| 2-1-0 (2B/1T/0W) | NOT_WORSE (0>2 false) | not worse | Yes |
+
+Issue does not name 0-2-1 explicitly; under issue's embedded `WORSE > BETTER` classifier (line 28), a 0B/2T/1W panel would also yield **WORSE** (1>0), which conflicts with the plan's 0-2-1 NOT_WORSE intent.
+
+### Additional harness distributions (plan.txt:137)
+
+| Case | Rule result | Harness expectation | Consistent? |
+|---|---|---|---|
+| all-tie (= 0-3-0) | NOT_WORSE | all-tie → NOT_WORSE | Yes |
+| 2-WORSE-1-BETTER | WORSE | WORSE-majority | Yes |
+| 2-BETTER-1-WORSE | NOT_WORSE | NOT_WORSE | Yes |
+| 0-of-3 parse failures | NOT_WORSE | degraded default-open | Yes |
+
+## Numbered findings
+
+1. **[correctness] `plan.txt:87-89` vs `plan.txt:203` — 0-2-1 rule/expectation mismatch.** Mechanical application: successful=3, worse=1, better=0, tie=2 → `(3 AND 1>0)` → WORSE-majority. Edge case expects NOT_WORSE with rationale "TIE does not count as WORSE." **Suggested revision:** adopt `worse_count*2 > successful` for the full panel (or `worse_count>=2` when successful==3).
+
+2. **[correctness] `plan.txt:5,85-89` — "strict WORSE > BETTER" vs tie-aware majority.** The Approach and tally preamble claim Round 1 D1 + original "majority" semantics, but the 3-successful clause is pure `worse_count>better_count`, which treats a single WORSE as decisive whenever no BETTER votes exist, regardless of TIE count. That is not majority among three successful assessors. **Suggested revision:** replace the three disjunctive clauses with one majority predicate over `successful`, preserving unanimous-WORSE behavior for degraded 2- and 1-assessor panels as special cases of the same formula.
+
+3. **[correctness] `plan.txt:137,203` — test contract collision.** Line 203 requires pinning 0-2-1 as NOT_WORSE; line 137 requires "strict WORSE > BETTER boundary at every relevant boundary." Those cannot both pass if the tally implements lines 87-88 verbatim. **Suggested revision:** after rule fix, add an explicit `0-2-1 → NOT_WORSE` test case and rename "WORSE > BETTER boundary" tests to "strict majority boundary."
+
+4. **[correctness] `feature-description.txt:5,28` vs `plan.txt:85-89` — original majority-vote language.** Problem statement says "majority-vote"; embedded issue plan uses `WORSE > BETTER`; proposed plan adds 3/2/1/0 sub-rules. For **0-3-0 all-TIE**: both issue expectation and mechanical rule agree on NOT_WORSE. For **1-1-1**: both agree on NOT_WORSE. For **0-2-1**: neither bare WORSE>BETTER nor the proposed 3-successful clause matches the stated NOT_WORSE intent. **Suggested revision:** normative assessor.md should define WORSE-majority as strict majority among successful assessors, explicitly noting TIE inclusion in the denominator only.
+
+5. **[latent] `plan.txt:203` vs `feature-description.txt:194` — tuple notation drift.** Plan `0-0-3` means three WORSE; issue `0-3-0` means three TIE. Implementers can transpose tuples. **Suggested revision:** always label `(BETTER,TIE,WORSE)` explicitly in assessor.md and tests.
+
+6. **[latent] `plan.txt:203` — missing 0-3-0 all-TIE in plan Edge cases.** Issue lists it; plan relies on harness "all-tie" without naming 0-3-0 in Edge cases. Rule outcome is consistent (NOT_WORSE), but documentation is incomplete. **Suggested revision:** add `0-3-0 (all TIE) → NOT_WORSE` to plan Edge cases for parity with the issue.

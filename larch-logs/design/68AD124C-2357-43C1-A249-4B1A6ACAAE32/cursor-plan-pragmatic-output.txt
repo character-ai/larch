@@ -1,0 +1,38 @@
+Reviewing the implementation plan and exploring cited codebase paths.
+1. **[correctness]** `skills/design/scripts/render-final-summary.sh:43-48` — Plan claims `render-final-summary.sh` accepts any `--outcome` token and needs no script change; the helper hard-rejects unknown outcomes. On **Stop**, `SUMMARY_OUTCOME=cancelled-assessor-worse` will hit `outcome not in enumeration` and exit **2**, so the Final summary block fails instead of printing the structured cancel banner.
+
+2. **[correctness]** `skills/design/SKILL.md:266` — The `### Final summary block` orchestrator contract lists allowed `SUMMARY_OUTCOME` values but omits `cancelled-assessor-worse`, while Step 3.6 Stop exports that token. Implementers following only the enumeration will skip the Final summary fence or pick a wrong outcome.
+
+3. **[architecture]** `skills/design/references/approval-gates.md:11,104-114` — Cross-tier invariant says Gate B/C behave identically across tiers, and every Gate B settled path routes to Step 3b. Step 3.6 is HARD-only between Gate B and 3b; without revising these routes (and the invariant exception), SIMPLE/HARD routing docs contradict the new stage.
+
+4. **[correctness]** `skills/design/SKILL.md:786` — Gate B prose still says “proceed to Step 3b” after settle. On HARD, orchestrators that follow SKILL.md literally will skip Step 3.6 entirely.
+
+5. **[risk-integration]** `skills/design/SKILL.md:30` — Anti-halt step chain lists `3→3.5→3b` and omits `3.6`. Models often halt at step boundaries; after Gate B on a round-2 HARD run, this is a likely halt point before assessor + Continue/Stop.
+
+6. **[correctness]** `scripts/test-design-structure.sh:196-217` — Check 6 awk enforces `<!-- step:3.5` before `<!-- step:3b` only. Inserting 3.6 between them still passes if markers are `3.5 < 3.6 < 3b`, but the check does not require a `3.6` marker or forbid `3.5→3b` routing prose; extend Check 6 so 3.6 cannot be skipped structurally.
+
+7. **[integration]** `skills/design/scripts/plan-review-loop.sh:66-76` vs proposed `assess-plan-round.sh` — Plan-review merges non-empty `brainstorm.md` into `plan-review-feature-context.txt` before external prompts. Assessor dispatch only names `feature-description.txt`; HARD runs with brainstorm will judge plan quality without brainstorm context unless assessor reuses the same merge (or an existing merged file).
+
+8. **[integration]** `skills/design/scripts/test-plan-review-loop.sh:285-289` vs proposed harnesses — Plan says mock downstream launches via `LARCH_*_SH` “matching test-plan-review-loop,” but that harness uses `LARCH_PLAN_REVIEW_*_SH` overrides wired into the driver. New scripts need explicit env hook names (e.g. `LARCH_DISPATCH_PLAN_ASSESSORS_SH`, `LARCH_TALLY_PLAN_ASSESSOR_SH`) in `assess-plan-round.sh` / `dispatch-plan-assessors.sh` and in the plan, or offline tests cannot stub the pipeline reliably.
+
+9. **[correctness]** `skills/design/scripts/test-render-final-summary.sh:381-391` — Outcome matrix loop mirrors `render-final-summary.sh` enumeration. Adding `cancelled-assessor-worse` to the script without extending this loop leaves CI without regression coverage for the new cancel path.
+
+10. **[architecture]** `scripts/lib-timing-kinds.md` — `.claude/rules/timing-task-kind-allowlist.md` requires updating the `.md` sibling when adding kinds; the plan only lists `lib-timing-kinds.sh`.
+
+**[OUT_OF_SCOPE]** `SECURITY.md:53-59` — New Codex/Cursor assessor panel via `dispatch-plan-assessors.sh` / `launch-claude-review.sh` should be documented alongside plan-review voters (read-only CLI posture, tmpdir outputs) when security-relevant behavior changes.
+
+**[OUT_OF_SCOPE]** `skills/shared/topology.tsv` — If design workflow topology is maintained from skill steps, a new Step 3.6 may need a projection row (follow existing topology generation conventions).
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/render-final-summary.sh:43-48	Plan denies script change but outcome enum rejects cancelled-assessor-worse	Stop after WORSE majority runs Final summary block; render-final-summary exits 2; operator sees no structured cancel summary	Add cancelled-assessor-worse to the case allow-list; update render-final-summary.md and test-render-final-summary.sh matrix
+1	in_scope	important	correctness	skills/design/SKILL.md:266	Final summary SUMMARY_OUTCOME list omits cancelled-assessor-worse	Step 3.6 documents the token but Step 0b contract omits it; implementers may skip Final summary on Stop	Add cancelled-assessor-worse to the orchestrator enumeration beside cancelled-plan-size-hard and cancelled-decompose
+1	in_scope	important	architecture	skills/design/references/approval-gates.md:11,104-114	Gate B docs route all tiers directly to Step 3b; cross-tier invariant ignores Step 3.6	HARD multi-round runs skip assessor if executor follows approval-gates.md; cross-tier prose is false	Amend invariant with HARD exception; replace Step 3b arrows with Step 3.6 (HARD) then 3b; document Gate C(c) cursor increment
+1	in_scope	important	correctness	skills/design/SKILL.md:786	Gate B settle line still says proceed to Step 3b only	HARD Gate B completion bypasses Step 3.6 despite new step definition	Change settle prose to proceed to Step 3.6 when workflow_path=HARD else Step 3b
+1	in_scope	important	risk-integration	skills/design/SKILL.md:30	Anti-halt step chain lists 3→3.5→3b without 3.6	Agent ends turn after Gate B before assessor or Continue/Stop on round ≥2	Insert 3.6 into the step-boundary list and Gate re-entry notes (3.5→3.6→3b on HARD)
+1	in_scope	important	correctness	scripts/test-design-structure.sh:196-217	Check 6 only enforces 3.5 before 3b; no 3.6 pin	Regression allows 3.5→3b skip or 3.6 placed after 3b	Extend Check 6 awk for 3.5 < 3.6 < 3b; grep Step 3.6 between Gate B and 3b in SKILL.md
+1	in_scope	important	integration	skills/design/scripts/plan-review-loop.sh:66-76 vs assess-plan-round.sh (proposed)	Assessor plan uses raw feature-description.txt; no brainstorm merge	HARD+brainstorm sessions compare plans without brainstorm synthesis in assessor prompts	Mirror plan-review-loop merge in assess-plan-round before --feature-file, or pass plan-review-feature-context.txt when present
+1	in_scope	important	integration	skills/design/scripts/test-plan-review-loop.sh:285-289 vs proposed test-assess-plan-round.sh	Plan references generic LARCH_*_SH overrides without naming hooks	Harness cannot stub dispatch/tally; tests may invoke real externals	Define and document LARCH_DISPATCH_PLAN_ASSESSORS_SH / LARCH_TALLY_PLAN_ASSESSOR_SH (or similar) in scripts and plan
+1	in_scope	latent	correctness	skills/design/scripts/test-render-final-summary.sh:381-391	Outcome matrix omits cancelled-assessor-worse	New cancel token passes script change but lacks harness regression	Add cancelled-assessor-worse to the for-loop and a dedicated title/outcome assertion
+1	in_scope	latent	architecture	scripts/lib-timing-kinds.md	Timing allowlist rule requires .md sibling update; plan only lists .sh	Allow-list drift undocumented for operators/readers	Append claude/codex/cursor-plan-assessor entries to lib-timing-kinds.md in the same PR
+1	out_of_scope	important	security	SECURITY.md:53-59	New external assessor panel not covered in security policy	Operators lack documented read-only/sandbox posture for assessor launches	Add assessor dispatch to the external-tool delegation paragraph (mirror plan voters)
+1	out_of_scope	latent	architecture	skills/shared/topology.tsv	Design topology projection may omit new Step 3.6	Consumer topology counts/steps drift from runtime SKILL	Add or regenerate topology row for Step 3.6 if this repo maintains that projection
