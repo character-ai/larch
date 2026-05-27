@@ -12,11 +12,11 @@
 | Case | Asserts |
 |------|---------|
 | GP1-infra | rc 0, infra keys in stdout, empty bail reason tail, no `STEP_FAILED=`. |
-| GP-adopt | Branch 2 fresh adoption emits issue/run ids, `BRANCH_SELECTED=branch-2-adopt`, `DEFERRED=false`, `STALL_TRACKING=false`, and writes the sentinel with the selected `RUN_ID`. |
+| GP-adopt | Branch 2 fresh adoption emits issue/run ids, `BRANCH_SELECTED=branch-2-adopt`, `DEFERRED=false`, `STALL_TRACKING=false`, writes the sentinel with the selected `RUN_ID`, and emits the `Step 0 — tracking issue` token/timing marks once. |
 | GP2 | Branch 1 sentinel resume emits `BRANCH_SELECTED=branch-1-resume` and reuses sentinel `ISSUE_NUMBER` / `RUN_ID`. |
-| GP3 | Fork mode emits `BRANCH_SELECTED=forked-target-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, and writes `FORKED_TARGET=true` to session-env. |
+| GP3 | Fork mode emits `BRANCH_SELECTED=forked-target-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, writes `FORKED_TARGET=true` to session-env, and still emits the `Step 0 — tracking issue` token/timing marks once. |
 | GP3-upstream-context-fail | Fork mode still continues when `get-issue-context.sh` fails and appends a redacted Warning entry to `execution-issues.md`. |
-| GP-repo-unavail-tracking | Tracking phase with `REPO_UNAVAILABLE=true` emits `BRANCH_SELECTED=repo-unavailable-skip`, empty `ISSUE_NUMBER`, and `DEFERRED=true`. |
+| GP-repo-unavail-tracking | Tracking phase with `REPO_UNAVAILABLE=true` emits `BRANCH_SELECTED=repo-unavailable-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, and still emits the `Step 0 — tracking issue` token/timing marks once. |
 | GP-repo-unavail-plan | Repo-unavailable `--up-to-phase plan` still snapshots the untracked baseline, but skips `gh issue view`, run-flags persist, dirty-tree checkpoint, branch creation/capture, plan logging, and summary upsert; `PLAN_FILE` stays empty. |
 | GP4 | Infra-only repo-unavailable path emits `REPO_UNAVAILABLE=true` and repo-unavailable warning on stderr. |
 | B1 | Sentinel issue mismatch clears and replaces the sentinel via Branch 2 fresh adoption. |

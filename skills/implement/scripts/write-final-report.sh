@@ -166,6 +166,8 @@ D_IN=0 D_CACHED=0 D_OUT=0
 U_IN=0 U_CR=0 U_OUT=0
 TOKEN_JSON=""
 TOKEN_DATA_AVAILABLE=false
+TOKEN_REPORT_CORRUPT_ZERO=false
+TOKEN_REPORT_CORRUPT_ZERO_WARNING='**⚠ token-report.json appears corrupt; reporting Cost: N/A**'
 for cand in "$run_dir/token-report.json" "$IMPLEMENT_TMPDIR/token-report-rendered.json"; do
     [ -f "$cand" ] && TOKEN_JSON="$cand" && break
 done
@@ -178,6 +180,21 @@ if [ -z "$TOKEN_JSON" ] || [ ! -f "$TOKEN_JSON" ]; then
 fi
 if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1 && jq -e '.claude.totals' "$TOKEN_JSON" >/dev/null 2>&1; then
     read -r CLAUDE_T CODEX_T CURSOR_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0)] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+    TOKEN_CODEX_PRESENT=false
+    TOKEN_CURSOR_PRESENT=false
+    jq -e '.codex' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CODEX_PRESENT=true
+    jq -e '.cursor' "$TOKEN_JSON" >/dev/null 2>&1 && TOKEN_CURSOR_PRESENT=true
+    # guard against silent zero costs
+    if jq -e --argjson codex_present "$TOKEN_CODEX_PRESENT" --argjson cursor_present "$TOKEN_CURSOR_PRESENT" '
+      (.claude.totals? != null)
+      and ((.claude.totals.total // 0) == 0)
+      and (if $codex_present then ((.codex.totals.total // 0) == 0) else true end)
+      and (if $cursor_present then ((.cursor.totals.total // 0) == 0) else true end)
+      and ($codex_present or $cursor_present or ((.claude.totals.total // 0) == 0))
+    ' "$TOKEN_JSON" >/dev/null 2>&1; then
+        TOKEN_REPORT_CORRUPT_ZERO=true
+        larch_err "$TOKEN_REPORT_CORRUPT_ZERO_WARNING"
+    fi
     if jq -e '.BUCKETS_claude' "$TOKEN_JSON" >/dev/null 2>&1; then
         read -r C_IN C_CR C_CW5 C_CW1 C_OUT < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
         read -r D_IN D_CACHED D_OUT < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
@@ -185,7 +202,7 @@ if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1
     fi
     sum_b=$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT + D_IN + D_CACHED + D_OUT + U_IN + U_CR + U_OUT))
     total_t=$((CLAUDE_T + CODEX_T + CURSOR_T))
-    if [ "$sum_b" -ne 0 ] || [ "$total_t" -ne 0 ]; then
+    if [ "$TOKEN_REPORT_CORRUPT_ZERO" != true ] && { [ "$sum_b" -ne 0 ] || [ "$total_t" -ne 0 ]; }; then
         TOKEN_DATA_AVAILABLE=true
     fi
 fi
@@ -344,6 +361,9 @@ notes_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-notes.XXXXXX")"
     fi
     if [ -n "$UPSTREAM_ISSUE" ]; then
         printf '%s\n' "**Note:** You may include \`Closes #${UPSTREAM_ISSUE}\` in the upstream PR body when you compose it manually."
+    fi
+    if [ "$TOKEN_REPORT_CORRUPT_ZERO" = true ]; then
+        printf '%s\n' "$TOKEN_REPORT_CORRUPT_ZERO_WARNING"
     fi
     if [ "$FORKED_TARGET" = "true" ]; then
         any_oos=false

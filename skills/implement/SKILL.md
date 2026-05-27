@@ -678,28 +678,9 @@ If `oos-accepted-main-agent.md` does not exist, create it with the new entry. If
 
 ### Step 0 — tracking issue adoption
 
-Tracking adoption calls 6-9 are owned by the single foreground `implement-bootstrap.sh --up-to-phase plan` call above. Do not run separate prompt-side `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh init`, `post-tracking-issue.sh`, or `tracking-issue-write.sh rename` blocks for Step 0 adoption. The prompt still owns only the tracking-issue post-bootstrap token/timing ledger mark block immediately below.
+Tracking adoption is owned by the single foreground `implement-bootstrap.sh --up-to-phase plan` call above. Do not run separate prompt-side `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh init`, `post-tracking-issue.sh`, `tracking-issue-write.sh rename`, or tracking token/timing ledger mark blocks for Step 0 adoption. The `Step 0 — tracking issue` ledger mark is owned by `phase_tracking` in `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh`.
 
 Resolve a stable `ISSUE_NUMBER` and `RUN_ID` from bootstrap stdout. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
-
-```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-if [ "${IMPLEMENT_BAIL_REASON:-}" = "" ] && [ "${DEFERRED:-false}" != "true" ] && { [ "${BRANCH_SELECTED:-}" = "branch-1-resume" ] || [ "${BRANCH_SELECTED:-}" = "branch-2-adopt" ]; }; then
-  "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue" || true
-  "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue" || true
-fi
-# token-mark Step 0 — tracking issue
-# timing-mark Step 0 — tracking issue
-```
 
 **MANDATORY — READ ENTIRE FILE** before composing any tracking-issue summary comment at Step 0 (tracking + plan materialization), 9a.1, 11, 18, or the ship-pr post-merge `write-final-report.sh` pass (merged runs): `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. It defines the four allowed marker literals (`larch:metadata`, `larch:diagrams`, `larch:plan`, `larch:final-summary`) and the rule that bulky payloads live in `larch-logs/`, not in GitHub comments.
 

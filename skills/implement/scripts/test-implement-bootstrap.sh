@@ -39,6 +39,21 @@ assert_not_contains() {
     fi
 }
 
+assert_occurrences() {
+    local needle=$1 haystack=$2 expected=$3 label=$4
+    local actual
+    actual=$(printf '%s\n' "$haystack" | grep -cF -- "$needle" || true)
+    if [ "$actual" -eq "$expected" ]; then
+        PASS=$((PASS + 1))
+        echo "PASS: $label"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: $label (expected $expected got $actual)"
+        echo "  counted: $needle"
+        printf '%s\n' "$haystack" | sed 's/^/    /'
+    fi
+}
+
 assert_line() {
     local needle=$1 haystack=$2 label=$3
     if printf '%s\n' "$haystack" | grep -qxF -- "$needle"; then
@@ -547,8 +562,8 @@ assert_contains "STALL_TRACKING=false" "$out" "GP-adopt no stall"
 assert_contains "RUN_ID=runA" "$(cat "$SANDBOX_TMP/parent-issue.md")" "GP-adopt sentinel run id"
 assert_contains "FORKED_TARGET=false" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP-adopt session-env fork default"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_not_contains 'token-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt no bootstrap token mark"
-assert_not_contains 'timing-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt no bootstrap timing mark"
+assert_occurrences 'token-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP-adopt bootstrap token mark once"
+assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP-adopt bootstrap timing mark once"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP-adopt-session-id ---
@@ -587,6 +602,8 @@ assert_contains "FORKED_TARGET=true" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP3
 assert_contains "TITLE_FILE=$SANDBOX_TMP/upstream-issue-title.txt" "$(cat "$SANDBOX_TMP/upstream-context.out")" "GP3 upstream title artifact"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains 'get-issue-context --issue 123 --repo upstream/repo' "$invoke" "GP3 upstream context invoked"
+assert_occurrences 'token-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP3 bootstrap token mark once"
+assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP3 bootstrap timing mark once"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP3-upstream-context-fail ---
@@ -622,6 +639,9 @@ assert_rc "$rc" 0 "GP-repo-unavail-tracking exit 0"
 assert_contains "BRANCH_SELECTED=repo-unavailable-skip" "$out" "GP-repo-unavail-tracking branch"
 assert_line "ISSUE_NUMBER=" "$out" "GP-repo-unavail-tracking empty issue"
 assert_contains "DEFERRED=true" "$out" "GP-repo-unavail-tracking deferred"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_occurrences 'token-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP-repo-unavail-tracking bootstrap token mark once"
+assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP-repo-unavail-tracking bootstrap timing mark once"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP-repo-unavail-plan ---
