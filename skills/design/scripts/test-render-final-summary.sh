@@ -252,6 +252,19 @@ fb_cancel_fallback_line=$(grep -nF '<!-- larch:final-summary-fallback v1 -->' "$
 [[ -n "$fb_cancel_run_summary_line" && -n "$fb_cancel_fallback_line" && "$fb_cancel_fallback_line" -gt "$fb_cancel_run_summary_line" ]] \
     || fail 'renderer-fail cancelled fallback marker must follow run-summary marker'
 cmp -s "$D/final-summary.md" "$std_fb_cancel" || fail 'renderer-fail cancelled fallback stdout/file mismatch'
+std_fb_co="$TMP/std-fallback-cancelled-outline.log"
+: >"$D/final-summary.md"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CO" \
+    "$SUBJECT" --outcome cancelled-outline --mode SIMPLE --post-publish-only >"$std_fb_co" 2>/dev/null
+grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing degraded banner'
+grep -Fq -- '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing fallback marker'
+grep -Fq -- '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing run-summary marker'
+grep -Fq -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing Cancel site bullet'
+fb_co_fallback_line=$(grep -nF '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+fb_co_cancel_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+[[ -n "$fb_co_fallback_line" && -n "$fb_co_cancel_line" && "$fb_co_cancel_line" -gt "$fb_co_fallback_line" ]] \
+    || fail 'renderer-fail cancelled-outline Cancel site bullet must follow fallback marker'
+pass 'renderer-fail cancelled-outline fallback preserves marker ordering before Cancel site'
 rm -f "$PLUGIN_STUB/scripts/append-tool-failure.sh"
 : >"$D/execution-issues.md"
 std_fb_nowarn="$TMP/std-fallback-no-warning.log"
