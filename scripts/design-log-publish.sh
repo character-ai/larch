@@ -163,17 +163,20 @@ wt_cleanup() {
 }
 trap wt_cleanup EXIT
 
-if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
-    larch_err "design-log-publish: branch $WT_BRANCH is already checked out in another worktree; concurrent or stale publish for this RUN_ID"
-    emit_publish_result false
-    exit 0
-fi
 REMOTE_BRANCH_EXISTS=false
 if [[ "$REASON" == "pause" ]]; then
     git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
     if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
         REMOTE_BRANCH_EXISTS=true
     fi
+fi
+if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
+    larch_err "design-log-publish: branch $WT_BRANCH is already checked out in another worktree; concurrent or stale publish for this RUN_ID"
+    emit_publish_result false
+    if [[ "$REASON" == "pause" && "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+    fi
+    exit 0
 fi
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$WT_BRANCH"; then
     if ! git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1; then
@@ -533,11 +536,7 @@ if [[ -z "$_porcelain" ]]; then
             emit_kv RECOVERY_BRANCH "$WT_BRANCH"
             exit 0
         fi
-        if git -C "$REPO_ROOT" cat-file -e "origin/$ORIGIN_DEFAULT:larch-logs/design/$RUN_ID/manifest.json" 2>/dev/null; then
-            emit_publish_result true "" ""
-            exit 0
-        fi
-        larch_err "design-log-publish: pause publish produced no committed snapshot on origin/$ORIGIN_DEFAULT"
+        larch_err "design-log-publish: pause publish produced no new snapshot delta"
         emit_publish_result false
         exit 0
     fi

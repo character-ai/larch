@@ -165,7 +165,8 @@ out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_load" == *"LOAD_OK=true"* ]] || fail "load failed: $out_load"
 [[ "$out_load" == *"STEP=1d"* ]] || fail "load step mismatch: $out_load"
 [[ -f "$RESTORE/plan.txt" && -f "$RESTORE/run-params.json" && -f "$RESTORE/pause-state.txt" ]] || fail "restored root artifacts missing"
-! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker not deleted"
+[[ -f "$RESTORE/.resume-loaded" ]] || fail "resume sentinel missing after restore"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should remain until terminal cleanup"
 HOME="$TMP/home" bash "$WDCE" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
 grep -Fq 'export ISSUE_NUMBER=9' "$RESTORE/source-env.sh" || fail "issue refresh missing after restore"
 
@@ -221,6 +222,7 @@ bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
 printf '\noperator edit\n' >>"$BODY_FILE"
 out_drift=$(bash "$LOAD" --design-tmpdir "$TMP/restore-drift" --issue 9 --repo owner/repo)
 [[ "$out_drift" == *"LOAD_OK=true"* && "$out_drift" == *"WARN=body-drift"* ]] || fail "expected body drift warning: $out_drift"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "body-drift restore should keep marker"
 
 echo "=== named block delete + empty content semantics ==="
 printf 'x\n<!-- larch:design-pause:start -->\nA\n<!-- larch:design-pause:end -->\ny\n' >"$BODY_FILE"
@@ -400,16 +402,17 @@ printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_
 out_bad_brainstorm=$(bash "$LOAD" --design-tmpdir "$TMP/bad-brainstorm" --issue 9 --repo owner/repo)
 [[ "$out_bad_brainstorm" == *"ERROR=invalid-brainstorm-done"* ]] || fail "bad brainstorm validation mismatch: $out_bad_brainstorm"
 
-echo "=== marker delete failure leaves installed state + marker for retry ==="
+echo "=== unloadable snapshot clears marker ==="
 make_design_tmpdir "$DESIGN"
 printf 'body\n' >"$BODY_FILE"
 bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
-FAIL_RESTORE="$TMP/delete-fail-restore"
+rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+FAIL_RESTORE="$TMP/unloadable-restore"
 mkdir -p "$FAIL_RESTORE"
-out_delete_fail=$(GH_EDIT_FAIL=1 bash "$LOAD" --design-tmpdir "$FAIL_RESTORE" --issue 9 --repo owner/repo)
-[[ "$out_delete_fail" == *"ERROR=marker-delete-failed"* ]] || fail "delete failure mismatch: $out_delete_fail"
-[[ -f "$FAIL_RESTORE/plan.txt" ]] || fail "marker delete failure should keep installed restore"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should remain after delete failure"
+out_unloadable=$(bash "$LOAD" --design-tmpdir "$FAIL_RESTORE" --issue 9 --repo owner/repo)
+[[ "$out_unloadable" == *"ERROR=snapshot-extract-failed"* ]] || fail "unloadable snapshot mismatch: $out_unloadable"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "unloadable snapshot should clear marker"
+! [[ -f "$FAIL_RESTORE/.resume-loaded" ]] || fail "unloadable snapshot should not install resume sentinel"
 
 echo "=== marker name validation ==="
 set +e

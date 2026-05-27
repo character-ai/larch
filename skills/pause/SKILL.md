@@ -40,7 +40,6 @@ fi
 
 printf '%s\n' "🛑 /larch:pause: saving state for issue #${ISSUE_NUMBER}..."
 mkdir -p "$DESIGN_TMPDIR"
-: > "$DESIGN_TMPDIR/.pause-requested"
 pause_args=(
   "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh"
   --design-tmpdir "$DESIGN_TMPDIR"
