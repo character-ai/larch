@@ -1,0 +1,6 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Codex-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	adequate	false	Claude	YES	true	major	excellent	false	Claude
+FINDING_2	Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements	accepted	YES	true	blocker	excellent	false	Claude	YES	true	blocker	excellent	false	Claude	YES	true	blocker	excellent	false	Claude
+FINDING_3	Cursor-Edge, Codex-Edge, Cursor-dyn-grammar-coverage, Codex-dyn-grammar-coverage	accepted	YES	true	major	good	false	Claude	YES	true	major	adequate	false	Claude	YES	true	major	excellent	false	Claude
+FINDING_4	Cursor-dyn-grammar-coverage, Codex-dyn-grammar-coverage	accepted	YES	partially-true	major	adequate	false	Claude	YES	true	minor	adequate	false	Claude	YES	true	major	good	false	Claude
+FINDING_5	Cursor-dyn-makefile-shard-audit, Codex-dyn-makefile-shard-audit	accepted	YES	true	minor	good	false	Claude	YES	true	minor	adequate	false	Claude	YES	true	minor	good	false	Claude

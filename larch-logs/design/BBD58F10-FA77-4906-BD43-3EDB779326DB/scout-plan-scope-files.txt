@@ -1,0 +1,10 @@
+scripts/check-contains-pins.sh
+scripts/check-contains-pins.md
+scripts/test-check-contains-pins.sh
+scripts/test-check-contains-pins.md
+scripts/relevant-checks.sh
+Makefile
+agents/_implementer-base.md
+agents/codex-implementer.md
+agents/cursor-implementer.md
+scripts/test-relevant-checks.sh
