@@ -1,12 +1,13 @@
 # Version Bump Reasoning
 
-- **Base commit**: `30dbe2cd` (Fixes #2930: Make Gate B auto-apply findings by default (#3009))
-- **Current version**: `44.0.0`
+- **Base commit**: `1f3ab0eb` (Bump version to 44.0.1 (#3026))
+- **Current version**: `44.0.1`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: MAJOR
+## Result: PATCH
 
-- **New version**: `45.0.0`
+- **New version**: `44.0.2`
 
-### MAJOR evidence
-- Removed `--trivial` from argument-hint in `skills/design/SKILL.md`
+### PATCH rationale
+
+No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy ("every PR must bump at least PATCH").
