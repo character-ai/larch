@@ -95,7 +95,10 @@ foreground, then `wait` on the captured PID after the monitor returns.
 Callers must preserve both exit-code channels. Capture `monitor_rc` with
 `monitor_rc=0` plus `breadcrumb-monitor.sh ... || monitor_rc=$?`. When
 `monitor_rc=0`, wait for the writer and exit with `writer_rc`; orchestrators
-then read the writer's `EXIT_CODE` from `LARCH_STATUS_FILE` for routing. When
+then read the writer's `EXIT_CODE` from `LARCH_STATUS_FILE` for routing.
+**Monitor exit 0 does not mean writer success** — it only means the done
+sentinel was detected. Writer success is determined by `writer_rc` (the `wait`
+exit code) and `EXIT_CODE` from `LARCH_STATUS_FILE`. When
 `monitor_rc` is non-zero, perform the bounded reap and exit with `monitor_rc`
 so infrastructure failures remain visible.
 
