@@ -1,0 +1,5 @@
+skills/design/scripts/revise-plan-with-waterfall.sh
+skills/design/scripts/revise-plan-with-waterfall.md
+scripts/test-revise-plan-with-waterfall.sh
+scripts/test-revise-plan-with-waterfall.md
+Makefile
