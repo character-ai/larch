@@ -46,6 +46,17 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-PRE" \
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'pre-publish path missing Cost bullet'
 pass 'pre-publish writes file without chat output'
 
+std_reentry="$TMP/std-reentry.log"
+DESIGN_REENTRY_MARKER_PATH="$HOME/.cache/larch/sessions/design-completed-2935-12345" \
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="2935" SESSION_ID="RUN-REENTRY" \
+    "$SUBJECT" --outcome cancelled-reentry-guard --mode SIMPLE --post-publish-only >"$std_reentry" 2>/dev/null
+grep -Fq -- '- **Outcome**: cancelled-reentry-guard' "$D/final-summary.md" || fail 'reentry guard summary missing Outcome bullet'
+grep -Fq -- '- **Mode**: Refused (session-cache re-entry guard)' "$D/final-summary.md" || fail 'reentry guard summary missing guard mode'
+grep -Fq -- '- **Guard**: session-cache re-entry guard' "$D/final-summary.md" || fail 'reentry guard summary missing Guard note'
+grep -Fq -- '- **Marker**: `'"$HOME/.cache/larch/sessions/design-completed-2935-12345"'`' "$D/final-summary.md" || fail 'reentry guard summary missing marker path'
+cmp -s "$D/final-summary.md" "$std_reentry" || fail 'reentry guard stdout/file mismatch'
+pass 'reentry guard outcome summary'
+
 PLUGIN_STUB="$TMP/plugin"
 mkdir -p "$PLUGIN_STUB/scripts"
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
@@ -367,6 +378,14 @@ grep -Fq -- '- **Outcome**: cancelled-title-filter' "$D/final-summary.md" || fai
 grep -Fq -- '- **Mode**: Refused (title-filter)' "$D/final-summary.md" || fail 'missing Refused (title-filter) mode line'
 pass 'cancelled-title-filter outcome'
 
+LARCH_DESIGN_REENTRY_GUARD_PPID=4242 DESIGN_TMPDIR="$D" ISSUE_NUMBER="2935" SESSION_ID="RUN-FIX" \
+    "$SUBJECT" --outcome cancelled-reentry-guard --mode SIMPLE --post-publish-only >/dev/null 2>&1
+grep -Fq '## /design run RUN-FIX — cancelled-reentry-guard' "$D/final-summary.md" || fail 'cancelled-reentry-guard title missing'
+grep -Fq -- '- **Outcome**: cancelled-reentry-guard' "$D/final-summary.md" || fail 'missing cancelled-reentry-guard outcome bullet'
+grep -Fq -- 'session-cache re-entry guard' "$D/final-summary.md" || fail 'cancelled-reentry-guard summary missing guard name'
+grep -Fq -- "$HOME/.cache/larch/sessions/design-completed-2935-4242" "$D/final-summary.md" || fail 'cancelled-reentry-guard summary missing marker path'
+pass 'cancelled-reentry-guard outcome'
+
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
     "$SUBJECT" --outcome approved-partition --mode SIMPLE --post-publish-only >/dev/null 2>&1
 grep -Fq '## /design run RUN-FIX — approved-partition' "$D/final-summary.md" || fail 'approved-partition title missing'
@@ -385,6 +404,7 @@ for summary_outcome in \
     cancelled-already-planned \
     cancelled-tier-gate \
     cancelled-title-filter \
+    cancelled-reentry-guard \
     cancelled-sprawl \
     cancelled-plan-size-hard \
     cancelled-decompose \
@@ -408,7 +428,7 @@ do
         grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
     fi
 done
-pass 'ten-outcome post-publish matrix'
+pass 'eleven-outcome post-publish matrix'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
 pass 'render-final-summary append warning redacts stderr'

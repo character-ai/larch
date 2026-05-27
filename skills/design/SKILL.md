@@ -190,6 +190,58 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    2. Capture the lifecycle marker first, e.g. `lifecycle_reject_marker="$(title_has_lifecycle_reject_prefix "$ISSUE_TITLE" || true)"`. If `lifecycle_reject_marker` is non-empty: export `SUMMARY_OUTCOME=cancelled-title-filter`, run the `### Final summary block` fenced bash block below, then print `**⚠ /design: issue title starts with managed lifecycle marker <token> — refusing to design. Rename the title (drop the bracket prefix) and re-invoke /design.**` to stderr (substitute the captured marker) and exit **1**. `$DESIGN_TMPDIR` is preserved (Step 6 cleanup gates on `PLAN_WRITE_OK=true` and approved outcomes; both are absent on this path).
    3. If `title_has_archival_report_prefix "$ISSUE_TITLE"` matches: export `SUMMARY_OUTCOME=cancelled-title-filter`, run the **Final summary block**, then print `**⚠ /design: issue title matches archival report-prefix \`[... Report]\` — refusing to design. Such titles are reserved for \`/research\` / \`/report-tokens\` artifacts. Rename the title and re-invoke /design.**` to stderr and exit **1**.
    4. If `title_starts_with_brainstorm "$ISSUE_TITLE"` matches: print `**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params \`brainstorm_requested=true\`) even though --brainstorm was not on argv.**` to chat (bold info banner) and set mental `brainstorm_requested=true` for sub-step 6 / `write-run-params.sh`. Do **not** exit.
+   Session-cache spurious re-entry guard runs next; see scripts/lib-design-reentry-guard.sh for grammar.
+2.6. **Session-cache spurious re-entry guard** — run after the title-eligibility filter and before the clarify loop.
+
+   1. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-reentry-guard.sh`.
+   2. Call `design_reentry_marker_hit "$ISSUE_NUMBER" "$PPID"` and parse the stdout KV line.
+   3. On `MARKER_HIT=true`: export `SUMMARY_OUTCOME=cancelled-reentry-guard`, set `LARCH_DESIGN_REENTRY_GUARD_PPID` to `$PPID`, set `DESIGN_REENTRY_MARKER_PATH` from `design_reentry_marker_path`, run the **Final summary block**, compute the remaining TTL seconds, then print the refusal banner below with the issue, PPID, age, TTL, and remaining seconds substituted. Exit **1** and preserve `$DESIGN_TMPDIR`.
+   4. On miss (`MARKER_HIT=false`, exit 1), proceed to sub-step 3. On helper return 2, print the helper's KV line as a warning and proceed to sub-step 3 because caller-error should not create a hard block on a fresh design.
+
+   ```text
+   **⚠ /design: refusing spurious re-entry — guard=session-cache issue=#<N> ppid=<PPID> marker_age=<seconds>s ttl=<TTL>s. Wait <remaining>s or delete <DESIGN_REENTRY_MARKER_PATH> to override.**
+   ```
+
+   Reference Bash shape:
+
+   ```bash
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   # shellcheck source=scripts/lib-design-reentry-guard.sh
+   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-reentry-guard.sh"
+   _reentry_out="$(design_reentry_marker_hit "$ISSUE_NUMBER" "$PPID" || true)"
+   MARKER_HIT=false
+   MARKER_AGE=0
+   MARKER_TTL=300
+   for _pair in $_reentry_out; do
+     case "$_pair" in
+       MARKER_HIT=*) MARKER_HIT="${_pair#MARKER_HIT=}" ;;
+       MARKER_AGE=*) MARKER_AGE="${_pair#MARKER_AGE=}" ;;
+       MARKER_TTL=*) MARKER_TTL="${_pair#MARKER_TTL=}" ;;
+     esac
+   done
+   if [ "$MARKER_HIT" = true ]; then
+     MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
+     [ "$MARKER_REMAINING" -lt 0 ] && MARKER_REMAINING=0
+     export SUMMARY_OUTCOME=cancelled-reentry-guard
+     LARCH_DESIGN_REENTRY_GUARD_PPID="$PPID"
+     DESIGN_REENTRY_MARKER_PATH="$(design_reentry_marker_path "$ISSUE_NUMBER" "$PPID")"
+     export LARCH_DESIGN_REENTRY_GUARD_PPID DESIGN_REENTRY_MARKER_PATH
+     export CLAUDE_PLUGIN_ROOT
+     SUMMARY_MODE_STRING=""
+     if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
+       SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
+     fi
+     [ -n "$SUMMARY_MODE_STRING" ] || SUMMARY_MODE_STRING=N/A
+     DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
+       "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+       --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
+       --mode "${SUMMARY_MODE_STRING}" \
+       ${REPO:+--repo "$REPO"} \
+       --post-publish-only
+     printf '%s\n' "**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#${ISSUE_NUMBER} ppid=${PPID} marker_age=${MARKER_AGE}s ttl=${MARKER_TTL}s. Wait ${MARKER_REMAINING}s or delete ${DESIGN_REENTRY_MARKER_PATH} to override.**" >&2
+     exit 1
+   fi
+   ```
 3. **Clarify loop** when `needs-design-clarification` label is present — follow `skills/implement/SKILL.md` Preflight clarify semantics:
    1. `clarify-state.sh`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, and `plan-block-write.sh --content-file`. **Only when `plan-block-write.sh` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
    2. Resolve `REPO` for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
@@ -282,7 +334,7 @@ fi
 
 **When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
 
-**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-tier-gate` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Step 5c happy path uses the **two-phase** callsites in Step 5c prose (`--pre-publish-only` before `design-log-publish.sh`, then `--post-publish-only` after publish) instead of this single-phase fence.
+**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-plan-size-hard` | `cancelled-reentry-guard` | `cancelled-sprawl` | `cancelled-tier-gate` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Step 5c happy path uses the **two-phase** callsites in Step 5c prose (`--pre-publish-only` before `design-log-publish.sh`, then `--post-publish-only` after publish) instead of this single-phase fence.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
@@ -989,7 +1041,8 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
 
 3. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
 4. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-5. If step 4 fails, export `SUMMARY_OUTCOME=failed-plan-write` and run the **Final summary block** from Step 0b (`### Final summary block`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** items **6–10** (do not resolve `REPO`, run `upsert-diagrams-comment.sh`, run `design-log-publish.sh`, the two-phase summary refresh, or `tracking-issue-write.sh` rename) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
+5. If step 4 fails, export `SUMMARY_OUTCOME=failed-plan-write` and run the **Final summary block** from Step 0b (`### Final summary block`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** item **5.5** and items **6–11** (do not write the re-entry marker, resolve `REPO`, run `upsert-diagrams-comment.sh`, run `design-log-publish.sh`, the two-phase summary refresh, or `tracking-issue-write.sh` rename) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
+5.5. If step 4 succeeds, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-reentry-guard.sh` and call `design_reentry_marker_write "$ISSUE_NUMBER" "$PPID"` before publish or rename. On non-zero exit, capture stderr to `$DESIGN_TMPDIR/design-reentry-marker-write.failure.log` and append it under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 5c marker write" --tool "design_reentry_marker_write" --exit-code <rc> --category Warnings --output-file "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log" --redact || true`. Do **not** roll back the successful plan write; continue to publish/rename. This marker write intentionally runs before `design-log-publish.sh` and before `tracking-issue-write.sh rename --issue "$ISSUE_NUMBER" --state designed` so it covers publish/rename failures after the plan block has landed.
 6. If step 4 succeeds, set `PLAN_WRITE_OK=true`, then resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
 7. **5c.5 — `larch:diagrams` Architecture upsert.** Print `> **🔶 /design 5c.5: larch:diagrams (architecture)**`. After `plan-block-write.sh` succeeds and after `REPO` is resolved, publish the Architecture section to the shared issue-scoped diagrams comment:
    - If `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/upsert-diagrams-comment.sh" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} --architecture-file "$DESIGN_TMPDIR/architecture-diagram.md"`.

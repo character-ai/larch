@@ -1,0 +1,23 @@
+Implemented and verified.
+
+Changed `/design` to add a per-issue, per-PPID session-cache re-entry guard:
+- new `scripts/lib-design-reentry-guard.sh` plus docs and harness
+- Step 0b refuses fresh same-session re-entry after title guards
+- Step 5c writes the marker immediately after successful `plan-block-write.sh`
+- final summary supports `cancelled-reentry-guard`
+- Makefile shard and structural tests updated
+
+Validation passed:
+- `make test-design-reentry-guard`
+- `make test-render-final-summary`
+- `make test-design-structure`
+- `make test-harness-shards-coverage`
+- `make lint-bash32`
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`
+
+Manifest written at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.
+
+Current branch is clean and ahead of `origin/main` by 2 commits:
+- `8a94842e Add /design same-session re-entry guard`
+- `0acaae6c chore(larch-logs): flush implement run CD76DD42-D96C-4FFA-9F8B-8E8228F92830`
