@@ -1,0 +1,57 @@
+Reviewing the plan against the codebase for internal contradictions on the CAPTURE_STDOUT_ONLY stdin policy.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:12-17	Changes item 2 says modify `_launch_capture_stdout_only` to inherit/apply stdin policy; Implementation Approach (line 17) forbids that and requires literal `"$@" < /dev/null` inside a per-branch `case "$TOOL_NAME" in codex)` at each of the three top-level spawn sites, not via a string variable (and line 17 also names `_codex_stdin_redirect_args` then rejects string variables).	An implementer can land only one pattern: helper-internal redirect vs elif-level case wrapper vs duplicated spawn logic. Branch 2 (`CAPTURE_STDOUT_ONLY`) is the ambiguous one; partial implementation leaves Codex on `stdbuf` or plain `"$@" &` inside the helper without `< /dev/null` while branches 1/3 are patched.	Treat **Implementation Approach (plan.txt:17)** as authoritative. Reconcile Changes bullets 1–2 to match: at `scripts/run-external-agent.sh:206-212`, use three parallel `case "$TOOL_NAME" in codex)` blocks; for the elif branch call `_launch_capture_stdout_only "$@" < /dev/null` (or add `< /dev/null` on **both** spawn lines inside the helper at :199 and :201 if the helper is the single spawn site—pick one, document it, delete “modify helper to accept policy”).
+2	in_scope	important	correctness	plan.txt:142 vs plan.txt:17	Failure modes §1 mitigation says “keep the redirect easily reversible (**one variable**, one conditional block)” while Implementation Approach explicitly rejects a redirect string variable and `_codex_stdin_redirect_args`.	Same PR may introduce a string-held redirect fragment (violating line 17) or a reviewer treats Failure modes as the rollback spec and reintroduces the forbidden pattern.	Align Failure modes text with the chosen mechanism: “one `case "$TOOL_NAME" in codex)` guard per spawn branch” (or “one helper, two spawn lines with inline `< /dev/null` when codex”) and remove “one variable”.
+3	in_scope	important	correctness	scripts/run-external-agent.sh:197-203	Acceptance requires all three background spawn branches (`plan.txt:136-137`, `plan.txt:159`) but the plan does not state where `< /dev/null` must attach for `CAPTURE_STDOUT_ONLY`: on the helper’s two internal `"$@" … &` / `stdbuf … &` lines (:199, :201) or only on the `_launch_capture_stdout_only "$@"` call at :209.	Per-branch case at :209 without helper changes may or may not propagate stdin to the background child under `stdbuf`; helper-only changes without patching :207 and :211 leave Codex voter/review paths on the default and `CAPTURE_STDOUT` branches unfixed (production Codex voters use default spawn per run logs: `CAPTURE_STDOUT_ONLY=false`).	Spell out in the plan: redirect must be on the **background spawn command** in all three top-level branches; for the elif branch either (a) add `case` codex/non-codex around the helper call, or (b) gate `TOOL_NAME=codex` inside `_launch_capture_stdout_only` on **both** `&` lines. Acceptance is achievable with either, but not with Changes item 2 alone.
+4	in_scope	important	correctness	plan.txt:48-52 vs scripts/wait-for-reviewers.sh:15-16,176	Proposed `dispatch-code-voters.sh` gate uses `(( _wait_rc != 0 )) && larch_err …` for `wait-for-reviewers.sh` failure, but the waiter **always exits 0** on timeouts (only usage errors exit 1); stdout carries `TIMEOUT` lines and the caller redirects stdout to `/dev/null`.	60s sentinel lag never surfaces via `larch_err` despite Failure modes §2 promising timeout logging; operators only see downstream parse-rate failures.	Match edge-case intent (`plan.txt:137-138`): drop the exit-code check or parse captured stdout for `^TIMEOUT ` before `larch_err`; keep non-blocking proceed semantics.
+5	in_scope	nit	architecture	plan.txt:71-79 vs scripts/launch-review.sh:550-564,932-958	Cursor sidecar marker is specified “after the `wait "$WRAPPER_PID"` block (around line 932)” (inside the retry loop); Codex marker is “line ~560 region, after the success branch” (after the whole `while` at :550).	Same feature, different control-flow anchors; an implementer may write the Codex marker inside the retry loop or the Cursor marker after the loop only on the last iteration, changing behavior across auth/transient retries.	Standardize: “after the outer `while` loop, immediately before `codex_launcher_append_outer_meta` / `cursor_launcher_append_outer_meta`, when `EXIT_CODE==0` and sidecar is empty” for both tools.
+6	in_scope	latent	correctness	plan.txt:152-153 vs plan.txt:158-166	Testing strategy says extend `scripts/test-run-external-agent.sh` with a stdin-aware case if missing; Acceptance does not require it—only `test-dispatch-code-voters.sh` stdin probe via `CODEX_STUB_MODE=stdin_probe`.	`--capture-stdout` Codex paths (`review-and-fix.sh`, `lint-fix-loop.sh`) may lack direct regression if the dispatch stub test does not exercise `run-external-agent.sh`’s `CAPTURE_STDOUT` branch (:206-207).	Add an acceptance bullet (or fold into item 3) mandating a `test-run-external-agent.sh` case for `--tool codex` on default and `--capture-stdout` branches, or document that the dispatch harness covers both spawn modes.
+
+**1. [correctness] `plan.txt:12-17` — Conflicting CAPTURE_STDOUT_ONLY prescriptions**
+
+Changes item 2 directs modifying `_launch_capture_stdout_only` to accept/inherit stdin policy. Implementation Approach (line 17) is the opposing spec: per-top-level-branch `case "$TOOL_NAME" in codex)`, literal `"$@" < /dev/null`, no string variable—and it names `_codex_stdin_redirect_args` only to forbid it.
+
+**Authoritative pattern:** Implementation Approach (line 17), because it is the explicit implementation constraint and matches the dialectic “stdin redirection at spawn site” goal.
+
+**All three branches / acceptance:** Achievable if each of `scripts/run-external-agent.sh:206-211` gets an explicit codex guard; the elif branch must not rely on “modify helper” alone unless both internal `&` lines at `:199` and `:201` get `< /dev/null` when `TOOL_NAME=codex`.
+
+**2. [correctness] `plan.txt:142` vs `plan.txt:17` — Failure modes contradict Implementation Approach**
+
+“One variable, one conditional block” conflicts with “not via a string variable.” Reconcile to the case-per-branch (or inline-on-spawn-line) wording.
+
+**3. [correctness] `scripts/run-external-agent.sh:197-211` — Branch-2 attachment unspecified**
+
+Current spawn surface:
+
+```197:212:scripts/run-external-agent.sh
+_launch_capture_stdout_only() {
+    if [[ "${RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF:-}" == "1" ]] && command -v stdbuf >/dev/null 2>&1; then
+        stdbuf -o0 -e0 "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+    else
+        "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+    fi
+}
+
+# Launch the agent in the background
+if [ "$CAPTURE_STDOUT" = true ]; then
+    "$@" > "$OUTPUT_FILE" 2>&1 &
+elif [ "$CAPTURE_STDOUT_ONLY" = true ]; then
+    _launch_capture_stdout_only "$@"
+else
+    "$@" &
+fi
+```
+
+Production Codex voters hit the **else** branch (`CAPTURE_STDOUT_ONLY=false` in implement run logs); `--capture-stdout` Codex hits `:206-207`. All three must be patched; the plan’s internal conflict is about **how** branch 2 is patched.
+
+**4. [correctness] `plan.txt:48-52` vs `scripts/wait-for-reviewers.sh:15-16,176` — Dead `_wait_rc` check**
+
+`wait-for-reviewers.sh` documents and implements exit 0 on timeout; the proposed `larch_err` on non-zero exit will not run for sentinel timeouts when stdout is discarded.
+
+**5. [architecture] `plan.txt:71-79` vs `scripts/launch-review.sh:550-564,932-958` — Inconsistent sidecar marker anchor**
+
+Codex has no `wait "$WRAPPER_PID"`; marker placement should be unified relative to the outer retry loop, not “after wait” for Cursor only.
+
+**6. [correctness] `plan.txt:152-153` — `test-run-external-agent.sh` optional but branch coverage not guaranteed**
+
+Dispatch-level `stdin_probe` may not cover the `CAPTURE_STDOUT` spawn branch used by `review-and-fix.sh` / `lint-fix-loop.sh`.

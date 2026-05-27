@@ -1,0 +1,3 @@
+DECISION_1: THESIS — The logged `write_stdin failed: stdin is closed` failure matches a closed inherited stdin, and `< /dev/null` is a narrower, directly evidenced fix than `setsid`’s broader session-semantics change.
+
+DECISION_2: ANTI_THESIS — Per-phase waits align with the two launch boundaries, avoid a largely redundant third full sentinel poll after `collect-agent-results.sh` already waited, and localize timeouts to the group that actually stalled.
