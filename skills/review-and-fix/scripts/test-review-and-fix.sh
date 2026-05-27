@@ -5,8 +5,11 @@ set -euo pipefail
 
 # Do not inherit a parent larch quiet-session FD map (e.g. Cursor agent shell);
 # stale LARCH_QUIET_BREADCRUMB_FD breaks emit_breadcrumb with EBADF in children.
-unset LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
-    LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
+unset LARCH_BREADCRUMB_STREAM \
+    LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
+    LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
+    LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_PAIRED_PID_FILE \
+    IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR RESEARCH_TMPDIR 2>/dev/null || true
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
@@ -398,7 +401,7 @@ grep -Fq 'CODER_TOOL=codex' <<< "$out" || fail "codex bad-usage tool"
 if grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.wrapper.log"; then
     fail "codex bad-usage wrapper log must not contain parse diagnostics"
 fi
-grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.telemetry.sidecar" \
+grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.sidecar" \
     || fail "codex bad-usage telemetry sidecar should capture parse diagnostics"
 
 work_codex_fallback_telemetry="$TMP/codex-fallback-telemetry"
@@ -991,6 +994,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "flush warning expected exit 0 got $rc"; }
 grep -Fq 'stub write-tally failure' <<< "$out" || fail "flush warning stderr"
+grep -Fq 'failed to flush code-review-tally batch' <<< "$out" || fail "flush warning must stay user-visible"
 
 work_skipped="$TMP/skipped-routing"
 make_work_repo "$work_skipped"
@@ -2515,11 +2519,8 @@ out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_CORE_STATUS=zero run_review_and_fix "$work_
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "breadcrumb round-entry expected exit 0 got $rc"; }
-if grep -Fq '→ review-and-fix: round 1' <<< "$out"; then
-    pass "breadcrumb round-entry"
-else
-    pass "breadcrumb round-entry not surfaced in this quiet environment"
-fi
+grep -Fq '→ review-and-fix: round 1' <<< "$out" || fail "breadcrumb round-entry missing"
+pass "breadcrumb round-entry"
 
 work_breadcrumb_coder="$TMP/breadcrumb-coder-dispatch"
 make_work_repo "$work_breadcrumb_coder"

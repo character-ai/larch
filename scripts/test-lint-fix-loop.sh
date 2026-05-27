@@ -449,7 +449,7 @@ case0a2_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a2_out")
 if grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.wrapper.log"; then
     fail "case0a2 wrapper log must not contain parse diagnostics"
 fi
-grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.telemetry.sidecar" \
+grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.sidecar" \
     || fail "case0a2 telemetry sidecar should capture parse diagnostics"
 
 # Case 0b: failed Codex still writes events and telemetry while dispatch fails non-zero.

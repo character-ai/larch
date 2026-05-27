@@ -269,6 +269,27 @@ assert_equals "bogus-inner exit" "1" "$RUN_CODE"
 assert_grep "bogus-inner stderr" "ERROR: invalid RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX value '.bogus'; expected '.inner.done'" "$RUN_STDERR"
 assert_no_artifacts "bogus-inner no side effects" "$BOGUS_OUT"
 
+# 18. Wrapper timeout diagnostics stay on stderr so capture-stdout-only output
+# remains parseable JSONL.
+TIMEOUT_OUT="$TMPDIR/timeout-events.jsonl"
+RUN_STDOUT="$TMPDIR/timeout-events.stdout"
+RUN_STDERR="$TMPDIR/timeout-events.stderr"
+set +e
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 "$WRAPPER" --tool codex --output "$TIMEOUT_OUT" --timeout 1 --capture-stdout-only -- \
+    bash -c 'printf "{\"type\":\"token_usage\"}\n"; sleep 2' >"$RUN_STDOUT" 2>"$RUN_STDERR"
+RUN_CODE=$?
+set -e
+assert_equals "timeout-events exit" "124" "$RUN_CODE"
+assert_grep "timeout-events stderr start" "TIMED OUT after 0 minutes, killing" "$RUN_STDERR"
+assert_grep "timeout-events stderr final" "TIMED OUT (exit code 124" "$RUN_STDERR"
+assert_file_content "timeout-events output" "$TIMEOUT_OUT" '{"type":"token_usage"}'
+if grep -Fq 'TIMED OUT' "$TIMEOUT_OUT"; then
+    fail "timeout-events output must stay free of wrapper diagnostics"
+else
+    pass
+fi
+assert_grep "timeout-events diag" "limit: 1s" "${TIMEOUT_OUT}.diag"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-run-external-agent.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

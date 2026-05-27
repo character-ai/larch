@@ -254,7 +254,7 @@ run_coder_dispatch() {
     local _SERIAL_LOCK=""
     local codex_events="$round_dir/coder-codex.events.jsonl"
     local codex_wrapper_log="$round_dir/coder-codex.wrapper.log"
-    local codex_telemetry_sidecar="$round_dir/coder-codex.telemetry.sidecar"
+    local codex_telemetry_sidecar="$round_dir/coder-codex.sidecar"
     local codex_rc=0
 
     _SERIAL_LOCK=""

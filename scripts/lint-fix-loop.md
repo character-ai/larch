@@ -52,7 +52,7 @@ Behavior:
    redirects JSONL stdout to the local-only `$run_dir/codex.events.jsonl`, and
    leaves wrapper diagnostics in `$run_dir/codex.wrapper.log` without JSONL
    bleed. Telemetry parse diagnostics land in the dedicated local-only
-   `$run_dir/codex.telemetry.sidecar` so publishable wrapper logs stay free of
+   `$run_dir/codex.sidecar` so publishable wrapper logs stay free of
    parser spill. It parses that event stream best-effort into the sanitized
    token ledger raw bucket `codex_lint_fix`; telemetry failures never
    overwrite the Codex exit code, and the raw `.events.jsonl` artifact is not

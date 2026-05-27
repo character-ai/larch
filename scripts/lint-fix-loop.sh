@@ -222,7 +222,7 @@ run_codex() {
     local run_dir="$1" prompt_body="$2"
     local codex_events="$run_dir/codex.events.jsonl"
     local codex_wrapper_log="$run_dir/codex.wrapper.log"
-    local codex_telemetry_sidecar="$run_dir/codex.telemetry.sidecar"
+    local codex_telemetry_sidecar="$run_dir/codex.sidecar"
     local codex_rc=0
     local _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex"
