@@ -352,6 +352,67 @@ fi
 grep -Fq -- '--cost-unavailable' "$TMP/render-badjson-args.log" || fail 'malformed token JSON path must pass --cost-unavailable to renderer'
 pass 'malformed token JSON renders Cost N/A'
 
+NOTEARG_PLUGIN="$TMP/plugin-notearg"
+mkdir -p "$NOTEARG_PLUGIN/scripts"
+cp "$ROOT/scripts/token-cost.sh" "$NOTEARG_PLUGIN/scripts/token-cost.sh"
+cp "$ROOT/scripts/lib-cost-line-format.sh" "$NOTEARG_PLUGIN/scripts/lib-cost-line-format.sh"
+cp "$ROOT/scripts/lib-quiet.sh" "$NOTEARG_PLUGIN/scripts/lib-quiet.sh"
+cp "$ROOT/scripts/append-tool-failure.sh" "$NOTEARG_PLUGIN/scripts/append-tool-failure.sh"
+cp "$ROOT/scripts/append-execution-issue.sh" "$NOTEARG_PLUGIN/scripts/append-execution-issue.sh"
+cp "$ROOT/scripts/redact-secrets.sh" "$NOTEARG_PLUGIN/scripts/redact-secrets.sh"
+cat >"$NOTEARG_PLUGIN/scripts/token-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"claude":{"totals":{"total":0}},"codex":{"totals":{"total":0}},"cursor":{"totals":{"total":0}}}' >"$out"
+EOF
+cat >"$NOTEARG_PLUGIN/scripts/timing-report.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out=$2; shift 2 ;; *) shift ;; esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '{"total_hms":"4s"}' >"$out"
+EOF
+cat >"$NOTEARG_PLUGIN/scripts/render-run-summary.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >"${NOTEARG_LOG:?}"
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-file) out=$2; shift 2 ;;
+    *)
+      if [ "$#" -ge 2 ] && [[ "$2" != --* ]]; then
+        shift 2
+      else
+        shift
+      fi
+      ;;
+  esac
+done
+[ -n "$out" ] || exit 2
+printf '%s\n' '## /design run RUN-NOTEARG — approved' >"$out"
+printf '%s\n' '' >>"$out"
+printf '%s\n' '- **Cost**: N/A' >>"$out"
+printf '%s\n' '' >>"$out"
+printf '%s\n' '<!-- larch:run-summary v=1 -->' >>"$out"
+EOF
+chmod +x "$NOTEARG_PLUGIN/scripts/"*.sh
+printf '%s\n' '- **Cancel site**: stale' >"$D/final-summary-notes.md"
+NOTEARG_LOG="$TMP/render-notearg.log" CLAUDE_PLUGIN_ROOT="$NOTEARG_PLUGIN" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-NOTEARG" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >/dev/null 2>&1
+if grep -Fq -- '--note-lines-file' "$TMP/render-notearg.log"; then
+    fail 'non-cancelled outcomes must not pass stale note file to renderer'
+fi
+pass 'non-cancelled outcomes omit stale note-file arg'
+
 EMPTY_MODE_D="$TMP/design-empty-mode"
 mkdir -p "$EMPTY_MODE_D"
 : >"$EMPTY_MODE_D/execution-issues.md"

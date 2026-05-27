@@ -21,8 +21,9 @@ Step 1d.7 **overrides** the generic anti-halt continuation rule only for the nar
 ## Entry guard
 
 1. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` does **not** exist: print `⏩ 1d.7: outline — skipped (already approved; .outline-approved present)` and **proceed to Step 2a**. Do not route to Gate A.
-2. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (approved outline + existing plan; stay on post-plan path)` and continue on the existing post-plan gate path. This is stale-sentinel / resumed-session recovery; do **not** re-enter Step 2a sketches once a plan already exists.
-3. Otherwise print `> **🔶 /design 1d.7: outline**` and continue.
+2. If `$DESIGN_TMPDIR/.outline-approved` exists **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (approved outline + existing plan; continue to Step 1e Gate A post-plan path)` and continue directly to **Step 1e Gate A**. This is stale-sentinel / resumed-session recovery; do **not** re-enter Step 2a sketches once a plan already exists.
+3. If `$DESIGN_TMPDIR/.outline-approved` does **not** exist **and** `$DESIGN_TMPDIR/plan.txt` exists: print `⏩ 1d.7: outline — skipped (plan already exists; continue to Step 1e Gate A post-plan path even without .outline-approved)` and continue directly to **Step 1e Gate A**. Once a plan exists, stay on the post-plan gate path instead of re-running outline approval or sketches.
+4. Otherwise print `> **🔶 /design 1d.7: outline**` and continue.
 
 ---
 
@@ -113,7 +114,7 @@ On **Cancel**:
 ## Downstream consumer contract (additive)
 
 - **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, prepend a concise `## Approved direction (outline)` section only when `design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Do not replace the issue body file. Stack this with the brainstorm digest when both exist.
-- **Step 2a.5**: Dialectic synthesis MAY incorporate the outline as binding direction context only when the same approved-outline conditions hold (`design-outline.md` non-empty + `.outline-approved` present), treated like Round 1 user-resolved decisions rather than optional ideation.
+- **Step 2a.5**: Prepend a concise `## Approved direction (outline)` section to `{FEATURE_DESCRIPTION}` only when the same approved-outline conditions hold (`design-outline.md` non-empty + `.outline-approved` present), treated like Round 1 user-resolved decisions rather than optional ideation.
 - **Step 2b**: Read `design-outline.md` only when it is present, non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Honor approved Goals, Non-goals, and Surfaces as binding scope. Let Approach sketch inform plan structure without locking in specific architecture choices; sketches and dialectic own architecture.
 - **Step 3**: `plan-review-loop.sh` MAY merge `design-outline.md` into the feature-context file passed to reviewers alongside `brainstorm.md` only when the approved-outline conditions hold. For L1, Step 2a and Step 2b consumption is sufficient because reviewers see the resulting plan that reflects the approved outline.
 

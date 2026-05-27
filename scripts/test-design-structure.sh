@@ -389,8 +389,12 @@ grep -Fq '$DESIGN_TMPDIR/.outline-approved' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md missing .outline-approved sentinel reference"
 grep -Fq 'proceed to Step 2a' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md missing Step 2a skip handoff"
-grep -Fq 'approved outline + existing plan; stay on post-plan path' "$DESIGN_OUTLINE_MD" \
+grep -Fq 'approved outline + existing plan; continue to Step 1e Gate A post-plan path' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md missing stale-sentinel post-plan recovery guard"
+grep -Fq 'plan already exists; continue to Step 1e Gate A post-plan path even without .outline-approved' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing missing-sentinel post-plan recovery guard"
+grep -Fq 'continue directly to **Step 1e Gate A**' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing explicit Step 1e successor for existing-plan skips"
 # shellcheck disable=SC2016 # Markdown literal includes backticks and emoji intentionally.
 grep -Fq 'print `✅ 1d.7: outline approved — proceeding to sketches`' "$DESIGN_OUTLINE_MD" \
   || fail "(2974) design-outline.md missing outline-approve acknowledgment breadcrumb"
@@ -437,9 +441,14 @@ grep -Fq 'outline not yet approved; return to Step 1d.7' "$SKILL_MD" \
 # shellcheck disable=SC2016 # Markdown literal includes a literal env-var reference.
 grep -Fq 'When `$DESIGN_TMPDIR/plan.txt` exists, stay on the post-plan gate path — never route back to Step 2a from Step 1e.' "$SKILL_MD" \
   || fail "(2974) SKILL.md Step 1e must not re-enter sketches once plan.txt exists"
+# shellcheck disable=SC2016 # Markdown literal includes inline code formatting.
+grep -Fq 'run the Gate A re-entry body even when `.outline-approved` is absent' "$SKILL_MD" \
+  || fail "(2974) SKILL.md Step 1e must keep existing-plan paths on Gate A even without outline sentinel"
 # shellcheck disable=SC2016 # Markdown literal includes a literal env-var reference.
 grep -Fq 'exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists' "$SKILL_MD" \
   || fail "(2974) SKILL.md must require .outline-approved for downstream outline consumption"
+grep -Fq 'Step 1d sprawl returns to the pre-plan path that re-enters Step 1d.7 outline approval, not Gate A' "$SKILL_MD" \
+  || fail "(2974) SKILL.md Step 2b.5 must route Step 1d sprawl back through Step 1d.7"
 echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 
 # Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.

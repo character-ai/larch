@@ -297,7 +297,7 @@ invoke_render() {
     local out_file="$DESIGN_TMPDIR/final-summary.md"
     local render_cost_args=()
     local note_file="$DESIGN_TMPDIR/final-summary-notes.md"
-    local note_args=(--note-lines-file "$note_file")
+    local note_args=()
     if [ "$_cost_unavailable" = true ]; then
         render_cost_args=(--cost-unavailable)
     else
@@ -305,8 +305,15 @@ invoke_render() {
     fi
     if [ "$OUTCOME" = "cancelled-outline" ]; then
         printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate' >"$note_file"
+        note_args=(--note-lines-file "$note_file")
     else
-        rm -f "$note_file" 2>/dev/null || true
+        if rm -f "$note_file" 2>/dev/null; then
+            note_args=()
+        elif [ ! -e "$note_file" ]; then
+            note_args=()
+        else
+            note_args=(--note-lines-file "$note_file")
+        fi
     fi
     local _rr_args=(
         --skill design
