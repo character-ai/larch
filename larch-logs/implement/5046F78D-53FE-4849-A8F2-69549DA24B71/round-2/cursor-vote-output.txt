@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Step 2.4 order conflates explicit and fallback claude paths but routing still works
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- B5-coder labels work; B11-B17 rename is cosmetic traceability only
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Unused PRESENT re-reads are dead code, not a routing bug
+FINDING_7: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- emit_coder_breadcrumb_if_enabled already skips when IMPLEMENT_BAIL_REASON is set
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=important QUALITY=no-fix UNCERTAIN=false -- Cursor-first default is intentional Phase 4 scope, documented in SECURITY.md
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Step 2 guards remain in SECURITY.md external-delegation paragraph
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Deferred coder selection is intentional per plan DECISION_2 and covered by B4-all
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
