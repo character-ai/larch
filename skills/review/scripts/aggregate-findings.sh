@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: aggregate-findings.sh --findings-file PATH --review-tmpdir DIR --codex-present true|false --cursor-present true|false --mode diff|description [--session-env-path PATH] [--diff-file PATH] [--plan-file PATH] [--input-mode plan|code]"
+    larch_err "Usage: aggregate-findings.sh --findings-file PATH --review-tmpdir DIR --codex-present true|false --cursor-present true|false --mode diff|description [--session-env-path PATH] [--diff-file PATH] [--plan-file PATH] [--input-mode plan|code] [--allow-findings-outside-tmpdir true|false]"
 }
 
 FINDINGS_FILE=""
@@ -22,6 +22,7 @@ SESSION_ENV_PATH=""
 DIFF_FILE=""
 PLAN_FILE=""
 INPUT_MODE="code"
+ALLOW_FINDINGS_OUTSIDE_TMPDIR="false"
 EMPTY_MERGE_ATTESTATION="LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 REQUIRE_RESULT_PATTERN="^(### FINDING_[0-9]+:|[[:space:]]*${EMPTY_MERGE_ATTESTATION}[[:space:]]*$)"
 
@@ -36,6 +37,7 @@ while [[ $# -gt 0 ]]; do
         --diff-file) DIFF_FILE="${2:?}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
         --input-mode) INPUT_MODE="${2:?}"; shift 2 ;;
+        --allow-findings-outside-tmpdir) ALLOW_FINDINGS_OUTSIDE_TMPDIR="${2:?}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "aggregate-findings.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -43,6 +45,11 @@ done
 
 [[ -n "$FINDINGS_FILE" ]] || { larch_err "aggregate-findings.sh: --findings-file is required"; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "aggregate-findings.sh: --review-tmpdir is required"; exit 2; }
+[[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --codex-present must be true or false"; exit 2; }
+[[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --cursor-present must be true or false"; exit 2; }
+[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "aggregate-findings.sh: --mode must be diff or description"; exit 2; }
+[[ "$INPUT_MODE" == "plan" || "$INPUT_MODE" == "code" ]] || { larch_err "aggregate-findings.sh: --input-mode must be plan or code"; exit 2; }
+[[ "$ALLOW_FINDINGS_OUTSIDE_TMPDIR" == "true" || "$ALLOW_FINDINGS_OUTSIDE_TMPDIR" == "false" ]] || { larch_err "aggregate-findings.sh: --allow-findings-outside-tmpdir must be true or false"; exit 2; }
 REVIEW_TMPDIR_CANON="$(cd "$REVIEW_TMPDIR" && pwd -P)" || {
     larch_err "aggregate-findings.sh: cannot resolve --review-tmpdir: $REVIEW_TMPDIR"
     exit 2
@@ -56,17 +63,15 @@ case "$_findings_canon" in
     "$REVIEW_TMPDIR_CANON"/* | "$REVIEW_TMPDIR_CANON")
         ;;
     *)
-        larch_err "aggregate-findings.sh: --findings-file must resolve under --review-tmpdir ($REVIEW_TMPDIR_CANON): $FINDINGS_FILE"
-        exit 2
+        if [[ "$ALLOW_FINDINGS_OUTSIDE_TMPDIR" != "true" ]]; then
+            larch_err "aggregate-findings.sh: --findings-file must resolve under --review-tmpdir ($REVIEW_TMPDIR_CANON): $FINDINGS_FILE (use --allow-findings-outside-tmpdir true to bypass)"
+            exit 2
+        fi
         ;;
 esac
 unset _findings_canon
 # shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
 source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
-[[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --codex-present must be true or false"; exit 2; }
-[[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --cursor-present must be true or false"; exit 2; }
-[[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "aggregate-findings.sh: --mode must be diff or description"; exit 2; }
-[[ "$INPUT_MODE" == "plan" || "$INPUT_MODE" == "code" ]] || { larch_err "aggregate-findings.sh: --input-mode must be plan or code"; exit 2; }
 export LARCH_AGGREGATE_INPUT_MODE="$INPUT_MODE"
 export EMPTY_MERGE_ATTESTATION
 
@@ -632,6 +637,7 @@ dispatch_out="$REVIEW_TMPDIR/aggregator-dispatch.env"
 _agg_pipeline_for_candidate() {
     local cand="$1"
     local merged_tmp
+    MERGE_PIPELINE_FAILURE_KIND=""
     MERGE_PIPELINE_RC=2
 
     if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
@@ -675,7 +681,17 @@ PY
         MERGE_PIPELINE_RC=2
         return 0
     fi
-    mv -f "$merged_tmp" "$FINDINGS_FILE"
+    if [[ "$ALLOW_FINDINGS_OUTSIDE_TMPDIR" == "true" ]]; then
+        if ! mv -f "$merged_tmp" "$FINDINGS_FILE" 2>"$REVIEW_TMPDIR/aggregator-mv.stderr"; then
+            rm -f "$merged_tmp"
+            MERGE_PIPELINE_FAILURE_KIND="move-failed"
+            MERGE_PIPELINE_RC=2
+            append_warning "- **findings aggregator**: failed to replace --findings-file after successful validation; leaving original findings.md unchanged. $(failure_see_phrase "$REVIEW_TMPDIR/aggregator-mv.stderr")"
+            return 0
+        fi
+    else
+        mv -f "$merged_tmp" "$FINDINGS_FILE"
+    fi
     MERGE_PIPELINE_RC=0
 }
 
@@ -768,6 +784,12 @@ case "${MERGE_PIPELINE_RC:-2}" in
         exit 0
         ;;
     2)
+        if [[ "${MERGE_PIPELINE_FAILURE_KIND:-}" == "move-failed" ]]; then
+            REASON="dispatch-failed"
+            FAILURE_LOG="$REVIEW_TMPDIR/aggregator-mv.stderr"
+            emit_result
+            exit 0
+        fi
         REASON="validation-failed"
         FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
         if [[ ! -f "$FAILURE_LOG" || ! -s "$FAILURE_LOG" ]]; then

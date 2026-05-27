@@ -10,7 +10,8 @@ unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR || true
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 AGG="$REPO_ROOT/skills/review/scripts/aggregate-findings.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-aggregate-findings.XXXXXX")"
-trap 'rm -rf "$TMP"' EXIT
+TMP_OUTSIDE="$(mktemp -d "${TMPDIR:-/tmp}/test-agg-outside.XXXXXX")"
+trap 'rm -rf "$TMP" "${TMP_OUTSIDE:-}"' EXIT
 EXPECTED_REQUIRE_PATTERN='^(### FINDING_[0-9]+:|[[:space:]]*LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED[[:space:]]*$)'
 
 fail() {
@@ -59,9 +60,13 @@ elif [[ "$tool" == "codex" && "$CODEX_PRESENT" != "true" ]]; then
 fi
 emit_dispatch_ok() {
     paths_out="${AGGREGATE_STUB_OUTPUT_FILES_PATH:-${slots}.output-files}"
-    legacy_out="${AGGREGATE_STUB_ALL_OUTPUT_FILES:-$out}"
+    candidate_out="${AGGREGATE_STUB_CANDIDATE_OUTSIDE_PATH:-$out}"
+    if [[ "$candidate_out" != "$out" ]]; then
+        cp "$out" "$candidate_out"
+    fi
+    legacy_out="${AGGREGATE_STUB_ALL_OUTPUT_FILES:-$candidate_out}"
     if [[ "${AGGREGATE_STUB_OMIT_OUTPUT_FILES_PATH:-false}" != "true" ]]; then
-        printf '%s\n' "$out" >"$paths_out"
+        printf '%s\n' "$candidate_out" >"$paths_out"
         printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_FILES_PATH=%s\nALL_OUTPUT_TOOLS=%s\n' "$legacy_out" "$paths_out" "$ot_tool"
     else
         printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=%s\n' "$legacy_out" "$ot_tool"
@@ -467,6 +472,121 @@ cp "$TMP/one.md" "$TMP/one-copy.md"
 grep -Fq 'AGGREGATED=false' "$TMP/out-insufficient.env" || fail "single-block AGGREGATED"
 grep -Fq 'REASON=insufficient-input' "$TMP/out-insufficient.env" || fail "single-block REASON"
 cmp -s "$TMP/one.md" "$TMP/one-copy.md" || fail "findings changed on insufficient"
+
+echo "=== outside findings rejected without opt-in ==="
+cat > "$TMP_OUTSIDE/outside.md" <<'EOF'
+### FINDING_1: Outside A
+- **Reviewer**: outside-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Outside B
+- **Reviewer**: outside-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+
+EOF
+cp "$TMP_OUTSIDE/outside.md" "$TMP_OUTSIDE/outside-orig.md"
+set +e
+"$AGG" \
+    --findings-file "$TMP_OUTSIDE/outside.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff 2>"$TMP/out-outside-reject.err" >"$TMP/out-outside-reject.env"
+_rc=$?
+set -e
+[[ "$_rc" == "2" ]] || fail "outside without flag expected exit 2, got $_rc"
+grep -Fq -- 'must resolve under --review-tmpdir' "$TMP/out-outside-reject.err" || fail "outside rejection missing containment diagnostic"
+grep -Fq -- '--allow-findings-outside-tmpdir true' "$TMP/out-outside-reject.err" || fail "outside rejection missing opt-in hint"
+cmp -s "$TMP_OUTSIDE/outside-orig.md" "$TMP_OUTSIDE/outside.md" || fail "outside ballot changed on rejection"
+
+echo "=== outside opt-in invalid value validates before containment ==="
+set +e
+"$AGG" \
+    --findings-file "$TMP_OUTSIDE/outside.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --allow-findings-outside-tmpdir maybe 2>"$TMP/out-outside-invalid.err" >"$TMP/out-outside-invalid.env"
+_rc=$?
+set -e
+[[ "$_rc" == "2" ]] || fail "outside invalid flag expected exit 2, got $_rc"
+grep -Fq -- '--allow-findings-outside-tmpdir must be true or false' "$TMP/out-outside-invalid.err" || fail "outside invalid flag missing boolean diagnostic"
+! grep -Fq -- 'must resolve under --review-tmpdir' "$TMP/out-outside-invalid.err" || fail "outside invalid flag hit containment before boolean validation"
+cmp -s "$TMP_OUTSIDE/outside-orig.md" "$TMP_OUTSIDE/outside.md" || fail "outside ballot changed on invalid flag"
+
+echo "=== outside findings allowed with opt-in ==="
+cat > "$TMP_OUTSIDE/outside-work.md" <<'EOF'
+### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+
+### FINDING_3: Dup C
+- **Reviewer**: cursor-c-output.txt
+- **Concern**: same bug again
+- **Suggested revision**: fix
+
+EOF
+cp "$TMP_OUTSIDE/outside-work.md" "$TMP_OUTSIDE/outside-work-orig.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge \
+"$AGG" \
+    --findings-file "$TMP_OUTSIDE/outside-work.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --allow-findings-outside-tmpdir true >"$TMP/out-outside-allow.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-outside-allow.env" || fail "outside allow AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-outside-allow.env" || fail "outside allow REASON"
+[[ "$(grep -c '^### FINDING_' "$TMP_OUTSIDE/outside-work.md" | tr -d '[:space:]')" == "1" ]] || fail "expected one FINDING after outside-allow merge"
+! cmp -s "$TMP_OUTSIDE/outside-work-orig.md" "$TMP_OUTSIDE/outside-work.md" || fail "outside-work.md unchanged after merge"
+
+echo "=== outside findings opt-in keeps output containment strict ==="
+cat > "$TMP_OUTSIDE/outside-output-test.md" <<'EOF'
+### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+
+### FINDING_3: Dup C
+- **Reviewer**: cursor-c-output.txt
+- **Concern**: same bug again
+- **Suggested revision**: fix
+
+EOF
+cp "$TMP_OUTSIDE/outside-output-test.md" "$TMP_OUTSIDE/outside-output-test-orig.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge \
+AGGREGATE_STUB_CANDIDATE_OUTSIDE_PATH="$TMP_OUTSIDE/outside-candidate.txt" \
+"$AGG" \
+    --findings-file "$TMP_OUTSIDE/outside-output-test.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --allow-findings-outside-tmpdir true >"$TMP/out-outside-output.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-outside-output.env" || fail "outside output containment AGGREGATED"
+grep -Fq 'REASON=dispatch-failed' "$TMP/out-outside-output.env" || fail "outside output containment REASON"
+grep -Fq 'aggregator output path resolves outside --review-tmpdir' "$TMP/execution-issues.md" || fail "outside output containment warning missing"
+cmp -s "$TMP_OUTSIDE/outside-output-test-orig.md" "$TMP_OUTSIDE/outside-output-test.md" || fail "outside input clobbered on dispatch-fail"
 
 echo "=== stub merges 3 findings into 1 ==="
 cat > "$TMP/in3.md" <<'EOF'

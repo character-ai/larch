@@ -5,7 +5,7 @@
 ## CLI
 
 ```text
---findings-file PATH      (required) ballot path under $REVIEW_TMPDIR
+--findings-file PATH      (required) ballot path under $REVIEW_TMPDIR (unless --allow-findings-outside-tmpdir=true)
 --review-tmpdir DIR       (required) review tmpdir
 --codex-present true|false
 --cursor-present true|false
@@ -14,11 +14,17 @@
 --diff-file PATH          (optional) forwarded to dispatch-with-waterfall
 --plan-file PATH          (optional) forwarded to dispatch-with-waterfall
 --input-mode plan|code    (optional, default code) — `plan` relaxes merged-output severity validation for /design plan-review ballots (#2676); exports `LARCH_AGGREGATE_INPUT_MODE` for the embedded validator.
+--allow-findings-outside-tmpdir true|false  (optional, default false) — relaxes only the input containment check
 ```
 
 ## Escape hatch
 
 `LARCH_AGGREGATOR_DISABLED=1` — no-op pass-through: does not read or rewrite `findings.md` (no block-count probe, no LLM/dispatch); stdout includes `AGGREGATED=false`, `REASON=disabled`, and `INPUT_COUNT=0` / `MERGED_COUNT=0` (counts are intentionally not computed in this mode).
+The disabled fast-path still runs the containment check before returning `REASON=disabled`; operators who want both disabled mode and an outside-tmpdir input must also pass `--allow-findings-outside-tmpdir true`.
+
+`--allow-findings-outside-tmpdir true` — narrow opt-in that relaxes input-path containment only. Symlink rejection and the post-dispatch output containment check remain enforced; the rejection error message names this flag so callers can discover the opt-in from the failure.
+
+With this opt-in, callers can place `--findings-file` outside `--review-tmpdir`, but every dispatch artifact (`aggregator-prompt.md`, candidate output, validator output, etc.) still must resolve under `--review-tmpdir`; this asymmetry is intentional and is the trust boundary. Success rewrites `--findings-file` in place; opt-in callers that need rollback should snapshot or stage the ballot before invoking the aggregator, since validator failure preserves input but success always clobbers in place. If the final `mv -f` fails for an outside path (read-only parent, lost permissions), the aggregator preserves the original input and reports `REASON=dispatch-failed` instead of exiting non-zero, matching the non-fatal aggregator contract.
 
 ## Behavior summary
 
