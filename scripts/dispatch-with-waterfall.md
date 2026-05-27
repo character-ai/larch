@@ -63,8 +63,14 @@ Flags:
 
 - `--paths-file <path>` — write the final paths list to this path instead of the default `<slots-file>.output-files`. The file is replaced atomically each run (temp file in the same directory + `mv`).
 - `--require-result-pattern <regex>` — caller-supplied ERE (`grep -E`) that a `STATUS=OK` result file must match for the slot to settle on the assigned phase tool. Pre-validated once after argv parse against empty stdin; if the pattern is not a valid ERE (`grep` rc > 1) the dispatcher exits **2** with `larch_err` before any slot launches. Applied only to `STATUS=OK`; `STATUS=cap_hit` bypasses the gate so the launcher-side token-budget skip remains terminal. On a `STATUS=OK` pattern miss, the slot is routed through the existing `failed[]` path (phase-1 → phase-2 → phase-3 fallback) with no new exit codes or sidecar files. When the flag is unset (default), behavior is unchanged.
+- `--require-first-line-pattern <regex>` — caller-supplied ERE (`grep -E`) that
+  only the first non-blank line of a `STATUS=OK` result file must match. It is
+  pre-validated with the same invalid-ERE behavior as `--require-result-pattern`
+  and shares the same fallback semantics on mismatch. Use this when a structured
+  response must start with a schema marker; `--require-result-pattern` keeps its
+  any-line search semantics for callers whose header may appear after prose.
 
-Non-adopters: the sketch phase has no waterfall caller (sketches tolerate narration-only outputs as "no contested position" in synthesis) and the plan-review collector flow (`plan-review-loop.sh` / `dispatch-plan-review-panel.sh`) performs its own structured checks via `collect-agent-results.sh --structured-reviewer-validation`. Current opt-in callers are `skills/design/scripts/decompose-aggregator.sh` and `skills/design/scripts/decompose-panel-dispatch.sh`, both passing `^[[:space:]]*## Recommendation`.
+Current opt-in callers for any-line matching are `skills/design/scripts/decompose-aggregator.sh` and `skills/design/scripts/decompose-panel-dispatch.sh`, both passing `^[[:space:]]*## Recommendation`. The plan-review panel dispatcher uses `--require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)'` so narration followed by valid-looking TSV cannot settle the slot.
 
 Guards:
 

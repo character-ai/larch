@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
         --slots-file) slots="${2:?}"; shift 2 ;;
         --plan-file) plan="${2:?}"; shift 2 ;;
         --feature-file) shift 2 ;;
-        --codex-present|--cursor-present|--mode|--timeout) shift 2 ;;
+        --codex-present|--cursor-present|--mode|--timeout|--require-first-line-pattern) shift 2 ;;
         *) shift 1 ;;
     esac
 done
@@ -77,6 +77,8 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
 grep -Fq 'PANEL_PATHS_FILE=' "$D1/out.env" || fail "missing PANEL_PATHS_FILE"
 grep -Fq 'DYNAMIC_SLOT_COUNT=0' "$D1/out.env" || fail "expected zero dynamic slots"
 grep -Fq -- '--feature-file' "$log1" || fail "feature-file not forwarded"
+grep -Fq -- '--require-first-line-pattern ^[[:space:]]*(schema_version|\{"no_issues_found)' "$log1" \
+    || fail "plan-review first-line pattern not forwarded"
 manifest_line_count=$(grep -c . "$D1/plan-review-slots.ndjson" || true)
 [[ "$manifest_line_count" == "10" ]] || fail "expected 10 ndjson lines, got $manifest_line_count"
 jq -s -e 'all(.[]; .fallback_group != null)' "$D1/plan-review-slots.ndjson" >/dev/null \

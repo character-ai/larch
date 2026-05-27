@@ -437,6 +437,14 @@ build_failure_reason() {
     sanitize_failure_reason "$raw"
 }
 
+_classify_sentinel_status() {
+    local _file="$1"
+    [[ -f "$_file" && -s "$_file" ]] || return 1
+    local _first
+    _first=$(awk '/[^[:space:]]/ { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$_file" 2>/dev/null)
+    [[ "$_first" == "CURSOR_EMPTY_RESPONSE" || "$_first" == "CURSOR_DEGRADED_RESPONSE" ]]
+}
+
 mark_retry_metadata_invalid() {
     local idx="$1"
     local orig_output="$2"
@@ -838,6 +846,10 @@ for i in "${!OUTPUT_FILES[@]}"; do
         esac
     fi
 
+    if [[ "$STATUS" == "OK" ]] && _classify_sentinel_status "$OUTPUT"; then
+        STATUS="CURSOR_EMPTY_RESPONSE"
+        FAILURE_REASON="cursor narration-only / degraded backend response"
+    fi
     RESULTS+=("REVIEWER_FILE=$OUTPUT|TOOL=$TOOL|STATUS=$STATUS|EXIT_CODE=$EXIT_CODE|FAILURE_REASON=$FAILURE_REASON")
 done
 
@@ -1137,7 +1149,11 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 RETRY_EXIT=$(normalize_exit_code_or_99 "$RETRY_EXIT" "retry sentinel")
                 if [[ "$RETRY_EXIT" == "0" && -s "$RETRY_OUTPUT" ]]; then
                     # F4 fix: retry succeeded — recovered from transient failure.
-                    RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                    if _classify_sentinel_status "$RETRY_OUTPUT"; then
+                        RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (retry)"
+                    else
+                        RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                    fi
                 else
                     # Retry also failed.
                     if [[ "$RETRY_EXIT" == "124" ]]; then

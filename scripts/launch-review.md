@@ -26,7 +26,7 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   exists (standalone `/design` parity across Codex and Cursor branches).
 - Codex receives a compact read-only hardening preamble through
   per-invocation `CODEX_HOME/config.toml`; Cursor receives the same compact
-  prohibition in the wrapped prompt plus a `--mode plan` enforcement note.
+  prohibition in the wrapped prompt plus a `--mode ask` enforcement note.
 - Cursor auth setup runs the Darwin preflight, then best-effort pre-reads the
   `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`
   before composing argv. A successful pre-read becomes an explicit `--api-key`
@@ -57,11 +57,20 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   lives in macOS Keychain, not in `cli-config.json`, so the private dir does
   not affect keychain-based auth; the existing `external_serial_lock_acquire`
   keychain-bootstrap lock is retained unchanged.
+- Cursor runs `cursor agent -p --trust --mode ask --output-format json`; `ask`
+  and `plan` are both read-only Cursor modes, and the dirty-tree sidecar remains
+  the post-run mutation detector.
 - Cursor JSON envelopes with an explicit empty `.result` are promoted to the
   literal `CURSOR_EMPTY_RESPONSE` in the reviewer output file after JSON
   post-processing. Missing `.result`, malformed JSON, or non-JSON prose keep the
   existing fallback behavior; only the explicit empty-result backend response
   gets the distinct marker.
+- Cursor JSON envelopes with high `usage.outputTokens` but a very short
+  extracted `.result` are promoted to `CURSOR_DEGRADED_RESPONSE` before the
+  result is installed. The heuristic is skipped for legitimate terse sentinels:
+  `NO_ISSUES_FOUND`, JSON containing `"no_issues_found": true`, and first lines
+  beginning with `schema_version`. Current thresholds are
+  `outputTokens > 1000` and extracted result bytes `< 500`.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,

@@ -29,6 +29,7 @@ COMPETITION_NOTICE=false
 COMPETITION_NOTICE_FILE=""
 WATERFALL_PATHS_FILE=""
 REQUIRE_RESULT_PATTERN=""
+REQUIRE_FIRST_LINE_PATTERN=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -48,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
         --paths-file) WATERFALL_PATHS_FILE="${2:?--paths-file requires a value}"; shift 2 ;;
         --require-result-pattern) REQUIRE_RESULT_PATTERN="${2:?--require-result-pattern requires a value}"; shift 2 ;;
+        --require-first-line-pattern) REQUIRE_FIRST_LINE_PATTERN="${2:?--require-first-line-pattern requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-with-waterfall.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -70,6 +72,16 @@ if [[ -n "$REQUIRE_RESULT_PATTERN" ]]; then
     set -e
     if (( _rrp_rc > 1 )); then
         larch_err "dispatch-with-waterfall.sh: --require-result-pattern is not a valid ERE: $REQUIRE_RESULT_PATTERN"
+        exit 2
+    fi
+fi
+if [[ -n "$REQUIRE_FIRST_LINE_PATTERN" ]]; then
+    set +e
+    printf '' | grep -E -- "$REQUIRE_FIRST_LINE_PATTERN" >/dev/null 2>&1
+    _rflp_rc=$?
+    set -e
+    if (( _rflp_rc > 1 )); then
+        larch_err "dispatch-with-waterfall.sh: --require-first-line-pattern is not a valid ERE: $REQUIRE_FIRST_LINE_PATTERN"
         exit 2
     fi
 fi
@@ -390,6 +402,19 @@ collect_phase() {
                     continue
                 fi
                 if ! grep -Eq -- "$REQUIRE_RESULT_PATTERN" "$check_file"; then
+                    failed+=("$idx")
+                    continue
+                fi
+            fi
+            if [[ "$status" == "OK" && -n "$REQUIRE_FIRST_LINE_PATTERN" ]]; then
+                check_file="${rf:-$output}"
+                if [[ ! -r "$check_file" ]]; then
+                    larch_err "dispatch-with-waterfall.sh: result file not readable for --require-first-line-pattern check: $check_file"
+                    failed+=("$idx")
+                    continue
+                fi
+                _first_nonblank=$(awk '/[^[:space:]]/ { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$check_file")
+                if ! printf '%s\n' "$_first_nonblank" | grep -Eq -- "$REQUIRE_FIRST_LINE_PATTERN"; then
                     failed+=("$idx")
                     continue
                 fi
