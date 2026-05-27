@@ -33,7 +33,7 @@ The scan uses:
 - `git -C "$(pwd)" rev-parse --show-toplevel` to locate the repository root.
 - `larch-logs/implement/*/manifest.json` — provides `issue_number`, `updated_at`, `started_at` per run.
 - `larch-logs/implement/*/token-report.json` — structured token data; runs without it are skipped.
-- `larch-logs/implement/*/timing-report.json` — preferred workflow path source via `.workflow_path`; design v2 reports may fall back to `.design_classification`.
+- `larch-logs/implement/*/timing-report.json` — preferred workflow path source via `scripts/read-workflow-path.sh` (`workflow_path` first, then `design_classification` when it is exactly `SIMPLE|HARD`).
 - `larch-logs/implement/*/plan-review-tally.json` — fallback workflow-path source via `.body // .tally`; starts with `"Quick mode"` or `"Both externals unavailable"` → `SIMPLE`; non-empty other value → `HARD`; absent or unrecognized → `unknown`.
 
 `gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the `[Analysis Report]` issue (active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.

@@ -121,6 +121,16 @@ driver_out=$(run_driver "$D3")
 printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=panel-failed$' || fail "expected panel-failed loop status"
 [[ "$(cat "$D3/review-round-count.txt")" == "2" ]] || fail "panel-failed path should consume pending round"
 
+echo "=== unrecognized loop status still consumes the pending round ==="
+D3B="$TMPROOT/unrecognized-status"
+write_common_inputs "$D3B" SIMPLE
+printf '1\n' >"$D3B/review-round-count.txt"
+write_loop_stub "$D3B" "printf 'LOOP_STATUS=weird-status\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\nVOTER_1_PARSE_RATE_STATUS=SKIPPED\n'; exit 1"
+run_guard "$D3B" >/tmp/larch-step3-cap.guard3b.out
+driver_out=$(run_driver "$D3B")
+printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=weird-status$' || fail "expected weird-status loop status"
+[[ "$(cat "$D3B/review-round-count.txt")" == "2" ]] || fail "unrecognized post-launch status should keep pending round consumed"
+
 echo "=== tally-error does not consume the pending round ==="
 D4="$TMPROOT/tally-error"
 write_common_inputs "$D4" HARD
@@ -130,5 +140,17 @@ run_guard "$D4" >/tmp/larch-step3-cap.guard4.out
 driver_out=$(run_driver "$D4")
 printf '%s\n' "$driver_out" | grep -q '^TALLY_PLAN_REVIEW_STATUS=tally-error$' || fail "expected tally-error tally status"
 [[ "$(cat "$D4/review-round-count.txt")" == "2" ]] || fail "tally-error path must not consume pending round"
+
+echo "=== hard cap blocks the sixth review round ==="
+D5="$TMPROOT/hard-cap"
+write_common_inputs "$D5" HARD
+printf '5\n' >"$D5/review-round-count.txt"
+write_loop_stub "$D5" 'exit 97'
+run_guard "$D5" >/tmp/larch-step3-cap.guard5.out
+grep -Fq 'STEP3_REVIEW_CAP_REACHED=true' "$D5/.step3-review-cap.env" || fail "expected HARD cap reached env"
+driver_out=$(run_driver "$D5")
+printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=cap-reached$' || fail "expected HARD cap-reached loop status"
+printf '%s\n' "$driver_out" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached$' || fail "expected HARD skipped-cap-reached tally status"
+[[ "$(cat "$D5/review-round-count.txt")" == "5" ]] || fail "HARD cap path must leave counter unchanged"
 
 echo "PASS: test-step3-review-cap.sh"

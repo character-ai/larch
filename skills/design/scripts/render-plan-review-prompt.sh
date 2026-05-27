@@ -97,7 +97,7 @@ fi
 classification=$("$SCRIPT_DIR/../../../scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")
 case "$classification" in
     SIMPLE)
-        tier_emphasis="**Tier emphasis: SIMPLE.** Bias your findings toward flagging **scope creep and unnecessary complexity**. Do NOT request additions. Prefer EXONERATE on nits, style concerns, and forward-looking issues. Accept (YES) only when the fix is materially required for correctness. When in doubt, EXONERATE."
+        tier_emphasis="**Tier emphasis: SIMPLE.** Bias your findings toward flagging **scope creep and unnecessary complexity**. Do NOT request additions unless they are materially required for correctness, security, or safety hardening. Prefer EXONERATE on nits, style concerns, and forward-looking issues. When in doubt, EXONERATE."
         ;;
     HARD|*)
         tier_emphasis="**Tier emphasis: HARD.** Bias your findings toward **thoroughness**. Flag missed considerations, edge cases, and architectural concerns. Request additions when warranted. Engage seriously with all findings."

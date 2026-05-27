@@ -101,6 +101,7 @@ bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --des
 bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" >"$hard_out"
 assert_contains "simple emphasis" "Tier emphasis: SIMPLE" "$simple_out"
 assert_contains "simple locked phrase" "Bias your findings toward flagging" "$simple_out"
+assert_contains "simple security hardening carve-out" "materially required for correctness, security, or safety hardening" "$simple_out"
 assert_count "simple emphasis static count" "Tier emphasis: SIMPLE" 1 "$simple_out"
 tail -n +2 "$simple_out" >"$TMPROOT/simple-dynamic-tail.txt"
 assert_contains "simple dynamic tail emphasis" "Tier emphasis: SIMPLE" "$TMPROOT/simple-dynamic-tail.txt"

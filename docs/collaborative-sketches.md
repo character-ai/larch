@@ -76,7 +76,6 @@ flowchart TD
    - Identifies divergence points and makes reasoned calls with justification
    - Notes which ideas from each sketch are incorporated
    - (Regular mode only) Highlights personality-specific concerns: **Architecture/Standards**, **Pragmatism/Safety**, **Edge-case/Failure-mode**, **Innovation/Exploration**
-   - (Quick mode) Attributes by tool (Cursor-Generic vs Codex-Generic)
    - (SIMPLE mode) Uses the sentinel `NO_SKETCHES_CLASSIFIED_SIMPLE` instead of fabricated agreement
    - Lists contested decisions in a structured format for the dialectic debate phase
 

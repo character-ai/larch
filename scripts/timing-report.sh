@@ -50,39 +50,8 @@ resolve_workflow_fallback() {
         [[ -f "$candidate" ]] || candidate=""
     fi
     [[ -n "$candidate" ]] || return 0
-    if command -v python3 >/dev/null 2>&1; then
-        workflow=$(python3 - "$candidate" <<'PY' 2>/dev/null || true
-import json, sys
-try:
-    with open(sys.argv[1], encoding="utf-8") as fh:
-        data = json.load(fh)
-except Exception:
-    raise SystemExit(1)
-for key in ("workflow_path", "design_classification"):
-    value = data.get(key)
-    if value in ("SIMPLE", "HARD"):
-        print(value)
-        raise SystemExit(0)
-raise SystemExit(1)
-PY
-)
-        case "$workflow" in SIMPLE|HARD) printf '%s\n' "$workflow"; return 0 ;; esac
-    fi
-    if command -v jq >/dev/null 2>&1; then
-        workflow=$(jq -r '(.workflow_path // .design_classification // empty)' "$candidate" 2>/dev/null || true)
-        case "$workflow" in SIMPLE|HARD) printf '%s\n' "$workflow"; return 0 ;; esac
-    fi
-    if grep -qE '"workflow_path"[[:space:]]*:[[:space:]]*"SIMPLE"' "$candidate" 2>/dev/null || \
-       grep -qE '"design_classification"[[:space:]]*:[[:space:]]*"SIMPLE"' "$candidate" 2>/dev/null; then
-        printf '%s\n' SIMPLE
-        return 0
-    fi
-    if grep -qE '"workflow_path"[[:space:]]*:[[:space:]]*"HARD"' "$candidate" 2>/dev/null || \
-       grep -qE '"design_classification"[[:space:]]*:[[:space:]]*"HARD"' "$candidate" 2>/dev/null; then
-        printf '%s\n' HARD
-        return 0
-    fi
-    "$SCRIPT_DIR/read-design-classification.sh" "$candidate"
+    workflow=$("$SCRIPT_DIR/read-workflow-path.sh" "$candidate" 2>/dev/null || true)
+    case "$workflow" in SIMPLE|HARD) printf '%s\n' "$workflow"; return 0 ;; esac
 }
 
 ledger_from_dump() {

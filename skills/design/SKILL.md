@@ -709,7 +709,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 **Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
 
-**Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). Persist the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` so later Bash fences in this step rehydrate the same `STEP3_REVIEW_CAP_REACHED` / `STEP3_REVIEW_ROUND_NUM` state instead of relying on a prior fence's shell locals. The guard computes the pending round number. After the panel path returns, Step 3 persists `review-round-count.txt` for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error` or `LOOP_STATUS` is empty / unrecognized. If the cap is reached, print `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**`, skip `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
+**Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). Persist the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` so later Bash fences in this step rehydrate the same `STEP3_REVIEW_CAP_REACHED` / `STEP3_REVIEW_ROUND_NUM` state instead of relying on a prior fence's shell locals. The guard computes the pending round number. Before launching `plan-review-loop.sh`, Step 3 persists that pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, Step 3 keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`; on that path, roll back to the prior count. If the cap is reached, print `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**`, skip `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -791,6 +791,11 @@ if [[ "${STEP3_REVIEW_CAP_REACHED:-false}" == true ]]; then
   VOTING_TALLY_FILE=""
   VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 else
+  _step3_prior_round_count=0
+  if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
+    _step3_prior_round_count=$((STEP3_REVIEW_ROUND_NUM - 1))
+    printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$DESIGN_TMPDIR/review-round-count.txt"
+  fi
   set +e
   _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh" \
     --design-tmpdir "$DESIGN_TMPDIR" \
@@ -815,25 +820,21 @@ else
 fi
 if [[ "${STEP3_REVIEW_CAP_REACHED:-false}" != true && "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
   _persist_round=false
+  _rollback_round=false
   case "${LOOP_STATUS:-}" in
     complete|main-agent-vote-required|panel-failed) _persist_round=true ;;
+    *) _persist_round=true ;;
   esac
   if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" ]]; then
     _persist_round=false
+    _rollback_round=true
   fi
   if [[ "$_persist_round" == true ]]; then
     printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$DESIGN_TMPDIR/review-round-count.txt"
+  elif [[ "$_rollback_round" == true ]]; then
+    printf '%s\n' "${_step3_prior_round_count:-0}" >"$DESIGN_TMPDIR/review-round-count.txt"
   fi
 fi
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 ```
 
