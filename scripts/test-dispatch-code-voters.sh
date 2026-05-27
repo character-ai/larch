@@ -431,15 +431,22 @@ grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
 hook_d5="$TMP/case-dispatch-hook.hook"
 printf 'exit 143\n' > "$hook_d5"
 hook_review_tmp="$TMP/hook-review"
+# set +e: on bash 5.x (Linux), out=$(cmd exiting 143) under set -e exits the
+# test. Capture the exit code separately so we can assert on output regardless.
+set +e
 out=$(PATH="$STUB_BIN:$PATH" \
     LARCH_ALLOW_TEST_HOOKS=1 \
     LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$hook_d5" \
+    LARCH_VOTER_WAIT_TIMEOUT=2 \
     "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$hook_review_tmp" --codex-available false --cursor-available true)
+set -e
 grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
     || { echo "FAIL: launch-review hook path should still publish voter3 done/output before dispatch tallies" >&2; exit 1; }
 grep -Fq 'VOTER_3_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
     || { echo "FAIL: launch-review hook path should surface raw cursor JSON as NOT_SUBSTANTIVE instead of failed" >&2; exit 1; }
-grep -Fq '"result":"POST-PROCESSED OK"' "$hook_review_tmp/cursor-vote-output.txt" \
+# cursor-vote-output.txt holds the raw JSON bytes because launch-review.sh
+# exits via the hook before its jq extraction step; assert the raw result field.
+grep -Fq '"result":"FINDING_1: NO -- cursor"' "$hook_review_tmp/cursor-vote-output.txt" \
     || { echo "FAIL: launch-review hook path should preserve raw cursor JSON output for the parse-rate check" >&2; exit 1; }
 require_voter_paths_file_nonempty "happy-launch-review-hook" "$out"
 

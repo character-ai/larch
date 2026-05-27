@@ -555,8 +555,8 @@ if (( EXIT_CODE != 0 )); then
     append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$SIDECAR" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi
 
-if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" && -f "$SIDECAR" && ! -s "$SIDECAR" ]]; then
-    printf 'codex-status: ok (no stderr emitted during agent run)\n' > "$SIDECAR" 2>/dev/null || true
+if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" && -f "$SIDECAR" ]]; then
+    printf 'codex-status: ok (no stderr emitted during agent run)\n' >> "$SIDECAR" 2>/dev/null || true
 fi
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
@@ -971,8 +971,8 @@ if (( EXIT_CODE != 0 )); then
     append_launch_failure "review Step 2" "cursor-review" "$EXIT_CODE" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi
 
-if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" && -f "$SIDECAR" && ! -s "$SIDECAR" ]]; then
-    printf 'cursor-status: ok (no stderr emitted during agent run)\n' > "$SIDECAR" 2>/dev/null || true
+if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" && -f "$SIDECAR" ]]; then
+    printf 'cursor-status: ok (no stderr emitted during agent run)\n' >> "$SIDECAR" 2>/dev/null || true
 fi
 
 cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
