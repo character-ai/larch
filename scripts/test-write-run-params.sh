@@ -274,4 +274,32 @@ fi
 jq -e '.manual_gate_b == true' "$recovery_merge" >/dev/null \
     || fail "manual-only recovery merge did not preserve manual_gate_b=true"
 
+# FINDING_2: stale persisted manual mode must be cleared when the current run
+# omits --manual; manual_gate_b is overwritten from current argv state rather
+# than OR-merged like partition/brainstorm.
+recovery_manual_clear="$TMPROOT/recovery-manual-clear.json"
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "seed stale manual mode before merge recovery" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --manual-gate-b true \
+    --output "$recovery_manual_clear" >/dev/null
+
+_rp_merge="$TMPROOT/recovery-manual-clear.tmp.json"
+if jq -c \
+    --argjson merge_p false \
+    --argjson merge_b false \
+    --argjson merge_m false \
+    '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' \
+    "$recovery_manual_clear" >"$_rp_merge"; then
+    mv -f "$_rp_merge" "$recovery_manual_clear"
+else
+    fail "stale-manual recovery merge jq path failed"
+fi
+jq -e '.manual_gate_b == false' "$recovery_manual_clear" >/dev/null \
+    || fail "stale persisted manual_gate_b=true was not cleared by current-run manual_requested=false"
+
 echo "PASS: test-write-run-params.sh"

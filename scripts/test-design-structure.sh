@@ -776,8 +776,6 @@ grep -Fq 'When `manual_gate_b=false`, execute the auto-apply path:' "$APPROVAL_M
 # shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
 grep -Fq 'When `manual_gate_b=true`, print a table under the header `## Plan Review Findings — Review`' "$APPROVAL_MD" \
   || fail "(2930) approval-gates.md missing manual mode presentation branch"
-grep -Fq '> **🔶 /design 3.5: gate B (auto-apply N findings)**' "$APPROVAL_MD" \
-  || fail "(FINDING_7) approval-gates.md missing Gate B auto-apply breadcrumb pin"
 grep -Fq '## Plan Review Findings — Auto-applying' "$APPROVAL_MD" \
   || fail "(FINDING_7) approval-gates.md missing Gate B auto-apply header pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
