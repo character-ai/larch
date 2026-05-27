@@ -1,0 +1,9 @@
+TOOL=codex
+TIMEOUT=1860
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=false
+OUTPUT_FILE=<TMPDIR>/codex-primary-plan-dyn-callsite-scanner-output.txt
+OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.5.37/scripts/launch-review.sh
+OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/codex-primary-plan-dyn-callsite-scanner-output.txt.prompt
+OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
+OUTER_LAUNCHER_RISK=high

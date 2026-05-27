@@ -1,0 +1,48 @@
+# Approach Synthesis
+
+## Agreement (de facto)
+
+Cursor's sketch produced only exploration notes (316 bytes, no concrete proposal). Codex provided the only substantive sketch. There is no architectural divergence between the two sketches because Cursor effectively abstained. Synthesis therefore adopts Codex's direction, validated against the issue body, #2837's plan, and the codebase.
+
+## Core direction
+
+**Verbatim canonical block emission from a known persisted file, governed by a narrowed-not-deleted anti-halt rule.** The renderer infrastructure from #2837 stays intact — it already persists the rigid `larch:run-summary` / `larch:final-summary` block to `$DESIGN_TMPDIR/final-summary.md` (design) and `$IMPLEMENT_TMPDIR/summary-final.md` (implement). The fix is purely the orchestrator-side emission channel: replace the current "only the single `- **Cost**:` line is allowed as orchestrator chat text" exception in both SKILL.md anti-halt rules with a narrower exception that requires the orchestrator to read the persisted file and emit its full body verbatim as plain chat markdown after the Bash call.
+
+## Rejected alternatives
+
+1. **FD-3 + `LARCH_QUIET_PID=$$` in the wrapping Bash block** (issue body fix path 1) — Codex's sketch correctly notes both scripts already source `lib-quiet.sh` and call `larch_quiet_init`, so the issue is not lib-quiet plumbing per se. The deeper problem is that FD-3 output from a direct Bash invocation is still captured inside the Bash tool result UI element; FD-3 does not magically surface to top chat. This fix path does not solve the visibility gap and is rejected.
+
+2. **Pure anti-halt relaxation** (issue body fix path 2 — relax the rule but leave generation up to the orchestrator) — too permissive. The historical regression that the anti-halt rule prevents is free-form paraphrase that drops the per-agent cost breakdown. A pure relaxation risks reintroducing that regression.
+
+## Chosen path — narrow verbatim exception
+
+This is a refined variant of issue body fix path 3 (sentinel mechanism) combined with the necessary minimal anti-halt edit. Mechanics:
+
+1. **No script change to the renderer template body.** `render-final-summary.sh` and `write-final-report.sh` continue to write the canonical block to their persisted file paths exactly as today (`final-summary.md` / `summary-final.md`).
+2. **SKILL.md anti-halt rules** (`skills/design/SKILL.md` Step 5c / continuation reminder; `skills/implement/SKILL.md` NEVER #20 / Step 17 prose): replace "only the single `- **Cost**:` line is allowed as orchestrator chat text" with "the orchestrator MUST read the persisted summary file and emit its full body verbatim as plain chat markdown after the Bash call". Keep the strict no-paraphrase / no-extra-prose guards so the per-agent cost breakdown invariant from #2837 cannot regress.
+3. **Sibling `.md` docs** (`skills/design/scripts/render-final-summary.md`, `skills/implement/scripts/write-final-report.md`): update to describe the two-step contract honestly — script renders/persists; orchestrator surfaces persisted body to top chat as plain markdown.
+4. **Tests** (`scripts/test-render-cost-line-callsites.sh`, `scripts/test-design-structure.sh`, `scripts/test-implement-structure.sh`, or equivalent SKILL-prose pins): assert that the new "full-block verbatim emission" prose is present and the old "cost-line-only" prose is gone.
+
+## Files to modify (per Codex + my codebase scan)
+
+- `skills/design/SKILL.md` — Step 5c item 9 prose; the Anti-halt continuation reminder; the "no free-form natural-language recap summary" prose block at the end of Step 5.
+- `skills/implement/SKILL.md` — NEVER #20; Step 17 prose around the `write-final-report.sh --print-stdout` invocation.
+- `skills/design/scripts/render-final-summary.md` — sibling doc claim "prints the body to chat".
+- `skills/implement/scripts/write-final-report.md` — sibling doc same shape.
+- Test pins (one or more of `scripts/test-render-cost-line-callsites.sh`, `scripts/test-design-structure.sh`, `scripts/test-implement-structure.sh`) — replace cost-line-only pins with full-block-verbatim pins.
+- `CHANGELOG.md` — record the prose-channel-of-emission change (no template body change).
+
+## Tradeoffs and risks
+
+- **Risk: paraphrase regression.** The narrow exception must be tightly worded ("read the exact file, emit the whole file unchanged, do not synthesize, do not add prose between bullets, do not paraphrase costs"). Tests should pin the new prose so a future SKILL.md edit cannot drift back to cost-line-only.
+- **Risk: duplication if the Bash tool UI later changes.** If Claude Code's Bash tool starts surfacing tool-result content at top chat, the renderer's persisted-file content will be emitted twice (once from inside the tool result, once as top-chat orchestrator text). This is acceptable — better duplicate than invisible. The duplicate could be removed in a future cleanup.
+- **Risk: per-skill prose drift.** The two SKILL.md files have slightly different anti-halt prose; the fix must edit both without introducing divergence in the verbatim-emission contract. A test pin should assert both files contain the new prose.
+- **No template body change** — the per-agent cost breakdown invariant from #2837 stays untouched.
+- **No sink change** — disk file, committed log, GitHub comment all keep their current paths and content.
+
+## Out of scope (explicit, per issue body and Round 1)
+
+- Do NOT change the rigid template body (`larch:run-summary` / `larch:final-summary` markdown shape).
+- Do NOT change the GitHub issue comment upsert path.
+- Do NOT change the committed `larch-logs/.../final-summary.md` file path.
+- Do NOT update other skills' end-of-run scripts (`/research validate-citations.sh`, `/report-tokens run-analysis.sh`, `/upgrade-larch`, `/alias`) — they do not produce user-perceived end-of-run summary blocks.

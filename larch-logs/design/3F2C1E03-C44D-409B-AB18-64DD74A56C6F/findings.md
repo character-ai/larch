@@ -1,0 +1,391 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Step 5c item 10 omitted from planned edit sites; duplicates cost-line-only emit on happy path. Scenario: Post-merge /design runs follow item 10 and emit only the cost line while ~288 says full body; operators still lack full block at top chat
+- **Proposed resolution**: Add item 10 to UPDATED list; replace with full-body verbatim + non-empty gating matching ~288
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/implement/SKILL.md:14
+- **Concern**: Anti-halt still mandates verbatim cost line only after Step 17. Scenario: Models read line 14 before NEVER #20 and emit one cost line despite Step 17/NEVER updates
+- **Proposed resolution**: Update terminal boundary to full-body verbatim emission per Step 17
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:288
+- **Concern**: Post-publish emit gate not aligned with edge-case non-empty rule. Scenario: Cost-absent but otherwise valid summaries never surface at top chat
+- **Proposed resolution**: Replace `- **Cost**:` gate with non-empty file gate at ~288, ~30, 982, ~1021
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:73,1751-1754,1760
+- **Concern**: NEVER #20 / Step 17 bash still key sentinel on Cost line while Step 17 prose uses non-empty full body. Scenario: Mismatch between emit instructions and `.step17-printed` semantics
+- **Proposed resolution**: Unify gating on non-empty summary-final.md or split render vs top-chat sentinels
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1808-1828
+- **Concern**: Step 18 bash compares cost lines only; prose requires full-body delta. Scenario: Refreshed duration/tokens/warnings do not trigger re-emit
+- **Proposed resolution**: Add full-file `cmp -s` (or body snapshot vars) beside `_wfr_prev_cost`/`_wfr_new_cost`
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:1751-1754,1822-1824
+- **Concern**: Sentinel set before orchestrator emit; Step 18 recovery is cost-delta-only. Scenario: Skipped full-block emit after Step 17 leaves collapsed Bash-only summary with no Step 18 recovery
+- **Proposed resolution**: Touch `.step17-printed` only after orchestrator emit succeeds, or add separate top-chat sentinel
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-render-cost-line-callsites.sh:46-54
+- **Concern**: Test plan lacks negative pins and misses normative sites. Scenario: CI allows reintroduction of cost-line-only prose at unlisted lines
+- **Proposed resolution**: Add negative greps plus pins for design:982, design anti-halt, implement:14
+
+### FINDING_8:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:73,1751-1754,1808-1824
+- **Concern**: FINDING_1: The plan changes prose to a full-body summary contract but leaves the implement sentinel and Step 18 comparison mechanics cost-line-based. Scenario: Step 18 can miss a changed summary body when the cost line is unchanged, and Step 17 can emit a non-empty body without marking it printed if the body lacks a Cost line; the proposed post-change contract says body presence and body byte changes are authoritative
+- **Proposed resolution**: Update the plan to modify the Step 17/18 Bash snippets too: mark the sentinel based on non-empty summary-final.md after the orchestrator full-body emit, snapshot the full pre-Step-18 body, compare with cmp -s after rerender, and rename variables from cost to summary/body to match the contract
+
+### FINDING_9:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: scripts/test-render-cost-line-callsites.sh:34-44
+- **Concern**: FINDING_2: The planned test update only replaces prose pins, but the same harness still pins old cost-line sentinel and comparison logic. Scenario: CI will either block the necessary full-body mechanical changes or encourage keeping the cost-line implementation while the prose claims full-body behavior
+- **Proposed resolution**: Update the plan to replace these assertions with full-body assertions: Step 17 gates printed/emitted state on non-empty summary-final.md, Step 18 snapshots and compares the full body, and emit guards no longer depend on _wfr_new_cost/_wfr_prev_cost
+
+### FINDING_10:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/test-render-cost-line-callsites.md:3-6; docs/linting.md:291
+- **Concern**: FINDING_3: The plan changes the purpose of test-render-cost-line-callsites.sh but does not update its sibling docs or linting catalog. Scenario: The harness would enforce full-block summary visibility while documentation still describes cost-line and render-cost-line callsite checks, making future maintenance misleading
+- **Proposed resolution**: Update scripts/test-render-cost-line-callsites.md and the docs/linting.md row to describe the full-body final-summary callsite contract and keep any remaining render-cost-line allowlist wording explicitly scoped to the deprecated standalone helper
+
+### FINDING_11:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Fourth design callsite omitted from plan — Step 5c item 10 still mandates single verbatim cost-line emit. Scenario: Plan lists three design edit sites (~30, ~288, ~1021) but the happy-path Step 5c item 10 prose duplicates the old contract independently; after the fence/post-publish edits land, approved runs still emit only the cost line at top chat
+- **Proposed resolution**: Add Step 5c item 10 to the design SKILL.md edit list: replace cost-line-only language with the same full-body verbatim contract and non-empty gate used at line ~288
+
+### FINDING_12:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:980-982
+- **Concern**: The plan omits the Step 5c happy-path post-publish instruction that still says to emit only the single cost line. Scenario: The PR can update the shared final-summary fence and end-of-step prose while the normal approved /design path still tells the orchestrator to emit only - **Cost**:, so the full block remains invisible on the main success path
+- **Proposed resolution**: Update Step 5c item 10 to use the same non-empty final-summary.md full-body verbatim emission contract as the Final summary block fence
+
+### FINDING_13:
+- **Reviewer(s)**: Codex-Edge, Codex-Innovation, Cursor-dyn-callsite-scanner, Codex-dyn-callsite-scanner
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:14
+- **Concern**: The plan omits the /implement anti-halt terminal-boundary sentence that still says emit only the mandatory verbatim cost line. Scenario: This high-priority top-of-file rule conflicts with the proposed NEVER #20 and Step 17 edits; an orchestrator following the first loaded reminder can keep emitting only the cost line
+- **Proposed resolution**: Update the terminal boundary clause to say Step 17 follows NEVER #20 by emitting the full summary-final.md body verbatim, then continuing to Step 18
+
+### FINDING_14:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1808-1828
+- **Concern**: Step 18 is planned as a prose-only body comparison, but the executable fenced Bash still snapshots and compares only the cost line. Scenario: If Step 18 changes Outcome, PR, warnings, run logs, or notes while cost is unchanged, _wfr_emit_cost stays false and the refreshed full block is never surfaced at top chat
+- **Proposed resolution**: Revise the Step 18 Bash block to copy or hash summary-final.md before render, compare the full post-render body with cmp -s or equivalent, and update tests to pin full-body comparison instead of _wfr_prev_cost / _wfr_new_cost
+
+### FINDING_15:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1751-1760; scripts/test-render-cost-line-callsites.sh:35-37
+- **Concern**: The Step 17 sentinel remains gated on finding - **Cost**: even though the new emission contract is any non-empty summary-final.md. Scenario: A non-empty degraded or future schema body without a cost line would be emitted by the orchestrator but not marked .step17-printed, causing Step 18 to treat Step 17 as unprinted and duplicate the summary path
+- **Proposed resolution**: Gate .step17-printed on test -s "$IMPLEMENT_TMPDIR/summary-final.md" after write-final-report success, and update the callsite test pins accordingly
+
+### FINDING_16:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Plan lists three design SKILL edit sites but omits Step 5c item 10, which still mandates cost-line-only orchestrator emit on the happy path. Scenario: Happy-path `/design` runs follow item 10 before the Step 5 closing prose; operators still get only `- **Cost**:` at top chat despite updates at ~288 and ~1021
+- **Proposed resolution**: Add a fourth edit: replace item 10’s `contains - **Cost**:` / `emit that single verbatim cost line` with non-empty `final-summary.md` + full-body verbatim emit, aligned with the post-publish fence
+
+### FINDING_17:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1808-1824; scripts/test-render-cost-line-callsites.sh:37-44
+- **Concern**: Step 18 mechanics remain cost-line-based while the proposed contract is full-body-based. Scenario: If Step 18 changes mode, duration, warnings, PR notes, or any non-cost bullet while the cost line is unchanged, the current `_wfr_prev_cost` / `_wfr_new_cost` guard suppresses the required full-block top-chat re-emit; the old test pins would also keep that buggy shape in place
+- **Proposed resolution**: Update the Step 18 fenced Bash to snapshot/cmp the whole `summary-final.md` body, set an `_wfr_emit_body` guard, and touch `.step17-printed` only when a non-empty body was emitted; update all old cost-guard pins, not only the prose pins
+
+### FINDING_18:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:980-982
+- **Concern**: Step 5c item 10 is a missed cost-line-only callsite. Scenario: The happy path still locally instructs the orchestrator to emit only the single cost line and no other summary prose, conflicting with the new full-body contract even if the earlier generic post-publish paragraph is updated
+- **Proposed resolution**: Replace item 10’s final sentence with the same non-empty full-body verbatim emit rule, or remove the duplicate local instruction and explicitly refer to the `### Final summary block` top-chat contract
+
+### FINDING_19:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/test-render-cost-line-callsites.md:3-7
+- **Concern**: The plan updates the harness but not its sibling contract doc. Scenario: The `.md` file would continue documenting the old verbatim-cost exception and design cost-line emit contract, making the next maintenance pass more likely to restore the old narrow behavior
+- **Proposed resolution**: Update the sibling doc and pass/fail wording to describe full-block summary callsite contracts, even if the filename is left unchanged for diff size
+
+### FINDING_20:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Fourth design emit site omitted from plan. Scenario: Step 5c happy path keeps cost-line-only instruction while cancellation fence uses full-block contract
+- **Proposed resolution**: Add Step 5c item 10 to the design edit list; mirror the full-body verbatim emit + non-empty gate used at line 288
+
+### FINDING_21:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Plan misses a happy-path design callsite that still mandates cost-line-only emission. Scenario: /design happy path can keep following the explicit Step 5c item 10 instruction to emit only the single Cost line, contradicting the proposed full-body top-chat contract
+- **Proposed resolution**: Update Step 5c item 10 in the plan to emit the non-empty final-summary.md full body verbatim, not just the Cost line
+
+### FINDING_22:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:14
+- **Concern**: Plan misses the implement anti-halt terminal boundary. Scenario: /implement still has a top-level instruction saying after Step 17 emit only the mandatory verbatim cost line, which can override or confuse the later Step 17 prose
+- **Proposed resolution**: Update the terminal boundary sentence to reference NEVER #20's full-body verbatim summary emission
+
+### FINDING_23:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1808-1823
+- **Concern**: Step 18 fenced Bash block remains cost-line based under the proposed plan. Scenario: If Step 18 changes summary-final.md content while the Cost line is unchanged, the current block records only _wfr_prev_cost/_wfr_new_cost and gives no body snapshot or cmp-based signal for the required re-emit
+- **Proposed resolution**: Update the Step 18 block to snapshot summary-final.md before render, compare the full post-render body with cmp -s or equivalent, and gate the full-body emit/touch on non-empty body plus body changed or Step 17 missing
+
+### FINDING_24:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: scripts/test-render-cost-line-callsites.sh:37-44
+- **Concern**: Test pins still enforce cost-line mechanics. Scenario: The correct implementation of full-body Step 17/18 behavior would either fail CI on these old pins or keep the obsolete cost-line-only state machine in place
+- **Proposed resolution**: Update these assertions to pin non-empty summary body detection and full-body snapshot/compare behavior instead of Cost-line grep and _wfr_*_cost variables
+
+### FINDING_25:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Plan lists three design edit sites (lines ~30, ~288, ~1021) but omits Step 5c item 10, which still instructs emit that single verbatim cost line after --post-publish-only. Scenario: Happy-path /design finalize keeps cost-line-only orchestrator behavior while anti-halt and Final summary fence adopt full-block contract; operators still miss title/mode/duration at top chat on the primary path
+- **Proposed resolution**: Add Step 5c item 10 to the design SKILL.md edit list: replace the cost-line-only sentence with the same full-body verbatim read/emit contract and non-empty file gate used at the other sites
+
+### FINDING_26:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:980-982
+- **Concern**: Plan omits the Step 5c happy-path post-publish callsite that still tells /design to emit only the Cost line and no other summary prose. Scenario: Happy-path /design can follow item 10 and skip the required full top-chat block despite other callsites being updated
+- **Proposed resolution**: Add Step 5c item 10 to the plan, replacing cost-line-only instruction with non-empty final-summary.md full-body verbatim emission, and add a negative/positive test pin covering this exact callsite
+
+### FINDING_27:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1751-1754,1808-1824
+- **Concern**: Plan updates prose to compare and emit the full summary body but does not require changing the SKILL Bash contract that records only cost-line presence and compares only the cost line. Scenario: If Step 18 refresh changes duration, warnings, review counts, outcome, or any non-cost bullet while cost is unchanged, the full block will not be re-emitted; a non-empty body without a Cost line also fails the Step 17 printed marker
+- **Proposed resolution**: Update these snippets to snapshot and compare the whole summary-final.md with cmp -s or equivalent, gate markers on non-empty file body, and update the callsite harness to fail on remaining _wfr_prev_cost/_wfr_new_cost-only logic
+
+### FINDING_28:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/test-render-cost-line-callsites.md:3-7; docs/linting.md:291
+- **Concern**: Plan updates test-render-cost-line-callsites.sh to the new full-block contract but leaves companion docs describing a cost-line/render-cost-line contract. Scenario: Downstream contributors will see stale harness purpose and may restore cost-line-only assumptions when maintaining the lint target
+- **Proposed resolution**: Update the .md sibling and docs/linting.md target row to describe full-summary body callsite pins and the remaining render-cost-line allowlist separately
+
+### FINDING_29:
+- **Reviewer(s)**: Cursor-dyn-callsite-scanner
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Happy-path Step 5c item 10 still mandates emit that single verbatim cost line. Scenario: Agents following numbered Step 5c instructions re-apply cost-line-only emission after post-publish render even if fence prose at :288 is updated
+- **Proposed resolution**: Add a fourth design edit for item 10: require full-body verbatim emit from $DESIGN_TMPDIR/final-summary.md (non-empty gate per edge cases) and add a matching grep pin in test-render-cost-line-callsites.sh
+
+### FINDING_30:
+- **Reviewer(s)**: Cursor-dyn-callsite-scanner
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-render-cost-line-callsites.sh:37-44,49
+- **Concern**: Plan replaces prose pins at 46-49 and 54 but leaves cost-line-only Bash and NEVER exception pins. Scenario: CI keeps enforcing _wfr_prev_cost/_wfr_new_cost guards and The cost line is the sole exception under NEVER #20 after SKILL prose migrates to full-block
+- **Proposed resolution**: Either extend plan to refactor Step 18 Bash to full-body snapshot/cmp and update pins 37-44 and 49, or explicitly mark bash mechanics out-of-scope and add pins asserting absence of old cost-line-only orchestrator prose site-wide
+
+### FINDING_31:
+- **Reviewer(s)**: Cursor-dyn-callsite-scanner
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:1808-1824
+- **Concern**: Step 18 embedded Bash diffs only the Cost line; plan moves orchestrator re-emit to full-body byte compare. Scenario: Post-Step-18 refresh can change duration, warnings, or tokens while Cost is unchanged; orchestrator prose requires re-emit but _wfr_emit_cost stays false
+- **Proposed resolution**: Scope Bash refactor: snapshot summary-final.md before Step 18 render, cmp -s after, drive _wfr_emit_cost from full-body diff; align variable names and test pins
+
+### FINDING_32:
+- **Reviewer(s)**: Cursor-dyn-callsite-scanner
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:288,982;skills/implement/SKILL.md:1760,1828
+- **Concern**: Edge cases require emit only when persisted file is non-empty but per-site edits retain contains - **Cost**: gate. Scenario: Degraded summaries with N/A or missing Cost line never get top-chat full block despite non-empty final-summary.md
+- **Proposed resolution**: Replace Cost-line presence preconditions with non-empty file checks at all orchestrator emit sites; keep .step17-printed touch on Cost only if intentional
+
+### FINDING_33:
+- **Reviewer(s)**: Cursor-dyn-callsite-scanner
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:1021
+- **Concern**: Phrase mandatory verbatim cost-line emit may survive partial line-1021 edit. Scenario: Inconsistent vocabulary leaves a stale cost-line-only anchor next to updated ordering prose
+- **Proposed resolution**: Rename to mandatory verbatim full-block emit (or equivalent) in the same edit pass as the single extracted line replacement
+
+### FINDING_34:
+- **Reviewer(s)**: Codex-dyn-callsite-scanner
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Plan omits a Step 5c item 10 cost-line-only instruction. Scenario: The happy-path post-publish render still tells the /design orchestrator to emit only the single cost line and no other summary prose, conflicting with the planned full-body emission at the other design sites.
+- **Proposed resolution**: Add this callsite to the skills/design/SKILL.md updates and replace it with the same non-empty final-summary.md full-body verbatim emission contract.
+
+### FINDING_35:
+- **Reviewer(s)**: Codex-dyn-callsite-scanner
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1751-1754,1808-1823
+- **Concern**: Plan does not explicitly update the Step 17 and Step 18 Bash snippets that still grep and compare only the Cost line. Scenario: The prose may say full-body emission, but the orchestrator snippet still marks printed state and detects Step 18 changes from only - **Cost**:, so non-cost summary-body changes can be missed and non-empty summaries without a Cost line are not treated consistently.
+- **Proposed resolution**: Explicitly update these snippets in the plan: gate Step 17 printed state on a non-empty summary-final.md, snapshot the full body before Step 18, compare the full body after render with cmp or equivalent, and rename cost-specific variables.
+
+### FINDING_36:
+- **Reviewer(s)**: Cursor-dyn-path-existence-verifier
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:982
+- **Concern**: Step 5c item 10 still mandates single cost-line orchestrator emit but is omitted from the plan's three-site edit list. Scenario: Happy-path /design runs still follow cost-line-only contract at item 10 while items ~30/~288/~1021 switch to full-body emit; top chat stays cost-only on the primary approved path
+- **Proposed resolution**: Add a fourth edit at Step 5c item 10 mirroring the full-body verbatim contract and non-empty gate used at ~288
+
+### FINDING_37:
+- **Reviewer(s)**: Cursor-dyn-path-existence-verifier
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1808-1825
+- **Concern**: Plan updates Step 18 orchestrator prose only; the embedded Bash fence still snapshots/compares `_wfr_prev_cost` / `_wfr_new_cost` and gates `_wfr_emit_cost` on cost-line presence. Scenario: Step 18 refresh can change duration/exec-issues/warnings while cost text is unchanged; orchestrator prose requires full-body re-emit but Bash still suppresses `--print-stdout` and `.step17-printed` on cost-only diffs
+- **Proposed resolution**: Rewrite the Step 18 Bash block to snapshot full `$IMPLEMENT_TMPDIR/summary-final.md` (e.g. `cp` to a pre-step18 sentinel) and set emit/print flags with `cmp -s` on full bodies; align `.step17-printed` touch with the new emit guard
+
+### FINDING_38:
+- **Reviewer(s)**: Cursor-dyn-path-existence-verifier
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-render-cost-line-callsites.sh:40-44
+- **Concern**: Plan replaces grep pins at 46/48/49/54 but leaves Step 18 cost-line mechanical pins (`_wfr_emit_cost`, `_wfr_prev_cost` compare) untouched. Scenario: After SKILL/bash edits land, CI either keeps enforcing obsolete cost-line mechanics or fails on updated prose without pinning the new full-body contract
+- **Proposed resolution**: Extend the test update section to replace lines 40-44 with pins for the new Step 18 snapshot/`cmp -s` logic and drop cost-line-only `_wfr_*` greps
+
+### FINDING_39:
+- **Reviewer(s)**: Cursor-dyn-path-existence-verifier
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/implement/SKILL.md:1828
+- **Concern**: Edge cases require byte-for-byte full-body comparison at Step 18 but the plan does not define how the orchestrator obtains the pre-refresh snapshot across the Step 18 Bash boundary. Scenario: Post-Step-18 orchestrator emit depends on comparing bodies, yet only in-block `_wfr_prev_cost` exists today and is not exposed to prompt-side logic
+- **Proposed resolution**: Specify a durable pre-step18 snapshot path (written in the Bash fence before refresh) and require orchestrator emit only when `cmp -s` against refreshed `summary-final.md` fails or `.step17-printed` was absent
+
+### FINDING_40:
+- **Reviewer(s)**: Cursor-dyn-path-existence-verifier
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:288
+- **Concern**: Edge-case section mandates emit when persisted file is non-empty, but the proposed ~288 edit text only swaps the emit mechanism and not the `- **Cost**:` precondition. Scenario: If a future/non-fallback body lacked a Cost bullet but was otherwise non-empty, orchestrator would skip top-chat emit despite the edge-case rule
+- **Proposed resolution**: Change post-publish gating from `contains a line beginning with - **Cost**:` to `[ -s "$DESIGN_TMPDIR/final-summary.md" ]` consistently at ~288 and item 10
+
+### FINDING_41:
+- **Reviewer(s)**: Cursor-dyn-path-existence-verifier
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1764
+- **Concern**: Stale sentence "Step 18 emits no token/timing summary to chat" conflicts with the proposed Step 18 full-body top-chat emit. Scenario: Orchestrator sees contradictory instructions inside Step 17/18 and may skip the new full-block emit as "forbidden" summary output
+- **Proposed resolution**: Replace line 1764 with language that Step 18 may emit the verbatim refreshed `summary-final.md` body under the Step 18 dual-condition guard only
+
+### FINDING_42:
+- **Reviewer(s)**: Codex-dyn-path-existence-verifier
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:1808-1824; scripts/test-render-cost-line-callsites.sh:40-44
+- **Concern**: Step 18 full-body re-emit contract is not mechanically/test-aligned. Scenario: The plan changes Step 18 from cost-line comparison to full-body comparison, but the existing fenced Bash and tests still pin _wfr_prev_cost/_wfr_new_cost and cost-only guards; a body change with the same cost can be missed, or a correct body-compare edit can fail the unchanged old pins
+- **Proposed resolution**: Update the Step 18 Bash block to snapshot/compare $IMPLEMENT_TMPDIR/summary-final.md as a full file, then update the test pins at scripts/test-render-cost-line-callsites.sh:40-44 to assert the new body-compare mechanism instead of cost-only variables
+
+### FINDING_43:
+- **Reviewer(s)**: Codex-dyn-path-existence-verifier
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:10; skills/implement/scripts/write-final-report.sh:368,489-497
+- **Concern**: Implement overview still names tmpdir final-summary.md even though the observed canonical tmpdir output is summary-final.md. Scenario: write-final-report.sh sets summary=$IMPLEMENT_TMPDIR/summary-final.md and copies the body there before optional stdout; larch-logs/implement/<RUN_ID>/final-summary.md is separate and skipped under --comment-only, so the stale overview can send readers to a non-canonical tmpdir path
+- **Proposed resolution**: Add a small SKILL.md line-10 edit to distinguish $IMPLEMENT_TMPDIR/summary-final.md from larch-logs/implement/<RUN_ID>/final-summary.md
+
+### FINDING_44:
+- **Reviewer(s)**: Cursor-dyn-test-pin-exactness
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-render-cost-line-callsites.sh:46-55
+- **Concern**: Plan Failure modes (plan.txt:82) requires pins for new full-block prose present and cost-line-only prose absent, but the UPDATED test section (plan.txt:48-54) only adds positive grep -Fq pins; there is no negative grep (e.g. fail if skills/*/SKILL.md still contains emit exactly that one line or The cost line is the sole exception). Scenario: A partial SKILL.md edit could leave old cost-line-only sentences alongside new full-block sentences; make lint would still pass
+- **Proposed resolution**: Add negative pins mirroring test-design-structure.sh:350-353 (if grep -Fq old_prose; then fail) for each retired substring: emit exactly that one line, emit that single verbatim, single extracted - **Cost**:, The cost line is the sole exception, orchestrator emits the single verbatim cost line
+
+### FINDING_45:
+- **Reviewer(s)**: Codex-dyn-test-pin-exactness
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-render-cost-line-callsites.sh:35-44; skills/implement/SKILL.md:1808-1828
+- **Concern**: The plan updates only the prose pins at script lines 46, 48, 49, and 54, but this test also has exact-match pins for the old cost-line mechanics: cost-line presence, _wfr_emit_cost, refreshed-cost comparison, and cost-line-gated .step17-printed.. Scenario: After SKILL.md is changed to full-body/non-empty emission and Step 18 full-body comparison, these remaining pins either keep CI enforcing the old cost-line implementation or fail any correct cmp/full-body rewrite. The three proposed replacement strings do not currently appear in any SKILL.md, so the positive pins require the SKILL.md edits to land in the same change.
+- **Proposed resolution**: Revise the plan to update all relevant exact pins: replace the Step 17 cost-line gate with a non-empty summary-final.md/body-emitted sentinel check, replace _wfr_emit_cost/_wfr_prev_cost/_wfr_new_cost pins with full-body snapshot/cmp wording, and keep the new prose pins synchronized with the SKILL.md edits.
+
+### FINDING_46:
+- **Reviewer(s)**: Codex-dyn-test-pin-exactness
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-render-cost-line-callsites.sh:46-55; skills/design/SKILL.md:30,288,1021; skills/implement/SKILL.md:73,1760,1828
+- **Concern**: The proposed test change adds new positive exact-match pins but no negative assertion that the old cost-line-only prose is absent.. Scenario: A partial SKILL.md edit could add the new full-body wording while leaving the old "single verbatim - **Cost**:" / "exactly that one line" / "cost line is the sole exception" instructions in place; the updated test would pass while agents still see contradictory end-of-run contracts.
+- **Proposed resolution**: Add explicit negative greps that fail if the old cost-line-only prose remains in design or implement SKILL.md, covering the anti-halt, post-publish/Step 17, Step 18, and NEVER #20 callsites.
+
+### OOS_1:
+- **Description**: Harness doc still labeled cost-line-only. Scenario: Maintainer confusion after contract change
+- **Reviewer**: Cursor-Arch
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: docs/linting.md:291
+- **Phase**: design
+
+### OOS_2:
+- **Description**: Post-publish prose references "Step 5c item 9" though the render call lives in item 10 (item 9 is publish). Scenario: Misrouting during manual edits/reviews of the two-phase finalize sequence
+- **Reviewer**: Cursor-dyn-path-existence-verifier
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:288
+- **Phase**: design
+
+### OOS_3:
+- **Description**: [OUT_OF_SCOPE] Postmerge comment repeats the same tmpdir final-summary.md path drift. Scenario: The comment says re-render final-summary.md under $IMPLEMENT_TMPDIR, but write-final-report.sh writes $IMPLEMENT_TMPDIR/summary-final.md and only mirrors to the run-log final-summary.md when not --comment-only
+- **Reviewer**: Codex-dyn-path-existence-verifier
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: scripts/ship-pr.sh:3056-3058
+- **Phase**: design
