@@ -11,11 +11,11 @@
 - Cursor review launcher assertions from the former per-tool harness: JSON
   post-processing, explicit empty `.result` marker promotion, outer retry
   metadata, prompt byte preservation, signal-trap sentinel publication,
-  auth-preflight short-circuit, stdin inheritance on the non-Codex control
-  path, and dirty-tree sidecars.
+  auth-preflight short-circuit, exact stdin-file inheritance on the non-Codex
+  control path, and dirty-tree sidecars.
 - Successful Codex and Cursor launches with no stderr populate their sidecars
   with informational `codex-status: ok` / `cursor-status: ok` markers.
-  model rejection, prompt hardening, token-session rehydration, timeout
+- Model rejection, prompt hardening, token-session rehydration, timeout
   clamping, and snapshot guard behavior.
 
 ## Makefile

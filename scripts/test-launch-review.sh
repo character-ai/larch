@@ -1459,19 +1459,23 @@ wait "$PID_A"
 assert_equals "case A done code" "0" "$(cat "${OUT_A}.done")"
 
 # Case B: successful runs enrich .meta with outer-launcher replay keys and
-# persist the original unwrapped prompt byte-for-byte.
+# persist the original unwrapped prompt byte-for-byte. Also prove the Cursor
+# control process inherits the caller's exact stdin file descriptor rather than
+# a generic non-/dev/null stream.
 OUT_B="$TMPDIR/cursor-b.txt"
 FD0_B="$TMPDIR/cursor-b.fd0"
+STDIN_B="$TMPDIR/cursor-b.stdin"
+printf 'cursor stdin fixture\n' > "$STDIN_B"
 PATH="$STUB_BIN:$PATH" CURSOR_STUB_FD0_LOG="$FD0_B" \
-    "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "original prompt" >/dev/null 2>"$TMPDIR/case-b.stderr"
+    "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "original prompt" < "$STDIN_B" >/dev/null 2>"$TMPDIR/case-b.stderr"
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
 assert_grep "case B cursor success sidecar marker" "cursor-status: ok" "${OUT_B}.sidecar"
-if [[ "$(cat "$FD0_B")" == "/dev/null" ]]; then
-    fail "case B cursor control must inherit live stdin; fd0 unexpectedly resolved to /dev/null"
-else
+if [[ "$(cat "$FD0_B")" == "$STDIN_B" ]]; then
     pass
+else
+    fail "case B cursor control must inherit the exact wrapper stdin file; expected $STDIN_B got $(cat "$FD0_B" 2>/dev/null)"
 fi
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay

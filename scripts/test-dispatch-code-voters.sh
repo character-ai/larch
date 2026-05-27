@@ -73,6 +73,12 @@ case "${LARCH_WAIT_BARRIER_MODE:-delayed}" in
         printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
         printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
         ;;
+    nonzero_done)
+        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
+        printf '7\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
+        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
+        printf '9\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
+        ;;
     timeout)
         : > "$review_tmpdir/timeout-mode-observed"
         ;;
@@ -120,10 +126,12 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$output" ]] || exit 2
 printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n' > "$output"
-(
-    sleep "${LARCH_VOTER1_DONE_DELAY:-1}"
-    printf '0\n' > "${output}.done"
-) >/dev/null 2>&1 &
+if [[ "${LARCH_VOTER1_DONE_MODE:-delayed}" != "missing" ]]; then
+    (
+        sleep "${LARCH_VOTER1_DONE_DELAY:-1}"
+        printf '0\n' > "${output}.done"
+    ) >/dev/null 2>&1 &
+fi
 exit 0
 STUB_CLAUDE
     chmod +x "$root/scripts/launch-claude-review.sh"
@@ -177,6 +185,10 @@ for arg in "$@"; do [[ "$last" == "--output-last-message" ]] && out="$arg"; last
 [[ -n "$out" ]] || exit 9
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
 case "${CODEX_STUB_MODE:-ok}" in
+  delayed_done_race)
+    printf 'FINDING_1: YES -- codex delayed\n' > "$out"
+    sleep "${CODEX_STUB_DELAY:-1}"
+    ;;
   parse_retry_success)
     count_file="${CODEX_STUB_COUNT_FILE:?CODEX_STUB_COUNT_FILE required}"
     count=0
@@ -453,6 +465,28 @@ if (( prod_delay_end - prod_delay_start < 1 )); then
 fi
 require_voter_paths_file_nonempty "happy-cursor-prod-delay" "$out"
 
+prod_codex_delay_tmp="$TMP/codex-prod-delay"
+mkdir -p "$prod_codex_delay_tmp"
+prod_codex_delay_start=$(date +%s)
+out=$(PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_MODE=delayed_done_race \
+    CODEX_STUB_DELAY=1 \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$prod_codex_delay_tmp" --codex-available true --cursor-available false)
+prod_codex_delay_end=$(date +%s)
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" \
+    || { echo "FAIL: production delayed .done path should keep voter2 on codex" >&2; exit 1; }
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: production delayed .done path should keep voter2 launched" >&2; exit 1; }
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" \
+    || { echo "FAIL: production delayed .done path should keep the codex output parseable" >&2; exit 1; }
+grep -Fq 'FINDING_1: YES -- codex delayed' "$prod_codex_delay_tmp/codex-vote-output.txt" \
+    || { echo "FAIL: production delayed .done path should preserve the codex output after promotion" >&2; exit 1; }
+if (( prod_codex_delay_end - prod_codex_delay_start < 1 )); then
+    echo "FAIL: production delayed .done path returned before launch-review.sh could promote the delayed codex sentinel" >&2
+    exit 1
+fi
+require_voter_paths_file_nonempty "happy-codex-prod-delay" "$out"
+
 voter1_plugin="$TMP/voter1-plugin"
 make_voter1_delayed_done_plugin_root "$voter1_plugin"
 voter1_tmp="$TMP/voter1-delayed-done"
@@ -479,6 +513,25 @@ if (( voter1_end - voter1_start < 1 )); then
 fi
 require_voter_paths_file_nonempty "happy-voter1-delayed-done" "$out"
 
+voter1_missing_tmp="$TMP/voter1-missing-done"
+mkdir -p "$voter1_missing_tmp"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$voter1_plugin" \
+    LARCH_VOTER_WAIT_TIMEOUT=1 \
+    LARCH_VOTER1_DONE_MODE=missing \
+    "$voter1_plugin/scripts/dispatch-code-voters.sh" \
+        --ballot-file "$BALLOT" \
+        --review-tmpdir "$voter1_missing_tmp" \
+        --codex-available true \
+        --cursor-available true)
+grep -Fq 'VOTER_1_STATUS=failed' <<< "$out" \
+    || { echo "FAIL: missing voter1 sentinel must fail instead of synthetic-backfill launch success" >&2; exit 1; }
+if [[ -e "$voter1_missing_tmp/claude-vote-output.txt.done" ]]; then
+    echo "FAIL: missing voter1 sentinel must not be backfilled after timeout" >&2
+    exit 1
+fi
+require_voter_paths_file_nonempty "happy-voter1-missing-done" "$out"
+
 wait_timeout_tmp="$TMP/wait-timeout"
 timeout_stderr="$TMP/wait-timeout.stderr"
 mkdir -p "$wait_timeout_tmp"
@@ -502,6 +555,24 @@ grep -Fq 'dispatch-code-voters.sh: voter sentinel TIMEOUT 2 codex-vote-output.tx
     || { echo "FAIL: wait timeout path should log voter2 TIMEOUT rows from wait-for-reviewers stdout" >&2; exit 1; }
 grep -Fq 'dispatch-code-voters.sh: voter sentinel TIMEOUT 3 cursor-vote-output.txt' "$timeout_stderr" \
     || { echo "FAIL: wait timeout path should log voter3 TIMEOUT rows from wait-for-reviewers stdout" >&2; exit 1; }
+
+wait_nonzero_done_tmp="$TMP/wait-nonzero-done"
+mkdir -p "$wait_nonzero_done_tmp"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$wait_plugin" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    LARCH_VOTER_WAIT_TIMEOUT=2 \
+    LARCH_WAIT_BARRIER_MODE=nonzero_done \
+    LARCH_WAIT_BARRIER_VOTER2="$wait_nonzero_done_tmp/codex-vote-output.txt" \
+    LARCH_WAIT_BARRIER_VOTER3="$wait_nonzero_done_tmp/cursor-vote-output.txt" \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$wait_nonzero_done_tmp" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" \
+    || { echo "FAIL: non-zero voter2 .done exit code must fail the slot even with output bytes present" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=failed' <<< "$out" \
+    || { echo "FAIL: non-zero voter3 .done exit code must fail the slot even with output bytes present" >&2; exit 1; }
+grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 1/3 effective judges produced output.**' <<< "$out" \
+    || { echo "FAIL: non-zero external voter .done exit codes should degrade the panel to 1/3" >&2; exit 1; }
+require_voter_paths_file_nonempty "happy-wait-nonzero-done" "$out"
 
 wait_usage_plugin="$TMP/wait-usage-plugin"
 make_wait_usage_error_plugin_root "$wait_usage_plugin"

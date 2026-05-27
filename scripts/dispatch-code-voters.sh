@@ -204,6 +204,10 @@ VOTER_2_STATUS="launched"
 VOTER_3_STATUS="launched"
 [[ "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
 [[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
+voter1_wait_timed_out=false
+voter2_wait_timed_out=false
+voter3_wait_timed_out=false
+_wait_rc=0
 
 # FINDING_2: capture stdout — wait-for-reviewers.sh emits TIMEOUT rows on
 # stdout and exits 0 even when sentinels never appear, so an exit-only check
@@ -227,6 +231,11 @@ if (( ${#wait_sentinels[@]} > 0 )); then
     if grep -q '^TIMEOUT ' "$_wait_out_file" 2>/dev/null; then
         while IFS= read -r _to_line; do
             larch_err "dispatch-code-voters.sh: voter sentinel $_to_line"
+            case "$_to_line" in
+                "TIMEOUT 1 "*) voter1_wait_timed_out=true ;;
+                "TIMEOUT 2 "*) voter2_wait_timed_out=true ;;
+                "TIMEOUT 3 "*) voter3_wait_timed_out=true ;;
+            esac
         done < <(grep '^TIMEOUT ' "$_wait_out_file")
     fi
     # FINDING_5: rc=1 is a usage error (not a sentinel timeout); log distinctly.
@@ -241,15 +250,33 @@ fi
 # sentinel still never appeared, publish a local sentinel only after the wait
 # barrier so Voter 1 cannot be treated as complete before launcher completion
 # had a chance to land.
-if [[ ! -f "$VOTER_1_PATH.done" && "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]]; then
+if [[ ! -f "$VOTER_1_PATH.done" && "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" \
+      && "$voter1_wait_timed_out" != "true" && "$_wait_rc" -eq 0 ]]; then
     printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
 fi
 
+read_done_exit_code() {
+    local sentinel="$1"
+    local rc=""
+    [[ -f "$sentinel" ]] || return 0
+    IFS= read -r rc < "$sentinel" || true
+    printf '%s' "$rc"
+}
+
+voter1_done_rc=""
+voter2_done_rc=""
+voter3_done_rc=""
+[[ -n "$VOTER_1_PATH" ]] && voter1_done_rc="$(read_done_exit_code "$VOTER_1_PATH.done")"
+[[ -n "$VOTER_2_PATH" ]] && voter2_done_rc="$(read_done_exit_code "$VOTER_2_PATH.done")"
+[[ -n "$VOTER_3_PATH" ]] && voter3_done_rc="$(read_done_exit_code "$VOTER_3_PATH.done")"
+
 # Re-evaluate size-based statuses AFTER the wait barrier so a voter whose
-# output became visible during the wait is correctly classified.
-[[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
-[[ "$VOTER_2_STATUS" == "skipped" || -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
-[[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
+# output became visible during the wait is correctly classified. A non-zero or
+# missing launcher-owned `.done` sentinel is still a failed slot even if the
+# output file is non-empty.
+[[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" && "$voter1_done_rc" == "0" ]] || VOTER_1_STATUS="failed"
+[[ "$VOTER_2_STATUS" == "skipped" || ( -s "$VOTER_2_PATH" && "$voter2_done_rc" == "0" ) ]] || VOTER_2_STATUS="failed"
+[[ -s "$VOTER_3_PATH" && "$voter3_done_rc" == "0" ]] || VOTER_3_STATUS="failed"
 
 VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 VOTER_2_PARSE_RATE_STATUS="SKIPPED"
