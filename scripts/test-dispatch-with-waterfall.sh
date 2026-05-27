@@ -486,7 +486,7 @@ codex_caphit_dedup_log="$TMPROOT/codex-caphit-dedup.log"
 codex_caphit_dedup_counter="$TMPROOT/codex-caphit-dedup.count"
 out=$(PATH="$STUB_BIN:$PATH" \
     CURSOR_STUB_RESULT_CONTENT='narration only' \
-    CODEX_STUB_RESULT_CONTENT=$'STATUS=cap_hit\n## Recommendation\ncap hit split' \
+    CODEX_STUB_RESULT_CONTENT='STATUS=cap_hit' \
     CODEX_STUB_LOG="$codex_caphit_dedup_log" \
     CODEX_STUB_COUNTER="$codex_caphit_dedup_counter" \
     "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
@@ -503,7 +503,7 @@ assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
 [[ -f "$TMPROOT/caphit-cursor.txt.dedup" ]] || { echo "FAIL: cap_hit reused slot sidecar missing" >&2; exit 1; }
 grep -Fxq 'DEDUPE_REUSED_FROM=caphit-codex' "$TMPROOT/caphit-cursor.txt.dedup" || { echo "FAIL: cap_hit reused-from sidecar" >&2; cat "$TMPROOT/caphit-cursor.txt.dedup" >&2; exit 1; }
 grep -Fxq 'DEDUPE_REUSED_TOOL=codex' "$TMPROOT/caphit-cursor.txt.dedup" || { echo "FAIL: cap_hit reused-tool sidecar" >&2; cat "$TMPROOT/caphit-cursor.txt.dedup" >&2; exit 1; }
-grep -Fq '## Recommendation' "$TMPROOT/caphit-cursor.txt" || { echo "FAIL: cap_hit reused output not copied" >&2; exit 1; }
+grep -Fxq 'STATUS=cap_hit' "$TMPROOT/caphit-cursor.txt" || { echo "FAIL: cap_hit reused output not copied" >&2; cat "$TMPROOT/caphit-cursor.txt" >&2; exit 1; }
 grep -Fq $'caphit-g\tcaphit-codex\tcodex\t' "$TMPROOT/waterfall-group-results.tsv" || { echo "FAIL: cap_hit ledger ok row missing" >&2; cat "$TMPROOT/waterfall-group-results.tsv" >&2; exit 1; }
 
 manifest="$TMPROOT/slots-cross-group.ndjson"
