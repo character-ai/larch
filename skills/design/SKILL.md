@@ -89,7 +89,7 @@ Before invoking `/design`, the orchestrator should internalize these questions. 
 
 Consolidated NEVER rules collected from the procedural steps below. Each rule states the WHY so edits can respect the original constraint. Inline step-local mentions remain where they carry load-bearing context.
 
-1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE` (write `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel); HARD always runs 4 personality sketches. Why: anchoring bias still locks architectural direction; SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
+1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE` (write `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel); HARD always runs 4 personality sketches. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
 
 2. **NEVER substitute Claude into a dialectic debate as the PRIMARY or 1ST-RETRY debater.** **Why:** the debate path uses externals (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; see GitHub issue #98. **How to apply:** the original launch and the 1st-retry launch in the per-side waterfall both target external tools only. **Exception:** Claude IS permitted as the 2nd-retry (FINAL) waterfall step for a side that has already failed with both externals — this trades a small attribution-leak risk for the chance to actually hear the antithesis instead of always defaulting to synthesis. The judge-panel path remains under the repo-wide replacement-first pattern (Claude permitted as a panel slot per `dialectic-protocol.md`).
 
@@ -709,11 +709,12 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 **Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
 
-**Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). If the cap is reached, print `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**`, skip `plan-review-loop.sh` entirely, and jump to Step 3b/4/4b with existing artifacts.
+**Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). Persist the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` so later Bash fences in this step rehydrate the same `STEP3_REVIEW_CAP_REACHED` / `STEP3_REVIEW_ROUND_NUM` state instead of relying on a prior fence's shell locals. If the cap is reached, print `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**`, skip `plan-review-loop.sh` entirely, and jump to Step 3b/4/4b with existing artifacts.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 _round_count_file="$DESIGN_TMPDIR/review-round-count.txt"
+_step3_cap_env="$DESIGN_TMPDIR/.step3-review-cap.env"
 _round_count=0
 if [[ -s "$_round_count_file" ]]; then
   _raw_count="$(tr -d '[:space:]' <"$_round_count_file" 2>/dev/null || true)"
@@ -730,11 +731,17 @@ _tier="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_
 case "$_tier" in SIMPLE) _round_cap=3 ;; *) _round_cap=5 ;; esac
 if (( _round_count >= _round_cap )); then
   printf '%s\n' "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and returning to Gate C.**"
-  STEP3_REVIEW_CAP_REACHED=true
+  cat >"$_step3_cap_env" <<'EOF'
+STEP3_REVIEW_CAP_REACHED=true
+STEP3_REVIEW_ROUND_NUM=
+EOF
 else
-  count=$((_round_count + 1))
-  printf '%s\n' "$count" >"$_round_count_file"
-  STEP3_REVIEW_CAP_REACHED=false
+  _next_round=$((_round_count + 1))
+  printf '%s\n' "$_next_round" >"$_round_count_file"
+  cat >"$_step3_cap_env" <<EOF
+STEP3_REVIEW_CAP_REACHED=false
+STEP3_REVIEW_ROUND_NUM=$_next_round
+EOF
 fi
 ```
 
@@ -749,7 +756,7 @@ After the cap guard, emit the Step 3 plan preview before launching the panel.
 
 Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`.
 
-**IMPORTANT: Plan review MUST ALWAYS run the full Step 3 panel: **10 static** external slots (5 Cursor + 5 Codex for Arch, Edge, Innovation, Pragmatic, Requirements) plus **up to 12 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 6). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
+**IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: **10 static** external slots (5 Cursor + 5 Codex for Arch, Edge, Innovation, Pragmatic, Requirements) plus **up to 12 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 6). Never skip or abbreviate this step for plan simplicity — even when all sketch agents agreed, the plan is short, or the change seems trivial. The only allowed Step 3 skip is the review-round cap guard above. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
 
 **MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for reviewer prompts, the Competition notice blockquote, ballot handling, voting thresholds, Finalize Plan Review, and artifact templates. **Scout, panel dispatch, collection, aggregation, voting, and tally run inside** `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Renderer and harness references are unchanged (`render-plan-review-prompt.md`, `scout-plan-archetypes-wrapper.md`, `dispatch-plan-review-panel.md`, etc.). **agent-lint S030 pins** (literal paths retained in SKILL.md): `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.md`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.md`.
 
@@ -767,30 +774,45 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+if [[ -f "$DESIGN_TMPDIR/.step3-review-cap.env" ]]; then
+  # Rehydrate Step 3 cap state across Bash fences.
+  source "$DESIGN_TMPDIR/.step3-review-cap.env"
+fi
 # Foreground required: see BASH_AUTHORING.md §4
-set +e
-_plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh" \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
-  --codex-present "$CODEX_PRESENT" \
-  --cursor-present "$CURSOR_PRESENT" \
-  --round-num "$count")
-_plan_review_rc=$?
-set -e
 LOOP_STATUS=""; ACCEPTED_COUNT=""; DEGRADED_PANEL=""; ROUNDS_COMPLETED=""
 TALLY_PLAN_REVIEW_STATUS=""; AGGREGATOR_STATUS=""; VOTING_TALLY_FILE=""
 VOTER_1_PARSE_RATE_STATUS=""
-while IFS= read -r _line || [[ -n "$_line" ]]; do
-  _key="${_line%%=*}"; _value="${_line#*=}"
-  case "$_key" in
-    LOOP_STATUS|ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|VOTER_1_PARSE_RATE_STATUS)
-      printf -v "$_key" '%s' "$_value" ;;
-    WARN) printf '%s\n' "WARN=$_value" ;;
-  esac
-done <<<"$_plan_review_out"
-if [[ "$_plan_review_rc" -ne 0 && "$LOOP_STATUS" != "panel-failed" && "$LOOP_STATUS" != "main-agent-vote-required" ]]; then
-  printf '%s\n' "**⚠ plan-review-loop.sh exited with rc=$_plan_review_rc and unexpected LOOP_STATUS=$LOOP_STATUS**"
+if [[ "${STEP3_REVIEW_CAP_REACHED:-false}" == true ]]; then
+  LOOP_STATUS="cap-reached"
+  ACCEPTED_COUNT="0"
+  DEGRADED_PANEL="0"
+  ROUNDS_COMPLETED="0"
+  TALLY_PLAN_REVIEW_STATUS="skipped-cap-reached"
+  AGGREGATOR_STATUS="skipped-cap-reached"
+  VOTING_TALLY_FILE=""
+  VOTER_1_PARSE_RATE_STATUS="SKIPPED"
+else
+  set +e
+  _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --plan-file "$DESIGN_TMPDIR/plan.txt" \
+    --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
+    --codex-present "$CODEX_PRESENT" \
+    --cursor-present "$CURSOR_PRESENT" \
+    --round-num "${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}")
+  _plan_review_rc=$?
+  set -e
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    _key="${_line%%=*}"; _value="${_line#*=}"
+    case "$_key" in
+      LOOP_STATUS|ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|VOTER_1_PARSE_RATE_STATUS)
+        printf -v "$_key" '%s' "$_value" ;;
+      WARN) printf '%s\n' "WARN=$_value" ;;
+    esac
+  done <<<"$_plan_review_out"
+  if [[ "$_plan_review_rc" -ne 0 && "$LOOP_STATUS" != "panel-failed" && "$LOOP_STATUS" != "main-agent-vote-required" ]]; then
+    printf '%s\n' "**⚠ plan-review-loop.sh exited with rc=$_plan_review_rc and unexpected LOOP_STATUS=$LOOP_STATUS**"
+  fi
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
@@ -928,7 +950,7 @@ Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the si
   --variant gatec
 ```
 
-Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. The three primary options are unchanged (**Approve final design** / **Discuss further** / **Re-run review panel**). If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion`. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`). On **Re-run review panel**, re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or auto-applied prior feedback applied). The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
+Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. When the review-round counter is below the tier cap, the three primary options are **Approve final design** / **Discuss further** / **Re-run review panel**. When the counter is already at cap, Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **Discuss further**. If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same cap-aware Gate C `AskUserQuestion`. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`). On **Re-run review panel** (only when offered), re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all user-approved or auto-applied prior feedback applied). The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 

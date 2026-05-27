@@ -39,6 +39,19 @@ validate_ledger_override() {
     printf '%s' "$candidate"
 }
 
+resolve_workflow_fallback() {
+    local ledger="$1"
+    local candidate=""
+    if [[ -n "${DESIGN_TMPDIR:-}" && -f "${DESIGN_TMPDIR}/run-params.json" ]]; then
+        candidate="${DESIGN_TMPDIR}/run-params.json"
+    else
+        candidate="$(dirname "$ledger")/run-params.json"
+        [[ -f "$candidate" ]] || candidate=""
+    fi
+    [[ -n "$candidate" ]] || return 0
+    "$SCRIPT_DIR/read-design-classification.sh" "$candidate" 2>/dev/null
+}
+
 ledger_from_dump() {
     "$SCRIPT_DIR/timing-ledger.sh" dump 2>/dev/null | sed -n '1p'
 }
@@ -82,12 +95,18 @@ render_report() {
     local now="${LARCH_TEST_TIMING_NOW:-$(date +%s)}"
     local skill="${LARCH_TIMING_SKILL:-implement}"
     local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
+    local workflow_override=""
     [[ -f "$ledger" ]] || unavailable "ledger not found"
+    if workflow_override=$(resolve_workflow_fallback "$ledger" 2>/dev/null); then
+        case "$workflow_override" in SIMPLE|HARD) ;; *) workflow_override="" ;; esac
+    else
+        workflow_override=""
+    fi
     if [[ "$mode" == "terse" || "$mode" == "summary" ]]; then
         awk -F '\t' '$1 == "v1" && $2 == "mark" { found = 1; exit } END { exit found ? 0 : 1 }' "$ledger" \
             || unavailable "no step marks in ledger"
     fi
-    awk -F '\t' -v mode="$mode" -v format="$format" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" '
+    awk -F '\t' -v mode="$mode" -v format="$format" -v now="$now" -v terse_skill="$skill" -v outlier_threshold="$outlier_threshold" -v workflow_override="$workflow_override" '
       BEGIN {
         outlier_threshold += 0; if (outlier_threshold <= 0) outlier_threshold = 14400
         for (_i = 0; _i <= 127; _i++) _ord[sprintf("%c", _i)] = _i
@@ -209,7 +228,10 @@ render_report() {
           }
           exit 0
         }
-        if (workflow == "") workflow = "unknown"
+        if (workflow == "" || workflow == "unknown") {
+          if (workflow_override == "SIMPLE" || workflow_override == "HARD") workflow = workflow_override
+          else workflow = "unknown"
+        }
         if (format == "json") {
           emit_json_report()
           exit 0

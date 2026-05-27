@@ -37,11 +37,16 @@ if "$WRITER" \
     fail "invalid classification was accepted"
 fi
 
-if "$WRITER" \
+set +e
+"$WRITER" \
     --classification TRIVIAL_DOC_ONLY \
-    --output "$TMPROOT/trivial.json" >/dev/null 2>"$TMPROOT/trivial.err"; then
+    --output "$TMPROOT/trivial.json" >/dev/null 2>"$TMPROOT/trivial.err"
+trivial_rc=$?
+set -e
+if [[ "$trivial_rc" == 0 ]]; then
     fail "TRIVIAL_DOC_ONLY classification was accepted"
 fi
+[[ "$trivial_rc" == 2 ]] || fail "TRIVIAL_DOC_ONLY classification should exit 2, got $trivial_rc"
 grep -Fq 'invalid --classification: TRIVIAL_DOC_ONLY' "$TMPROOT/trivial.err" \
     || fail "TRIVIAL_DOC_ONLY rejection did not report enum violation"
 

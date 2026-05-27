@@ -362,6 +362,25 @@ fi
 grep -Fq -- '--cost-unavailable' "$TMP/render-badjson-args.log" || fail 'malformed token JSON path must pass --cost-unavailable to renderer'
 pass 'malformed token JSON renders Cost N/A'
 
+BAD_CLASS_D="$TMP/design-bad-class"
+mkdir -p "$BAD_CLASS_D"
+cat >"$BAD_CLASS_D/run-params.json" <<'JSON'
+{"schema_version":2,"design_classification":"INVALID","partition_requested":false,"brainstorm_requested":false}
+JSON
+cat >"$BAD_CLASS_D/voting-tally.md" <<'EOF'
+# Tally
+EOF
+: >"$BAD_CLASS_D/accepted-plan-findings.md"
+: >"$BAD_CLASS_D/oos-accepted-design.md"
+: >"$BAD_CLASS_D/execution-issues.md"
+: >"$BAD_CLASS_D/oos-issues-created.md"
+BAD_CLASS_STDERR="$TMP/bad-class.stderr"
+DESIGN_TMPDIR="$BAD_CLASS_D" ISSUE_NUMBER="" SESSION_ID="RUN-BAD-CLASS" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --pre-publish-only >/dev/null 2>"$BAD_CLASS_STDERR"
+grep -Fq '**⚠ read-design-classification: design_classification missing or invalid; defaulting to HARD**' "$BAD_CLASS_STDERR" \
+    || fail 'classification fallback warning must surface on stderr'
+pass 'classification fallback warning surfaces'
+
 EMPTY_MODE_D="$TMP/design-empty-mode"
 mkdir -p "$EMPTY_MODE_D"
 : >"$EMPTY_MODE_D/execution-issues.md"

@@ -54,7 +54,7 @@ esac
 RUN_ID="${SESSION_ID:-}"
 [ -n "$RUN_ID" ] || RUN_ID="unknown"
 
-DESIGN_CLASSIFICATION="$("$PLUGIN_ROOT/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf 'HARD\n')"
+DESIGN_CLASSIFICATION="$("$PLUGIN_ROOT/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf 'HARD\n')"
 case "$DESIGN_CLASSIFICATION" in
     SIMPLE) WORKFLOW_PATH="SIMPLE (no sketches; full review)" ;;
     HARD) WORKFLOW_PATH="HARD (4 sketches; full review)" ;;

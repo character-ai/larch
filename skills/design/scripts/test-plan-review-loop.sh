@@ -280,6 +280,7 @@ EOS
 
 run_loop() {
     local d="$1"
+    local round_num="${2:-1}"
     export CLAUDE_PLUGIN_ROOT="$ROOT"
     export LARCH_QUIET_DISABLE=1
     export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
@@ -293,7 +294,8 @@ run_loop() {
         --plan-file "$d/plan.txt" \
         --feature-file "$d/feature-description.txt" \
         --codex-present true \
-        --cursor-present true
+        --cursor-present true \
+        --round-num "$round_num"
 }
 
 echo "=== stubbed driver: zero findings (empty TSV) ==="
@@ -327,6 +329,20 @@ printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expecte
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
 [[ -f "$D1/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing for real tally"
+
+echo "=== stubbed driver: round-2 artifacts honor --round-num ==="
+D1R2="$TMP/z1r2"
+mkdir -p "$D1R2"
+printf 'plan\n' >"$D1R2/plan.txt"
+printf 'feat\n' >"$D1R2/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+out1r2=$(run_loop "$D1R2" 2)
+printf '%s\n' "$out1r2" | grep -q '^ROUNDS_COMPLETED=2$' || fail "expected round-2 ROUNDS_COMPLETED kv"
+[[ -f "$D1R2/plan-review/round-2/findings-classification.tsv" ]] || fail "round-2 classification TSV missing"
+[[ ! -e "$D1R2/plan-review/round-1/findings-classification.tsv" ]] || fail "round-2 run must not write round-1 TSV"
 
 echo "=== panel-failed path writes header-only classification TSV ==="
 D1P="$TMP/z1p"
