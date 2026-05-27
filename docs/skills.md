@@ -74,7 +74,7 @@ nothing to pause and exits successfully.
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
-Full implementation workflow spanning design through PR merge. Preflight consumes the **positional** GitHub `<issue-N>` after `/design` has written `larch:plan` into that issue's body. Step 5 invokes `run-step5-review.sh`, which derives `effective_round_cap` from base cap **5** plus degraded-round inflation, does **not** forward `--panel` on the public argv, and applies the panel only inside `review-and-fix.sh` → `review-core.sh`: a **3-judge panel on every round** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy), with the **review panel** and **6 Cursor specialists** (plus optional dynamic archetypes). `--merge` enables CI+merge; `--forked` is mutually exclusive with `--merge`.
+Full implementation workflow spanning design through PR merge. Preflight consumes the **positional** GitHub `<issue-N>` after `/design` has written `larch:plan` into that issue's body. Step 5 invokes `run-step5-review.sh`, which derives `effective_round_cap` from base cap **5** plus degraded-round inflation, does **not** forward `--panel` on the public argv, and applies the panel only inside `review-and-fix.sh` → `review-core.sh`: a **3-judge panel on every round** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy), with the **review panel** and **6 Cursor specialists** (plus optional dynamic archetypes). `--merge` enables CI+merge; `--forked` is mutually exclusive with `--merge`. `--emergency` bypasses plan-block presence / plan-adequacy audit / clarify-state pending gates with loud warnings; default is off.
 
 ## `/issue`
 

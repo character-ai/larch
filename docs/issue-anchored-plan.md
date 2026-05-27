@@ -7,7 +7,10 @@ issue **comments** before `/implement` proceeds. Helpers under
 contracts are what `/design` and `/implement` use: `/implement` **Preflight**
 (`skills/implement/SKILL.md` — issue-anchored plan) reads the plan block,
 runs the in-prompt plan-adequacy audit, and on refuse posts a clarify request
-and label via `clarify-comment-post.sh` / `clarify-label.sh` (exit **3**); `/design`
+and label via `clarify-comment-post.sh` / `clarify-label.sh` (exit **3**).
+`/implement --emergency` may downgrade missing/malformed plan block,
+plan-adequacy refusal, and clarify-state pending gates to warn-and-proceed;
+semantic materiality still fires under emergency. `/design`
 writes the plan block via `plan-block-write.sh` and posts matching clarify
 responses.
 
@@ -189,6 +192,12 @@ against Step 3 / Gate C plan previews, the mechanical behavior is the
 `skills/design/SKILL.md` (see `docs/configuration-and-permissions.md` —
 `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` and the **Chat-order note** there); do not assume duplicated inline fenced
 bodies remain the source of that logic. Issue-level acceptance or transcript audits must not treat the plan preview as immediately after the Step 3 breadcrumb alone — the visible breadcrumb is followed by a `timing-ledger.sh mark` line before the preview script’s output.
+
+Emergency mode is intentionally narrow: `/implement --emergency` may downgrade
+`BLOCK_PRESENT=false`, malformed plan extraction, `AUDIT=refuse`, and the
+clarify-state pending/refuse path from hard stops to loud warnings with an
+execution-issues audit trail. It does not bypass admission failures or the
+semantic materiality stale-plan notice.
 
 ## `NEXT_ID` and clarify posting
 

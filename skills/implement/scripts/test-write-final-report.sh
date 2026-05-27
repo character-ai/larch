@@ -224,6 +224,44 @@ assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain 
 assert_contains '- **Cost**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'missing token data renders cost N/A'
 assert_not_contains '- **PR**:' "$(cat "$TMP_ROOT/content-bl.md")" 'bailed path omits PR bullet when PR is N/A'
 
+impl_em="$TMP_ROOT/impl-em"; mkdir -p "$impl_em"
+printf 'ISSUE_NUMBER=13\nRUN_ID=run-em\nADOPTED=true\n' > "$impl_em/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_em/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_em/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_em/finalize-state.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=true\n' > "$impl_em/run-flags.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-em.md" \
+      "$HELPER" --implement-tmpdir "$impl_em")
+assert_contains 'STATUS=ok' "$out" 'emergency path status ok'
+assert_contains '- Emergency: true' "$(cat "$TMP_ROOT/content-em.md")" 'emergency path summary includes emergency line'
+
+impl_emf="$TMP_ROOT/impl-emf"; mkdir -p "$impl_emf"
+printf 'ISSUE_NUMBER=14\nRUN_ID=run-emf\nADOPTED=true\n' > "$impl_emf/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_emf/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_emf/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_emf/finalize-state.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=false\n' > "$impl_emf/run-flags.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-emf.md" \
+      "$HELPER" --implement-tmpdir "$impl_emf")
+assert_contains 'STATUS=ok' "$out" 'non-emergency explicit false status ok'
+assert_not_contains 'Emergency: true' "$(cat "$TMP_ROOT/content-emf.md")" 'non-emergency summary omits emergency line'
+
 impl_exec="$TMP_ROOT/impl-exec"; mkdir -p "$impl_exec/larch-logs/implement/run-exec"
 printf 'ISSUE_NUMBER=11\nRUN_ID=run-exec\nADOPTED=true\n' > "$impl_exec/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$impl_exec/session-env.sh"

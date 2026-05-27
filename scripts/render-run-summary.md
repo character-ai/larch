@@ -21,6 +21,7 @@ bash scripts/render-run-summary.sh \
   --run-id <id> \
   --mode '<flags-or-N/A>' \
   --workflow-path SIMPLE|HARD|N/A \
+  [--emergency-requested true|false] \
   --duration '<elapsed-or-N/A>' \
   --claude-tokens <n> --codex-tokens <n> --cursor-tokens <n> \
   --claude-input-tokens <n> ... --cursor-output-tokens <n> \
@@ -28,7 +29,7 @@ bash scripts/render-run-summary.sh \
   ...
 ```
 
-Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available so the cost line matches `token-cost.sh` per-bucket pricing; aggregate `--*-tokens` remains as backward-compatible fallbacks.
+Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available so the cost line matches `token-cost.sh` per-bucket pricing; aggregate `--*-tokens` remains as backward-compatible fallbacks. `--emergency-requested` defaults to `false`; when `true`, the body includes `- Emergency: true`.
 
 ### `--skill design`
 

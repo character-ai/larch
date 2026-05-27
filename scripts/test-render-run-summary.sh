@@ -31,6 +31,7 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
     --run-id RUN-X \
     --mode '--quick' \
     --workflow-path SIMPLE \
+    --emergency-requested true \
     --duration '00:01:00' \
     --claude-tokens 1000000 \
     --codex-tokens 2000000 \
@@ -64,6 +65,7 @@ grep -Fq '<!-- larch:run-summary v=1 -->' "$TMP" || fail 'missing sentinel'
 grep -Fq '## /implement run RUN-X — merged' "$TMP" || fail 'missing title outcome'
 if grep -Fq '**Outcome**:' "$TMP"; then fail 'merged run must not emit Outcome bullet'; fi
 grep -Fq '**PR**:' "$TMP" || fail 'missing PR bullet when URL known'
+grep -Fq -- '- Emergency: true' "$TMP" || fail 'missing emergency line when requested'
 grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
 pass 'render body shape + sentinel + notes + cost'

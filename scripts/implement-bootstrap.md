@@ -12,6 +12,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--skip-cursor-probe` | no | flag | Forwarded to `session-setup.sh` / `check-reviewers.sh` (skip Cursor runtime probe). |
 | `--issue-number` | no | numeric string | Target issue for tracking adoption. Empty means no fresh Branch 2 adoption. |
 | `--forked-target` | no | `true` \| `false` | Default `false`. When `true`, tracking adoption is skipped and upstream context is fetched best-effort. |
+| `--emergency-requested` | no | `true` \| `false` | Default `false`. Forwarded to run-flag persistence and metadata summaries; also controls whether a Preflight `emergency-bypass.log` is surfaced as a warning. |
 | `--upstream-repo` | no | `OWNER/REPO` | Required by callers in fork mode when upstream issue context should be fetched. Validated as one owner/repo slash with GitHub-safe characters. |
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
 | `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. On availability mismatch emits the explicit-coder warning, sets `STALL_TRACKING=true`, and `IMPLEMENT_BAIL_REASON=coder-unavailable`. When omitted, `phase_coder_select` runs the Cursor → Codex → Claude waterfall. |
@@ -25,7 +26,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 - On `--resume-plan-tail`, the caller must preserve `IMPLEMENT_TMPDIR` and the existing `$IMPLEMENT_TMPDIR/session-env.sh`; the bootstrap reuses that session tmpdir instead of allocating a new plan-materialization workspace.
 - No direct reads of `$IMPLEMENT_TMPDIR/session-env.sh` before `session-setup.sh` succeeds (empty tmpdir guard).
 
-`phase_plan_materialize` reads `$PREFLIGHT_TMPDIR/plan-from-issue.txt` and writes conventional `$IMPLEMENT_TMPDIR/plan.txt` / `feature-description.txt` artifacts.
+`phase_plan_materialize` reads `$PREFLIGHT_TMPDIR/plan-from-issue.txt` and writes conventional `$IMPLEMENT_TMPDIR/plan.txt` / `feature-description.txt` artifacts. When `$PREFLIGHT_TMPDIR/emergency-bypass.log` exists and is non-empty, it appends that file to `$IMPLEMENT_TMPDIR/execution-issues.md` as a `Warnings` entry with site `implement-bootstrap emergency-bypass-log`.
 
 ## Outputs
 
@@ -33,7 +34,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 
 Machine-readable `KEY=value` lines. `LARCH_QUIET_DISABLE=1` is forced for this script so `emit_kv` writes to stdout (orchestrator command substitution). **Warnings** for repo / Codex / Cursor health use `larch_err` (stderr) so stdout stays KV-shaped.
 
-**Per-phase:** `phase_infra` emits a consolidated infra block via `emit_infra_kv_block` inside `emit_final_tail`, including `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, `ENTRY_GATE`, `SKIP_BRANCH_CHECK`, `IMPLEMENT_TMPDIR`, `SESSION_ID`, reviewer keys, `REPO`, `REPO_UNAVAILABLE`, `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `codex_available`, `cursor_available`, then umbrella keys: `ISSUE_NUMBER`, `RUN_ID`, `BRANCH_SELECTED`, `DEFERRED`, `STALL_TRACKING`, `BRANCH_NAME`, `BRANCH_ACTION`, `PLAN_FILE`, `coder`, `coder_fallback`, `IMPLEMENT_BAIL_REASON`.
+**Per-phase:** `phase_infra` emits a consolidated infra block via `emit_infra_kv_block` inside `emit_final_tail`, including `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, `ENTRY_GATE`, `SKIP_BRANCH_CHECK`, `IMPLEMENT_TMPDIR`, `SESSION_ID`, reviewer keys, `REPO`, `REPO_UNAVAILABLE`, `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `codex_available`, `cursor_available`, then umbrella keys: `ISSUE_NUMBER`, `RUN_ID`, `BRANCH_SELECTED`, `DEFERRED`, `STALL_TRACKING`, `BRANCH_NAME`, `BRANCH_ACTION`, `PLAN_FILE`, `EMERGENCY_REQUESTED`, `coder`, `coder_fallback`, `IMPLEMENT_BAIL_REASON`.
 
 `phase_plan_materialize` populates `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE`. `phase_coder_select` populates `coder` and, only when the implicit waterfall reaches Claude because both external implementers are unavailable, `coder_fallback=true`.
 
@@ -122,6 +123,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | Copy Preflight plan to `$IMPLEMENT_TMPDIR/plan.txt` | `phase_plan_materialize` |
 | Issue title/body compose (`gh issue view`) | `phase_plan_materialize` |
 | Persist run flags (`persist-implement-run-flags.sh`) | `phase_plan_materialize` |
+| Preflight emergency bypass log (`emergency-bypass.log`) | `phase_plan_materialize` warning append |
 | Dirty-tree checkpoint (`check-mid-run-dirty-tree.sh --mode checkpoint`) | `phase_plan_materialize` |
 | Slug derivation + `create-branch.sh --branch` | `phase_plan_materialize` |
 | Branch capture (`git-current-branch.sh`) | `phase_plan_materialize` |

@@ -176,14 +176,20 @@ STUB
 #!/usr/bin/env bash
 log=""
 site=""
+output_file=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --log) log=$2; shift 2 ;;
     --site) site=$2; shift 2 ;;
+    --output-file) output_file=$2; shift 2 ;;
     *) shift ;;
   esac
 done
-[ -n "$log" ] && { mkdir -p "$(dirname "$log")"; printf '%s\n' "$site" >> "$log"; }
+if [ -n "$log" ]; then
+  mkdir -p "$(dirname "$log")"
+  printf '%s\n' "$site" >> "$log"
+  [ -n "$output_file" ] && [ -f "$output_file" ] && cat "$output_file" >> "$log"
+fi
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/append-tool-failure.sh"
@@ -292,15 +298,18 @@ tmpdir=""
 issue=""
 run_id=""
 adopted="true"
+emergency="false"
 while [ $# -gt 0 ]; do
   case "$1" in
     --implement-tmpdir) tmpdir=$2; shift 2 ;;
     --issue-number) issue=$2; shift 2 ;;
     --run-id) run_id=$2; shift 2 ;;
     --adopted) adopted=$2; shift 2 ;;
+    --emergency-requested) emergency=$2; shift 2 ;;
     *) shift ;;
   esac
 done
+printf 'post-tracking-issue --emergency-requested %s\n' "$emergency" >>"$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/invoke-log.txt"
 if [ "${LARCH_TEST_POSTED:-true}" != "true" ]; then
   echo POSTED=false
   echo COMMENT_URL=
@@ -380,13 +389,15 @@ if [ "${SANDBOX_PERSIST_FLAGS_EXIT:-0}" -ne 0 ]; then
   exit "$SANDBOX_PERSIST_FLAGS_EXIT"
 fi
 tmpdir=""
+emergency="false"
 while [ $# -gt 0 ]; do
   case "$1" in
     --implement-tmpdir) tmpdir=$2; shift 2 ;;
+    --emergency-requested) emergency=$2; shift 2 ;;
     *) shift ;;
   esac
 done
-[ -n "$tmpdir" ] && printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\n' >"$tmpdir/run-flags.sh"
+[ -n "$tmpdir" ] && printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=%s\n' "$emergency" >"$tmpdir/run-flags.sh"
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/persist-implement-run-flags.sh"
@@ -988,11 +999,25 @@ do
     rm -rf "$SANDBOX" "$SANDBOX_TMP"
 done
 
-# --- B5-coder-implicit-cursor ---
+# --- B5-plan-emergency ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
+printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergency --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency exit 0"
+assert_contains "EMERGENCY_REQUESTED=true" "$out" "B5-plan-emergency stdout KV"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" "$invoke" "B5-plan-emergency persist arg"
+assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "B5-plan-emergency metadata arg"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "implement-bootstrap emergency-bypass-log" "$issues" "B5-plan-emergency warning site"
+assert_contains "BYPASS kind=missing-plan issue=123" "$issues" "B5-plan-emergency warning content"
+assert_contains "EMERGENCY_REQUESTED=true" "$(cat "$SANDBOX_TMP/run-flags.sh")" "B5-plan-emergency run flags"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCursor --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-implicit-cursor exit 0"
 assert_line "coder=cursor" "$out" "B5-coder-implicit-cursor coder"

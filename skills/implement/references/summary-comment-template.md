@@ -17,7 +17,8 @@ and `/implement` (Code Flow). All other markers remain run-scoped.
 
 The `larch:final-summary` body is rich markdown produced by
 `scripts/render-run-summary.sh`: it opens with a `## /…` header and bullet lines,
-then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
+including optional `- Emergency: true` when `/implement --emergency` was
+requested, then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
 note lines from `--note-lines-file` (sentinel is the last line of the
 standardized block, not the first line of the file).
 `/implement` and `/design` share the same `larch:final-summary` marker family; the
@@ -31,5 +32,8 @@ terminal log-flush step. **Exception**: `larch:diagrams` embeds diagram bodies
 directly in the shared issue comment; diagrams are not written as a larch-log
 batch. `/design` owns the Architecture section and `/implement` owns the Code
 Flow section.
+
+The `larch:metadata` body may include `Emergency: true` when the run was started
+with `/implement --emergency`; the line is omitted when false.
 
 **When to load**: when editing `/implement` tracking-issue publication steps (Step 0 tracking + plan materialization tail, 9a.1, 11, 18).

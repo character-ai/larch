@@ -102,6 +102,8 @@ REPO="$(read_kv REPO "$SESSION_ENV")"
 REPO_UNAV="$(read_kv REPO_UNAVAILABLE "$SESSION_ENV")"; [ -n "$REPO_UNAV" ] || REPO_UNAV="false"
 
 NO_ISSUES="$(read_kv NO_ISSUES "$RUN_FLAGS")"; [ -n "$NO_ISSUES" ] || NO_ISSUES="false"
+EMERGENCY_REQUESTED="$(read_kv EMERGENCY_REQUESTED "$RUN_FLAGS")"; [ -n "$EMERGENCY_REQUESTED" ] || EMERGENCY_REQUESTED="false"
+case "$EMERGENCY_REQUESTED" in true|false) ;; *) EMERGENCY_REQUESTED=false ;; esac
 WORKFLOW_PATH="$(read_kv WORKFLOW_PATH "$RUN_FLAGS")"
 [ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="$(read_kv POST_PLAN_WORKFLOW_PATH "$SESSION_ENV")"
 [ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="N/A"
@@ -423,6 +425,7 @@ run_body_render() {
         --run-id "$RUN_ID" \
         --mode "$mode_str" \
         --workflow-path "$WORKFLOW_PATH" \
+        --emergency-requested "$EMERGENCY_REQUESTED" \
         --duration "$DURATION" \
         "${cost_args[@]}" \
         --issue-number "$ISSUE" \
@@ -447,6 +450,9 @@ compose_self_fallback() {
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${mode_str:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
+        if [ "${EMERGENCY_REQUESTED:-false}" = "true" ]; then
+            printf -- '- Emergency: true\n'
+        fi
         printf -- '- **Duration**: %s\n' "${DURATION:-N/A}"
         printf -- '- **Cost**: N/A\n'
         if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ]; then

@@ -28,6 +28,7 @@ UP_TO_PHASE=""
 CALLER_ENV_OPT=""
 ISSUE_NUMBER_OPT=""
 FORKED_TARGET=false
+EMERGENCY_REQUESTED=false
 UPSTREAM_REPO_OPT=""
 RUN_ID_OPT=""
 PREFLIGHT_TMPDIR_OPT=""
@@ -73,7 +74,7 @@ coder=""
 coder_fallback=""
 
 usage() {
-    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--coder claude|codex|cursor] [--preflight-tmpdir PATH] [--resume-plan-tail]"
+    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--emergency-requested true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--coder claude|codex|cursor] [--preflight-tmpdir PATH] [--resume-plan-tail]"
 }
 
 die_usage() {
@@ -674,7 +675,9 @@ phase_tracking() {
         --implement-tmpdir "$IMPLEMENT_TMPDIR" \
         --issue-number "$ISSUE_NUMBER_RESOLVED" \
         --run-id "$RUN_ID" \
-        --adopted true 2>"$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log")
+        --adopted true \
+        --emergency-requested "$EMERGENCY_REQUESTED" \
+        2>"$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log")
     post_rc=$?
     posted=$(kv_value_from_block POSTED "$post_out")
     if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
@@ -696,6 +699,7 @@ phase_plan_materialize() {
     local tally_body_raw tally_body tally_rc tally_err
     local summary_body_raw summary_body summary_rc summary_err
     local summary_args
+    local bypass_log
 
     gh_issue_arg=$ISSUE_NUMBER_RESOLVED
     [ "$FORKED_TARGET" = "true" ] && gh_issue_arg=$ISSUE_NUMBER_OPT
@@ -716,6 +720,18 @@ phase_plan_materialize() {
             emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
             emit_kv STEP_FAILED copy-plan
             exit 2
+        fi
+        bypass_log="$PREFLIGHT_TMPDIR_OPT/emergency-bypass.log"
+        if [ -s "$bypass_log" ]; then
+            "$SCRIPT_DIR/append-tool-failure.sh" \
+                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                --site "implement-bootstrap emergency-bypass-log" \
+                --tool "/implement --emergency preflight" \
+                --exit-code 0 \
+                --category Warnings \
+                --output-file "$bypass_log" \
+                --status-label bypassed \
+                --redact || true
         fi
 
         gh_err="$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"
@@ -743,6 +759,7 @@ phase_plan_materialize() {
             --implement-tmpdir "$IMPLEMENT_TMPDIR" \
             --no-issues false \
             --workflow-path HARD \
+            --emergency-requested "$EMERGENCY_REQUESTED" \
             >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
             2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
         persist_rc=$?
@@ -1113,6 +1130,7 @@ emit_final_tail() {
     emit_kv BRANCH_NAME "${BRANCH_NAME:-}"
     emit_kv BRANCH_ACTION "${BRANCH_ACTION:-}"
     emit_kv PLAN_FILE "${PLAN_FILE:-}"
+    emit_kv EMERGENCY_REQUESTED "${EMERGENCY_REQUESTED:-false}"
     emit_kv coder "${coder:-}"
     emit_kv coder_fallback "${coder_fallback:-}"
     emit_kv IMPLEMENT_BAIL_REASON "${IMPLEMENT_BAIL_REASON:-}"
@@ -1141,6 +1159,14 @@ main() {
                 case "$2" in
                     true|false) FORKED_TARGET=$2 ;;
                     *) die_usage "--forked-target must be true or false" ;;
+                esac
+                shift 2
+                ;;
+            --emergency-requested)
+                [ $# -ge 2 ] || die_usage "--emergency-requested requires a value"
+                case "$2" in
+                    true|false) EMERGENCY_REQUESTED=$2 ;;
+                    *) die_usage "--emergency-requested must be true or false" ;;
                 esac
                 shift 2
                 ;;

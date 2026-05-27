@@ -51,6 +51,23 @@ assert_contains 'POSTED=true' "$out" 'happy path posts'
 assert_contains 'COMMENT_URL=https://example.test/comment/1' "$out" 'happy path emits URL'
 assert_contains '<!-- larch:metadata v1 runid=run-1 -->' "$(cat "$TMP_ROOT/args.log")" 'marker passed'
 assert_contains "Coder: \`codex\`" "$(cat "$TMP_ROOT/content.md")" 'content includes coder from session-env'
+assert_contains "Larch version: \`9.9.9\`" "$(cat "$TMP_ROOT/content.md")" 'content includes version'
+
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-em.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content-em.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested true)
+assert_contains 'POSTED=true' "$out" 'emergency metadata posts'
+assert_contains 'Emergency: true' "$(cat "$TMP_ROOT/content-em.md")" 'emergency metadata includes line'
+
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-emf.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content-emf.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested false)
+assert_contains 'POSTED=true' "$out" 'non-emergency metadata posts'
+if grep -Fq 'Emergency: true' "$TMP_ROOT/content-emf.md"; then
+    fail 'non-emergency metadata omits line'
+else
+    pass 'non-emergency metadata omits line'
+fi
 
 # Missing --implement-tmpdir
 set +e
