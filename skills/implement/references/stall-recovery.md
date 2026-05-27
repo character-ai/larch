@@ -1,5 +1,11 @@
 # Stall Recovery Reference
 
+**Consumer**: `/implement` Step 18a — the orchestrator-facing stall recovery gate that runs at the start of every Step 18 entry when `STALL_TRACKING` is true in any layer.
+
+**Contract**: Authoritative procedure for Step 18a stall recovery. `skills/implement/scripts/stall-recovery-report.sh` owns classification, attempt bookkeeping, dev-clone detection, and sanitized report composition. Retry caps are authoritative only in `skills/implement/scripts/stall-recovery-report.md`; this reference points there and never duplicates them. Safety constraints (no Agent-tool subagents for code writes, no `finalize-state.sh` mutation, no `ScheduleWakeup`, Family B background+monitor pair for dispatch steps, no recursion into Step 18) are enumerated in the Procedure section below.
+
+**When to load**: loaded via MANDATORY directive at Step 18a entry when the three-layer `STALL_TRACKING` resolution (in-memory → `ship-pr-state.sh` → `session-env.sh`) returns true for any layer. Do NOT load when all layers are false or empty — in that case print `⏩ 18a: stall recovery — no stall detected` and proceed directly to Step 18b teardown.
+
 Step 18a loads this file only when `STALL_TRACKING` is true in any layer. It is orchestrator-facing procedure; `skills/implement/scripts/stall-recovery-report.sh` owns classification, attempt bookkeeping, dev-clone detection, and sanitized report composition. Retry caps live only in `skills/implement/scripts/stall-recovery-report.md`.
 
 ## Procedure

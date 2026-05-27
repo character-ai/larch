@@ -626,7 +626,7 @@ redact_to_file() {
 }
 
 cmd_bug_body_like() {
-    local mode=$1 tmpdir="" class_file="" attempts_file="" out_file raw_file dry_run=false
+    local mode=$1 tmpdir="" class_file="" attempts_file="" out_file="" raw_file="" dry_run=false
     shift
     while [ $# -gt 0 ]; do
         case "$1" in
