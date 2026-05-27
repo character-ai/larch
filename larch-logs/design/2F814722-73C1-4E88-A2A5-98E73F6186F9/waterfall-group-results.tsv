@@ -1,0 +1,16 @@
+plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	cursor-plan-edge	cursor	<TMPDIR>/cursor-plan-edge-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	cursor-plan-requirements	cursor	<TMPDIR>/cursor-plan-requirements-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-test-fixture-version-boundary	dyn-cursor-plan-test-fixture-version-boundary	cursor	<TMPDIR>/cursor-plan-dyn-test-fixture-version-boundary-output.txt	ok
+plan-dyn-test-fixture-version-boundary	dyn-codex-plan-test-fixture-version-boundary	codex	<TMPDIR>/codex-primary-plan-dyn-test-fixture-version-boundary-output.txt	ok
+plan-dyn-stat-stub-completeness	dyn-cursor-plan-stat-stub-completeness	cursor	<TMPDIR>/cursor-plan-dyn-stat-stub-completeness-output.txt	ok
+plan-dyn-stat-stub-completeness	dyn-codex-plan-stat-stub-completeness	codex	<TMPDIR>/codex-primary-plan-dyn-stat-stub-completeness-output.txt	ok
+plan-dyn-mtime-sort-secondary-key	dyn-cursor-plan-mtime-sort-secondary-key	cursor	<TMPDIR>/cursor-plan-dyn-mtime-sort-secondary-key-output.txt	ok
+plan-dyn-mtime-sort-secondary-key	dyn-codex-plan-mtime-sort-secondary-key	codex	<TMPDIR>/codex-primary-plan-dyn-mtime-sort-secondary-key-output.txt	ok
