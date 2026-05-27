@@ -1,0 +1,2 @@
+DECISION_1: THESIS — Defense A more directly matches the observed stdin-shaped failure and credibly shows why `/dev/null` fixes it with less session-semantic risk than `setsid`.
+DECISION_2: THESIS — Defense B better identifies the actual missing guard as the final pre-parse readiness barrier, while per-group waits add synchronization complexity around phases that already wait.

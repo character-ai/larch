@@ -1,0 +1,19 @@
+<steelman>
+Redirecting Codex stdin to `/dev/null` attacks the observed “stdin is closed” failure directly with a narrow shell change and avoids changing process-session semantics for monitored external-agent runs. Because `run-external-agent.sh` already owns timeout, diagnostics, and sentinel behavior, preserving its current process model is a legitimate safety argument.
+</steelman>
+<claim>
+Ship `setsid` session detachment instead, because the stated requirement is parent-shell-exit survival, and stdin redirection is a symptom patch that leaves session coupling intact while pretending to be the root fix.
+</claim>
+<evidence>
+`scripts/lib-codex-launcher-common.sh:7` says the file only preserves `codex_launcher_*` wrapper names, and `scripts/lib-codex-launcher-common.sh:12` merely sources `lib-external-launcher-common.sh`; it is not currently the spawn layer. The actual launch point is centralized in `scripts/run-external-agent.sh:205-213`, where the command is backgrounded, while Codex call sites route through it at `scripts/launch-review.sh:497-510` and `scripts/launch-codex-implement.sh:324-338`. That makes session detachment a single lifecycle decision at the real process boundary, not a Codex-shim fiction.
+</evidence>
+<strongest_concession>
+The best opposing point is that `setsid` is broader than stdin redirection: it may affect controlling-terminal assumptions and platform behavior, while `< /dev/null` is easy to reason about and matches the observed Codex error text.
+</strongest_concession>
+<counter_to_opposition>
+That concession loses on proportionality because the current failure class is explicitly parent-shell lifetime coupling, not interactive input support; `run-external-agent.sh:150-152` and `scripts/run-external-agent.sh:223-226` still retain explicit PID cleanup for normal wrapper exits and timeouts, so detaching the Codex session does not require abandoning monitored termination.
+</counter_to_opposition>
+<risk_if_wrong>
+If this position loses, `/dev/null` may suppress today’s Codex stdin complaint while leaving the next parent-exit or controlling-terminal hangup failure to recur under a different symptom, forcing a second launcher change in the same fragile Step 5 path.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

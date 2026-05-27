@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-code-voters.sh:48-52 (proposed)	set -e interacts badly with (( _wait_rc != 0 )) && larch_err	When wait-for-reviewers exits 0 (normal path), (( _wait_rc != 0 )) returns status 1 and set -e can abort dispatch-code-voters before parse-rate/tally	Replace with if (( _wait_rc != 0 )); then larch_err "..."; fi (or append || true to the arithmetic test)
