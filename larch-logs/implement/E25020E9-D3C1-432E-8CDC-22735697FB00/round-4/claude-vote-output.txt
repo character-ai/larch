@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- cannot verify from diff; nit-level and structure test should surface any real instance
+FINDING_3: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- cannot verify from diff; nit-level subprocess overhead concern
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- intentional thin-helper design; consolidation adds abstraction complexity
+FINDING_5: EXONERATE CORRECTNESS=uncertain SEVERITY=latent QUALITY=weak UNCERTAIN=true -- structure test harness should enforce coverage; terminal path with pause-check is low-risk
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly addressed via assert_bash_fences_have_pause_check structure test
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- publish script stages all tmpdir files; empty porcelain indicates genuine no-change state
+FINDING_12: EXONERATE CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- recovery branch format follows larch-log-design-<RUN_ID> convention matching the load constraint
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- single-runner invariant prevents concurrent design sessions; latent only
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

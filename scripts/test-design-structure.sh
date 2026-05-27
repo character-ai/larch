@@ -639,6 +639,74 @@ grep -Fq 'detected Brainstorm title prefix — auto-enabling brainstorm mode' "$
   || fail "(20) SKILL.md missing brainstorm info banner text"
 echo "PASS: (20) Step 0b title-eligibility filter anchors OK"
 
+# Check 21 (#2959): pause/resume prelude and completion sentinels.
+assert_bash_fences_have_pause_check() {
+  local missing
+  missing=$(awk '
+    /<!-- step:1c/ { start=1; in_fence=0 }
+    start && /^```bash$/ { in_fence=1; saw_source=0; saw_pause=0; next }
+    start && in_fence && /^```$/ {
+      if (saw_source && !saw_pause) print source_line
+      in_fence=0
+      next
+    }
+    start && in_fence && /current-design-env-\$PPID\.sh/ {
+      saw_source=1
+      source_line=NR
+      next
+    }
+    start && in_fence && saw_source && /design-pause-save\.sh/ { saw_pause=1 }
+  ' "$SKILL_MD")
+  [[ -z "$missing" ]] || fail "(21) current-design-env source lines missing pause-check after lines: $missing"
+}
+
+assert_step_completion_sentinels() {
+  local step start_pat end_pat start_line end_line section
+  for step in 0c 1c 1d 1d.5 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b 5b 5c 5d 6; do
+    case "$step" in
+      0c) start_pat='### 0c —'; end_pat='<!-- step:1c' ;;
+      1c) start_pat='<!-- step:1c'; end_pat='<!-- step:1d' ;;
+      1d) start_pat='<!-- step:1d —'; end_pat='<!-- step:1d.5' ;;
+      1d.5) start_pat='<!-- step:1d.5'; end_pat='<!-- step:1e' ;;
+      1e) start_pat='<!-- step:1e'; end_pat='<!-- step:2a' ;;
+      2a) start_pat='<!-- step:2a —'; end_pat='### 2a.5' ;;
+      2a.5) start_pat='### 2a.5'; end_pat='<!-- step:2b' ;;
+      2b) start_pat='<!-- step:2b —'; end_pat='### Step 2b.5' ;;
+      2b.5) start_pat='### Step 2b.5'; end_pat='<!-- step:3' ;;
+      3) start_pat='<!-- step:3 —'; end_pat='<!-- step:3.5' ;;
+      3.5) start_pat='<!-- step:3.5'; end_pat='<!-- step:3b' ;;
+      3b) start_pat='<!-- step:3b'; end_pat='<!-- step:4 —' ;;
+      4) start_pat='<!-- step:4 —'; end_pat='<!-- step:4b' ;;
+      4b) start_pat='<!-- step:4b'; end_pat='### 5b' ;;
+      5b) start_pat='### 5b'; end_pat='### 5c' ;;
+      5c) start_pat='### 5c'; end_pat='### 5d' ;;
+      5d) start_pat='### 5d'; end_pat='<!-- step:6' ;;
+      6) start_pat='<!-- step:6'; end_pat='' ;;
+    esac
+    start_line=$(grep -nF "$start_pat" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+    [[ -n "$start_line" ]] || fail "(21) SKILL.md missing start anchor for step $step"
+    if [[ -n "$end_pat" ]]; then
+      end_line=$(grep -nF "$end_pat" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+      [[ -n "$end_line" ]] || fail "(21) SKILL.md missing end anchor for step $step"
+      section=$(sed -n "${start_line},$((end_line - 1))p" "$SKILL_MD")
+    else
+      section=$(sed -n "${start_line},\$p" "$SKILL_MD")
+    fi
+    printf '%s\n' "$section" | grep -Fq ".completed/step-$step" \
+      || fail "(21) SKILL.md missing step-local .completed sentinel for step $step"
+  done
+}
+
+assert_bash_fences_have_pause_check
+assert_step_completion_sentinels
+grep -Fq '2.5-bis. **Resume detection**' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing resume detection sub-step"
+grep -Fq 'design-pause-load.sh' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing design-pause-load.sh invocation"
+grep -Fq '5.5-bis. **Refresh issue-bound env immediately after rename**' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing post-rename env refresh"
+echo "PASS: (21) /design pause/resume structure anchors OK"
+
 # Checks 24-26 (#2935): /design same-session re-entry guard pins.
 step0b_reentry_order=$(awk '
   /^### 0b / { in0b=1; next }

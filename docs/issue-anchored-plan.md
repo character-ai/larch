@@ -70,6 +70,36 @@ Rules:
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,
   `start` without `end`, or `end` without `start`.
 
+## Design Pause Block Format
+
+`/design` pause/resume uses a second paired issue-body marker:
+
+```text
+<!-- larch:design-pause:start -->
+ISSUE_NUMBER=<issue-number>
+REPO=<owner/repo>              # optional when repo resolution failed
+RUN_ID=<run-id>
+STEP=<step-id>
+SESSION_ID=<run-id>
+TIER=<classification>
+BRAINSTORM_DONE=true|false
+BODY_HASH=<sha256>
+PAUSED_AT=<utc timestamp>
+LOG_RECOVERY_BRANCH=<branch>   # optional
+<!-- larch:design-pause:end -->
+```
+
+The marker is written by `/larch:pause` through
+`scripts/design-pause-save.sh` and consumed only by `/design` through
+`scripts/design-pause-load.sh`. `BODY_HASH` is computed over the issue body with
+the pause marker stripped; resume warns with `WARN=body-drift` on mismatch and
+continues because the marker is the authoritative snapshot pointer.
+
+`ISSUE_NUMBER` must match the caller's `--issue`. `REPO`, when present, must
+match the caller repo (explicit `--repo` or resolved current repo). `RUN_ID`,
+`STEP`, and `LOG_RECOVERY_BRANCH` are validated before any git operation.
+Recovery branches must use the `larch-log-design-` prefix.
+
 ## Clarification Comment Markers
 
 **Live workflow:** `/implement` Preflight on `AUDIT=refuse` posts a

@@ -1,0 +1,50 @@
+Reviewing branch changes against the implementation plan: reading the diff and commit history.
+Diff is large; searching it and reading key implementation files for plan fidelity.
+Plan Fidelity review for issue #2959 (`/design` pause/resume) against the branch diff and implementation plan. Commits since `main`:
+
+- `61994009` / `909dab0d` — Address code review feedback (round 1)
+- `08edeebb` — Add pause and resume support for /design
+- Plus `chore(larch-logs)` flush commits (out of scope per reviewer rules)
+
+Overall, the branch lands the planned surface area: new pause scripts and contracts, thin `plan-block-write.sh` wrapper, `design-log-publish.sh --reason pause`, `skills/design/SKILL.md` resume/prelude/sentinel edits, harnesses, and docs. The gaps below are where behavior or tests diverge from the plan’s stated intent.
+
+### In-Scope Findings
+
+1. **Important** **correctness** `skills/pause/SKILL.md:45-56` — `/larch:pause` still creates `.pause-requested` before calling `design-pause-save.sh`, but the plan (FINDING_17) requires the skill to invoke the save helper **synchronously and directly** with no flag-then-defer primary path; the sentinel is only for the defensive Bash-prelude between `/design` boundaries. If the process is killed after `: > .pause-requested` but before save finishes, the orphaned-flag failure mode the plan removed can return; a successful save also leaves a redundant flag until save removes it. **Suggested fix:** Remove lines 45–46 from `skills/pause/SKILL.md` so the skill only runs `design-pause-save.sh` (with optional `--repo`); keep `.pause-requested` creation only in the `/design` prelude path for mid-run deferral.
+
+2. **Important** **correctness** `scripts/design-pause-load.sh:197-210` — The plan requires asserting restored root artifacts **before deleting** the pause marker so a failed restore leaves the marker for retry. The loader deletes the marker via `named-block-write.sh --delete` and only then `cp`s into `$DESIGN_TMPDIR`; if `cp` fails (`ERROR=restore-install-failed`), the issue body no longer has `larch:design-pause` but the fresh tmpdir is still empty, so the next `/design` starts fresh with no automatic resume pointer despite a durable log snapshot. **Suggested fix:** Copy staged artifacts into `$DESIGN_TMPDIR` first, re-assert `plan.txt` / `run-params.json` / `pause-state.txt` at the tmpdir root, then delete the marker; align `scripts/design-pause-load.md` if the contract text should match the plan ordering.
+
+3. **Important** **correctness** `skills/design/scripts/test-design-pause-resume.sh` (plan test case **(m)**) — The plan requires that with `.completed/step-1c` and `.completed/step-2a` present (and intermediate steps absent), save picks `STEP=1d` by registry file order, not lexicographic order. The harness only checks `step-1c` alone → `STEP=1d` and `step-1c`+`step-1d` → `STEP=1d.5`; it never creates `step-2a` without `1d`/`1e`/… and asserts `STEP=1d`. A regression that skips registry rows between completed sentinels would not fail CI. **Suggested fix:** Add a dedicated case: touch only `step-1c` and `step-2a`, run save, assert stdout contains `STEP=1d`.
+
+4. **Latent** **risk-integration** `skills/design/SKILL.md:73,342-1138` — Plan FINDING_4 threads optional `--repo OWNER/REPO` through pause save/load from Step 0b’s `resolve-repo.sh`, and save persists `REPO=` in the marker for fail-closed load. Every Bash-prelude `exec design-pause-save.sh` line passes only `--issue "$ISSUE_NUMBER"` (no `${REPO:+--repo "$REPO"}`), while `/larch:pause` does pass `--repo` when resolved. A defensive prelude save on a hub issue in a non-default repo can write markers with one `REPO` binding while the prelude save uses `gh`’s default repo, causing `repo-mismatch` or wrong publish targets on resume. **Suggested fix:** Export `REPO` into session env after Step 0b resolution (or re-resolve in the prelude) and append `${REPO:+--repo "$REPO"}` to every prelude `design-pause-save.sh` invocation.
+
+5. **Nit** **correctness** `docs/issue-anchored-plan.md:77-87` — Acceptance requires documenting the full KV payload schema, but the LIVE catalog example omits `ISSUE_NUMBER=` and `REPO=` even though `design-pause-save.sh` writes them and `design-pause-load.sh` fail-closes on mismatch (`scripts/design-pause-save.sh:131-134`, `design-pause-load.sh:121-131`). Operators reading only the wire-format doc will not know those binding fields are required for safe resume. **Suggested fix:** Add `ISSUE_NUMBER=` and optional `REPO=` to the documented marker block in `docs/issue-anchored-plan.md`.
+
+### Out-of-Scope Observations
+
+1. **Latent** **architecture** `SECURITY.md:365` — The external-delegation paragraph still documents Cursor review as `cursor agent -p --trust --mode plan`; that predates this feature branch and is unrelated to pause/resume, but it contradicts the security narrative elsewhere (`--mode ask` migration). Not in the #2959 file list.
+
+2. **Nit** **architecture** `scripts/design-log-publish.sh:431-481` — `.completed/` staging runs for all publish reasons, not only `--reason pause`; the plan allowed “always stage” as harmless, so this is intentional drift, not a blocker.
+
+### Plan completeness (summary)
+
+| Plan requirement | Status |
+|------------------|--------|
+| New scripts + `.md` siblings | Present |
+| `plan-block-write.sh` → `named-block-write.sh --marker plan` | Present |
+| `design-log-publish.sh --reason pause` (subject, `paused`, force-with-lease, `.completed/`) | Present |
+| Step 0b 2.5-bis / 5.5-bis, prelude pause-check, success-boundary sentinels | Present |
+| `step-name-registry.tsv` rows `0c`, `5b`, `5c`, `5d` | Present |
+| `test-design-structure.sh` assertions | Present |
+| `test-design-pause-resume` + Makefile shard | Present |
+| `test-design-log-publish.sh` pause fixtures | Present |
+| README / `docs/skills.md` / `docs/issue-anchored-plan.md` / AGENTS / `gh-body-file.md` | Present (schema nit above) |
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/pause/SKILL.md:45-56	/larch:pause writes .pause-requested before synchronous save	Plan FINDING_17 removes flag-then-defer on the primary pause path; kill between touch and save can orphan the sentinel or reintroduce defer-only behavior	Remove .pause-requested creation from skills/pause/SKILL.md; call design-pause-save.sh directly with optional --repo
+2	in_scope	important	correctness	scripts/design-pause-load.sh:197-210	Marker deleted before artifacts are installed in caller DESIGN_TMPDIR	After gh delete succeeds but cp -R fails, LOAD_OK=false and the issue has no pause marker, so resume auto-detection is lost while the log snapshot still exists	Copy staged tree into DESIGN_TMPDIR and re-assert required files, then delete the marker; update design-pause-load.md to match
+3	in_scope	important	correctness	skills/design/scripts/test-design-pause-resume.sh	Plan harness case (m) for registry-order STEP selection is missing	With only step-1c and step-2a sentinels present, a broken registry walk could pick the wrong STEP without failing CI	Add a test that touches only .completed/step-1c and step-2a and asserts STEP=1d on save stdout
+4	in_scope	latent	risk-integration	skills/design/SKILL.md:73,342-1138	Bash-prelude pause-save omits --repo while marker binding requires REPO	Defensive prelude save in a non-default-repo context can write or read the wrong GitHub repo vs the marker REPO= binding	Export REPO in session env and pass ${REPO:+--repo "$REPO"} on every prelude design-pause-save.sh exec line
+5	in_scope	nit	correctness	docs/issue-anchored-plan.md:77-87	Wire-format catalog omits ISSUE_NUMBER and REPO KV fields	Operators following only issue-anchored-plan.md will not know load fail-closes on issue/repo binding	Document ISSUE_NUMBER= and optional REPO= in the larch:design-pause example block
+```

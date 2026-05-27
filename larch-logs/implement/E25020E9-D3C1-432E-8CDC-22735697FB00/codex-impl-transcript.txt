@@ -1,0 +1,21 @@
+Implemented `/design` pause/resume support end to end.
+
+Key changes:
+- Added `/larch:pause` in `skills/pause/SKILL.md`.
+- Added `design-pause-save/load` helpers and `named-block-write.sh`.
+- Kept `plan-block-write.sh` as a compatibility wrapper.
+- Extended `design-log-publish.sh` with `--reason pause`, `.completed/` staging, `paused=true`, and force-with-lease pause pushes.
+- Updated `/design` structure for early resume detection, pause prelude checks, and completion sentinels.
+- Added docs and harness coverage.
+
+Validation passed:
+- `bash scripts/relevant-checks.sh`
+- `make test-design-pause-resume`
+- `make test-plan-block`
+- `make test-design-structure`
+- `make test-design-log-publish`
+
+Wrote the required manifest at:
+`<TMPDIR>/manifest.json`
+
+No `qa-pending.json` was written because status is `complete`.

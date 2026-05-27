@@ -7,6 +7,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/design`](#design)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
+- [`/pause`](#pause)
 - [`/report-tokens`](#report-tokens)
 - [`scripts/relevant-checks.sh`](#relevant-checks-script)
 - [`/research`](#research)
@@ -52,6 +53,20 @@ Remove leftover larch session temp directories from `~/.cache/larch/sessions/` a
 **Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md) · [Diagram](../skills/design/diagram.svg)
 
 Design an implementation plan with collaborative multi-reviewer review. The [sketch topology](topology.md#design.sketch.regular_slots) documented in [Collaborative Sketches](collaborative-sketches.md) independently proposes architectural approaches when the router assigns a non-zero sketch budget, then the dialectic debate and [judge panel](topology.md#design.dialectic.judge_panel) described in `skills/shared/dialectic-protocol.md` resolves contested decisions. The [validation panel](topology.md#design.plan_review.cursor_archetypes) documented in [Review Agents](review-agents.md) then reviews the full plan. Tier flags (`--trivial` / `--simple` / `--hard`) select sketch + plan-review depth; `-p` / `--partition` (mutually exclusive with `--trivial`) requests the Step 2b.5 partition / break-up flow when no hard plan-size threshold trips; optional `--brainstorm` runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (Gate A re-entry only post-plan); `--manual` / `-m` restores per-iteration Gate B prompts, while the default auto-applies accepted findings — see `skills/design/references/flags.md`. Internal-only flags also live there. After final approval, **Step 5b** may file accepted non-security OOS items via `/larch:issue` (`[OOS]` prefix) before **Step 5c** writes the `larch:plan` block to the issue; **Step 6** removes the design tmpdir.
+
+## `/pause`
+
+**Arguments**: *(none)*
+
+**Source**: [`skills/pause/SKILL.md`](../skills/pause/SKILL.md)
+
+Pause a live `/design` session on the current Claude PID. The skill sources the
+current design session env, publishes the tmpdir with
+`design-log-publish.sh --reason pause`, writes a `larch:design-pause` marker in
+the issue body, and exits. Re-running `/design <issue>` detects that marker in
+Step 0b, restores the tmpdir, deletes the marker, and resumes at the first
+incomplete step. If no live `/design` env is present, it reports that there is
+nothing to pause and exits successfully.
 
 ## `/implement`
 

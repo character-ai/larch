@@ -46,9 +46,30 @@ branch by:
    `redact-secrets.sh` (in-process pipeline, same redactors as
    `larch_log_redact_file` without the larch-log stdout contract).
 6. Committing `larch-logs/design/<RUN_ID>/` with message containing `[skip ci]`.
+   `--reason pause` uses `pause design run` in the subject; the default
+   `--reason final` uses `flush design run`.
 7. Pushing the disposable branch, creating a PR with `gh pr create --head`
    (not `create-pr.sh`), squash-merging with `gh pr merge --squash --admin
    --delete-branch`, then `git worktree remove --force`.
+
+## Pause Reason
+
+`--reason final|pause` defaults to `final`. Pause callers MUST pass
+`--reason pause`.
+
+Pause publishes differ in four ways:
+
+- Commit subject: `chore(larch-logs): pause design run <RUN_ID> [skip ci]`.
+- Manifest: when there is a non-empty commit to publish, `manifest.json` is
+  updated with `.paused = true`. The empty-porcelain early-exit path does not
+  force a manifest rewrite; the issue-body `larch:design-pause` marker remains
+  the canonical paused signal.
+- Branch reuse: the script best-effort fetches an existing
+  `origin/larch-log-design-<RUN_ID>` ref before creating the disposable worktree
+  and pushes with `git push --force-with-lease`.
+- `.completed/`: any regular files under `$DESIGN_TMPDIR/.completed/` with
+  `step-*` basenames are staged to
+  `larch-logs/design/<RUN_ID>/.completed/` through the normal redaction path.
 
 ## PR creation exception
 
@@ -72,7 +93,7 @@ On stdout (parseable `KEY=value` lines):
 | `PUBLISH_OK` | `true` when the publish + merge tail succeeded; `false` on validation failure, init/copy/redact failure, git/gh errors, or merge refusal (`policy_denied`, etc.). |
 | `PR_NUMBER` | GitHub PR number when known (may be set when `PUBLISH_OK=false` if create succeeded but merge failed). |
 | `PR_URL` | PR URL when known. |
-| `RECOVERY_BRANCH` | Disposable branch name (`larch-log-design-<RUN_ID>`) when `PUBLISH_OK=false` after `git push` succeeded (remote may need operator cleanup). |
+| `RECOVERY_BRANCH` | Recovery ref name when `PUBLISH_OK=false`: `larch-log-design-<RUN_ID>` after a successful push that still needs cleanup, or `larch-log-design-recovery-<RUN_ID>` when push failed and the local commit was preserved only in the consumer clone. |
 
 `--dry-run` validates arguments, confirms `--design-tmpdir` exists, requires
 `git` and `gh` on `PATH`, resolves `git rev-parse --show-toplevel` and

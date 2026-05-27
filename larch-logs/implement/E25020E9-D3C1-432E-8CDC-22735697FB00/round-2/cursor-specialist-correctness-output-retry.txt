@@ -1,0 +1,51 @@
+Reviewing branch changes vs main: reading the precomputed diff, commit history, and key implementation files.
+Diff is large; I'll read it in sections and focus on the core pause/resume scripts.
+Checking whether resume routing documents handling of pre-rename titles and scanning the diff for `design-pause-load` ordering changes.
+Review complete. Preparing the structured findings report.
+## Commits reviewed
+
+```
+61994009 Address code review feedback (round 1)
+909dab0d Address code review feedback (round 1)
+a07e69c3 chore(larch-logs): flush implement run E25020E9-...
+08edeebb Add pause and resume support for /design
+5866dd8b chore(larch-logs): flush design run 241EE6B6-...
+05fb7d72 chore(larch-logs): flush design run C8FC6714-...
+```
+
+Core pause/resume logic is in the feature commit plus round-1 fixes; the bulk of the diff is committed `larch-logs/` artifacts (excluded from scope noise per instructions).
+
+---
+
+### In-Scope Findings
+
+- **correctness** `scripts/design-pause-load.sh:197-210` — **Plan-correctness (both):** After staging and artifact checks, the loader deletes the `larch:design-pause` marker and only then runs `cp -R` into `$DESIGN_TMPDIR`. The plan requires asserting restored artifacts **before** deleting the marker and treats marker removal as the atomic commit point of a successful resume. **Concrete scenario:** `named-block-write.sh --delete` succeeds, but `cp` fails (disk full, permissions, or path error). The issue body no longer has a pause marker (`LOAD_OK=false`, `ERROR=restore-install-failed`), while the fresh Step 0a tmpdir stays empty. The operator must recover manually from `larch-logs/design/<RUN_ID>/` on the remote branch. **Suggested fix:** Copy staged files into `$DESIGN_TMPDIR` first (or use a rename into place), re-assert required root files there, delete the marker only after install succeeds, then emit `LOAD_OK=true`.
+
+- **correctness** `skills/design/SKILL.md:206-207` — **Plan-correctness (both):** On `LOAD_OK=true`, Step 0b sub-step 2.5-bis skips sub-steps 2.5 through 6, including the title-eligibility filter (2.5) and the `[DESIGNING]` rename (5.5). FINDING_1 only covers paused **`[DESIGNING]`** issues; it does not cover pause during Step 0b before 5.5 or issues that still carry `[IMPLEMENTING]` (or another lifecycle prefix). **Concrete scenario:** Issue title is `[IMPLEMENTING] feature`, operator pauses during Step 0b (via `/larch:pause`, which does not use the Step 1c+ prelude) before sub-step 5.5 runs, then resumes. Resume bypasses `title_has_lifecycle_reject_prefix` and never runs the 5.5 rename, so `/design` continues on an `[IMPLEMENTING]` issue and may never get a `[DESIGNING]` title. **Suggested fix:** On successful load, always run 2.5 (or at least lifecycle-reject) before skipping; and/or run a best-effort 5.5 rename when the title is not already `[DESIGNING]` (using restored `run-params.json`), even when other 0b sub-steps are skipped.
+
+- **correctness** `skills/design/SKILL.md:206` — **Completeness w.r.t. plan (both):** The plan states that on resume, “all of those state mutations are already persisted in the restored tmpdir,” listing `[DESIGNING]` rename among them. The rename is a GitHub issue mutation, not a tmpdir artifact, and the resume path explicitly skips sub-step 5.5. **Concrete scenario:** Pause after Step 0b sub-step 4 (tier gate) but before 5.5; snapshot has `run-params.json` but the issue title is unchanged. Resume at `STEP=1c` never executes 5.5, so tracking/title state diverges from a normal fresh run. **Suggested fix:** Align SKILL.md and load behavior: either persist rename completion in `pause-state.txt` and run 5.5 on resume when absent, or narrow the plan claim to tmpdir-only state and document title handling.
+
+- **correctness** `scripts/design-pause-save.sh:192-199` — **Plan-correctness (plan):** After `named-block-write.sh`, save only checks the subprocess exit code, not `WRITTEN=true` / `FAILED=` on stdout (unlike other larch `gh` helpers). **Concrete scenario:** A future regression returns exit 0 with `FAILED=true` and no body update; save emits `PAUSE_OK=true` while the issue has no marker, so the next `/design` starts fresh despite an published snapshot. **Suggested fix:** Parse stdout for `WRITTEN=true` (and treat `FAILED=true` as `ERROR=marker-write-failed`) before emitting `PAUSE_OK=true`.
+
+- **correctness** `skills/pause/SKILL.md:45-46` — **Latent / plan (both):** `/larch:pause` still creates `.pause-requested` immediately before the synchronous `design-pause-save.sh` call. The plan de-emphasized flag-then-defer for FINDING_17 because save runs directly. **Concrete scenario:** Save fails after publish but before marker write (`PAUSE_OK=false`); `.pause-requested` remains. The operator continues the same `/design` turn; the next Step 1c+ prelude `exec`s save again, causing a second `--reason pause` publish while the operator already saw a failed `/larch:pause`. **Suggested fix:** Remove the sentinel write from `/larch:pause` on the synchronous path, or clear `.pause-requested` on any save failure.
+
+---
+
+### Out-of-Scope Observations
+
+- **correctness** `scripts/design-log-publish.sh:431-481` — `.completed/` staging runs for every publish reason, not only `--reason pause`. The plan left this as “TBD; staging always is harmless.” Out of scope because behavior is intentional and not a functional bug.
+
+- **correctness** `skills/design/SKILL.md` (argv) — `--run-id` is documented in `references/flags.md` but orchestration always publishes with `--run-id "$SESSION_ID"`. Pre-existing surface; not introduced by pause/resume.
+
+---
+
+Overall the branch delivers the planned helper split, publish-first save, registry-ordered `STEP`, structure tests, and a solid offline harness. The highest-risk gaps are **marker deletion before tmpdir install** and **resume skipping title/rename gates** for pauses that occur before Step 0b sub-step 5.5.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/design-pause-load.sh:197-210	Loader deletes the pause marker before copying staged artifacts into DESIGN_TMPDIR, contradicting plan atomicity.	named-block-write --delete succeeds but cp -R fails: marker is gone, LOAD_OK=false, fresh tmpdir empty, operator must manually recover from git log branch.	Copy into DESIGN_TMPDIR and re-assert artifacts first; delete marker only after install succeeds.
+1	in_scope	important	correctness	skills/design/SKILL.md:206-207	Resume skips title-eligibility filter and [DESIGNING] rename for all successful loads, not only post-rename pauses.	Pause during Step 0b before 5.5 on [IMPLEMENTING] title; resume bypasses lifecycle reject and never runs 5.5 rename.	On LOAD_OK=true run lifecycle filter and/or conditional 5.5 rename when title state requires it.
+1	in_scope	important	correctness	skills/design/SKILL.md:206	Plan claims [DESIGNING] rename is persisted in restored tmpdir but resume skips 5.5 entirely.	Pause after tier gate before 5.5; resume never applies [DESIGNING] despite continuing design steps.	Track rename in pause-state or run best-effort 5.5 on resume when title not yet designing.
+1	in_scope	latent	correctness	scripts/design-pause-save.sh:192-199	Save does not verify named-block-write WRITTEN=true on stdout.	Hypothetical exit-0 with FAILED=true leaves PAUSE_OK=true without issue marker.	Parse WRITTEN/FAILED from marker stdout before PAUSE_OK=true.
+1	in_scope	latent	correctness	skills/pause/SKILL.md:45-46	/larch:pause writes .pause-requested before synchronous save.	Save fails after publish; flag remains; next /design bash boundary republishes pause.	Omit flag on synchronous path or rm .pause-requested on save failure.
+```

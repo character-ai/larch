@@ -9,7 +9,7 @@
 #   RECOVERY_BRANCH=<branch name> (only when PUBLISH_OK=false after a successful git push)
 #
 # Usage:
-#   design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--dry-run]
+#   design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]
 #
 # Non-zero exits are reserved for unexpected shell failures; expected operational
 # failures still emit PUBLISH_OK=false and exit 0 so callers can parse stdout.
@@ -32,10 +32,11 @@ RUN_ID=""
 ISSUE=""
 REPO=""
 DRY_RUN=false
+REASON="final"
 
 usage() {
     larch_err "Usage:"
-    larch_err "  design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--dry-run]"
+    larch_err "  design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]"
     larch_err "Writes trimmed + redacted design tmpdir artifacts into a disposable worktree, commits with [skip ci], pushes, opens/merges a PR."
 }
 
@@ -45,6 +46,7 @@ while [[ $# -gt 0 ]]; do
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --issue) ISSUE="${2:?--issue requires a value}"; shift 2 ;;
         --repo) REPO="${2:?--repo requires a value}"; shift 2 ;;
+        --reason) REASON="${2:?--reason requires a value}"; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage; exit 1 ;;
@@ -61,6 +63,11 @@ if [[ -z "$DESIGN_TMPDIR" || -z "$RUN_ID" || -z "$ISSUE" ]]; then
     usage
     exit 1
 fi
+
+case "$REASON" in
+    final|pause) ;;
+    *) larch_err "design-log-publish: invalid --reason (expected final or pause)"; emit_publish_result false; exit 0 ;;
+esac
 
 if ! [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
     larch_err "design-log-publish: invalid --issue (expected positive integer)"
@@ -156,9 +163,19 @@ wt_cleanup() {
 }
 trap wt_cleanup EXIT
 
+REMOTE_BRANCH_EXISTS=false
+if [[ "$REASON" == "pause" ]]; then
+    git -C "$REPO_ROOT" fetch origin "$WT_BRANCH:refs/remotes/origin/$WT_BRANCH" >/dev/null 2>&1 || true
+    if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/remotes/origin/$WT_BRANCH"; then
+        REMOTE_BRANCH_EXISTS=true
+    fi
+fi
 if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
     larch_err "design-log-publish: branch $WT_BRANCH is already checked out in another worktree; concurrent or stale publish for this RUN_ID"
     emit_publish_result false
+    if [[ "$REASON" == "pause" && "$REMOTE_BRANCH_EXISTS" == true ]]; then
+        emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+    fi
     exit 0
 fi
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$WT_BRANCH"; then
@@ -180,7 +197,11 @@ if ! mkdir -p "$WT_DIR"; then
     emit_publish_result false
     exit 0
 fi
-if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "origin/$ORIGIN_DEFAULT" >/dev/null 2>&1; then
+WT_BASE_REF="origin/$ORIGIN_DEFAULT"
+if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+    WT_BASE_REF="origin/$WT_BRANCH"
+fi
+if ! git -C "$REPO_ROOT" worktree add -b "$WT_BRANCH" "$WT_DIR" "$WT_BASE_REF" >/dev/null 2>&1; then
     larch_err "design-log-publish: git worktree add failed"
     emit_publish_result false
     exit 0
@@ -198,6 +219,13 @@ fi
 
 design_artifact_excluded() {
     local name="$1"
+    if [[ "$REASON" != "pause" ]]; then
+        case "$name" in
+            .pause-requested|pause-save.out|pause-state.txt)
+                return 0
+                ;;
+        esac
+    fi
     case "$name" in
         *.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
             return 0
@@ -410,6 +438,58 @@ if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; t
     ENUM_RC_TMP=""
 fi
 
+if [[ "$REASON" == "pause" && ( -e "$DESIGN_TMPDIR/.completed" || -L "$DESIGN_TMPDIR/.completed" ) ]]; then
+    if [[ -L "$DESIGN_TMPDIR/.completed" ]]; then
+        larch_err "design-log-publish: .completed must not be a symlink"
+        emit_publish_result false
+        exit 0
+    fi
+    if [[ ! -d "$DESIGN_TMPDIR/.completed" ]]; then
+        larch_err "design-log-publish: .completed exists but is not a directory"
+        emit_publish_result false
+        exit 0
+    fi
+    completed_root=$(cd "$DESIGN_TMPDIR/.completed" && pwd -P) || {
+        larch_err "design-log-publish: cannot resolve .completed directory"
+        emit_publish_result false
+        exit 0
+    }
+    _sym_check=$(find "$completed_root" -type l -print -quit 2>/dev/null || true)
+    if [[ -n "$_sym_check" ]]; then
+        larch_err "design-log-publish: .completed tree must not contain symlinks (found: $_sym_check)"
+        emit_publish_result false
+        exit 0
+    fi
+    mkdir -p "$RUN_DEST/.completed"
+    while IFS= read -r f || [[ -n "$f" ]]; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            "$completed_root"/*) ;;
+            *)
+                larch_err "design-log-publish: .completed path outside resolved root: $f"
+                emit_publish_result false
+                exit 0
+                ;;
+        esac
+        rel=${f#"$completed_root/"}
+        if [[ ! "$rel" =~ ^step-[A-Za-z0-9._-]+$ ]]; then
+            larch_err "design-log-publish: unexpected file under .completed: $rel"
+            emit_publish_result false
+            exit 0
+        fi
+        if [[ -L "$f" ]]; then
+            larch_err "design-log-publish: .completed file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        design_publish_stage_file "$f" "$RUN_DEST/.completed/$rel" || {
+            larch_err "design-log-publish: staging failed for $f"
+            emit_publish_result false
+            exit 0
+        }
+    done < <(find "$completed_root" -type f | LC_ALL=C sort)
+fi
+
 if ! design_publish_breadcrumbs "$DESIGN_TMPDIR/breadcrumbs" "$RUN_DEST/breadcrumbs"; then
     emit_publish_result false
     exit 0
@@ -418,7 +498,14 @@ fi
 MF="$RUN_DEST/manifest.json"
 ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX")
-if ! jq --arg ts "$ts" '.updated_at = $ts' "$MF" >"$mf_tmp"; then
+if [[ "$REASON" == "pause" ]]; then
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts | .paused = true'
+else
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts'
+fi
+if ! jq --arg ts "$ts" "$jq_expr" "$MF" >"$mf_tmp"; then
     rm -f "$mf_tmp"
     larch_err "design-log-publish: manifest refresh failed"
     emit_publish_result false
@@ -439,6 +526,23 @@ if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
     exit 0
 fi
 if [[ -z "$_porcelain" ]]; then
+    if [[ "$REASON" == "pause" ]]; then
+        if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
+            if git -C "$REPO_ROOT" diff --quiet "origin/$WT_BRANCH" "origin/$ORIGIN_DEFAULT" -- "larch-logs/design/$RUN_ID" >/dev/null 2>&1; then
+                # No new delta; snapshot already on default branch. Fail closed so
+                # callers get a RECOVERY_BRANCH pointer rather than a silent success.
+                emit_publish_result false
+                emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+                exit 0
+            fi
+            emit_publish_result false
+            emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+            exit 0
+        fi
+        larch_err "design-log-publish: pause publish produced no new snapshot delta"
+        emit_publish_result false
+        exit 0
+    fi
     emit_publish_result true "" ""
     exit 0
 fi
@@ -448,7 +552,12 @@ if ! git -C "$WT_DIR" add -- "$rel"; then
     emit_publish_result false
     exit 0
 fi
-if ! git -C "$WT_DIR" commit -m "chore(larch-logs): flush design run ${RUN_ID} [skip ci]" -- "$rel" >/dev/null; then
+if [[ "$REASON" == "pause" ]]; then
+    commit_subject="chore(larch-logs): pause design run ${RUN_ID} [skip ci]"
+else
+    commit_subject="chore(larch-logs): flush design run ${RUN_ID} [skip ci]"
+fi
+if ! git -C "$WT_DIR" commit -m "$commit_subject" -- "$rel" >/dev/null; then
     larch_err "design-log-publish: git commit failed"
     emit_publish_result false
     exit 0
@@ -466,11 +575,19 @@ PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
 }
 printf 'Automated design log directory for run %s. Commit uses [skip ci].' "$RUN_ID" >"$PR_BODY_TMP"
 
-if ! git -C "$WT_DIR" push -u origin "$WT_BRANCH" >/dev/null 2>&1; then
+push_args=(-u origin "$WT_BRANCH")
+if [[ "$REASON" == "pause" ]]; then
+    push_args=(--force-with-lease -u origin "$WT_BRANCH")
+fi
+if ! git -C "$WT_DIR" push "${push_args[@]}" >/dev/null 2>&1; then
     larch_err "design-log-publish: git push failed"
     if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
-        git -C "$REPO_ROOT" branch -f "larch-log-design-recovery-${RUN_ID}" "$commit_sha" >/dev/null 2>&1 || true
-        larch_err "design-log-publish: local commit preserved on ref larch-log-design-recovery-${RUN_ID} ($commit_sha)"
+        local_recovery_branch="larch-log-design-recovery-${RUN_ID}"
+        git -C "$REPO_ROOT" branch -f "$local_recovery_branch" "$commit_sha" >/dev/null 2>&1 || true
+        larch_err "design-log-publish: local commit preserved on ref ${local_recovery_branch} ($commit_sha)"
+        emit_publish_result false
+        emit_kv RECOVERY_BRANCH "$local_recovery_branch"
+        exit 0
     fi
     emit_publish_result false
     exit 0
