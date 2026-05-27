@@ -1,0 +1,16 @@
+Implemented the orchestrator-inline directive count enforcement.
+
+Changed:
+- [scripts/lint-readability-preamble.sh](<OPERATOR_REPO_PATH>/scripts/lint-readability-preamble.sh): manifest rows now carry expected counts; existing-file mismatches report `expected N ... found M`; missing files keep the generic message.
+- [scripts/test-lint-readability-preamble.sh](<OPERATOR_REPO_PATH>/scripts/test-lint-readability-preamble.sh): fixture now emits the required multi-directive `SKILL.md` case and covers zero-count, partial-count, and missing-file behavior.
+- Updated the sibling contract docs for the changed manifest grammar and harness shape.
+
+Validation passed:
+- `bash scripts/test-lint-readability-preamble.sh`
+- `bash scripts/lint-readability-preamble.sh`
+- `make test-lint-readability-preamble`
+- `bash scripts/lint-bash32.sh`
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`
+
+Wrote the required complete manifest atomically to `<TMPDIR>/manifest.json`. No `qa-pending.json` was written.

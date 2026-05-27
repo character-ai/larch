@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- real but enforcing per-step placement would require heavier anchoring logic for a low-probability bypass
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplication exists, but the harness still calls the lint manifest and should fail when fixture counts go stale
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- adding a lint manifest row without fixture updates makes the compliant fixture fail rather than letting tests pass
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=true -- this is a stacking/process dependency already captured in the plan, not a concrete code-review defect
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the docs name the expected/found form as orchestrator-inline-specific, so any ambiguity is too small to require a change
