@@ -1,0 +1,20 @@
+Implemented the prompt-only fix and wrote the completion manifest at:
+
+`<TMPDIR>/manifest.json`
+
+Changes include:
+- Added Codex Hard guard #9 and regenerated `agents/codex-implementer.md`.
+- Updated Cursor generator to strip the Codex-only guard; verified Cursor prompt does not contain it.
+- Added Codex CI fixer prompt guidance.
+- Added `interactive-subprocess-unsupported` to manifest schema docs.
+- Added harness pins for Codex presence, Cursor absence, and rendered CI prompt content.
+
+Validation:
+- `bash skills/implement/scripts/test-codex-implementer.sh` passed: 44/44
+- `bash skills/implement/scripts/test-cursor-implementer.sh` passed: 38/38
+- `bash scripts/test-launch-codex-ci.sh` passed: 31/31
+- `bash scripts/generate-codex-implementer.sh --check` passed
+- `bash scripts/generate-cursor-implementer.sh --check` passed
+- `bash scripts/relevant-checks.sh` passed
+
+Caveat: `make lint` failed in an unrelated existing harness path, `test-dispatch-panel-core`, where the harness expected a review breadcrumb line but `dispatch-panel.sh` returned only KV output. I recorded that as an OOS observation in the manifest.

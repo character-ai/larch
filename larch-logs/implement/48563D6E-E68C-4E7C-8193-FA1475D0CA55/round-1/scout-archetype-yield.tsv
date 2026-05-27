@@ -1,0 +1,7 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+structure	code-quality	1	2	0	0	0.000000
+correctness	correctness	1	6	0	6	0.000000
+testing	risk-integration	1	1	0	0	0.000000
+security	security	1	4	0	4	0.000000
+edge-cases	correctness	1	1	0	0	0.000000
+plan-fidelity	architecture	1	0	0	0	n/a
