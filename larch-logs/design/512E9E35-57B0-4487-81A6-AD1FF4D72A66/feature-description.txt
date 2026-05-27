@@ -1,0 +1,1 @@
+Get rid of trivial mode in /design, consolidating SIMPLE and HARD

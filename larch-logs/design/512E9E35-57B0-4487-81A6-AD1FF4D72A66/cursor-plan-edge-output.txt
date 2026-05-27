@@ -1,0 +1,73 @@
+Reading the implementation plan and exploring the referenced codebase paths.
+Reviewing the proposed #2956 tier consolidation against the current design scripts and gate contracts. Findings below.
+
+**1. [correctness] `skills/design/references/approval-gates.md:28-31` — Gate C cap is bypassable**  
+The plan increments `review-round-count.txt` on every shared Step 3 entry but only hides **Re-run review panel** at Gate C. **Discuss further → Gate A → Ready for review** also re-enters Step 3 (same entry block) with no cap check, so operators can run unlimited full panels after the Gate C option disappears.  
+**Suggested revision:** Either count only Gate C(c) re-entries toward the cap, or block Step 3 when `count >= cap` unless the path is first-time entry from Step 2b; document which loops are capped.
+
+**2. [correctness] Plan Approach / tier-gate copy — “Re-run cap: 3” vs counter semantics**  
+Increment happens immediately before each `plan-review-loop.sh` call, including the first Step 3. With cap checked at `count == 3`, SIMPLE allows **3 total panel runs** (initial + 2 Gate C re-runs), not 3 re-runs after the first. Tier-gate text (“Re-run cap: 3”) and failure-mode #3 mitigation are easy to misread.  
+**Suggested revision:** Rename copy to “max panel runs: 3” (and 5 for HARD), or increment only on Gate C(c) re-entry; align `approval-gates.md` and Step 0b descriptions.
+
+**3. [correctness] `skills/design/scripts/dispatch-plan-review-panel.sh:54-58` — Dynamic reviewers likely miss tier emphasis**  
+`append_shared_prompt_tail` pipes `render-plan-review-prompt.sh` through `tail -n +2`, assuming line 1 is `full_role`. If the plan prepends tier emphasis **before** `full_role`, dynamic prompts drop that line; up to 12 dynamic slots would not get SIMPLE/HARD bias.  
+**Suggested revision:** Prepend tier text after `full_role`, add tier block inside `write_dynamic_prompt`, or change tail stripping to a stable marker (e.g. skip through `full_role` only).
+
+**4. [correctness] `skills/design/SKILL.md:728-734` — `--round-num` still hardcoded to `1`**  
+The plan ties `plan-review-loop.sh --round-num` to `review-round-count.txt` but does not update the fenced Step 3 driver (still `--round-num 1`). Gate C re-runs would reuse `plan-review/round-1/` paths and overwrite per-round artifacts (`findings-classification.tsv`, etc.).  
+**Suggested revision:** Add a fenced read-increment-read block for the counter and pass `"$ROUND_NUM"` into `plan-review-loop.sh` on every Step 3 entry (including Gate A re-entry).
+
+**5. [risk-integration] Plan Step 3 / Gate C — No mechanical counter helper**  
+Cap enforcement is prompt-only (`increment` in SKILL.md, hide option in `approval-gates.md`). No bash helper with atomic read-modify-write, validation, or cap lookup. Orchestrator drift can miscount or skip the hide rule while still running expensive panels.  
+**Suggested revision:** Add `skills/design/scripts/review-round-counter.sh` (read / increment / at-cap) and call it from SKILL.md Step 3 and Gate C; extend `test-design-driver.sh` or a small harness.
+
+**6. [architecture] Plan edge cases — `read-design-classification` referenced but absent**  
+The plan cites `read-design-classification` with HARD fallback; the repo has `read-design-review-budget.sh` (deleted) but no classification reader. `render-plan-review-prompt.sh` will need `DESIGN_TMPDIR` + parsing; without a shared helper, fallbacks may diverge from SKILL.md.  
+**Suggested revision:** Add `read-design-classification.sh` (python3 → jq → grep; emit SIMPLE|HARD; exit non-zero on missing/invalid) and use it from `render-plan-review-prompt.sh`, Gate C cap logic, and SKILL.md.
+
+**7. [risk-integration] `Makefile:67,406-407` and `agent-lint.toml:896` — Deleted harness still wired**  
+The plan deletes `test-read-design-review-budget-invoke.sh` but does not list Makefile `test-harnesses-12` or `agent-lint.toml` exclude entries. First `make lint` will fail on a missing target or leave stale excludes.  
+**Suggested revision:** Remove the Makefile target and shard entry; delete the `agent-lint.toml` exclude lines for the removed script and `.md`.
+
+**8. [risk-integration] `scripts/test-design-structure.sh:242-244,372-382,501-522,709-736` — Structural pins under-specified in plan**  
+Deleting `plan-review-quick.md` breaks checks **7b**, **13q**, and **FINDING_2678**; renaming the validator breaks **14c14d–h** and Step 5c pins. The plan only mentions `--trivial` / `sketch_budget` grep updates.  
+**Suggested revision:** Explicitly remove or replace 7b/13q/FINDING_2678 pins, retarget validator pins to `invoke-plan-validator.sh`, and add pins for Gate C cap prose and Pre-Step-0 `--trivial` hard error.
+
+**9. [correctness] `skills/design/scripts/render-plan-review-prompt.sh` — No `DESIGN_TMPDIR` / classification failure contract**  
+The script today only takes `--archetype`, `--vendor`, `--plan-file`. The plan adds classification reads from `$DESIGN_TMPDIR/run-params.json` with no specified behavior when `DESIGN_TMPDIR` is unset or JSON is invalid (edge case says HARD fallback for SKILL callers only).  
+**Suggested revision:** Require `: "${DESIGN_TMPDIR:?}"`; on read failure default prefix to HARD and `emit` a WARN on FD 3; extend `test-plan-review-prompt.sh` with fixture run-params for both tiers.
+
+**10. [correctness] `skills/design/scripts/dispatch-plan-review-panel.sh:54-58` + testing — Tier emphasis harness gap**  
+Plan relies on manual smoke for emphasis phrases; `test-plan-review-prompt.sh` does not assert tier prefixes, and dynamic-path stripping (finding 3) would not be caught.  
+**Suggested revision:** Add harness cases with `DESIGN_TMPDIR` fixtures asserting SIMPLE/HARD prefix strings for static renders; add a dynamic-prompt integration case or pin updated `tail` behavior.
+
+**11. [OUT_OF_SCOPE] `scripts/test-effort-prose.sh:15` — Still lists deleted `plan-review-quick.md`**  
+Will fail once the file is removed.  
+**Suggested revision:** Drop that path from the `FILES` array.
+
+**12. [OUT_OF_SCOPE] `docs/voting-process.md:7` — Still links quick-mode / `plan-review-quick.md`**  
+Not in the plan file list; will contradict “both tiers run full panel.”  
+**Suggested revision:** Update to describe full 3-voter panel for all `/design` tiers; remove quick-mode paragraph and link.
+
+**13. [OUT_OF_SCOPE] `.claude/rules/topology-generation.md:10` — References deleted quick review doc**  
+Plan updates `topology.tsv` / `docs/topology.md` but not this rule.  
+**Suggested revision:** Remove the `plan-review-quick.md` row from the generation rule inputs.
+
+**14. [latent] `review-round-count.txt` — No non-numeric validation**  
+A corrupted file (empty, text, negative) can break `(( count++ ))` or cap checks in prompt-side bash.  
+**Suggested revision:** In the counter helper, treat non-numeric content as `0` and log a warning, or reset to `0` with a breadcrumb.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:28-31	Gate C cap only hides Re-run option	Discuss further → Gate A → Ready for review runs uncapped full panels after cap	Scope counter to Gate C(c) only or enforce cap on every Step 3 entry
+1	in_scope	important	correctness	plan.txt:11-20	Re-run cap wording vs pre-increment counter	SIMPLE allows 3 total panel runs not 3 re-runs; misleads operators	Rename to max panel runs or increment only on Gate C re-entry
+1	in_scope	important	correctness	skills/design/scripts/dispatch-plan-review-panel.sh:54-58	tail -n +2 drops first rendered line	Tier prefix before full_role never reaches dynamic reviewers	Prepend tier after full_role or inject in write_dynamic_prompt
+1	in_scope	important	correctness	skills/design/SKILL.md:728-734	--round-num hardcoded to 1	Re-runs overwrite plan-review/round-1 artifacts	Pass review-round-count into plan-review-loop.sh on every Step 3 entry
+1	in_scope	important	risk-integration	plan.txt:11-12	Counter increment is prompt-only only	Orchestrator skips increment or cap hide; unbounded cost	Add review-round-counter.sh and call from SKILL Step 3 and Gate C
+1	in_scope	important	architecture	plan.txt:164-165	read-design-classification cited but missing	Inconsistent tier reads and emphasis selection	Add read-design-classification.sh and use from renderer and gates
+1	in_scope	important	risk-integration	Makefile:67,406-407	Deleted budget harness still in Makefile	make lint fails on missing test target	Remove target and test-harnesses-12 shard entry
+1	in_scope	important	risk-integration	scripts/test-design-structure.sh:242-736	Structural pins for quick path and old validator name not in plan	make lint fails after deletion	Rewrite 7b/13q/FINDING_2678 and validator pins explicitly
+1	in_scope	important	correctness	skills/design/scripts/render-plan-review-prompt.sh:1-109	No DESIGN_TMPDIR or invalid JSON contract	Unset tmpdir or bad run-params yields wrong or empty tier prefix	Require DESIGN_TMPDIR; default HARD with WARN on read failure
+1	in_scope	latent	correctness	$DESIGN_TMPDIR/review-round-count.txt	No validation of counter file contents	Corrupt file breaks arithmetic or cap logic	Validate integer in counter helper; reset to 0 with warning
+1	out_of_scope	important	correctness	scripts/test-effort-prose.sh:15	Harness still references plan-review-quick.md	make lint fails after file delete	Remove path from FILES array
+1	out_of_scope	important	correctness	docs/voting-process.md:7	Doc still describes quick Claude-only plan review	Contradicts full-panel SIMPLE/HARD model	Update voting-process.md for unified panel
+1	out_of_scope	nit	architecture	.claude/rules/topology-generation.md:10	Topology rule still inputs deleted quick doc	Regeneration or lint may reference missing file	Remove plan-review-quick.md from rule inputs

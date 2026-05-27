@@ -1,0 +1,14 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:28-31	Gate C cap only hides Re-run option	Discuss further → Gate A → Ready for review runs uncapped full panels after cap	Scope counter to Gate C(c) only or enforce cap on every Step 3 entry
+1	in_scope	important	correctness	plan.txt:11-20	Re-run cap wording vs pre-increment counter	SIMPLE allows 3 total panel runs not 3 re-runs; misleads operators	Rename to max panel runs or increment only on Gate C re-entry
+1	in_scope	important	correctness	skills/design/scripts/dispatch-plan-review-panel.sh:54-58	tail -n +2 drops first rendered line	Tier prefix before full_role never reaches dynamic reviewers	Prepend tier after full_role or inject in write_dynamic_prompt
+1	in_scope	important	correctness	skills/design/SKILL.md:728-734	--round-num hardcoded to 1	Re-runs overwrite plan-review/round-1 artifacts	Pass review-round-count into plan-review-loop.sh on every Step 3 entry
+1	in_scope	important	risk-integration	plan.txt:11-12	Counter increment is prompt-only only	Orchestrator skips increment or cap hide; unbounded cost	Add review-round-counter.sh and call from SKILL Step 3 and Gate C
+1	in_scope	important	architecture	plan.txt:164-165	read-design-classification cited but missing	Inconsistent tier reads and emphasis selection	Add read-design-classification.sh and use from renderer and gates
+1	in_scope	important	risk-integration	Makefile:67,406-407	Deleted budget harness still in Makefile	make lint fails on missing test target	Remove target and test-harnesses-12 shard entry
+1	in_scope	important	risk-integration	scripts/test-design-structure.sh:242-736	Structural pins for quick path and old validator name not in plan	make lint fails after deletion	Rewrite 7b/13q/FINDING_2678 and validator pins explicitly
+1	in_scope	important	correctness	skills/design/scripts/render-plan-review-prompt.sh:1-109	No DESIGN_TMPDIR or invalid JSON contract	Unset tmpdir or bad run-params yields wrong or empty tier prefix	Require DESIGN_TMPDIR; default HARD with WARN on read failure
+1	in_scope	latent	correctness	$DESIGN_TMPDIR/review-round-count.txt	No validation of counter file contents	Corrupt file breaks arithmetic or cap logic	Validate integer in counter helper; reset to 0 with warning
+1	out_of_scope	important	correctness	scripts/test-effort-prose.sh:15	Harness still references plan-review-quick.md	make lint fails after file delete	Remove path from FILES array
+1	out_of_scope	important	correctness	docs/voting-process.md:7	Doc still describes quick Claude-only plan review	Contradicts full-panel SIMPLE/HARD model	Update voting-process.md for unified panel
+1	out_of_scope	nit	architecture	.claude/rules/topology-generation.md:10	Topology rule still inputs deleted quick doc	Regeneration or lint may reference missing file	Remove plan-review-quick.md from rule inputs

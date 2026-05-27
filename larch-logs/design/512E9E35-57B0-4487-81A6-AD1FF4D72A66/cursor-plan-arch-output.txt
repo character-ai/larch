@@ -1,0 +1,44 @@
+Reading the implementation plan and exploring the codebase paths it references.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:728-734	Step 3 plan-review driver still passes hardcoded --round-num 1	Plan says increment review-round-count.txt before plan-review-loop.sh and derive --round-num from that file, but the fenced Bash block still uses --round-num 1; round-N artifact paths and ROUNDS_COMPLETED KV stay at 1 across Gate C re-runs	Mirror plan-review-loop.md: add a Bash preface that reads/increments $DESIGN_TMPDIR/review-round-count.txt and passes --round-num "$count" into plan-review-loop.sh
+1	in_scope	important	architecture	skills/design/SKILL.md:865-887	Gate C re-run cap has no mechanical Step 4b wiring	approval-gates.md prose alone cannot hide AskUserQuestion options; orchestrators routinely improvise Gate C and exceed SIMPLE=3 / HARD=5 panel runs	Add Step 4b fenced Bash: read review-round-count.txt + design_classification from run-params.json, compute cap, set a shell flag, and branch the Gate C option list before AskUserQuestion (or a tiny gate-c-cap.sh helper)
+1	in_scope	important	risk-integration	Makefile:67,406-407; agent-lint.toml:896,1264	Deleted harness still registered in lint graph	Removing test-read-design-review-budget-invoke.sh without dropping Makefile test-harnesses-12 and agent-lint.toml entries breaks make lint with missing-script errors	Remove the target and agent-lint paths in the same PR as the script deletion; replace docs/linting.md row 217 with invoke-plan-validator.sh coverage if needed
+1	in_scope	important	correctness	scripts/test-design-structure.sh:242-244,372-382,730-736	Structural pins require plan-review-quick.md and FINDING_2678 location 4	Deleting plan-review-quick.md without rewriting checks 7b, 13q, and FINDING_2678 fails make lint even if SKILL.md is updated	Delete/replace quick-mode pins; relocate the YES↔EXONERATE anchor to a surviving authority (e.g. plan-review.md only) per test-design-structure.md
+1	in_scope	important	architecture	skills/design/SKILL.md:92-92	NEVER anti-pattern #1 still encodes TRIVIAL_DOC_ONLY / sketch_budget carve-out	Post-PR agents following Anti-patterns may still skip Step 2a only for router TRIVIAL_DOC_ONLY and write NO_SKETCHES_CLASSIFIED_TRIVIAL, contradicting SIMPLE/HARD-only tiers	Rewrite NEVER #1 to: skip sketches only when design_classification==SIMPLE (sentinel NO_SKETCHES_CLASSIFIED_SIMPLE); HARD always runs 4 sketches
+1	in_scope	important	integration	scripts/timing-ledger.sh:176-188; skills/design/SKILL.md	Plan claims timing-ledger reads run-params workflow_path but it does not	timing-ledger only records workflow via explicit workflow-path HARD|SIMPLE argv; standalone /design never calls it, so timing reports show unknown workflow despite v2 run-params	After Step 0b write-run-params, call timing-ledger.sh workflow-path "$(jq -r .design_classification …)" (SIMPLE|HARD only); align timing-report JSON field naming with run-analysis.sh if renaming workflow_path
+1	in_scope	important	correctness	skills/design/references/plan-review.md:140	plan-review.md still gates Step 3 on review_budget=full	Normative reference contradicts unconditional full panel and confuses implementers/docs grep hits	Update consumer line to design_classification / always-on plan-review-loop.sh; drop review_budget vocabulary
+1	in_scope	important	architecture	skills/design/references/approval-gates.md:11-11	Cross-tier invariant still names --trivial and plan-review-quick.md	Gate A/B/C prose still describes three tiers and quick self-review as a findings source	Replace with two-tier invariant (SIMPLE/HARD); Gate B always reads accepted-plan-findings.md from the full panel; remove plan-review-quick.md references
+1	in_scope	important	correctness	skills/design/scripts/test-plan-review-prompt.sh	Testing strategy requires tier-emphasis assertions but file not in change list	render-plan-review-prompt.sh prefix injection can land without harness coverage; regressions slip past make lint	Add UPDATED test-plan-review-prompt.sh (+ render-plan-review-prompt.md): fixtures for SIMPLE vs HARD run-params with locked "Tier emphasis" / scope-creep vs thoroughness substrings
+1	in_scope	latent	architecture	skills/design/references/approval-gates.md:11	Gate A per-tier short-circuit behavior undefined after trivial removal	Old trivial+simple one-round Gate A vs hard iteration is not specified for new SIMPLE vs HARD; operators get inconsistent discussion depth	Decide and document: e.g. SIMPLE one-round Gate A short-circuit, HARD may iterate; update approval-gates.md and test-design-structure pins
+1	in_scope	nit	correctness	skills/design/scripts/render-final-summary.sh:238-240	Plan omits trivial-specific PLAN_LINE branch when dropping --trivial	SUMMARY_MODE_STRING from argv may still hit *trivial* and emit skipped (trivial) incorrectly	Remove trivial case; use voting-tally.md presence only, or map SIMPLE without sketches to a neutral line
+1	in_scope	latent	correctness	plan.txt Edge cases	Edge case cites read-design-classification helper that does not exist	No shared script; render-plan-review-prompt.sh and Gate C may diverge on jq fallbacks vs HARD default	Add scripts/read-design-classification.sh (python3→jq→grep) or pin one inline pattern in SKILL.md + render-plan-review-prompt.sh
+1	out_of_scope	important	integration	.claude/rules/topology-generation.md:10	paths: still lists deleted plan-review-quick.md	Editing topology.tsv without updating the rule leaves a stale path trigger for editors	Remove plan-review-quick.md from paths: when deleting that reference file
+1	out_of_scope	important	correctness	docs/voting-process.md:7	Still documents --quick plan review via plan-review-quick.md	Public doc contradicts two-tier full-panel model	Update voting-process.md to state both SIMPLE and HARD use the 3-voter panel on full plan-review
+
+**1. [in_scope / important / correctness]** `skills/design/SKILL.md:728-734` — Step 3 still passes `--round-num 1` while the plan requires `review-round-count.txt` to drive round numbering. Gate C re-runs will not advance `plan-review/round-$N/` paths or `ROUNDS_COMPLETED`.
+
+**2. [in_scope / important / architecture]** `skills/design/SKILL.md:865-887` — Gate C cap is specified only in `approval-gates.md` prose. Without Step 4b mechanical branching, the re-run cap (SIMPLE=3, HARD=5) will not be enforced reliably.
+
+**3. [in_scope / important / risk-integration]** `Makefile:67,406-407`, `agent-lint.toml:896,1264` — Deleting `test-read-design-review-budget-invoke` without removing Makefile/agent-lint registrations will break `make lint`.
+
+**4. [in_scope / important / correctness]** `scripts/test-design-structure.sh:242-244,372-382,730-736` — Structural harness still requires `plan-review-quick.md` (checks 7b, 13q, FINDING_2678). Must be rewritten when that file is deleted.
+
+**5. [in_scope / important / architecture]** `skills/design/SKILL.md:92` — NEVER #1 still references `TRIVIAL_DOC_ONLY` / `sketch_budget` / `NO_SKETCHES_CLASSIFIED_TRIVIAL`; not called out in the plan’s SKILL.md edits.
+
+**6. [in_scope / important / integration]** `scripts/timing-ledger.sh:176-188` — Plan says timing-ledger reads `run-params.json`, but today workflow comes only from `timing-ledger.sh workflow-path HARD|SIMPLE`, which `/design` never invokes. Timing reports can remain `unknown` unless Step 0b adds a ledger write from `design_classification`.
+
+**7. [in_scope / important / correctness]** `skills/design/references/plan-review.md:140` — Still documents `review_budget=full`; missing from the plan’s file list.
+
+**8. [in_scope / important / architecture]** `skills/design/references/approval-gates.md:11` — Cross-tier invariant still references `--trivial` and `plan-review-quick.md`.
+
+**9. [in_scope / important / correctness]** `skills/design/scripts/test-plan-review-prompt.sh` — Testing strategy requires tier-emphasis assertions but the harness is not listed under Files to modify.
+
+**10. [in_scope / latent / architecture]** `skills/design/references/approval-gates.md:11` — Gate A short-circuit behavior for old trivial/simple vs hard is not re-specified for SIMPLE vs HARD.
+
+**11. [in_scope / nit / correctness]** `skills/design/scripts/render-final-summary.sh:238-240` — `*trivial*` PLAN_LINE branch not mentioned for removal.
+
+**12. [in_scope / latent / correctness]** Plan edge cases — `read-design-classification` helper is referenced but no such script exists in the repo.
+
+**[OUT_OF_SCOPE]** `.claude/rules/topology-generation.md:10` — `paths:` still includes `plan-review-quick.md`.
+
+**[OUT_OF_SCOPE]** `docs/voting-process.md:7` — Still describes `--quick` / `plan-review-quick.md` plan review.

@@ -1,0 +1,287 @@
+### FINDING_1: Step 3 still hardcodes review round 1
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Step 3 does not wire the review-round counter into `plan-review-loop.sh`; repeated Gate C or Gate A review entries can keep writing round-1 artifacts and emitting round-1 KVs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror plan-review-loop.md: add a Bash preface that reads/increments $DESIGN_TMPDIR/review-round-count.txt and passes --round-num "$count" into plan-review-loop.sh
+  - From Cursor-Edge: Pass review-round-count into plan-review-loop.sh on every Step 3 entry
+  - From Cursor-Pragmatic: Replace --round-num 1 with read of review-round-count.txt after increment; document same block for all Step 3 entry paths (Gate C re-run, Gate A re-entry)
+
+### FINDING_2: Gate C cap lacks executable wiring
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The Gate C re-run cap is only described in prose; without mechanical Step 4b logic, operators can still offer or run review-panel options beyond the intended SIMPLE/HARD caps.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add Step 4b fenced Bash: read review-round-count.txt + design_classification from run-params.json, compute cap, set a shell flag, and branch the Gate C option list before AskUserQuestion (or a tiny gate-c-cap.sh helper)
+
+### FINDING_3: Deleted review-budget harness remains wired into lint
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Edge, Codex-Edge, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements, Cursor-dyn-stale-ref-hunter, Codex-dyn-stale-ref-hunter, Cursor-dyn-deletion-completeness, Codex-dyn-deletion-completeness
+- **Severity**: important
+- **Concern**: The plan deletes `test-read-design-review-budget-invoke` files but leaves live Makefile and/or agent-lint references, so `make lint` or agent-lint can fail on removed paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Remove the target and agent-lint paths in the same PR as the script deletion; replace docs/linting.md row 217 with invoke-plan-validator.sh coverage if needed
+  - From Codex-Arch: Remove test-read-design-review-budget-invoke from .PHONY/test-harnesses-12, delete its Makefile target, and remove both deleted paths from agent-lint.toml
+  - From Cursor-Edge: Remove target and test-harnesses-12 shard entry
+  - From Codex-Edge: Include Makefile, agent-lint.toml, and scripts/test-effort-prose.sh in the change set; remove deleted targets/files from shards and excludes or replace them with new validator/classification harness entries
+  - From Cursor-Pragmatic: Remove Makefile target, agent-lint.toml paths, docs/linting.md row; grep repo for read-design-review-budget-invoke
+  - From Cursor-Requirements: Add UPDATED entry for Makefile (and `docs/linting.md` harness table) removing the target; optionally add `test-invoke-plan-validator.sh` if replacement coverage is desired
+  - From Codex-Requirements: Add Makefile and agent-lint.toml updates to remove the deleted target from .PHONY, shard membership, target body, and agent-lint exclusions
+  - From Cursor-dyn-stale-ref-hunter: Remove target from test-harnesses-12 .PHONY list and delete test-read-design-review-budget-invoke recipe; add UPDATED Makefile to plan
+  - From Codex-dyn-stale-ref-hunter: Remove test-read-design-review-budget-invoke from .PHONY and test-harnesses-12 and delete the target block, or replace it with a new validator harness target if one is introduced
+  - From Codex-dyn-stale-ref-hunter: Remove the two deleted-file entries from the agent-lint exclude list in the same change that deletes the harness
+  - From Cursor-dyn-deletion-completeness: Add UPDATED Makefile: remove test-read-design-review-budget-invoke from test-harnesses-12 (line 67), delete the target (406-407), and drop it from the .PHONY list (line 4)
+  - From Codex-dyn-deletion-completeness: Update Makefile: remove test-read-design-review-budget-invoke from .PHONY and test-harnesses-12, and delete the target block at lines 406-407
+
+### FINDING_4: Structural tests still pin deleted quick-review path
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Edge
+- **Severity**: important
+- **Concern**: Structural harness pins still reference `plan-review-quick.md`, old quick-mode checks, old validator names, or the old FINDING_2678 location, so lint can fail after the quick path is removed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Delete/replace quick-mode pins; relocate the YES↔EXONERATE anchor to a surviving authority (e.g. plan-review.md only) per test-design-structure.md
+  - From Cursor-Edge: Rewrite 7b/13q/FINDING_2678 and validator pins explicitly
+
+### FINDING_5: Anti-pattern prose still uses TRIVIAL_DOC_ONLY sentinel
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The design anti-pattern and related Step 2 prose still encode `TRIVIAL_DOC_ONLY` / `NO_SKETCHES_CLASSIFIED_TRIVIAL`, contradicting the new SIMPLE/HARD-only zero-sketch contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Rewrite NEVER #1 to: skip sketches only when design_classification==SIMPLE (sentinel NO_SKETCHES_CLASSIFIED_SIMPLE); HARD always runs 4 sketches
+  - From Codex-Innovation: Update Anti-pattern #1 to make SIMPLE the explicit no-sketch exception and name NO_SKETCHES_CLASSIFIED_SIMPLE
+  - From Cursor-Pragmatic: Rewrite NEVER #1 and Step 2a/2b for design_classification==SIMPLE only; update test-design-structure NO_SKETCHES pin to NO_SKETCHES_CLASSIFIED_SIMPLE
+
+### FINDING_6: plan-review.md still gates full review on review_budget
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The normative plan-review reference still says Step 3 depends on `review_budget=full`, conflicting with the proposed always-on full panel.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Update consumer line to design_classification / always-on plan-review-loop.sh; drop review_budget vocabulary
+
+### FINDING_7: approval-gates.md still describes three-tier quick-review behavior
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Approval-gate prose still names `--trivial`, three tiers, and `plan-review-quick.md` as a findings source, contradicting the new two-tier full-panel flow.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Replace with two-tier invariant (SIMPLE/HARD); Gate B always reads accepted-plan-findings.md from the full panel; remove plan-review-quick.md references
+
+### FINDING_8: Tier-emphasis renderer lacks planned harness coverage
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan adds SIMPLE/HARD tier emphasis to rendered review prompts without updating `test-plan-review-prompt.sh`, so prompt-regression coverage can miss broken emphasis injection.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add UPDATED test-plan-review-prompt.sh (+ render-plan-review-prompt.md): fixtures for SIMPLE vs HARD run-params with locked "Tier emphasis" / scope-creep vs thoroughness substrings
+  - From Cursor-Pragmatic: Add test-plan-review-prompt.sh + render-plan-review-prompt.md to plan; assert SIMPLE/HARD locked phrases with tmp run-params fixtures
+
+### FINDING_9: Gate A tier behavior is undefined after trivial removal
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: latent
+- **Concern**: The new SIMPLE/HARD model does not specify whether Gate A short-circuits or iterates differently by tier, leaving operators with inconsistent discussion depth.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Decide and document: e.g. SIMPLE one-round Gate A short-circuit, HARD may iterate; update approval-gates.md and test-design-structure pins
+
+### FINDING_10: Final summary can still emit trivial-specific plan line
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Concern**: `render-final-summary.sh` still has a trivial branch, so removed `--trivial`/summary modes can still produce obsolete “skipped (trivial)” output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Remove trivial case; use voting-tally.md presence only, or map SIMPLE without sketches to a neutral line
+
+### FINDING_11: Design classification reader is missing or inconsistently specified
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge
+- **Severity**: important
+- **Concern**: The plan cites a shared `read-design-classification` helper that does not exist, risking divergent SIMPLE/HARD fallback behavior across renderer and gate code.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add scripts/read-design-classification.sh (python3→jq→grep) or pin one inline pattern in SKILL.md + render-plan-review-prompt.sh
+  - From Cursor-Edge: Add read-design-classification.sh and use from renderer and gates
+
+### FINDING_12: Renderer cannot see DESIGN_TMPDIR from dispatcher
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: `render-plan-review-prompt.sh` is planned to read `$DESIGN_TMPDIR/run-params.json`, but `dispatch-plan-review-panel.sh` only sets `DESIGN_TMPDIR` as an unexported shell variable, so child renderer processes may fail or default to the wrong tier emphasis.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Export DESIGN_TMPDIR before renderer calls or add/pass an explicit --design-tmpdir argument through render-plan-review-prompt.sh
+  - From Codex-Edge: After canonicalizing DESIGN_TMPDIR, export it before renderer calls or pass an explicit --design-tmpdir argv; add dispatch/render tests that create run-params.json and assert all rendered prompt files include the expected Tier emphasis
+  - From Codex-Innovation: Export DESIGN_TMPDIR before renderer calls or add a --design-tmpdir argv and update dispatch/test callers explicitly
+  - From Cursor-Pragmatic: Add --design-tmpdir to render-plan-review-prompt.sh (or export DESIGN_TMPDIR from dispatch); thread from plan-review-loop/dispatch; extend test-plan-review-prompt.sh with fixture run-params.json
+  - From Codex-Pragmatic: Add an explicit contract update for dispatch-plan-review-panel.sh to pass DESIGN_TMPDIR to every renderer call, or add a --design-tmpdir argv to render-plan-review-prompt.sh and update callers/tests
+
+### FINDING_13: docs/voting-process.md keeps deleted quick-mode contract
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements, Codex-dyn-stale-ref-hunter, Codex-dyn-deletion-completeness
+- **Severity**: important
+- **Concern**: `docs/voting-process.md` still describes `--quick`, Claude-only quick review, or links to deleted `plan-review-quick.md`, contradicting the new full-panel behavior and creating broken documentation links.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Update docs/voting-process.md to state /design always uses the 3-voter plan-review panel and remove the quick-mode row/link
+  - From Codex-Edge: Add docs/voting-process.md to the update list and rewrite /design voting prose to say SIMPLE and HARD both use the normal voting panel
+  - From Codex-Innovation: Update Makefile PHONY/shard/target entries, agent-lint allowlists, test-effort-prose file list, and voting-process/quick-mode sync docs in the plan
+  - From Codex-Pragmatic: Add Makefile shard/target cleanup, agent-lint exclude cleanup, test-effort-prose file-list cleanup, and docs/voting-process.md quick-mode rewrite to the plan
+  - From Codex-Requirements: Add docs/voting-process.md and .claude/rules/topology-generation.md to the plan; remove quick-mode plan-review prose and the plan-review-quick.md path
+  - From Codex-dyn-stale-ref-hunter: Update the /design sentence to say plan review always uses the Claude + Codex + Cursor voting panel, and remove the --quick / plan-review-quick.md clause
+  - From Codex-dyn-deletion-completeness: Update docs/voting-process.md to remove quick-mode wording and the plan-review-quick.md link, and state that /design uses the voting panel for SIMPLE and HARD
+
+### FINDING_14: L3 velocity deferral artifact remains after prose removal
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: nit
+- **Concern**: The plan removes Step 5d and claims no L3 velocity prose remains, but leaves the dedicated L3 velocity comment file.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Delete skills/design/references/l3-velocity-deferral-comment.txt and remove any structural pins that reference it
+
+### FINDING_15: Structural-test contract doc omitted
+- **Reviewer(s)**: Codex-Arch, Codex-dyn-stale-ref-hunter
+- **Severity**: nit
+- **Concern**: The plan updates `scripts/test-design-structure.sh` but not its sibling contract doc, leaving stale `sketch_budget`, quick-mode, and sentinel guidance.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Update scripts/test-design-structure.md alongside the harness to describe SIMPLE/HARD routing, the renamed sentinel, and the removed quick-mode pins
+  - From Codex-dyn-stale-ref-hunter: Update the contract paragraph to describe the new SIMPLE/HARD routing, NO_SKETCHES_CLASSIFIED_SIMPLE sentinel, unconditional review panel, and the revised structure pins
+
+### FINDING_16: Gate C cap can be bypassed through Discuss further
+- **Reviewer(s)**: Cursor-Edge, Codex-Innovation, Cursor-dyn-counter-contract
+- **Severity**: important
+- **Concern**: Hiding only the direct Gate C “Re-run review panel” option does not cap all Step 3 entries; an operator can choose Discuss further, return through Gate A, and run another review.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Scope counter to Gate C(c) only or enforce cap on every Step 3 entry
+  - From Codex-Innovation: Make Step 3 entry cap-aware or track a last-reviewed plan hash; after cap allow re-review only when discussion changed plan.txt, otherwise return to approval/discussion without launching the panel
+  - From Cursor-dyn-counter-contract: Add a Step 3 entry guard: if review-round-count.txt >= tier cap before increment, skip plan-review-loop.sh and route per policy (e.g. back to Gate C with cap breadcrumb); or only increment on Gate C Re-run paths if cap means re-runs only
+
+### FINDING_17: Cap wording conflicts with pre-increment counter semantics
+- **Reviewer(s)**: Cursor-Edge, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan describes a re-run cap, but the counter increments before every review entry, making SIMPLE=3 mean three total panel runs rather than three re-runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Rename to max panel runs or increment only on Gate C re-entry
+
+### FINDING_18: Dynamic reviewer prompts can drop tier emphasis
+- **Reviewer(s)**: Cursor-Edge, Cursor-Innovation, Codex-Innovation
+- **Severity**: important
+- **Concern**: Dynamic prompt assembly uses `tail -n +2` to remove the renderer role line; if tier emphasis is prepended before that line, dynamic reviewers lose the SIMPLE/HARD prefix or inherit an unintended static role.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Prepend tier after full_role or inject in write_dynamic_prompt
+  - From Cursor-Innovation: Refactor shared prompt tail into a dedicated section (e.g. render-plan-review-prompt.sh --section shared-only) or pass --design-tmpdir and duplicate full shared block in write_dynamic_prompt without tail -n +2
+  - From Codex-Innovation: Keep the role line first and inject tier emphasis after it, or replace tail -n +2 with a marker/shared-tail renderer mode and assert dynamic prompt files contain exactly one tier prefix and no static role
+
+### FINDING_19: Counter increment is prompt-only and can be skipped
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: Counter updates are specified only in prompt prose, so an orchestrator can skip the increment or cap check and incur unbounded review cost.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Add review-round-counter.sh and call from SKILL Step 3 and Gate C
+
+### FINDING_20: Renderer needs explicit invalid JSON and tmpdir contract
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: `render-plan-review-prompt.sh` lacks a clear contract for unset `DESIGN_TMPDIR` or invalid `run-params.json`, so tier emphasis can be wrong or empty.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Require DESIGN_TMPDIR; default HARD with WARN on read failure
+
+### FINDING_21: Counter file parsing is not robust
+- **Reviewer(s)**: Cursor-Edge, Codex-Edge, Codex-dyn-counter-contract
+- **Severity**: important
+- **Concern**: The cap/counter plan does not consistently specify missing, empty, corrupt, or over-cap counter handling at normative read sites, risking shell arithmetic errors or incorrect cap decisions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Validate integer in counter helper; reset to 0 with warning
+  - From Codex-Edge: Specify atomic integer read/validate with missing or invalid count treated as 0 plus warning, hide when count >= cap, and either increment only after a review artifact is produced or explicitly document failed attempts as cap-consuming
+  - From Codex-dyn-counter-contract: Add the absent-file-as-zero and numeric-parse fallback directly to the Gate C subsection in approval-gates.md, and mirror it in SKILL.md Step 4b or in a named helper contract if one is introduced. The read-site prose should say missing, empty, or non-numeric counter means 0 with a warning, then compare against the tier cap.
+
+### FINDING_22: timing/report-token workflow_path schema is over-scoped
+- **Reviewer(s)**: Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan treats `workflow_path` as a design-only run-params field, but timing/report-token schemas use it for implement run logs and consumers; renaming it can break existing analysis.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Keep the timing-ledger workflow-path CLI/output as a reporting label, change only run-params readers to source design_classification, or dual-emit a new field with migration tests
+  - From Codex-Pragmatic: Keep timing-ledger/timing-report output and report-token cache fields as workflow_path unless a separate migration is planned; only map design_classification to the existing workflow-path summary input where /design reads run-params.json
+
+### FINDING_23: write-run-params failure paths still use old argv
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: `SKILL.md` failure recovery still calls removed v1 write-run-params flags, so recovery can break after the writer contract changes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Update failure defaults to design_classification=HARD only; recovery write uses v2 argv shape only
+
+### FINDING_24: Early brainstorm branch lacks classification handling
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: latent
+- **Concern**: The ad-hoc Q&A brainstorm branch runs before tier selection but may still need to write run params after `write-run-params.sh` requires `--classification SIMPLE|HARD`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Specify the branch behavior explicitly: either jq-create/merge only brainstorm_requested for that early-exit path, or write a v2 run-params.json with a deliberate HARD default before running Step 1d.5
+
+### FINDING_25: SECURITY.md omitted despite delegation topology change
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan changes /design tier topology and external delegation counts but does not update `SECURITY.md`, leaving the shipped trust model stale.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add SECURITY.md to the plan and update the /design external delegation paragraph to describe SIMPLE as no sketches, HARD as 4 sketches, and both tiers as full plan review
+
+### FINDING_26: Topology rule still targets deleted quick-review file
+- **Reviewer(s)**: Codex-Requirements, Codex-dyn-stale-ref-hunter
+- **Severity**: important
+- **Concern**: `.claude/rules/topology-generation.md` still lists deleted `plan-review-quick.md`, leaving a stale path-trigger surface after the file is removed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add docs/voting-process.md and .claude/rules/topology-generation.md to the plan; remove quick-mode plan-review prose and the plan-review-quick.md path
+  - From Codex-dyn-stale-ref-hunter: Remove the plan-review-quick.md path from the rule, or replace it with any new file that owns the former quick-review topology contract
+
+### FINDING_27: effort-prose harness still scans deleted quick doc
+- **Reviewer(s)**: Cursor-Pragmatic, Codex-dyn-stale-ref-hunter
+- **Severity**: important
+- **Concern**: `scripts/test-effort-prose.sh` still lists `plan-review-quick.md`; after deletion, the harness can fail or silently skip an intended prompt source.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Remove plan-review-quick.md from FILES array or drop file from harness scope explicitly in plan
+  - From Codex-dyn-stale-ref-hunter: Remove plan-review-quick.md from the FILES array, or replace it with the surviving prompt source if the quick-review prose is moved
+
+### FINDING_28: Counter ownership between SKILL.md and plan-review-loop is ambiguous
+- **Reviewer(s)**: Codex-dyn-counter-contract
+- **Severity**: important
+- **Concern**: The plan does not clearly assign ownership of `review-round-count.txt`; if both caller and callee read or mutate it, Gate C can double-count or desynchronize artifact round numbers from the cap counter.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-counter-contract: Revise the plan so SKILL.md Step 3 is the only writer of review-round-count.txt and passes that value as --round-num. Explicitly state that plan-review-loop.sh must not read or write review-round-count.txt; it only consumes the supplied positive integer. Update plan-review-loop.md to document this stateless contract.
+
+### FINDING_29: plan-review-loop contract does not document round counter ownership
+- **Reviewer(s)**: Codex-dyn-counter-contract
+- **Severity**: latent
+- **Concern**: `plan-review-loop.md` is not updated to explain Gate C cap enforcement, Step 3 counter incrementing, and `--round-num` as a stateless artifact/KV input, leaving future changes likely to regress to hardcoded or loop-owned state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-counter-contract: Expand plan-review-loop.md to state that Gate C owns cap enforcement, SKILL.md owns counter incrementing, and plan-review-loop.sh receives --round-num from that counter solely for emitted KVs and round-N artifact paths. Add structural or unit coverage that Step 3 no longer passes --round-num 1 unconditionally and that a supplied --round-num 2 writes plan-review/round-2 artifacts.### OOS_1:
+- **Description**: Still documents --quick plan review via plan-review-quick.md. Scenario: Public doc contradicts two-tier full-panel model
+- **Reviewer**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: docs/voting-process.md:7
+- **Phase**: design
+
+### OOS_2:
+- **Description**: Harness still references plan-review-quick.md. Scenario: make lint fails after file delete
+- **Reviewer**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-effort-prose.sh:15
+- **Phase**: design
+
+### OOS_3:
+- **Description**: Doc still describes quick Claude-only plan review. Scenario: Contradicts full-panel SIMPLE/HARD model
+- **Reviewer**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: docs/voting-process.md:7
+- **Phase**: design
+
+### OOS_4:
+- **Description**: Topology rule still inputs deleted quick doc. Scenario: Regeneration or lint may reference missing file
+- **Reviewer**: Cursor-Edge
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: .claude/rules/topology-generation.md:10
+- **Phase**: design
+
+### OOS_5:
+- **Description**: Plan updates timing-ledger run-params reads not present in code. Scenario: No current reader; scope unclear unless new workflow-path record added from design
+- **Reviewer**: Cursor-Pragmatic
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: scripts/timing-ledger.sh:176-189
+- **Phase**: design
+
+### OOS_6:
+- **Description**: [OUT_OF_SCOPE] The prompt-source grep list still includes skills/design/references/plan-review-quick.md, but the plan does not list this harness. Scenario: After the file is deleted, test-effort-prose can fail because grep is invoked on a missing prompt file during make lint
+- **Reviewer**: Codex-dyn-deletion-completeness
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-effort-prose.sh:9-16
+- **Phase**: design
+
