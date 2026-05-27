@@ -423,6 +423,27 @@ grep -Fxq 'DEDUPE_REUSED_TOOL=codex' "$TMPROOT/dedup-b.txt.dedup" || { echo "FAI
 grep -Fq '## Recommendation' "$TMPROOT/dedup-b.txt" || { echo "FAIL: reused slot output not copied" >&2; exit 1; }
 grep -Fxq "$TMPROOT/dedup-b.txt" "${manifest}.output-files" || { echo "FAIL: reused slot not settled in output files list" >&2; exit 1; }
 [[ ! -f "$TMPROOT/dedup-b-phase3.txt" ]] || { echo "FAIL: reused slot must not enter phase3" >&2; exit 1; }
+first_run_group_ledger="$TMPROOT/waterfall-group-results.tsv"
+[[ -s "$first_run_group_ledger" ]] || { echo "FAIL: first grouped run should write group ledger" >&2; exit 1; }
+rm -f "$TMPROOT/dedup-a.txt" "$TMPROOT/dedup-a.txt.dedup" "$TMPROOT/dedup-b.txt" "$TMPROOT/dedup-b.txt.dedup" "${manifest}.output-files"
+codex_dedup_second_log="$TMPROOT/codex-dedup-second.log"
+codex_dedup_second_counter="$TMPROOT/codex-dedup-second.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_CONTENT=$'## Recommendation\nsecond split' \
+    CODEX_STUB_LOG="$codex_dedup_second_log" \
+    CODEX_STUB_COUNTER="$codex_dedup_second_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
+[[ "$(counter_value "$codex_dedup_second_counter")" == "1" ]] || { echo "FAIL: grouped rerun should launch fresh codex once" >&2; cat "$codex_dedup_second_log" >&2; exit 1; }
+grep -Fq 'second split' "$TMPROOT/dedup-b.txt" || { echo "FAIL: rerun reused stale grouped output" >&2; exit 1; }
 
 manifest="$TMPROOT/slots-dedup-phase1-ok.ndjson"
 {
@@ -446,9 +467,42 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --require-result-pattern '^[[:space:]]*## Recommendation' \
     --timeout 5)
 assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
 [[ "$(counter_value "$codex_phase1_counter")" == "1" ]] || { echo "FAIL: phase1 OK peer should avoid phase2 codex launch" >&2; cat "$codex_phase1_log" >&2; exit 1; }
 [[ ! -f "$TMPROOT/phase1-bad-cursor-phase2.txt" ]] || { echo "FAIL: phase1 peer reuse should not create phase2 output" >&2; exit 1; }
 grep -Fxq 'DEDUPE_REUSED_FROM=phase1-codex' "$TMPROOT/phase1-bad-cursor.txt.dedup" || { echo "FAIL: phase1 OK reuse sidecar" >&2; exit 1; }
+grep -Fq '## Recommendation' "$TMPROOT/phase1-bad-cursor.txt" || { echo "FAIL: phase1 reused output not copied" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-dedup-caphit.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/caphit-codex.txt" --arg pf "$prompt" \
+        '{slot:"caphit-codex",tool:"codex",output:$out,prompt_file:$pf,fallback_group:"caphit-g"}'
+    jq -cn --arg out "$TMPROOT/caphit-cursor.txt" --arg pf "$prompt" \
+        '{slot:"caphit-cursor",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"caphit-g"}'
+} >"$manifest"
+codex_caphit_dedup_log="$TMPROOT/codex-caphit-dedup.log"
+codex_caphit_dedup_counter="$TMPROOT/codex-caphit-dedup.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_CONTENT=$'STATUS=cap_hit\n## Recommendation\ncap hit split' \
+    CODEX_STUB_LOG="$codex_caphit_dedup_log" \
+    CODEX_STUB_COUNTER="$codex_caphit_dedup_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
+[[ "$(counter_value "$codex_caphit_dedup_counter")" == "1" ]] || { echo "FAIL: cap_hit grouped peer should reuse codex result" >&2; cat "$codex_caphit_dedup_log" >&2; exit 1; }
+[[ -f "$TMPROOT/caphit-cursor.txt.dedup" ]] || { echo "FAIL: cap_hit reused slot sidecar missing" >&2; exit 1; }
+grep -Fxq 'DEDUPE_REUSED_FROM=caphit-codex' "$TMPROOT/caphit-cursor.txt.dedup" || { echo "FAIL: cap_hit reused-from sidecar" >&2; cat "$TMPROOT/caphit-cursor.txt.dedup" >&2; exit 1; }
+grep -Fxq 'DEDUPE_REUSED_TOOL=codex' "$TMPROOT/caphit-cursor.txt.dedup" || { echo "FAIL: cap_hit reused-tool sidecar" >&2; cat "$TMPROOT/caphit-cursor.txt.dedup" >&2; exit 1; }
+grep -Fq '## Recommendation' "$TMPROOT/caphit-cursor.txt" || { echo "FAIL: cap_hit reused output not copied" >&2; exit 1; }
+grep -Fq $'caphit-g\tcaphit-codex\tcodex\t' "$TMPROOT/waterfall-group-results.tsv" || { echo "FAIL: cap_hit ledger ok row missing" >&2; cat "$TMPROOT/waterfall-group-results.tsv" >&2; exit 1; }
 
 manifest="$TMPROOT/slots-cross-group.ndjson"
 {

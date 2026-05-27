@@ -186,6 +186,7 @@ if [[ "$has_fallback_groups" == "true" ]]; then
     resolved_slots_file=$(resolve_existing_path "$SLOTS_FILE")
     GROUP_LEDGER="$(dirname "$resolved_slots_file")/waterfall-group-results.tsv"
     REUSED_INDICES_FILE="$(dirname "$resolved_slots_file")/.waterfall-reused-indices"
+    : >"$GROUP_LEDGER"
     : >"$REUSED_INDICES_FILE"
 fi
 
@@ -397,7 +398,7 @@ collect_phase() {
             final_outputs[$idx]="${rf:-$output}"
             # shellcheck disable=SC2004
             final_tools[$idx]="$tool"
-            if [[ "$status" == "OK" ]]; then
+            if [[ "$status" == "OK" || "$status" == "cap_hit" ]]; then
                 append_group_ledger_ok "$idx" "$tool" "${final_outputs[$idx]}"
             fi
         else
