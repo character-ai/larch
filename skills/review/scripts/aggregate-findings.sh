@@ -156,7 +156,7 @@ AGGREGATOR_AGENT="$PLUGIN_ROOT/agents/orchestrator-aggregator.md"
 [[ -f "$AGGREGATOR_AGENT" ]] || {
     REASON="validation-failed"
     FAILURE_LOG=""
-    append_warning "- **findings aggregator**: missing agent template at agents/orchestrator-aggregator.md; leaving findings.md unchanged."
+    append_warning "- **findings aggregator**: missing agent template at agents/orchestrator-aggregator.md; leaving $FINDINGS_FILE unchanged."
     emit_result
     exit 0
 }
@@ -719,7 +719,7 @@ set -e
 if [[ "$dispatch_rc" -ne 0 ]]; then
     REASON="dispatch-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
@@ -728,7 +728,7 @@ DISPATCH_OK=$(kv_get "$dispatch_out" DISPATCH_OK)
 if [[ "$DISPATCH_OK" != "true" ]]; then
     REASON="dispatch-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
@@ -744,7 +744,7 @@ if [[ -z "$cand" ]]; then
 fi
 [[ -n "$cand" && -f "$cand" && -s "$cand" && ! -L "$cand" ]] || {
     REASON="dispatch-failed"
-    append_warning "- **findings aggregator**: missing or empty aggregator output file; leaving findings.md unchanged."
+    append_warning "- **findings aggregator**: missing or empty aggregator output file; leaving $FINDINGS_FILE unchanged."
     emit_result
     exit 0
 }
@@ -753,7 +753,7 @@ case "$_cand_canon" in
     "$REVIEW_TMPDIR_CANON"/* | "$REVIEW_TMPDIR_CANON") ;;
     *)
         REASON="dispatch-failed"
-        append_warning "- **findings aggregator**: aggregator output path resolves outside --review-tmpdir; leaving findings.md unchanged."
+        append_warning "- **findings aggregator**: aggregator output path resolves outside --review-tmpdir; leaving $FINDINGS_FILE unchanged."
         emit_result
         exit 0
         ;;
@@ -774,11 +774,11 @@ case "${MERGE_PIPELINE_RC:-2}" in
         REASON="validation-exhausted"
         FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
         if grep -Fxq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$FAILURE_LOG" 2>/dev/null; then
-            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger preamble contradiction after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger preamble contradiction after pattern-gated dispatch); leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
         elif grep -Fxq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' "$FAILURE_LOG" 2>/dev/null; then
-            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation); leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
         else
-            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger validator rejection after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger validator rejection after pattern-gated dispatch); leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
         fi
         emit_result
         exit 0
@@ -799,13 +799,13 @@ case "${MERGE_PIPELINE_RC:-2}" in
                 FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
             fi
         fi
-        append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+        append_warning "- **findings aggregator**: merged output failed validation; leaving $FINDINGS_FILE unchanged. $(failure_see_phrase "$FAILURE_LOG")"
         emit_result
         exit 0
         ;;
     *)
         REASON="validation-failed"
-        append_warning "- **findings aggregator**: merge pipeline returned unexpected status (${MERGE_PIPELINE_RC:-unset}); leaving findings.md unchanged."
+        append_warning "- **findings aggregator**: merge pipeline returned unexpected status (${MERGE_PIPELINE_RC:-unset}); leaving $FINDINGS_FILE unchanged."
         emit_result
         exit 0
         ;;
