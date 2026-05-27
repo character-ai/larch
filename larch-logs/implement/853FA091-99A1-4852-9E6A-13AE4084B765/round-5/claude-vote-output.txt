@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- HARD default for missing classification is the explicit fallback design in the plan's edge cases section; not a bug
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_4: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_5: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- concern is consistent with codebase-wide same-UID sourcing pattern; purely hypothetical future-model concern
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- exit 0 on failure is intentional per plan spec; HARD is always the correct safe default
+FINDING_9: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- increment-before-launch is the plan's explicit design choice; rollback-on-crash complexity was deliberately rejected
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true

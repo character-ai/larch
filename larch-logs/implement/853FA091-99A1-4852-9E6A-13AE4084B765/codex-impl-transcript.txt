@@ -1,0 +1,11 @@
+Implemented the `/design` tier consolidation to SIMPLE/HARD and removed the TRIVIAL/quick-review path across runtime prompts, helper scripts, docs, topology projection, and tests.
+
+Verification:
+- `bash scripts/relevant-checks.sh` passed.
+- Focused design/run-params/topology/timing harnesses were run during the implementation and are reflected in the manifest.
+
+Wrote the manifest atomically at:
+
+`<TMPDIR>/manifest.json`
+
+Manifest status is `complete`; `qa-pending.json` was not written because QA is not needed. One initial manifest write attempt failed before rename due to a `jq` read-mode error, then I reran it correctly and validated the final JSON.
