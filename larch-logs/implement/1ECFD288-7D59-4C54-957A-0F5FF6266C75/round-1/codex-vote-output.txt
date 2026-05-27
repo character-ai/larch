@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- legitimate cleanup concern, but the duplicated three-line cleanup blocks are too small to warrant abstraction in this patch.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the coverage gap is real, but adding filesystem-failure harnessing for every guarded write path is more complexity than this regression needs.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- emit_kv is unguarded, but a reused-index append failure returns nonzero and falls through to relaunch rather than skipping both relaunch and phase-3 queueing.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the scope concern is real, but it is PR hygiene rather than a concrete follow-up product issue worth filing.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the double-launch edge case is real but limited to narrow bookkeeping-write failures and does not warrant more machinery here.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the old second-invocation test does not model same-run stale reuse, but the new cp-failure scenario covers the relevant same-run contract.
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the ledger path is not revalidated, but the threat depends on a same-session local writer and is weak as a security boundary.
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- this is only a hypothetical future misuse; the current sole call site is correctly conditional.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repeated stale-row probes before any fresh ok row exists are possible, but the extra cost is just the failed probe plus necessary per-slot relaunch behavior.

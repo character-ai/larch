@@ -1,0 +1,3 @@
+Handle grouped reuse copy failures
+
+Fall back to phase-2 relaunch when grouped dedup reuse cannot write its copied result, and prefer the latest ok ledger row for later reuse.
