@@ -886,6 +886,10 @@ exclude = [
   # scripts/test-alias-structure.md. Same Makefile-only pattern.
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
+  # scripts/test-design-reentry-guard.sh is a Makefile-only harness for
+  # scripts/lib-design-reentry-guard.sh; the sibling .md is a contract file.
+  "scripts/test-design-reentry-guard.sh",
+  "scripts/test-design-reentry-guard.md",
   "skills/design/scripts/test-design-driver.sh",
   # skills/design/scripts/test-write-design-current-env.sh — offline harness
   # for scripts/write-design-current-env.sh (Makefile test-write-design-

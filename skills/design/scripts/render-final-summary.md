@@ -7,13 +7,22 @@ phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=â€
 via `scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only
 this helper).
 
-## Callers (ten)
+## Callers (eleven)
 
-Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-planned cancel, tier-gate cancel; Step 1c/1d sprawl
+Step 0b title-filter refuse (`cancelled-title-filter`), session-cache re-entry refuse (`cancelled-reentry-guard`), clarify exit, already-planned cancel, tier-gate cancel; Step 1c/1d sprawl
 cancel; Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
 partition filing (`cancelled-decompose`, `approved-partition`); Step 5c happy path (two-phase: `--pre-publish-only`
 before `design-log-publish.sh`, `--post-publish-only` after); Step 5c
 plan-block-write failure (`--outcome failed-plan-write`).
+
+## Re-entry Guard Outcome
+
+`cancelled-reentry-guard` renders as `Refused (session-cache re-entry guard)`.
+When the caller exports `DESIGN_REENTRY_MARKER_PATH`, the rendered body appends
+guard context lines naming the session-cache guard and marker path so the final
+summary preserves the same operator-visible override target as the refusal
+banner. If that env var is absent, the helper reconstructs the path from
+`ISSUE_NUMBER` and `LARCH_DESIGN_REENTRY_GUARD_PPID`.
 
 ## Split-path / preâ€“Step 0a
 

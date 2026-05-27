@@ -924,5 +924,43 @@ grep -Fq 'detected Brainstorm title prefix — auto-enabling brainstorm mode' "$
   || fail "(20) SKILL.md missing brainstorm info banner text"
 echo "PASS: (20) Step 0b title-eligibility filter anchors OK"
 
+# Checks 24-26 (#2935): /design same-session re-entry guard pins.
+step0b_reentry_order=$(awk '
+  /^### 0b / { in0b=1; next }
+  /^### Final summary block$/ && in0b { in0b=0 }
+  in0b && /title_has_lifecycle_reject_prefix/ && !title { title=NR }
+  in0b && /design_reentry_marker_hit/ && !guard { guard=NR }
+  in0b && /^3\. \*\*Clarify loop\*\*/ && !clarify { clarify=NR }
+  END {
+    if (!title || !guard || !clarify) exit 2
+    if (!(title < guard && guard < clarify)) exit 1
+  }
+' "$SKILL_MD" || echo "$?")
+case "${step0b_reentry_order:-0}" in
+  0) ;;
+  1|2) fail "(24) SKILL.md missing design_reentry_marker_hit invocation OR sub-step 2.6 placed outside [2.5 .. 3] window" ;;
+  *) fail "(24) unexpected Step 0b re-entry guard ordering check exit: ${step0b_reentry_order:-?}" ;;
+esac
+
+step5c_reentry_order=$(awk '
+  /^### 5c — Write `larch:plan` to GitHub \+ publish$/ { in5c=1; next }
+  /^### 5d / && in5c { in5c=0 }
+  in5c && /design_reentry_marker_write/ && !write { write=NR }
+  in5c && /tracking-issue-write\.sh" rename --issue "\$ISSUE_NUMBER" --state designed/ && !rename { rename=NR }
+  END {
+    if (!write || !rename) exit 2
+    if (!(write < rename)) exit 1
+  }
+' "$SKILL_MD" || echo "$?")
+case "${step5c_reentry_order:-0}" in
+  0) ;;
+  1|2) fail "(25) SKILL.md design_reentry_marker_write must precede the [DESIGNED] rename" ;;
+  *) fail "(25) unexpected Step 5c re-entry marker ordering check exit: ${step5c_reentry_order:-?}" ;;
+esac
+
+grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
+  || fail "(26) SKILL.md missing literal session-cache banner"
+echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
+
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

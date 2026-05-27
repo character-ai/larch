@@ -37,11 +37,14 @@ larch_quiet_init
 if [ "$OUTCOME" = "cancelled-title-filter" ]; then
     MODE_STR="Refused (title-filter)"
 fi
+if [ "$OUTCOME" = "cancelled-reentry-guard" ]; then
+    MODE_STR="Refused (session-cache re-entry guard)"
+fi
 
 [ -n "$MODE_STR" ] || MODE_STR=N/A
 
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-reentry-guard|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
@@ -290,6 +293,24 @@ if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ]; then
     RUN_LOGS_PATH="larch-logs/design/${RUN_ID}/"
 fi
 
+NOTE_LINES_FILE=""
+if [ "$OUTCOME" = "cancelled-reentry-guard" ]; then
+    NOTE_LINES_FILE="$DESIGN_TMPDIR/final-summary-notes.md"
+    _reentry_marker_path="${DESIGN_REENTRY_MARKER_PATH:-}"
+    if [ -z "$_reentry_marker_path" ]; then
+        _reentry_ppid="${LARCH_DESIGN_REENTRY_GUARD_PPID:-${DESIGN_REENTRY_GUARD_PPID:-}}"
+        if [ -n "${ISSUE_NUMBER:-}" ] && [ -n "$_reentry_ppid" ]; then
+            _reentry_marker_path="${HOME}/.cache/larch/sessions/design-completed-${ISSUE_NUMBER}-${_reentry_ppid}"
+        else
+            _reentry_marker_path="N/A"
+        fi
+    fi
+    {
+        printf -- '- **Guard**: session-cache re-entry guard\n'
+        printf -- "- **Marker**: \`%s\`\n" "$_reentry_marker_path"
+    } > "$NOTE_LINES_FILE"
+fi
+
 invoke_render() {
     local out_file="$DESIGN_TMPDIR/final-summary.md"
     local render_cost_args=()
@@ -318,6 +339,9 @@ invoke_render() {
         --run-logs-path "$RUN_LOGS_PATH"
         --output-file "$out_file"
     )
+    if [ -n "$NOTE_LINES_FILE" ]; then
+        _rr_args+=(--note-lines-file "$NOTE_LINES_FILE")
+    fi
     "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${render_cost_args[@]}"
 }
 
