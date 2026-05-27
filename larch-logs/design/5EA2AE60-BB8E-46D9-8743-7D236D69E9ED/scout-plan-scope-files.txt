@@ -1,0 +1,6 @@
+scripts/_verify_failed_jobs_locally helper inside scripts/ship-pr.sh
+scripts/ship-pr.sh
+scripts/ship-pr.md
+scripts/test-ship-pr.sh
+scripts/test-ship-pr.md
+scripts/ci-failed-jobs.md

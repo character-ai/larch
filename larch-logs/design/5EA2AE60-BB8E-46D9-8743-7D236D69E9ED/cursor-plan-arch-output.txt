@@ -1,0 +1,44 @@
+Reviewing the implementation plan and exploring cited codebase paths (read-only).
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:2127-2137	Vendor-path ci-local-unfixable never reaches exit 3	_verify_failed_jobs_locally is specified to return 1 after state_set_many BAIL_REASON=ci-local-unfixable:…, but run_evaluate_failure only exits 3 for BAIL_REASON=first-fixer-non-health (2135-2136). run_per_job_local_fix_loop exits 3 directly (2033). vendor_verify_local_exhausts expects exit 3; without a matching branch the run retries up to _max_fix=3 and clears BAIL_REASON each attempt (2066).	After vendor_rc=1, add the same exit 3 path as first-fixer (e.g. case "$(read_state BAIL_REASON)" in ci-local-unfixable:*) exit 3 ;; esac) or have _verify_failed_jobs_locally exit 3 like run_per_job_local_fix_loop.
+2	in_scope	important	correctness	scripts/ship-pr.sh:2037-44 (proposed _verify_failed_jobs_locally)	Missing _write_per_job_args_file before lint-fix dispatch	Plan sets _RCC_TARGET_CMD_ARGS_FILE to an args-file but never calls _write_per_job_args_file (1978-1979). lint-fix-loop.sh requires a real token file for --site ship-pr-ci-per-job (271-273).	Per fixable row: args_file="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-args.txt"; _write_per_job_args_file "$args_file"; then set _RCC_TARGET_CMD_ARGS_FILE.
+3	in_scope	important	correctness	scripts/ship-pr.sh:174-181	max_iter sanity clamp only in Failure modes, not in edits	Failure modes #2 proposes clamping invalid LARCH_CI_LOCAL_FIX_ITER before for ((attempt=1; attempt<=max_iter; attempt++)), but the five UPDATED ship-pr.sh bullets omit it. Empty/non-numeric/0 values can yield zero iterations or bash errors.	Add to run_captured_cmd_then_fix_loop edit: case "$max_iter" in ''|*[!0-9]*|0) max_iter=3 ;; esac immediately after max_iter=${_RCC_MAX_ITER:-3}.
+4	in_scope	important	correctness	scripts/ship-pr.sh:2127-2135	vendor_rc case documents only 0 and 2	Plan case handles vendor_rc 0 and 2 only; rc=1 from verify exhaustion is indistinguishable from tier exhaustion and falls through to outer retry.	Extend case: on 1, if BAIL_REASON matches ci-local-unfixable:* then exit 3; otherwise fall through to existing retry logic.
+5	in_scope	important	architecture	scripts/ship-pr.sh:2032-2033 vs proposed helper	Uniform bail contract diverges from run_per_job_local_fix_loop	Plan claims uniform ci-local-unfixable surface but per-job path exit 3 inside the helper while verify path return 1 relies on a missing caller hook.	Prefer exit 3 inside _verify_failed_jobs_locally (mirror 2023-2033) or document and implement explicit exit 3 in run_ci_fix_vendor/run_evaluate_failure for verify-origin bail.
+6	in_scope	important	risk-integration	scripts/ship-pr.sh:1709-1743 (proposed call order)	Verify-time lint-fix deltas may not reach staging	Per-job push merges ALL_LINT_FIX_DELTA_PATHS_FILE into LAST_LINT_FIX_DELTA_PATHS_FILE (2019-2021); proposed verify helper never does. _stage_and_push_ci_fixes uses LAST_LINT_FIX_DELTA_PATHS_FILE in collect_ci_stage_paths (1736).	After each successful verify fix loop, append_unique_paths_file into a phase-scoped aggregate and set LAST_LINT_FIX_DELTA_PATHS_FILE before _stage_and_push_ci_fixes, matching run_per_job_local_fix_loop.
+7	in_scope	nit	correctness	plan.txt:14 vs scripts/ship-pr.sh:2014-2016	Intro lists return 4; helper spec omits it	Line 14 says helper returns 4 for verification regression; proposed _verify_failed_jobs_locally has no rc=4 path (per-job uses phase-B re-verify at 2014-2015).	Either drop return 4 from the intro or specify when vendor verify should return 4 and wire run_evaluate_failure (per_job_verification_retry analogue).
+8	in_scope	nit	architecture	plan.txt:50-52	gh_logs_rc != 0 branch rc=2 handling underspecified	Edit 5 details vendor_rc case for gh_logs_rc=0 else branch; line 2131 elif run_ci_fix_vendor still needs the same vendor_rc plumbing and empty-TSV fifth arg.	Apply identical run_ci_fix_vendor … "" ; vendor_rc=$? ; case structure to the gh_logs_rc != 0 branch in the same edit.
+
+**1. [correctness]** `scripts/ship-pr.sh:2127-2137` — Vendor-path `ci-local-unfixable` never reaches exit 3. The plan has `_verify_failed_jobs_locally` `return 1` after setting `BAIL_REASON=ci-local-unfixable:…`, but `run_evaluate_failure` only calls `exit 3` for `first-fixer-non-health` (2135–2136). `run_per_job_local_fix_loop` uses `exit 3` directly (2033). The planned test `vendor_verify_local_exhausts` expects exit 3; without a matching branch the run retries up to `_max_fix=3` and clears `BAIL_REASON` each attempt (2066).
+
+**Suggested revision:** After `vendor_rc=1`, add an exit-3 branch for `ci-local-unfixable:*` (same as first-fixer), or have `_verify_failed_jobs_locally` `exit 3` like `run_per_job_local_fix_loop`.
+
+**2. [correctness]** Proposed `_verify_failed_jobs_locally` — Missing `_write_per_job_args_file` before lint-fix dispatch. The plan sets `_RCC_TARGET_CMD_ARGS_FILE` but never calls `_write_per_job_args_file` (1978–1979). `lint-fix-loop.sh` requires a real token file for `--site ship-pr-ci-per-job` (271–273).
+
+**Suggested revision:** Per fixable row: `args_file="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-args.txt"`; `_write_per_job_args_file "$args_file"`; then set `_RCC_TARGET_CMD_ARGS_FILE`.
+
+**3. [correctness]** `scripts/ship-pr.sh:174-181` — `max_iter` sanity clamp only in Failure modes, not in edits. Failure modes #2 proposes clamping invalid `LARCH_CI_LOCAL_FIX_ITER` before the numeric `for` loop, but the five UPDATED `ship-pr.sh` bullets omit it.
+
+**Suggested revision:** Add `case "$max_iter" in ''|*[!0-9]*|0) max_iter=3 ;; esac` right after `max_iter=${_RCC_MAX_ITER:-3}`.
+
+**4. [correctness]** `scripts/ship-pr.sh:2127-2135` — `vendor_rc` case documents only 0 and 2. `rc=1` from verify exhaustion is indistinguishable from tier exhaustion and falls through to outer retry.
+
+**Suggested revision:** On `vendor_rc=1`, if `BAIL_REASON` matches `ci-local-unfixable:*`, `exit 3`; otherwise keep existing retry logic.
+
+**5. [architecture]** `scripts/ship-pr.sh:2032-2033` vs proposed helper — Uniform bail contract diverges. Per-job path `exit 3` inside the helper; verify path `return 1` with no caller hook documented in edit 5.
+
+**Suggested revision:** `exit 3` inside `_verify_failed_jobs_locally` or explicit exit 3 in `run_ci_fix_vendor` / `run_evaluate_failure` for verify-origin bail.
+
+**6. [risk-integration]** `scripts/ship-pr.sh:1709-1743` — Verify-time lint-fix deltas may not reach staging. Per-job push merges `ALL_LINT_FIX_DELTA_PATHS_FILE` into `LAST_LINT_FIX_DELTA_PATHS_FILE` (2019–2021); the proposed verify helper does not.
+
+**Suggested revision:** After each successful verify fix loop, merge deltas and set `LAST_LINT_FIX_DELTA_PATHS_FILE` before `_stage_and_push_ci_fixes`.
+
+**7. [correctness/nit]** Plan line 14 vs `scripts/ship-pr.sh:2014-2016` — Intro lists `return 4`; helper spec omits it.
+
+**Suggested revision:** Drop `return 4` from the intro or specify vendor verify `rc=4` and wire `run_evaluate_failure`.
+
+**8. [architecture/nit]** Plan edit 5 — `gh_logs_rc != 0` branch rc=2 handling underspecified. Line 2131 still needs the same `vendor_rc` plumbing and empty-TSV fifth arg.
+
+**Suggested revision:** Mirror the `vendor_rc` `case` on the `gh_logs_rc != 0` branch.
+
+**[OUT_OF_SCOPE]** Post-vendor local verify regression without `rc=4` — If vendor fixes job A but verification regresses job B after A passed (similar to `ci_per_job_verify_regression`), the plan has no `return 4` / `per_job_verification_retry` analogue on the vendor path; only cross-job failures on the next CI cycle. Worth a follow-up if vendor+verify should retry without re-dispatching tiers (`scripts/test-ship-pr.sh:3400-3473`).

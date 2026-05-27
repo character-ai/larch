@@ -1,0 +1,35 @@
+Reading the implementation plan and exploring the referenced codebase paths.
+Checking one more integration point: bail-state clearing on outer retry and whether the plan addresses immediate exit 3.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:2006-2017	Proposed _verify_failed_jobs_locally lacks Phase-B re-verification sweep	Multi-job TSV: job B passes _run_per_job_command_once before job A's fix loop runs; A's lint-fix breaks B; helper returns 0 and _stage_and_push pushes a tree that still fails the originally-failed job	run_per_job_local_fix_loop's second loop (lines 2006-2017) after all per-job fix loops, or return 4 and let run_evaluate_failure handle regression like the per-job path
+2	in_scope	important	correctness	scripts/ship-pr.sh:2066-2149	Vendor ci-local-unfixable bail not wired to exit 3	_verify returns 1 with BAIL_REASON set; proposed run_evaluate_failure case only handles vendor_rc 0 and 2; loop clears BAIL_REASON at 2066 and retries vendor up to 3 times, then exit_stall 10-max-retries (exit 4) — contradicts vendor_verify_local_exhausts and per-job exit 3 at 2033	After vendor_rc=1, if BAIL_REASON matches ci-local-unfixable* call exit 3 immediately (mirror run_per_job_local_fix_loop); do not fall through to _fix_attempt++
+3	in_scope	important	correctness	scripts/ship-pr.sh:174-181	max_iter sanity check listed in Failure modes #2 but omitted from implementation steps	LARCH_CI_LOCAL_FIX_ITER=0 or non-numeric: zero iterations (silent exhausted) or set -e abort on ((attempt<=max_iter)); negative values behave unpredictably	Add case clamp at top of run_captured_cmd_then_fix_loop (plan's ''|*[!0-9]*|0) max_iter=3 ;; esac) as an explicit edit bullet, not only narrative mitigation
+4	in_scope	important	risk-integration	scripts/ship-pr.sh:1870 (proposed)	case $? immediately after _verify_failed_jobs_locally	Under errexit or if a debug trap/command is inserted between call and case, $? may not be the helper rc; rc=2 head-changed routing can collapse to wrong branch	Capture verify_rc=$(_verify_failed_jobs_locally "$phase" "$failed_jobs_tsv") then case "$verify_rc" in ...
+5	in_scope	important	correctness	scripts/ship-pr.sh:2032 (proposed ~2044)	Helper bail omits BAIL_FAILURE_DETAIL_LOG in state	Plan writes detail file but state_set_many only mentions BAIL_REASON; _stage_and_push and operators lose the detail-log pointer contract documented in ship-pr.md:86-87	state_set_many BAIL_REASON "ci-local-unfixable:..." BAIL_FAILURE_DETAIL_LOG "$detail_file" matching run_per_job_local_fix_loop:2032
+6	in_scope	latent	correctness	scripts/ship-pr.sh:1719-1743	_verify lint-fix deltas not aggregated to LAST_LINT_FIX_DELTA_PATHS_FILE	Per-job path sets LAST_LINT_FIX_DELTA from ALL_LINT_FIX_DELTA_PATHS_FILE (2019-2020); vendor _stage_and_push uses LAST_LINT_FIX_DELTA in collect_ci_stage_paths — allowlisted untracked paths from verify-time lint-fix may be omitted from git add	In _verify_failed_jobs_locally init/append ALL_LINT_FIX_DELTA_PATHS_FILE on each _RCC_STATUS=ok (same as 1990-1992) and set LAST_LINT_FIX_DELTA_PATHS_FILE before return 0
+7	in_scope	latent	architecture	plan.txt:14 vs proposed helper	Plan claims helper returns rc=4 for verification regression but spec has no Phase B and no return 4	Implementers may omit regression handling; behavior diverges from run_per_job_local_fix_loop and ci_per_job_verify_regression contract	Align plan with implementation: add Phase-B sweep + return 4, or drop return 4 from the Approach/status-code list
+8	out_of_scope	latent	architecture	scripts/ship-pr.sh:2125-2126	per_job_verification_retry still skips vendor (and thus new verify gate)	Per-job Phase-B regression (rc=4) retries outer loop without vendor; original CI gap may persist for that failure class	[OUT_OF_SCOPE] Consider vendor+_verify_failed_jobs_locally when per_job_rc=4 in a follow-up
+
+**1. [correctness] Missing Phase-B verification in `_verify_failed_jobs_locally`** (`scripts/ship-pr.sh:2006-2017`)
+
+The plan’s helper runs `_run_per_job_command_once` before each job’s fix loop and moves on when a job already passes, but it never re-runs all fixable jobs after later jobs may have changed the tree. `run_per_job_local_fix_loop` explicitly performs that second sweep and returns `4` on regression (`ci_per_job_verify_regression` depends on this). A vendor fix that passes an early job check but breaks a later-listed job can still be pushed.
+
+**2. [correctness] Vendor `ci-local-unfixable` must `exit 3`, not retry** (`scripts/ship-pr.sh:2066-2149`)
+
+`run_per_job_local_fix_loop` calls `exit 3` at line 2033. The proposed vendor path only returns `1` and the `run_evaluate_failure` `case` handles `0` and `2` only. The outer loop clears `BAIL_REASON` every iteration (line 2066), so a failed verify loses the bail token and burns up to three full vendor+verify cycles before stalling at `10-max-retries` (exit `4`) instead of exit `3` as `vendor_verify_local_exhausts` requires.
+
+**3. [correctness] `max_iter` clamp is documented but not scheduled** (`scripts/ship-pr.sh:174-181`)
+
+Failure modes #2 correctly identifies invalid `LARCH_CI_LOCAL_FIX_ITER` values; the five implementation bullets never add the clamp. Without it, the new `for ((attempt=1; attempt<=max_iter; attempt++))` loop is fragile under bad env input.
+
+**4. [risk-integration] Do not branch on `$?` after `_verify`** (proposed `run_ci_fix_vendor` ~1870)
+
+Use an explicit `verify_rc=` capture before `case`, especially for the `rc=2` head-changed chain called out as the highest-severity regression.
+
+**5. [correctness] Set `BAIL_FAILURE_DETAIL_LOG` in state** (proposed helper ~2044; canonical `scripts/ship-pr.sh:2032`)
+
+**6. [latent/correctness] Aggregate lint-fix delta paths before push** (`scripts/ship-pr.sh:1719-1743`, `2019-2020`)
+
+**7. [latent/architecture] Plan/status-code drift on `return 4`** (plan line 14 vs helper spec)
+
+**8. [OUT_OF_SCOPE] `per_job_verification_retry` still bypasses vendor verify** (`scripts/ship-pr.sh:2125-2126`)

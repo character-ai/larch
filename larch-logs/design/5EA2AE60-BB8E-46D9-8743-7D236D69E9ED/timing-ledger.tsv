@@ -1,0 +1,29 @@
+v1	mark	1779840964	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1779841565	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779841895	design	design Step 1e — gate A	-	-	-	-	-	-	-	-
+v1	mark	1779842080	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779842207	implement	-	codex	codex-sketch-generic	1779842127	1779842207	80	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779842270	implement	-	cursor	cursor-sketch-generic	1779842119	1779842270	151	cursor-sketch-generic-output.txt	0	complete
+v1	mark	1779842551	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779842711	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779842949	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779842837	1779842949	112	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779842959	implement	-	codex	codex-phase1-codex-plan-requirements	1779842837	1779842959	122	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779842970	implement	-	codex	codex-phase1-dyn-codex-plan-rc-chain-integrity	1779842838	1779842970	132	codex-primary-plan-dyn-rc-chain-integrity-output.txt	0	complete
+v1	vendor	1779842971	implement	-	codex	codex-phase1-codex-plan-innovation	1779842837	1779842971	134	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779843000	implement	-	codex	codex-phase1-dyn-codex-plan-bash32-portability	1779842838	1779843000	162	codex-primary-plan-dyn-bash32-portability-output.txt	0	complete
+v1	vendor	1779843012	implement	-	codex	codex-phase1-codex-plan-edge	1779842837	1779843012	175	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779843020	implement	-	cursor	cursor-phase1-dyn-cursor-plan-bash32-portability	1779842838	1779843020	182	cursor-plan-dyn-bash32-portability-output.txt	0	complete
+v1	vendor	1779843021	implement	-	cursor	cursor-phase1-dyn-cursor-plan-rc-chain-integrity	1779842837	1779843021	184	cursor-plan-dyn-rc-chain-integrity-output.txt	0	complete
+v1	vendor	1779843040	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779842837	1779843040	203	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779843041	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779842837	1779843041	204	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779843049	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779842837	1779843049	212	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779843062	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779842837	1779843062	225	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779843068	implement	-	codex	codex-phase1-codex-plan-arch	1779842837	1779843068	231	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779843069	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779842837	1779843069	232	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779843236	implement	-	codex	codex-phase1-aggregator	1779843075	1779843236	161	aggregator-output.txt	0	complete
+v1	vendor	1779843555	implement	-	cursor	cursor-phase1-voter-3	1779843465	1779843555	90	cursor-vote-output.txt	0	complete
+v1	vendor	1779843565	implement	-	codex	codex-phase1-voter-2	1779843465	1779843565	100	codex-vote-output.txt	0	complete
+v1	mark	1779843800	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779843853	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779843866	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779844111	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

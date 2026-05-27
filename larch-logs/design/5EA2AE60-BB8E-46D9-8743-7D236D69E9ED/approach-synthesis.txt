@@ -1,0 +1,45 @@
+# Approach Synthesis
+
+## Where the sketches agree (strong convergence)
+
+Both Codex and Claude-fallback sketches independently identify the **same root-cause gap** and propose the **same architectural fix**:
+
+**Root cause**: `run_ci_fix_vendor` (the old vendor waterfall) takes over whenever `run_per_job_local_fix_loop` returns rc=1 (main-agent-required / dispatch-failed / exhausted) OR when the fixable-jobs TSV is empty. The vendor path then calls `_stage_and_push_ci_fixes`, which only runs `relevant-checks.sh` via `run_checks_with_lint_fix_loop` (scripts/ship-pr.sh:1724) as the pre-push gate. `relevant-checks.sh` is narrower than CI (pre-commit hooks + agent-lint) — it does NOT re-run the actually-failed CI jobs (test-harnesses, smoke-dialectic, agnix, agent-sync). So a fix can pass `relevant-checks.sh` locally yet still fail the original CI job. Push, fail, fix, push, fail — the user's observed symptom.
+
+**Architectural fix**: insert a new `_verify_failed_jobs_locally <phase> <failed_jobs_tsv>` helper that re-uses the existing `_per_job_argv` mapping and the `run_captured_cmd_then_fix_loop` machinery. Call it inside `run_ci_fix_vendor` after the winning tier produces a fix (scripts/ship-pr.sh:~1865) and BEFORE `_stage_and_push_ci_fixes` (scripts/ship-pr.sh:1870). Plumb `ci_failed_tsv` from `run_evaluate_failure` (scripts/ship-pr.sh:~2085) into `run_ci_fix_vendor` as a new positional argument, with the existing call site at line 2127 passing the TSV and the gh_logs-failed call site at line 2131 passing empty. The new helper iterates fixable jobs from the TSV, runs each command locally via `_run_per_job_command_once`, and on any failure re-enters the local fix loop until either every fixable job passes locally OR a hard cap is reached. Only when every fixable job passes locally does `_stage_and_push_ci_fixes` push.
+
+**Local-budget expansion** (both sketches agree direction, slightly differ on values):
+- The hardcoded `for attempt in 1 2 3` loop body in `run_captured_cmd_then_fix_loop` (scripts/ship-pr.sh:~180) is the **real** ceiling today — raising `_RCC_MAX_ITER` from 3 to anything else does nothing until this loop body becomes numeric (`for ((attempt=1; attempt<=max_iter; attempt++))`). Both sketches flag this and require fixing it as a prerequisite.
+- Inner per-job budget: raise from 3 to a tunable env-backed default of 6 (`LARCH_CI_LOCAL_FIX_ITER=6`), per-job.
+- Outer `_max_fix=3` at scripts/ship-pr.sh:2063 stays **unchanged** (otherwise geometric explosion: outer × inner × vendor tiers × N fixable jobs).
+
+**Risk: regress #2909 / PR #2941 head-changed routing**: the chain `lint-fix-loop.sh:322 → ship-pr.sh:147 (_rcc_handle_fix_status) → run_per_job_local_fix_loop return 2 → exit_stall 10-head-changed/12-head-changed (line 2113)` MUST be preserved. The new `_verify_failed_jobs_locally` helper MUST propagate `_RCC_STATUS=head-changed` as a distinguishable return code (rc=2 from helper → rc=2 from `run_ci_fix_vendor` → keyed by `run_evaluate_failure` at line 2127 identically to the existing per-job rc=2 branch). Collapsing head-changed to a generic failure rc=1 would silently re-enter the vendor loop and re-introduce #2909.
+
+**Risk: partial-fix masking**: if the vendor edits one surface but a second formerly-failed job still fails locally, the current code would push after `relevant-checks.sh` passes. The new verifier prevents that, but also means a vendor that fixes 7 of 8 fixable jobs and gets stuck on the 8th now keeps work locally without pushing. Escalation lands via the same `BAIL_REASON=ci-local-unfixable` path that `run_per_job_local_fix_loop` already uses (scripts/ship-pr.sh:2024-2033), so the main agent sees a uniform escalation contract.
+
+**Empty-TSV path** (Claude-fallback sketch addresses explicitly; Codex implicit): when `ci_failed_count=0` or the TSV is empty, `_verify_failed_jobs_locally` is a no-op-with-warning that delegates to `relevant-checks.sh` only — the current behavior, now explicit. This is the only branch where the design preserves the old behavior; it captures "CI said it failed but we have no per-job info".
+
+**Test coverage**: scripts/test-ship-pr.sh near the existing per-job test cases (~line 3058) needs new cases for:
+- vendor fallback path triggers `_verify_failed_jobs_locally` and pushes only after local re-verify passes
+- vendor fallback path triggers `_verify_failed_jobs_locally`, all fix attempts exhausted → `BAIL_REASON=ci-local-unfixable` → `exit 3`
+- vendor fallback path triggers `_verify_failed_jobs_locally`, gets head-changed → `exit_stall 10-head-changed / 12-head-changed` (no regression of #2909)
+- empty-TSV → vendor proceeds with `relevant-checks.sh`-only gate (warning logged)
+- `_RCC_MAX_ITER` honored via numeric loop (raise to 5, count attempts)
+- Classifier drift coverage may also need scripts/test-ci-failed-jobs.sh updates (none expected: classifier unchanged).
+
+**File surface** (sibling-doc rule from `.claude/rules/script-md-siblings.md`):
+- `scripts/ship-pr.sh` — the bulk of the change.
+- `scripts/ship-pr.md` — sibling, must be updated in same PR.
+- `scripts/test-ship-pr.sh` — new test cases.
+- `scripts/test-ship-pr.md` — sibling update if new cases.
+- `scripts/ci-failed-jobs.md` may need a note about the TSV consumer expanding to vendor path. (`scripts/ci-failed-jobs.sh` itself: NO code change.)
+
+## Where the sketches diverge (contested decisions — minor)
+
+The sketches converge on architecture. Minor differences are resolved below:
+
+1. **Inner budget value**: Codex suggested `SHIP_PR_LOCAL_FIX_MAX_ITER=6` (also mentioned an `SHIP_PR_CI_FIX_MAX_OUTER=5`). Claude fallback proposed `_RCC_MAX_ITER_LOCAL=${LARCH_CI_LOCAL_FIX_ITER:-6}` with outer kept at 3. Resolution: inner=6 via `LARCH_CI_LOCAL_FIX_ITER` env var (LARCH_ prefix matches existing convention); outer stays at 3 (avoid geometric explosion).
+2. **Env var name**: standardize on `LARCH_CI_LOCAL_FIX_ITER` (consistent with `LARCH_*` env conventions in the repo).
+3. **Whether vendor fallback needs the TSV when ci_failed_rc != 0**: Codex doesn't address. Claude fallback says vendor proceeds with empty TSV → no-op verifier → relevant-checks.sh only. Resolution: explicit no-op-with-warning path.
+
+No High-impact divergences. The sketch phase did NOT surface alternative architectures (e.g., "run full CI matrix locally" or "delete `run_ci_fix_vendor` entirely") — both sketches converged on the minimally-invasive "add a per-job verification gate inside the vendor path" approach.
