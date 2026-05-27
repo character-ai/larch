@@ -1,0 +1,1 @@
+When starting, /design and /implement should change issue title bracketed status prefix ASAP, immediately after verifying it's eligible to be worked on

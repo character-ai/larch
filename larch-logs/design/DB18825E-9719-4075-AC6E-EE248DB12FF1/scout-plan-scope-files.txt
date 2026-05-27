@@ -1,0 +1,2 @@
+scripts/implement-bootstrap.sh
+skills/implement/scripts/test-implement-bootstrap.sh
