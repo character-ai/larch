@@ -1,0 +1,46 @@
+Reviewing the codebase for Phase 4 (`phase_coder_select`, SKILL.md collapse, structural pins) and failure modes.
+## 1. Key architectural decisions (defensive design)
+
+**Single subprocess, fail-closed KV tail.** Phase 4 should treat `phase_coder_select` as the only authority for `coder`, `coder_fallback`, `STALL_TRACKING`, and `IMPLEMENT_BAIL_REASON=coder-unavailable`, with `emit_final_tail` reading module globals (today it always emits empty `coder` / `coder_fallback` at ```964:965:scripts/implement-bootstrap.sh```). Re-read `CODEX_*` / `CURSOR_*` from `$IMPLEMENT_TMPDIR/session-env.sh` via `read-session-env-key.sh` inside the phase—not only `phase_infra` locals—so explicit-coder tri-state logic (binary missing vs empty/undeterminable vs runtime-failed) matches the verbatim SKILL text at ```746:753:skills/implement/SKILL.md```. Warnings belong on the human channel (`emit` / `larch_err` per `lib-quiet.sh`); contract fields stay on stdout via `emit_kv`, preserving the “stdout = KEY=value only” rule in the script header.
+
+**Phase guards must match who still reaches Step 2.** Today `should_run_post_tracking_phase` also skips when `DEFERRED=true` (```184:188:scripts/implement-bootstrap.sh```), while the prompt-side `### Implementer waterfall` still runs for POSTED=false / fork paths that materialize `plan.txt` and continue. Moving the waterfall into the script without widening that guard will leave `coder=` empty on deferred-but-implementing runs—a silent Step 2 break (`run-step2-dispatch.sh` requires `--coder`). The defensive fix is either a **permissive coder predicate** (same hard-bail set as `should_run_phase_plan_materialize`, allow `DEFERRED`) or an explicit documented exception; do not assume “stricter than plan” is safe without checking B4 deferred harnesses and real POSTED=false transcripts.
+
+**Collapse + resume must stay one coherent boundary.** Step 0 becomes one `--up-to-phase coder` invocation (plus dirty-tree `--resume-plan-tail`). Recovery prose still re-enters at `--up-to-phase plan --resume-plan-tail` (```478:478:skills/implement/SKILL.md```); after collapse that must become **`coder` + `--resume-plan-tail`** (or resume must run `phase_coder_select` after a clean checkpoint), otherwise a dirty-tree exit never produces `coder=` KV even though the waterfall section is deleted. Forward `--coder` from the orchestrator (still parsed in SKILL per non-goals) into `implement-bootstrap.sh`; wire `_ib_kv_scan` / bail table for `coder-unavailable` and parsed `coder` / `coder_fallback`.
+
+**Resolve waterfall order explicitly.** Approved direction says implicit **Cursor → Codex → Claude**; shipped SKILL, `SECURITY.md`, and `test-implement-step2-routing.sh` still pin **Codex → Cursor → Claude** (```756:760:skills/implement/SKILL.md```, ```106:106:SECURITY.md```). That is a behavioral/security doc change, not a pure refactor—implement one order, update pins and SECURITY, and add matrix tests so Codex-first vs Cursor-first cannot drift again.
+
+---
+
+## 2. Files / modules to touch (and fragile areas)
+
+| Surface | Why |
+|--------|-----|
+| `scripts/implement-bootstrap.sh` | Replace stub ```911:914:scripts/implement-bootstrap.sh```; add `--coder` argv; set tail fields before `emit_final_tail`; add `→ step0: coder=` breadcrumb (5th on green path). **Fragile:** `main()` phase ordering, `RESUME_PLAN_TAIL` skipping copy/gh but still running dirty checkpoint + branch tail (```700:749:scripts/implement-bootstrap.sh```). |
+| `scripts/implement-bootstrap.md` | Remove `not-yet-implemented-phase-4`; document `coder-unavailable`, `--coder`, breadcrumb #5, phase-skip semantics (especially DEFERRED). |
+| `skills/implement/SKILL.md` | Collapse Step 0 (~656→~80 lines): one bootstrap fence, KV + bail tables, drop duplicated rehydration and `### Implementer waterfall`. **Fragile:** L14 anti-halt still points at `--up-to-phase plan` (```12:14:skills/implement/SKILL.md```); dirty-tree recovery duplicates `_ib_kv_scan` (must gain `coder` arms or share one parser). |
+| `scripts/test-implement-structure.sh` | Pins today require `--up-to-phase plan`, banned helpers in Step 0 fences, and `### Larch-log Batches` (```466:488:scripts/test-implement-structure.sh```)—all conflict with collapse. Add: ≤1 Step 0 fence, single `implement-bootstrap.sh`, banner + anchor comments. |
+| `skills/implement/scripts/test-implement-bootstrap.sh` | B4 explicit-unavailable → `coder-unavailable` + stall; implicit claude path → `coder_fallback=true`; **total `→ step0:` count = 5** with `LARCH_QUIET_BREADCRUMBS=1`. Extend B4-all/B4-plan deferred cases to assert **coder is populated**, not only “no phase-4 stub overwrite”. |
+| `scripts/test-implement-step2-routing.sh` | Will fail if waterfall prose order changes—update in same PR. |
+| `SECURITY.md` | Update if implicit order changes (Cursor-first vs Codex-first). |
+
+**Intentionally out of scope but coupled:** `run-step2-dispatch.sh` and Step 2 SKILL—must still receive the same resolved `--coder` and manifest semantics (`coder_fallback=true` only on implicit both-externals-down path per ```759:760:skills/implement/SKILL.md```, not Codex→Cursor fallback).
+
+---
+
+## 3. Main risks, failure modes, and mitigations
+
+| Risk | Failure mode | Mitigation |
+|------|----------------|------------|
+| **DEFERRED skips coder phase** | `POSTED=false` / fork: plan materialized, `coder=` empty, Step 2 aborts or wrong default. | Use permissive phase guard for coder selection; add B4-plan/B4-all assertions on `coder=codex\|cursor\|claude`; document in `.md`. |
+| **Dirty-tree resume gap** | First pass bails `dirty-tree` before coder; resume only replays plan tail; no `coder` KV after collapse. | Resume at `--up-to-phase coder --resume-plan-tail`; re-parse full tail including `coder`; structure-test the recovery invocation. |
+| **Waterfall order drift** | Operators/docs/tests disagree; wrong implementer chosen, SECURITY stale. | Single implementation source; update `test-implement-step2-routing.sh`, SECURITY, and bootstrap tests in one change. |
+| **Explicit coder tri-state** | Treating missing `*_BINARY_FOUND` as `false` → wrong warning or no stall. | Match SKILL: empty key → undeterminable message + `STALL_TRACKING` + `coder-unavailable`; never fall through to implicit waterfall. |
+| **`coder_fallback` scope creep** | Setting manifest flag on Cursor/Codex intermediate fallbacks. | Only implicit path to `claude`; best-effort `larch-log.sh manifest \|\| true`; assert KV + manifest in harness. |
+| **Breadcrumb count regression** | Conditional `larch:plan posted` / plan-log fail variants change count; acceptance demands exactly 5 on clean adopt. | Document expected set (infra, tracking, branch[+logged], plan posted, coder); extend Edge-breadcrumb tests for `coder` phase, not only `plan`. |
+| **SKILL collapse drift** | Agents reintroduce `gh issue view`, second bootstrap call, or prompt-side waterfall. | Structural pins + drop obsolete pins (`plan`-only awk, token-ledger lines in SKILL). |
+| **KV parse omission** | Orchestrator exports infra keys but not `coder` / `coder_fallback` after collapse. | Add case arms + bail row for `coder-unavailable` → Step 18; pin export list in structure test. |
+| **Stub / bail overwrite (F7 class)** | Hard bail from tracking overwritten by later phase (historical `not-yet-implemented-phase-*`). | Keep `should_run_*` checks; retain `assert_not_contains` guards; never set bail in skipped phases. |
+| **REPO_UNAVAILABLE / missing plan** | Waterfall runs without `plan.txt`. | Skip coder when plan phase skipped (`REPO_UNAVAILABLE` table: empty `PLAN_FILE`); orchestrator must not enter Step 2 implement path without artifacts (existing SKILL guard at ```744:744:skills/implement/SKILL.md``` should move to bail/KV routing table). |
+| **`execution-issues.md` warnings** | Implicit fallbacks no longer appended after prose deletion. | Port append calls into `phase_coder_select` via `lib-execution-issues.sh` / `append-tool-failure.sh` parity with current SKILL bullets. |
+
+**Highest-priority pre-implementation checks:** (1) confirm whether Phase 4 intentionally changes default implementer order; (2) confirm `phase_coder_select` must run when `DEFERRED=true` but plan files exist; (3) align dirty-tree resume with `--up-to-phase coder` before deleting `### Implementer waterfall`. Without those three, the collapse is likely to produce correct lint/structure signals but wrong runtime coder selection on deferred and recovery paths.

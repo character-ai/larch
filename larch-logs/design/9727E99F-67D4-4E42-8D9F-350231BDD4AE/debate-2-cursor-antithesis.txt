@@ -1,0 +1,26 @@
+Reading the debate task prompt and gathering any referenced context.
+Gathering codebase evidence on DEFERRED phase guards and Step 2 handling.
+<steelman>
+Widening `should_run_post_tracking_phase` so `phase_coder_select` runs whenever plan materialization would run fixes a real regression: after the SKILL.md waterfall is deleted, `DEFERRED=true` paths that still materialize `plan.txt` (POSTED=false metadata defer, forked-target with plan) would otherwise emit empty `coder=` while `run-step2-dispatch.sh` requires `--coder`, matching the Phase 3 rationale that deferred tracking must not block Step 2 inputs.
+</steelman>
+
+<claim>
+Keep `should_run_post_tracking_phase` strict (DEFERRED still skips `phase_coder_select`) and resolve implementer choice in the collapsed Step 0 KV routing table from keys bootstrap already emits, instead of reclassifying DEFERRED as a coder-phase trigger.
+</claim>
+
+<evidence>
+`scripts/implement-bootstrap.md` documents an intentional Phase 3 vs Phase 4 split: permissive `should_run_phase_plan_materialize` allows `DEFERRED=true` so Step 2 gets plan files, while stricter `should_run_post_tracking_phase` also skips when `DEFERRED=true` (`scripts/implement-bootstrap.md:97`). `should_run_post_tracking_phase` is only consumed by `phase_coder_select` (`scripts/implement-bootstrap.sh:184-188`, `1085-1098`), and `B4-all` locks the contract that DEFERRED runs skip Phase 4 without stub bail overwrite (`skills/implement/scripts/test-implement-bootstrap.sh:801-803`).
+</evidence>
+
+<strongest_concession>
+Cursor-Edge is correct that deleting the prompt-side waterfall without any replacement leaves `coder=` empty on DEFERRED-but-implementing runs while Step 2 still calls `run-step2-dispatch.sh` with `--coder "$coder"` (`skills/implement/SKILL.md:885-887`, `skills/implement/scripts/run-step2-dispatch.sh:58`).
+</strongest_concession>
+
+<counter_to_opposition>
+That gap does not require widening the guard: `emit_final_tail` already ships `codex_available` / `cursor_available` on every path (`scripts/implement-bootstrap.sh:935-936`), so collapsed Step 0 can add one routing row—if `coder=` is empty and `IMPLEMENT_BAIL_REASON` is empty, map from those KV lines (or forward `--coder` argv into bootstrap only when `should_run_post_tracking_phase` is true)—without changing phase-skip semantics, rewriting the Phase-skip section, or extending `B4-all` to assert coder population inside bootstrap on DEFERRED.
+</counter_to_opposition>
+
+<risk_if_wrong>
+If DEFERRED paths reach Step 2 with neither bootstrap `coder=` nor a routing-table fallback, dispatch fails at `--coder is required` and fork/POSTED=false implement runs stall despite valid `plan.txt`.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

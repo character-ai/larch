@@ -1,0 +1,25 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/implement-bootstrap.sh:911-914	Proposed phase_coder_select shadows availability globals with locals and checks unset codex_available_from_infra/cursor_available_from_infra	Every explicit codex/cursor request bails and implicit selection falls through to Claude even when probes passed	Remove local codex_available/cursor_available shadowing; use phase_infra globals directly or recompute from the re-read PRESENT/BINARY_FOUND keys
+1	in_scope	important	correctness	scripts/append-tool-failure.sh:100-104; scripts/implement-bootstrap.sh:911-914	Proposed _phase_coder_append_warning passes /dev/stdin to append-tool-failure.sh, but the helper requires a regular file	Fallback Warnings entries silently disappear because the call is redirected and ignored	Write the warning to a mktemp regular file or use append-execution-issue.sh for synthetic warnings
+1	in_scope	important	code-quality	skills/implement/SKILL.md:478-510; scripts/test-implement-structure.sh:378-419	Structural pin says Step 0 must have exactly one implement-bootstrap.sh invocation while the plan also keeps the dirty-tree --resume-plan-tail invocation	Implementation either fails the new structure test or removes required dirty-tree recovery re-entry	Revise the pin to allow one initial invocation plus one resume-tail invocation, or move resume-tail into a helper and pin both call paths explicitly
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:742-745; scripts/implement-bootstrap.sh:1077-1087	Deleting the prompt-side waterfall removes the REPO_UNAVAILABLE/plan-artifact guard while the widened phase gate can still select coder with PLAN_FILE empty	Repo-unavailable or missing-plan paths continue toward Step 2 and fail inside run-step2-dispatch instead of taking a controlled route	Preserve the guard in bootstrap/orchestrator: require PLAN_FILE, plan.txt, and feature-description.txt before coder dispatch, or define and test an explicit repo-unavailable route
+1	in_scope	important	correctness	scripts/implement-bootstrap.sh:911-914	Plan says to emit the coder breadcrumb before the second return only	Explicit --coder happy paths return before the breadcrumb, contradicting the proposed tests and telemetry contract	Restructure phase_coder_select to call emit_coder_breadcrumb_if_enabled once after either branch when coder is nonempty and no bail reason is set
+1	in_scope	latent	architecture	skills/implement/SKILL.md:971-975	Plan deletes the only definitions of coder_explicit and coder_fallback_target but leaves Step 2 messaging keyed on them	Claude fallback messages become wrong or unreachable after the Step 0 collapse	Replace those conditions with parsed coder_fallback plus a preserved original --coder flag indicator, or have bootstrap emit coder_explicit
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:318-394; skills/implement/SKILL.md:480-510	Plan removes all CLAUDE_PLUGIN_ROOT rehydration while still invoking bootstrap through ${CLAUDE_PLUGIN_ROOT}/...	If the env var is absent during resume or degraded context, the shell cannot exec implement-bootstrap.sh, so the script's internal fallback never runs	Make one top-of-fence root recovery block a required edit before both initial and resume-tail invocations
+1	in_scope	latent	security	skills/implement/scripts/step2-implement.sh:128-131; skills/implement/scripts/step2-implement.md:5-9	Plan makes phase_coder_select the sole authority but leaves direct step2-implement.sh omitted---coder defaulting to Codex	Direct dispatcher calls remain a second routing authority inconsistent with the new Cursor-first trust/security documentation	Either make --coder required in step2-implement.sh too, or explicitly document/test the direct default as legacy non-/implement behavior
+
+1. [correctness] `phase_coder_select` as specified will always see local availability as false. The proposed locals shadow the globals and reference unset `*_from_infra` variables.
+
+2. [correctness] `_phase_coder_append_warning` needs a real file path. `/dev/stdin` is rejected by the current helper’s `-f` check.
+
+3. [code-quality] The new structure pin conflicts with dirty-tree recovery. Step 0 cannot both have exactly one bootstrap invocation and still re-enter `--resume-plan-tail`.
+
+4. [risk-integration] Preserve the current “do not enter waterfall without repo/plan artifacts” guard somewhere after deleting the prompt-side section.
+
+5. [correctness] The coder breadcrumb must be emitted after both explicit and implicit successful selection paths, not only before the second return.
+
+6. [architecture] Step 2 fallback copy needs new state variables; `coder_explicit` and `coder_fallback_target` disappear with the deleted section.
+
+7. [risk-integration] Keep one canonical `CLAUDE_PLUGIN_ROOT` recovery before invoking the script; the script cannot recover a path if it was never launched.
+
+8. [security] Align or remove `step2-implement.sh`’s omitted-`--coder` default so there is not a second, stale coder-selection trust boundary.

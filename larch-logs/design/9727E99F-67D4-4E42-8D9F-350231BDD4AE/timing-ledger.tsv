@@ -1,0 +1,34 @@
+v1	vendor	1779902700	implement	-	codex	codex-sketch-innovation	1779902649	1779902700	51	codex-sketch-innovation-output.txt	0	complete
+v1	vendor	1779902704	implement	-	codex	codex-sketch-pragmatic	1779902653	1779902704	51	codex-sketch-pragmatic-output.txt	0	complete
+v1	vendor	1779902763	implement	-	cursor	cursor-sketch-arch	1779902642	1779902763	121	cursor-sketch-arch-output.txt	0	complete
+v1	vendor	1779902787	implement	-	cursor	cursor-sketch-edge	1779902645	1779902786	141	cursor-sketch-edge-output.txt	0	complete
+v1	vendor	1779903163	implement	-	codex	codex-debate-antithesis	1779903132	1779903163	31	debate-1-codex-antithesis.txt	0	complete
+v1	vendor	1779903174	implement	-	cursor	cursor-debate-thesis	1779903123	1779903174	51	debate-1-cursor-thesis.txt	0	complete
+v1	vendor	1779903176	implement	-	codex	codex-debate-thesis	1779903135	1779903176	41	debate-2-codex-thesis.txt	0	complete
+v1	vendor	1779903258	implement	-	cursor	cursor-debate-antithesis	1779903127	1779903258	131	debate-2-cursor-antithesis.txt	0	complete
+v1	vendor	1779903401	implement	-	codex	codex-judge	1779903371	1779903401	30	codex-judge-output.txt	0	complete
+v1	vendor	1779903468	implement	-	cursor	cursor-judge	1779903367	1779903468	101	cursor-judge-output.txt	0	complete
+v1	mark	1779903611	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779903903	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779904285	implement	-	codex	codex-phase1-dyn-codex-plan-decision-conflict	1779904133	1779904285	152	codex-primary-plan-dyn-decision-conflict-output.txt	0	complete
+v1	vendor	1779904304	implement	-	codex	codex-phase1-codex-plan-arch	1779904133	1779904304	171	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779904327	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779904133	1779904327	194	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779904327	implement	-	codex	codex-phase1-codex-plan-innovation	1779904133	1779904327	194	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779904337	implement	-	codex	codex-phase1-codex-plan-edge	1779904133	1779904337	204	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779904347	implement	-	cursor	cursor-phase1-dyn-cursor-plan-deletion-completeness	1779904133	1779904347	214	cursor-plan-dyn-deletion-completeness-output.txt	0	complete
+v1	vendor	1779904348	implement	-	cursor	cursor-phase1-dyn-cursor-plan-decision-conflict	1779904133	1779904348	215	cursor-plan-dyn-decision-conflict-output.txt	0	complete
+v1	vendor	1779904356	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779904133	1779904355	222	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779904356	implement	-	codex	codex-phase1-dyn-codex-plan-deletion-completeness	1779904133	1779904356	223	codex-primary-plan-dyn-deletion-completeness-output.txt	0	complete
+v1	vendor	1779904365	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779904133	1779904365	232	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779904368	implement	-	codex	codex-phase1-codex-plan-requirements	1779904133	1779904368	235	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779904374	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779904133	1779904374	241	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779904375	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779904133	1779904375	242	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779904376	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779904133	1779904376	243	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779904484	implement	-	codex	codex-phase1-aggregator	1779904384	1779904484	100	aggregator-output.txt	0	complete
+v1	vendor	1779905138	implement	-	cursor	cursor-phase1-voter-3	1779905036	1779905138	102	cursor-vote-output.txt	0	complete
+v1	vendor	1779905187	implement	-	codex	codex-phase1-voter-2	1779905036	1779905187	151	codex-vote-output.txt	0	complete
+v1	mark	1779905238	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779905538	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779905600	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779905617	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779906343	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

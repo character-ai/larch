@@ -1,0 +1,28 @@
++ '[' -n '' ']'
++ source <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.0.0/skills/design/scripts/lib-findings-classification.sh
+++ [[ '' == \1 ]]
+++ LARCH_FINDINGS_CLASSIFICATION_LIB_LOADED=1
++ _dedup_failed=0
++ DESIGN_TMPDIR=
++ PLAN_FILE=
++ FEATURE_FILE=
++ ROUND_NUM=1
++ CODEX_PRESENT=
++ CURSOR_PRESENT=
++ COLLECT_TIMEOUT=1860
++ PANEL_TIMEOUT=1860
++ [[ 12 -gt 0 ]]
++ case "$1" in
++ DESIGN_TMPDIR=<TMPDIR>
++ shift 2
++ [[ 10 -gt 0 ]]
++ case "$1" in
++ PLAN_FILE=<TMPDIR>/plan.txt
++ shift 2
++ [[ 8 -gt 0 ]]
++ case "$1" in
++ FEATURE_FILE=<TMPDIR>/feature-description.txt
++ shift 2
++ [[ 6 -gt 0 ]]
++ case "$1" in
+<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.0.0/skills/design/scripts/plan-review-loop.sh: line 43: 2: parameter null or not set

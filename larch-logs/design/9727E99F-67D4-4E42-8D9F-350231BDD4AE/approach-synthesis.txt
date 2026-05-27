@@ -1,0 +1,55 @@
+## Approach Synthesis
+
+### Points of agreement (4-way consensus from sketches)
+
+1. **Stub replacement at `scripts/implement-bootstrap.sh:911-914`** — `phase_coder_select` body replaces the `IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4; return 0` stub.
+2. **Reuse existing infrastructure** — `read-session-env-key.sh` for the four probe keys (`CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`); `lib-quiet.sh` `emit` / `emit_kv` / `emit_breadcrumb` / `larch_err` for messaging.
+3. **Stdout stays KV-only** — implicit fallback warnings and explicit-coder mismatch warnings route through `emit` / `larch_err` (stderr / quiet FD4), never raw `printf` to stdout. `coder` / `coder_fallback` / `STALL_TRACKING` / `IMPLEMENT_BAIL_REASON` flow via `emit_kv` on stdout.
+4. **`emit_final_tail` already reserves slots** at lines 964-965 (`emit_kv coder ""` / `emit_kv coder_fallback ""`). Phase 4 simply lets `phase_coder_select` populate module globals before `emit_final_tail` reads them.
+5. **`--coder <claude|codex|cursor>` argv added to `main()`** — parsed alongside existing `--issue-number` / `--run-id` / `--forked-target` pattern. Slash-command argv parsing remains in the SKILL prompt; only the resolved value is forwarded.
+6. **`--up-to-phase plan` → `--up-to-phase coder`** in SKILL.md Step 0 invocation so `phase_coder_select` actually runs.
+7. **Explicit-coder unavailable path** — verify availability of `--coder`'s value; on mismatch, emit the verbatim three-variant warning text (binary-missing / undeterminable / runtime-failed), set `STALL_TRACKING=true` + `IMPLEMENT_BAIL_REASON=coder-unavailable`. Tri-state matters: empty `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` is "undeterminable", not "false".
+8. **`larch-log.sh manifest --field coder_fallback=true` (best-effort) on implicit→claude only** — and emit `coder_fallback=true` in the KV tail on the same path.
+9. **Final breadcrumb `→ step0: coder=<coder>`** — emitted only when `LARCH_QUIET_BREADCRUMBS` is truthy (consistent with the four prior step0 breadcrumbs).
+10. **Warning emission via small internal helper** — a per-tool classifier (`coder_unavailable_class` mapping to binary_missing / undeterminable / runtime_failed) inside the bootstrap file keeps the verbatim explicit-coder warnings maintainable without extracting a new shared library (YAGNI; no second caller exists).
+11. **Structural pin shape (`scripts/test-implement-structure.sh`)** — Step 0 contains ≤1 fenced bash block, exactly one `implement-bootstrap.sh` invocation inside it, foreground banner + per-anchor comment present, single `→ step0: coder=` breadcrumb writer. Pre-existing pins anchored on deleted headings (e.g. `### Step 0 — tracking issue adoption`, `--up-to-phase plan` literal, `### Larch-log Batches and Summary Comments`) are updated/dropped in the same PR.
+12. **Test harness additions (`skills/implement/scripts/test-implement-bootstrap.sh`)** — explicit `--coder=cursor` + cursor unavailable → `coder-unavailable` + STALL; implicit waterfall reaching claude → `coder_fallback=true` (KV + manifest); deterministic happy-path 5-breadcrumb total-count assertion with `LARCH_QUIET_BREADCRUMBS=1`.
+
+### Divergence + reasoned synthesis call
+
+1. **Implicit waterfall order — Cursor→Codex→Claude (issue) vs Codex→Cursor→Claude (current repo).** All four sketches independently surfaced this contradiction. The issue body text and the issue's example warning `**⚠ Cursor unavailable — falling back to Codex implementer.**` are internally consistent ONLY with Cursor-first; that text would be incoherent under Codex-first. Synthesis call: **adopt the issue body's Cursor → Codex → Claude order**; bundle the cross-file updates required for repo consistency (SECURITY.md L104, `scripts/test-implement-step2-routing.sh` L31-32). Listed as DECISION_1 for dialectic because the Cursor-Arch sketch explicitly argued for verbatim preservation of existing repo order (treating the change as a separate product decision).
+2. **DEFERRED phase guard.** Cursor-Edge: today `should_run_post_tracking_phase` skips when `DEFERRED=true`; after Phase 4 deletes the prompt-side waterfall, deferred-but-implementing paths (`POSTED=false` metadata defer; fork mode with plan materialized) emit empty `coder=` which silently breaks Step 2 dispatch. Cursor-Arch implicitly accepted current behavior (DEFERRED skips coder). Synthesis call: **widen `should_run_post_tracking_phase` to be permissive (like `should_run_phase_plan_materialize`: no bail / no stall / no `REPO_UNAVAILABLE`)** — DEFERRED is no longer a coder-skip trigger. Listed as DECISION_2 for dialectic.
+3. **Dirty-tree resume invocation.** Cursor-Arch and Cursor-Edge both note SKILL.md L478 recovery still re-enters at `--up-to-phase plan --resume-plan-tail`. Synthesis call: bump to `--up-to-phase coder --resume-plan-tail` so the recovery path also runs `phase_coder_select` and the final KV tail contains `coder=`. Unanimous — not contested; folded into plan deliverable.
+4. **`test-implement-step2-routing.sh` migration.** Cursor-Arch and Cursor-Edge flagged that this harness pins `### Implementer waterfall` heading and `Codex → Cursor → Claude` — both deleted/changed by Phase 4. Synthesis call: update pins in same PR (retarget heading anchors to the equivalent `implement-bootstrap.md` sections; update order to Cursor-first). Unanimous — not contested.
+5. **Warning helper extraction.** Cursor-Arch: small local helper; Codex-Pragmatic: tiny local helper or `case`. Synthesis call: small in-file helpers (one `case` block per fallback transition; no separate file). Unanimous-leaning — not contested.
+6. **Stdout discipline.** All four agree: warnings on stderr/`emit`/`larch_err`, KV on stdout via `emit_kv`. Not contested.
+
+### Architecture/Standards highlights (from Cursor-Arch)
+
+- Clean separation across three surfaces: `scripts/implement-bootstrap.sh` (mechanical), `scripts/implement-bootstrap.md` (contract), `skills/implement/SKILL.md` (orchestration).
+- Bail/stall guards (`should_run_post_tracking_phase`, `IMPLEMENT_BAIL_REASON` short-circuit) keep DEFERRED → still-skipped, REPO_UNAVAILABLE → still-skipped after the widening above (only DEFERRED gets reclassified).
+- Bootstrap stdout discipline preserved; documenting the bail-table row + breadcrumb #5 in `implement-bootstrap.md` keeps a single canonical contract per `AGENTS.md` `script-md-siblings` convention.
+
+### Pragmatism/Safety warnings (from Codex-Pragmatic, Cursor-Edge)
+
+- Behavioral regression risk: changing waterfall order from Codex-first to Cursor-first changes the operator-visible default implementer when `--coder` is omitted. Mitigation: keep the change paired with SECURITY.md / step2-routing pin updates; do not split across PRs.
+- Stub-overwrite class regression (the F7 class from #2732 prior phases): keep `should_run_*` guards; never set `IMPLEMENT_BAIL_REASON` inside a phase that was skipped by guard.
+- Plan-only resume path still skips coder; the bump to `--up-to-phase coder --resume-plan-tail` is required to maintain "no regression in existing harnesses" acceptance.
+
+### Edge-case / failure modes (from Cursor-Edge)
+
+- **Tri-state explicit-coder failure** — `CODEX_BINARY_FOUND` or `CURSOR_BINARY_FOUND` absent from `session-env.sh` means "Step 0 may have failed" and produces the undeterminable warning + STALL — never silently fall through to implicit waterfall.
+- **Breadcrumb-count regression** — `→ step0: branch ` (with trailing space) and `→ step0: larch:plan posted` are emitted conditionally on success. The deterministic happy-path scenario for the "exactly 5 lines" assertion must guarantee all four prior breadcrumbs fire, plus the new coder breadcrumb.
+- **`coder_fallback=true` scope creep** — set only on implicit → claude (both externals down). Cursor-fallback path under Codex-first (the OLD order) explicitly does NOT set `coder_fallback`. Under Cursor-first (new order), the analogous rule: only implicit → claude sets the flag; intermediate Cursor → Codex fallback does not.
+- **REPO_UNAVAILABLE coupling** — if plan phase was skipped due to `REPO_UNAVAILABLE`, coder phase should also skip (same guard predicate applied across both phases) — synthesis preserves this.
+- **`refresh-execution-issues.sh` default** — line 79 falls back to `coder="claude"` when SESSION_ENV CODER is empty. After Phase 4, that fallback survives uneventfully because `phase_coder_select` populates SESSION_ENV (or KV tail) on every happy path; verify the harness still reads `CODER` from the right source.
+
+### Innovation/Exploration (from Codex-Innovation)
+
+- Generate Step 0 KV parser block from `implement-bootstrap.md` (or a tiny schema file). **Not in scope for Phase 4** — flagged as a "crazy but might work" future direction to prevent Step 0 regrowth. Defer.
+
+### Decisions to surface for dialectic
+
+See `$DESIGN_TMPDIR/contested-decisions.md` for the structured list. The two real contention points are:
+1. Waterfall order (DECISION_1, HIGH impact: changes default implementer; touches SECURITY.md, step2-routing test).
+2. DEFERRED phase guard widening (DECISION_2, MEDIUM impact: changes whether coder selection runs on POSTED=false / fork paths).
