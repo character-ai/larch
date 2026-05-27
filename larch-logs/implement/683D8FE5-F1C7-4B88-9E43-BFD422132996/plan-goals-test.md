@@ -1,0 +1,301 @@
+## Goal
+Implement issue #3032: [IMPLEMENTING] [OOS] Implement-script follow-ups: phase_tracking items (implement-bootstrap, breadcrumbs, write-final-report) + token-report zero-cost correctness fix\n\n## Out-of-Scope Observation — combined follow-up.
+
+## Implementation Plan
+## Plan
+
+# Implementation Plan — #3032 Combined OOS Follow-ups
+
+This is a SIMPLE-tier design. The goal is to address 4 of the 6 OOS items
+in #3032 (Items A, B, E, F) with the smallest set of edits that
+satisfies the user-approved outline. Item D is deferred to Phase 4 per
+Round 1 Decision 1. Item C is dropped because the harness already covers
+both bail paths (see FINDING_1 — accepted by plan review panel).
+
+## Files to modify/create
+
+### UPDATED: `scripts/implement-bootstrap.sh`
+
+Add two new lines at the top of the `phase_tracking()` function body
+(line 497) — directly after the local declarations and before the first
+early-return branch — emitting `token-ledger.sh mark "Step 0 — tracking
+issue"` and `timing-ledger.sh mark "Step 0 — tracking issue"`. Pattern
+mirrors `phase_infra` lines 450-451 exactly: each command is suffixed
+with `|| true` so a ledger helper failure never blocks Step 0 progress.
+Both marks must execute **before** any of the existing
+`REPO_UNAVAILABLE` / `FORKED_TARGET` early-return blocks so the tracking
+bucket is attributed even on skip paths.
+
+This change is paired atomically with the SKILL.md edit below
+(FINDING_2): the orchestrator-side marks at SKILL.md lines 684-685 must
+be **removed in the same commit** that adds the bootstrap-owned marks,
+so the run records the `Step 0 — tracking issue` boundary exactly once.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+Remove the two prompt-side orchestrator marks at lines 684-685:
+
+```text
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+```
+
+Replace them with a one-line comment (or remove entirely if the
+surrounding block becomes empty) recording that the mark is now owned by
+`phase_tracking` in `scripts/implement-bootstrap.sh`. Update any
+adjacent ownership prose that mentions "the orchestrator emits the
+tracking mark" so it points at the bootstrap function instead. During
+implementation, search SKILL.md for any sibling prose referencing
+`Step 0 — tracking issue` and reconcile it with the bootstrap-owned
+contract.
+
+### UPDATED: `scripts/implement-bootstrap.md`
+
+Rewrite the **Breadcrumbs** section (around the `Tracking phase may also
+emit:` block) so it enumerates the breadcrumbs that Phase 2 actually
+emits today rather than describing them as future work. Replace
+"Tracking phase may also emit:" with "Tracking phase emits exactly one
+of:" so the success/skip dichotomy is explicit. Keep the existing two
+bullets (`→ step0: tracking adopted #<N> ...` and `⏩ step0: tracking
+— skip (repo-unavailable|forked-target)`) verbatim — they are accurate.
+Adjust the trailing paragraph that mentions "Future Phase 4 may add" so
+it only references Phase 4 work (the `→ step0: coder=…` token), without
+suggesting tracking is itself future work.
+
+Also document that the `Step 0 — tracking issue` token/timing ledger
+mark is emitted from `phase_tracking` (mirroring the existing
+`Step 0 — preflight` mark documented for `phase_infra`), so the
+ownership contract is captured alongside the bootstrap script. This
+prose belongs in the Exit codes / Phases section, not the Breadcrumbs
+section.
+
+### UPDATED: `skills/implement/scripts/test-implement-bootstrap.sh`
+
+**Do not add new cases for `non-OPEN issue state` or `Branch-1 resume
+without --issue-number`.** Plan-review FINDING_1 confirmed these are
+already covered:
+- `B7-non-open-state` (around line 1423) — uses
+  `LARCH_TEST_ISSUE_STATE=MERGED`, asserts `STEP_FAILED=get-issue-state`.
+- `B-issue-required-for-resume` (around line 1537) — asserts
+  `STEP_FAILED=issue-number-required-for-resume`.
+
+The harness's sandbox stub for `get-issue-state.sh` (around line 227)
+already echoes `STATE=${LARCH_TEST_ISSUE_STATE:-OPEN}`, so adding a
+PATH stub would not affect the call path (FINDING_5).
+
+**However**, FINDING_2 requires that GP-adopt and similar success-path
+assertions account for the new bootstrap-owned `Step 0 — tracking
+issue` mark. During implementation, audit existing assertions in this
+harness:
+- If any case asserts that bootstrap stdout/stderr does NOT include the
+  `Step 0 — tracking issue` mark (a negative assertion), update it to
+  expect the mark exactly once on the adopt path and zero times on the
+  repo-unavailable / forked-target skip paths.
+- If no such negative assertions exist, no harness change is required
+  for Item B.
+
+Where harness updates ARE required for FINDING_2, prefer extending an
+existing GP-adopt case rather than adding a new case.
+
+Add a **single** new case for Item F (corrupt-zero token-report):
+exercise `write-final-report.sh` against a synthetic token-report.json
+where `.claude.totals`/`.codex.totals`/`.cursor.totals` are all present
+with `.total == 0`, assert the final summary body includes the warning
+line documented under `skills/implement/scripts/write-final-report.sh`
+below, and assert the cost rendering matches the existing `Cost: N/A`
+contract (FINDING_3). If `write-final-report.sh` is invoked through a
+separate harness rather than this one, add the case there instead.
+
+### UPDATED: `skills/implement/scripts/test-implement-bootstrap.md`
+
+Sync the sibling table only if harness cases were added or modified.
+For Item F's new case, add one row describing the corrupt-zero scenario
+and its asserted invariant. If FINDING_2 required updating an existing
+GP-adopt case's assertion list, edit the corresponding row's invariant
+column to mention the new positive assertion on the
+`Step 0 — tracking issue` mark.
+
+Do not introduce hardcoded total-case counts; the table itself remains
+the source-of-truth per
+`.claude/rules/drift-prone-prose-in-docs.md`.
+
+### UPDATED: `docs/linting.md`
+
+Update the `make test-implement-bootstrap` row description:
+- **Remove** the parenthetical `(/implement Step 0 calls #1–#5)`
+  entirely (FINDING_4 — do not replace with another range; the range is
+  drift-prone). The make-target name plus the harness file already
+  identify the unit under test.
+- Replace the enumerated case list (`GP1-infra happy path, ...`) with a
+  shorter phrase that defers to the harness file as the source of
+  truth, e.g. "Exercises the cases enumerated in
+  `skills/implement/scripts/test-implement-bootstrap.md`."
+- Preserve the `make lint` shard reference unchanged.
+
+### UPDATED: `skills/implement/scripts/write-final-report.sh`
+
+Add a corrupt-zeros detector adjacent to the existing
+`jq -e '.claude.totals'` guard around line 179. The detector must:
+
+1. **Gate on vendor-section presence** (FINDING_7): use `jq -e '.codex'`
+   and `jq -e '.cursor'` to detect whether each vendor section is
+   structurally present (not just zero). Only count a vendor as
+   "claimed zero" when its top-level section exists AND its
+   `.totals.total` reads 0/null. Absent sections (single-agent runs)
+   are exempt from the corrupt-zero condition.
+2. Trigger the warning only when **all present** vendor sections have
+   zero totals AND `.claude.totals` schema is present AND at least one
+   non-Claude vendor section is present (or `.claude.totals.total` is
+   itself zero in a Claude-only run). This eliminates spurious warnings
+   on legitimate single-agent zero-cache runs.
+3. **Align with the existing rendering contract** (FINDING_3): when the
+   corrupt-zero condition fires, the cost line still renders
+   `Cost: N/A` (via the existing `TOKEN_DATA_AVAILABLE=false` path at
+   lines 168/189/377). Do not change `TOKEN_DATA_AVAILABLE` semantics
+   in this PR. Round 1 Decision 3's "continue with $0.00" wording is
+   reconciled as "continue with the existing rendering" — which is
+   `Cost: N/A` in the current implementation.
+4. **Route the warning through the rendered summary body** (FINDING_6):
+   emit the warning into the rendered `summary-final.md` body (or
+   whichever artifact `write-final-report.sh` composes for chat
+   replay) rather than only stderr. The exact warning text:
+
+   ```text
+   **⚠ token-report.json appears corrupt; reporting Cost: N/A**
+   ```
+
+   Keep a duplicate stderr emission as a secondary diagnostic channel
+   for operators watching stderr directly.
+
+Add a brief one-line explanatory comment near the new logic ("guard
+against silent zero costs"); do not exceed one short line.
+
+## Approach
+
+The 4 in-scope items split cleanly into three change clusters after
+applying plan-review findings:
+
+1. **Telemetry attribution — atomic migration** (Item B + FINDING_2):
+   add the ledger marks to `phase_tracking` AND remove the duplicate
+   prompt-side marks from SKILL.md in the same commit. Audit and update
+   any GP-adopt harness assertions that depended on the prior contract.
+
+2. **Documentation freshness — drift-resistant** (Items A + E +
+   FINDING_4): rewrite stale "future phases will add" prose with
+   present-tense descriptions; drop the hardcoded Step 0 call range
+   entirely (do not substitute another range); refer to the harness
+   file as the case-list source-of-truth.
+
+3. **Corrupt-zero detection — contract-aligned** (Item F + FINDING_3 +
+   FINDING_6 + FINDING_7): emit the warning into the rendered summary
+   body (not stderr-only), gate on vendor-section presence (no
+   spurious warnings on single-agent runs), and align the message with
+   the existing `Cost: N/A` rendering contract instead of forcing a new
+   `$0.00` path.
+
+Items C and D are out of scope:
+- Item C is dropped (FINDING_1): the harness already covers both bail
+  paths via existing cases `B7-non-open-state` and
+  `B-issue-required-for-resume`. The plan only adds a single new
+  corrupt-zero case for Item F (FINDING_3 + FINDING_7 test gap).
+- Item D is deferred to Phase 4 (Round 1 Decision 1).
+
+## Edge cases
+
+- **`phase_tracking` ledger marks on skip branches**: `REPO_UNAVAILABLE`
+  and `FORKED_TARGET` branches early-return with `DEFERRED=true` before
+  the bulk of phase_tracking runs. The new ledger marks must be emitted
+  **before** these branches so the tracking bucket is attributed even
+  on skip paths. Placement is immediately after the `local` declarations
+  at the top of the function body, before the first `if` branch.
+- **Atomic migration of Step 0 — tracking issue mark** (FINDING_2):
+  during implementation, do not land the bootstrap-owned marks without
+  removing the SKILL.md prompt-side marks in the same commit. A split
+  landing would record the boundary twice and trip GP-adopt assertion
+  drift.
+- **Ledger helper failure**: both new marks must use `|| true` so a
+  missing/broken `token-ledger.sh` / `timing-ledger.sh` never aborts
+  Step 0 (matches `phase_infra` pattern at lines 450-451).
+- **Vendor-section presence gate** (FINDING_7): a single-agent run
+  produces `token-report.json` containing only the `.claude` section.
+  The detector must use `jq -e '.codex'` / `jq -e '.cursor'` to detect
+  structural absence and exempt absent vendors from the all-zero count;
+  otherwise legitimate single-agent runs would fire the warning.
+- **TOKEN_DATA_AVAILABLE contract alignment** (FINDING_3): the existing
+  rendering path treats all-zero as unavailable data and produces
+  `Cost: N/A`. The new warning piggy-backs on this existing branch — it
+  does not change `TOKEN_DATA_AVAILABLE` semantics. Any test must
+  assert `Cost: N/A`, not `$0.00`.
+
+## Failure modes
+
+- **Step 0 — tracking issue mark recorded twice**: if the bootstrap and
+  SKILL.md changes are split across commits, the prompt-side mark fires
+  once and then the bootstrap-owned mark fires again on the same run,
+  inflating tracking-bucket attribution. **Earliest signal**: token
+  report shows two `Step 0 — tracking issue` entries with identical
+  boundaries. **Mitigation**: land both edits in the same commit (per
+  Approach cluster 1). Pre-commit `grep` for `Step 0 — tracking issue`
+  across `scripts/implement-bootstrap.sh` and
+  `skills/implement/SKILL.md` should show exactly one `mark` call per
+  ledger (only in bootstrap).
+- **Corrupt-zeros warning fires on legitimate single-agent runs**: if
+  the vendor-section presence gate is implemented as
+  `jq -e '.codex.totals'` (totals-level) rather than `jq -e '.codex'`
+  (section-level), an absent `.codex` section would coerce to zero and
+  satisfy the warning condition. **Earliest signal**: CI logs show the
+  warning on Claude-only runs. **Mitigation**: implement the gate at
+  the top-level section (`jq -e '.codex'`); add a single harness case
+  exercising a synthetic single-agent token-report and assert the
+  warning does NOT fire.
+- **`docs/linting.md` row drift**: future harness additions (Phase 3,
+  Phase 4) will land more cases. If the new description still
+  enumerates specific cases, it will need another OOS later. **Earliest
+  signal**: someone files a new OOS item titled "docs/linting.md
+  test-implement-bootstrap row stale". **Mitigation**: the new
+  description references the sibling `test-implement-bootstrap.md` as
+  the source-of-truth, so subsequent additions automatically inherit
+  freshness through that file rather than the docs row.
+
+## Testing strategy
+
+- **Item B (telemetry)**: run any smoke invocation that triggers
+  `phase_tracking`; confirm `token-report.json` and the timing-ledger
+  output include the `Step 0 — tracking issue` bucket entry exactly
+  once (not twice). The existing
+  `make test-implement-bootstrap` GP-adopt cases will surface the
+  duplicate-mark regression if the SKILL.md edit is dropped.
+- **Item C (test coverage)**: no new cases; verify the existing
+  `B7-non-open-state` and `B-issue-required-for-resume` cases still
+  pass under `make test-implement-bootstrap`. No harness additions.
+- **Item F (corrupt-zero warning)**: add **one** new harness case
+  staging a synthetic `token-report.json` with the `.claude.totals`,
+  `.codex.totals`, `.cursor.totals` schema present and all `.total == 0`.
+  Assert the rendered summary body contains the warning line, the cost
+  line renders `Cost: N/A`, and the harness exits 0. Add a sibling
+  exemption case: single-agent run (only `.claude` section, all zero)
+  — assert the warning does NOT fire.
+- **Items A + E (docs)**: prose-only changes; covered by `make lint`
+  (markdownlint MD038/MD037 and drift-prone-prose grep helpers).
+- **Cross-cutting**: run `bash scripts/relevant-checks.sh` after all
+  edits to satisfy the AGENTS.md post-edit requirement.
+
+diff_lines: 130
+
+
+## Acceptance
+
+- `phase_tracking` in `scripts/implement-bootstrap.sh` emits `token-ledger.sh mark "Step 0 — tracking issue"` and `timing-ledger.sh mark "Step 0 — tracking issue"` at the top of the function body, before any `REPO_UNAVAILABLE` or `FORKED_TARGET` early-return branch, each suffixed with `|| true`.
+- `skills/implement/SKILL.md` lines 684-685 (the prompt-side `Step 0 — tracking issue` token/timing marks) are removed in the same commit; any adjacent ownership prose is updated to point at the bootstrap.
+- `make test-implement-bootstrap` passes; the `Step 0 — tracking issue` mark appears exactly once per `/implement` Step 0 run (no duplicates).
+- `scripts/implement-bootstrap.md` Breadcrumbs section enumerates the Phase-2 tracking breadcrumbs as present-tense (no stale "future phases will add" prose about tracking).
+- `docs/linting.md` `make test-implement-bootstrap` row no longer contains a hardcoded `Step 0 calls #1–#N` range; description defers to `skills/implement/scripts/test-implement-bootstrap.md` as the case-list source-of-truth.
+- `skills/implement/scripts/write-final-report.sh` emits `**⚠ token-report.json appears corrupt; reporting Cost: N/A**` into `summary-final.md` (and stderr) when all *present* vendor sections have zero totals; absent vendor sections (single-agent runs) do NOT trigger the warning.
+- A new harness case exercises the corrupt-zero scenario and asserts both the warning emission AND `Cost: N/A` rendering; a sibling exemption case asserts the warning does NOT fire on a single-agent zero-cost report.
+- `bash scripts/relevant-checks.sh` passes after all edits.
+
+
+diff_lines: 130
+
+## Test plan
+(no test plan section in plan-file)
