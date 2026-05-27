@@ -1,0 +1,18 @@
+v1	mark	1779863726	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779863962	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779864078	implement	-	codex	codex-sketch-generic	1779864018	1779864078	60	codex-sketch-generic-output.txt	0	complete
+v1	mark	1779864179	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779864379	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779864507	implement	-	codex	codex-phase1-dyn-codex-plan-harness-phrase-alignment	1779864463	1779864507	44	codex-primary-plan-dyn-harness-phrase-alignment-output.txt	0	complete
+v1	vendor	1779864534	implement	-	codex	codex-phase1-dyn-codex-plan-sibling-md-placement	1779864463	1779864534	71	codex-primary-plan-dyn-sibling-md-placement-output.txt	0	complete
+v1	vendor	1779864585	implement	-	codex	codex-phase1-codex-plan-innovation	1779864463	1779864585	122	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779864586	implement	-	codex	codex-phase1-codex-plan-arch	1779864463	1779864585	122	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779864586	implement	-	codex	codex-phase1-dyn-codex-plan-generator-output-fidelity	1779864463	1779864586	123	codex-primary-plan-dyn-generator-output-fidelity-output.txt	0	complete
+v1	vendor	1779864597	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779864463	1779864597	134	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779864614	implement	-	codex	codex-phase1-codex-plan-edge	1779864463	1779864614	151	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779864648	implement	-	codex	codex-phase1-codex-plan-requirements	1779864463	1779864648	185	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779866577	implement	-	codex	codex-phase1-aggregator	1779866527	1779866577	50	aggregator-output.txt	0	complete
+v1	vendor	1779866786	implement	-	codex	codex-phase1-voter-2	1779866705	1779866786	81	codex-vote-output.txt	0	complete
+v1	vendor	1779866879	implement	-	codex	codex-phase2-voter-3	1779866787	1779866879	92	cursor-vote-output-phase2.txt	0	complete
+v1	mark	1779898532	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779898642	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

@@ -1,0 +1,11 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-dyn-harness-phrase-alignment-output.txt|TOOL=cursor|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/cursor-plan-dyn-harness-phrase-alignment-output.txt)
+
+{"no_issues_found": true}
+## Reviewer stderr (<TMPDIR>/cursor-plan-dyn-harness-phrase-alignment-output.txt.diag)
+
+(file missing: <TMPDIR>/cursor-plan-dyn-harness-phrase-alignment-output.txt.diag)
+

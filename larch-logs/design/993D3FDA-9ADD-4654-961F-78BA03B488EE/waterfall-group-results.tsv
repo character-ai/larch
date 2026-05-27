@@ -1,0 +1,16 @@
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-generator-output-fidelity	dyn-codex-plan-generator-output-fidelity	codex	<TMPDIR>/codex-primary-plan-dyn-generator-output-fidelity-output.txt	ok
+plan-dyn-harness-phrase-alignment	dyn-codex-plan-harness-phrase-alignment	codex	<TMPDIR>/codex-primary-plan-dyn-harness-phrase-alignment-output.txt	ok
+plan-dyn-sibling-md-placement	dyn-codex-plan-sibling-md-placement	codex	<TMPDIR>/codex-primary-plan-dyn-sibling-md-placement-output.txt	ok
+plan-arch	cursor-plan-arch	codex	<TMPDIR>/cursor-plan-arch-output.txt	reused	codex-plan-arch
+plan-edge	cursor-plan-edge	codex	<TMPDIR>/cursor-plan-edge-output.txt	reused	codex-plan-edge
+plan-innovation	cursor-plan-innovation	codex	<TMPDIR>/cursor-plan-innovation-output.txt	reused	codex-plan-innovation
+plan-pragmatic	cursor-plan-pragmatic	codex	<TMPDIR>/cursor-plan-pragmatic-output.txt	reused	codex-plan-pragmatic
+plan-requirements	cursor-plan-requirements	codex	<TMPDIR>/cursor-plan-requirements-output.txt	reused	codex-plan-requirements
+plan-dyn-generator-output-fidelity	dyn-cursor-plan-generator-output-fidelity	codex	<TMPDIR>/cursor-plan-dyn-generator-output-fidelity-output.txt	reused	dyn-codex-plan-generator-output-fidelity
+plan-dyn-harness-phrase-alignment	dyn-cursor-plan-harness-phrase-alignment	codex	<TMPDIR>/cursor-plan-dyn-harness-phrase-alignment-output.txt	reused	dyn-codex-plan-harness-phrase-alignment
+plan-dyn-sibling-md-placement	dyn-cursor-plan-sibling-md-placement	codex	<TMPDIR>/cursor-plan-dyn-sibling-md-placement-output.txt	reused	dyn-codex-plan-sibling-md-placement
