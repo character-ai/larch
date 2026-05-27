@@ -101,6 +101,23 @@ assert_case_err() {
     assert_case "$label" 1 "$stderr_file" "$rc" "$@"
 }
 
+assert_stderr_lacks() {
+    local label="$1"
+    local stderr_file="$2"
+    shift 2
+
+    local needle
+    for needle in "$@"; do
+        if grep -Fq "$needle" "$stderr_file"; then
+            printf 'FAIL [%s]: stderr unexpectedly contained: %s\n' "$label" "$needle" >&2
+            cat "$stderr_file" >&2
+            FAIL=$((FAIL + 1))
+            return 1
+        fi
+    done
+    return 0
+}
+
 stderr_file="$(mktemp)"
 
 # 1 — clean collect-agent-results.sh (background+monitor pair)
@@ -1375,6 +1392,9 @@ fi
 EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_err "heredoc monitor_rc init ignored" "$stderr_file" "$rc" 'missing monitor_rc= initialization'
+assert_stderr_lacks "heredoc monitor_rc init ignored" "$stderr_file" \
+    'missing "|| monitor_rc=$?"' \
+    'missing conditional branching on monitor_rc'
 
 # 57 — shell-file top-level writer also requires monitor_rc initialization.
 reset_tree
@@ -1393,6 +1413,89 @@ run_pair() {
 EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_err "shell file missing monitor_rc init" "$stderr_file" "$rc" 'missing monitor_rc= initialization'
+
+# 58 — backslash-continued breadcrumb-monitor capture is accepted.
+reset_tree
+write_md skills/monitor-rc-backslash-capture/SKILL.md <<'EOF'
+# Case 58
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh \
+  --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "backslash-continued monitor_rc capture" "$stderr_file" "$rc"
+
+# 59 — init and branch without monitor_rc capture still fails.
+reset_tree
+write_md skills/monitor-rc-missing-capture/SKILL.md <<'EOF'
+# Case 59
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "missing monitor_rc capture only" "$stderr_file" "$rc" 'missing "|| monitor_rc=$?"'
+assert_stderr_lacks "missing monitor_rc capture only" "$stderr_file" \
+    'missing monitor_rc= initialization' \
+    'missing conditional branching on monitor_rc'
+
+# 60 — decorative conditional plus comment does not satisfy monitor_rc branching.
+reset_tree
+write_md skills/monitor-rc-decorative-conditional/SKILL.md <<'EOF'
+# Case 60
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+wait "$SHIP_PR_PID"
+if true; then
+    :
+fi
+# monitor_rc
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "decorative conditional monitor_rc bypass rejected" "$stderr_file" "$rc" 'missing conditional branching on monitor_rc'
 
 # 16 — Family A: minimum run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {

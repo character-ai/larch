@@ -393,7 +393,7 @@ fence_has_monitor_rc_conditional_after() {
     local start_idx="$1"
     shift
     local -a lines=("$@")
-    local i j line body_line
+    local i line
 
     for ((i = start_idx; i < ${#lines[@]}; i++)); do
         if line_is_heredoc_body_idx "$i" "${lines[@]}"; then
@@ -403,15 +403,7 @@ fence_has_monitor_rc_conditional_after() {
         if [[ ! "$line" =~ ^[[:space:]]*(if|elif|case|while|until)([[:space:]]|$) ]]; then
             continue
         fi
-        for ((j = i; j < ${#lines[@]}; j++)); do
-            if line_is_heredoc_body_idx "$j" "${lines[@]}"; then
-                continue
-            fi
-            body_line="${lines[$j]}"
-            if line_mentions_monitor_rc_word "$body_line"; then
-                return 0
-            fi
-        done
+        line_mentions_monitor_rc_word "$line" && return 0
     done
     return 1
 }
