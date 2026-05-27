@@ -1,0 +1,14 @@
+Implemented the guarded aggregator containment relaxation.
+
+Changed:
+- [aggregate-findings.sh](<OPERATOR_REPO_PATH>/skills/review/scripts/aggregate-findings.sh): added default-off `--allow-findings-outside-tmpdir true|false`, early boolean validation, containment hint, input-only relaxation, and guarded outside-input `mv` failure handling.
+- [test-aggregate-findings.sh](<OPERATOR_REPO_PATH>/skills/review/scripts/test-aggregate-findings.sh): added outside-input rejection, invalid-flag ordering, opt-in merge, and strict output-containment regressions.
+- [aggregate-findings.md](<OPERATOR_REPO_PATH>/skills/review/scripts/aggregate-findings.md) and [SECURITY.md](<OPERATOR_REPO_PATH>/SECURITY.md): documented the opt-in trust boundary and disabled-mode interaction.
+
+Verification passed:
+- `bash skills/review/scripts/test-aggregate-findings.sh`
+- `make test-aggregate-findings`
+- `bash scripts/relevant-checks.sh`
+- `git diff --check`
+
+I wrote `<TMPDIR>/manifest.json` atomically with `status=complete`. No `qa-pending.json` was created.
