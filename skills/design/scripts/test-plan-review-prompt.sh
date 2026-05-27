@@ -74,7 +74,7 @@ for archetype in "${archetypes[@]}"; do
     for vendor in "${vendors[@]}"; do
         out="$TMPROOT/${vendor}-${archetype}.txt"
         err="$TMPROOT/${vendor}-${archetype}.err"
-        bash "$RENDERER" --archetype "$archetype" --vendor "$vendor" --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" >"$out" 2>"$err" \
+        bash "$RENDERER" --archetype "$archetype" --vendor "$vendor" --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$out" 2>"$err" \
             || fail "$vendor/$archetype: renderer exited non-zero: $(cat "$err")"
 
         assert_contains "$vendor/$archetype focus enum" "code-quality / risk-integration / correctness / architecture / security" "$out"
@@ -108,14 +108,14 @@ for _arch_check in "arch:Emphasize maintainability" "edge:boundary conditions" "
     _arch="${_arch_check%%:*}"
     _phrase="${_arch_check#*:}"
     _out="$TMPROOT/full-role-${_arch}.txt"
-    bash "$RENDERER" --archetype "$_arch" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" >"$_out"
+    bash "$RENDERER" --archetype "$_arch" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$_out"
     assert_contains "$_arch full_role" "$_phrase" "$_out"
 done
 
 simple_out="$TMPROOT/simple.txt"
 hard_out="$TMPROOT/hard.txt"
-bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$SIMPLE_DT" >"$simple_out"
-bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" >"$hard_out"
+bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$SIMPLE_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$simple_out"
+bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$hard_out"
 assert_contains "simple emphasis" "Tier emphasis: SIMPLE" "$simple_out"
 assert_contains "simple minimum-change lane" "This is a minimum-change review lane." "$simple_out"
 assert_contains "simple locked phrase" "Bias your findings toward flagging" "$simple_out"

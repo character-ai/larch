@@ -14,6 +14,7 @@ ARCHETYPE=""
 VENDOR=""
 PLAN_FILE=""
 DESIGN_TMPDIR_ARG=""
+READABILITY_STYLE_FILE_ARG=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'EOF'
@@ -37,6 +38,7 @@ while [[ $# -gt 0 ]]; do
         --vendor) VENDOR="$(take_value --vendor "${2:-}")"; shift 2 ;;
         --plan-file) PLAN_FILE="$(take_value --plan-file "${2:-}")"; shift 2 ;;
         --design-tmpdir) DESIGN_TMPDIR_ARG="$(take_value --design-tmpdir "${2:-}")"; shift 2 ;;
+        --readability-style-file) READABILITY_STYLE_FILE_ARG="$(take_value --readability-style-file "${2:-}")"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) larch_err "render-plan-review-prompt.sh: unknown argument: $1"; usage; exit 2 ;;
     esac
@@ -104,7 +106,7 @@ case "$classification" in
         ;;
 esac
 
-readability_style_file="${READABILITY_STYLE_FILE:-$SCRIPT_DIR/../references/readability-style.md}"
+readability_style_file="${READABILITY_STYLE_FILE_ARG:-${READABILITY_STYLE_FILE:-$SCRIPT_DIR/../references/readability-style.md}}"
 readability_style=""
 if [[ -r "$readability_style_file" ]]; then
     readability_style="$(cat "$readability_style_file" || true)"
