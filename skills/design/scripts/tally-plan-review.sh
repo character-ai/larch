@@ -225,14 +225,14 @@ assign_voter() {
         pos=$(position_for_voter "$tool" "$path")
     fi
     if [[ "$pos" == "0" ]]; then
-        larch_err "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters"
-        write_findings_classification_stub
-        exit 2
+        tally_error_exit \
+            "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters" \
+            "**⚠ Tally aborted: too many voters; at most three non-MainAgent voters allowed.**"
     fi
     if [[ -n "${SLOT_FILE[$pos]}" ]]; then
-        larch_err "error: duplicate voter position $pos"
-        write_findings_classification_stub
-        exit 2
+        tally_error_exit \
+            "error: duplicate voter position $pos" \
+            "**⚠ Tally aborted: duplicate voter position $pos.**"
     fi
     SLOT_FILE[pos]="$path"
     SLOT_TOOL[pos]="$tool"
