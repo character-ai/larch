@@ -1,1 +1,3 @@
 larch:bc t=2026-05-27T05:35:19Z d=0 p=40904 s=ship-pr.sh c=progress text=→ ship-pr: version bump
+larch:bc t=2026-05-27T05:35:32Z d=0 p=48268 s=implement-finalize.sh c=progress text=✅ 8: larch-log status=complete elapsed=2s
+larch:bc t=2026-05-27T05:35:33Z d=0 p=40904 s=ship-pr.sh c=stall text=⛔ ship-pr: stalled at step 8b
