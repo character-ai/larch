@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `fda2ee79` (Bump version to 45.1.5 (#3055))
-- **Current version**: `45.1.8`
+- **Base commit**: `915cfa38` (Fixes #2975: Rename implement issues before tracking metadata (#3060))
+- **Current version**: `45.1.9`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.1.9`
+- **New version**: `45.1.10`
 
 ### PATCH rationale
 
