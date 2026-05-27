@@ -394,16 +394,16 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 0,
-          "output": 0,
-          "total": 0
+          "input": 42786,
+          "output": 3144,
+          "total": 740202
         }
       }
     ],
     "totals": {
-      "input": 370362,
-      "output": 39259,
-      "total": 7668885
+      "input": 413148,
+      "output": 42403,
+      "total": 8409087
     }
   },
   "cursor": {
@@ -499,16 +499,16 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 0,
-          "output": 0,
-          "total": 0
+          "input": 66,
+          "output": 15063,
+          "total": 15129
         }
       }
     ],
     "totals": {
-      "input": 922721,
-      "output": 90299,
-      "total": 7073780
+      "input": 922787,
+      "output": 105362,
+      "total": 7088909
     }
   },
   "BUCKETS_claude": {
@@ -520,15 +520,15 @@
     "total": 8989777
   },
   "BUCKETS_codex": {
-    "input": 370362,
-    "cached_input": 7259264,
-    "output": 39259,
-    "total": 7668885
+    "input": 413148,
+    "cached_input": 7953536,
+    "output": 42403,
+    "total": 8409087
   },
   "BUCKETS_cursor": {
-    "input": 922721,
+    "input": 922787,
     "cache_read": 6060760,
-    "output": 90299,
-    "total": 7073780
+    "output": 105362,
+    "total": 7088909
   }
 }
