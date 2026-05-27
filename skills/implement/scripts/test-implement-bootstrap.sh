@@ -641,7 +641,7 @@ assert_contains "BRANCH_SELECTED=repo-unavailable-skip" "$out" "GP-repo-unavail-
 assert_contains "DEFERRED=true" "$out" "GP-repo-unavail-plan deferred"
 assert_line "PLAN_FILE=" "$out" "GP-repo-unavail-plan empty plan file"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_not_contains "snapshot-untracked" "$invoke" "GP-repo-unavail-plan no snapshot"
+assert_contains "snapshot-untracked --output $SANDBOX_TMP/untracked-baseline.z --nul" "$invoke" "GP-repo-unavail-plan snapshot"
 assert_not_contains "gh issue view" "$invoke" "GP-repo-unavail-plan no gh"
 assert_not_contains "persist-implement-run-flags" "$invoke" "GP-repo-unavail-plan no persist"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -1051,6 +1051,17 @@ else
 fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
+# --- B7-plan-dirty-tree resume tail missing tmpdir ---
+build_sandbox
+write_preflight_plan
+out=$( (unset IMPLEMENT_TMPDIR; run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResume --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail) 2>&1 ) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B7-plan-dirty-tree resume tail missing tmpdir exit 2"
+assert_contains "--resume-plan-tail requires IMPLEMENT_TMPDIR in the environment" "$out" "B7-plan-dirty-tree resume tail missing tmpdir usage"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "snapshot-untracked" "$invoke" "B7-plan-dirty-tree resume tail missing tmpdir no snapshot"
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume tail missing tmpdir no branch"
+rm -rf "$SANDBOX"
+
 # --- B8-plan-forked-target ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -1081,6 +1092,19 @@ invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "gh issue view 123 --repo upstream/repo" "$invoke" "B8-plan-forked-target gh upstream"
 assert_not_contains "create-branch --branch" "$invoke" "B8-plan-forked-target no branch create"
 assert_not_contains "tracking-issue-summary upsert-summary" "$invoke" "B8-plan-forked-target no plan summary"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B8-plan-forked-missing-upstream ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --forked-target true --issue-number 123 --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B8-plan-forked-missing-upstream exit 2"
+assert_contains "STEP_FAILED=gh-issue-view" "$out" "B8-plan-forked-missing-upstream step failed"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "persist-implement-run-flags" "$invoke" "B8-plan-forked-missing-upstream no persist"
+assert_not_contains "create-branch --branch" "$invoke" "B8-plan-forked-missing-upstream no branch"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B9-plan-user-branch ---

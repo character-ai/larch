@@ -465,7 +465,31 @@ Step 0 dirty-tree recovery gate:
 
 1. Write `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `STATUS=dirty-or-unknown`, `STAGE=step0-plan-materialize`, and `RECOVERY_REQUIRED=true`.
 2. If `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize` is absent, create it and fire `AskUserQuestion` with exactly two operator paths: **Restore a clean tree and continue** / **Cancel this implement run**.
-3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase plan --resume-plan-tail` with the same Step 0 args (`--caller-env`, `--issue-number`, `--forked-target`, `--upstream-repo`, `--run-id`, `--preflight-tmpdir`) so the bootstrap tail resumes branch capture plus `plan-goals-test` / `plan-review-tally` / `larch:plan` publication inside the existing `IMPLEMENT_TMPDIR`.
+3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase plan --resume-plan-tail` with the same Step 0 args (`--caller-env`, `--issue-number`, `--forked-target`, `--upstream-repo`, `--run-id`, `--preflight-tmpdir`). Re-parse the resumed bootstrap stdout with the same `_ib_kv_scan` + `export` block shown above before continuing so `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` come from the resumed tail rather than the pre-recovery pass. Use this shape:
+
+```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
+_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase plan --resume-plan-tail \
+  --caller-env "$CALLER_ENV" \
+  --issue-number "$ISSUE_NUMBER" \
+  --forked-target "${forked_target:-false}" \
+  --upstream-repo "${UPSTREAM_REPO:-}" \
+  --run-id "$RUN_ID" \
+  --preflight-tmpdir "$PREFLIGHT_TMPDIR")
+while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do
+  _ib_kv_scan "$_ib_line"
+done <<EOF
+$(printf '%s\n' "$_ib_out")
+EOF
+export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
+export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
+export CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE IMPLEMENT_BAIL_REASON
+export codex_available cursor_available
+```
+
+The resumed bootstrap tail must reuse the existing `IMPLEMENT_TMPDIR`; if the environment variable or `$IMPLEMENT_TMPDIR/session-env.sh` is missing, the bootstrap should fail closed instead of allocating a fresh tmpdir.
 4. On **Cancel this implement run**: preserve `$IMPLEMENT_TMPDIR` for inspection and jump to Step 18 cleanup. Do not enter the Step 2 implementer waterfall on this path.
 
 - If `REPO_UNAVAILABLE=true`: the script prints `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` to stderr; set `repo_unavailable=true` from the parsed KV.
@@ -634,7 +658,7 @@ Bootstrap behavior map:
 
 | Branch / condition | Bootstrap behavior | Orchestrator routing |
 |---|---|---|
-| `repo_unavailable=true` | `BRANCH_SELECTED=repo-unavailable-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`. | Continue local-only; downstream GitHub operations stay skipped. |
+| `repo_unavailable=true` | `BRANCH_SELECTED=repo-unavailable-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`. Bootstrap still writes the untracked baseline snapshot, but skips all remaining Phase 3 plan-materialization work (`gh issue view`, run-flags persist, dirty-tree checkpoint, branch creation/capture, plan logging, summary upsert). `PLAN_FILE` stays empty. | Continue local-only; downstream GitHub operations stay skipped. |
 | `forked_target=true` | `BRANCH_SELECTED=forked-target-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`, best-effort upstream context fetch only when both `--repo "$UPSTREAM_REPO"` and `--issue "$ISSUE_NUMBER"` are present. | Continue fork flow; no local tracking issue is adopted and Step 9a cannot inject `Closes #N`. |
 | Branch 1 resume | Usable `parent-issue.md` with matching argv `ISSUE_NUMBER`, numeric `ISSUE_NUMBER`, valid `RUN_ID` (`^[A-Za-z0-9._-]+$`), and `ADOPTED=true`; idempotent `larch-log.sh init`; best-effort implementing rename. If the sentinel exists but argv omits `ISSUE_NUMBER`, bootstrap refuses resume. | Continue with sentinel `ISSUE_NUMBER` / `RUN_ID`. |
 | Branch 1 mismatch or malformed sentinel | Remove only `parent-issue.md`, preserve `larch-logs/`, then fall through to Branch 2. Treat non-numeric `ISSUE_NUMBER` or invalid `RUN_ID` the same as any other malformed sentinel. | Continue according to Branch 2 result. |

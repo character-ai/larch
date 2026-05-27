@@ -175,6 +175,18 @@ should_run_phase_plan_materialize() {
         && [ "${REPO_UNAVAILABLE:-false}" != "true" ]
 }
 
+ensure_untracked_baseline_snapshot() {
+    local snapshot_out
+
+    [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
+    [ "${RESUME_PLAN_TAIL:-false}" != "true" ] || return 0
+
+    snapshot_out="$IMPLEMENT_TMPDIR/untracked-baseline.z"
+    [ -e "$snapshot_out" ] && return 0
+
+    "$SCRIPT_DIR/snapshot-untracked.sh" --output "$snapshot_out" --nul || true
+}
+
 tracking_init_failed() {
     IMPLEMENT_BAIL_REASON=tracking-init-failed
     STALL_TRACKING=true
@@ -569,7 +581,6 @@ phase_tracking() {
 }
 
 phase_plan_materialize() {
-    local snapshot_out
     local plan_src gh_issue_arg feature_file gh_rc gh_err
     local persist_rc dirty_out dirty_rc dirty_status
     local issue_title slug branch_name_derived create_out create_rc create_err
@@ -585,8 +596,7 @@ phase_plan_materialize() {
     feature_file="$IMPLEMENT_TMPDIR/feature-description.txt"
 
     if [ "$RESUME_PLAN_TAIL" != "true" ]; then
-        snapshot_out="$IMPLEMENT_TMPDIR/untracked-baseline.z"
-        "$SCRIPT_DIR/snapshot-untracked.sh" --output "$snapshot_out" --nul || true
+        ensure_untracked_baseline_snapshot
 
         "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization" || true
         "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization" || true
@@ -936,6 +946,10 @@ main() {
     if [ "$FORKED_TARGET" = "true" ] && [ -n "$UPSTREAM_REPO_OPT" ] && [ -z "$ISSUE_NUMBER_OPT" ]; then
         die_usage "--issue-number is required with --upstream-repo"
     fi
+    if [ "$RESUME_PLAN_TAIL" = "true" ]; then
+        [ -n "${IMPLEMENT_TMPDIR:-}" ] || die_usage "--resume-plan-tail requires IMPLEMENT_TMPDIR in the environment"
+        [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] || die_usage "--resume-plan-tail requires \$IMPLEMENT_TMPDIR/session-env.sh"
+    fi
     case "$UP_TO_PHASE" in
         plan|coder|all)
             if [ -n "$ISSUE_NUMBER_OPT" ] && [ -z "$PREFLIGHT_TMPDIR_OPT" ]; then
@@ -953,12 +967,18 @@ main() {
             ;;
         plan)
             phase_tracking
+            if [ "${REPO_UNAVAILABLE:-false}" = "true" ]; then
+                ensure_untracked_baseline_snapshot
+            fi
             if should_run_phase_plan_materialize; then
                 phase_plan_materialize
             fi
             ;;
         coder)
             phase_tracking
+            if [ "${REPO_UNAVAILABLE:-false}" = "true" ]; then
+                ensure_untracked_baseline_snapshot
+            fi
             if should_run_phase_plan_materialize; then
                 phase_plan_materialize
             fi
@@ -968,6 +988,9 @@ main() {
             ;;
         all)
             phase_tracking
+            if [ "${REPO_UNAVAILABLE:-false}" = "true" ]; then
+                ensure_untracked_baseline_snapshot
+            fi
             if should_run_phase_plan_materialize; then
                 phase_plan_materialize
             fi

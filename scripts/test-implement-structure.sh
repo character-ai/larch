@@ -365,6 +365,16 @@ grep -Fq '.dirty-tree-prompted-step0-plan-materialize' "$SKILL_MD" \
   || fail "SKILL.md must retain the dirty-tree resume sentinel contract"
 grep -Fq 'dirty-tree-detected.env' "$SKILL_MD" \
   || fail "SKILL.md must retain the dirty-tree recovery env contract"
+grep -Fq 'export IMPLEMENT_TMPDIR' "$SKILL_MD" \
+  || fail "SKILL.md dirty-tree recovery must export IMPLEMENT_TMPDIR before resume"
+grep -Fq "while IFS= read -r _ib_line || [ -n \"\$_ib_line\" ]; do" "$SKILL_MD" \
+  || fail "SKILL.md dirty-tree recovery must re-parse resume bootstrap stdout"
+grep -Fq "BRANCH_NAME=*) BRANCH_NAME=\${_ib_tok#BRANCH_NAME=} ;;" "$SKILL_MD" \
+  || fail "SKILL.md must retain BRANCH_NAME _ib_kv_scan case arm"
+grep -Fq "BRANCH_ACTION=*) BRANCH_ACTION=\${_ib_tok#BRANCH_ACTION=} ;;" "$SKILL_MD" \
+  || fail "SKILL.md must retain BRANCH_ACTION _ib_kv_scan case arm"
+grep -Fq "PLAN_FILE=*) PLAN_FILE=\${_ib_tok#PLAN_FILE=} ;;" "$SKILL_MD" \
+  || fail "SKILL.md must retain PLAN_FILE _ib_kv_scan case arm"
 
 step0_plan_structure_status=0
 awk '
@@ -373,17 +383,20 @@ awk '
   in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
   in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
   in_step && in_bash {
-    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase plan/) bootstrap_calls++
+    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase plan/ && $0 !~ /--resume-plan-tail/) bootstrap_calls++
+    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase plan/ && $0 ~ /--resume-plan-tail/) resume_calls++
     if ($0 ~ /snapshot-untracked\.sh" --output|\$SCRIPT_DIR\/persist-implement-run-flags\.sh|check-mid-run-dirty-tree\.sh" --mode checkpoint|create-branch\.sh" --branch|git-current-branch\.sh"|run-step1-plan-log\.sh"|write-tally\.sh"|tracking-issue-summary\.sh" .*upsert-summary|gh issue view "\$gh_issue_arg"|gh issue view "\$ISSUE_NUMBER"/) banned++
   }
   END {
     if (bootstrap_calls != 1) exit 10
+    if (resume_calls != 1) exit 12
     if (banned != 0) exit 11
   }
 ' "$SKILL_MD" || step0_plan_structure_status=$?
 case "$step0_plan_structure_status" in
   0) ;;
   10) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase plan call" ;;
+  12) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase plan --resume-plan-tail recovery call" ;;
   11) fail "Step 0 bash blocks must not reintroduce absorbed plan-materialization helper calls" ;;
   *) fail "unexpected Step 0 structure check failure: $step0_plan_structure_status" ;;
 esac
