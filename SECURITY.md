@@ -194,6 +194,8 @@ By default, `/research` creates a GitHub issue at the end of each successful run
 
 **Redaction backstop**: `/issue`'s outbound shell scrubber (`scripts/redact-secrets.sh`) covers common secret patterns (API keys, tokens, passwords, certificates). It does NOT cover internal hostnames/URLs, PII, or domain-specific sensitive content.
 
+**`/implement` Step 0 plan-materialization redaction**: bootstrap copy-plan and `gh issue view` hard-failure surfacing must pass captured stderr through both `scripts/redact-secrets.sh` and `scripts/redact-tmpdir-paths.sh` before it reaches the operator transcript; if either redactor fails, Step 0 prints a generic fallback warning instead of raw stderr. Goal text derived from the issue title now fails closed the same way: if the redaction pipeline errors, bootstrap logs a Warning and substitutes a placeholder goal string rather than forwarding the raw title into plan logs or committed `larch-logs/`.
+
 **Residual risk**: research reports may contain security-sensitive findings, internal architecture details, vulnerability assessments, or references to private infrastructure. Operators running `/research` against security-sensitive codebases should use `--no-issue` or review the generated issue after creation.
 
 **Transitive callers**: `scripts/eval-research.sh` passes `--no-issue` to suppress auto-issue when `/research` is invoked as an intermediate step rather than a user-facing research task.

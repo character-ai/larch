@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Valid maintainability concern but extracting helpers is optional refactor, not a defect.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Near-identical exit-2 handlers at 344-388 and 495-539 will drift on new STEP_FAILED branches.
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Tally redaction fail-open (747-748) vs summary fail-closed early return (784-794) is inconsistent.
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Step 3 prose is slightly ambiguous but bootstrap already re-runs dirty-tree internally on resume.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- REPO_UNAVAILABLE guard is triplicated but behaviorally identical across plan/coder/all arms.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- issue_title is read twice; cosmetic duplication only.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Pre-existing slug-pipeline divergence; reasonable follow-up outside this phase.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Large inline stub matrix is real maintenance cost but acceptable for current phase scope.
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Forked-target-skip never assigns RUN_ID so write-tally and KV tail get empty --run-id despite --run-id argv.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Prose could clarify bootstrap-only re-check; behavior is already documented in the same paragraph.
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Summary redaction failure path (784-794) has no dedicated harness coverage.
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- B5-plan-green asserts token-ledger mark but not timing-ledger plan-materialization mark at 622-623.
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Breadcrumb tests cover summary-fail but not plan-log-fail omitting "+ plan logged".
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- No test for --resume-plan-tail with IMPLEMENT_TMPDIR set but missing session-env.sh (958).
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- --resume-plan-tail skips re-materialization while phase_tracking can re-adopt a different issue, leaving stale plan artifacts.
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Same empty RUN_ID on forked paths; B8 does not assert non-empty RUN_ID or write-tally --run-id.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Substantively duplicates FINDING_3/11 on summary redaction fail-closed without upsert.
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Missing preflight without --issue-number is a direct-script misuse edge; normal /implement always passes both.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- branch-create-failed mislabel on git-current-branch failure is pre-existing and documented.
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- External pre-resume checkpoint is prose-only but bootstrap internal guard still blocks progress.
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Meta note that reviewer did not run make targets; not a product defect worth filing.
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan explicitly preserved separate token/timing block; not a fidelity gap vs written plan.

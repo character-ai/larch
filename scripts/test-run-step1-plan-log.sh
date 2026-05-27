@@ -156,10 +156,12 @@ if [[ "$rc" -eq 2 ]]; then pass "conventional plan.txt missing exits 2 even with
 assert_contains "$out" "plan file not found at conventional path" "step1 emits conventional-path error"
 [[ ! -f "$compose_argv" ]] || fail "compose helper should not run when plan.txt missing"
 
-echo "=== issue-anchored Step 1 plan copy contract (SKILL pin) ==="
-plan_copy_literal=$'cp "$PREFLIGHT_TMPDIR/plan-from-issue.txt" "$IMPLEMENT_TMPDIR/plan.txt"'
-grep -Fq "$plan_copy_literal" "$REPO_ROOT/skills/implement/SKILL.md" \
-  || fail "missing Step 1 issue-body plan materialization copy literal in implement SKILL"
+echo "=== issue-anchored Step 1 plan copy contract (bootstrap pin) ==="
+# Phase 3: plan copy moved from SKILL.md prompt-side into phase_plan_materialize in implement-bootstrap.sh
+if ! grep -qF 'plan-from-issue.txt' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || ! grep -qF 'plan.txt' "$REPO_ROOT/scripts/implement-bootstrap.sh"; then
+  fail "missing Step 1 issue-body plan materialization copy literal in implement SKILL"
+fi
 
 echo "=== conventional plan.txt missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"

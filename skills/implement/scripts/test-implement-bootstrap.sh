@@ -52,6 +52,22 @@ assert_line() {
     fi
 }
 
+assert_order() {
+    local first=$1 second=$2 haystack=$3 label=$4
+    local first_line second_line
+    first_line=$(printf '%s\n' "$haystack" | grep -nF -- "$first" | head -n 1 | cut -d: -f1 || true)
+    second_line=$(printf '%s\n' "$haystack" | grep -nF -- "$second" | head -n 1 | cut -d: -f1 || true)
+    if [ -n "$first_line" ] && [ -n "$second_line" ] && [ "$first_line" -lt "$second_line" ]; then
+        PASS=$((PASS + 1))
+        echo "PASS: $label"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: $label"
+        echo "  expected order: $first before $second"
+        printf '%s\n' "$haystack" | sed 's/^/    /'
+    fi
+}
+
 assert_rc() {
     local actual=$1 expected=$2 label=$3
     if [ "$actual" -eq "$expected" ]; then
@@ -65,7 +81,7 @@ assert_rc() {
 
 build_sandbox() {
     SANDBOX=$(mktemp -d /tmp/larch-ib-test.XXXXXX)
-    mkdir -p "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX_TMP"
+    mkdir -p "$SANDBOX/bin" "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX_TMP"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
@@ -73,13 +89,43 @@ build_sandbox() {
     cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$SANDBOX/scripts/"
     chmod +x "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/scripts/write-session-env.sh" "$SANDBOX/scripts/read-session-env-key.sh"
 
+    cat >"$SANDBOX/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'gh %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_GH_EXIT:-0}" -ne 0 ]; then
+  printf 'gh failure\n' >&2
+  exit "$SANDBOX_GH_EXIT"
+fi
+printf '%s\n\n%s\n' "${SANDBOX_GH_TITLE:-Test Feature}" "${SANDBOX_GH_BODY:-Body}"
+exit 0
+STUB
+    chmod +x "$SANDBOX/bin/gh"
+
     cat >"$SANDBOX/scripts/create-branch.sh" <<'STUB'
 #!/usr/bin/env bash
-echo CURRENT_BRANCH=main
-echo IS_MAIN=true
-echo IS_USER_BRANCH=false
-echo USER_PREFIX=testuser
-exit 0
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+case "${1:-}" in
+  --check)
+    echo CURRENT_BRANCH=main
+    echo IS_MAIN=true
+    echo "IS_USER_BRANCH=${SANDBOX_IS_USER_BRANCH:-false}"
+    echo USER_PREFIX=testuser
+    exit 0
+    ;;
+  --branch)
+    printf 'create-branch --branch %s\n' "$2" >>"$script_dir/../invoke-log.txt"
+    if [ "${SANDBOX_CREATE_BRANCH_EXIT:-0}" -ne 0 ]; then
+      printf 'create branch failure\n' >&2
+      exit "$SANDBOX_CREATE_BRANCH_EXIT"
+    fi
+    printf '%s\n' "$2" >"$script_dir/../last-created-branch.txt"
+    echo "BRANCH_NAME=$2"
+    echo ACTION=created
+    exit 0
+    ;;
+esac
+exit 2
 STUB
     chmod +x "$SANDBOX/scripts/create-branch.sh"
 
@@ -289,6 +335,150 @@ exit 0
 STUB
     chmod +x "$SANDBOX/scripts/get-issue-context.sh"
 
+    cat >"$SANDBOX/scripts/snapshot-untracked.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'snapshot-untracked %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+output=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) output=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$output" ] && : > "$output"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/snapshot-untracked.sh"
+
+    cat >"$SANDBOX/scripts/persist-implement-run-flags.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'persist-implement-run-flags %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_PERSIST_FLAGS_EXIT:-0}" -ne 0 ]; then
+  printf 'persist failure\n' >&2
+  exit "$SANDBOX_PERSIST_FLAGS_EXIT"
+fi
+tmpdir=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --implement-tmpdir) tmpdir=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$tmpdir" ] && printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\n' >"$tmpdir/run-flags.sh"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/persist-implement-run-flags.sh"
+
+    cat >"$SANDBOX/scripts/check-mid-run-dirty-tree.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'check-mid-run-dirty-tree %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_DIRTY_EXIT:-0}" -ne 0 ]; then
+  printf 'dirty tree probe failure\n' >&2
+  exit "$SANDBOX_DIRTY_EXIT"
+fi
+echo "STATUS=${SANDBOX_DIRTY_STATUS:-clean}"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/check-mid-run-dirty-tree.sh"
+
+    cat >"$SANDBOX/scripts/git-current-branch.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'git-current-branch\n' >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_BRANCH_CAPTURE_EXIT:-0}" -ne 0 ]; then
+  printf 'branch capture failure\n' >&2
+  exit "$SANDBOX_BRANCH_CAPTURE_EXIT"
+fi
+if [ -f "$script_dir/../last-created-branch.txt" ]; then
+  branch=$(cat "$script_dir/../last-created-branch.txt")
+elif [ "${SANDBOX_IS_USER_BRANCH:-false}" = "true" ]; then
+  branch=testuser/existing
+else
+  branch=main
+fi
+if [ "${SANDBOX_BRANCH_CAPTURE_EMPTY:-false}" = "true" ]; then
+  echo "BRANCH="
+else
+  echo "BRANCH=$branch"
+fi
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/git-current-branch.sh"
+
+    cat >"$SANDBOX/scripts/run-step1-plan-log.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'run-step1-plan-log %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_RUN_PLAN_LOG_EXIT:-0}" -ne 0 ]; then
+  printf 'plan log failure\n' >&2
+  exit "$SANDBOX_RUN_PLAN_LOG_EXIT"
+fi
+tmpdir=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --implement-tmpdir) tmpdir=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$tmpdir" ] && printf 'plan log\n' >"$tmpdir/plan-goals-test.md"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/run-step1-plan-log.sh"
+
+    cat >"$SANDBOX/scripts/write-tally.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'write-tally %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_WRITE_TALLY_EXIT:-0}" -ne 0 ]; then
+  printf 'write tally failure\n' >&2
+  exit "$SANDBOX_WRITE_TALLY_EXIT"
+fi
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/write-tally.sh"
+
+    cat >"$SANDBOX/scripts/tracking-issue-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'tracking-issue-summary %s\n' "$*" >>"$script_dir/../invoke-log.txt"
+if [ "${SANDBOX_PLAN_SUMMARY_EXIT:-0}" -ne 0 ]; then
+  printf 'tracking summary failure\n' >&2
+  exit "$SANDBOX_PLAN_SUMMARY_EXIT"
+fi
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/tracking-issue-summary.sh"
+
+    cat >"$SANDBOX/scripts/redact-secrets.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${SANDBOX_REDACT_SECRETS_EXIT:-0}" -ne 0 ]; then
+  printf 'redact secrets failure\n' >&2
+  exit "$SANDBOX_REDACT_SECRETS_EXIT"
+fi
+cat
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/redact-secrets.sh"
+
+    cat >"$SANDBOX/scripts/redact-tmpdir-paths.sh" <<'STUB'
+#!/usr/bin/env bash
+input=$(cat)
+if [ -n "${SANDBOX_REDACT_TMPDIR_MATCH:-}" ] && printf '%s' "$input" | grep -qF -- "$SANDBOX_REDACT_TMPDIR_MATCH"; then
+  printf 'redact tmpdir failure\n' >&2
+  exit "${SANDBOX_REDACT_TMPDIR_EXIT:-1}"
+fi
+if [ "${SANDBOX_REDACT_TMPDIR_EXIT:-0}" -ne 0 ]; then
+  printf 'redact tmpdir failure\n' >&2
+  exit "$SANDBOX_REDACT_TMPDIR_EXIT"
+fi
+printf '%s' "$input"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/redact-tmpdir-paths.sh"
+
     : >"$SANDBOX/invoke-log.txt"
 }
 
@@ -313,11 +503,17 @@ run_bootstrap() {
         cd "$SANDBOX" || exit 1
         env \
             CLAUDE_PLUGIN_ROOT="$SANDBOX" \
+            PATH="$SANDBOX/bin:$PATH" \
             LARCH_BREADCRUMB_STREAM= \
             LARCH_QUIET_BREADCRUMBS="${LARCH_QUIET_BREADCRUMBS:-}" \
             LARCH_QUIET_BREADCRUMB_FD="${LARCH_QUIET_BREADCRUMB_FD:-}" \
             bash "$SANDBOX/scripts/implement-bootstrap.sh" "$@"
     )
+}
+
+write_preflight_plan() {
+    mkdir -p "$SANDBOX/preflight"
+    printf 'Plan from issue\n' >"$SANDBOX/preflight/plan-from-issue.txt"
 }
 
 SANDBOX_TMP=""
@@ -427,6 +623,34 @@ assert_line "ISSUE_NUMBER=" "$out" "GP-repo-unavail-tracking empty issue"
 assert_contains "DEFERRED=true" "$out" "GP-repo-unavail-tracking deferred"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- GP-repo-unavail-plan ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=
+echo REPO_UNAVAILABLE=true
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runRepoSkip --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP-repo-unavail-plan exit 0"
+assert_contains "BRANCH_SELECTED=repo-unavailable-skip" "$out" "GP-repo-unavail-plan branch"
+assert_contains "DEFERRED=true" "$out" "GP-repo-unavail-plan deferred"
+assert_line "PLAN_FILE=" "$out" "GP-repo-unavail-plan empty plan file"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "snapshot-untracked --output $SANDBOX_TMP/untracked-baseline.z --nul" "$invoke" "GP-repo-unavail-plan snapshot"
+assert_not_contains "gh issue view" "$invoke" "GP-repo-unavail-plan no gh"
+assert_not_contains "persist-implement-run-flags" "$invoke" "GP-repo-unavail-plan no persist"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- GP4 repo_unavailable ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -479,10 +703,14 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-out=$(LARCH_TEST_ISSUE_STATE=CLOSED run_bootstrap --up-to-phase plan --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+write_preflight_plan
+out=$(LARCH_TEST_ISSUE_STATE=CLOSED run_bootstrap --up-to-phase plan --issue-number 123 --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B2-plan exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-closed" "$out" "B2-plan bail reason"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B2-plan no phase-3 overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=run-flags-persist-failed" "$out" "B2-plan no run-flags overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B2-plan no dirty-tree overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B2-plan no branch-create overwrite"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B3 IS_PR bail ---
@@ -494,6 +722,19 @@ assert_rc "$rc" 0 "B3 exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-is-pr" "$out" "B3 bail reason"
 assert_line "BRANCH_SELECTED=" "$out" "B3 no branch"
 assert_line "ISSUE_NUMBER=" "$out" "B3 empty issue tail"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B3-plan IS_PR bail guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(LARCH_TEST_IS_PR=true run_bootstrap --up-to-phase plan --issue-number 123 --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B3-plan exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-is-pr" "$out" "B3-plan bail reason"
+assert_not_contains "IMPLEMENT_BAIL_REASON=run-flags-persist-failed" "$out" "B3-plan no run-flags overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B3-plan no dirty-tree overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B3-plan no branch-create overwrite"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4 POSTED=false deferred ---
@@ -522,21 +763,60 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase plan --issue-number 123 --run-id runD 2>/dev/null) && rc=$? || rc=$?
+write_preflight_plan
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase plan --issue-number 123 --run-id runD --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B4-plan exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-plan deferred"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B4-plan no phase-3 overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=run-flags-persist-failed" "$out" "B4-plan no run-flags bail"
+assert_not_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B4-plan no dirty-tree bail"
+assert_not_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B4-plan no branch-create bail"
+if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-plan plan.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-plan plan.txt materialized"
+fi
+if [ -f "$SANDBOX_TMP/feature-description.txt" ] && grep -qxF "Test Feature" "$SANDBOX_TMP/feature-description.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-plan feature-description.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-plan feature-description.txt materialized"
+fi
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "gh issue view 123" "$invoke" "B4-plan gh invoked"
+assert_contains "persist-implement-run-flags" "$invoke" "B4-plan persist invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4-all POSTED=false deferred guard ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD 2>/dev/null) && rc=$? || rc=$?
+write_preflight_plan
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B4-all exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-all deferred"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B4-all no phase-3 overwrite"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4" "$out" "B4-all no phase-4 overwrite"
+if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-all plan.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-all plan.txt materialized"
+fi
+if [ -f "$SANDBOX_TMP/feature-description.txt" ] && grep -qxF "Test Feature" "$SANDBOX_TMP/feature-description.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-all feature-description.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-all feature-description.txt materialized"
+fi
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
+assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5 larch-log init fail ---
@@ -555,18 +835,24 @@ rm -rf "$SANDBOX" "$SANDBOX_TMP"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase all --issue-number 123 --run-id runE 2>/dev/null) && rc=$? || rc=$?
+write_preflight_plan
+out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase all --issue-number 123 --run-id runE --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-all exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-all bail reason"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B5-all no phase-3 overwrite"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4" "$out" "B5-all no phase-4 overwrite"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "gh issue view" "$invoke" "B5-all no gh"
+assert_not_contains "persist-implement-run-flags" "$invoke" "B5-all no persist"
+assert_not_contains "check-mid-run-dirty-tree" "$invoke" "B5-all no dirty checkpoint"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan larch-log init fail guard ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase plan --issue-number 123 --run-id runE 2>/dev/null) && rc=$? || rc=$?
+write_preflight_plan
+out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase plan --issue-number 123 --run-id runE --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-plan exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-plan bail reason"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B5-plan no phase-3 overwrite"
@@ -584,6 +870,536 @@ assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-branch1 
 assert_contains "STALL_TRACKING=true" "$out" "B5-branch1 stall"
 assert_contains "RUN_ID=resume-fail" "$out" "B5-branch1 preserves run id"
 assert_contains "ISSUE_NUMBER=123" "$out" "B5-branch1 preserves issue"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-green ---
+for case_data in \
+    "UPPER CASE FEATURE|upper-case-feature" \
+    "Symbols: Plan + Branch!!|symbols-plan-branch" \
+    "!!!|issue" \
+    "This title is deliberately longer than forty characters for slug coverage|this-title-is-deliberately-longer-than-f"
+do
+    SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+    build_sandbox
+    write_gp1_session_setup
+    write_preflight_plan
+    title=${case_data%%|*}
+    expected_slug=${case_data#*|}
+    out=$(SANDBOX_GH_TITLE="$title" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runPlan --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+    assert_rc "$rc" 0 "B5-plan-green $expected_slug exit 0"
+    assert_contains "BRANCH_NAME=testuser/$expected_slug-123" "$out" "B5-plan-green $expected_slug branch"
+    assert_contains "BRANCH_ACTION=created" "$out" "B5-plan-green $expected_slug action"
+    assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B5-plan-green $expected_slug plan file"
+    if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
+        PASS=$((PASS + 1))
+        echo "PASS: B5-plan-green $expected_slug plan.txt materialized"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: B5-plan-green $expected_slug plan.txt materialized"
+    fi
+    if [ -f "$SANDBOX_TMP/feature-description.txt" ] && grep -qxF "$title" "$SANDBOX_TMP/feature-description.txt"; then
+        PASS=$((PASS + 1))
+        echo "PASS: B5-plan-green $expected_slug feature-description.txt materialized"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: B5-plan-green $expected_slug feature-description.txt materialized"
+    fi
+    invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+    assert_contains "token-ledger mark implement Step 0 — plan materialization" "$invoke" "B5-plan-green $expected_slug token mark"
+    assert_contains "timing-ledger mark implement Step 0 — plan materialization" "$invoke" "B5-plan-green $expected_slug timing mark"
+    assert_contains "timing-ledger workflow-path HARD" "$invoke" "B5-plan-green $expected_slug workflow-path HARD"
+    assert_order "snapshot-untracked" "gh issue view 123" "$invoke" "B5-plan-green $expected_slug snapshot before gh"
+    assert_order "gh issue view 123" "persist-implement-run-flags" "$invoke" "B5-plan-green $expected_slug gh before persist"
+    assert_order "persist-implement-run-flags" "check-mid-run-dirty-tree" "$invoke" "B5-plan-green $expected_slug persist before dirty"
+    assert_order "check-mid-run-dirty-tree" "create-branch --branch testuser/$expected_slug-123" "$invoke" "B5-plan-green $expected_slug dirty before branch"
+    assert_order "create-branch --branch testuser/$expected_slug-123" "git-current-branch" "$invoke" "B5-plan-green $expected_slug branch before capture"
+    assert_order "git-current-branch" "run-step1-plan-log" "$invoke" "B5-plan-green $expected_slug capture before plan log"
+    assert_order "run-step1-plan-log" "write-tally" "$invoke" "B5-plan-green $expected_slug plan log before tally"
+    assert_order "write-tally" "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-green $expected_slug tally before summary"
+    rm -rf "$SANDBOX" "$SANDBOX_TMP"
+done
+
+# --- B5-plan-best-effort-failures ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_RUN_PLAN_LOG_EXIT=7 SANDBOX_WRITE_TALLY_EXIT=8 SANDBOX_PLAN_SUMMARY_EXIT=9 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBestEffort --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-best-effort-failures exit 0"
+assert_contains "BRANCH_NAME=testuser/test-feature-123" "$out" "B5-plan-best-effort-failures branch"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-plan-best-effort-failures empty bail"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "Step 0 plan materialization — plan-goals-test" "$issues" "B5-plan-best-effort-failures plan-goals warning"
+assert_contains "Step 0 plan materialization — plan-review tally" "$issues" "B5-plan-best-effort-failures tally warning"
+assert_contains "Step 0 plan materialization — larch:plan summary" "$issues" "B5-plan-best-effort-failures summary warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-goal-redaction-failure ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_REDACT_SECRETS_EXIT=11 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runGoalRedact --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-goal-redaction-failure exit 0"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "--goal-text Implement issue #123: <REDACTED-TITLE>." "$invoke" "B5-plan-goal-redaction-failure fail-closed placeholder"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "Step 0 plan materialization — goal text redaction" "$issues" "B5-plan-goal-redaction-failure warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-summary-redaction-failure ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_REDACT_TMPDIR_MATCH='Plan materialized for run' SANDBOX_REDACT_TMPDIR_EXIT=13 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runSummaryRedact --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-summary-redaction-failure exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "Step 0 plan materialization — larch:plan summary redaction" "$issues" "B5-plan-summary-redaction-failure warning"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-summary-redaction-failure summary invoked"
+assert_not_contains '→ step0: larch:plan posted' "$out" "B5-plan-summary-redaction-failure no breadcrumb without breadcrumbs enabled"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B6-plan-flags ---
+for persist_rc in 2 1; do
+    SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+    build_sandbox
+    write_gp1_session_setup
+    write_preflight_plan
+    out=$(SANDBOX_PERSIST_FLAGS_EXIT=$persist_rc run_bootstrap --up-to-phase plan --issue-number 123 --run-id runFlags --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+    assert_rc "$rc" 0 "B6-plan-flags rc=$persist_rc exit 0"
+    assert_contains "IMPLEMENT_BAIL_REASON=run-flags-persist-failed" "$out" "B6-plan-flags rc=$persist_rc bail"
+    assert_contains "STALL_TRACKING=true" "$out" "B6-plan-flags rc=$persist_rc stall"
+    invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+    assert_not_contains "check-mid-run-dirty-tree" "$invoke" "B6-plan-flags rc=$persist_rc no dirty check"
+    assert_not_contains "create-branch --branch" "$invoke" "B6-plan-flags rc=$persist_rc no branch"
+    assert_not_contains "git-current-branch" "$invoke" "B6-plan-flags rc=$persist_rc no branch capture"
+    rm -rf "$SANDBOX" "$SANDBOX_TMP"
+done
+
+# --- B7-plan-dirty-tree ---
+for dirty_status in dirty unknown; do
+    SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+    build_sandbox
+    write_gp1_session_setup
+    write_preflight_plan
+    out=$(SANDBOX_DIRTY_STATUS=$dirty_status run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirty --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+    assert_rc "$rc" 0 "B7-plan-dirty-tree $dirty_status exit 0"
+    assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree $dirty_status bail"
+    assert_contains "STALL_TRACKING=false" "$out" "B7-plan-dirty-tree $dirty_status no stall"
+    invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+    assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree $dirty_status no branch"
+    assert_not_contains "git-current-branch" "$invoke" "B7-plan-dirty-tree $dirty_status no branch capture"
+    assert_not_contains "run-step1-plan-log" "$invoke" "B7-plan-dirty-tree $dirty_status no plan log"
+    rm -rf "$SANDBOX" "$SANDBOX_TMP"
+done
+
+# --- B7-plan-dirty-tree probe failure ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_DIRTY_EXIT=7 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyProbe --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree probe failure exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree probe failure bail"
+assert_contains "STALL_TRACKING=false" "$out" "B7-plan-dirty-tree probe failure no stall"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree probe failure no branch"
+assert_not_contains "git-current-branch" "$invoke" "B7-plan-dirty-tree probe failure no branch capture"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B7-plan-dirty-tree resume tail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResume --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree resume first pass exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree resume first pass bail"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResume --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree resume tail exit 0"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B7-plan-dirty-tree resume tail clears bail"
+assert_contains "BRANCH_NAME=testuser/test-feature-123" "$out" "B7-plan-dirty-tree resume tail branch"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B7-plan-dirty-tree resume tail keeps original tmpdir"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "check-mid-run-dirty-tree --mode checkpoint" "$invoke" "B7-plan-dirty-tree resume tail initial dirty check"
+if [ "$(printf '%s\n' "$invoke" | grep -cF "snapshot-untracked --output $SANDBOX_TMP/untracked-baseline.z --nul" || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-plan-dirty-tree resume tail no second snapshot"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-plan-dirty-tree resume tail no second snapshot"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'gh issue view 123' || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-plan-dirty-tree resume tail no second gh"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-plan-dirty-tree resume tail no second gh"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+assert_order "check-mid-run-dirty-tree --mode checkpoint" "create-branch --branch testuser/test-feature-123" "$invoke" "B7-plan-dirty-tree resume tail branch after clean checkpoint path"
+if [ ! -e "$SANDBOX_TMP_RESUME/plan.txt" ] && [ ! -e "$SANDBOX_TMP_RESUME/feature-description.txt" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-plan-dirty-tree resume tail no artifacts written to fresh tmpdir"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-plan-dirty-tree resume tail should not write artifacts to fresh tmpdir"
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B4-plan-dirty-resume deferred without sentinel ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(LARCH_TEST_POSTED=false SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDeferredResume --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B4-plan-dirty-resume first pass exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B4-plan-dirty-resume first pass bail"
+assert_contains "DEFERRED=true" "$out" "B4-plan-dirty-resume first pass deferred"
+if [ ! -e "$SANDBOX_TMP/parent-issue.md" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-plan-dirty-resume first pass no sentinel"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-plan-dirty-resume first pass should not write sentinel"
+fi
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDeferredResume --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B4-plan-dirty-resume resume exit 0"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B4-plan-dirty-resume resume clears bail"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B4-plan-dirty-resume resume branch"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B4-plan-dirty-resume resume keeps tmpdir"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF "snapshot-untracked --output $SANDBOX_TMP/untracked-baseline.z --nul" || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-plan-dirty-resume no second snapshot"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-plan-dirty-resume no second snapshot"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'gh issue view 123' || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-plan-dirty-resume no second gh"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-plan-dirty-resume no second gh"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B7-plan-dirty-tree resume tail re-bails when still dirty ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResumeRetry --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree resume re-bail first pass exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree resume re-bail first pass bail"
+out=$(SANDBOX_DIRTY_STATUS=unknown IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResumeRetry --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree resume re-bail exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree resume re-bail keeps bail"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'check-mid-run-dirty-tree --mode checkpoint' || true)" -eq 2 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-plan-dirty-tree resume re-bail reruns dirty checkpoint"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-plan-dirty-tree resume re-bail reruns dirty checkpoint"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch"
+assert_not_contains "git-current-branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch capture"
+assert_not_contains "run-step1-plan-log" "$invoke" "B7-plan-dirty-tree resume re-bail no plan log"
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B7-plan-dirty-tree resume tail missing tmpdir ---
+build_sandbox
+write_preflight_plan
+out=$( (unset IMPLEMENT_TMPDIR; run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResume --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail) 2>&1 ) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B7-plan-dirty-tree resume tail missing tmpdir exit 2"
+assert_contains "--resume-plan-tail requires IMPLEMENT_TMPDIR in the environment" "$out" "B7-plan-dirty-tree resume tail missing tmpdir usage"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "snapshot-untracked" "$invoke" "B7-plan-dirty-tree resume tail missing tmpdir no snapshot"
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume tail missing tmpdir no branch"
+rm -rf "$SANDBOX"
+
+# --- B7-plan-dirty-tree resume tail missing session-env ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+rm -f "$SANDBOX_TMP/session-env.sh"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyResume --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B7-plan-dirty-tree resume tail missing session-env exit 2"
+assert_contains "--resume-plan-tail requires \$IMPLEMENT_TMPDIR/session-env.sh" "$out" "B7-plan-dirty-tree resume tail missing session-env usage"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume tail missing session-env no branch"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B8-plan-forked-target ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --forked-target true --upstream-repo upstream/repo --issue-number 123 --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B8-plan-forked-target exit 0"
+assert_contains "BRANCH_SELECTED=forked-target-skip" "$out" "B8-plan-forked-target branch selected"
+assert_contains "DEFERRED=true" "$out" "B8-plan-forked-target deferred"
+assert_contains "RUN_ID=sessstub" "$out" "B8-plan-forked-target run id derived"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B8-plan-forked-target plan file"
+assert_contains "BRANCH_NAME=main" "$out" "B8-plan-forked-target branch name"
+assert_line "BRANCH_ACTION=" "$out" "B8-plan-forked-target empty action"
+if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B8-plan-forked-target plan.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B8-plan-forked-target plan.txt materialized"
+fi
+if [ -f "$SANDBOX_TMP/feature-description.txt" ] && grep -qxF "Test Feature" "$SANDBOX_TMP/feature-description.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: B8-plan-forked-target feature-description.txt materialized"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B8-plan-forked-target feature-description.txt materialized"
+fi
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "gh issue view 123 --repo upstream/repo" "$invoke" "B8-plan-forked-target gh upstream"
+assert_contains "write-tally --log-root $SANDBOX_TMP/larch-logs --skill implement --run-id sessstub" "$invoke" "B8-plan-forked-target tally run id"
+assert_not_contains "create-branch --branch" "$invoke" "B8-plan-forked-target no branch create"
+assert_not_contains "tracking-issue-summary upsert-summary" "$invoke" "B8-plan-forked-target no plan summary"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B8-plan-forked-missing-upstream ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --forked-target true --issue-number 123 --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B8-plan-forked-missing-upstream exit 2"
+assert_contains "STEP_FAILED=gh-issue-view" "$out" "B8-plan-forked-missing-upstream step failed"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "persist-implement-run-flags" "$invoke" "B8-plan-forked-missing-upstream no persist"
+assert_not_contains "create-branch --branch" "$invoke" "B8-plan-forked-missing-upstream no branch"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B9-plan-user-branch ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_IS_USER_BRANCH=true run_bootstrap --up-to-phase plan --issue-number 123 --run-id runUser --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B9-plan-user-branch exit 0"
+assert_contains "BRANCH_NAME=testuser/existing" "$out" "B9-plan-user-branch branch name"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "create-branch --branch" "$invoke" "B9-plan-user-branch no branch create"
+assert_contains "tracking-issue-summary upsert-summary" "$invoke" "B9-plan-user-branch summary invoked"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B10-plan-missing-preflight-tmpdir ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+set +e
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 2>&1)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B10-plan-missing-preflight-tmpdir exit 2"
+assert_contains "--preflight-tmpdir is required" "$out" "B10-plan-missing-preflight-tmpdir usage"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B11-plan-copy-plan-failure ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+mkdir -p "$SANDBOX/preflight"
+set +e
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCopy --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B11-plan-copy-plan-failure exit 2"
+assert_contains "STEP_FAILED=copy-plan" "$out" "B11-plan-copy-plan-failure STEP_FAILED"
+assert_contains "IMPLEMENT_TMPDIR=$SANDBOX_TMP" "$out" "B11-plan-copy-plan-failure tmpdir emitted"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B12-plan-gh-issue-view-failure ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+set +e
+out=$(SANDBOX_GH_EXIT=1 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runGh --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B12-plan-gh-issue-view-failure exit 2"
+assert_contains "STEP_FAILED=gh-issue-view" "$out" "B12-plan-gh-issue-view-failure STEP_FAILED"
+assert_contains "IMPLEMENT_TMPDIR=$SANDBOX_TMP" "$out" "B12-plan-gh-issue-view-failure tmpdir emitted"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B13-plan-branch-create ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(SANDBOX_CREATE_BRANCH_EXIT=9 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBranchFail --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B13-plan-branch-create exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B13-plan-branch-create bail"
+assert_contains "STALL_TRACKING=true" "$out" "B13-plan-branch-create stall"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "git-current-branch" "$invoke" "B13-plan-branch-create no branch capture"
+assert_not_contains "run-step1-plan-log" "$invoke" "B13-plan-branch-create no plan log"
+assert_not_contains "write-tally" "$invoke" "B13-plan-branch-create no tally"
+assert_not_contains "tracking-issue-summary upsert-summary" "$invoke" "B13-plan-branch-create no plan summary"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B14-plan-branch-capture ---
+for branch_capture_mode in exit empty; do
+    SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+    build_sandbox
+    write_gp1_session_setup
+    write_preflight_plan
+    if [ "$branch_capture_mode" = "exit" ]; then
+        out=$(SANDBOX_BRANCH_CAPTURE_EXIT=8 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBranchCapture --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+    else
+        out=$(SANDBOX_BRANCH_CAPTURE_EMPTY=true run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBranchCapture --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+    fi
+    assert_rc "$rc" 0 "B14-plan-branch-capture $branch_capture_mode exit 0"
+    assert_contains "IMPLEMENT_BAIL_REASON=branch-create-failed" "$out" "B14-plan-branch-capture $branch_capture_mode bail"
+    assert_contains "STALL_TRACKING=true" "$out" "B14-plan-branch-capture $branch_capture_mode stall"
+    invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+    assert_contains "git-current-branch" "$invoke" "B14-plan-branch-capture $branch_capture_mode branch capture attempted"
+    assert_not_contains "run-step1-plan-log" "$invoke" "B14-plan-branch-capture $branch_capture_mode no plan log"
+    assert_not_contains "write-tally" "$invoke" "B14-plan-branch-capture $branch_capture_mode no tally"
+    rm -rf "$SANDBOX" "$SANDBOX_TMP"
+done
+
+# --- B15-resume-plan-tail-sentinel-mismatch ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase infra 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B15-resume-plan-tail-sentinel-mismatch setup infra exit 0"
+printf 'ISSUE_NUMBER=999\nRUN_ID=resume-ok\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runSentinelMismatch --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B15-resume-plan-tail-sentinel-mismatch exit 2"
+assert_contains "STEP_FAILED=resume-plan-tail-sentinel" "$out" "B15-resume-plan-tail-sentinel-mismatch STEP_FAILED"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "check-mid-run-dirty-tree" "$invoke" "B15-resume-plan-tail-sentinel-mismatch no dirty checkpoint"
+assert_not_contains "create-branch --branch" "$invoke" "B15-resume-plan-tail-sentinel-mismatch no branch"
+assert_not_contains "run-step1-plan-log" "$invoke" "B15-resume-plan-tail-sentinel-mismatch no plan log"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B16-resume-plan-tail-sentinel-malformed ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase infra 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B16-resume-plan-tail-sentinel-malformed setup infra exit 0"
+printf 'ISSUE_NUMBER=123\nRUN_ID=bad run\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runSentinelMalformed --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B16-resume-plan-tail-sentinel-malformed exit 2"
+assert_contains "STEP_FAILED=resume-plan-tail-sentinel" "$out" "B16-resume-plan-tail-sentinel-malformed STEP_FAILED"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "check-mid-run-dirty-tree" "$invoke" "B16-resume-plan-tail-sentinel-malformed no dirty checkpoint"
+assert_not_contains "create-branch --branch" "$invoke" "B16-resume-plan-tail-sentinel-malformed no branch"
+assert_not_contains "run-step1-plan-log" "$invoke" "B16-resume-plan-tail-sentinel-malformed no plan log"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B17-resume-plan-tail-sentinel-missing ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase infra 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B17-resume-plan-tail-sentinel-missing setup infra exit 0"
+rm -f "$SANDBOX_TMP/plan.txt" "$SANDBOX_TMP/feature-description.txt" "$SANDBOX_TMP/parent-issue.md"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runSentinelMissing --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 2 "B17-resume-plan-tail-sentinel-missing exit 2"
+assert_contains "STEP_FAILED=resume-plan-tail-sentinel" "$out" "B17-resume-plan-tail-sentinel-missing STEP_FAILED"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_not_contains "check-mid-run-dirty-tree" "$invoke" "B17-resume-plan-tail-sentinel-missing no dirty checkpoint"
+assert_not_contains "create-branch --branch" "$invoke" "B17-resume-plan-tail-sentinel-missing no branch"
+assert_not_contains "run-step1-plan-log" "$invoke" "B17-resume-plan-tail-sentinel-missing no plan log"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B6 get-issue-state FAILED=true ---
@@ -820,6 +1636,90 @@ if [ "$n" -eq 1 ]; then
 else
     FAIL=$((FAIL + 1))
     echo "FAIL: Edge-breadcrumb-count-adopt expected 1 got $n"
+fi
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- Edge-breadcrumb-count-plan-green ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlan --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+assert_rc "$rc" 0 "Edge-breadcrumb-count-plan-green exit 0"
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch ' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-green branch breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-green branch breadcrumb expected 1 got $n"
+fi
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: larch:plan posted' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-green larch plan breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-green larch plan breadcrumb expected 1 got $n"
+fi
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- Edge-breadcrumb-count-plan-summary-fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(SANDBOX_PLAN_SUMMARY_EXIT=5 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlanFail --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+assert_rc "$rc" 0 "Edge-breadcrumb-count-plan-summary-fail exit 0"
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch ' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-summary-fail branch breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-summary-fail branch breadcrumb expected 1 got $n"
+fi
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: larch:plan posted' || true)
+if [ "$n" -eq 0 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-summary-fail no larch plan breadcrumb"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-summary-fail expected 0 larch plan breadcrumbs got $n"
+fi
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- Edge-breadcrumb-count-plan-log-fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(SANDBOX_RUN_PLAN_LOG_EXIT=5 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlanLogFail --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+assert_rc "$rc" 0 "Edge-breadcrumb-count-plan-log-fail exit 0"
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch testuser/test-feature-123 + plan logged' || true)
+if [ "$n" -eq 0 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-log-fail no + plan logged variant"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-log-fail expected 0 + plan logged variants got $n"
+fi
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch testuser/test-feature-123' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-plan-log-fail plain branch breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-plan-log-fail plain branch breadcrumb expected 1 got $n"
 fi
 rm -rf "$SANDBOX_TMP" "$SANDBOX"
 

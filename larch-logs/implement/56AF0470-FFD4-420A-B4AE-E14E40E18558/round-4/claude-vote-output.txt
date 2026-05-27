@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- phase_plan_materialize is long but sequential with explicit per-step error handling; extracting file-local helpers introduces indirection without fixing a correctness risk
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- copy-plan and gh-issue-view STEP_FAILED values are unreachable on resume-tail (those steps are inside the RESUME_PLAN_TAIL guard); the duplication risk is real but low for Phase 3 scope
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- summary skips upsert on redaction failure (public GitHub boundary, fail-closed is correct); tally falls back to raw content (local file, benign); the asymmetry is intentional and more secure, not a bug
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- SKILL.md line 468 explicitly says the resumed bootstrap tail re-runs check-mid-run-dirty-tree internally; the prose already disambiguates
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- each dispatch arm controls its own ensure_untracked_baseline_snapshot placement relative to phase_tracking; hoisting would change execution order
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- trivial two-call duplication with no correctness or security risk; not worth a refactor
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- SKILL.md already says the resumed bootstrap tail re-runs the checkpoint internally; orchestrator does not need a separate call
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL.md lines 479-481 pass the same TARGET_ISSUE_NUMBER to resume; re-adoption on mismatch uses identical --issue-number, so plan artifacts are never stale for the documented flow
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- call with empty PREFLIGHT_TMPDIR still surfaces STEP_FAILED=copy-plan and captures stderr; error is not silent, just confusing
+FINDING_19: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- meta-observation that reviewer could not run acceptance tests; describes review-process limitation, not a code problem worth filing
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer explicitly concludes there is no fidelity gap vs the written plan; not a problem to file
