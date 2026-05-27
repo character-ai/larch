@@ -42,7 +42,13 @@ grep -Fq '_wfr_emit_body=false' "$REPO/skills/implement/SKILL.md" || fail 'Step 
 # shellcheck disable=SC2016
 grep -Fq 'cmp -s "$IMPLEMENT_TMPDIR/.step18-prebody" "$IMPLEMENT_TMPDIR/summary-final.md"' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must compare refreshed body to pre-Step-18 snapshot'
 # shellcheck disable=SC2016
-grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-emitted"' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
+grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
+# shellcheck disable=SC2016
+step18_block=$(sed -n '/"_wfr_args=(--implement-tmpdir "\\$IMPLEMENT_TMPDIR")"/,/^```$/p' "$REPO/skills/implement/SKILL.md")
+# shellcheck disable=SC2016
+if printf '%s\n' "$step18_block" | grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-emitted"'; then
+    fail 'Step 18 Bash block must not touch .step17-emitted before orchestrator emit'
+fi
 # shellcheck disable=SC2016
 grep -Fq 'the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 full-body emit prose'
 # shellcheck disable=SC2016

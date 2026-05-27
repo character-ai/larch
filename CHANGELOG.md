@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [42.6.1] - 2026-05-26
 
-### Changed
+### Fixed
 
 - **Fix #2970:** Final-summary rigid template now surfaces at top chat for both `/design` and `/implement`. The renderer infrastructure from #2837 stays intact; the change is purely the orchestrator-side emission contract: the orchestrator now reads the persisted `final-summary.md` / `summary-final.md` and emits its full body verbatim as plain chat markdown after the Bash call. The previous cost-line-only emission is replaced with full-body emission gated on a non-empty persisted file, preserving the per-agent cost breakdown invariant from #2837 and making the full structured block visible without depending on Bash-tool UI expansion.
 - Fixed get-issue-state flag parsing so missing or flag-looking values fail instead of looping.

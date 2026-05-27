@@ -1812,9 +1812,6 @@ if "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" "${_wf
   if [ "$_wfr_printed" = false ] && ! cmp -s "$IMPLEMENT_TMPDIR/.step18-prebody" "$IMPLEMENT_TMPDIR/summary-final.md"; then
     _wfr_emit_body=true
   fi
-  if [ "$_wfr_emit_body" = true ] && [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then
-    touch "$IMPLEMENT_TMPDIR/.step17-emitted" 2>/dev/null || true
-  fi
 fi
 ```
 

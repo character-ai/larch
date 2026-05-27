@@ -447,7 +447,20 @@ step18_changed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/co
     fi
   fi
 ' bash "$impl_bl" "$HELPER" 2>/dev/null)
-assert_contains '- **Cost**:' "$step18_changed" 'Step 18 body-diff path emits refreshed summary body'
+assert_schema_ordered "$step18_changed" 'Step 18 body-diff path emits refreshed summary body' \
+    '## /implement run run-bl — bailed' \
+    '- **Outcome**: bailed' \
+    '- **Mode**: N/A' \
+    '- **Path**: N/A' \
+    '- **Duration**: N/A' \
+    '- **Cost**:' \
+    '- **Issue**: #9 — https://github.com/owner/repo/issues/9' \
+    '- **Plan review**: N/A' \
+    '- **Code review**: N/A' \
+    '- **OOS filed**: 0' \
+    '- **Exec issues**: 0' \
+    "- **Run logs**: \`larch-logs/implement/run-bl/\`" \
+    '<!-- larch:run-summary v=1 -->'
 
 # Bail + manifest.json: larch-log manifest stamps steps_ran.* and hard-fails on manifest error
 impl_mfb="$TMP_ROOT/impl-mfb"; mkdir -p "$impl_mfb/larch-logs/implement/run-mfb"
