@@ -1,0 +1,14 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- current loader copies the restored snapshot before deleting the marker
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the duplicate pass is real but the cost is tiny and conditionalizing it is not worth the added branching
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- duplication exists, but consolidating marker parsing would add shared-helper complexity for low demonstrated risk
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- real consolidation opportunity, but not concrete enough to warrant a separate issue over the added abstraction
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the duplication is real, but these prompt-local fence preludes are intentionally explicit and low-risk
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- current loader makes plan.txt optional for resume steps at or before Step 2b
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- current preludes set LARCH_PAUSE_REQUIRE_SUCCESS=1 so PAUSE_OK=false exits nonzero
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- current loader validates SESSION_ID, TIER, and BRAINSTORM_DONE before emitting them
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=weak UNCERTAIN=false -- empty porcelain occurs after staging the tmpdir snapshot, so changed staged pause state would not be skipped
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- current save/load accepts the recovery branch form and can restore a local recovery ref
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- a theoretical race exists, but it requires unusual concurrent pause/save execution and does not justify heavier locking
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- possible legacy edge case, but too narrow to justify a new issue without evidence of affected snapshots

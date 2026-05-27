@@ -1,0 +1,3 @@
+Add pause and resume support for /design
+
+Introduce a /larch:pause skill with save/load helpers, a generalized issue-body marker writer, pause-aware design log publishing, and structure/docs coverage for resuming /design from a persisted snapshot.

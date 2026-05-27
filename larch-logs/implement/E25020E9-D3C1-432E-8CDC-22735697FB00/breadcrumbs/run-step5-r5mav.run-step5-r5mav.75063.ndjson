@@ -1,0 +1,2 @@
+larch:bc t=2026-05-27T09:11:34Z d=0 p=75249 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (8 fixes)
+larch:bc t=2026-05-27T09:17:15Z d=0 p=75249 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 8 fixes (commit 03f5410)

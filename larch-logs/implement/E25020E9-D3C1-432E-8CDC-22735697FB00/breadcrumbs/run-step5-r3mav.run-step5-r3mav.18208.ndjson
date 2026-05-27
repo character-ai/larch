@@ -1,0 +1,2 @@
+larch:bc t=2026-05-27T08:34:31Z d=0 p=18384 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (7 fixes)
+larch:bc t=2026-05-27T08:46:03Z d=0 p=18384 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 7 fixes (commit 2df36e1)

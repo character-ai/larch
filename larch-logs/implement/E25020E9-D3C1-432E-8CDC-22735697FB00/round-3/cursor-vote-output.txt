@@ -1,0 +1,20 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- resume and 5.5-bis already pass `${REPO:+--repo "$REPO"}` to `write-design-current-env.sh`.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- shipped prelude passes `${REPO:+--repo "$REPO"}`; only the test stub omits `--repo`.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated marker awk is real but a low-risk DRY maintenance item.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- `design-pause-load.sh` deletes the marker before copying staged artifacts into `DESIGN_TMPDIR`.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Step 1c documents the completion sentinel twice at adjacent success boundaries.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- recovery-path double redaction is redundant I/O only.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicated `resolve_repo` is pre-existing maintenance debt, not a pause blocker.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `emit_fail` exit 0 is documented contract; callers should parse `PAUSE_OK`, not `$?` alone.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- `skills/pause/SKILL.md` arms `.pause-requested` and runs `design-pause-save.sh` synchronously.
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- recovery-only save emits `WARN=recovery-branch-only` plus `LOG_RECOVERY_BRANCH` on stdout.
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- harness `make_design_tmpdir` and the publish stub both include `manifest.json`.
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- loader requires `LOG_RECOVERY_BRANCH` to equal `larch-log-design-$RUN_ID`.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- Step 0b sub-step 2.1 persists `ISSUE_NUMBER` immediately after issue fetch.
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- `design-pause-load.sh` fails closed with `ERROR=jq-missing` before using `jq`.
+FINDING_15: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- push failure emits `larch-log-design-recovery-$RUN_ID`, which `design-pause-save.sh` rejects as non-matching recovery.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- empty-porcelain pause publish can return success from a stale default-branch manifest without staging the live tmpdir.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- skipping registry step 5 is intentional legacy finalize handling with low practical resume risk.
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan case (m) with only `step-1c` and `step-2a` sentinels is not covered; existing test uses `step-1d` completed.
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `test-design-log-publish.sh` lacks the plan-required two-pass existing-remote `larch-log-design-<RUN_ID>` force-with-lease fixture.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- shipped pause prose is shorter than the plan estimate with no reported functional gap.
