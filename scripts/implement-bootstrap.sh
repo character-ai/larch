@@ -499,6 +499,9 @@ phase_tracking() {
     local state_out state_rc state_failed issue_state issue_is_pr
     local post_out post_rc posted
 
+    "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — tracking issue" || true
+    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+
     if [ "${REPO_UNAVAILABLE:-}" = "true" ]; then
         BRANCH_SELECTED=repo-unavailable-skip
         DEFERRED=true

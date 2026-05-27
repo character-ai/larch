@@ -73,6 +73,16 @@ When no usable token JSON exists, or the JSON is unparseable / lacks
 `--cost-unavailable` and omits token count flags. The rendered body therefore
 uses `- **Cost**: N/A` instead of the misleading all-zero dollar line.
 
+When `token-report.json` contains structurally present multi-vendor sections
+whose reported totals are all zero, the script treats the report as corrupt
+token data. Claude-only all-zero reports are exempt from that corrupt-data
+warning path as a legitimate single-agent/no-usage case, but still render
+`- **Cost**: N/A` because there is no positive token usage data. The
+corrupt-data path keeps the same
+`- **Cost**: N/A` rendering path, appends
+`**⚠ token-report.json appears corrupt; reporting Cost: N/A**` to the rendered
+summary body, and repeats that warning on stderr for operators.
+
 ## Degraded render — two-stage fallback
 
 If `render-run-summary.sh` fails or produces an empty file, the script appends a

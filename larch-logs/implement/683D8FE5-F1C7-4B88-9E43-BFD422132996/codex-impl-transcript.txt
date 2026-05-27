@@ -1,0 +1,13 @@
+Implemented the plan and wrote the completion manifest at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.
+
+Changed:
+- Moved `Step 0 — tracking issue` token/timing marks into `phase_tracking`.
+- Removed duplicate prompt-side mark ownership from `skills/implement/SKILL.md`.
+- Refreshed bootstrap/linting docs and harness contract docs.
+- Added corrupt all-zero `token-report.json` detection in `write-final-report.sh`, rendering `Cost: N/A` plus the required warning in the summary body and stderr.
+- Added/updated harness assertions for the moved mark and corrupt-zero report path.
+
+Verification passed:
+- `bash skills/implement/scripts/test-implement-bootstrap.sh` → `PASS=384 FAIL=0`
+- `bash skills/implement/scripts/test-write-final-report.sh` → `PASS=198`
+- `bash scripts/relevant-checks.sh` → passed

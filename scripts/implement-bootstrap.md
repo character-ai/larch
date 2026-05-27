@@ -60,14 +60,14 @@ When `LARCH_QUIET_BREADCRUMBS` is truthy, emits exactly one line via `emit_bread
 
 `→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)`
 
-Tracking phase may also emit:
+Tracking phase emits exactly one of:
 
 - `→ step0: tracking adopted #<N> (run=<RUN_ID> branch=<branch-1-resume|branch-2-adopt>)`
 - `⏩ step0: tracking — skip (repo-unavailable|forked-target)`
 
 Set `LARCH_QUIET_BREADCRUMB_FD` to a numeric descriptor when you need breadcrumbs on a dedicated stream. When breadcrumbs are enabled but `LARCH_QUIET_BREADCRUMB_FD` is unset or non-numeric, the line is emitted via `larch_err` (stderr / quiet FD4) so stdout remains KV-only under `LARCH_QUIET_DISABLE=1`.
 
-Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged` when `run-step1-plan-log.sh` succeeds, otherwise `→ step0: branch $BRANCH_NAME`. `→ step0: larch:plan posted` is emitted only when the `tracking-issue-summary.sh upsert-summary` call succeeds. Breadcrumbs require `LARCH_QUIET_BREADCRUMBS` truthy. Future Phase 4 may add `→ step0: coder=…`.
+Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged` when `run-step1-plan-log.sh` succeeds, otherwise `→ step0: branch $BRANCH_NAME`. `→ step0: larch:plan posted` is emitted only when the `tracking-issue-summary.sh upsert-summary` call succeeds. Breadcrumbs require `LARCH_QUIET_BREADCRUMBS` truthy. Phase 4 may add `→ step0: coder=…`.
 
 ## Exit codes
 
@@ -78,6 +78,8 @@ Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged
 | (other) | argv validation failures (`die_usage`). |
 
 Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_TMPDIR/plan-from-issue.txt` cannot be copied, `STEP_FAILED=gh-issue-view` when issue title/body composition fails, and `STEP_FAILED=resume-plan-tail-sentinel` when dirty-tree resume cannot validate the tracking sentinel or equivalent persisted plan artifacts.
+
+`phase_infra` emits the `Step 0 — preflight` token/timing ledger mark after `session-env.sh` is written. `phase_tracking` emits the `Step 0 — tracking issue` token/timing ledger mark before tracking skip or adoption branches.
 
 ## Bail reasons (`IMPLEMENT_BAIL_REASON`)
 

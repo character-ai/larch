@@ -519,6 +519,65 @@ badjson_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/co
 assert_contains '- **Cost**: N/A' "$badjson_stdout" 'malformed token-report renders cost N/A'
 assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$badjson_stdout" 'malformed token-report omits misleading zero-dollar breakdown'
 
+impl_zero="$TMP_ROOT/impl-zero"; mkdir -p "$impl_zero/larch-logs/implement/run-zero"
+printf 'ISSUE_NUMBER=22\nRUN_ID=run-zero\nADOPTED=true\n' > "$impl_zero/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_zero/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_zero/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_zero/finalize-state.sh"
+cat > "$impl_zero/larch-logs/implement/run-zero/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 0}},
+  "codex": {"totals": {"total": 0}},
+  "cursor": {"totals": {"total": 0}},
+  "BUCKETS_claude": {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0},
+  "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0},
+  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0}
+}
+JSON
+zero_stderr="$TMP_ROOT/corrupt-zero.stderr"
+zero_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-zero.md" \
+      "$HELPER" --implement-tmpdir "$impl_zero" --print-stdout 2>"$zero_stderr")
+assert_contains '- **Cost**: N/A' "$zero_stdout" 'corrupt-zero token-report renders cost N/A'
+assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$zero_stdout" 'corrupt-zero warning appears in stdout summary'
+assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-zero.md")" 'corrupt-zero warning appears in tracking summary body'
+assert_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$zero_stderr")" 'corrupt-zero warning appears on stderr'
+assert_not_contains "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$zero_stdout" 'corrupt-zero token-report omits misleading zero-dollar breakdown'
+
+impl_claude_zero="$TMP_ROOT/impl-claude-zero"; mkdir -p "$impl_claude_zero/larch-logs/implement/run-claude-zero"
+printf 'ISSUE_NUMBER=23\nRUN_ID=run-claude-zero\nADOPTED=true\n' > "$impl_claude_zero/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_claude_zero/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_claude_zero/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_claude_zero/finalize-state.sh"
+cat > "$impl_claude_zero/larch-logs/implement/run-claude-zero/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 0}},
+  "BUCKETS_claude": {"input": 0, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 0}
+}
+JSON
+claude_zero_stderr="$TMP_ROOT/claude-zero.stderr"
+claude_zero_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-claude-zero.md" \
+      "$HELPER" --implement-tmpdir "$impl_claude_zero" --print-stdout 2>"$claude_zero_stderr")
+assert_contains '- **Cost**: N/A' "$claude_zero_stdout" 'Claude-only zero token-report keeps cost unavailable rendering'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$claude_zero_stdout" 'Claude-only zero token-report omits corrupt warning from stdout summary'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$TMP_ROOT/content-claude-zero.md")" 'Claude-only zero token-report omits corrupt warning from tracking summary body'
+assert_not_contains '**⚠ token-report.json appears corrupt; reporting Cost: N/A**' "$(cat "$claude_zero_stderr")" 'Claude-only zero token-report omits corrupt warning on stderr'
+
 make_impl_fixture() {
     local dir=$1 issue=$2 run=$3 pr_url=$4 pr_number=$5 stall=$6 merge_result=$7 merge=$8 draft=$9 forked=${10} design_only=${11} bail_user=${12}
     mkdir -p "$dir/larch-logs/implement/$run"
