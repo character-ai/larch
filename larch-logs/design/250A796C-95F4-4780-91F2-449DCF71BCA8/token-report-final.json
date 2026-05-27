@@ -1,0 +1,100 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 68,
+          "cache_read": 13659868,
+          "cache_create": 414118,
+          "cache_create_5m": 414118,
+          "cache_create_1h": 0,
+          "output": 78117,
+          "total": 14152171
+        },
+        "skills": [
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 68,
+              "cache_read": 13659868,
+              "cache_create": 414118,
+              "cache_create_5m": 414118,
+              "cache_create_1h": 0,
+              "output": 78117,
+              "total": 14152171
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 68,
+      "cache_read": 13659868,
+      "cache_create": 414118,
+      "cache_create_5m": 414118,
+      "cache_create_1h": 0,
+      "output": 78117,
+      "total": 14152171
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 533907,
+          "output": 24195,
+          "total": 3904534
+        }
+      }
+    ],
+    "totals": {
+      "input": 533907,
+      "output": 24195,
+      "total": 3904534
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 257978,
+          "output": 32802,
+          "total": 3747684
+        }
+      }
+    ],
+    "totals": {
+      "input": 257978,
+      "output": 32802,
+      "total": 3747684
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 68,
+    "cache_read": 13659868,
+    "cache_create_5m": 414118,
+    "cache_create_1h": 0,
+    "output": 78117,
+    "total": 14152171
+  },
+  "BUCKETS_codex": {
+    "input": 533907,
+    "cached_input": 3346432,
+    "output": 24195,
+    "total": 3904534
+  },
+  "BUCKETS_cursor": {
+    "input": 257978,
+    "cache_read": 3456904,
+    "output": 32802,
+    "total": 3747684
+  }
+}
