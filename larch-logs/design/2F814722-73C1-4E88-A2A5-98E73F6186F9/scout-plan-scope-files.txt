@@ -1,0 +1,8 @@
+skills/upgrade-larch/scripts/upgrade-larch.sh
+scripts/write-session-env.sh
+skills/upgrade-larch/scripts/upgrade-larch.md
+scripts/write-session-env.md
+skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh
+skills/upgrade-larch/scripts/test-upgrade-larch-prune.md
+scripts/test-session-env-roundtrip.sh
+scripts/test-session-env-roundtrip.md

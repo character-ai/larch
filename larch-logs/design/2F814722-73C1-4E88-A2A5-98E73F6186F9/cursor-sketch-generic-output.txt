@@ -1,0 +1,6 @@
+Exploring the codebase to find how `/upgrade-larch` tracks installed versions and performs cleanup.
+
+Confirming the bug: retention uses filesystem cache inventory sorted by semver, not install history. Checking whether pre-upgrade version is captured before uninstall.
+
+Your diagnosis matches the code: retention is keyed off cached semver directories, not install history. Creating the implementation plan.
+

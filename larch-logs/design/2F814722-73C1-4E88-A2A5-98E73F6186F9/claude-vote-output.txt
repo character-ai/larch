@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- touch is best-effort by design and placed after the CLAUDE_PLUGIN_ROOT validation block; a failed subsequent write does not cause harm from a stale mtime having been refreshed; over-specified for an intentionally non-critical side effect
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan's own failure-modes section (line 155) says "document in SECURITY.md" but SECURITY.md is absent from Files to modify, creating an internal inconsistency
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- upgrade-larch.sh explicitly never touches mtimes (plan line 77); asserting "mtime unchanged" after an already-at-latest run would be trivially true since the touch lives only in write-session-env.sh; the idempotency concern is real but the suggested test asserts a vacuously-true property
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
