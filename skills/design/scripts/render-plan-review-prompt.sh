@@ -112,7 +112,7 @@ if [[ -r "$readability_style_file" ]]; then
     readability_style="$(cat "$readability_style_file" || true)"
 fi
 if [[ -z "$readability_style" ]]; then
-    larch_err "render-plan-review-prompt.sh: WARNING: readability preamble missing or empty: $readability_style_file"
+    larch_err "render-plan-review-prompt.sh: WARNING: readability preamble missing or empty: $readability_style_file (READABILITY_STYLE_FILE_ARG=${READABILITY_STYLE_FILE_ARG:-UNSET} READABILITY_STYLE_FILE=${READABILITY_STYLE_FILE:-UNSET} file_readable=$([[ -r "$readability_style_file" ]] && echo yes || echo no))"
 fi
 
 prompt_body=""

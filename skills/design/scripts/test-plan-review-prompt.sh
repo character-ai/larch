@@ -30,6 +30,10 @@ Literal token example:
 `<READABILITY_STYLE>`
 EOF
 export READABILITY_STYLE_FILE
+# sanity-check: verify fixture file was created with expected content
+_fixture_lines="$(wc -l <"$READABILITY_STYLE_FILE" 2>/dev/null || echo MISSING)"
+_fixture_has_strunk="$(grep -c 'Strunk' "$READABILITY_STYLE_FILE" 2>/dev/null || echo 0)"
+echo "DEBUG test-plan-review-prompt: READABILITY_STYLE_FILE=$READABILITY_STYLE_FILE lines=$_fixture_lines strunk-matches=$_fixture_has_strunk" >&2
 SIMPLE_DT="$TMPROOT/simple-design"
 HARD_DT="$TMPROOT/hard-design"
 mkdir -p "$SIMPLE_DT" "$HARD_DT"
