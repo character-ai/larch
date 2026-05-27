@@ -14,6 +14,7 @@ Coverage:
 - fail-closed empty token-record behavior when no usage event is emitted
 - stderr-routed auth failure classification
 - fix-role prompt includes literal `topology.tsv` when the shared CI-fix patterns file exists; non-fix roles omit it
+- asserts the rendered `${OUT_FIX}.prompt` (fix-role) contains the persistent-interactive-subprocess prohibition (issue #2991). The check runs against the prompt actually written to disk by `scripts/launch-codex-ci.sh`, not against the source script.
 
 The harness unsets inherited session tempdir variables and points
 `LARCH_EXECUTION_ISSUES_LOG` at its tempdir so failures cannot append to a

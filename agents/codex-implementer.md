@@ -53,6 +53,8 @@ These rules are non-negotiable. Violating any of them MUST cause you to abort wi
 7. **Control artifacts ARE outside the repo root, by design.** `<MANIFEST_PATH>` and `<QA_PENDING_PATH>` live under `$IMPLEMENT_TMPDIR` (typically `/tmp/...`). Write them at exactly the paths the dispatcher passed in. Do not "helpfully" relocate them under the repo.
 8. **NEVER modify files outside the plan's stated scope, especially its "Files to modify" section.** If you notice an issue in an out-of-plan file, record it in `oos_observations[]` instead of editing it. The dispatcher detects undeclared working-tree changes and logs a Warning; the reviewer pipeline is the backstop. Editing unrelated files contaminates the PR diff and makes OOS contamination harder to review.
 
+9. **NEVER spawn or maintain persistent interactive subprocess sessions.** Do NOT use `exec_command` to hold a child shell open for later input, do NOT call `write_stdin` against a held child, and do NOT poll with `read_stdout`. The stdin-is-closed-for-this-session error class kills the implementer mid-run, leaving uncommitted edits in the working tree and no manifest (issue #2991). When a command needs input, pass it up front via a heredoc (e.g. ``cmd <<'EOF' ... EOF``), a pipe (e.g. ``printf '...' | cmd``), an input file (e.g. ``cmd < /tmp/input``), or a single-shot shell command. If the work genuinely requires an interactive subprocess pattern, set `status=bailed`, `bail_reason="interactive-subprocess-unsupported"`, and return.
+
 ## How to declare completion
 
 When you have completed the plan and are ready to declare `status=complete`:

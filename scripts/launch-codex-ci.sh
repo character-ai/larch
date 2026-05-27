@@ -147,6 +147,8 @@ $FAILURE_CONTEXT
 $LARCH_PATTERNS
 $LOCAL_REPRO
 
+Subprocess tool discipline (issue #2991): do not spawn or maintain persistent interactive subprocess sessions, do not call write_stdin against a held child, and do not poll with read_stdout. When a command needs input, pass it up front via a heredoc, a pipe, an input file, or a single-shot shell command. The stdin-is-closed-for-this-session failure class kills the launcher mid-run.
+
 Inspect the repository and CI logs as needed. Make only the minimal changes required for this role. Do not rewrite history. Do not edit submodules. Leave a concise summary in the final answer."
 PROMPT_FILE="${OUTPUT}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE"

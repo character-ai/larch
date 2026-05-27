@@ -34,4 +34,6 @@ All tokens route to Step 12d.
 
 `detached-head-prohibited` — same predicates when spawn-time symbolic branch is empty (detached / no branch) or legacy `HEAD` from older spawn-branch captures.
 
+`interactive-subprocess-unsupported` — Codex hit a plan step requiring a persistent interactive subprocess session (`exec_command` + `write_stdin` / `read_stdout`); rephrase as heredoc/pipe/file input (issue #2991).
+
 Free-form: any other implementer-authored string; preserved verbatim (KV-sanitized, capped ~200 chars).

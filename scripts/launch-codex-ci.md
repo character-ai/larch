@@ -17,6 +17,8 @@ launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --o
 
 The launcher builds a fixed prompt containing only trusted path and identifier values, then runs `codex exec --json` through `run-external-agent.sh`. It emits timing with `--timing-task-kind codex-ci-fix` and writes a best-effort `${OUTPUT}.token-record` sidecar when token usage can be parsed from `${OUTPUT}.events.jsonl` by `scripts/parse-codex-usage.sh`. The token-record grammar is `TOOL=codex`, `INPUT=<n>`, `OUTPUT=<n>`, `CACHE_READ=<n>`, `TOTAL=<n>`, `RAW=codex_ci_fix`; parse failure appends the parser diagnostic to `${OUTPUT}.sidecar` and leaves the token-record sidecar empty. The spawn site uses `lib-external-launcher-common.sh`'s per-tool Darwin serial lock and outer auth retry wrapper; Codex startup stderr is captured to `${OUTPUT}.sidecar` so auth retries can be classified without leaking progress text into the final `KEY=VALUE` stdout line.
 
+- Inline `PROMPT` body now carries the Codex subprocess-tool prohibition matching `agents/_implementer-base.md` Hard guard #9 (issue #2991): the CI fixer must not spawn persistent interactive subprocess sessions and must use heredocs / pipes / input files for subprocess input. The signature phrase `persistent interactive subprocess` is grep-pinned in `scripts/test-launch-codex-ci.sh`.
+
 When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends `${OUTPUT}.sidecar` to `$IMPLEMENT_TMPDIR/execution-issues.md` through `scripts/append-tool-failure.sh --redact` under `Tool Failures`, including an auth verdict and the final auth-loop attempt count.
 
 ## Machine-readable failure classification

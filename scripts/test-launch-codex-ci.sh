@@ -80,6 +80,11 @@ if grep -qF 'topology.tsv' "${OUT_FIX}.prompt" 2>/dev/null; then
 else
     fail "fix role prompt includes topology.tsv sentinel"
 fi
+if grep -qF 'persistent interactive subprocess' "${OUT_FIX}.prompt" 2>/dev/null; then
+    ok "fix-role prompt prohibits persistent interactive subprocesses (issue #2991)"
+else
+    fail "fix-role prompt prohibits persistent interactive subprocesses (issue #2991)"
+fi
 for role in resolve-conflict bump-classify changelog-draft; do
     OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
     case "$role" in

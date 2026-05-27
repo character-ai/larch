@@ -67,6 +67,7 @@ HEADER
 sed \
   -e 's/TOOL_MODIFIED_HISTORY/cursor-modified-history/g' \
   -e 's/TOOL_COMMIT_STDERR/cursor-commit-stderr.txt/g' \
+  -e '/^9\. \*\*NEVER spawn or maintain persistent interactive subprocess sessions\.\*\*/,/^$/d' \
   "$BASE" >>"$TMP"
 
 if grep -q 'TOOL_MODIFIED_HISTORY\|TOOL_COMMIT_STDERR' "$TMP"; then

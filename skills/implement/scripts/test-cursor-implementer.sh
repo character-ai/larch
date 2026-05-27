@@ -79,6 +79,15 @@ assert_manifest_template_present() {
     fi
 }
 
+assert_subprocess_guard_absent() {
+    local test_id="$1"
+    if grep -Fq "persistent interactive subprocess sessions" "$AGENT_PROMPT"; then
+        fail "$test_id" "cursor implementer prompt unexpectedly contains Codex Hard guard #9 (Cursor generator sed strip regressed)"
+    else
+        pass
+    fi
+}
+
 SCRATCH=$(mktemp -d -t cursor-implementer-test.XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
@@ -98,6 +107,7 @@ printf 'fake feature\n' > "$FEATURE"
 printf '{"answers":[{"id":"q1","text":"yes"}]}\n' > "$ANSWERS"
 
 assert_manifest_template_present "manifest-template"
+assert_subprocess_guard_absent "subprocess-guard-absent"
 
 # Test 1: missing required flags exits 2.
 EXIT=0
