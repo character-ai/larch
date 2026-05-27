@@ -29,6 +29,10 @@
 | B5-plan | `larch-log.sh init` failure on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips the phase-3 placeholder. |
 | B5-branch1 | Branch 1 sentinel resume with `larch-log.sh init` failure preserves the sentinel issue/run id while stalling tracking. |
 | B5-plan-green | Phase 3 green path copies the Preflight plan, composes issue context, persists run flags, creates/captures the derived branch, writes plan batches, upserts `larch:plan`, and covers three slug inputs. |
+| B5-coder-implicit-cursor | Phase 4 green path with both external implementers available emits `coder=cursor` and no `coder_fallback`. |
+| B5-coder-implicit-codex | Phase 4 implicit path with Cursor unavailable and Codex available emits `coder=codex`, prints the Cursor→Codex warning, and appends a Warning. |
+| B5-coder-implicit-claude | Phase 4 implicit path with both external implementers unavailable emits `coder=claude` and `coder_fallback=true`. |
+| B5-coder-explicit-unavailable | Explicit unavailable `--coder=cursor` emits `IMPLEMENT_BAIL_REASON=coder-unavailable`, `STALL_TRACKING=true`, and no `coder`. |
 | B5-plan-best-effort-failures | Non-fatal `run-step1-plan-log.sh`, `write-tally.sh`, and `tracking-issue-summary.sh` failures append Warnings and still return a green Phase 3 tail. |
 | B5-plan-goal-redaction-failure | Goal-text redaction fails closed to a placeholder and appends a Warning instead of logging the raw issue title. |
 | B6-plan-flags | Any non-zero `persist-implement-run-flags.sh` exit emits `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`, sets `STALL_TRACKING=true`, and stops subsequent Phase 3 helpers. |
@@ -64,3 +68,4 @@
 | Edge-breadcrumb-count-adopt | `LARCH_QUIET_BREADCRUMBS=1` + tracking adoption → exactly one `→ step0: tracking adopted` line. |
 | Edge-breadcrumb-count-plan-green | `LARCH_QUIET_BREADCRUMBS=1` + green plan materialization emits one branch/log breadcrumb and one `larch:plan` breadcrumb. |
 | Edge-breadcrumb-count-plan-summary-fail | `LARCH_QUIET_BREADCRUMBS=1` + summary failure emits the branch/log breadcrumb but suppresses the `larch:plan` breadcrumb. |
+| Edge-breadcrumb-count-coder-green | `LARCH_QUIET_BREADCRUMBS=1` + green coder phase emits exactly five `→ step0:` breadcrumbs, including one `coder=cursor` breadcrumb. |

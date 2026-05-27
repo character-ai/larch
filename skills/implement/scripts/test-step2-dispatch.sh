@@ -4,8 +4,7 @@
 # Covers the dispatcher branches that do NOT require spawning an external implementer
 # (for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
-#   - default coder (no --coder flag) is cursor.
-#   - Default cursor path outside a git work-tree, no --cursor-present → claude_fallback (exit 0).
+#   - missing --coder exits 2 (Step 0 is the sole omitted-coder authority).
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
 #   - --coder cursor with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak; Step 2 backstop when Step 1 did not bail for explicit unhealthy Cursor).
@@ -96,20 +95,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 1b: default coder (neither flag set) is codex. From a non-git cwd the codex path fails the git-tree precondition and exits 2 — if the default were still claude, the dispatcher would early-return STATUS=claude_fallback from the git-free claude branch with exit 0.
+# Test 1b: missing --coder exits 2. Step 0 is the sole omitted-coder authority.
 # ---------------------------------------------------------------------------
 TMP1B="$SCRATCH/test1b"; mkdir -p "$TMP1B"
 NON_GIT_DIR_1B="$SCRATCH/test1b-nongit"; mkdir -p "$NON_GIT_DIR_1B"
 EXIT=0
 ERR=$(cd "$NON_GIT_DIR_1B" && "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
     2>&1 >/dev/null) || EXIT=$?
-if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"must be invoked from within a git working tree"* ]]; then
+if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--coder is required"* ]]; then
     pass
 else
-    fail 1b "default coder should be codex (non-git cwd → git-tree exit 2), got exit=$EXIT err=$ERR"
+    fail 1b "missing --coder should exit 2 before git resolution, got exit=$EXIT err=$ERR"
 fi
 if [[ -f "$TMP1B/step2-baseline.txt" ]]; then
-    fail 1b "default codex non-git cwd should not leak baseline file"
+    fail 1b "missing --coder should not leak baseline file"
 else
     pass
 fi

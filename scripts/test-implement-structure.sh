@@ -37,8 +37,8 @@ done
 
 grep -Fq 'scripts/larch-log.sh' "$SKILL_MD" \
   || fail "SKILL.md must reference scripts/larch-log.sh"
-grep -Fq 'scripts/tracking-issue-summary.sh' "$SKILL_MD" \
-  || fail "SKILL.md must reference scripts/tracking-issue-summary.sh"
+grep -Fq 'tracking-issue-summary.sh' "$SKILL_MD" \
+  || fail "SKILL.md must reference tracking-issue-summary.sh"
 grep -Fq 'summary-comment-template.md' "$SKILL_MD" \
   || fail "SKILL.md must reference summary-comment-template.md"
 
@@ -126,8 +126,8 @@ grep -Fq 'code-quality / risk-integration / correctness / architecture' "$SKILL_
 grep 'code-quality / risk-integration / correctness / architecture' "$SKILL_MD" | grep -q 'security' \
   || fail "focus-area enum line must include security"
 
-grep -Fq '### Larch-log Batches and Summary Comments' "$SKILL_MD" \
-  || fail "SKILL.md must contain the Larch-log batches section heading"
+grep -Fq 'scripts/larch-log-batches.md' "$REPO_ROOT/docs/run-logs.md" "$REPO_ROOT/scripts/implement-bootstrap.md" \
+  || fail "run-log docs must retain larch-log batch table pointer"
 # shellcheck disable=SC2016
 grep -qE 'NEVER write, recreate, or modify .\$IMPLEMENT_TMPDIR/finalize-state\.sh' "$SKILL_MD" \
   || fail "SKILL.md must contain NEVER bullet for finalize-state.sh write prohibition"
@@ -270,8 +270,8 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SH
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
 # shellcheck disable=SC2016
-grep -Fq 'POST_PLAN_WORKFLOW_PATH=HARD' "$SKILL_MD" \
-  || fail "Post-plan router must default POST_PLAN_WORKFLOW_PATH=HARD (cutover removed --hard flag)"
+grep -Fq -- '--workflow-path HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must persist HARD workflow path"
 # Post-cutover: /implement no longer accepts --hard, so hard_mode references must be gone.
 ! grep -Fq 'hard_mode' "$SKILL_MD" \
   || fail "Post-plan router must not reference hard_mode (--hard flag removed in cutover)"
@@ -280,8 +280,8 @@ grep -Fq 'POST_PLAN_WORKFLOW_PATH=HARD' "$SKILL_MD" \
   || fail "skills/implement/SKILL.md must not reference persist-post-plan-keys (retired #2487)"
 ! grep -Fq 'post-design-boundary.sh' "$SKILL_MD" \
   || fail "skills/implement/SKILL.md must not reference post-design-boundary.sh (retired #2487)"
-grep -Fq 'scripts/persist-implement-run-flags.sh' "$SKILL_MD" \
-  || fail "Post-plan router must invoke scripts/persist-implement-run-flags.sh"
+grep -Fq 'persist-implement-run-flags.sh' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must invoke persist-implement-run-flags.sh"
 
 step17_status=0
 awk '
@@ -387,10 +387,12 @@ grep -Fq '6. **On `AUDIT=pass` — semantic materiality (comment-only)**' "$SKIL
   || fail "SKILL.md Preflight must retain semantic materiality step (item 6)"
 grep -Fq 'semantic stale notice posted at Preflight item 6' "$SKILL_MD" \
   || fail "SKILL.md exit table must pin Preflight item 6 semantic stale path"
-grep -Fq '### Step 0 — tracking issue adoption' "$SKILL_MD" \
-  || fail "SKILL.md must contain Step 0 tracking issue adoption heading"
-grep -Fq '### Plan materialization from issue body' "$SKILL_MD" \
-  || fail "SKILL.md must contain plan materialization heading"
+! grep -Fq '### Step 0 — tracking issue adoption' "$SKILL_MD" \
+  || fail "SKILL.md must not reintroduce prompt-side Step 0 tracking issue adoption heading"
+! grep -Fq '### Plan materialization from issue body' "$SKILL_MD" \
+  || fail "SKILL.md must not reintroduce prompt-side plan materialization heading"
+! grep -Fq '### Implementer waterfall' "$SKILL_MD" \
+  || fail "SKILL.md must not reintroduce prompt-side implementer waterfall heading"
 read -r tok0_plan_bootstrap <<'EOF'
 "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization"
 EOF
@@ -401,8 +403,10 @@ grep -Fq "$tok0_plan_bootstrap" "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must retain token-ledger implement Step 0 — plan materialization mark"
 grep -Fq "$time0_plan_bootstrap" "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must retain timing-ledger implement Step 0 — plan materialization mark"
-grep -Fq "Plan materialization is now fully owned by the foreground \`implement-bootstrap.sh --up-to-phase plan\` call above." "$SKILL_MD" \
-  || fail "SKILL.md must pin plan materialization ownership to implement-bootstrap.sh"
+grep -Fq 'phase_coder_select' "$SKILL_MD" \
+  || fail "SKILL.md must pin coder selection ownership to implement-bootstrap.sh"
+grep -Fq 'mark "implement Step 0 — coder select"' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must contain coder-select token/timing mark"
 grep -Fq '_ib_preflight=()' "$SKILL_MD" \
   || fail "SKILL.md must retain the _ib_preflight argv array"
 read -r preflight_wire_line <<'EOF'
@@ -413,41 +417,34 @@ grep -Fq "$preflight_wire_line" "$SKILL_MD" \
 read -r preflight_expand_line <<'EOF'
 "${_ib_preflight[@]+"${_ib_preflight[@]}"}"
 EOF
-if [ "$(grep -cF "$preflight_expand_line" "$SKILL_MD" || true)" -lt 2 ]; then
-  fail "SKILL.md must expand _ib_preflight in both bootstrap invocations"
+if [ "$(grep -cF "$preflight_expand_line" "$SKILL_MD" || true)" -lt 1 ]; then
+  fail "SKILL.md must expand _ib_preflight in the bootstrap invocation"
 fi
 grep -Fq -- '--resume-plan-tail' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document --resume-plan-tail"
-grep -Fq '.dirty-tree-prompted-step0-plan-materialize' "$SKILL_MD" \
-  || fail "SKILL.md must retain the dirty-tree resume sentinel contract"
-grep -Fq 'dirty-tree-detected.env' "$SKILL_MD" \
-  || fail "SKILL.md must retain the dirty-tree recovery env contract"
-read -r resume_recheck_line <<'EOF'
-The resumed bootstrap tail re-runs `check-mid-run-dirty-tree.sh --mode checkpoint` internally before any Phase 3 tail helper
-EOF
-grep -Fq "$resume_recheck_line" "$SKILL_MD" \
-  || fail "SKILL.md must document the internal dirty-tree re-check on resume"
-grep -Fq 'export IMPLEMENT_TMPDIR' "$SKILL_MD" \
-  || fail "SKILL.md dirty-tree recovery must export IMPLEMENT_TMPDIR before resume"
+grep -Fq -- '--resume-plan-tail' "$SKILL_MD" \
+  || fail "SKILL.md must retain dirty-tree resume-tail routing"
 read -r target_issue_line <<'EOF'
 _ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
 EOF
 grep -Fq "$target_issue_line" "$SKILL_MD" \
-  || fail "SKILL.md dirty-tree recovery must reuse TARGET_ISSUE_NUMBER fallback"
+  || fail "SKILL.md must reuse TARGET_ISSUE_NUMBER fallback"
 read -r bootstrap_rc_guard_line <<'EOF'
 if [ "$_ib_rc" -eq 2 ]; then
 EOF
-if [ "$(grep -cF "$bootstrap_rc_guard_line" "$SKILL_MD" || true)" -lt 2 ]; then
-  fail "SKILL.md dirty-tree recovery must mirror the bootstrap exit-2 wrapper"
+if [ "$(grep -cF "$bootstrap_rc_guard_line" "$SKILL_MD" || true)" -lt 1 ]; then
+  fail "SKILL.md must keep bootstrap exit-2 wrapper"
 fi
 grep -Fq "while IFS= read -r _ib_line || [ -n \"\$_ib_line\" ]; do" "$SKILL_MD" \
-  || fail "SKILL.md dirty-tree recovery must re-parse resume bootstrap stdout"
+  || fail "SKILL.md must parse bootstrap stdout"
 grep -Fq "BRANCH_NAME=*) BRANCH_NAME=\${_ib_tok#BRANCH_NAME=} ;;" "$SKILL_MD" \
   || fail "SKILL.md must retain BRANCH_NAME _ib_kv_scan case arm"
 grep -Fq "BRANCH_ACTION=*) BRANCH_ACTION=\${_ib_tok#BRANCH_ACTION=} ;;" "$SKILL_MD" \
   || fail "SKILL.md must retain BRANCH_ACTION _ib_kv_scan case arm"
 grep -Fq "PLAN_FILE=*) PLAN_FILE=\${_ib_tok#PLAN_FILE=} ;;" "$SKILL_MD" \
   || fail "SKILL.md must retain PLAN_FILE _ib_kv_scan case arm"
+grep -Fq "coder=*) coder=\${_ib_tok#coder=} ;;" "$SKILL_MD" \
+  || fail "SKILL.md must retain coder _ib_kv_scan case arm"
 
 step0_plan_structure_status=0
 awk '
@@ -456,20 +453,21 @@ awk '
   in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
   in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
   in_step && in_bash {
-    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase plan/ && $0 !~ /--resume-plan-tail/) bootstrap_calls++
-    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase plan/ && $0 ~ /--resume-plan-tail/) resume_calls++
+    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase coder/) bootstrap_calls++
+    if ($0 ~ /--up-to-phase coder/) coder_literal++
+    if ($0 ~ /--resume-plan-tail/) resume_mentions++
     if ($0 ~ /snapshot-untracked\.sh" --output|\$SCRIPT_DIR\/persist-implement-run-flags\.sh|check-mid-run-dirty-tree\.sh" --mode checkpoint|create-branch\.sh" --branch|git-current-branch\.sh"|run-step1-plan-log\.sh"|write-tally\.sh"|tracking-issue-summary\.sh" .*upsert-summary|gh issue view "\$gh_issue_arg"|gh issue view "\$ISSUE_NUMBER"/) banned++
   }
   END {
     if (bootstrap_calls != 1) exit 10
-    if (resume_calls != 1) exit 12
+    if (coder_literal < 1) exit 12
     if (banned != 0) exit 11
   }
 ' "$SKILL_MD" || step0_plan_structure_status=$?
 case "$step0_plan_structure_status" in
   0) ;;
-  10) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase plan call" ;;
-  12) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase plan --resume-plan-tail recovery call" ;;
+  10) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase coder call" ;;
+  12) fail "Step 0 bash blocks must contain --up-to-phase coder literal" ;;
   11) fail "Step 0 bash blocks must not reintroduce absorbed plan-materialization helper calls" ;;
   *) fail "unexpected Step 0 structure check failure: $step0_plan_structure_status" ;;
 esac

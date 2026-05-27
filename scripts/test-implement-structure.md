@@ -1,10 +1,16 @@
 # test-implement-structure.sh contract
 
-Structural regression harness for `/implement` after the larch-log migration.
+Structural regression harness for `/implement` after the Step 0 bootstrap collapse.
 
-It pins the core top-level headings, required reference files, the new
-`larch-log.sh` and `tracking-issue-summary.sh` surfaces, and rejects references
-to removed anchor infrastructure.
+It pins the core top-level headings, required reference files, larch-log and
+tracking summary surfaces, and rejects references to removed anchor
+infrastructure.
+
+For Step 0, it pins the collapsed Session Setup subsection: one foreground
+`implement-bootstrap.sh --up-to-phase coder` call, script-side
+`phase_coder_select`, parser arms for `coder` / `PLAN_FILE`, and absence of the
+deleted prompt-side tracking, plan-materialization, and implementer-waterfall
+headings.
 
 It also pins the finalize-state teardown contract: the SKILL.md NEVER bullet
 for prompt-side writes, Step 18's restore-before-teardown invocation order, the
