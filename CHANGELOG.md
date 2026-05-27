@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add the background-monitor wait regression harness and route it through Makefile, relevant-checks, docs, and agent-lint allowlists.
 - Closed: #2995
 
-## [43.0.1] - 2026-05-27
+## [44.1.0] - 2026-05-27
 
 ### Added
 
