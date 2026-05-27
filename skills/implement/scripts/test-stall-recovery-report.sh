@@ -9,6 +9,7 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 SCRIPT="$SCRIPT_DIR/stall-recovery-report.sh"
+CONTRACT_MD="$SCRIPT_DIR/stall-recovery-report.md"
 
 [ -x "$SCRIPT" ] || { echo "FAIL: $SCRIPT not executable"; exit 1; }
 
@@ -122,11 +123,13 @@ write_state "$dir" 0 ship adopted-issue-closed
 run_capture "$SANDBOX/case6a.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case6a.out")" "6: adopted issue closed unrecoverable"
 assert_eq none "$(kv RESUME_HINT "$SANDBOX/case6a.out")" "6: adopted issue closed no resume"
+assert_eq adopted-issue-closed "$(kv BAIL_REASON "$SANDBOX/case6a.out")" "6: adopted issue closed stays allowlisted"
 dir=$(make_tmp case6b)
 write_state "$dir" 0 ship tracking-init-failed
 run_capture "$SANDBOX/case6b.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case6b.out")" "6: tracking init failed unrecoverable"
 assert_eq none "$(kv RESUME_HINT "$SANDBOX/case6b.out")" "6: tracking init failed no resume"
+assert_eq tracking-init-failed "$(kv BAIL_REASON "$SANDBOX/case6b.out")" "6: tracking init failed stays allowlisted"
 
 dir=$(make_tmp case7)
 write_state "$dir" 8 ci-initial "" "NOTE=network timeout"
@@ -166,6 +169,39 @@ same-cause-repeat|2|none
 contract-failure|0|none
 unrecoverable|0|none
 EOF
+while IFS='|' read -r klass attempts delay; do
+    run_capture "$SANDBOX/retry-doc-$klass.out" "$SCRIPT" retry-policy --class "$klass"
+    assert_eq "$klass" "$(kv FAILURE_CLASS "$SANDBOX/retry-doc-$klass.out")" "7: retry-policy doc class $klass"
+    assert_eq "$attempts" "$(kv MAX_ATTEMPTS "$SANDBOX/retry-doc-$klass.out")" "7: retry-policy doc attempts $klass"
+    assert_eq "$delay" "$(kv RETRY_DELAY "$SANDBOX/retry-doc-$klass.out")" "7: retry-policy doc delay $klass"
+done < <(
+    awk -F'|' '
+        /^## Retry Caps$/ { in_caps = 1; next }
+        in_caps && /^## / { in_caps = 0 }
+        in_caps && /^\| [a-z-]+ \| [0-9]+ \|/ {
+            klass=$2
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", klass)
+            attempts=$3
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", attempts)
+            delay=$4
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", delay)
+            gsub(/`/, "", delay)
+            if (klass != "failure_class" && klass != "---") print klass "|" attempts "|" delay
+        }
+    ' "$CONTRACT_MD"
+)
+classify_fixture case7c 9b pr-prep "network timeout while writing PR body"
+out=$CLASSIFY_OUT
+assert_eq step8-shippr "$(kv RESUME_HINT "$out")" "7: symbolic step9b maps to ship-pr resume hint"
+classify_fixture case7d 10-max-retries ci-initial "network timeout while requeueing CI"
+out=$CLASSIFY_OUT
+assert_eq step8-shippr "$(kv RESUME_HINT "$out")" "7: symbolic step10-max-retries maps to ship-pr resume hint"
+classify_fixture case7e 12d ci-merge "network timeout while merge policy denied retry"
+out=$CLASSIFY_OUT
+assert_eq none "$(kv RESUME_HINT "$out")" "7: step12d stays non-resumable"
+classify_fixture case7f bump-branch-guard bump "network timeout while validating bump branch"
+out=$CLASSIFY_OUT
+assert_eq none "$(kv RESUME_HINT "$out")" "7: bump-branch-guard stays non-resumable"
 
 dir=$(make_tmp case8a)
 run_capture "$SANDBOX/case8a.out" "$SCRIPT" classify --implement-tmpdir "$dir"

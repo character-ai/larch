@@ -33,7 +33,7 @@ Per-class retry caps (single normative source):
 - `test-failure`: 8 attempts, no delay.
 - `lint-failure`: 8 attempts, no delay.
 - `dispatch-failure`: 3 attempts, no delay.
-- `same-cause-repeat`: 1 attempt with alternate strategy (re-read `larch:plan`, restart failed step from scratch).
+- `same-cause-repeat`: 2-attempt budget total, so one repeated-signature failure still allows one alternate restart from scratch.
 - `contract-failure`: 0 attempts.
 - `unrecoverable`: 0 attempts.
 
@@ -190,7 +190,7 @@ The implementation is complete when ALL of the following are demonstrably true:
 7. **`test-stall-recovery-report.sh`** harness ships with all 21 cases passing; `make test-stall-recovery-report` succeeds; the harness is on a `test-harnesses-N` shard.
 8. **SECURITY.md** has a "Stall recovery sanitization" section enumerating the four surfaces and the allowlist invariant.
 9. **Makefile** has `test-stall-recovery-report` in `.PHONY`, with a recipe using `scripts/harness-timer.sh`, on exactly one shard line.
-10. **Manual integration test**: with a stubbed `gh` recording all invocations and `LARCH_STALL_RECOVERY_DRY_RUN=1`, a synthetic stall fires Step 18a, prints the Action-required block (consumer-repo print path), and does NOT invoke `gh` for issue creation. With dry-run off and `LARCH_DEV_CLONE=true`, a synthetic stall files exactly one larch issue via `/larch:issue --input-file` with title `[Bug] /implement stall: <class> at <step>`.
+10. **Step 18a integration harness**: with a stubbed `gh` recording all invocations and `LARCH_STALL_RECOVERY_DRY_RUN=1`, a synthetic stall fires the documented Step 18a consumer path, generates the Action-required body and `/larch:issue --input-file` title `[Bug] /implement stall: <class> at <step>`, and does NOT invoke `gh`.
 11. **`bash scripts/relevant-checks.sh`** passes.
 
 diff_lines: 1450

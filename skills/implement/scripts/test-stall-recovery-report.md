@@ -14,7 +14,7 @@ Invariants:
 
 Case map:
 
-- Cases 1-7 cover classifier branches and retry behavior: transient infra, test failure, lint failure, dispatch failure, contract failure, unrecoverable terminal bail reasons, `NOTE=` evidence, bail-reason-only evidence, same-cause-repeat with `RESUME_HINT=none`, and retry-policy projection of the documented caps.
+- Cases 1-7 cover classifier branches and retry behavior: transient infra, pytest and jest test failures, lint failure, dispatch failure, contract failure, unrecoverable terminal bail reasons, `NOTE=` evidence, bail-reason-only evidence, same-cause-repeat with `RESUME_HINT=none`, doc-table parity for retry caps, and symbolic `STALL_STEP` resume-hint mappings including the non-resumable `12d` / `bump-branch-guard` cases.
 - Case 8 covers missing-`ship-pr-state.sh` behavior in both forms: absent-state-without-recoverable-evidence stays unrecoverable, while the session-env-only stall path (`STALL_TRACKING=true` plus recoverable bail/detail signal) still classifies recoverably.
 - Case 9 covers invalid `--failure-detail-log` validation branches and asserts distinct stderr diagnostics for relative, outside-tmpdir, symlink, non-regular, and oversize paths.
 - Cases 10-12 cover attempts-file idempotency and larch-dev-clone detection, including fork suppression.

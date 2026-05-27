@@ -196,7 +196,7 @@ resume_hint_for() {
     esac
     case "$step" in
         3|6) printf 'none\n'; return 0 ;;
-        12d) printf 'none\n'; return 0 ;;
+        12d|bump-branch-guard) printf 'none\n'; return 0 ;;
         2) printf 'step2-impl\n'; return 0 ;;
         5) printf 'step5-review\n'; return 0 ;;
         8|8[[:alnum:]-]*|9|9[[:alnum:]-]*|10|10[[:alnum:]-]*|11|11[[:alnum:]-]*|12|12[[:alnum:]-]*|13|13[[:alnum:]-]*|14|14[[:alnum:]-]*|15|15[[:alnum:]-]*)
