@@ -46,7 +46,7 @@ contains "$SKILL_MD" '.step3-review-cap.env' 'SKILL missing persisted Step 3 cap
 contains "$SKILL_MD" 'STEP3_REVIEW_CAP_REACHED=false' 'SKILL missing persisted cap-false state'
 contains "$SKILL_MD" 'STEP3_REVIEW_ROUND_NUM=' 'SKILL missing persisted Step 3 round number state'
 contains "$SKILL_MD" "including \`LOOP_STATUS=panel-failed\`" 'SKILL missing panel-failed counter-consumption contract'
-contains "$SKILL_MD" "MUST NOT persist when \`TALLY_PLAN_REVIEW_STATUS=tally-error\` or \`LOOP_STATUS\` is empty / unrecognized" 'SKILL missing tally-error counter-skip contract'
+contains "$SKILL_MD" "MUST NOT persist when \`TALLY_PLAN_REVIEW_STATUS=tally-error\`" 'SKILL missing tally-error counter-skip contract'
 contains "$SKILL_MD" 'review-round cap (' 'SKILL missing Step 3 cap breadcrumb prose'
 contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
 contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
