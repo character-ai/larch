@@ -339,6 +339,17 @@ out_pause_noop=$(
 [[ "$out_pause_noop" == *"PUBLISH_OK=false"* && "$out_pause_noop" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSENOOP1"* ]] \
   || fail "pause no-op snapshot should fail closed with recovery branch when no fresh snapshot exists: $out_pause_noop"
 
+echo "=== pause no-op fails when recovery branch is newer than default ==="
+(
+    cd "$clone_pause_noop" || exit 1
+    printf 'updated\n' >"$TMPPAUSE_NOOP/design/plan.txt"
+    out_pause_recovery_seed=$(GH_STUB_MERGE_RC=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo)
+    [[ "$out_pause_recovery_seed" == *"PUBLISH_OK=false"* && "$out_pause_recovery_seed" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSENOOP1"* ]] || fail "pause recovery seed should preserve recovery branch: $out_pause_recovery_seed"
+    git branch -D larch-log-design-RUNPAUSENOOP1 >/dev/null 2>&1 || true
+    out_pause_stale_default=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo)
+    [[ "$out_pause_stale_default" == *"PUBLISH_OK=false"* && "$out_pause_stale_default" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSENOOP1"* ]] || fail "pause no-op should not ignore ahead recovery branch: $out_pause_stale_default"
+)
+
 echo "=== pause publish reuses existing remote recovery branch on no-op ==="
 TMPPAUSE_REC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-recovery.XXXXXX")
 clone_pause_rec=$(setup_clone_with_origin_head "$TMPPAUSE_REC")
@@ -356,21 +367,19 @@ exec /bin/date "$@"
 EOF
 chmod +x "$date_stub_rec/date"
 export PATH="$date_stub_rec:$stub_pause_rec:$PATH"
-unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL
-export GH_STUB_MERGE_RC=1
+unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPPAUSE_REC/design/.completed"
 printf 'p\n' >"$TMPPAUSE_REC/design/plan.txt"
 printf 'done\n' >"$TMPPAUSE_REC/design/.completed/step-1c"
 (
     cd "$clone_pause_rec" || exit 1
-    seed_out=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REC/design" --run-id "RUNPAUSEREC1" --issue 42 --repo owner/repo)
+    seed_out=$(GH_STUB_MERGE_RC=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REC/design" --run-id "RUNPAUSEREC1" --issue 42 --repo owner/repo)
     [[ "$seed_out" == *"PUBLISH_OK=false"* && "$seed_out" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREC1"* ]] || fail "pause recovery seed should leave remote branch: $seed_out"
     git branch -D larch-log-design-RUNPAUSEREC1 >/dev/null 2>&1 || true
     out_pause_rec=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REC/design" --run-id "RUNPAUSEREC1" --issue 42 --repo owner/repo)
     [[ "$out_pause_rec" == *"PUBLISH_OK=false"* ]] || fail "pause recovery no-op should fail soft: $out_pause_rec"
     [[ "$out_pause_rec" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREC1"* ]] || fail "pause recovery no-op missing recovery branch: $out_pause_rec"
 )
-unset GH_STUB_MERGE_RC
 
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")
@@ -466,18 +475,16 @@ make_gh_stub "$stub_m"
 export PATH="$stub_m:$PATH"
 export TEST_CLONE_ROOT="$clone_m"
 export TEST_MERGE_BRANCH="larch-log-design-RUNMERGE1"
-export GH_STUB_MERGE_RC=1
-unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 mkdir -p "$TMPM/design"
 printf 'm\n' >"$TMPM/design/m.txt"
 out_m=$(
-    (cd "$clone_m" && bash "$PUBLISH" --design-tmpdir "$TMPM/design" --run-id "RUNMERGE1" --issue 3 --repo owner/repo) 2>/dev/null || true
+    (cd "$clone_m" && GH_STUB_MERGE_RC=1 bash "$PUBLISH" --design-tmpdir "$TMPM/design" --run-id "RUNMERGE1" --issue 3 --repo owner/repo) 2>/dev/null || true
 )
 [[ "$out_m" == *"PUBLISH_OK=false"* ]] || fail "merge fail PUBLISH_OK: $out_m"
 [[ "$out_m" == *"PR_NUMBER=101"* ]] || fail "merge fail PR_NUMBER: $out_m"
 [[ "$out_m" == *"RECOVERY_BRANCH=larch-log-design-RUNMERGE1"* ]] || fail "merge fail RECOVERY_BRANCH: $out_m"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected pr merge in stub log"
-unset GH_STUB_MERGE_RC
 
 echo "=== git push failure after commit preserves recovery ref; no gh pr merge ==="
 _PRE_PUSH_PATH="$PATH"
