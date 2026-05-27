@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/test-dispatch-plan-review-panel.sh:86-90	Proposed static-slot jq assertion can pass on zero matched slots	The harness can still miss a slot-identity wiring regression because jq -e succeeds when the selector emits no rows, while the existing got_count check only proves two rows somewhere have fallback_group=plan-<archetype>	Make Item A use a slurped length-and-all assertion, e.g. jq -s -e '[.[] | select(.slot == ("cursor-plan-" + $a) or .slot == ("codex-plan-" + $a))] | length == 2 and all(.[]; .fallback_group == $fg)'
+
+1. [correctness] `skills/design/scripts/test-dispatch-plan-review-panel.sh:86-90`
+
+Concern: Item A’s proposed `jq -e` check is still too weak for the contract it is meant to lock down. Against NDJSON, a selector that matches no rows emits no output, and `jq -e` exits successfully. The existing `got_count == 2` assertion only counts rows by `fallback_group`, so it does not prove those rows are the intended `cursor-plan-${a}` and `codex-plan-${a}` slots.
+
+Suggested revision: use the length-checked slurp form from the plan’s own failure-mode mitigation as the actual implementation, with `jq -s -e`, so the harness requires exactly the two expected slot rows and verifies both fallback groups.

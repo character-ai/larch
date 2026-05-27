@@ -1,0 +1,131 @@
+## Implementation Plan
+
+This is a SIMPLE-tier design. Three minimum-change targeted edits across one harness, one script, and one consumer doc plus one harness rewrite for the existing `agg-zero` test scenario.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/test-dispatch-plan-review-panel.sh`
+
+Item A: Close the static-slot pairing-check gap by adding a `jq -s -e` per-archetype assertion that requires exactly two matching rows (`cursor-plan-${a}` AND `codex-plan-${a}`) and that both rows carry `fallback_group=plan-${a}`. The `length==2 and all(.[]; .fallback_group == $fg)` form (not a bare `select|==` filter) is required so the assertion fails when the selector matches zero rows.
+
+Insertion point: inside the existing `for archetype in arch edge innovation pragmatic requirements; do … done` loop at lines 86-90, append the per-archetype pairing assertion immediately after the existing `got_count == 2` check. The new lines look like:
+
+```bash
+jq -s -e --arg a "$archetype" --arg fg "$expected" '
+    [.[] | select(.slot == ("cursor-plan-" + $a) or .slot == ("codex-plan-" + $a))]
+    | length == 2 and all(.[]; .fallback_group == $fg)
+' "$D1/plan-review-slots.ndjson" >/dev/null \
+    || fail "static fallback_group pairing mismatch for $archetype"
+```
+
+This is harness-only; the production wiring in `dispatch-plan-review-panel.sh` is not touched (`fallback_group` is already emitted at lines 90, 91, 97, 98, 116, 117, 123, 124 per commit `2fc03694`).
+
+### UPDATED: `skills/review/scripts/review-core.sh`
+
+Item B: Skip the three wasted voter launches when the aggregator returns `REASON=ok` AND `MERGED_COUNT=0` (attestation-only merge — `findings.md` contains only `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`).
+
+Approach: extract the existing zero-findings short-circuit body (currently inlined at lines 453-514) into a shell function `emit_zero_findings_branch` with **no** parameter (the body's status emission stays as `emit_kv REVIEW_CORE_STATUS zero-findings`). Reusing the existing `zero-findings` status — rather than introducing a new `aggregator-empty-merge` value — avoids touching downstream wrappers (`skills/review-and-fix/`, `/implement` Step 5) and the documented status enum.
+
+Two call sites:
+
+1. **Pre-aggregator zero-findings site** (existing, line 453) — replace the inlined body with `emit_zero_findings_branch` and continue to `exit 0`. Byte-for-byte semantic equivalence is required.
+2. **NEW post-aggregator empty-merge site** — immediately after the `aggregate_reason == "validation-exhausted"` block (after line 596). Branch:
+
+   ```bash
+   aggregate_merged_count_raw=$(kv_get "$aggregate_out" MERGED_COUNT)
+   if [[ "$aggregate_reason" == "ok" && "$aggregate_merged_count_raw" == "0" ]]; then
+       emit_zero_findings_branch
+       exit 0
+   fi
+   ```
+
+   Key invariant: branch only when `MERGED_COUNT` is **present** and equals the literal string `"0"`. Do **not** apply a `${value:-0}` default — absent key (older aggregator binary, override, schema drift) must fall through to the existing voter dispatch path so behavior gracefully degrades to pre-fix.
+
+The function takes no arguments and emits `REVIEW_CORE_STATUS=zero-findings` on both call sites. All other behavior — synthesizing an empty voter file, calling `tally-code-votes.sh` with `--voter-files <empty-file>`, then `emit-tally`, copying parent artifacts, the `flush_round_log` call — is identical between the two call sites.
+
+Net new behavior: when `REASON=ok && MERGED_COUNT=0` (key present), `dispatch-code-voters.sh` is NOT invoked, saving three voter launches per round. Status emitted is `zero-findings` (same value as pre-aggregator empty), so review-and-fix and Step 5 wrappers treat it as a clean no-findings completion with no downstream contract update.
+
+### UPDATED: `skills/review/scripts/review-core.md`
+
+Item C: Update line 65 (the artifact-paths bullet under `Artifact paths under $REVIEW_TMPDIR`) to enumerate all aggregator output files the dispatcher may write. Change the bullet from:
+
+```
+- `aggregator-output.txt`, `aggregator-dispatch.env`, …
+```
+
+to:
+
+```
+- `aggregator-output.txt`, `aggregator-output-phase2.txt`, `aggregator-output-phase3.txt`, `aggregator-dispatch.env`, …
+```
+
+`aggregator-output-phase2.txt` is documented in `aggregate-findings.md:26` and exercised in `test-aggregate-findings.sh` lines 1332 and 1386 (both currently assert phase2 only). `aggregator-output-phase3.txt` is documented in `aggregate-findings.md:26` as a possible dispatcher output but currently lacks an explicit harness assertion in `test-aggregate-findings.sh`; the consumer-doc bullet should still enumerate it because the dispatcher emits it on certain phase resolutions per `aggregate-findings.md:26`.
+
+Also append (in the same bullet) a brief note that an `aggregator-empty-merge.stderr` capture may appear when the aggregator returns the attestation-only sentinel (already referenced in `aggregate-findings.sh:776`, not yet in review-core.md).
+
+No status-enum update is needed: the post-aggregator empty-merge branch emits `REVIEW_CORE_STATUS=zero-findings`, which already appears in the doc's status enumeration; introducing a new `aggregator-empty-merge` value (and thus a new doc entry) is explicitly avoided per FINDING_1.
+
+### UPDATED: `skills/review/scripts/test-review-core.sh`
+
+Two coordinated changes in this file:
+
+1. **Rewrite the existing `agg-zero` block** (lines 491-503) to expect the new skip behavior. The current block uses `aggregate-zero-success-stub.sh` (which emits `AGGREGATED=true INPUT_COUNT=2 MERGED_COUNT=0 REASON=ok`) and asserts `REVIEW_CORE_STATUS=ok`, `VOTER_*_STATUS=launched`. After our change, that exact same stub scenario routes through the new empty-merge branch, so the assertions must flip to:
+   - `REVIEW_CORE_STATUS=zero-findings` (same status as the pre-aggregator path)
+   - dispatch-voters NOT invoked (no `VOTER_*_STATUS` lines, or `dispatch-voters.sh` stub tracking log empty)
+   - `accepted-findings.md` empty (unchanged)
+   - `findings-classification-round-1.tsv` header-only (unchanged)
+   - `voting-tally.md` present (unchanged)
+
+   The existing assertions on `FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1` and the header-only classification TSV remain valid. The voter-launch assertions are replaced with a single negation: assert the dispatch-voters tracking log is empty (or the stub was not invoked).
+
+2. **Augment the dispatch-voters stub** at `$TMP/dispatch-voters.sh` so the `agg-zero` block can assert non-invocation. Either add a tracking-log write at the top of the existing stub (so the assertion can check the log is empty) or add a new variant stub `$TMP/dispatch-voters-track.sh` used only in the rewritten block. Choice deferred to implementer; either form satisfies the contract.
+
+No NEW test section is needed — the existing `agg-zero` block IS the empty-merge test scenario after the rewrite (per FINDING_2).
+
+## Approach
+
+Each item is a surgical change touching a single primary surface. Item A is a harness-only assertion strengthening (~10 LOC). Item B is a function extraction + one new caller — extraction is a structural-only refactor for the existing zero-findings site (~62 LOC moved into a function body), and the new caller adds ~10 LOC of branch-and-call. Item C is a single-line doc edit plus a brief note on `aggregator-empty-merge.stderr`. The `agg-zero` test rewrite is ~15 LOC swapped in place plus a small dispatch-voters tracking stub change (~5 LOC).
+
+Item B's extract-then-add-caller pattern was chosen over inline-duplication because the body is ~62 lines (well over the "three similar lines" rule-of-thumb) and the two call sites differ in zero parameters (both emit `REVIEW_CORE_STATUS=zero-findings`). It was chosen over a post-aggregator-only short-circuit reorganization because deferring the pre-aggregator branch behind aggregator would force aggregator to run on zero-findings rounds — wasting work and changing existing semantics. The extraction preserves the pre-aggregator efficient path verbatim.
+
+Reusing `REVIEW_CORE_STATUS=zero-findings` (instead of a new `aggregator-empty-merge` value) keeps downstream wrappers in `skills/review-and-fix/` and `/implement` Step 5 unchanged — both already recognize `zero-findings` as a clean terminal status. The cost is a small loss of telemetry resolution (operators cannot distinguish "no findings emitted by panel" from "panel emitted findings but aggregator merged to zero"). That distinction is recoverable from `voting-tally.md` and `aggregator-dispatch.env` if needed for diagnostics.
+
+No production logic in `dispatch-plan-review-panel.sh`, `dispatch-code-voters.sh`, or `aggregate-findings.sh` is touched. Item A's harness already covers the wiring contract; Item B's skip is upstream of the dispatcher; Item C is doc-only.
+
+## Edge cases
+
+- **Aggregator returns `REASON=ok` with `MERGED_COUNT>0`**: existing path unchanged (proceeds to voter dispatch + tally).
+- **Aggregator returns `REASON=ok` but `MERGED_COUNT` key is absent from KV stream** (older aggregator binary, override, schema drift): the new branch's strict `"$aggregate_merged_count_raw" == "0"` test fails because the captured value is the empty string, so behavior falls through to the existing voter dispatch path (graceful degrade to pre-fix).
+- **Aggregator returns `REASON=ok` with `MERGED_COUNT="0"` but `findings.md` is missing or non-empty without an attestation line**: routes to the empty-merge branch (the branch keys off `REASON` + `MERGED_COUNT` only, not file content). This matches the aggregator contract — `REASON=ok && MERGED_COUNT=0` is the attestation-only success case per the validator. If a future aggregator change emits `ok && 0` without writing attestation, the symptom would be an empty voting-tally with no actual review — visible but not catastrophic.
+- **`aggregate_reason` is `validation-exhausted`**: the existing branch at line 543 still wins (it precedes the new branch). No interaction.
+- **Pre-aggregator zero-findings path** (line 453, `findings_count == 0`): after extraction, behavior is byte-for-byte identical; the function call site is `emit_zero_findings_branch` with no argument.
+- **Item A harness assertion**: when the production code is correct, both `cursor-plan-${a}` and `codex-plan-${a}` rows are present and carry `fallback_group=plan-${a}`. The `jq -s -e` form slurps the ndjson into an array, collects matching rows, and requires `length == 2` AND `all(.[]; .fallback_group == $fg)`. An empty selector match-set (slot rename or missing row) trips `length == 2` and fails the assertion. A mismatched `fallback_group` value trips the `all()` predicate and fails.
+
+## Failure modes
+
+1. **Function-extraction subtle behavior drift in `review-core.sh`** — extracting 62 lines into a function exposes shell-variable scope issues (e.g., `panel_manifest`, `collector_results_file`, `not_substantive_slots`, `scout_status`, `dynamic_slots`, `static_slot_count`, `panel_mode`, `panel_shape`, `ROUND_NUM`, `MODE`, `SESSION_ENV_PATH`, `IMPLEMENT_TMPDIR`, `CURSOR_AVAILABLE`, `CODEX_AVAILABLE`, `TALLY_VOTES_SH`, `REVIEW_TMPDIR`, `flush_round_log` invocation, `record_findings_classification_round`, `copy_to_parent`, `emit_tally_with_failure_isolation`). All of these are read by the existing body but defined in the outer script. Earliest warning signal: `test-review-core.sh` zero-findings tests fail with shell unbound-variable errors under `set -euo pipefail`. Mitigation: extract as a regular bash function (not subshell) so all outer-script variables remain in scope; do NOT introduce `( ... )` subshell isolation.
+
+2. **`MERGED_COUNT` parsing fails on present-but-malformed value** — `kv_get` is the canonical KV parser used elsewhere in the file and returns the raw string after `=`. Trailing whitespace or unusual formatting would make `"0"` comparison fail and route to voter dispatch. This is the safe failure direction (no skip when uncertain). Earliest warning signal: the new test's empty-merge assertion still launches voters in spite of the stub emitting `MERGED_COUNT=0`. Mitigation: re-use `kv_get` (already imported) without any default-coalescing on the captured value.
+
+3. **`test-dispatch-plan-review-panel.sh` slurped `jq -s -e` consumes large ndjson** — for the standard 10-row static manifest the slurp cost is trivial. For potential future scaling (more archetypes), slurping is still cheap. Earliest warning signal: harness runtime grows visibly. Mitigation: none needed at current scale; the strengthened assertion is required for correctness per FINDING_3.
+
+## Testing strategy
+
+- `make test-review-core` — must pass with the rewritten `agg-zero` block asserting `REVIEW_CORE_STATUS=zero-findings` and no dispatch-voters invocation; the existing pre-aggregator zero-findings tests must remain green (function extraction is behavior-preserving).
+- `make test-dispatch-plan-review-panel` — must pass with the new static-slot pairing assertion using the slurped length-and-all jq form.
+- `make test-aggregate-findings` — should remain green (no aggregator code change).
+- `make test-dispatch-code-voters-happy`, `test-dispatch-code-voters-edge-and-r3-claude`, `test-dispatch-code-voters-regressions-r1-r2`, `test-dispatch-code-voters-regressions-r3-codex` — should remain green (dispatcher unchanged; the new branch in `review-core.sh` simply does not invoke it).
+- `bash scripts/relevant-checks.sh` (or `make lint`) — must pass to validate markdown/shell/bash32/foreground-marker linters.
+
+Verify Item C visually by inspecting the rendered markdown — line 65 should list 3 phase outputs plus the `aggregator-empty-merge.stderr` mention.
+
+## Diff size estimate
+
+- Item A: ~10 LOC (test harness).
+- Item B: function extraction (~62 LOC moved + ~5 LOC of function wrapper) + new caller (~8 LOC) + comments (~3 LOC) = ~78 LOC of changed lines net of moves.
+- Item C: ~2 LOC (single-line doc edit, extending an existing bullet).
+- `agg-zero` test rewrite: ~15 LOC swapped in place + ~5 LOC of dispatch-voters tracking stub change = ~20 LOC.
+
+Including comments, formatting, and small adjustments: estimate ~120 changed lines.
+
+diff_lines: 120
