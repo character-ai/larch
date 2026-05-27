@@ -229,25 +229,64 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "cache_create_5m": 0,
+          "input": 3,
+          "cache_read": 725408,
+          "cache_create": 2197,
+          "cache_create_5m": 2197,
           "cache_create_1h": 0,
-          "output": 0,
-          "total": 0
+          "output": 2224,
+          "total": 729832
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 3,
+              "cache_read": 725408,
+              "cache_create": 2197,
+              "cache_create_5m": 2197,
+              "cache_create_1h": 0,
+              "output": 2224,
+              "total": 729832
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 2,
+          "cache_read": 487679,
+          "cache_create": 2051,
+          "cache_create_5m": 2051,
+          "cache_create_1h": 0,
+          "output": 854,
+          "total": 490586
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 2,
+              "cache_read": 487679,
+              "cache_create": 2051,
+              "cache_create_5m": 2051,
+              "cache_create_1h": 0,
+              "output": 854,
+              "total": 490586
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 141,
-      "cache_read": 16624254,
-      "cache_create": 713578,
-      "cache_create_5m": 713578,
+      "input": 146,
+      "cache_read": 17837341,
+      "cache_create": 717826,
+      "cache_create_5m": 717826,
       "cache_create_1h": 0,
-      "output": 78347,
-      "total": 17416320
+      "output": 81425,
+      "total": 18636738
     }
   },
   "codex": {
@@ -326,6 +365,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -420,6 +467,14 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -429,12 +484,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 141,
-    "cache_read": 16624254,
-    "cache_create_5m": 713578,
+    "input": 146,
+    "cache_read": 17837341,
+    "cache_create_5m": 717826,
     "cache_create_1h": 0,
-    "output": 78347,
-    "total": 17416320
+    "output": 81425,
+    "total": 18636738
   },
   "BUCKETS_codex": {
     "input": 413012,
