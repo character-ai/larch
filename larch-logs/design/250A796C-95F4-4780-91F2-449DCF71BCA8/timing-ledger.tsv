@@ -1,0 +1,19 @@
+v1	mark	1779902795	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779903025	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1779903280	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779903321	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779903674	implement	-	codex	codex-phase1-codex-plan-requirements	1779903592	1779903674	82	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779903683	implement	-	codex	codex-phase1-codex-plan-innovation	1779903592	1779903683	91	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779903686	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779903592	1779903686	94	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779903704	implement	-	codex	codex-phase1-codex-plan-arch	1779903592	1779903704	112	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779903713	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779903592	1779903713	121	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779903744	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779903592	1779903744	152	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779903746	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779903592	1779903746	154	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779903755	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779903592	1779903755	163	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779903755	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779903592	1779903755	163	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779903765	implement	-	codex	codex-phase1-codex-plan-edge	1779903592	1779903765	173	codex-primary-plan-edge-output.txt	0	complete
+v1	mark	1779903800	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779903817	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779903826	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779903840	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779904126	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
