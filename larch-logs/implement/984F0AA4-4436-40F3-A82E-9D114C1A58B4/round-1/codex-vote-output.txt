@@ -1,0 +1,17 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate helper logic exists, but the prune harness exercises production sorting directly and the maintenance risk is too small to raise
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- mtime retention can evict long-idle versions, but that is the chosen recency contract rather than a defect needing more machinery
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the duplicated cache-dir discovery is real but too minor to warrant changing this patch
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- session-setup can touch a numeric basename before writer-grade validation, but the effect is only best-effort mtime refresh and not worth filing here
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the helper appears unused, but dead-code cleanup is not worth a separate issue at this level
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the stat probe order inconsistency is real but pre-existing and not concrete enough to raise
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- some legacy cases align mtime with semver, but dedicated mtime-disagreement coverage already protects the intended behavior
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the missing under-cap phase is real but adds little beyond existing under-cap and over-cap coverage
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the fallback behavior is real, but warnings for best-effort stat failure would add more noise than value
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- breadcrumb wording could be clearer, but docs and tests already carry the mtime contract
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pin-heavy caches can remain over cap, but existing pin warnings make this too marginal for a new issue
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the harness doc mentions mtime coverage already, so a dedicated subsection is discoverability polish only

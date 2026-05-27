@@ -32,6 +32,12 @@ whenever it is set in the writer's environment, mirroring
 `scripts/write-session-env.sh`'s `LARCH_CLAUDE_PLUGIN_ROOT` shape but as
 the directly-usable variable name (sourceable, not parsed).
 
+When `CLAUDE_PLUGIN_ROOT` is set and validates, the script also invokes
+`larch_touch_executing_cache_root` from `scripts/lib-larch-cache-touch.sh`
+best-effort so the corresponding larch cache directory's mtime reflects recent
+session use. This is consumed by
+`skills/upgrade-larch/scripts/upgrade-larch.sh`'s mtime-based prune.
+
 ## `--claude-pid`
 
 Required for normal `/design` operation: pass the Bash-tool subshell parent
@@ -82,6 +88,7 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 - `--session-id` matches `^[A-Za-z0-9_.-]{1,128}$`.
 - `--design-tmpdir` and `--output` must be absolute paths.
 - `--issue-number` matches `^[0-9]+$` when present.
+- `CLAUDE_PLUGIN_ROOT`, when set, must be an absolute path of 512 characters or fewer using `[A-Za-z0-9_./~+-]`.
 - When `--claude-pid` is passed, its value must be non-empty and match `^[1-9][0-9]{0,6}$`. Omitting the flag entirely selects the legacy shim (stderr warning).
 - Presence/availability booleans must be `true` or `false`.
 
@@ -90,4 +97,6 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 Update `skills/design/SKILL.md` (the prelude line and Step 0 writer
 call), `skills/design/scripts/test-write-design-current-env.sh` (regression
 harness), and the Makefile registration when changing the writer's
-public shape.
+public shape. Update `scripts/lib-larch-cache-touch.sh` and
+`skills/upgrade-larch/scripts/upgrade-larch.sh` when changing cache-root touch
+semantics.

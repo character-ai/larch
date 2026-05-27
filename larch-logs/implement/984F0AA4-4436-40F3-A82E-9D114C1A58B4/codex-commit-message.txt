@@ -1,0 +1,3 @@
+Keep /upgrade-larch cache retention mtime-based
+
+Retain cached larch versions by directory mtime instead of semver order, and refresh the executing numeric cache root during session setup and session-env writes. Add regression coverage for mtime pruning, stat fallback, and cache-root touch behavior.

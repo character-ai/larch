@@ -112,6 +112,38 @@ list_cached_versions() {
     done | sort_versions
 }
 
+stat_mtime() {
+    local file="$1"
+    local mt
+
+    if mt=$(stat -c '%Y' -- "$file" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$mt"
+        return 0
+    fi
+    if mt=$(stat -f '%m' -- "$file" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$mt"
+        return 0
+    fi
+    printf '0\n'
+    return 0
+}
+
+list_cached_versions_by_mtime() {
+    local dirs=()
+    local dir
+    local mt
+
+    shopt -s nullglob
+    dirs=("$LARCH_CACHE_DIR"/[0-9]*/)
+    shopt -u nullglob
+
+    for dir in "${dirs[@]}"; do
+        [ -d "$dir" ] || continue
+        mt=$(stat_mtime "${dir%/}")
+        printf '%s\t%s\n' "$mt" "$(basename "${dir%/}")"
+    done | sort -k1,1n -k2,2 | cut -f2-
+}
+
 collect_active_session_versions() {
     local env_files=()
     local env_file plugin_root version session_root fallback_session_dir
@@ -257,14 +289,15 @@ fi
 
 # Prune old versions only after a verified stable install.
 # Always drop cached versions newer than the verified stable release, then keep
-# at most 8 cached versions total while preserving the verified stable dir.
+# at most 8 cached versions total by mtime while preserving the verified stable
+# dir.
 if [ "$VERIFIED_TARGET" = true ]; then
     emit_breadcrumb --category=progress "Pruning old larch versions (keeping up to 8, excluding versions newer than verified stable)..."
     CACHED_VERSIONS=()
     while IFS= read -r version; do
         [ -n "$version" ] || continue
         CACHED_VERSIONS+=("$version")
-    done < <(list_cached_versions)
+    done < <(list_cached_versions_by_mtime)
     SANITIZED_VERSIONS=()
     KEEP_LIMIT=8
 

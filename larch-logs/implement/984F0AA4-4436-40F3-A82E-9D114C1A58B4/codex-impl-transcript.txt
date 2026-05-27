@@ -1,0 +1,20 @@
+Implemented the `/upgrade-larch` cache retention fix.
+
+Changed pruning to retain cached versions by directory mtime, oldest first, with lexicographic version basename as the equal-mtime tiebreaker. Added `scripts/lib-larch-cache-touch.sh` and wired it through `session-setup.sh`, `write-session-env.sh`, and `write-design-current-env.sh` so actively used numeric cache roots get refreshed.
+
+Updated docs/security notes and expanded harness coverage for:
+- mtime-based prune ordering
+- equal-mtime tiebreaking
+- `stat` fallback to mtime `0`
+- numeric vs non-numeric cache-root touch behavior
+
+Validation passed:
+- `bash skills/upgrade-larch/scripts/test-upgrade-larch.sh`
+- `bash skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh`
+- `bash scripts/test-session-env-roundtrip.sh`
+- `bash skills/design/scripts/test-write-design-current-env.sh`
+- `make lint-bash32`
+- `git diff --check`
+- `bash scripts/relevant-checks.sh`
+
+Wrote `manifest.json` with `status=complete`; no `qa-pending.json` was needed.

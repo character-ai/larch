@@ -108,6 +108,13 @@ if [[ -z "$PREFIX" ]]; then
     exit 4
 fi
 
+# Refresh the executing larch cache-directory mtime so /upgrade-larch's
+# mtime-based prune treats currently-used versions as recently touched.
+# Best-effort; helper silently no-ops on non-numeric paths.
+# shellcheck source=scripts/lib-larch-cache-touch.sh
+source "$SCRIPT_DIR/lib-larch-cache-touch.sh"
+larch_touch_executing_cache_root --path "${CLAUDE_PLUGIN_ROOT:-}"
+
 # --- Read caller-env file (if provided and exists) ---
 # Parse line-by-line; do NOT source. Only recognized keys with non-empty values are used.
 CALLER_REPO=""
