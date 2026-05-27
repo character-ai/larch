@@ -32,7 +32,8 @@
   `$DESIGN_TMPDIR/plan-review/round-1/findings-classification.tsv`; the tally
   creates the parent directory before writing.
 - The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks. Voter files use anchored `ID: VOTE` lines (e.g. `FINDING_1: YES`); substring matching is rejected to prevent `FINDING_10` matching inside `FINDING_100`.
-- `TALLY_PLAN_REVIEW_STATUS` is emitted on every exit path. Success paths emit `ok` or `main-agent-vote-required`. Every non-zero exit, including argv, ballot, and voter-validation paths, emits `tally-error` via the cleanup EXIT trap. Callers must parse `TALLY_PLAN_REVIEW_STATUS` from stdout to disambiguate; the script's exit code remains the primary signal.
+- `TALLY_PLAN_REVIEW_STATUS` is emitted on every exit path except `-h|--help`. Success paths emit `ok` or `main-agent-vote-required`. Every non-zero exit, including argv, ballot, and voter-validation paths, emits `tally-error`. Callers must parse `TALLY_PLAN_REVIEW_STATUS` from stdout to disambiguate; the script's exit code remains the primary signal.
+- Whenever a validated `--design-tmpdir` path allows the tally to materialize `voting-tally.md` before a non-zero exit, stdout also emits `VOTING_TALLY_FILE=<path>` so callers do not have to guess whether a stub tally artifact exists.
 - Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
 - The quorum basis is the panel-level available voter count, not the per-finding non-`JUDGE_ERROR` response count. Per-judge `JUDGE_ERROR` fallbacks do not reduce the tier.
 - Accepted in-scope findings are written to `accepted-plan-findings.md`.
@@ -92,7 +93,7 @@ The regression harnesses are `make test-tally-plan-review` and
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, explicit `--voter` slot preservation, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, explicit `--voter` slot preservation, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stubs, missing-ballot abort tally stubs, and exactly-once `tally-error` emission across ballot/voter/argv validation failures after `--design-tmpdir` is known.
 
 `test-findings-classification.sh` covers complete ratings, canonical-position
 `--voter` slot filling, legacy `--voter-files` basename fallback, missing

@@ -28,7 +28,7 @@ Emits the complete voter status KV block in the established interleaved order: V
 - No global mutable state.
 - Does not read `$DESIGN_TMPDIR`; callers pass every path explicitly.
 - Assumes the caller has sourced `scripts/lib-quiet.sh` and run `larch_quiet_init`.
-- Preserves status and severity strings verbatim; it does not transform voter data.
+- Preserves the emitted voter path/tool/status/parse-rate fields verbatim; it does not inspect or transform review severity data.
 - Per-round routing safe: callers pass per-round paths when a dispatcher is operating under a per-round `--design-tmpdir`.
 
 ## Harness

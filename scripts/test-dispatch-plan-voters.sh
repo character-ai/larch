@@ -15,7 +15,7 @@ fail() {
 }
 
 stdout_key_order() {
-    awk -F= '/^[A-Z0-9_]+=/{print $1}'
+    awk -F= '/^[A-Z0-9_]+=/{if ($1 != "WARN") print $1}'
 }
 
 assert_key_order() {

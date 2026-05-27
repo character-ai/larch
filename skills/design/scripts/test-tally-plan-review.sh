@@ -94,6 +94,16 @@ if grep -q '^VOTING_TALLY_FILE=' <<< "$out_early_error"; then
     fail "early error should not emit VOTING_TALLY_FILE"
 fi
 
+set +e
+out_mutual=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$TMPROOT/design-mutual" --voter "Claude:$V1" --voter-files "$V2" 2>/dev/null)
+rc_mutual=$?
+set -e
+[[ "$rc_mutual" -eq 2 ]] || fail "mutual-exclusion argv should exit 2"
+[[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=tally-error$' <<< "$out_mutual" || true) -eq 1 ]] || fail "mutual-exclusion argv should emit tally-error exactly once"
+[[ $(grep -c '^VOTING_TALLY_FILE=' <<< "$out_mutual" || true) -eq 1 ]] || fail "mutual-exclusion argv should emit VOTING_TALLY_FILE once"
+mutual_tally=$(printf '%s\n' "$out_mutual" | awk -F= '$1=="VOTING_TALLY_FILE"{print $2; exit}')
+[[ -s "$mutual_tally" ]] || fail "mutual-exclusion argv should materialize voting-tally.md"
+
 # Rejected OOS subtracts one point.
 BALLOT_OOS_REJECTED="$TMPROOT/ballot-oos-rejected.md"
 cat > "$BALLOT_OOS_REJECTED" <<'EOF'
@@ -255,6 +265,8 @@ if "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$TMPROOT/missing.txt" --des
     fail "missing voter file accepted"
 fi
 grep -q 'voter file is missing' /tmp/larch-tally-plan-review-fail.out || fail "missing voter diagnostic absent"
+[[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=tally-error$' /tmp/larch-tally-plan-review-fail.out || true) -eq 1 ]] || fail "missing voter file should emit tally-error exactly once"
+[[ $(grep -c '^VOTING_TALLY_FILE=' /tmp/larch-tally-plan-review-fail.out || true) -eq 1 ]] || fail "missing voter file should emit VOTING_TALLY_FILE once"
 
 echo "=== default findings-classification path and middle-slot preservation ==="
 DESIGN_CANONICAL="$TMPROOT/design-canonical"
@@ -306,6 +318,8 @@ set +e
 rc_malformed=$?
 set -e
 [[ "$rc_malformed" -eq 2 ]] || fail "malformed ballot should exit 2"
+[[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=tally-error$' /tmp/larch-tally-plan-review-malformed.out || true) -eq 1 ]] || fail "malformed ballot should emit tally-error exactly once"
+[[ $(grep -c '^VOTING_TALLY_FILE=' /tmp/larch-tally-plan-review-malformed.out || true) -eq 1 ]] || fail "malformed ballot should emit VOTING_TALLY_FILE once"
 [[ -s "$DESIGN_MALFORMED/voting-tally.md" ]] || fail "voting-tally.md missing or empty on malformed ballot"
 grep -q '# Plan Review Voting Tally' "$DESIGN_MALFORMED/voting-tally.md" || fail "degraded header missing"
 grep -q '\*\*⚠ Tally aborted:' "$DESIGN_MALFORMED/voting-tally.md" || fail "abort prefix missing"
@@ -315,10 +329,12 @@ NONEXIST="$TMPROOT/no-such-ballot-2720.md"
 DESIGN_NOBALLOT="$TMPROOT/design-noballot"
 mkdir -p "$DESIGN_NOBALLOT"
 set +e
-"$SUBJECT" --ballot-file "$NONEXIST" --voter-files "$V1" --design-tmpdir "$DESIGN_NOBALLOT" >/dev/null 2>&1
+"$SUBJECT" --ballot-file "$NONEXIST" --voter-files "$V1" --design-tmpdir "$DESIGN_NOBALLOT" >/tmp/larch-tally-plan-review-noballot.out 2>&1
 rc_noballot=$?
 set -e
 [[ "$rc_noballot" -eq 2 ]] || fail "missing ballot should exit 2"
+[[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=tally-error$' /tmp/larch-tally-plan-review-noballot.out || true) -eq 1 ]] || fail "missing ballot should emit tally-error exactly once"
+[[ $(grep -c '^VOTING_TALLY_FILE=' /tmp/larch-tally-plan-review-noballot.out || true) -eq 1 ]] || fail "missing ballot should emit VOTING_TALLY_FILE once"
 [[ -s "$DESIGN_NOBALLOT/voting-tally.md" ]] || fail "voting-tally.md missing or empty on unreadable ballot"
 
 echo "PASS: test-tally-plan-review.sh"
