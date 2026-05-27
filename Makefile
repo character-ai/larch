@@ -15,6 +15,7 @@
 .PHONY: test-breadcrumb-monitor-bash32
 .PHONY: test-background-monitor-wait
 .PHONY: test-stall-recovery-report
+.PHONY: test-design-pause-resume
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -67,7 +68,7 @@ test-harnesses-10: test-alias-target-resolution test-capture-session-transcript 
 
 test-harnesses-11: test-allocate-candidates test-check-bump-version test-deny-edit-write test-effort-prose test-get-issue-context test-implement-relevant-checks-anti-halt test-lib-cursor-auth test-oos-file-conflict-deps test-prompt-template-invariants test-render-reviewer-prompt test-render-debate-retry-prompt test-relevant-checks test-sessionstart test-timing-ledger test-upgrade-larch
 
-test-harnesses-12: test-analyze test-check-clean-tree test-cleanup-tmpdir test-design-driver test-invoke-plan-validator test-file-design-oos test-emit-plan test-emit-design-plan-preview test-render-final-summary test-check-plan-size test-parse-plan-commands test-validate-plan-commands test-gh-pr-body-update test-implement-review-token-propagation test-lib-external-launcher-common test-oos-issue-cap test-quick-mode-docs-sync test-render-run-summary test-token-cost test-render-cost-line test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-render-cost-line-realism test-run-external-agent test-set-up-forked-open-source-repo test-timing-report test-upgrade-larch-prune test-ci-failed-jobs
+test-harnesses-12: test-analyze test-check-clean-tree test-cleanup-tmpdir test-design-driver test-design-pause-resume test-invoke-plan-validator test-file-design-oos test-emit-plan test-emit-design-plan-preview test-render-final-summary test-check-plan-size test-parse-plan-commands test-read-design-review-budget-invoke test-validate-plan-commands test-gh-pr-body-update test-implement-review-token-propagation test-lib-external-launcher-common test-oos-issue-cap test-quick-mode-docs-sync test-render-run-summary test-token-cost test-render-cost-line test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-render-cost-line-realism test-run-external-agent test-set-up-forked-open-source-repo test-timing-report test-upgrade-larch-prune test-ci-failed-jobs
 test-harnesses-13: test-anti-halt test-check-generators test-codex-implementer test-emit-tally test-gh-run-logs test-implement-step2-routing test-lib-quiet test-oos-serialize test-rate-assertions test-render-voter-prompt test-run-external-agent-args test-ship-pr test-token-claude-source test-validate-citations
 
 test-harnesses-14: test-anti-improvised-wakeup test-check-main-sync test-collect-agent-bash32 test-design-structure test-design-reentry-guard test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-external-tool-registry test-git-push test-implement-structure test-implement-step8-exit3-first-fixer test-lib-submodule-prohibition test-orchestrator-scope-sync test-rebase-push-force-lease test-render-specialist-prompt test-run-negotiation-round test-ship-pr-fix-loop test-token-ledger test-validate-citations-budget test-git-commit-only
@@ -379,6 +380,9 @@ test-design-structure:
 
 test-design-reentry-guard:
 	bash scripts/harness-timer.sh $@ bash scripts/test-design-reentry-guard.sh
+
+test-design-pause-resume:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-pause-resume.sh
 
 test-decompose-panel-dispatch:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-decompose-panel-dispatch.sh

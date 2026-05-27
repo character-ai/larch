@@ -280,6 +280,29 @@ done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.events.jsonl" ]] || fail "denied events basename leaked into render-cache"
 
+echo "=== pause reason stages .completed and manifest paused ==="
+TMPPAUSE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause.XXXXXX")
+clone_pause=$(setup_clone_with_origin_head "$TMPPAUSE")
+stub_pause="$TMPPAUSE/stub"
+make_gh_stub "$stub_pause"
+export PATH="$stub_pause:$PATH"
+export TEST_CLONE_ROOT="$clone_pause"
+export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSE1"
+unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPPAUSE/design/.completed"
+printf 'p\n' >"$TMPPAUSE/design/plan.txt"
+printf 'done\n' >"$TMPPAUSE/design/.completed/step-1c"
+(
+    cd "$clone_pause" || exit 1
+    out_pause=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE/design" --run-id "RUNPAUSE1" --issue 42 --repo owner/repo)
+    [[ "$out_pause" == *"PUBLISH_OK=true"* ]] || fail "pause PUBLISH_OK: $out_pause"
+)
+git -C "$clone_pause" pull -q origin main
+[[ -f "$clone_pause/larch-logs/design/RUNPAUSE1/.completed/step-1c" ]] || fail "pause .completed sentinel missing"
+jq -e '.paused == true' "$clone_pause/larch-logs/design/RUNPAUSE1/manifest.json" >/dev/null || fail "pause manifest missing paused=true"
+# shellcheck disable=SC2016 # fixed literal in design-log-publish.sh source.
+grep -Fq 'pause design run ${RUN_ID}' "$PUBLISH" || fail "pause commit subject branch missing in script"
+
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")
 clone_cr=$(setup_clone_with_origin_head "$TMPCR")

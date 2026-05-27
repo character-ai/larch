@@ -1,5 +1,6 @@
 step	name
 0	setup
+0c	scan
 1c	questions
 1d	discussion r1
 1d.5	brainstorm
@@ -15,4 +16,7 @@ step	name
 4	rejected findings
 4b	gate C
 5	finalize
+5b	oos
+5c	plan write
+5d	l3 velocity
 6	cleanup

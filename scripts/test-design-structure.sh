@@ -639,6 +639,39 @@ grep -Fq 'detected Brainstorm title prefix — auto-enabling brainstorm mode' "$
   || fail "(20) SKILL.md missing brainstorm info banner text"
 echo "PASS: (20) Step 0b title-eligibility filter anchors OK"
 
+# Check 21 (#2959): pause/resume prelude and completion sentinels.
+assert_bash_fences_have_pause_check() {
+  local missing
+  missing=$(awk '
+    /<!-- step:1c/ { start=1 }
+    start && /current-design-env-\$PPID\.sh/ {
+      line=NR
+      if ((getline nextline) <= 0 || nextline !~ /design-pause-save\.sh/) {
+        print line
+      }
+    }
+  ' "$SKILL_MD")
+  [[ -z "$missing" ]] || fail "(21) current-design-env source lines missing pause-check after lines: $missing"
+}
+
+assert_step_completion_sentinels() {
+  local step
+  for step in 1c 1d 1d.5 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b 5b 5c 5d 6; do
+    grep -Fq ".completed/step-$step" "$SKILL_MD" \
+      || fail "(21) SKILL.md missing .completed sentinel for step $step"
+  done
+}
+
+assert_bash_fences_have_pause_check
+assert_step_completion_sentinels
+grep -Fq '2.5-bis. **Resume detection**' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing resume detection sub-step"
+grep -Fq 'design-pause-load.sh' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing design-pause-load.sh invocation"
+grep -Fq '5.5-bis. **Refresh issue-bound env immediately after rename**' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing post-rename env refresh"
+echo "PASS: (21) /design pause/resume structure anchors OK"
+
 # Checks 24-26 (#2935): /design same-session re-entry guard pins.
 step0b_reentry_order=$(awk '
   /^### 0b / { in0b=1; next }

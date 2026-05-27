@@ -16,6 +16,8 @@ paths:
   - "scripts/create-pr.sh"
   - "scripts/design-log-publish.md"
   - "scripts/design-log-publish.sh"
+  - "scripts/named-block-write.md"
+  - "scripts/named-block-write.sh"
   - "scripts/test-design-log-publish.sh"
   - "scripts/gh-pr-body-update.md"
   - "scripts/gh-pr-body-update.sh"
@@ -125,6 +127,9 @@ PR/merge/recovery semantics may invoke `gh pr create --head <branch>
 --body-file <path>` directly. The documented current caller is
 `scripts/design-log-publish.sh`; keep its sibling `scripts/design-log-publish.md`
 in sync with that exception.
+
+Issue-body marker writers use `scripts/named-block-write.sh`, which applies
+redaction and `gh issue edit --body-file` for its callers.
 
 ## Fixed Literals
 
