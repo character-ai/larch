@@ -261,6 +261,22 @@ assert_stdout_matches() {
     fi
 }
 
+assert_stdout_line_count() {
+    local case_name="$1"
+    local pattern="$2"
+    local expected="$3"
+    local label="$4"
+
+    local actual
+    actual="$(grep -Ec "$pattern" "$TMPDIR_BASE/$case_name/stdout.log" 2>/dev/null || true)"
+    if [[ "$actual" == "$expected" ]]; then
+        ok "$label"
+    else
+        fail "$label (expected $expected, got $actual)"
+        sed 's/^/    stdout: /' "$TMPDIR_BASE/$case_name/stdout.log"
+    fi
+}
+
 assert_command_count() {
     local case_name="$1"
     local log_name="$2"
@@ -656,6 +672,8 @@ assert_stdout_contains "post_force_push_unknown_recovers_behind" "MERGE_RESULT=m
 assert_stdout_contains "post_force_push_unknown_recovers_behind" "ERROR=" "Q2b: post-force-push BEHIND recovery preserves empty ERROR"
 assert_no_merge_commands "post_force_push_unknown_recovers_behind" "Q2c: post-force-push BEHIND skips merge commands"
 assert_command_count "post_force_push_unknown_recovers_behind" "gh.log" "pr checks 123 --repo owner/repo --json name,state,bucket,link" "1" "Q2d: post-force-push BEHIND skips the second CI check"
+assert_command_count "post_force_push_unknown_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "Q2e: pr view called 5x before BEHIND recovery"
+assert_stdout_line_count "post_force_push_unknown_recovers_behind" '^ERROR=$' "1" "Q2f: post-force-push BEHIND emits exactly one empty ERROR line"
 
 echo
 echo "Sub-test R: post-force-push UNKNOWN persists, fails after 3 retries (#2342)"
