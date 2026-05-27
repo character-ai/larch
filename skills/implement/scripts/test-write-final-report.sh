@@ -407,21 +407,47 @@ assert_contains '## Fork CI Dry-Run Complete' "$fork_fb" 'renderer fallback stag
 cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh"
 
-rm -f "$impl_bl/.step17-printed"
+rm -f "$impl_bl/.step17-emitted"
 step18_printed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-print.md" bash -c '
   _wfr_args=(--implement-tmpdir "$1")
-  [ ! -f "$1/.step17-printed" ] && _wfr_args+=(--print-stdout)
+  [ ! -f "$1/.step17-emitted" ] && _wfr_args+=(--print-stdout)
   "$2" "${_wfr_args[@]}" || true
 ' bash "$impl_bl" "$HELPER" 2>/dev/null)
 assert_contains '## /implement run run-bl — bailed' "$step18_printed" 'Step 18 absent sentinel prints summary body'
-touch "$impl_bl/.step17-printed"
+touch "$impl_bl/.step17-emitted"
 step18_suppressed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-suppressed.md" bash -c '
   _wfr_args=(--implement-tmpdir "$1")
-  [ ! -f "$1/.step17-printed" ] && _wfr_args+=(--print-stdout)
+  [ ! -f "$1/.step17-emitted" ] && _wfr_args+=(--print-stdout)
   "$2" "${_wfr_args[@]}" || true
 ' bash "$impl_bl" "$HELPER" 2>/dev/null)
 assert_not_contains '## /implement run run-bl — bailed' "$step18_suppressed" 'Step 18 sentinel suppresses summary body'
 assert_not_contains '- **Cost**:' "$step18_suppressed" 'Step 18 sentinel suppresses summary cost line'
+
+cat > "$impl_bl/larch-logs/implement/run-bl/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}}
+}
+JSON
+step18_changed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-changed.md" bash -c '
+  _wfr_args=(--implement-tmpdir "$1")
+  _wfr_printed=false
+  _wfr_emit_body=false
+  [ ! -f "$1/.step17-emitted" ] && _wfr_args+=(--print-stdout) && _wfr_printed=true && _wfr_emit_body=true
+  if [ -f "$1/summary-final.md" ]; then
+    cp "$1/summary-final.md" "$1/.step18-prebody"
+  else
+    rm -f "$1/.step18-prebody"
+  fi
+  if "$2" "${_wfr_args[@]}" >/dev/null 2>&1; then
+    if [ "$_wfr_printed" = false ] && ! cmp -s "$1/.step18-prebody" "$1/summary-final.md"; then
+      _wfr_emit_body=true
+    fi
+    if [ "$_wfr_emit_body" = true ] && [ -s "$1/summary-final.md" ]; then
+      cat "$1/summary-final.md"
+    fi
+  fi
+' bash "$impl_bl" "$HELPER" 2>/dev/null)
+assert_contains '- **Cost**:' "$step18_changed" 'Step 18 body-diff path emits refreshed summary body'
 
 # Bail + manifest.json: larch-log manifest stamps steps_ran.* and hard-fails on manifest error
 impl_mfb="$TMP_ROOT/impl-mfb"; mkdir -p "$impl_mfb/larch-logs/implement/run-mfb"

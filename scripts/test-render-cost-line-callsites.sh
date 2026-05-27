@@ -35,13 +35,14 @@ pass 'render-final-summary per-bucket argv shape'
 grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
 # shellcheck disable=SC2016
 grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on non-empty summary body'
-grep -Fq '_wfr_args+=(--print-stdout)' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must only request --print-stdout when .step17-printed is absent'
+# shellcheck disable=SC2016
+grep -Fq 'if [ ! -f "$IMPLEMENT_TMPDIR/.step17-emitted" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must only request --print-stdout when .step17-emitted is absent'
 # shellcheck disable=SC2016
 grep -Fq '_wfr_emit_body=false' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must initialize body emit guard'
 # shellcheck disable=SC2016
 grep -Fq 'cmp -s "$IMPLEMENT_TMPDIR/.step18-prebody" "$IMPLEMENT_TMPDIR/summary-final.md"' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must compare refreshed body to pre-Step-18 snapshot'
 # shellcheck disable=SC2016
-grep -Fq 'if [ "$_wfr_emit_body" = true ] && [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must gate .step17-printed on emit guard plus non-empty body'
+grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-emitted"' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
 grep -Fq 'the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 full-body emit prose'
 # shellcheck disable=SC2016
@@ -54,7 +55,11 @@ grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design
 # shellcheck disable=SC2016
 grep -Fq 'the orchestrator MUST read $DESIGN_TMPDIR/final-summary.md and emit its full body verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish full-body emit prose'
 # shellcheck disable=SC2016
-grep -Fq 'If the helper exits 0 and $DESIGN_TMPDIR/final-summary.md is non-empty, emit the full body of final-summary.md verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin Step 5c item 10 full-body emit prose'
+grep -Fq 'The only orchestrator-text addition permitted after that helper returns is the shared verbatim full-body emission of `$DESIGN_TMPDIR/final-summary.md`, gated on helper exit 0 and that file being non-empty.' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-halt helper-exit gate'
+# shellcheck disable=SC2016
+grep -Fq 'If the helper exits 0 and $DESIGN_TMPDIR/final-summary.md is non-empty, apply the shared post-publish full-body emit rule immediately after this callsite' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin Step 5c item 10 shared full-body emit prose'
+# shellcheck disable=SC2016
+grep -Fq 'The shared post-publish/full-body emit rule runs only when the helper exited 0 and `$DESIGN_TMPDIR/final-summary.md` is non-empty' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin final recap helper-exit gate'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-recap prose'
 pass 'SKILL.md full-body summary callsite contracts pinned'
 
