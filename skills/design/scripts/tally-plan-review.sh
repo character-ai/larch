@@ -23,6 +23,20 @@ VOTER_FILES=()
 VOTER_SPECS=()
 SEEN_VOTER=false
 SEEN_VOTER_FILES=false
+_tally_status_emitted=false
+WORKDIR=""
+
+cleanup() {
+    local rc=$?
+    if [[ -n "${WORKDIR:-}" ]]; then
+        rm -rf "$WORKDIR" || true
+    fi
+    if [[ "$_tally_status_emitted" == false && "$rc" -ne 0 ]]; then
+        emit_kv TALLY_PLAN_REVIEW_STATUS tally-error
+    fi
+    return "$rc"
+}
+trap cleanup EXIT
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -308,10 +322,6 @@ for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
 done
 
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-tally-plan-review.XXXXXX")
-cleanup() {
-    rm -rf "$WORKDIR"
-}
-trap cleanup EXIT
 
 BLOCK_DIR="$WORKDIR/blocks"
 if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
@@ -417,6 +427,7 @@ if (( TALLY_ELIGIBLE_COUNT == 0 )); then
     printf '# Plan Review Voting Tally\n\n' > "$tally_file"
     printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-required.**\n\n' >> "$tally_file"
     write_findings_classification
+    _tally_status_emitted=true
     emit_kv TALLY_PLAN_REVIEW_STATUS main-agent-vote-required
     emit_kv VOTING_TALLY_FILE "$tally_file"
     exit 0
@@ -513,5 +524,6 @@ fi
 
 write_findings_classification
 
+_tally_status_emitted=true
 emit_kv TALLY_PLAN_REVIEW_STATUS ok
 emit_kv VOTING_TALLY_FILE "$tally_file"

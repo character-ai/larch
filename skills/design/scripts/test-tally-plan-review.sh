@@ -69,6 +69,7 @@ DESIGN="$TMPROOT/design"
 mkdir -p "$DESIGN"
 out=$("$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V1" "$V2" "$V3" --design-tmpdir "$DESIGN")
 printf '%s\n' "$out" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "status ok not emitted"
+[[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=ok$' <<< "$out" || true) -eq 1 ]] || fail "status ok should be emitted exactly once"
 # FINDING_1: 3 YES >= 2 threshold -> accepted.
 grep -q 'FINDING_1' "$DESIGN/accepted-plan-findings.md" || fail "accepted finding missing"
 # FINDING_2: 1 YES, 2 NO -> rejected.
@@ -82,6 +83,16 @@ fi
 grep -q '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
 # Cursor-Arch: 1 accepted finding (+1), 1 accepted OOS (+1) = score 2.
 grep -q '| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |' "$DESIGN/voting-tally.md" || fail "scoreboard counts wrong for Cursor-Arch"
+
+set +e
+out_early_error=$("$SUBJECT" --ballot-file "$BALLOT" 2>/dev/null)
+rc_early_error=$?
+set -e
+[[ "$rc_early_error" -eq 2 ]] || fail "missing required argv should exit 2"
+[[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=tally-error$' <<< "$out_early_error" || true) -eq 1 ]] || fail "early error should emit tally-error exactly once"
+if grep -q '^VOTING_TALLY_FILE=' <<< "$out_early_error"; then
+    fail "early error should not emit VOTING_TALLY_FILE"
+fi
 
 # Rejected OOS subtracts one point.
 BALLOT_OOS_REJECTED="$TMPROOT/ballot-oos-rejected.md"
@@ -170,6 +181,7 @@ DESIGN_MAIN="$TMPROOT/design-main"
 mkdir -p "$DESIGN_MAIN"
 out_main=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_MAIN" --voter "MainAgent:$V_MAIN")
 printf '%s\n' "$out_main" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "sole MainAgent rerun should finish ok"
+[[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=ok$' <<< "$out_main" || true) -eq 1 ]] || fail "sole MainAgent ok should be emitted exactly once"
 grep -q 'FINDING_1' "$DESIGN_MAIN/accepted-plan-findings.md" || fail "sole MainAgent YES should accept finding"
 grep -q 'FINDING_2' "$DESIGN_MAIN/rejected-findings.md" || fail "sole MainAgent NO should reject finding"
 grep -q 'OOS_1' "$DESIGN_MAIN/oos-accepted-design.md" || fail "sole MainAgent YES should accept non-security OOS"

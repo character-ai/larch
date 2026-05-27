@@ -11,6 +11,8 @@ larch_quiet_init
 larch_quiet_append_done_trap
 # shellcheck source=scripts/lib-voter-parse-rate.sh
 source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
+# shellcheck source=scripts/lib-voter-coverage.sh
+source "$SCRIPT_DIR/lib-voter-coverage.sh"
 
 usage() {
     larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE]"
@@ -143,7 +145,7 @@ waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --codex-present "$CODEX_AVAILABLE" \
     --cursor-present "$CURSOR_AVAILABLE" \
     --mode description \
-    --timeout 1200)
+    --timeout 1860)
 
 all_outputs=""
 all_tools=""
@@ -194,19 +196,11 @@ if [[ "$VOTER_1_STATUS" != "failed" && "$VOTER_1_PARSE_RATE_STATUS" == "NOT_SUBS
 fi
 
 expected_judges=3
-effective_judges=0
-for slot_record in \
+effective_judges=$(voter_coverage_compute_effective_judges \
     "$VOTER_1_STATUS"$'\t'"$VOTER_1_PATH"$'\t'"$VOTER_1_PARSE_RATE_STATUS" \
     "$VOTER_2_STATUS"$'\t'"$VOTER_2_PATH"$'\t'"$VOTER_2_PARSE_RATE_STATUS" \
-    "$VOTER_3_STATUS"$'\t'"$VOTER_3_PATH"$'\t'"$VOTER_3_PARSE_RATE_STATUS"; do
-    IFS=$'\t' read -r status path parse_rate_status <<< "$slot_record"
-    [[ "$status" != "failed" && "$parse_rate_status" != "NOT_SUBSTANTIVE" && -s "$path" ]] && effective_judges=$((effective_judges + 1))
-done
-if (( effective_judges < expected_judges )); then
-    _warn_msg="**⚠ Degraded plan-review panel: ${effective_judges}/${expected_judges} effective judges produced substantive vote output.**"
-    larch_err "$_warn_msg"
-    emit_kv DEGRADED_PANEL_WARNING "$_warn_msg"
-fi
+    "$VOTER_3_STATUS"$'\t'"$VOTER_3_PATH"$'\t'"$VOTER_3_PARSE_RATE_STATUS")
+voter_coverage_emit_degraded_warning_if_needed "$effective_judges" "$expected_judges"
 
 plan_voter_paths_file="$DESIGN_TMPDIR/plan-voter-paths.txt"
 pv_tmp=$(mktemp "${DESIGN_TMPDIR}/.plan-voter-paths.XXXXXX")
@@ -221,19 +215,11 @@ if [[ "$VOTER_3_STATUS" != "failed" && -n "$VOTER_3_PATH" ]]; then
 fi
 mv -f "$pv_tmp" "$plan_voter_paths_file"
 
-emit_kv VOTER_1_PATH "$VOTER_1_PATH"
-emit_kv VOTER_1_TOOL "$VOTER_1_TOOL"
-emit_kv VOTER_1_STATUS "$VOTER_1_STATUS"
-emit_kv VOTER_1_PARSE_RATE_STATUS "$VOTER_1_PARSE_RATE_STATUS"
-emit_kv VOTER_2_PATH "$VOTER_2_PATH"
-emit_kv VOTER_3_PATH "$VOTER_3_PATH"
-[[ -s "$plan_voter_paths_file" ]] && emit_kv VOTER_PATHS_FILE "$plan_voter_paths_file"
-emit_kv VOTER_2_TOOL "$VOTER_2_TOOL"
-emit_kv VOTER_3_TOOL "$VOTER_3_TOOL"
-emit_kv VOTER_2_STATUS "$VOTER_2_STATUS"
-emit_kv VOTER_3_STATUS "$VOTER_3_STATUS"
-emit_kv VOTER_2_PARSE_RATE_STATUS "$VOTER_2_PARSE_RATE_STATUS"
-emit_kv VOTER_3_PARSE_RATE_STATUS "$VOTER_3_PARSE_RATE_STATUS"
+voter_coverage_emit_status_block \
+    "$VOTER_1_PATH" "$VOTER_1_TOOL" "$VOTER_1_STATUS" "$VOTER_1_PARSE_RATE_STATUS" \
+    "$VOTER_2_PATH" "$VOTER_2_TOOL" "$VOTER_2_STATUS" "$VOTER_2_PARSE_RATE_STATUS" \
+    "$VOTER_3_PATH" "$VOTER_3_TOOL" "$VOTER_3_STATUS" "$VOTER_3_PARSE_RATE_STATUS" \
+    "$plan_voter_paths_file"
 
 [[ "$VOTER_1_STATUS" == "failed" ]] && dispatch_ok="false"
 emit_kv DISPATCH_OK "$dispatch_ok"

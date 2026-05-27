@@ -9,6 +9,27 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-plan-voters.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 unset CLAUDE_PLUGIN_ROOT
 
+fail() {
+    echo "FAIL: $1" >&2
+    exit 1
+}
+
+stdout_key_order() {
+    awk -F= '/^[A-Z0-9_]+=/{print $1}'
+}
+
+assert_key_order() {
+    local label="$1" actual="$2" expected="$3"
+    if [[ "$actual" != "$expected" ]]; then
+        {
+            printf 'FAIL: %s key order drifted\n' "$label"
+            printf -- '--- expected ---\n%s\n' "$expected"
+            printf -- '--- actual ---\n%s\n' "$actual"
+        } >&2
+        exit 1
+    fi
+}
+
 STUB_BIN="$TMP/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/codex" <<'STUB'
@@ -41,6 +62,7 @@ printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputToke
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
+[[ "${CLAUDE_STUB_MODE:-ok}" == "fail" ]] && exit 77
 prompt="$(cat)"
 if grep -Fq 'previous attempt produced narrative output' <<< "$prompt"; then
 printf 'FINDING_1: YES\nOOS_1: NO -- claude retry ok\n'
@@ -91,15 +113,20 @@ chmod +x "$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh"
 cat > "$PLUGIN_ROOT_STUB/scripts/dispatch-with-waterfall.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${LARCH_PAIRED_PID_FILE:-}" ]]; then
+    echo "nested waterfall inherited LARCH_PAIRED_PID_FILE" >&2
+    exit 88
+fi
 slots_file=""
 CODEX_PRESENT="true"
 CURSOR_PRESENT="true"
 while [[ $# -gt 0 ]]; do
+    [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$1" >> "$PLAN_VOTER_ARGV_LOG"
     case "$1" in
-        --slots-file) slots_file="$2"; shift 2 ;;
-        --codex-present) CODEX_PRESENT="$2"; shift 2 ;;
-        --cursor-present) CURSOR_PRESENT="$2"; shift 2 ;;
-        --mode|--timeout) shift 2 ;;
+        --slots-file) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; slots_file="$2"; shift 2 ;;
+        --codex-present) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; CODEX_PRESENT="$2"; shift 2 ;;
+        --cursor-present) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; CURSOR_PRESENT="$2"; shift 2 ;;
+        --mode|--timeout) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -120,7 +147,30 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     if [[ "$tool" == "cursor" && "$CURSOR_PRESENT" != "true" ]]; then
         effective_tool="claude"
     fi
-    case "$mode:$slot" in
+    requested_status=""
+    case "$slot" in
+        voter-2) requested_status="${PLAN_VOTER_SLOT_2_STATUS:-}" ;;
+        voter-3) requested_status="${PLAN_VOTER_SLOT_3_STATUS:-}" ;;
+    esac
+    if [[ -n "$requested_status" ]]; then
+        case "$requested_status" in
+            launched)
+                printf 'FINDING_1: YES\nOOS_1: NO -- %s launched\n' "$tool" > "$output"
+                effective_tool="$tool"
+                ;;
+            fallback)
+                printf 'FINDING_1: YES\nOOS_1: NO -- claude fallback\n' > "$output"
+                effective_tool="claude"
+                ;;
+            failed)
+                rm -f "$output"
+                ;;
+            *) echo "unknown requested status: $requested_status" >&2; exit 2 ;;
+        esac
+        all_outputs+=("$output")
+        all_tools+=("$effective_tool")
+    else
+        case "$mode:$slot" in
         healthy:*)
             if [[ "$effective_tool" == "codex" ]]; then
                 printf 'FINDING_1: YES\nOOS_1: NO -- codex primary ok\n' > "$output"
@@ -172,7 +222,8 @@ while IFS= read -r row || [[ -n "$row" ]]; do
             all_outputs+=("$output")
             all_tools+=("$effective_tool")
             ;;
-    esac
+        esac
+    fi
     printf '%s\t%s\t%s\t%s\n' "$slot" "$tool" "$output" "$prompt_file" >> "${PLAN_VOTER_STUB_LOG:?}"
 done < "$slots_file"
 printf 'ALL_OUTPUT_FILES=%s\n' "${all_outputs[*]}"
@@ -185,6 +236,39 @@ BALLOT="$TMP/ballot.txt"
 printf 'FINDING_1: example\nOOS_1: out of scope example\n' > "$BALLOT"
 BALLOT_PARSE_IDS="$TMP/ballot-parse-ids.txt"
 printf '%s\n' '### FINDING_1:' 'example' '### OOS_1:' 'out of scope example' > "$BALLOT_PARSE_IDS"
+EXPECTED_ORDER_WITH_PATHS=$(cat <<'EOF'
+VOTER_1_PATH
+VOTER_1_TOOL
+VOTER_1_STATUS
+VOTER_1_PARSE_RATE_STATUS
+VOTER_2_PATH
+VOTER_3_PATH
+VOTER_PATHS_FILE
+VOTER_2_TOOL
+VOTER_3_TOOL
+VOTER_2_STATUS
+VOTER_3_STATUS
+VOTER_2_PARSE_RATE_STATUS
+VOTER_3_PARSE_RATE_STATUS
+DISPATCH_OK
+EOF
+)
+EXPECTED_ORDER_NO_PATHS=$(cat <<'EOF'
+VOTER_1_PATH
+VOTER_1_TOOL
+VOTER_1_STATUS
+VOTER_1_PARSE_RATE_STATUS
+VOTER_2_PATH
+VOTER_3_PATH
+VOTER_2_TOOL
+VOTER_3_TOOL
+VOTER_2_STATUS
+VOTER_3_STATUS
+VOTER_2_PARSE_RATE_STATUS
+VOTER_3_PARSE_RATE_STATUS
+DISPATCH_OK
+EOF
+)
 
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$TMP/stub-absent.log" \
     "$SCRIPT" --ballot-file "$BALLOT_PARSE_IDS" --design-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
@@ -207,11 +291,17 @@ pv_abs=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,
 [[ $(wc -l < "$pv_abs" | tr -d ' ') -eq 3 ]] || { echo "FAIL: absent-tools plan-voter paths should list three judges" >&2; exit 1; }
 
 stub_log="$TMP/dispatch-with-waterfall.log"
-out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$stub_log" \
+argv_log="$TMP/dispatch-with-waterfall.argv"
+paired_pid_file="$TMP/healthy/paired.pid"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$stub_log" PLAN_VOTER_ARGV_LOG="$argv_log" LARCH_PAIRED_PID_FILE="$paired_pid_file" \
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/healthy" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" || { echo "FAIL: healthy path missing VOTER_1 launched" >&2; exit 1; }
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: healthy path did not keep codex primary" >&2; exit 1; }
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: healthy path did not keep cursor primary" >&2; exit 1; }
+assert_key_order "healthy dispatcher stdout" "$(printf '%s\n' "$out" | stdout_key_order)" "$EXPECTED_ORDER_WITH_PATHS"
+tr '\n' ' ' < "$argv_log" | grep -Fq -- '--timeout 1860' || fail "waterfall timeout should be 1860"
+[[ -s "$paired_pid_file" ]] || fail "LARCH_PAIRED_PID_FILE was not written by dispatcher"
+grep -Eq '^[0-9]+$' "$paired_pid_file" || fail "LARCH_PAIRED_PID_FILE content is not a PID"
 grep -Fq 'OOS_N:' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: healthy codex prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/claude-plan-voter-prompt.txt" || { echo "FAIL: healthy claude voter1 prompt missing OOS rows" >&2; exit 1; }
@@ -237,6 +327,33 @@ grep -Fq $'voter-3\tcursor' "$stub_log" || { echo "FAIL: healthy stub log missin
 grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: healthy stub missing VOTER_PATHS_FILE" >&2; exit 1; }
 pv_h=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
 [[ -f "$pv_h" && $(wc -l < "$pv_h" | tr -d ' ') -eq 3 ]] || { echo "FAIL: healthy plan-voter paths file" >&2; exit 1; }
+
+out_all_failed=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" CLAUDE_STUB_MODE=fail PLAN_VOTER_SLOT_2_STATUS=failed PLAN_VOTER_SLOT_3_STATUS=failed PLAN_VOTER_STUB_LOG="$TMP/all-failed.log" \
+    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/all-failed" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_1_STATUS=failed' <<< "$out_all_failed" || fail "all-failed path missing VOTER_1 failed"
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out_all_failed" || fail "all-failed path missing VOTER_2 failed"
+grep -Fq 'VOTER_3_STATUS=failed' <<< "$out_all_failed" || fail "all-failed path missing VOTER_3 failed"
+if grep -Fq 'VOTER_PATHS_FILE=' <<< "$out_all_failed"; then
+    fail "all-failed path should omit VOTER_PATHS_FILE"
+fi
+assert_key_order "all-failed dispatcher stdout" "$(printf '%s\n' "$out_all_failed" | stdout_key_order | grep -v '^DEGRADED_PANEL_WARNING$' || true)" "$EXPECTED_ORDER_NO_PATHS"
+grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out_all_failed" || fail "all-failed path should emit degraded warning"
+
+for status2 in launched fallback failed; do
+    for status3 in launched fallback failed; do
+        case_dir="$TMP/status-${status2}-${status3}"
+        out_status=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_SLOT_2_STATUS="$status2" PLAN_VOTER_SLOT_3_STATUS="$status3" PLAN_VOTER_STUB_LOG="$case_dir.log" \
+            "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$case_dir" --codex-available true --cursor-available true)
+        [[ $(grep -c "^VOTER_2_STATUS=${status2}$" <<< "$out_status" || true) -eq 1 ]] || fail "VOTER_2_STATUS=${status2} should be emitted once"
+        [[ $(grep -c "^VOTER_3_STATUS=${status3}$" <<< "$out_status" || true) -eq 1 ]] || fail "VOTER_3_STATUS=${status3} should be emitted once"
+        degraded_count=$(grep -c '^DEGRADED_PANEL_WARNING=' <<< "$out_status" || true)
+        if [[ "$status2" == "failed" || "$status3" == "failed" ]]; then
+            [[ "$degraded_count" -eq 1 ]] || fail "degraded warning missing for $status2/$status3"
+        else
+            [[ "$degraded_count" -eq 0 ]] || fail "unexpected degraded warning for $status2/$status3"
+        fi
+    done
+done
 
 stub_log_retry="$TMP/dispatch-with-waterfall-retry.log"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_MODE=retry-waterfall PLAN_VOTER_STUB_LOG="$stub_log_retry" \
