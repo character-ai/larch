@@ -497,16 +497,81 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 70,
+          "cache_read": 33741592,
+          "cache_create": 42142,
+          "cache_create_5m": 42142,
+          "cache_create_1h": 0,
+          "output": 19326,
+          "total": 33803130
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 70,
+              "cache_read": 33741592,
+              "cache_create": 42142,
+              "cache_create_5m": 42142,
+              "cache_create_1h": 0,
+              "output": 19326,
+              "total": 33803130
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 2,
+          "cache_read": 1065728,
+          "cache_create": 1681,
+          "cache_create_5m": 1681,
+          "cache_create_1h": 0,
+          "output": 1336,
+          "total": 1068747
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 2,
+              "cache_read": 1065728,
+              "cache_create": 1681,
+              "cache_create_5m": 1681,
+              "cache_create_1h": 0,
+              "output": 1336,
+              "total": 1068747
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 411,
-      "cache_read": 128872452,
-      "cache_create": 1372682,
-      "cache_create_5m": 1372682,
+      "input": 483,
+      "cache_read": 163679772,
+      "cache_create": 1416505,
+      "cache_create_5m": 1416505,
       "cache_create_1h": 0,
-      "output": 156765,
-      "total": 130402310
+      "output": 177427,
+      "total": 165274187
     }
   },
   "codex": {
@@ -633,6 +698,30 @@
       },
       {
         "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -839,6 +928,30 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -848,12 +961,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 411,
-    "cache_read": 128872452,
-    "cache_create_5m": 1372682,
+    "input": 483,
+    "cache_read": 163679772,
+    "cache_create_5m": 1416505,
     "cache_create_1h": 0,
-    "output": 156765,
-    "total": 130402310
+    "output": 177427,
+    "total": 165274187
   },
   "BUCKETS_codex": {
     "input": 787931,
