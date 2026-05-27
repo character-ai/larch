@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [45.1.8] - 2026-05-27
+
+### Changed
+
+- Move the Step 0 tracking issue token/timing marks into phase_tracking and remove duplicate prompt-side ownership.
+- Refresh bootstrap and linting docs to describe current breadcrumbs and defer case lists to the harness contract.
+- Detect corrupt all-zero token reports, render Cost: N/A, and surface the warning in the final summary body plus stderr.
+- Extend bootstrap and final-report harness coverage for the migrated ledger marks and corrupt-zero warning path.
+
 ## [45.1.7] - 2026-05-27
 
 ### Changed
