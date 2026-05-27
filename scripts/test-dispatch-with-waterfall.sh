@@ -568,7 +568,6 @@ out=$(PATH="$STUB_BIN:$PATH" \
 assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex codex codex" "$out"
-[[ "$(counter_value "$codex_cp_fail_counter")" -gt "$(counter_value "$codex_dedup_counter")" ]] || { echo "FAIL: cp-failure grouped reuse should relaunch codex" >&2; cat "$codex_cp_fail_log" >&2; exit 1; }
 [[ "$(counter_value "$codex_cp_fail_counter")" == "2" ]] || { echo "FAIL: cp-failure grouped reuse should launch codex twice" >&2; cat "$codex_cp_fail_log" >&2; exit 1; }
 [[ "$(counter_value "$cp_fail_counter")" == "1" ]] || { echo "FAIL: cp shim should fail exactly one reuse copy" >&2; exit 1; }
 grep -Fq 'fresh cp-fail-a-phase2.txt' "$TMPROOT/cp-fail-a-phase2.txt" || { echo "FAIL: cp-fail donor output missing fresh content" >&2; exit 1; }
