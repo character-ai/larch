@@ -205,8 +205,6 @@ VOTER_3_STATUS="launched"
 [[ "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
 [[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
 voter1_wait_timed_out=false
-voter2_wait_timed_out=false
-voter3_wait_timed_out=false
 _wait_rc=0
 
 # FINDING_2: capture stdout — wait-for-reviewers.sh emits TIMEOUT rows on
@@ -233,8 +231,6 @@ if (( ${#wait_sentinels[@]} > 0 )); then
             larch_err "dispatch-code-voters.sh: voter sentinel $_to_line"
             case "$_to_line" in
                 "TIMEOUT 1 "*) voter1_wait_timed_out=true ;;
-                "TIMEOUT 2 "*) voter2_wait_timed_out=true ;;
-                "TIMEOUT 3 "*) voter3_wait_timed_out=true ;;
             esac
         done < <(grep '^TIMEOUT ' "$_wait_out_file")
     fi
