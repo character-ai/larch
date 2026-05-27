@@ -69,7 +69,7 @@ grep -Fq 'code-quality / risk-integration / correctness / architecture' "$SKILL_
 grep 'code-quality / risk-integration / correctness / architecture' "$SKILL_MD" | grep -q 'security' \
   || fail "focus-area enum line must include security"
 
-grep -Fq '### Larch-log batches' "$SKILL_MD" \
+grep -Fq '### Larch-log Batches and Summary Comments' "$SKILL_MD" \
   || fail "SKILL.md must contain the Larch-log batches section heading"
 # shellcheck disable=SC2016
 grep -qE 'NEVER write, recreate, or modify .\$IMPLEMENT_TMPDIR/finalize-state\.sh' "$SKILL_MD" \
@@ -339,12 +339,6 @@ EOF
 read -r time0_track <<'EOF'
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue"
 EOF
-read -r tok0_plan <<'EOF'
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — plan materialization"
-EOF
-read -r time0_plan <<'EOF'
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — plan materialization"
-EOF
 grep -Fq "$tok0_track" "$SKILL_MD" \
   || fail "SKILL.md must retain token-ledger Step 0 — tracking issue mark"
 grep -Fq "$time0_track" "$SKILL_MD" \
@@ -353,14 +347,46 @@ grep -Fq '# token-mark Step 0 — tracking issue' "$SKILL_MD" \
   || fail "SKILL.md must retain token-mark Step 0 — tracking issue comment pair"
 grep -Fq '# timing-mark Step 0 — tracking issue' "$SKILL_MD" \
   || fail "SKILL.md must retain timing-mark Step 0 — tracking issue comment pair"
-grep -Fq "$tok0_plan" "$SKILL_MD" \
-  || fail "SKILL.md must retain token-ledger Step 0 — plan materialization mark"
-grep -Fq "$time0_plan" "$SKILL_MD" \
-  || fail "SKILL.md must retain timing-ledger Step 0 — plan materialization mark"
-grep -Fq '# token-mark Step 0 — plan materialization' "$SKILL_MD" \
-  || fail "SKILL.md must retain token-mark Step 0 — plan materialization comment pair"
-grep -Fq '# timing-mark Step 0 — plan materialization' "$SKILL_MD" \
-  || fail "SKILL.md must retain timing-mark Step 0 — plan materialization comment pair"
+read -r tok0_plan_bootstrap <<'EOF'
+"$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization"
+EOF
+read -r time0_plan_bootstrap <<'EOF'
+"$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization"
+EOF
+grep -Fq "$tok0_plan_bootstrap" "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must retain token-ledger implement Step 0 — plan materialization mark"
+grep -Fq "$time0_plan_bootstrap" "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must retain timing-ledger implement Step 0 — plan materialization mark"
+grep -Fq "Plan materialization is now fully owned by the foreground \`implement-bootstrap.sh --up-to-phase plan\` call above." "$SKILL_MD" \
+  || fail "SKILL.md must pin plan materialization ownership to implement-bootstrap.sh"
+grep -Fq -- '--resume-plan-tail' "$REPO_ROOT/scripts/implement-bootstrap.md" \
+  || fail "implement-bootstrap.md must document --resume-plan-tail"
+grep -Fq '.dirty-tree-prompted-step0-plan-materialize' "$SKILL_MD" \
+  || fail "SKILL.md must retain the dirty-tree resume sentinel contract"
+grep -Fq 'dirty-tree-detected.env' "$SKILL_MD" \
+  || fail "SKILL.md must retain the dirty-tree recovery env contract"
+
+step0_plan_structure_status=0
+awk '
+  /<!-- step:0/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0; in_bash = 0 }
+  in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
+  in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
+  in_step && in_bash {
+    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase plan/) bootstrap_calls++
+    if ($0 ~ /snapshot-untracked\.sh" --output|\$SCRIPT_DIR\/persist-implement-run-flags\.sh|check-mid-run-dirty-tree\.sh" --mode checkpoint|create-branch\.sh" --branch|git-current-branch\.sh"|run-step1-plan-log\.sh"|write-tally\.sh"|tracking-issue-summary\.sh" .*upsert-summary|gh issue view "\$gh_issue_arg"|gh issue view "\$ISSUE_NUMBER"/) banned++
+  }
+  END {
+    if (bootstrap_calls != 1) exit 10
+    if (banned != 0) exit 11
+  }
+' "$SKILL_MD" || step0_plan_structure_status=$?
+case "$step0_plan_structure_status" in
+  0) ;;
+  10) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase plan call" ;;
+  11) fail "Step 0 bash blocks must not reintroduce absorbed plan-materialization helper calls" ;;
+  *) fail "unexpected Step 0 structure check failure: $step0_plan_structure_status" ;;
+esac
 if grep -Fq '<!-- step:0.5' "$SKILL_MD"; then
   fail "SKILL.md must not reintroduce <!-- step:0.5 session anchor"
 fi

@@ -15,11 +15,13 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--upstream-repo` | no | `OWNER/REPO` | Required by callers in fork mode when upstream issue context should be fetched. Validated as one owner/repo slash with GitHub-safe characters. |
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
 | `--preflight-tmpdir` | with `--issue-number` when `--up-to-phase` is `plan`, `coder`, or `all` | path | Directory containing `plan-from-issue.txt` from Preflight. |
+| `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh` and resumes only the Phase 3 tail after the clean checkpoint succeeds. |
 
 ## Inputs (Phase 1)
 
 - Git repository state (via `create-branch.sh --check`, `session-setup.sh` preflight).
 - Optional caller-env file (`--caller-env`) for forked / nested flows.
+- On `--resume-plan-tail`, the caller must preserve `IMPLEMENT_TMPDIR` and the existing `$IMPLEMENT_TMPDIR/session-env.sh`; the bootstrap reuses that session tmpdir instead of allocating a new plan-materialization workspace.
 - No direct reads of `$IMPLEMENT_TMPDIR/session-env.sh` before `session-setup.sh` succeeds (empty tmpdir guard).
 
 `phase_plan_materialize` reads `$PREFLIGHT_TMPDIR/plan-from-issue.txt` and writes conventional `$IMPLEMENT_TMPDIR/plan.txt` / `feature-description.txt` artifacts.
@@ -65,7 +67,7 @@ Tracking phase may also emit:
 
 Set `LARCH_QUIET_BREADCRUMB_FD` to a numeric descriptor when you need breadcrumbs on a dedicated stream. When breadcrumbs are enabled but `LARCH_QUIET_BREADCRUMB_FD` is unset or non-numeric, the line is emitted via `larch_err` (stderr / quiet FD4) so stdout remains KV-only under `LARCH_QUIET_DISABLE=1`.
 
-Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged` and `→ step0: larch:plan posted`. Breadcrumbs require `LARCH_QUIET_BREADCRUMBS` truthy. Future Phase 4 may add `→ step0: coder=…`.
+Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged` when `run-step1-plan-log.sh` succeeds, otherwise `→ step0: branch $BRANCH_NAME`. `→ step0: larch:plan posted` is emitted only when the `tracking-issue-summary.sh upsert-summary` call succeeds. Breadcrumbs require `LARCH_QUIET_BREADCRUMBS` truthy. Future Phase 4 may add `→ step0: coder=…`.
 
 ## Exit codes
 
@@ -86,7 +88,7 @@ Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_
 | `adopted-issue-is-pr` | Branch 2 verified the target number is a pull request, not an issue. |
 | `tracking-init-failed` | `RUN_ID` derivation failed or `larch-log.sh init` failed; `STALL_TRACKING=true`. Closed / PR bails clear `ISSUE_NUMBER` in the final KV tail; stalled tracking preserves a resolved issue number when available. |
 | `run-flags-persist-failed` | `persist-implement-run-flags.sh` returned non-zero; `STALL_TRACKING=true`. |
-| `dirty-tree` | `check-mid-run-dirty-tree.sh --mode checkpoint` reported `STATUS=dirty` or `STATUS=unknown`; no stall flag so the orchestrator can route to dirty-tree recovery. |
+| `dirty-tree` | `check-mid-run-dirty-tree.sh --mode checkpoint` reported `STATUS=dirty` or `STATUS=unknown`; no stall flag so the orchestrator can route to dirty-tree recovery, then re-enter with `--resume-plan-tail` inside the existing `IMPLEMENT_TMPDIR`. |
 | `branch-create-failed` | `create-branch.sh --branch` returned non-zero, or `git-current-branch.sh` could not capture a non-empty branch name after plan materialization; `STALL_TRACKING=true`. |
 | `not-yet-implemented-phase-4` | Stub `phase_coder_select`. |
 
@@ -102,6 +104,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | `session-entry-gate.sh` | `phase_infra` |
 | `session-setup.sh` | `phase_infra` |
 | Inline `write-session-id` + `token-claude-source` + `write-session-env` + ledgers | `phase_infra` |
+| Resume-tail tmpdir/session-env reuse after dirty-tree recovery | `phase_infra` (`--resume-plan-tail`) |
 | Three-key `read-session-env-key.sh` rehydrate | `phase_infra` (re-read for parity) |
 | Sentinel read / resume (`tracking-issue-read.sh --sentinel`) | `phase_tracking` Branch 1 |
 | Issue state probe (`get-issue-state.sh`) | `phase_tracking` Branch 2 |
@@ -109,7 +112,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | Metadata summary (`post-tracking-issue.sh`) | `phase_tracking` Branch 2 |
 | Rename to `[IMPLEMENTING]` (`tracking-issue-write.sh rename`) | Best-effort inside `phase_tracking` Branch 1 and Branch 2 |
 | Session untracked baseline (`snapshot-untracked.sh --output … --nul`) | `phase_plan_materialize` |
-| Post-bootstrap token/timing marks for plan materialization | `phase_plan_materialize` |
+| Post-bootstrap token/timing marks for plan materialization (`implement Step 0 — plan materialization`) | `phase_plan_materialize` |
 | Copy Preflight plan to `$IMPLEMENT_TMPDIR/plan.txt` | `phase_plan_materialize` |
 | Issue title/body compose (`gh issue view`) | `phase_plan_materialize` |
 | Persist run flags (`persist-implement-run-flags.sh`) | `phase_plan_materialize` |

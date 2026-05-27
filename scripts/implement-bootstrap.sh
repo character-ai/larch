@@ -35,6 +35,8 @@ IMPLEMENT_BAIL_REASON=""
 SKIP_CODEX_PROBE_FLAG=false
 SKIP_CURSOR_PROBE_FLAG=false
 RESUME_PLAN_TAIL=false
+RUN_PLAN_LOGGED=false
+PLAN_SUMMARY_POSTED=false
 
 # Parsed / derived in phase_infra (defaults for tail when phases skip)
 CURRENT_BRANCH=""
@@ -51,7 +53,7 @@ CODEX_PRESENT=""
 CURSOR_PRESENT=""
 CODEX_BINARY_FOUND=""
 CURSOR_BINARY_FOUND=""
-IMPLEMENT_TMPDIR=""
+IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
 CLAUDE_SOURCE_OK=""
 LARCH_TOKEN_SESSION_ID=""
 LARCH_CLAUDE_SOURCE_FILE=""
@@ -150,7 +152,11 @@ emit_tracking_breadcrumb_if_enabled() {
 
 emit_plan_materialize_breadcrumbs_if_enabled() {
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-} + plan logged"
+        if [ "${RUN_PLAN_LOGGED:-false}" = "true" ]; then
+            emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-} + plan logged"
+        else
+            emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-}"
+        fi
         if [ "${PLAN_SUMMARY_POSTED:-false}" = "true" ]; then
             emit_breadcrumb "→ step0: larch:plan posted"
         fi
@@ -225,6 +231,7 @@ phase_infra() {
     local branch_rc gate_rc setup_rc
     local dynamic_archetypes_value="" caller_dynamic_archetypes
     local session_env_args _source_exit
+    local resume_existing_tmpdir=""
 
     branch_out=$("$SCRIPT_DIR/create-branch.sh" --check)
     branch_rc=$?
@@ -260,104 +267,135 @@ phase_infra() {
     rm -f "$gate_err"
     ingest_kv_block "$gate_out"
 
-    local setup_cmd
-    setup_cmd=("$SCRIPT_DIR/session-setup.sh" --prefix claude-implement --check-reviewers)
-    if [ "$SKIP_BRANCH_CHECK" = "true" ]; then
-        setup_cmd+=(--skip-branch-check)
-    fi
-    if larch_quiet_truthy "$SKIP_CODEX_PROBE_FLAG"; then
-        setup_cmd+=(--skip-codex-probe)
-    fi
-    if larch_quiet_truthy "$SKIP_CURSOR_PROBE_FLAG"; then
-        setup_cmd+=(--skip-cursor-probe)
-    fi
-    if [ -n "$CALLER_ENV_OPT" ]; then
-        setup_cmd+=(--caller-env "$CALLER_ENV_OPT")
+    if [ "$RESUME_PLAN_TAIL" = "true" ] \
+        && [ -n "${IMPLEMENT_TMPDIR:-}" ] \
+        && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+        resume_existing_tmpdir=$IMPLEMENT_TMPDIR
     fi
 
-    setup_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-setup.XXXXXX")
-    setup_out=$("${setup_cmd[@]}" 2>"$setup_err")
-    setup_rc=$?
-    if [ "$setup_rc" -ne 0 ]; then
-        printf '%s\n' "$setup_out"
-        emit_kv STEP_FAILED session-setup
-        rm -f "$setup_err"
-        exit 2
-    fi
-    if [ -s "$setup_err" ]; then
-        while IFS= read -r _seln || [ -n "$_seln" ]; do
-            [ -z "$_seln" ] && continue
-            larch_err "$_seln"
-        done <"$setup_err"
-    fi
-    rm -f "$setup_err"
-    ingest_kv_block "$setup_out"
+    if [ -n "$resume_existing_tmpdir" ]; then
+        SESSION_TMPDIR=$resume_existing_tmpdir
+        SESSION_ID=$(tr -d '\r\n' <"$SESSION_TMPDIR/session-id" 2>/dev/null || true)
+        IMPLEMENT_TMPDIR=$SESSION_TMPDIR
+        export IMPLEMENT_TMPDIR
 
-    IMPLEMENT_TMPDIR="$SESSION_TMPDIR"
-    export IMPLEMENT_TMPDIR
+        REPO=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO --default "")
+        REPO_UNAVAILABLE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO_UNAVAILABLE --default "false")
+        CODEX_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
+        CURSOR_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
+        CODEX_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "false")
+        CURSOR_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "false")
+        LARCH_TOKEN_SESSION_ID=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+        LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+        LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+        export LARCH_TIMING_LEDGER
 
-    "$SCRIPT_DIR/write-session-id.sh" --output "$IMPLEMENT_TMPDIR/session-id"
-    LARCH_TOKEN_SESSION_ID=$(tr -d '\r\n' <"$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
-    export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
-
-    if "$SCRIPT_DIR/token-claude-source.sh" \
-        >"$IMPLEMENT_TMPDIR/claude-source.env" \
-        2>"$IMPLEMENT_TMPDIR/claude-source-error.log"; then
-        LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env"
-        CLAUDE_SOURCE_OK=true
+        if [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]; then
+            CLAUDE_SOURCE_OK=true
+        else
+            CLAUDE_SOURCE_OK=false
+        fi
     else
-        _source_exit=$?
-        "$SCRIPT_DIR/append-tool-failure.sh" \
-            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-            --site "Step 0" \
-            --tool "token-claude-source.sh" \
-            --exit-code "$_source_exit" \
-            --category Warnings \
-            --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
-            --redact || true
-        CLAUDE_SOURCE_OK=false
-        LARCH_CLAUDE_SOURCE_FILE=""
-    fi
 
-    dynamic_archetypes_value=""
-    if [ -z "${dynamic_archetypes_value:-}" ] && [ -n "${CALLER_ENV_OPT:-}" ] && [ -r "$CALLER_ENV_OPT" ]; then
-        caller_dynamic_archetypes=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$CALLER_ENV_OPT" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
-        case "$caller_dynamic_archetypes" in
-            "") ;;
-            [0-8]) dynamic_archetypes_value=$caller_dynamic_archetypes ;;
-            *)
-                larch_err '**⚠ /implement: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller session-env (must be 0..8).**'
-                ;;
-        esac
-    fi
+        local setup_cmd
+        setup_cmd=("$SCRIPT_DIR/session-setup.sh" --prefix claude-implement --check-reviewers)
+        if [ "$SKIP_BRANCH_CHECK" = "true" ]; then
+            setup_cmd+=(--skip-branch-check)
+        fi
+        if larch_quiet_truthy "$SKIP_CODEX_PROBE_FLAG"; then
+            setup_cmd+=(--skip-codex-probe)
+        fi
+        if larch_quiet_truthy "$SKIP_CURSOR_PROBE_FLAG"; then
+            setup_cmd+=(--skip-cursor-probe)
+        fi
+        if [ -n "$CALLER_ENV_OPT" ]; then
+            setup_cmd+=(--caller-env "$CALLER_ENV_OPT")
+        fi
 
-    session_env_args=(
-        --output "$IMPLEMENT_TMPDIR/session-env.sh"
-        --repo "$REPO"
-        --repo-unavailable "$REPO_UNAVAILABLE"
-        --codex-present "$CODEX_PRESENT"
-        --cursor-present "$CURSOR_PRESENT"
-        --codex-binary-found "$CODEX_BINARY_FOUND"
-        --cursor-binary-found "$CURSOR_BINARY_FOUND"
-        --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
-        --token-session-id "$LARCH_TOKEN_SESSION_ID"
-        --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
-        --forked-target "$FORKED_TARGET"
-    )
-    [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
-    [ -n "${dynamic_archetypes_value:-}" ] && session_env_args+=(--dynamic-archetypes "$dynamic_archetypes_value")
-    _wse_rc=0
-    "$SCRIPT_DIR/write-session-env.sh" "${session_env_args[@]}" || _wse_rc=$?
-    if [ "$_wse_rc" -ne 0 ]; then
-        emit_kv STEP_FAILED write-session-env
-        exit 2
-    fi
-    "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — preflight" || true
-    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight" || true
+        setup_err=$(mktemp "${TMPDIR:-/tmp}/larch-ib-setup.XXXXXX")
+        setup_out=$("${setup_cmd[@]}" 2>"$setup_err")
+        setup_rc=$?
+        if [ "$setup_rc" -ne 0 ]; then
+            printf '%s\n' "$setup_out"
+            emit_kv STEP_FAILED session-setup
+            rm -f "$setup_err"
+            exit 2
+        fi
+        if [ -s "$setup_err" ]; then
+            while IFS= read -r _seln || [ -n "$_seln" ]; do
+                [ -z "$_seln" ] && continue
+                larch_err "$_seln"
+            done <"$setup_err"
+        fi
+        rm -f "$setup_err"
+        ingest_kv_block "$setup_out"
 
-    LARCH_TOKEN_SESSION_ID=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-    LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-    LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+        IMPLEMENT_TMPDIR="$SESSION_TMPDIR"
+        export IMPLEMENT_TMPDIR
+
+        "$SCRIPT_DIR/write-session-id.sh" --output "$IMPLEMENT_TMPDIR/session-id"
+        LARCH_TOKEN_SESSION_ID=$(tr -d '\r\n' <"$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+        export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
+
+        if "$SCRIPT_DIR/token-claude-source.sh" \
+            >"$IMPLEMENT_TMPDIR/claude-source.env" \
+            2>"$IMPLEMENT_TMPDIR/claude-source-error.log"; then
+            LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env"
+            CLAUDE_SOURCE_OK=true
+        else
+            _source_exit=$?
+            "$SCRIPT_DIR/append-tool-failure.sh" \
+                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                --site "Step 0" \
+                --tool "token-claude-source.sh" \
+                --exit-code "$_source_exit" \
+                --category Warnings \
+                --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
+                --redact || true
+            CLAUDE_SOURCE_OK=false
+            LARCH_CLAUDE_SOURCE_FILE=""
+        fi
+
+        dynamic_archetypes_value=""
+        if [ -z "${dynamic_archetypes_value:-}" ] && [ -n "${CALLER_ENV_OPT:-}" ] && [ -r "$CALLER_ENV_OPT" ]; then
+            caller_dynamic_archetypes=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$CALLER_ENV_OPT" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
+            case "$caller_dynamic_archetypes" in
+                "") ;;
+                [0-8]) dynamic_archetypes_value=$caller_dynamic_archetypes ;;
+                *)
+                    larch_err '**⚠ /implement: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller session-env (must be 0..8).**'
+                    ;;
+            esac
+        fi
+
+        session_env_args=(
+            --output "$IMPLEMENT_TMPDIR/session-env.sh"
+            --repo "$REPO"
+            --repo-unavailable "$REPO_UNAVAILABLE"
+            --codex-present "$CODEX_PRESENT"
+            --cursor-present "$CURSOR_PRESENT"
+            --codex-binary-found "$CODEX_BINARY_FOUND"
+            --cursor-binary-found "$CURSOR_BINARY_FOUND"
+            --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
+            --token-session-id "$LARCH_TOKEN_SESSION_ID"
+            --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
+            --forked-target "$FORKED_TARGET"
+        )
+        [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
+        [ -n "${dynamic_archetypes_value:-}" ] && session_env_args+=(--dynamic-archetypes "$dynamic_archetypes_value")
+        _wse_rc=0
+        "$SCRIPT_DIR/write-session-env.sh" "${session_env_args[@]}" || _wse_rc=$?
+        if [ "$_wse_rc" -ne 0 ]; then
+            emit_kv STEP_FAILED write-session-env
+            exit 2
+        fi
+        "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — preflight" || true
+        "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight" || true
+
+        LARCH_TOKEN_SESSION_ID=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+        LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+        LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+    fi
 
     if [ "$REPO_UNAVAILABLE" = "true" ]; then
         larch_err '**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**'
@@ -550,8 +588,8 @@ phase_plan_materialize() {
         snapshot_out="$IMPLEMENT_TMPDIR/untracked-baseline.z"
         "$SCRIPT_DIR/snapshot-untracked.sh" --output "$snapshot_out" --nul || true
 
-        "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — plan materialization" || true
-        "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — plan materialization" || true
+        "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization" || true
+        "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization" || true
 
         plan_src="$PREFLIGHT_TMPDIR_OPT/plan-from-issue.txt"
         if ! cp "$plan_src" "$PLAN_FILE" 2>"$IMPLEMENT_TMPDIR/copy-plan.stderr.log"; then
@@ -562,11 +600,13 @@ phase_plan_materialize() {
 
         gh_err="$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"
         if [ "$FORKED_TARGET" = "true" ]; then
-            if [ -n "$UPSTREAM_REPO_OPT" ]; then
-                gh issue view "$gh_issue_arg" --repo "$UPSTREAM_REPO_OPT" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
-            else
-                gh issue view "$gh_issue_arg" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
+            if [ -z "$UPSTREAM_REPO_OPT" ]; then
+                printf '%s\n' 'forked-target requires --upstream-repo for gh issue view' >"$gh_err"
+                emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+                emit_kv STEP_FAILED gh-issue-view
+                exit 2
             fi
+            gh issue view "$gh_issue_arg" --repo "$UPSTREAM_REPO_OPT" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
         else
             gh issue view "$gh_issue_arg" --json title,body --template "{{.title}}\n\n{{.body}}" >"$feature_file" 2>"$gh_err"
         fi
@@ -676,6 +716,8 @@ phase_plan_materialize() {
             --category Warnings \
             --output-file "$run_plan_err" \
             --redact || true
+    else
+        RUN_PLAN_LOGGED=true
     fi
 
     tally_body_raw="$IMPLEMENT_TMPDIR/plan-review-tally-body.raw.md"
@@ -714,7 +756,6 @@ phase_plan_materialize() {
     fi
 
     if [ "$FORKED_TARGET" != "true" ] && [ -n "${ISSUE_NUMBER_RESOLVED:-}" ]; then
-        PLAN_SUMMARY_POSTED=false
         summary_body_raw="$IMPLEMENT_TMPDIR/larch-plan-summary.raw.md"
         {
             printf "Plan materialized for run \`%s\`.\n" "${RUN_ID:-}"
@@ -724,7 +765,16 @@ phase_plan_materialize() {
         } >"$summary_body_raw"
         summary_body="$IMPLEMENT_TMPDIR/larch-plan-summary.md"
         if ! "$SCRIPT_DIR/redact-secrets.sh" <"$summary_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$summary_body" 2>/dev/null; then
-            cp "$summary_body_raw" "$summary_body" 2>/dev/null || true
+            "$SCRIPT_DIR/append-tool-failure.sh" \
+                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                --site "Step 0 plan materialization — larch:plan summary redaction" \
+                --tool "redact-secrets.sh | redact-tmpdir-paths.sh" \
+                --exit-code 1 \
+                --category Warnings \
+                --output-file "$summary_body_raw" \
+                --redact || true
+            emit_plan_materialize_breadcrumbs_if_enabled
+            return 0
         fi
         summary_err="$IMPLEMENT_TMPDIR/tracking-issue-summary.stderr.log"
         summary_args=(upsert-summary --issue "$ISSUE_NUMBER_RESOLVED" --marker "<!-- larch:plan v1 runid=$RUN_ID -->" --content-file "$summary_body")

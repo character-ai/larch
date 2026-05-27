@@ -378,7 +378,7 @@ if [ "$_ib_rc" -eq 2 ]; then
   fi
   if [ "$_ib_sf" = "gh-issue-view" ]; then
     if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ]; then
-      if ! "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"; then
+      if ! "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh"; then
         printf '%s\n' '**⚠ /implement Step 0 plan materialization: gh issue view failed and stderr could not be safely redacted.**'
       fi
     fi
@@ -681,7 +681,7 @@ The bootstrap call materializes `$IMPLEMENT_TMPDIR/plan.txt` from `$PREFLIGHT_TM
 
 ### Implementer waterfall
 
-Runs on every path that continues to Step 2 after the Step 0 dirty-tree recovery gate has cleared. Never enter this waterfall while `IMPLEMENT_BAIL_REASON=dirty-tree` or while `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` still records `RECOVERY_REQUIRED=true`.
+Runs on every path that continues to Step 2 after the Step 0 dirty-tree recovery gate has cleared. Never enter this waterfall while `IMPLEMENT_BAIL_REASON=dirty-tree`, while `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` still records `RECOVERY_REQUIRED=true`, when `REPO_UNAVAILABLE=true`, or when `PLAN_FILE` / `$IMPLEMENT_TMPDIR/plan.txt` / `$IMPLEMENT_TMPDIR/feature-description.txt` are missing after Step 0.
 
 When `coder_explicit=true`:
 
