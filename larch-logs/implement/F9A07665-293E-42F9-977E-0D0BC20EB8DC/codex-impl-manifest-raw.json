@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "README.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "docs/skills.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "scripts/test-design-structure.sh", "lines_added": 59, "lines_removed": 2},
+    {"path": "skills/design/SKILL.md", "lines_added": 22, "lines_removed": 7},
+    {"path": "skills/design/references/approval-gates.md", "lines_added": 9, "lines_removed": 17},
+    {"path": "skills/design/references/brainstorm.md", "lines_added": 5, "lines_removed": 5},
+    {"path": "skills/design/references/design-outline.md", "lines_added": 123, "lines_removed": 0},
+    {"path": "skills/design/references/discussion-rounds.md", "lines_added": 3, "lines_removed": 3},
+    {"path": "skills/design/references/flags.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "skills/design/scripts/render-final-summary.md", "lines_added": 4, "lines_removed": 2},
+    {"path": "skills/design/scripts/render-final-summary.sh", "lines_added": 15, "lines_removed": 2},
+    {"path": "skills/design/scripts/step-name-registry.tsv", "lines_added": 1, "lines_removed": 0},
+    {"path": "skills/design/scripts/test-render-final-summary.sh", "lines_added": 8, "lines_removed": 0}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-design-structure.sh",
+    "skills/design/scripts/test-render-final-summary.sh"
+  ],
+  "summary_bullets": [
+    "Added Step 1d.7 design-outline approval documentation and wiring for the /design skill",
+    "Retargeted first-time post-discussion flow from Gate A to the outline gate while preserving Gate A re-entry behavior",
+    "Extended final-summary handling and structural tests for cancelled-outline and the new outline step"
+  ],
+  "commit_message": "Add /design outline approval gate\n\nIntroduce Step 1d.7 as the first-time direction-setting gate after discussion and brainstorm, retarget Gate A to post-plan re-entry, and document outline consumption in sketch and plan drafting. Add structure and final-summary coverage for cancelled-outline.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {"questions": []}
+}
