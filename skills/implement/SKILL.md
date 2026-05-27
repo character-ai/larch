@@ -385,6 +385,12 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
 | `REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
 
+Dirty-tree recovery bootstrap fence:
+
+```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase coder --issue-number "$TARGET_ISSUE_NUMBER" --run-id "$RUN_ID" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --resume-plan-tail
+```
+
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit Cursor → Codex → Claude waterfall arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.
 
 The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash blocks that need ledgers must rehydrate `IMPLEMENT_TMPDIR`, `CLAUDE_PLUGIN_ROOT`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh`.

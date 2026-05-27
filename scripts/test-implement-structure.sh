@@ -424,6 +424,16 @@ grep -Fq -- '--resume-plan-tail' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document --resume-plan-tail"
 grep -Fq -- '--resume-plan-tail' "$SKILL_MD" \
   || fail "SKILL.md must retain dirty-tree resume-tail routing"
+grep -Fq '## Step 0 — Session Setup' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 0 Session Setup heading"
+grep -Fq "**⚠ Foreground required — do NOT set \`run_in_background: true\`.**" "$SKILL_MD" \
+  || fail "SKILL.md must retain the Step 0 foreground-required warning"
+grep -Fq 'Dirty-tree recovery bootstrap fence:' "$SKILL_MD" \
+  || fail "SKILL.md must retain the dirty-tree recovery bootstrap fence"
+grep -Fq 'Review/fix and other fixer lanes remain Codex-first' "$REPO_ROOT/SECURITY.md" \
+  || fail "SECURITY.md must document Codex-first fixer adjacency"
+grep -Fq "Operators who want Codex on \`/implement\` can pin it explicitly with \`--coder=codex\`." "$REPO_ROOT/SECURITY.md" \
+  || fail "SECURITY.md must document explicit --coder=codex pinning"
 read -r target_issue_line <<'EOF'
 _ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
 EOF
@@ -461,6 +471,7 @@ awk '
   END {
     if (bootstrap_calls != 1) exit 10
     if (coder_literal < 1) exit 12
+    if (resume_mentions != 1) exit 13
     if (banned != 0) exit 11
   }
 ' "$SKILL_MD" || step0_plan_structure_status=$?
@@ -468,6 +479,7 @@ case "$step0_plan_structure_status" in
   0) ;;
   10) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase coder call" ;;
   12) fail "Step 0 bash blocks must contain --up-to-phase coder literal" ;;
+  13) fail "Step 0 bash blocks must contain exactly one --resume-plan-tail mention" ;;
   11) fail "Step 0 bash blocks must not reintroduce absorbed plan-materialization helper calls" ;;
   *) fail "unexpected Step 0 structure check failure: $step0_plan_structure_status" ;;
 esac
