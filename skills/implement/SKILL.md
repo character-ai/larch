@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when implementing from a GitHub issue with a vetted in-body plan (run /design first). Materialize, implement, validate, review, version bump, PR, CI. See /research, /design, /im, /implement --merge."
-argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--run-id <ID>] <issue-N>"
+argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--run-id <ID>] [--emergency] <issue-N>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -292,7 +292,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 |------|------|
 | **0** | Normal completion of the scripted skill path. |
 | **2** | Flag mutual-exclusion, verbal/non-numeric argv tail, missing/malformed `larch:plan` when not bypassed by `--emergency`, empty raw issue body under `--emergency`, `gh` / `plan-block-read.sh` / admission hard failures, semantic stale notice posted at Preflight item 6, `persist-implement-run-flags` validation failures, and other operator-visible hard errors where this file specifies exit **2**. |
-| **3** | **Preflight audit refused** — `AUDIT=refuse` with operator-visible exit **3** in all refuse-shaped outcomes. **Sub-case A (clarify post path)**: `STATE` is neither `ambiguous` nor `awaiting-response` (typically `clean` or `response-pending`) — clarify request is posted and `needs-design-clarification` label add is attempted per the Preflight bullet list; operator must run `/design <N>` before retrying `/implement`. **Sub-case B (`STATE=ambiguous`)**: Preflight exits **3** **before** posting or labeling — the clarify comment graph must be repaired manually; exit **3** does **not** imply a new clarify thread was posted. **Sub-case C (`STATE=awaiting-response`)**: Preflight exits **3** **before** posting or labeling — an open clarify request already awaits `/design`; finish that thread first. |
+| **3** | **Preflight audit refused** — `AUDIT=refuse` with operator-visible exit **3** in all refuse-shaped outcomes that are **not** bypassed by `--emergency`. **Sub-case A (clarify post path)**: `STATE` is neither `ambiguous` nor `awaiting-response` (typically `clean` or `response-pending`) — clarify request is posted and `needs-design-clarification` label add is attempted per the Preflight bullet list; operator must run `/design <N>` before retrying `/implement`. **Sub-case B (`STATE=ambiguous`)**: Preflight exits **3** **before** posting or labeling — the clarify comment graph must be repaired manually; exit **3** does **not** imply a new clarify thread was posted. **Sub-case C (`STATE=awaiting-response`)**: Preflight exits **3** **before** posting or labeling — an open clarify request already awaits `/design`; finish that thread first. **Emergency carve-out**: with `--emergency`, `AUDIT=refuse` warns loudly, appends an emergency-bypass entry, skips clarify posting/labeling, and continues with semantic materiality instead of exiting **3**. |
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -399,11 +399,20 @@ _ib_kv_scan() {
       CODEX_PRESENT=*) CODEX_PRESENT=${_ib_tok#CODEX_PRESENT=} ;; CURSOR_PRESENT=*) CURSOR_PRESENT=${_ib_tok#CURSOR_PRESENT=} ;; CODEX_BINARY_FOUND=*) CODEX_BINARY_FOUND=${_ib_tok#CODEX_BINARY_FOUND=} ;; CURSOR_BINARY_FOUND=*) CURSOR_BINARY_FOUND=${_ib_tok#CURSOR_BINARY_FOUND=} ;;
       REPO=*) REPO=${_ib_tok#REPO=} ;; REPO_UNAVAILABLE=*) REPO_UNAVAILABLE=${_ib_tok#REPO_UNAVAILABLE=} ;; CLAUDE_SOURCE_OK=*) CLAUDE_SOURCE_OK=${_ib_tok#CLAUDE_SOURCE_OK=} ;; LARCH_TOKEN_SESSION_ID=*) LARCH_TOKEN_SESSION_ID=${_ib_tok#LARCH_TOKEN_SESSION_ID=} ;; LARCH_CLAUDE_SOURCE_FILE=*) LARCH_CLAUDE_SOURCE_FILE=${_ib_tok#LARCH_CLAUDE_SOURCE_FILE=} ;; LARCH_TIMING_LEDGER=*) LARCH_TIMING_LEDGER=${_ib_tok#LARCH_TIMING_LEDGER=} ;;
       ISSUE_NUMBER=*) ISSUE_NUMBER=${_ib_tok#ISSUE_NUMBER=} ;; RUN_ID=*) RUN_ID=${_ib_tok#RUN_ID=} ;; BRANCH_SELECTED=*) BRANCH_SELECTED=${_ib_tok#BRANCH_SELECTED=} ;; DEFERRED=*) DEFERRED=${_ib_tok#DEFERRED=} ;; STALL_TRACKING=*) STALL_TRACKING=${_ib_tok#STALL_TRACKING=} ;; BRANCH_NAME=*) BRANCH_NAME=${_ib_tok#BRANCH_NAME=} ;; BRANCH_ACTION=*) BRANCH_ACTION=${_ib_tok#BRANCH_ACTION=} ;; PLAN_FILE=*) PLAN_FILE=${_ib_tok#PLAN_FILE=} ;;
-      coder=*) coder=${_ib_tok#coder=} ;; coder_fallback=*) coder_fallback=${_ib_tok#coder_fallback=} ;; IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;; codex_available=*) codex_available=${_ib_tok#codex_available=} ;; cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
+      EMERGENCY_REQUESTED=*) EMERGENCY_REQUESTED=${_ib_tok#EMERGENCY_REQUESTED=} ;; coder=*) coder=${_ib_tok#coder=} ;; coder_fallback=*) coder_fallback=${_ib_tok#coder_fallback=} ;; IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;; codex_available=*) codex_available=${_ib_tok#codex_available=} ;; cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
     esac
   done
 }
-_ib_parse_bootstrap_out
+while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do
+  _ib_kv_scan "$_ib_line"
+done <<EOF
+$(printf '%s\n' "$_ib_out")
+EOF
+export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
+export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
+export CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE EMERGENCY_REQUESTED IMPLEMENT_BAIL_REASON
+export codex_available cursor_available
 ```
 
 Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-bootstrap.md` is the behavior contract; `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`) is the offline regression harness. Routing after parsing:
@@ -425,8 +434,47 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" _ib_run_bootstrap --resume-plan-tail
-_ib_parse_bootstrap_out
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+_ib_caller_env=()
+if [ -n "${CALLER_ENV_PATH:-}" ]; then
+  _ib_caller_env+=(--caller-env "$CALLER_ENV_PATH")
+elif [ -n "${SESSION_ENV_PATH:-}" ]; then
+  _ib_caller_env+=(--caller-env "$SESSION_ENV_PATH")
+fi
+_ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
+_ib_issue=()
+[ -n "$_ib_target_issue" ] && _ib_issue+=(--issue-number "$_ib_target_issue")
+_ib_fork=()
+if [ "${forked_target:-false}" = "true" ]; then
+  _ib_fork+=(--forked-target true)
+  [ -n "${UPSTREAM_REPO:-}" ] && _ib_fork+=(--upstream-repo "$UPSTREAM_REPO")
+fi
+_ib_run_id=()
+[ -n "${RUN_ID:-}" ] && _ib_run_id+=(--run-id "$RUN_ID")
+_ib_preflight=()
+[ -n "${PREFLIGHT_TMPDIR:-}" ] && _ib_preflight+=(--preflight-tmpdir "$PREFLIGHT_TMPDIR")
+_ib_emergency=()
+_ib_emergency+=(--emergency-requested "${emergency_requested:-false}")
+set +e
+_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase plan --resume-plan-tail "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_emergency[@]+"${_ib_emergency[@]}"}")
+_ib_rc=$?
+set -e
+if [ "$_ib_rc" -eq 2 ]; then
+  _ib_handle_bootstrap_exit2
+fi
+while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do
+  _ib_kv_scan "$_ib_line"
+done <<EOF
+$(printf '%s\n' "$_ib_out")
+EOF
+export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
+export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
+export CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE EMERGENCY_REQUESTED IMPLEMENT_BAIL_REASON
+export codex_available cursor_available
 ```
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit Cursor → Codex → Claude waterfall arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.

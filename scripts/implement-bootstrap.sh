@@ -185,6 +185,71 @@ emit_plan_materialize_breadcrumbs_if_enabled() {
     fi
 }
 
+persist_run_flags() {
+    local workflow_path=$1
+    local persist_rc
+
+    "$SCRIPT_DIR/persist-implement-run-flags.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+        --no-issues false \
+        --workflow-path "$workflow_path" \
+        --emergency-requested "$EMERGENCY_REQUESTED" \
+        >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
+        2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
+    persist_rc=$?
+    if [ "$persist_rc" -ne 0 ]; then
+        STALL_TRACKING=true
+        IMPLEMENT_BAIL_REASON=run-flags-persist-failed
+        return 1
+    fi
+    return 0
+}
+
+append_emergency_bypass_log_if_present() {
+    local bypass_log
+
+    bypass_log="$PREFLIGHT_TMPDIR_OPT/emergency-bypass.log"
+    if [ -s "$bypass_log" ]; then
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "implement-bootstrap emergency-bypass-log" \
+            --tool "/implement --emergency preflight" \
+            --exit-code 0 \
+            --category Warnings \
+            --output-file "$bypass_log" \
+            --status-label bypassed \
+            --redact || true
+    fi
+}
+
+post_tracking_metadata() {
+    local write_sentinel=$1
+    local post_out post_rc posted
+    local args
+
+    args=(
+        --implement-tmpdir "$IMPLEMENT_TMPDIR"
+        --run-id "$RUN_ID"
+        --adopted true
+        --emergency-requested "$EMERGENCY_REQUESTED"
+    )
+    if [ "$write_sentinel" = "true" ]; then
+        args+=(--issue-number "$ISSUE_NUMBER_RESOLVED")
+    fi
+
+    post_out=$("$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/post-tracking-issue.sh" \
+        "${args[@]}" \
+        2>"$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log")
+    post_rc=$?
+    posted=$(kv_value_from_block POSTED "$post_out")
+    if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
+        DEFERRED=true
+        [ "$write_sentinel" = "true" ] && rm -f "$IMPLEMENT_TMPDIR/parent-issue.md"
+        return 1
+    fi
+    return 0
+}
+
 should_run_post_tracking_phase() {
     # Post-tracking phases run on every non-bail / non-stall path. Specific
     # phase functions own narrower skips such as REPO_UNAVAILABLE or missing
@@ -616,8 +681,12 @@ phase_tracking() {
                 BRANCH_SELECTED=branch-1-resume
                 ISSUE_NUMBER_RESOLVED=$sentinel_issue
                 RUN_ID=$sentinel_run_id
-                rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
+                persist_run_flags HARD || return 0
+                if [ "$EMERGENCY_REQUESTED" = "true" ]; then
+                    post_tracking_metadata false || true
+                fi
+                rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 emit_tracking_breadcrumb_if_enabled
                 return 0
             fi
@@ -670,21 +739,8 @@ phase_tracking() {
     fi
 
     run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 2 adopt" || return 0
-
-    post_out=$("$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/post-tracking-issue.sh" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-        --issue-number "$ISSUE_NUMBER_RESOLVED" \
-        --run-id "$RUN_ID" \
-        --adopted true \
-        --emergency-requested "$EMERGENCY_REQUESTED" \
-        2>"$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log")
-    post_rc=$?
-    posted=$(kv_value_from_block POSTED "$post_out")
-    if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
-        DEFERRED=true
-        rm -f "$sentinel"
-        return 0
-    fi
+    persist_run_flags HARD || return 0
+    post_tracking_metadata true || return 0
 
     emit_tracking_breadcrumb_if_enabled
     return 0
@@ -692,14 +748,12 @@ phase_tracking() {
 
 phase_plan_materialize() {
     local plan_src gh_issue_arg feature_file gh_rc gh_err
-    local persist_rc
     local issue_title slug branch_name_derived create_out create_rc create_err
     local branch_out branch_rc branch_value
     local goal_text_raw goal_text run_plan_rc run_plan_err goal_redact_rc goal_redact_err
     local tally_body_raw tally_body tally_rc tally_err
     local summary_body_raw summary_body summary_rc summary_err
     local summary_args
-    local bypass_log
 
     gh_issue_arg=$ISSUE_NUMBER_RESOLVED
     [ "$FORKED_TARGET" = "true" ] && gh_issue_arg=$ISSUE_NUMBER_OPT
@@ -721,18 +775,7 @@ phase_plan_materialize() {
             emit_kv STEP_FAILED copy-plan
             exit 2
         fi
-        bypass_log="$PREFLIGHT_TMPDIR_OPT/emergency-bypass.log"
-        if [ -s "$bypass_log" ]; then
-            "$SCRIPT_DIR/append-tool-failure.sh" \
-                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-                --site "implement-bootstrap emergency-bypass-log" \
-                --tool "/implement --emergency preflight" \
-                --exit-code 0 \
-                --category Warnings \
-                --output-file "$bypass_log" \
-                --status-label bypassed \
-                --redact || true
-        fi
+        append_emergency_bypass_log_if_present
 
         gh_err="$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"
         if [ "$FORKED_TARGET" = "true" ]; then
@@ -755,19 +798,10 @@ phase_plan_materialize() {
 
         "$SCRIPT_DIR/timing-ledger.sh" workflow-path "HARD" || true
 
-        "$SCRIPT_DIR/persist-implement-run-flags.sh" \
-            --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-            --no-issues false \
-            --workflow-path HARD \
-            --emergency-requested "$EMERGENCY_REQUESTED" \
-            >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
-            2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
-        persist_rc=$?
-        if [ "$persist_rc" -ne 0 ]; then
-            STALL_TRACKING=true
-            IMPLEMENT_BAIL_REASON=run-flags-persist-failed
-            return 0
-        fi
+        persist_run_flags HARD || return 0
+    else
+        append_emergency_bypass_log_if_present
+        persist_run_flags HARD || return 0
     fi
     # Resume-tail idempotency: see implement-bootstrap.md § Resume-tail idempotency
     if ! run_dirty_tree_checkpoint; then
