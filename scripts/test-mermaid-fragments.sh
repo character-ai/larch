@@ -266,4 +266,25 @@ else
     fail "lint nested-fence fixture rc=$lint_rc output=$lint_out"
 fi
 
+repo_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+skip_dir="$repo_root/larch-logs/mermaid-explicit-skip-test-$$"
+mkdir -p "$skip_dir"
+trap 'rm -rf "$tmpdir" "$skip_dir"' EXIT
+cat > "$skip_dir/invalid.md" <<'EOF'
+```mermaid
+flowchart TD
+  A[bad|example]
+```
+EOF
+set +e
+(
+    cd "$repo_root" || exit 1
+    "$LINT" "larch-logs/mermaid-explicit-skip-test-$$/invalid.md"
+) >"$tmpdir/explicit-skip.out" 2>"$tmpdir/explicit-skip.err"
+skip_rc=$?
+set -e
+[ "$skip_rc" -eq 0 ] || fail "lint explicit larch-logs skip rc=$skip_rc stdout=$(cat "$tmpdir/explicit-skip.out") stderr=$(cat "$tmpdir/explicit-skip.err")"
+grep -qF "INFO: no Markdown files to lint" "$tmpdir/explicit-skip.out" || fail "lint explicit larch-logs skip did not report no Markdown files"
+ok "lint explicit larch-logs skip"
+
 echo "Results: $pass passed"

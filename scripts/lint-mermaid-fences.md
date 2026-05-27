@@ -18,6 +18,8 @@ lint-mermaid-fences.sh --changed-only
 - local or workflow dispatch: `origin/main...HEAD`, or a no-op if `origin/main` is unavailable.
 
 Pre-commit passes filenames directly and does not use `--changed-only`.
+`larch-logs/` paths are excluded in both modes because they are runtime
+artifact archives, not authoring-quality docs.
 
 ## Mermaid CLI Resolution
 

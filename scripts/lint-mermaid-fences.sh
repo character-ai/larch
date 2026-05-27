@@ -114,16 +114,18 @@ if [ "$changed_only" = true ]; then
     done <<<"$cf_out"
 fi
 
-filtered_files=()
-if [ "${#files[@]}" -gt 0 ]; then
-    for f in "${files[@]}"; do
-        case "$f" in
-            larch-logs/*) ;;
-            *) filtered_files+=("$f") ;;
-        esac
-    done
+lint_files=()
+for f in "${files[@]}"; do
+    case "$f" in
+        larch-logs/*|"") ;;  # runtime artifact files are not authoring-quality docs
+        *) lint_files+=("$f") ;;
+    esac
+done
+if [ "${#lint_files[@]}" -gt 0 ]; then
+    files=("${lint_files[@]}")
+else
+    files=()
 fi
-files=("${filtered_files[@]+"${filtered_files[@]}"}")
 
 [ "${#files[@]}" -gt 0 ] || {
     emit "INFO: no Markdown files to lint"
