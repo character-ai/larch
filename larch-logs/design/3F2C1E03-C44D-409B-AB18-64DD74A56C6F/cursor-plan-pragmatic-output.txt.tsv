@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:982	Fourth design emit site omitted from plan	Step 5c happy path keeps cost-line-only instruction while cancellation fence uses full-block contract	Add Step 5c item 10 to the design edit list; mirror the full-body verbatim emit + non-empty gate used at line 288
