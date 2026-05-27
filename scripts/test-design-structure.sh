@@ -753,6 +753,12 @@ grep -Fq 'manual_gate_b=false' "$APPROVAL_MD" \
   || fail "(2930) approval-gates.md missing auto-apply mode branch"
 grep -Fq 'manual_gate_b=true' "$APPROVAL_MD" \
   || fail "(2930) approval-gates.md missing manual mode branch"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'let `manual_requested=true` force `manual_gate_b=true`' "$APPROVAL_MD" \
+  || fail "(FINDING_13) approval-gates.md missing defensive in-memory manual_requested pin"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'use `manual_gate_b=true` when `manual_requested=true`; otherwise use `manual_gate_b=false`' "$APPROVAL_MD" \
+  || fail "(FINDING_13) approval-gates.md missing fail-closed manual Gate B fallback pin"
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned across 4 prose locations.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

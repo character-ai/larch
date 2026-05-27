@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 1e (Gate A — discussion-mode loop), Step 3.5 (Gate B — post-review chooser), and Step 4b (Gate C — final-approval loop).
 
-**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A (scope discussion) and Gate C (final approval) always prompt the user. Gate B's behavior depends on `manual_gate_b` (set via `--manual` / `-m`): when `true`, the existing 3-option `AskUserQuestion` fires; when `false` (default), Gate B auto-applies every accepted in-scope finding after printing a compact findings list and an auto-apply breadcrumb. Each gate uses `AskUserQuestion` and may loop back to an earlier gate; reviewers always see the latest plan with all user-approved (or auto-applied) prior feedback applied.
+**Contract**: owns the three user-facing approval gates that bracket the design review pipeline. Gate A (scope discussion) and Gate C (final approval) always prompt the user. Gate B's behavior depends on `manual_gate_b` (set via `--manual` / `-m`): when `true`, the existing 3-option `AskUserQuestion` fires; when `false` (default), Gate B auto-applies every accepted in-scope finding after printing a compact findings list and an auto-apply breadcrumb. Gate A and Gate C always use `AskUserQuestion`; Gate B uses `AskUserQuestion` only in manual mode and may otherwise auto-apply. Reviewers always see the latest plan with all user-approved or auto-applied prior feedback applied.
 
 **When to load**: before executing Step 1e, Step 3.5, or Step 4b.
 
@@ -75,15 +75,15 @@ When the concern text is ambiguous, prefer the lower bucket and surface the ambi
 
 ### Presentation
 
-Print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
+When Gate B is in manual mode, print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
 
-**Always show the findings table**. In manual mode the user reviews what they are approving via the subsequent `AskUserQuestion`; in default auto-apply mode the same table doubles as the apply-visibility list (no prompt fires).
+In default auto-apply mode, do **not** print the full review table above. The compact findings list in the auto-apply path below is the visibility surface for accepted findings on that branch; print rejected/OOS sections there once.
 
 ### Prompt
 
 #### Gate B mode (auto-apply vs manual)
 
-Read `manual_gate_b` from `$DESIGN_TMPDIR/run-params.json` using `jq -r '.manual_gate_b // false'` so missing/null coerces to `false`. If `run-params.json` cannot be read, or `jq` is unavailable, print `**⚠ 3.5: Gate B — could not read manual_gate_b from run-params.json (<reason>); defaulting to auto-apply.**`, append that warning under `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `append-tool-failure.sh` when possible, and use `manual_gate_b=false`.
+Determine Gate B mode defensively. If the in-memory boolean `manual_requested` from Step 0b is still bound, let `manual_requested=true` force `manual_gate_b=true` without consulting `run-params.json`; otherwise read `manual_gate_b` from `$DESIGN_TMPDIR/run-params.json` using `jq -r '.manual_gate_b // false'` so missing/null coerces to `false`. If `run-params.json` cannot be read, or `jq` is unavailable, print `**⚠ 3.5: Gate B — could not read manual_gate_b from run-params.json (<reason>).**`, append that warning under `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `append-tool-failure.sh` when possible, and use `manual_gate_b=true` when `manual_requested=true`; otherwise use `manual_gate_b=false`.
 
 When `manual_gate_b=false`, execute the auto-apply path:
 
@@ -128,7 +128,7 @@ Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partiti
 
 ## Gate C — Final-Approval Loop (Step 4b)
 
-**When**: after Step 4 (rejected-findings report) completes. Step 4 is reached on every Gate B settled path: Apply all → Step 3b → Step 4 → Step 4b; Go through each (without abort) → Step 3b → Step 4 → Step 4b; zero-findings short-circuit → Step 3b → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" exits to Gate A and never reaches Gate C until the user later picks "Ready for review" + the new review completes its own Gate B settled path. Gate C is also re-entered from Gate C(b) "discuss further" → Gate A loop → eventual re-review → Step 4 → Step 4b.
+**When**: after Step 4 (rejected-findings report) completes. Step 4 is reached on every Gate B settled path: auto-apply → Step 3b → Step 4 → Step 4b; Apply all → Step 3b → Step 4 → Step 4b; Go through each (without abort) → Step 3b → Step 4 → Step 4b; zero-findings short-circuit → Step 3b → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" exits to Gate A and never reaches Gate C until the user later picks "Ready for review" + the new review completes its own Gate B settled path. Gate C is also re-entered from Gate C(b) "discuss further" → Gate A loop → eventual re-review → Step 4 → Step 4b.
 
 ### Presentation
 
@@ -142,7 +142,7 @@ Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partiti
 
 - **Approve final design** — exit Gate C; proceed to Step 5b publish (compose `composed-plan.md`, write `larch:plan` block to issue, run `design-log-publish.sh`, rename tracking issue).
 - **Discuss further** — re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`.
-- **Re-run review panel** — re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
+- **Re-run review panel** — re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
 
 Question text: `"Final design plan is ready. Approve, discuss further, or re-run the review panel against this plan?"` Header: `"Final design"`.
 

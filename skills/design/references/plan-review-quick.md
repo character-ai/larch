@@ -28,7 +28,7 @@ Print accepted findings under `## Plan Review Findings (Voted In)` and the tally
 
 ## Output files (required — same artifact set as normal mode)
 
-Write to `$DESIGN_TMPDIR/` after completing the review and plan revision:
+Write to `$DESIGN_TMPDIR/` after completing the review. Gate B (Step 3.5) owns any later plan revision:
 
 - **`voting-tally.md`**: `Quick mode — Claude-only plan review.` + one sentence per finding (or `No findings.`).
 - **`accepted-plan-findings.md`**: one `FINDING_N` block per accepted finding. Empty if none.
