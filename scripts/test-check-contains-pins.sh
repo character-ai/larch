@@ -161,6 +161,31 @@ run_checker "$dir" --changed-files "$dir/changed.txt"
 assert_exit_eq "changed-files skips untouched target" "$RUN_EXIT" 0
 assert_not_contains "changed-files skip has no defect" "DEFECT:" "$RUN_OUT"
 
+dir="$(new_fixture changed-script-scope)"
+printf '%s\n' "target A current text" > "$dir/docs/target-A.md"
+cat > "$dir/scripts/test-scope.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET_A="$REPO_ROOT/docs/target-A.md"
+EOF
+printf "%s \"\$%s\" '%s' '%s'\n" "contains" "TARGET_A" "target A stale text" "target A pin" >> "$dir/scripts/test-scope.sh"
+printf '%s\n' "scripts/test-scope.sh" > "$dir/changed.txt"
+run_checker "$dir" --changed-files "$dir/changed.txt"
+assert_exit_eq "changed-files checks changed test script pins" "$RUN_EXIT" 1
+assert_contains "changed test script reports defect" "DEFECT: scripts/test-scope.sh:5: literal 'target A stale text' not found in docs/target-A.md" "$RUN_OUT"
+
+dir="$(new_fixture changed-script-unresolved)"
+cat > "$dir/scripts/test-unresolved.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+EOF
+printf "%s \"\$%s\" '%s' '%s'\n" "contains" "MISSING_MD" "literal" "target pin" >> "$dir/scripts/test-unresolved.sh"
+printf '%s\n' "scripts/test-unresolved.sh" > "$dir/changed.txt"
+run_checker "$dir" --changed-files "$dir/changed.txt"
+assert_exit_eq "changed-files unresolved var exits 0" "$RUN_EXIT" 0
+assert_contains "changed-files unresolved var warns" "UNRESOLVED_VAR: scripts/test-unresolved.sh:3: could not resolve \$MISSING_MD" "$RUN_ERR"
+
 dir="$(new_fixture multi-defect)"
 printf '%s\n' "first target" > "$dir/docs/a.md"
 printf '%s\n' "second target" > "$dir/docs/b.md"

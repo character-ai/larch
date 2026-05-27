@@ -111,6 +111,26 @@ target_is_in_scope() {
     return 1
 }
 
+assertion_is_in_scope() {
+    local script="$1" var="${2:-}" target_rel
+
+    if [ -z "$CHANGED_FILES" ]; then
+        return 0
+    fi
+
+    if target_is_in_scope "$script"; then
+        return 0
+    fi
+
+    if [ -n "$var" ] && target_rel="$(get_var_rel "$var" 2>/dev/null)"; then
+        if target_is_in_scope "$target_rel"; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 set_var_rel() {
     local name="$1" rel="$2" i
     for i in "${!VAR_NAMES[@]}"; do
@@ -149,13 +169,13 @@ check_literal() {
     local target_rel target_path
 
     if ! target_rel="$(get_var_rel "$var")"; then
-        if [ -z "$CHANGED_FILES" ]; then
+        if assertion_is_in_scope "$script" "$var"; then
             warn_unresolved "$script" "$line_no" "$var"
         fi
         return 0
     fi
 
-    if ! target_is_in_scope "$target_rel"; then
+    if ! assertion_is_in_scope "$script" "$var"; then
         return 0
     fi
 
@@ -172,14 +192,8 @@ check_literal() {
 }
 
 var_is_in_scope() {
-    local var="$1" target_rel
-    if [ -z "$CHANGED_FILES" ]; then
-        return 0
-    fi
-    if ! target_rel="$(get_var_rel "$var")"; then
-        return 1
-    fi
-    target_is_in_scope "$target_rel"
+    local script="$1" var="$2"
+    assertion_is_in_scope "$script" "$var"
 }
 
 scan_test_script() {
@@ -234,7 +248,7 @@ scan_test_script() {
             literal="${BASH_REMATCH[2]}"
             case "$literal" in
                 *'$'*|*'`'*)
-                    if var_is_in_scope "$var"; then
+                    if var_is_in_scope "$script" "$var"; then
                         warn_skipped "$script" "$line_no"
                     fi
                     ;;
@@ -247,7 +261,7 @@ scan_test_script() {
 
         if [[ "$line" =~ $contains_prefix_re ]]; then
             var="${BASH_REMATCH[1]}"
-            if var_is_in_scope "$var"; then
+            if var_is_in_scope "$script" "$var"; then
                 warn_skipped "$script" "$line_no"
             fi
         fi

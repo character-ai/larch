@@ -6,7 +6,7 @@ Primary callers: `scripts/relevant-checks.sh` invokes this script after changed-
 
 Canonical v1 grammar: a single-line assertion whose first argument is a double-quoted shell variable and whose second argument is either a single-quoted literal or a static double-quoted literal. Static double-quoted literals containing `$` or backticks are skipped because shell expansion would make the verbatim target ambiguous.
 
-Variable resolution: the scanner walks each `scripts/test-*.sh` and `skills/*/scripts/test-*.sh` file in order, recording prior assignments shaped as `VAR="$REPO_ROOT/<relative-path>"` or `VAR="$SCRIPT_DIR/../<relative-path>"`. Assertions whose variables cannot be resolved, or whose targets are absent, produce `UNRESOLVED_VAR` warnings without failing the run.
+Variable resolution: the scanner walks each `scripts/test-*.sh` and `skills/*/scripts/test-*.sh` file in order, recording prior assignments shaped as `VAR="$REPO_ROOT/<relative-path>"` or `VAR="$SCRIPT_DIR/../<relative-path>"`. Assertions whose variables cannot be resolved, or whose targets are absent, produce `UNRESOLVED_VAR` warnings without failing the run. In `--changed-files` mode, an assertion is in scope when either the referenced target file changed or the test script containing the assertion changed.
 
 Exit codes: 0 means no defects, including the no-applicable-assertions case; 1 means at least one canonical literal was not found in its resolved target; 2 means argv or input-file error. Defects print as `DEFECT: <test-script>:<lineno>: literal '<literal>' not found in <target>`. Non-canonical assertion shapes print `SKIPPED_NON_CANONICAL` warnings and do not fail the run.
 
