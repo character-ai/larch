@@ -206,10 +206,48 @@ persist_run_flags() {
 }
 
 append_emergency_bypass_log_if_present() {
-    local bypass_log
+    local bypass_log append_rc fallback_entry fallback_content kind issue
+
+    [ "${EMERGENCY_REQUESTED:-false}" = "true" ] || return 0
 
     bypass_log="$PREFLIGHT_TMPDIR_OPT/emergency-bypass.log"
-    if [ -s "$bypass_log" ]; then
+    [ -s "$bypass_log" ] || return 0
+
+    local bypass_log_valid=true
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        [ -n "$_line" ] || continue
+        case "$_line" in
+            BYPASS\ kind=*\ issue=*)
+                kind=${_line#BYPASS kind=}
+                kind=${kind%% issue=*}
+                issue=${_line##* issue=}
+                case "$kind" in
+                    ""|*[!a-z0-9-]*) bypass_log_valid=false; break ;;
+                esac
+                case "$issue" in
+                    ""|*[!0-9]*) bypass_log_valid=false; break ;;
+                esac
+                ;;
+            *)
+                bypass_log_valid=false
+                break
+                ;;
+        esac
+    done <"$bypass_log"
+    if [ "$bypass_log_valid" != "true" ]; then
+        fallback_content="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass.XXXXXX")" || return 1
+        {
+            printf '%s\n' 'Invalid emergency bypass log format. Expected one line per bypass:'
+            printf '%s\n\n' 'BYPASS kind=<lowercase-token> issue=<number>'
+            cat "$bypass_log"
+        } >"$fallback_content"
+        bypass_log=$fallback_content
+        append_rc=99
+    else
+        append_rc=0
+    fi
+
+    if [ "$append_rc" -eq 0 ]; then
         "$SCRIPT_DIR/append-tool-failure.sh" \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --site "implement-bootstrap emergency-bypass-log" \
@@ -218,8 +256,33 @@ append_emergency_bypass_log_if_present() {
             --category Warnings \
             --output-file "$bypass_log" \
             --status-label bypassed \
-            --redact || true
+            --redact
+        append_rc=$?
     fi
+
+    if [ "$append_rc" -ne 0 ]; then
+        fallback_entry="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-entry.XXXXXX")" || return 1
+        {
+            if [ "$append_rc" -eq 99 ]; then
+                printf '%s\n' '- **Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight invalid-format (exit 99)**:'
+            else
+                printf '%s\n' '- **Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight bypassed (fallback append; helper failed)**:'
+            fi
+            printf '  ```\n'
+            cat "$bypass_log"
+            if [ -s "$bypass_log" ] && [ "$(tail -c 1 "$bypass_log" | wc -c | tr -d ' ')" != "0" ]; then
+                printf '\n'
+            fi
+            printf '  ```\n'
+        } >"$fallback_entry"
+        "$SCRIPT_DIR/append-execution-issue.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --category Warnings \
+            --entry-file "$fallback_entry"
+        rm -f "$fallback_entry"
+    fi
+
+    rm -f "${fallback_content:-}"
 }
 
 post_tracking_metadata() {
@@ -683,9 +746,7 @@ phase_tracking() {
                 RUN_ID=$sentinel_run_id
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 persist_run_flags HARD || return 0
-                if [ "$EMERGENCY_REQUESTED" = "true" ]; then
-                    post_tracking_metadata false || true
-                fi
+                post_tracking_metadata false || true
                 rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 emit_tracking_breadcrumb_if_enabled
                 return 0
@@ -775,7 +836,11 @@ phase_plan_materialize() {
             emit_kv STEP_FAILED copy-plan
             exit 2
         fi
-        append_emergency_bypass_log_if_present
+        if ! append_emergency_bypass_log_if_present; then
+            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+            emit_kv STEP_FAILED emergency-bypass-log
+            exit 2
+        fi
 
         gh_err="$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log"
         if [ "$FORKED_TARGET" = "true" ]; then
@@ -800,7 +865,11 @@ phase_plan_materialize() {
 
         persist_run_flags HARD || return 0
     else
-        append_emergency_bypass_log_if_present
+        if ! append_emergency_bypass_log_if_present; then
+            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+            emit_kv STEP_FAILED emergency-bypass-log
+            exit 2
+        fi
         persist_run_flags HARD || return 0
     fi
     # Resume-tail idempotency: see implement-bootstrap.md § Resume-tail idempotency

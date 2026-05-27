@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-render-run-summary-callsites.sh — write-final-report passes per-bucket flags (DE-2622).
+# test-render-run-summary-callsites.sh — write-final-report pins render-run-summary argv.
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
@@ -13,6 +13,8 @@ test "$c" -ge 1 || fail "expected render-run-summary.sh invocations in write-fin
 b=$(grep -cF -- '--claude-input-tokens' "$f") || b=0
 cu=$(grep -cF -- '--cost-unavailable' "$f") || cu=0
 test "$((b + cu))" -ge "$c" || fail "each render-run-summary invocation should pass --claude-input-tokens or --cost-unavailable (blocks=$c flags=$((b + cu)))"
+e=$(grep -cF -- '--emergency-requested' "$f") || e=0
+test "$e" -ge "$c" || fail "each write-final-report render-run-summary invocation should pass --emergency-requested (blocks=$c flags=$e)"
 pass 'write-final-report render-run-summary per-bucket wiring'
 
 g="$REPO/skills/design/scripts/render-final-summary.sh"

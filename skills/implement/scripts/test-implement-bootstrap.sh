@@ -100,10 +100,11 @@ build_sandbox() {
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-larch-cache-touch.sh" "$SANDBOX/scripts/"
+    cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
     cp "$REPO_ROOT/scripts/write-session-env.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$SANDBOX/scripts/"
-    chmod +x "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/scripts/write-session-env.sh" "$SANDBOX/scripts/read-session-env-key.sh"
+    chmod +x "$SANDBOX/scripts/implement-bootstrap.sh" "$SANDBOX/scripts/write-session-env.sh" "$SANDBOX/scripts/read-session-env-key.sh" "$SANDBOX/scripts/append-execution-issue.sh"
 
     cat >"$SANDBOX/bin/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -174,6 +175,10 @@ STUB
 
     cat >"$SANDBOX/scripts/append-tool-failure.sh" <<'STUB'
 #!/usr/bin/env bash
+if [ "${SANDBOX_APPEND_TOOL_FAILURE_EXIT:-0}" -ne 0 ]; then
+  printf 'append-tool-failure failure\n' >&2
+  exit "$SANDBOX_APPEND_TOOL_FAILURE_EXIT"
+fi
 log=""
 site=""
 output_file=""
@@ -608,6 +613,7 @@ assert_contains "DEFERRED=false" "$out" "GP2 not deferred"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_occurrences 'token-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP2 bootstrap token mark once"
 assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP2 bootstrap timing mark once"
+assert_contains "post-tracking-issue --emergency-requested false" "$invoke" "GP2 metadata refresh clears emergency"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP2-emergency sentinel resume refreshes metadata ---
@@ -1031,6 +1037,8 @@ assert_contains "BYPASS kind=missing-plan issue=123" "$issues" "B5-plan-emergenc
 assert_contains "EMERGENCY_REQUESTED=true" "$(cat "$SANDBOX_TMP/run-flags.sh")" "B5-plan-emergency run flags"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B5-plan-emergency-invalid-format ---
+
 
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCursor --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-implicit-cursor exit 0"
@@ -1361,6 +1369,28 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
+printf 'unexpected bypass text\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyInvalid --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency-invalid-format exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "invalid-format" "$issues" "B5-plan-emergency-invalid-format status"
+assert_contains "BYPASS kind=<lowercase-token> issue=<number>" "$issues" "B5-plan-emergency-invalid-format grammar"
+assert_contains "unexpected bypass text" "$issues" "B5-plan-emergency-invalid-format captured content"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-emergency-append-fallback ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(SANDBOX_APPEND_TOOL_FAILURE_EXIT=17 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyFallback --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency-append-fallback exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "fallback append; helper failed" "$issues" "B5-plan-emergency-append-fallback fallback marker"
+assert_contains "BYPASS kind=missing-plan issue=123" "$issues" "B5-plan-emergency-append-fallback preserved content"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCoderMissingPlan --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-skip-missing-plan setup plan exit 0"
 rm -f "$SANDBOX_TMP/plan.txt"
@@ -1534,6 +1564,52 @@ if [ ! -e "$SANDBOX_TMP_RESUME/plan.txt" ] && [ ! -e "$SANDBOX_TMP_RESUME/featur
 else
     FAIL=$((FAIL + 1))
     echo "FAIL: B7-plan-dirty-tree resume tail should not write artifacts to fresh tmpdir"
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B7-plan-dirty-tree stale emergency log not replayed on non-emergency resume ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergencyFalse --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree stale-emergency first pass exit 0"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergencyFalse --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree stale-emergency resume exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$issues" | grep -cF 'BYPASS kind=missing-plan issue=123' || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-plan-dirty-tree stale-emergency resume does not replay bypass log"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-plan-dirty-tree stale-emergency resume does not replay bypass log"
+    printf '%s\n' "$issues" | sed 's/^/    /'
 fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 

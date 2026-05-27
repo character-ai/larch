@@ -12,7 +12,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--skip-cursor-probe` | no | flag | Forwarded to `session-setup.sh` / `check-reviewers.sh` (skip Cursor runtime probe). |
 | `--issue-number` | no | numeric string | Target issue for tracking adoption. Empty means no fresh Branch 2 adoption. |
 | `--forked-target` | no | `true` \| `false` | Default `false`. When `true`, tracking adoption is skipped and upstream context is fetched best-effort. |
-| `--emergency-requested` | no | `true` \| `false` | Default `false`. Forwarded to run-flag persistence and metadata summaries; also controls whether a Preflight `emergency-bypass.log` is surfaced as a warning. |
+| `--emergency-requested` | no | `true` \| `false` | Default `false`. Forwarded to run-flag persistence and metadata summaries; also controls whether a Preflight `emergency-bypass.log` is surfaced as a warning for the current run. |
 | `--upstream-repo` | no | `OWNER/REPO` | Required by callers in fork mode when upstream issue context should be fetched. Validated as one owner/repo slash with GitHub-safe characters. |
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
 | `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. On availability mismatch emits the explicit-coder warning, sets `STALL_TRACKING=true`, and `IMPLEMENT_BAIL_REASON=coder-unavailable`. When omitted, `phase_coder_select` runs the Cursor → Codex → Claude waterfall. |
@@ -26,7 +26,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 - On `--resume-plan-tail`, the caller must preserve `IMPLEMENT_TMPDIR` and the existing `$IMPLEMENT_TMPDIR/session-env.sh`; the bootstrap reuses that session tmpdir instead of allocating a new plan-materialization workspace.
 - No direct reads of `$IMPLEMENT_TMPDIR/session-env.sh` before `session-setup.sh` succeeds (empty tmpdir guard).
 
-`phase_plan_materialize` reads `$PREFLIGHT_TMPDIR/plan-from-issue.txt` and writes conventional `$IMPLEMENT_TMPDIR/plan.txt` / `feature-description.txt` artifacts. When `$PREFLIGHT_TMPDIR/emergency-bypass.log` exists and is non-empty, it appends that file to `$IMPLEMENT_TMPDIR/execution-issues.md` as a `Warnings` entry with site `implement-bootstrap emergency-bypass-log`.
+`phase_plan_materialize` reads `$PREFLIGHT_TMPDIR/plan-from-issue.txt` and writes conventional `$IMPLEMENT_TMPDIR/plan.txt` / `feature-description.txt` artifacts. When `$PREFLIGHT_TMPDIR/emergency-bypass.log` exists, is non-empty, and `--emergency-requested true` is in effect, it appends that file to `$IMPLEMENT_TMPDIR/execution-issues.md` as a `Warnings` entry with site `implement-bootstrap emergency-bypass-log`. Each bypass line must match `BYPASS kind=<lowercase-token> issue=<number>`; invalid logs fail closed with `STEP_FAILED=emergency-bypass-log`.
 
 ## Outputs
 
