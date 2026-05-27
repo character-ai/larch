@@ -1378,6 +1378,24 @@ assert_contains "BYPASS kind=<lowercase-token> issue=<number>" "$issues" "B5-pla
 assert_contains "unexpected bypass text" "$issues" "B5-plan-emergency-invalid-format captured content"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B5-plan-emergency-invalid-format-redacts-secrets ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+printf 'unexpected bypass text password=secret123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+cat >"$SANDBOX/scripts/redact-secrets.sh" <<'STUB'
+#!/usr/bin/env bash
+sed 's/secret123/<REDACTED>/g'
+STUB
+chmod +x "$SANDBOX/scripts/redact-secrets.sh"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyInvalidRedact --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency-invalid-format-redacts-secrets exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "<REDACTED>" "$issues" "B5-plan-emergency-invalid-format-redacts-secrets redacted content"
+assert_not_contains "secret123" "$issues" "B5-plan-emergency-invalid-format-redacts-secrets raw secret omitted"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B5-plan-emergency-append-fallback ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -1723,12 +1741,12 @@ assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-plan-dirty-tree em
 out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergency --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B7-plan-dirty-tree emergency resume exit 0"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
-if [ "$(printf '%s\n' "$issues" | grep -cF 'BYPASS kind=missing-plan issue=123' || true)" -eq 2 ]; then
+if [ "$(printf '%s\n' "$issues" | grep -cF 'BYPASS kind=missing-plan issue=123' || true)" -eq 1 ]; then
     PASS=$((PASS + 1))
-    echo "PASS: B7-plan-dirty-tree emergency resume replays bypass log"
+    echo "PASS: B7-plan-dirty-tree emergency resume does not replay bypass log"
 else
     FAIL=$((FAIL + 1))
-    echo "FAIL: B7-plan-dirty-tree emergency resume replays bypass log"
+    echo "FAIL: B7-plan-dirty-tree emergency resume does not replay bypass log"
     printf '%s\n' "$issues" | sed 's/^/    /'
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
@@ -1740,6 +1758,46 @@ else
     echo "FAIL: B7-plan-dirty-tree emergency resume reruns persist"
     printf '%s\n' "$invoke" | sed 's/^/    /'
 fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B7-plan-dirty-tree resume infers emergency from run-flags ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergencyResume --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree inferred-emergency first pass exit 0"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-number 123 --run-id runDirtyEmergencyResume --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-plan-dirty-tree inferred-emergency resume exit 0"
+assert_contains "EMERGENCY_REQUESTED=true" "$out" "B7-plan-dirty-tree inferred-emergency resume stdout KV"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" "$invoke" "B7-plan-dirty-tree inferred-emergency resume persists true"
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
 # --- B7-plan-dirty-tree resume tail re-bails when still dirty ---
@@ -2219,6 +2277,18 @@ rc=$?
 set -e
 assert_rc "$rc" 2 "B-invalid-run-id-arg exit 2"
 assert_contains "--run-id must match ^[A-Za-z0-9._-]+$" "$out" "B-invalid-run-id-arg usage"
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- B-invalid-emergency-requested-arg ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+set +e
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --emergency-requested maybe 2>&1)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B-invalid-emergency-requested-arg exit 2"
+assert_contains "--emergency-requested must be true or false" "$out" "B-invalid-emergency-requested-arg usage"
 rm -rf "$SANDBOX_TMP" "$SANDBOX"
 
 # --- B-invalid-upstream-repo-arg ---

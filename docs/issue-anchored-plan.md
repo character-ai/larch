@@ -199,6 +199,10 @@ clarify-state pending/refuse path from hard stops to loud warnings with an
 execution-issues audit trail. It does not bypass admission failures or the
 semantic materiality stale-plan notice.
 
+Canonical emergency bypass-log tokens for `/implement` are `missing-plan`,
+`malformed-plan`, and `audit-refuse`, each written as
+`BYPASS kind=<token> issue=<number>`.
+
 ## `NEXT_ID` and clarify posting
 
 `/implement` Preflight refuse reads `clarify-state.sh` stdout for `STATE=` and

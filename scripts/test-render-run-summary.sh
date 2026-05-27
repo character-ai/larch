@@ -111,6 +111,7 @@ grep -Fq "Claude \$0.80" "$TMP_DEF" || fail 'all-defaulted Claude slot'
 grep -Fq "Codex \$2.00" "$TMP_DEF" || fail 'all-defaulted Codex slot'
 grep -Fq "Cursor \$1.50" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
 if grep -Fq '**Tokens**:' "$TMP_DEF"; then fail 'legacy Tokens bullet must not appear'; fi
+if grep -Fq 'Emergency: true' "$TMP_DEF"; then fail 'omitted emergency state must not render emergency line'; fi
 pass 'all-defaulted cost semantics (shipped blended defaults)'
 
 # Explicit Claude rate only; zero-token lanes show $0.00 (defaults still apply for rates).
@@ -152,6 +153,7 @@ LARCH_CLAUDE_RATE_PER_M=2 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER
 grep -Fq "TOTAL ~\$2.00" "$TMP_PART" || fail 'Claude-only priced total'
 grep -Fq "Codex \$0.00" "$TMP_PART" || fail 'zero-token codex slot'
 grep -Fq "Cursor \$0.00" "$TMP_PART" || fail 'zero-token cursor slot'
+if grep -Fq 'Emergency: true' "$TMP_PART"; then fail 'explicit non-emergency case must not render emergency line'; fi
 pass "priced Claude + zero-token lanes at \$0.00"
 
 # stderr envelope pins (quiet diagnostics; not mixed into markdown file).

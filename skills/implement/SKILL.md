@@ -198,7 +198,7 @@ and exit **2** (orchestrator stop — do not start Preflight or Step 0).
 
 Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclusion checks have passed. Uses a shell `mktemp -d` preflight tmpdir (not `$IMPLEMENT_TMPDIR`, which does not exist until Step 0). Keep `PLAN_TMP="$PREFLIGHT_TMPDIR/plan-from-issue.txt"` through Step 0 plan materialization. When `forked_target=true`, `UPSTREAM_REPO` MUST already be set from the Protocol `implement-fork-env.sh` bootstrap — append `--repo "$UPSTREAM_REPO"` to every `gh issue view` in this section, to `implement-admission.sh`, and to every `plan-block-read.sh` / `clarify-*.sh` invocation below.
 
-**Emergency mode (`--emergency`)**: when `emergency_requested=true`, Preflight may downgrade exactly three gates from hard refusal to warn-and-proceed: missing/malformed issue-body `larch:plan`, `AUDIT=refuse`, and the clarify-state pending path that would otherwise post or wait on clarification. Each triggered bypass MUST print a loud bold warning and append **one line** to `$PREFLIGHT_TMPDIR/emergency-bypass.log` with the exact grammar `BYPASS kind=<lowercase-token> issue=<number>` (example: `BYPASS kind=missing-plan issue=<N>`); Step 0 bootstrap consumes that log into `$IMPLEMENT_TMPDIR/execution-issues.md` only for the current emergency run. Emergency mode does **not** bypass the admission gate or semantic materiality / stale-plan notice.
+**Emergency mode (`--emergency`)**: when `emergency_requested=true`, Preflight may downgrade exactly three gates from hard refusal to warn-and-proceed: missing/malformed issue-body `larch:plan`, `AUDIT=refuse`, and the clarify-state pending path that would otherwise post or wait on clarification. Each triggered bypass MUST print a loud bold warning and append **one line** to `$PREFLIGHT_TMPDIR/emergency-bypass.log` with the exact grammar `BYPASS kind=<lowercase-token> issue=<number>` (example: `BYPASS kind=missing-plan issue=<N>`). Canonical `kind=` tokens for current `/implement` emergency bypasses are: `missing-plan` for `BLOCK_PRESENT=false`, `malformed-plan` for malformed extracted-plan fallback, and `audit-refuse` for the `AUDIT=refuse` carve-out that skips clarify posting/labeling. Step 0 bootstrap consumes that log into `$IMPLEMENT_TMPDIR/execution-issues.md` only once for the current emergency run, even after dirty-tree resume. Emergency mode does **not** bypass the admission gate or semantic materiality / stale-plan notice.
 
 1. **Admission gate** — `${CLAUDE_PLUGIN_ROOT}/scripts/implement-admission.sh --issue <N>`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`. When `$IMPLEMENT_TMPDIR` is already allocated (rare pre-Step-0 resume paths), export it first so the script can read `parent-issue.md` for the crash-resume sentinel; when that file contains `RUN_ID=`, also export the same `RUN_ID` in the environment so admission can match the session nonce (see `scripts/implement-admission.md`); otherwise omit. `gh issue view` inside admission must succeed (with its internal retry) before `RESUME=true` can apply — a `gh` flake yields exit **2** even when `parent-issue.md` matches. Parse stdout for `ADMISSION_RESULT=` / `ADMISSION_ERROR=` / optional `RESUME=` / optional `TITLE=` (see `scripts/implement-admission.md` exit table). On exit **4** (`has-blockers`, parse `BLOCKERS=`), **5** (parse `ADMISSION_RESULT=` — either `managed-prefix` or `missing-designed-prefix`; both use exit **5** and emit `TITLE=` on stdout), **6** (`audit-report-label`), **7** (`report-title`, parse `TITLE=`), or **2** (`ADMISSION_ERROR=`): print `**❌ /implement preflight: admission blocked — …**` with the parsed fields and exit **2**. Exit **0** with `ADMISSION_RESULT=pass` continues.
 
@@ -394,12 +394,36 @@ _ib_kv_scan() {
   while [ -n "$_ib_rest" ]; do
     case "$_ib_rest" in *' '*=*) _ib_tok="${_ib_rest%% *}"; _ib_rest="${_ib_rest#* }" ;; *) _ib_tok="$_ib_rest"; _ib_rest="" ;; esac
     case "$_ib_tok" in
-      CURRENT_BRANCH=*) CURRENT_BRANCH=${_ib_tok#CURRENT_BRANCH=} ;; IS_MAIN=*) IS_MAIN=${_ib_tok#IS_MAIN=} ;; IS_USER_BRANCH=*) IS_USER_BRANCH=${_ib_tok#IS_USER_BRANCH=} ;; USER_PREFIX=*) USER_PREFIX=${_ib_tok#USER_PREFIX=} ;;
-      ENTRY_GATE=*) ENTRY_GATE=${_ib_tok#ENTRY_GATE=} ;; SKIP_BRANCH_CHECK=*) SKIP_BRANCH_CHECK=${_ib_tok#SKIP_BRANCH_CHECK=} ;; IMPLEMENT_TMPDIR=*) IMPLEMENT_TMPDIR=${_ib_tok#IMPLEMENT_TMPDIR=} ;; SESSION_ID=*) SESSION_ID=${_ib_tok#SESSION_ID=} ;;
-      CODEX_PRESENT=*) CODEX_PRESENT=${_ib_tok#CODEX_PRESENT=} ;; CURSOR_PRESENT=*) CURSOR_PRESENT=${_ib_tok#CURSOR_PRESENT=} ;; CODEX_BINARY_FOUND=*) CODEX_BINARY_FOUND=${_ib_tok#CODEX_BINARY_FOUND=} ;; CURSOR_BINARY_FOUND=*) CURSOR_BINARY_FOUND=${_ib_tok#CURSOR_BINARY_FOUND=} ;;
-      REPO=*) REPO=${_ib_tok#REPO=} ;; REPO_UNAVAILABLE=*) REPO_UNAVAILABLE=${_ib_tok#REPO_UNAVAILABLE=} ;; CLAUDE_SOURCE_OK=*) CLAUDE_SOURCE_OK=${_ib_tok#CLAUDE_SOURCE_OK=} ;; LARCH_TOKEN_SESSION_ID=*) LARCH_TOKEN_SESSION_ID=${_ib_tok#LARCH_TOKEN_SESSION_ID=} ;; LARCH_CLAUDE_SOURCE_FILE=*) LARCH_CLAUDE_SOURCE_FILE=${_ib_tok#LARCH_CLAUDE_SOURCE_FILE=} ;; LARCH_TIMING_LEDGER=*) LARCH_TIMING_LEDGER=${_ib_tok#LARCH_TIMING_LEDGER=} ;;
-      ISSUE_NUMBER=*) ISSUE_NUMBER=${_ib_tok#ISSUE_NUMBER=} ;; RUN_ID=*) RUN_ID=${_ib_tok#RUN_ID=} ;; BRANCH_SELECTED=*) BRANCH_SELECTED=${_ib_tok#BRANCH_SELECTED=} ;; DEFERRED=*) DEFERRED=${_ib_tok#DEFERRED=} ;; STALL_TRACKING=*) STALL_TRACKING=${_ib_tok#STALL_TRACKING=} ;; BRANCH_NAME=*) BRANCH_NAME=${_ib_tok#BRANCH_NAME=} ;; BRANCH_ACTION=*) BRANCH_ACTION=${_ib_tok#BRANCH_ACTION=} ;; PLAN_FILE=*) PLAN_FILE=${_ib_tok#PLAN_FILE=} ;;
-      EMERGENCY_REQUESTED=*) EMERGENCY_REQUESTED=${_ib_tok#EMERGENCY_REQUESTED=} ;; coder=*) coder=${_ib_tok#coder=} ;; coder_fallback=*) coder_fallback=${_ib_tok#coder_fallback=} ;; IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;; codex_available=*) codex_available=${_ib_tok#codex_available=} ;; cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
+      CURRENT_BRANCH=*) CURRENT_BRANCH=${_ib_tok#CURRENT_BRANCH=} ;;
+      IS_MAIN=*) IS_MAIN=${_ib_tok#IS_MAIN=} ;;
+      IS_USER_BRANCH=*) IS_USER_BRANCH=${_ib_tok#IS_USER_BRANCH=} ;;
+      USER_PREFIX=*) USER_PREFIX=${_ib_tok#USER_PREFIX=} ;;
+      ENTRY_GATE=*) ENTRY_GATE=${_ib_tok#ENTRY_GATE=} ;;
+      SKIP_BRANCH_CHECK=*) SKIP_BRANCH_CHECK=${_ib_tok#SKIP_BRANCH_CHECK=} ;;
+      IMPLEMENT_TMPDIR=*) IMPLEMENT_TMPDIR=${_ib_tok#IMPLEMENT_TMPDIR=} ;;
+      SESSION_ID=*) SESSION_ID=${_ib_tok#SESSION_ID=} ;;
+      CODEX_PRESENT=*) CODEX_PRESENT=${_ib_tok#CODEX_PRESENT=} ;;
+      CURSOR_PRESENT=*) CURSOR_PRESENT=${_ib_tok#CURSOR_PRESENT=} ;;
+      CODEX_BINARY_FOUND=*) CODEX_BINARY_FOUND=${_ib_tok#CODEX_BINARY_FOUND=} ;;
+      CURSOR_BINARY_FOUND=*) CURSOR_BINARY_FOUND=${_ib_tok#CURSOR_BINARY_FOUND=} ;;
+      REPO=*) REPO=${_ib_tok#REPO=} ;;
+      REPO_UNAVAILABLE=*) REPO_UNAVAILABLE=${_ib_tok#REPO_UNAVAILABLE=} ;;
+      CLAUDE_SOURCE_OK=*) CLAUDE_SOURCE_OK=${_ib_tok#CLAUDE_SOURCE_OK=} ;;
+      LARCH_TOKEN_SESSION_ID=*) LARCH_TOKEN_SESSION_ID=${_ib_tok#LARCH_TOKEN_SESSION_ID=} ;;
+      LARCH_CLAUDE_SOURCE_FILE=*) LARCH_CLAUDE_SOURCE_FILE=${_ib_tok#LARCH_CLAUDE_SOURCE_FILE=} ;;
+      LARCH_TIMING_LEDGER=*) LARCH_TIMING_LEDGER=${_ib_tok#LARCH_TIMING_LEDGER=} ;;
+      ISSUE_NUMBER=*) ISSUE_NUMBER=${_ib_tok#ISSUE_NUMBER=} ;;
+      RUN_ID=*) RUN_ID=${_ib_tok#RUN_ID=} ;;
+      BRANCH_SELECTED=*) BRANCH_SELECTED=${_ib_tok#BRANCH_SELECTED=} ;;
+      DEFERRED=*) DEFERRED=${_ib_tok#DEFERRED=} ;;
+      STALL_TRACKING=*) STALL_TRACKING=${_ib_tok#STALL_TRACKING=} ;;
+      BRANCH_NAME=*) BRANCH_NAME=${_ib_tok#BRANCH_NAME=} ;;
+      BRANCH_ACTION=*) BRANCH_ACTION=${_ib_tok#BRANCH_ACTION=} ;;
+      PLAN_FILE=*) PLAN_FILE=${_ib_tok#PLAN_FILE=} ;;
+      EMERGENCY_REQUESTED=*) EMERGENCY_REQUESTED=${_ib_tok#EMERGENCY_REQUESTED=} ;;
+      IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;;
+      codex_available=*) codex_available=${_ib_tok#codex_available=} ;;
+      cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
     esac
   done
 }
@@ -427,7 +451,11 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
 | `REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
 
-Dirty-tree recovery bootstrap fence:
+Step 0 dirty-tree recovery gate:
+
+1. Write `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `STATUS=dirty-or-unknown`, `STAGE=step0-plan-materialize`, and `RECOVERY_REQUIRED=true`.
+2. If `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize` is absent, create it and fire `AskUserQuestion` with exactly two operator paths: **Restore a clean tree and continue** / **Cancel this implement run**.
+3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase plan --resume-plan-tail` with the same Step 0 args (`--caller-env`, `--issue-number`, `--forked-target`, `--upstream-repo`, `--run-id`, `--preflight-tmpdir`, `--emergency-requested`). The resumed bootstrap tail re-runs `check-mid-run-dirty-tree.sh --mode checkpoint` internally before any Phase 3 tail helper; if that internal re-probe returns `STATUS=dirty` or `STATUS=unknown`, stay in recovery mode and do not branch/log. Re-parse the resumed bootstrap stdout with the same `_ib_kv_scan` + `export` block shown above before continuing so `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` come from the resumed tail rather than the pre-recovery pass. Use this shape:
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then

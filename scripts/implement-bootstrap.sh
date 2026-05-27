@@ -29,6 +29,7 @@ CALLER_ENV_OPT=""
 ISSUE_NUMBER_OPT=""
 FORKED_TARGET=false
 EMERGENCY_REQUESTED=false
+EMERGENCY_REQUESTED_ARG_SEEN=false
 UPSTREAM_REPO_OPT=""
 RUN_ID_OPT=""
 PREFLIGHT_TMPDIR_OPT=""
@@ -205,13 +206,57 @@ persist_run_flags() {
     return 0
 }
 
+restore_emergency_requested_from_run_flags_if_unset() {
+    local prior_emergency=""
+    [ "${EMERGENCY_REQUESTED_ARG_SEEN:-false}" = "true" ] && return 0
+    [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
+    [ -f "$IMPLEMENT_TMPDIR/run-flags.sh" ] || return 0
+    prior_emergency=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key EMERGENCY_REQUESTED --default "")
+    case "$prior_emergency" in
+        true|false) EMERGENCY_REQUESTED=$prior_emergency ;;
+    esac
+}
+
+redact_file_best_effort() {
+    local input_file=$1 output_file=$2 redact_tmp rc
+    [ -f "$input_file" ] || return 1
+    redact_tmp="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-redact.XXXXXX")" || return 1
+    if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
+        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$input_file" >"$redact_tmp" 2>/dev/null; then
+            rc=$?
+            rm -f "$redact_tmp"
+            return "$rc"
+        fi
+    else
+        cat "$input_file" >"$redact_tmp"
+    fi
+    if [ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ]; then
+        if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$redact_tmp" >"$output_file" 2>/dev/null; then
+            rc=$?
+            rm -f "$redact_tmp"
+            return "$rc"
+        fi
+        rm -f "$redact_tmp"
+        return 0
+    fi
+    if mv "$redact_tmp" "$output_file"; then
+        return 0
+    fi
+    rc=$?
+    rm -f "$redact_tmp"
+    return "$rc"
+}
+
 append_emergency_bypass_log_if_present() {
-    local bypass_log append_rc fallback_entry fallback_content kind issue
+    local bypass_log append_rc fallback_entry fallback_content kind issue redact_source
+    local consumed_sentinel
 
     [ "${EMERGENCY_REQUESTED:-false}" = "true" ] || return 0
 
     bypass_log="$PREFLIGHT_TMPDIR_OPT/emergency-bypass.log"
     [ -s "$bypass_log" ] || return 0
+    consumed_sentinel="$IMPLEMENT_TMPDIR/.emergency-bypass-log-consumed"
+    [ -e "$consumed_sentinel" ] && return 0
 
     local bypass_log_valid=true
     while IFS= read -r _line || [ -n "$_line" ]; do
@@ -236,11 +281,19 @@ append_emergency_bypass_log_if_present() {
     done <"$bypass_log"
     if [ "$bypass_log_valid" != "true" ]; then
         fallback_content="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass.XXXXXX")" || return 1
+        redact_source="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-source.XXXXXX")" || {
+            rm -f "$fallback_content"
+            return 1
+        }
+        if ! redact_file_best_effort "$bypass_log" "$redact_source"; then
+            printf '%s\n' '<redaction failed; raw emergency bypass log omitted>' >"$redact_source"
+        fi
         {
             printf '%s\n' 'Invalid emergency bypass log format. Expected one line per bypass:'
             printf '%s\n\n' 'BYPASS kind=<lowercase-token> issue=<number>'
-            cat "$bypass_log"
+            cat "$redact_source"
         } >"$fallback_content"
+        rm -f "$redact_source"
         bypass_log=$fallback_content
         append_rc=99
     else
@@ -282,6 +335,7 @@ append_emergency_bypass_log_if_present() {
         rm -f "$fallback_entry"
     fi
 
+    : >"$consumed_sentinel"
     rm -f "${fallback_content:-}"
 }
 
@@ -472,6 +526,7 @@ phase_infra() {
         SESSION_ID=$(tr -d '\r\n' <"$SESSION_TMPDIR/session-id" 2>/dev/null || true)
         IMPLEMENT_TMPDIR=$SESSION_TMPDIR
         export IMPLEMENT_TMPDIR
+        restore_emergency_requested_from_run_flags_if_unset
 
         REPO=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO --default "")
         REPO_UNAVAILABLE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO_UNAVAILABLE --default "false")
@@ -590,6 +645,8 @@ phase_infra() {
         LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
         LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
     fi
+
+    restore_emergency_requested_from_run_flags_if_unset
 
     if [ "$REPO_UNAVAILABLE" = "true" ]; then
         larch_err '**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**'
@@ -1270,7 +1327,7 @@ main() {
             --emergency-requested)
                 [ $# -ge 2 ] || die_usage "--emergency-requested requires a value"
                 case "$2" in
-                    true|false) EMERGENCY_REQUESTED=$2 ;;
+                    true|false) EMERGENCY_REQUESTED=$2; EMERGENCY_REQUESTED_ARG_SEEN=true ;;
                     *) die_usage "--emergency-requested must be true or false" ;;
                 esac
                 shift 2

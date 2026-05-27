@@ -23,5 +23,9 @@ grep -Fq '**⚠ --emergency and --draft are mutually exclusive. Aborting.**' "$S
 grep -Fq 'issue #<N> has no larch:plan block AND the issue body is empty' "$SKILL" || fail "missing empty-body emergency abort"
 grep -Fq 'STATE=awaiting-response' "$SKILL" || fail "missing clarify awaiting-response guard"
 grep -Fq 'BYPASS kind=<lowercase-token> issue=<number>' "$SKILL" || fail "missing structured emergency bypass log grammar"
+grep -Fq 'missing-plan' "$SKILL" || fail "missing missing-plan emergency token"
+grep -Fq 'malformed-plan' "$SKILL" || fail "missing malformed-plan emergency token"
+grep -Fq 'audit-refuse' "$SKILL" || fail "missing audit-refuse emergency token"
+grep -Fq 'only once for the current emergency run, even after dirty-tree resume' "$SKILL" || fail "missing no-replay emergency bypass contract"
 
 echo "PASS: test-plan-adequacy-audit.sh"
