@@ -59,11 +59,11 @@ set -euo pipefail
 review_tmpdir="$(dirname "${LARCH_WAIT_BARRIER_VOTER2:?}")"
 case "${LARCH_WAIT_BARRIER_MODE:-delayed}" in
     delayed)
+        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
+        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
         (
             sleep "${LARCH_WAIT_BARRIER_DELAY:-0.2}"
-            printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
             printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
-            printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
             printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
         ) >/dev/null 2>&1 &
         ;;
@@ -84,7 +84,18 @@ STUB_WATERFALL
     chmod +x "$root/scripts/dispatch-with-waterfall.sh"
 }
 
-make_voter1_synth_done_plugin_root() {
+make_wait_usage_error_plugin_root() {
+    local root="$1"
+    make_wait_barrier_plugin_root "$root"
+    cat > "$root/scripts/wait-for-reviewers.sh" <<'STUB_WAIT'
+#!/usr/bin/env bash
+printf 'usage: forced test wait failure\n' >&2
+exit 1
+STUB_WAIT
+    chmod +x "$root/scripts/wait-for-reviewers.sh"
+}
+
+make_voter1_delayed_done_plugin_root() {
     local root="$1"
     mkdir -p "$root/scripts" "$root/skills/shared/scripts"
     ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
@@ -196,6 +207,10 @@ cat > "$STUB_BIN/cursor" <<'STUB'
 log="${CURSOR_STUB_LOG:-}"
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
 case "${CURSOR_STUB_MODE:-ok}" in
+  delayed_done_race)
+    printf '{"result":"FINDING_1: NO -- cursor delayed","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+    sleep "${CURSOR_STUB_DELAY:-1}"
+    ;;
   parse_retry_success)
     count_file="${CURSOR_STUB_COUNT_FILE:?CURSOR_STUB_COUNT_FILE required}"
     count=0
@@ -416,9 +431,31 @@ grep -Fq '"result":"POST-PROCESSED OK"' "$hook_review_tmp/cursor-vote-output.txt
     || { echo "FAIL: launch-review hook path should preserve raw cursor JSON output for the parse-rate check" >&2; exit 1; }
 require_voter_paths_file_nonempty "happy-launch-review-hook" "$out"
 
+prod_delay_tmp="$TMP/cursor-prod-delay"
+mkdir -p "$prod_delay_tmp"
+prod_delay_start=$(date +%s)
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_MODE=delayed_done_race \
+    CURSOR_STUB_DELAY=1 \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$prod_delay_tmp" --codex-available false --cursor-available true)
+prod_delay_end=$(date +%s)
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" \
+    || { echo "FAIL: production delayed .done path should keep voter3 on cursor" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: production delayed .done path should keep voter3 launched" >&2; exit 1; }
+grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" \
+    || { echo "FAIL: production delayed .done path should keep the post-processed cursor output parseable" >&2; exit 1; }
+grep -Fq 'FINDING_1: NO -- cursor delayed' "$prod_delay_tmp/cursor-vote-output.txt" \
+    || { echo "FAIL: production delayed .done path should preserve the extracted cursor result after post-processing" >&2; exit 1; }
+if (( prod_delay_end - prod_delay_start < 1 )); then
+    echo "FAIL: production delayed .done path returned before launch-review.sh could promote the delayed cursor sentinel" >&2
+    exit 1
+fi
+require_voter_paths_file_nonempty "happy-cursor-prod-delay" "$out"
+
 voter1_plugin="$TMP/voter1-plugin"
-make_voter1_synth_done_plugin_root "$voter1_plugin"
-voter1_tmp="$TMP/voter1-synth-done"
+make_voter1_delayed_done_plugin_root "$voter1_plugin"
+voter1_tmp="$TMP/voter1-delayed-done"
 mkdir -p "$voter1_tmp"
 voter1_start=$(date +%s)
 out=$(PATH="$STUB_BIN:$PATH" \
@@ -431,16 +468,16 @@ out=$(PATH="$STUB_BIN:$PATH" \
         --cursor-available true)
 voter1_end=$(date +%s)
 grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
-    || { echo "FAIL: delayed voter1 .done synthesis path should keep voter1 launched" >&2; exit 1; }
+    || { echo "FAIL: delayed voter1 .done wait path should keep voter1 launched" >&2; exit 1; }
 grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" \
-    || { echo "FAIL: delayed voter1 .done synthesis path should keep substantive voter1 output parseable" >&2; exit 1; }
+    || { echo "FAIL: delayed voter1 .done wait path should keep substantive voter1 output parseable" >&2; exit 1; }
 [[ -f "$voter1_tmp/claude-vote-output.txt.done" ]] \
-    || { echo "FAIL: delayed voter1 .done synthesis path should publish a done sentinel" >&2; exit 1; }
-if (( voter1_end - voter1_start >= 1 )); then
-    echo "FAIL: delayed voter1 .done synthesis path should not block on the late launcher-owned sentinel" >&2
+    || { echo "FAIL: delayed voter1 .done wait path should publish a done sentinel" >&2; exit 1; }
+if (( voter1_end - voter1_start < 1 )); then
+    echo "FAIL: delayed voter1 .done wait path returned before the launcher-owned sentinel landed" >&2
     exit 1
 fi
-require_voter_paths_file_nonempty "happy-voter1-synth-done" "$out"
+require_voter_paths_file_nonempty "happy-voter1-delayed-done" "$out"
 
 wait_timeout_tmp="$TMP/wait-timeout"
 timeout_stderr="$TMP/wait-timeout.stderr"
@@ -465,6 +502,26 @@ grep -Fq 'dispatch-code-voters.sh: voter sentinel TIMEOUT 2 codex-vote-output.tx
     || { echo "FAIL: wait timeout path should log voter2 TIMEOUT rows from wait-for-reviewers stdout" >&2; exit 1; }
 grep -Fq 'dispatch-code-voters.sh: voter sentinel TIMEOUT 3 cursor-vote-output.txt' "$timeout_stderr" \
     || { echo "FAIL: wait timeout path should log voter3 TIMEOUT rows from wait-for-reviewers stdout" >&2; exit 1; }
+
+wait_usage_plugin="$TMP/wait-usage-plugin"
+make_wait_usage_error_plugin_root "$wait_usage_plugin"
+wait_usage_tmp="$TMP/wait-usage-error"
+wait_usage_stderr="$TMP/wait-usage-error.stderr"
+mkdir -p "$wait_usage_tmp"
+PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$wait_usage_plugin" \
+    LARCH_WAIT_BARRIER_MODE=immediate \
+    LARCH_WAIT_BARRIER_VOTER2="$wait_usage_tmp/codex-vote-output.txt" \
+    LARCH_WAIT_BARRIER_VOTER3="$wait_usage_tmp/cursor-vote-output.txt" \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$wait_usage_tmp" --codex-available true --cursor-available true \
+    > "$TMP/wait-usage-error.out" 2> "$wait_usage_stderr"
+out=$(cat "$TMP/wait-usage-error.out")
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: wait usage-error path should still tally existing voter2 output" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: wait usage-error path should still tally existing voter3 output" >&2; exit 1; }
+grep -Fq 'dispatch-code-voters.sh: wait-for-reviewers.sh exited 1 (usage/config error) - proceeding with whatever state exists' "$wait_usage_stderr" \
+    || { echo "FAIL: wait usage-error path should log the usage/config diagnostic" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then

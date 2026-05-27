@@ -189,6 +189,11 @@ fi
     printf 'CMD_JSON=%s\n' "$META_CMD_JSON"
 } > "${OUTPUT_FILE}.meta"
 
+SAVED_STDIN_FD=""
+if [[ "$TOOL_NAME" != "codex" ]]; then
+    exec {SAVED_STDIN_FD}<&0
+fi
+
 # Optional: when redirecting captured stdout to a file, libc may fully buffer the
 # writer even when the tool uses unbuffered Python (-u); stall monitors that
 # poll the output file size then see false stalls. Harnesses may set
@@ -205,9 +210,9 @@ _launch_capture_stdout_only() {
             ;;
         *)
             if [[ "${RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF:-}" == "1" ]] && command -v stdbuf >/dev/null 2>&1; then
-                stdbuf -o0 -e0 "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+                stdbuf -o0 -e0 "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" <&${SAVED_STDIN_FD} &
             else
-                "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+                "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" <&${SAVED_STDIN_FD} &
             fi
             ;;
     esac
@@ -223,15 +228,18 @@ _launch_capture_stdout_only() {
 if [ "$CAPTURE_STDOUT" = true ]; then
     case "$TOOL_NAME" in
         codex) "$@" > "$OUTPUT_FILE" 2>&1 < /dev/null & ;;
-        *)     "$@" > "$OUTPUT_FILE" 2>&1 & ;;
+        *)     "$@" > "$OUTPUT_FILE" 2>&1 <&${SAVED_STDIN_FD} & ;;
     esac
 elif [ "$CAPTURE_STDOUT_ONLY" = true ]; then
     _launch_capture_stdout_only "$@"
 else
     case "$TOOL_NAME" in
         codex) "$@" < /dev/null & ;;
-        *)     "$@" & ;;
+        *)     "$@" <&${SAVED_STDIN_FD} & ;;
     esac
+fi
+if [[ -n "$SAVED_STDIN_FD" ]]; then
+    exec {SAVED_STDIN_FD}<&-
 fi
 PID=$!
 SECONDS=0

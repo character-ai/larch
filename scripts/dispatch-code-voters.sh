@@ -110,7 +110,6 @@ set +e
     "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"
 voter1_rc=$?
 set -e
-[[ -f "$VOTER_1_PATH.done" ]] || printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
 
 # Log diagnostic when Claude voter fails or produces empty output.
 if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
@@ -238,8 +237,16 @@ if (( ${#wait_sentinels[@]} > 0 )); then
     unset _wait_out_file _wait_rc
 fi
 
-# FINDING_1: re-evaluate size-based statuses AFTER the wait barrier so a
-# voter whose output became visible during the wait is correctly classified.
+# If Claude returned successfully with substantive output but its launcher-owned
+# sentinel still never appeared, publish a local sentinel only after the wait
+# barrier so Voter 1 cannot be treated as complete before launcher completion
+# had a chance to land.
+if [[ ! -f "$VOTER_1_PATH.done" && "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]]; then
+    printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
+fi
+
+# Re-evaluate size-based statuses AFTER the wait barrier so a voter whose
+# output became visible during the wait is correctly classified.
 [[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
 [[ "$VOTER_2_STATUS" == "skipped" || -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
 [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
