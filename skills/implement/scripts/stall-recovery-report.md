@@ -6,10 +6,12 @@
 
 - `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
   - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress a session-env stall.
+  - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
   - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only; non-allowlisted bail reasons are redacted.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; symbolic/terminal `STALL_STEP` values also fail closed to `none` unless they are explicitly mapped.
+  - `--attempts-file`, when provided, must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
 - `init-attempts --implement-tmpdir <path> --attempts-file <path>`
   - Atomically initializes the attempts file with `version=1`, `created_utc=<ISO8601>`, and `attempt_count=0`. Existing files are left unchanged.
 - `record-attempt --implement-tmpdir <path> --attempts-file <path> --class <class> --signature <hash> --resume-hint <hint> --outcome <token>`
@@ -24,9 +26,11 @@
   - Writes a sanitized bug body and emits `BODY_FILE` and `DRY_RUN_DECISION`.
 - `bug-comment --implement-tmpdir <path> --classification-file <path> --attempts-file <path> [--output-file <path>]`
   - Writes the sanitized terminal-failure comment, including the allowlisted retry-attempt table.
+  - `--classification-file`, `--attempts-file`, and `--output-file` must stay under `--implement-tmpdir`.
 - `issue-input-file --implement-tmpdir <path> --classification-file <path> --body-file <path> [--output-file <path>]`
   - Writes a batch-mode `/larch:issue` input file. The first line is `### [Bug] /implement stall: <class> at <step>`.
-  - `--body-file` must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
+  - `--classification-file` and `--body-file` must be absolute paths that resolve to regular, non-symlink, readable files under `$IMPLEMENT_TMPDIR`.
+  - `--output-file` must stay under `$IMPLEMENT_TMPDIR`.
 - `lint`
   - Asserts allowlist parity: TSV surface keys == helper code surface keys == this document's surface keys.
 
@@ -73,12 +77,12 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
 - `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
 - `contract-failure`: `STALL_STEP=3` or `STALL_STEP=6`; these are checks contracts where prompt-side recovery edits are intentionally forbidden.
-- `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step.
+- `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step. Terminal classes (`contract-failure`, `unrecoverable`) never reclassify to `same-cause-repeat`, including repeated Step 3 / Step 6 checks failures.
 - `unrecoverable`: no recoverable classifier matched, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`).
 
 ## Retry Caps
 
-This table is the single normative retry-cap source. `skills/implement/references/stall-recovery.md` points here and does not duplicate values.
+This table is the single normative retry-cap source. `skills/implement/references/stall-recovery.md` points here and does not duplicate values. The offline harness checks every class against `retry-policy`.
 
 | failure_class | attempts | delay |
 |---|---:|---|
@@ -103,7 +107,11 @@ Missing `ship-pr-state.sh` is never exit 3. Without other recoverable evidence i
 
 ## `--failure-detail-log` Validation
 
-The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Invalid logs are ignored and classification continues from the remaining persisted evidence. The offline harness covers the oversize rejection path in addition to relative/outside/symlink/non-regular validation.
+The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Step 18a should source the canonical path from `BAIL_FAILURE_DETAIL_LOG` in `ship-pr-state.sh` when that key is populated, then pass it through `--failure-detail-log` after validation; classification validates and reads the file through one helper so the public classifier does not re-open the path after validation. Invalid logs are ignored and classification continues from the remaining persisted evidence. The offline harness covers the oversize rejection path in addition to relative/outside/symlink/non-regular validation.
+
+## Signatures
+
+Failure signatures are always SHA-256 digests. The helper uses `shasum -a 256`, then `sha256sum`, then a Python `hashlib.sha256` fallback so deduplication stays environment-independent.
 
 ## Dry Run
 

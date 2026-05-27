@@ -139,8 +139,24 @@ assert_eq none "$(kv RETRY_DELAY "$SANDBOX/case7-policy.out")" "7: retry-policy 
 run_capture "$SANDBOX/case7-policy-transient.out" "$SCRIPT" retry-policy --class transient-infra
 assert_eq 4 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy-transient.out")" "7: retry-policy transient cap"
 assert_eq "sleep-seconds.sh 5" "$(kv RETRY_DELAY "$SANDBOX/case7-policy-transient.out")" "7: retry-policy transient delay"
-run_capture "$SANDBOX/case7-policy-terminal.out" "$SCRIPT" retry-policy --class unrecoverable
-assert_eq 0 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy-terminal.out")" "7: retry-policy unrecoverable cap"
+dir=$(make_tmp case7b)
+write_state "$dir" 8 ci-initial
+run_capture "$SANDBOX/case7b.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason "network timeout while posting issue"
+assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case7b.out")" "7: bail-reason-only evidence classifies transient infra"
+while IFS='|' read -r klass attempts delay; do
+    run_capture "$SANDBOX/retry-$klass.out" "$SCRIPT" retry-policy --class "$klass"
+    assert_eq "$klass" "$(kv FAILURE_CLASS "$SANDBOX/retry-$klass.out")" "7: retry-policy class $klass"
+    assert_eq "$attempts" "$(kv MAX_ATTEMPTS "$SANDBOX/retry-$klass.out")" "7: retry-policy attempts $klass"
+    assert_eq "$delay" "$(kv RETRY_DELAY "$SANDBOX/retry-$klass.out")" "7: retry-policy delay $klass"
+done <<'EOF'
+transient-infra|4|sleep-seconds.sh 5
+test-failure|8|none
+lint-failure|8|none
+dispatch-failure|3|none
+same-cause-repeat|1|none
+contract-failure|0|none
+unrecoverable|0|none
+EOF
 
 dir=$(make_tmp case8a)
 run_capture "$SANDBOX/case8a.out" "$SCRIPT" classify --implement-tmpdir "$dir"
@@ -183,7 +199,7 @@ assert_eq 0 "$RC" "9: symlink log ignored"
 assert_contains "--failure-detail-log must not be a symlink" "$(cat "$SANDBOX/case9-symlink.out.err")" "9: symlink log stderr"
 run_capture "$SANDBOX/case9-dir.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir"
 assert_eq 0 "$RC" "9: non-regular log ignored"
-assert_contains "--failure-detail-log must be regular" "$(cat "$SANDBOX/case9-dir.out.err")" "9: non-regular log stderr"
+assert_contains "--failure-detail-log outside implement tmpdir" "$(cat "$SANDBOX/case9-dir.out.err")" "9: non-regular log stderr"
 python3 - <<'PY' >"$dir/oversize.log"
 print("x" * 65537, end="")
 PY
@@ -243,6 +259,7 @@ PHASE=ci-initial
 STALL_TRACKING=true
 STALL_STEP=8
 BAIL_REASON=ship state sentinel SENTINEL_SECRET_13B
+NOTE=note sentinel SENTINEL_SECRET_13B
 EOF
 printf 'failure detail %s and SENTINEL_SECRET_13B\n' "$GHP_TOKEN_CASE13" >"$dir/failure.log"
 run_capture "$dir/classify.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
@@ -282,6 +299,14 @@ ln -s "$dir/real-attempts.env" "$dir/attempts.env"
 run_capture "$SANDBOX/case13e.out" "$SCRIPT" record-attempt --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" --class transient-infra --signature abc --resume-hint step8-shippr --outcome failed
 assert_eq 1 "$RC" "13: record-attempt rejects attempts symlink"
 assert_contains "--attempts-file must not be a symlink" "$(cat "$SANDBOX/case13e.out.err")" "13: record-attempt symlink stderr"
+dir=$(make_tmp case13f)
+write_state "$dir" 8 ci-initial "" "NOTE=network timeout"
+outside_attempts=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-attempts-outside.XXXXXX")
+printf 'version=1\ncreated_utc=2026-01-01T00:00:00Z\nattempt_count=0\n' >"$outside_attempts"
+run_capture "$SANDBOX/case13f.out" "$SCRIPT" classify --implement-tmpdir "$dir" --attempts-file "$outside_attempts"
+assert_eq 1 "$RC" "13: classify rejects attempts file outside tmpdir"
+assert_contains "--attempts-file outside implement tmpdir" "$(cat "$SANDBOX/case13f.out.err")" "13: classify outside tmpdir stderr"
+rm -f "$outside_attempts"
 
 run_capture "$SANDBOX/case14.out" "$SCRIPT" lint
 assert_eq 0 "$RC" "14: allowlist parity lint"
@@ -299,6 +324,7 @@ cp "$SCRIPT_DIR/stall-recovery-report-allowlists.tsv" "$copyroot/skills/implemen
 cp "$SCRIPT_DIR/stall-recovery-report.md" "$copyroot/skills/implement/scripts/"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$copyroot/scripts/"
 cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$copyroot/scripts/"
+cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$copyroot/scripts/"
 cat >"$copyroot/scripts/redact-secrets.sh" <<'SH'
 #!/usr/bin/env bash
 cat >"$STALL_REDACTOR_MARKER"
@@ -332,12 +358,19 @@ dir=$(make_tmp case17)
 cp "$SANDBOX/case1.out" "$dir/class.env"
 "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/class.env" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
 assert_contains "| Attempt | Class | Signature | Resume hint | Outcome | UTC |" "$(cat "$(kv BODY_FILE "$dir/comment.out")")" "17: bug-comment attempt table"
+outside_attempts=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-attempts-outside.XXXXXX")
+printf 'version=1\ncreated_utc=2026-01-01T00:00:00Z\nattempt_count=0\n' >"$outside_attempts"
+run_capture "$SANDBOX/case17-outside.out" "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/class.env" --attempts-file "$outside_attempts"
+assert_eq 1 "$RC" "17: bug-comment rejects attempts file outside tmpdir"
+assert_contains "--attempts-file outside implement tmpdir" "$(cat "$SANDBOX/case17-outside.out.err")" "17: bug-comment outside tmpdir stderr"
+rm -f "$outside_attempts"
 
 dir=$(make_tmp case18)
 cp "$SANDBOX/case1.out" "$dir/class.env"
 mkdir -p "$dir/bin"
 printf '#!/usr/bin/env bash\necho "$@" >>"%s/gh.calls"\n' "$dir" >"$dir/bin/gh"
 chmod +x "$dir/bin/gh"
+"$SCRIPT" init-attempts --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" >/dev/null
 PATH="$dir/bin:$PATH" LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/class.env" >"$dir/body.out"
 assert_eq true "$(kv DRY_RUN_DECISION "$dir/body.out")" "18: dry-run decision true"
 PATH="$dir/bin:$PATH" LARCH_STALL_RECOVERY_DRY_RUN=1 "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/class.env" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
@@ -363,6 +396,31 @@ run_capture "$SANDBOX/case19a.out" "$SCRIPT" classify --implement-tmpdir "$dir" 
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case19a.out")" "19: in-memory true remains authoritative before mv"
 mv -f "$tmp" "$dir/ship-pr-state.sh"
 assert_eq false "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: destination read-back sees false after mv"
+dir=$(make_tmp case19c)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+tmp="$dir/ship-pr-state.sh.tmp.$$"
+awk 'BEGIN{done=0} /^STALL_TRACKING=/{print "STALL_TRACKING=false"; done=1; next} /^STALL_STEP=/{print "STALL_STEP="; next} {print} END{if(!done) print "STALL_TRACKING=false"}' "$dir/ship-pr-state.sh" >"$tmp"
+rm -f "$tmp"
+if ! mv -f "$tmp" "$dir/ship-pr-state.sh" 2>/dev/null; then
+    pass "19: missing temp file models mv failure before disk clear"
+else
+    fail "19: mv failure simulation should not succeed"
+fi
+assert_eq true "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: mv failure leaves disk stalled"
+dir=$(make_tmp case19d)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+EOF
+tmp="$dir/ship-pr-state.sh.tmp.$$"
+awk 'BEGIN{done=0} /^STALL_TRACKING=/{print "STALL_TRACKING=false"; done=1; next} /^STALL_STEP=/{print "STALL_STEP="; next} {print} END{if(!done) print "STALL_TRACKING=false"}' "$dir/ship-pr-state.sh" >"$tmp"
+mv -f "$tmp" "$dir/ship-pr-state.sh"
+assert_eq false "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: destination read-back must see false after mv in success path"
+mv -f "$dir/ship-pr-state.sh" "$dir/ship-pr-state.sh.gone"
+assert_eq "" "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: missing destination read-back falls back to empty default"
 
 dir=$(make_tmp case19b)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
@@ -392,8 +450,8 @@ write_state "$dir" 6 checks "" "NOTE=network/auth issue"
 run_capture "$dir/first.env" "$SCRIPT" classify --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env"
 "$SCRIPT" record-attempt --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" --class "$(kv FAILURE_CLASS "$dir/first.env")" --signature "$(kv FAILURE_SIGNATURE "$dir/first.env")" --resume-hint "$(kv RESUME_HINT "$dir/first.env")" --outcome failed >/dev/null
 run_capture "$dir/second.env" "$SCRIPT" classify --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env"
-assert_eq same-cause-repeat "$(kv FAILURE_CLASS "$dir/second.env")" "20: same-cause-repeat still detected for step6"
-assert_eq none "$(kv RESUME_HINT "$dir/second.env")" "20: same-cause-repeat at step6 keeps none hint"
+assert_eq contract-failure "$(kv FAILURE_CLASS "$dir/second.env")" "20: step6 stays terminal contract-failure"
+assert_eq none "$(kv RESUME_HINT "$dir/second.env")" "20: contract-failure at step6 keeps none hint"
 
 dir=$(make_tmp case20)
 cp "$SANDBOX/case1.out" "$dir/class.env"
@@ -438,6 +496,15 @@ printf 'build finished without retry markers\n' >"$dir/failure.log"
 run_capture "$SANDBOX/case20h.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20h.out")" "20: stale state note does not override clean failure-detail log"
 
+dir=$(make_tmp case20i)
+write_state "$dir" 8 ci-initial "terminal/SENTINEL_SECRET_20I" "NOTE=note sentinel SENTINEL_SECRET_20I"
+printf 'non-matching detail\n' >"$dir/failure.log"
+run_capture "$dir/classify.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
+"$SCRIPT" init-attempts --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" >/dev/null
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/classify.out" >"$dir/body.out"
+"$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/classify.out" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
+assert_not_contains "SENTINEL_SECRET_20I" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")")" "20: public outputs omit bail-reason-only and NOTE sentinels"
+
 run_capture "$SANDBOX/case21-badargv.out" "$SCRIPT" unknown-subcommand
 assert_eq 1 "$RC" "21: bad argv exits 1"
 run_capture "$SANDBOX/case21-missing.out" "$SCRIPT" classify
@@ -446,6 +513,23 @@ dir=$(make_tmp case21-malformed)
 printf 'not valid\n' >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case21-malformed.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq 3 "$RC" "21: malformed ship-pr-state exits 3"
+dir=$(make_tmp case21-classification-outside)
+cp "$SANDBOX/case1.out" "$dir/class.env"
+outside_class=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-class-outside.XXXXXX")
+cp "$dir/class.env" "$outside_class"
+run_capture "$SANDBOX/case21-classification-outside.out" "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$outside_class"
+assert_eq 1 "$RC" "21: bug-body rejects classification file outside tmpdir"
+assert_contains "--classification-file outside implement tmpdir" "$(cat "$SANDBOX/case21-classification-outside.out.err")" "21: bug-body outside tmpdir stderr"
+run_capture "$SANDBOX/case21-issue-classification-outside.out" "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$outside_class" --body-file "$dir/class.env"
+assert_eq 1 "$RC" "21: issue-input-file rejects classification file outside tmpdir"
+assert_contains "--classification-file outside implement tmpdir" "$(cat "$SANDBOX/case21-issue-classification-outside.out.err")" "21: issue-input-file outside tmpdir stderr"
+rm -f "$outside_class"
+dir=$(make_tmp case21-classification-symlink)
+cp "$SANDBOX/case1.out" "$dir/real-class.env"
+ln -s "$dir/real-class.env" "$dir/class.env"
+run_capture "$SANDBOX/case21-classification-symlink.out" "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/class.env"
+assert_eq 1 "$RC" "21: bug-body rejects classification symlink"
+assert_contains "--classification-file must not be a symlink" "$(cat "$SANDBOX/case21-classification-symlink.out.err")" "21: bug-body classification symlink stderr"
 
 dir=$(make_tmp case21-body-outside)
 cp "$SANDBOX/case1.out" "$dir/class.env"
@@ -456,6 +540,28 @@ run_capture "$SANDBOX/case21-body-outside.out" "$SCRIPT" issue-input-file --impl
 assert_eq 1 "$RC" "21: issue-input-file rejects body file outside tmpdir"
 assert_contains "--body-file outside implement tmpdir" "$(cat "$SANDBOX/case21-body-outside.out.err")" "21: issue-input-file outside tmpdir stderr"
 rm -f "$outside_body"
+
+dir=$(make_tmp case21-record-stress)
+"$SCRIPT" init-attempts --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" >/dev/null
+cp "$SANDBOX/case1.out" "$dir/class.env"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    "$SCRIPT" record-attempt --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" --class transient-infra --signature "sig-$i" --resume-hint step8-shippr --outcome failed >/dev/null
+done
+assert_eq 10 "$(kv attempt_count "$dir/attempts.env")" "21: record-attempt stress count"
+assert_contains "attempt.10.signature=sig-10" "$(cat "$dir/attempts.env")" "21: record-attempt stress preserves final append"
+
+outside_out=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-output-outside.XXXXXX")
+run_capture "$SANDBOX/case21-bugbody-out.out" "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/class.env" --output-file "$outside_out"
+assert_eq 1 "$RC" "21: bug-body rejects output file outside tmpdir"
+assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21-bugbody-out.out.err")" "21: bug-body outside tmpdir stderr"
+run_capture "$SANDBOX/case21-comment-out.out" "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/class.env" --attempts-file "$dir/attempts.env" --output-file "$outside_out"
+assert_eq 1 "$RC" "21: bug-comment rejects output file outside tmpdir"
+assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21-comment-out.out.err")" "21: bug-comment output outside tmpdir stderr"
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/class.env" >"$dir/body.out"
+run_capture "$SANDBOX/case21-issue-out.out" "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$(kv BODY_FILE "$dir/body.out")" --output-file "$outside_out"
+assert_eq 1 "$RC" "21: issue-input-file rejects output file outside tmpdir"
+assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21-issue-out.out.err")" "21: issue-input-file output outside tmpdir stderr"
+rm -f "$outside_out"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

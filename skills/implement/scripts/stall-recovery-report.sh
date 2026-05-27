@@ -49,25 +49,13 @@ hash_text() {
     elif command -v sha256sum >/dev/null 2>&1; then
         sha256sum | awk '{print $1}'
     else
-        cksum | awk '{print $1}'
+        python3 -c 'import hashlib, sys; sys.stdout.write(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
     fi
 }
 
 kv_get() {
     local file=$1 key=$2 default=${3-}
-    if [ ! -r "$file" ]; then
-        printf '%s\n' "$default"
-        return 0
-    fi
-    awk -v k="$key" -v d="$default" '
-        BEGIN { kl = length(k); found = 0 }
-        substr($0, 1, kl) == k && substr($0, kl + 1, 1) == "=" {
-            print substr($0, kl + 2)
-            found = 1
-            exit
-        }
-        END { if (!found) print d }
-    ' "$file"
+    "$SCRIPTS_DIR/read-session-env-key.sh" --file "$file" --key "$key" --default "$default"
 }
 
 truthy() {
@@ -106,57 +94,8 @@ canonical_dir() {
     (cd "$dir" 2>/dev/null && pwd -P) || return 1
 }
 
-validate_failure_detail_log() {
-    local tmpdir=$1 path=$2 dir base real_dir real_path tmp_real bytes
-    case "$path" in
-        /*) ;;
-        *) larch_err "stall-recovery-report.sh: --failure-detail-log must be absolute"; return 1 ;;
-    esac
-    [ -e "$path" ] || { larch_err "stall-recovery-report.sh: --failure-detail-log missing"; return 1; }
-    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: --failure-detail-log must be regular"; return 1; }
-    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: --failure-detail-log must not be a symlink"; return 1; }
-    dir=$(dirname "$path")
-    base=$(basename "$path")
-    real_dir=$(canonical_dir "$dir") || { larch_err "stall-recovery-report.sh: --failure-detail-log directory not canonical"; return 1; }
-    tmp_real=$(canonical_dir "$tmpdir") || { larch_err "stall-recovery-report.sh: --implement-tmpdir directory not canonical"; return 1; }
-    real_path="$real_dir/$base"
-    case "$real_path" in
-        "$tmp_real"/*) ;;
-        *) larch_err "stall-recovery-report.sh: --failure-detail-log outside implement tmpdir"; return 1 ;;
-    esac
-    bytes=$(wc -c <"$path" | tr -d ' ')
-    case "$bytes" in
-        ""|*[!0-9]*) larch_err "stall-recovery-report.sh: --failure-detail-log size unreadable"; return 1 ;;
-    esac
-    [ "$bytes" -le 65536 ] || { larch_err "stall-recovery-report.sh: --failure-detail-log exceeds 64KiB"; return 1; }
-    return 0
-}
-
-validate_tmpdir_local_file() {
-    local tmpdir=$1 path=$2 flag_name=$3 dir base real_dir real_path tmp_real
-    [ -n "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name is required"; return 1; }
-    case "$path" in
-        /*) ;;
-        *) larch_err "stall-recovery-report.sh: $flag_name must be absolute"; return 1 ;;
-    esac
-    [ -e "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name missing"; return 1; }
-    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be regular"; return 1; }
-    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
-    [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
-    dir=$(dirname "$path")
-    base=$(basename "$path")
-    real_dir=$(canonical_dir "$dir") || { larch_err "stall-recovery-report.sh: $flag_name directory not canonical"; return 1; }
-    tmp_real=$(canonical_dir "$tmpdir") || { larch_err "stall-recovery-report.sh: --implement-tmpdir directory not canonical"; return 1; }
-    real_path="$real_dir/$base"
-    case "$real_path" in
-        "$tmp_real"/*) ;;
-        *) larch_err "stall-recovery-report.sh: $flag_name outside implement tmpdir"; return 1 ;;
-    esac
-    return 0
-}
-
-validate_tmpdir_write_file() {
-    local tmpdir=$1 path=$2 flag_name=$3 must_exist=$4 dir base real_dir real_path tmp_real
+validate_tmpdir_path() {
+    local tmpdir=$1 path=$2 flag_name=$3 mode=$4 must_exist=$5 dir base real_dir real_path tmp_real
     [ -n "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name is required"; return 1; }
     case "$path" in
         /*) ;;
@@ -176,17 +115,78 @@ validate_tmpdir_write_file() {
         [ -e "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name missing"; return 1; }
         [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be regular"; return 1; }
         [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
-        [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
-        [ -w "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be writable"; return 1; }
+        case "$mode" in
+            read)
+                [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+                ;;
+            write)
+                [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+                [ -w "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be writable"; return 1; }
+                ;;
+            *) larch_err "stall-recovery-report.sh: internal validator mode error"; return 1 ;;
+        esac
     elif [ -e "$path" ]; then
         [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be regular"; return 1; }
         [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
-        [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
-        [ -w "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be writable"; return 1; }
+        if [ "$mode" = read ]; then
+            [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+        else
+            [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+            [ -w "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be writable"; return 1; }
+        fi
     else
+        [ "$mode" = write ] || { larch_err "stall-recovery-report.sh: $flag_name missing"; return 1; }
         [ -w "$dir" ] || { larch_err "stall-recovery-report.sh: $flag_name parent directory must be writable"; return 1; }
     fi
     return 0
+}
+
+validate_tmpdir_local_file() {
+    validate_tmpdir_path "$1" "$2" "$3" read true
+}
+
+validate_tmpdir_write_file() {
+    validate_tmpdir_path "$1" "$2" "$3" write "$4"
+}
+
+read_validated_failure_detail_log() {
+    local tmpdir=$1 path=$2
+    validate_tmpdir_local_file "$tmpdir" "$path" "--failure-detail-log" || return 1
+    python3 - "$path" <<'PY'
+import os
+import stat
+import sys
+
+path = sys.argv[1]
+limit = 65536
+flags = os.O_RDONLY
+if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+try:
+    fd = os.open(path, flags)
+except FileNotFoundError:
+    print("stall-recovery-report.sh: --failure-detail-log missing", file=sys.stderr)
+    raise SystemExit(1)
+except OSError as exc:
+    if exc.errno == getattr(os, "ELOOP", 40):
+        print("stall-recovery-report.sh: --failure-detail-log must not be a symlink", file=sys.stderr)
+    else:
+        print("stall-recovery-report.sh: --failure-detail-log unreadable", file=sys.stderr)
+    raise SystemExit(1)
+with os.fdopen(fd, "rb") as fh:
+    st = os.fstat(fh.fileno())
+    if not stat.S_ISREG(st.st_mode):
+        print("stall-recovery-report.sh: --failure-detail-log must be regular", file=sys.stderr)
+        raise SystemExit(1)
+    if st.st_size > limit:
+        print("stall-recovery-report.sh: --failure-detail-log exceeds 64KiB", file=sys.stderr)
+        raise SystemExit(1)
+    data = fh.read(limit + 1)
+if len(data) > limit:
+    print("stall-recovery-report.sh: --failure-detail-log exceeds 64KiB", file=sys.stderr)
+    raise SystemExit(1)
+sys.stdout.buffer.write(data)
+PY
 }
 
 resume_hint_for() {
@@ -298,6 +298,9 @@ cmd_classify() {
     done
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+    if [ -n "$attempts_file" ]; then
+        validate_tmpdir_local_file "$tmpdir" "$attempts_file" "--attempts-file" || exit 1
+    fi
 
     state_file="$tmpdir/ship-pr-state.sh"
     session_env="$tmpdir/session-env.sh"
@@ -332,8 +335,7 @@ cmd_classify() {
     fi
 
     if [ -n "$detail_log" ]; then
-        if validate_failure_detail_log "$tmpdir" "$detail_log"; then
-            evidence=$(cat "$detail_log")
+        if evidence=$(read_validated_failure_detail_log "$tmpdir" "$detail_log"); then
             detail_log_valid=true
         fi
     fi
@@ -354,7 +356,7 @@ $(cat "$session_env")"
     resume_hint=$(resume_hint_for "$failure_class" "$stall_step" "$phase")
     signature=$(printf '%s\n' "class=$failure_class" "hint=$resume_hint" "step=$stall_step" "phase=$phase" "bail=$bail_reason" | hash_text)
 
-    if [ -n "$attempts_file" ]; then
+    if [ -n "$attempts_file" ] && [ "$failure_class" != contract-failure ] && [ "$failure_class" != unrecoverable ]; then
         last_sig=$(latest_attempt_signature "$attempts_file")
         if [ -n "$last_sig" ] && [ "$last_sig" = "$signature" ]; then
             failure_class="same-cause-repeat"
@@ -629,7 +631,7 @@ cmd_bug_body_like() {
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$class_file" ] || die_missing "--classification-file is required"
-    [ -r "$class_file" ] || die_missing "--classification-file must be readable"
+    validate_tmpdir_local_file "$tmpdir" "$class_file" "--classification-file" || exit 1
     if truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}"; then
         dry_run=true
     fi
@@ -639,6 +641,11 @@ cmd_bug_body_like() {
         else
             out_file="$tmpdir/stall-recovery-bug-body.md"
         fi
+    fi
+    validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
+    if [ "$mode" = bug-comment ]; then
+        [ -n "$attempts_file" ] || die_missing "--attempts-file is required"
+        validate_tmpdir_local_file "$tmpdir" "$attempts_file" "--attempts-file" || exit 1
     fi
     raw_file="$out_file.raw.$$"
     if [ "$mode" = bug-comment ]; then
@@ -668,10 +675,11 @@ cmd_issue_input_file() {
     done
     [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
     [ -n "$class_file" ] || die_missing "--classification-file is required"
-    [ -r "$class_file" ] || die_missing "--classification-file must be readable"
+    validate_tmpdir_local_file "$tmpdir" "$class_file" "--classification-file" || exit 1
     [ -n "$body_file" ] || die_missing "--body-file is required"
     validate_tmpdir_local_file "$tmpdir" "$body_file" "--body-file" || exit 1
     [ -n "$out_file" ] || out_file="$tmpdir/stall-recovery-issue-input.md"
+    validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
     failure_class=$(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")")
     step=$(safe_step_value "$(kv_get "$class_file" STALL_STEP "unknown")")
     { printf '### [Bug] /implement stall: %s at %s\n\n' "$failure_class" "$step"; cat "$body_file"; } >"$out_file.tmp.$$"

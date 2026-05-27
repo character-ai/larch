@@ -1747,7 +1747,7 @@ printf 'STALL_TRACKING_SESSION=%s\n' "$_stall_session"
 
 If in-memory `STALL_TRACKING=false` and both disk fallback signals are false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b.
 
-If any layer is true: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step procedure. That procedure owns attempt initialization, classification, first-detection issue filing or consumer print, dispatch/retry, atomic success clearing, terminal-failure comment/print, and the final continuation into Step 18b.
+If any layer is true: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step procedure. That procedure owns attempt initialization, classification, canonical `BAIL_FAILURE_DETAIL_LOG` handoff from `ship-pr-state.sh`, first-detection issue filing or consumer print, dispatch/retry, atomic success clearing, terminal-failure comment/print, and the final continuation into Step 18b.
 
 Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report-allowlists.tsv`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-stall-recovery-report.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-stall-recovery-report.md`, and `${CLAUDE_PLUGIN_ROOT}/scripts/lib-larch-dev-clone.sh`. Terminal title-prefix handling happens in **Step 18b — Teardown** below.
 
