@@ -93,13 +93,11 @@ jq -s -e 'all(.[]; .fallback_group != null)' "$D1/decompose/decompose-slots.ndjs
     || fail "every decompose slot must include fallback_group"
 for archetype in decomposition-specialist dependency-analyst scope-minimalist risk-isolation; do
     expected="decomp-${archetype}"
-    got_count=$(jq -r --arg fg "$expected" 'select(.fallback_group == $fg) | .slot' "$D1/decompose/decompose-slots.ndjson" | wc -l | tr -d ' ')
-    [[ "$got_count" == "2" ]] || fail "expected paired fallback_group $expected on two rows, got $got_count"
-    jq -e --arg a "$archetype" --arg fg "$expected" '
-        select(.slot == ("decomp-cursor-" + $a) or .slot == ("decomp-codex-" + $a))
-        | .fallback_group == $fg
+    jq -s -e --arg a "$archetype" --arg fg "$expected" '
+        [.[] | select(.slot == ("decomp-cursor-" + $a) or .slot == ("decomp-codex-" + $a))]
+        | length == 2 and all(.[]; .fallback_group == $fg)
     ' "$D1/decompose/decompose-slots.ndjson" >/dev/null \
-        || fail "fallback_group mismatch for $archetype"
+        || fail "fallback_group pairing mismatch for $archetype"
 done
 
 # Recommendation-heading gate threaded to the waterfall (Fix 2 caller adoption).
