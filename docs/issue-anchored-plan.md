@@ -76,6 +76,8 @@ Rules:
 
 ```text
 <!-- larch:design-pause:start -->
+ISSUE_NUMBER=<issue-number>
+REPO=<owner/repo>              # optional when repo resolution failed
 RUN_ID=<run-id>
 STEP=<step-id>
 SESSION_ID=<run-id>
@@ -93,8 +95,10 @@ The marker is written by `/larch:pause` through
 the pause marker stripped; resume warns with `WARN=body-drift` on mismatch and
 continues because the marker is the authoritative snapshot pointer.
 
-`RUN_ID`, `STEP`, and `LOG_RECOVERY_BRANCH` are validated before any git
-operation. Recovery branches must use the `larch-log-design-` prefix.
+`ISSUE_NUMBER` must match the caller's `--issue`. `REPO`, when present, must
+match the caller repo (explicit `--repo` or resolved current repo). `RUN_ID`,
+`STEP`, and `LOG_RECOVERY_BRANCH` are validated before any git operation.
+Recovery branches must use the `larch-log-design-` prefix.
 
 ## Clarification Comment Markers
 

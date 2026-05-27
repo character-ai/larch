@@ -14,16 +14,12 @@ ISSUE=""
 REPO=""
 
 resolve_repo() {
-    local repo="${1:-}" resolved=""
+    local repo="${1:-}"
     if [[ -n "$repo" ]]; then
         printf '%s\n' "$repo"
         return 0
     fi
-    if resolved=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null) && [[ -n "$resolved" ]]; then
-        printf '%s\n' "$resolved"
-        return 0
-    fi
-    return 1
+    "$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null
 }
 
 usage() {
@@ -33,6 +29,9 @@ usage() {
 emit_fail() {
     emit_kv PAUSE_OK false
     emit_kv ERROR "$1"
+    if [[ "${LARCH_PAUSE_REQUIRE_SUCCESS:-0}" == "1" ]]; then
+        exit 1
+    fi
     exit 0
 }
 
@@ -158,13 +157,14 @@ set +e
 "${publish_args[@]}" > "$publish_out" 2> "$publish_err"
 publish_rc=$?
 set -e
-if [[ "$publish_rc" -ne 0 ]]; then
-    log_failure "design-log-publish.sh" "$publish_err"
-    emit_fail "publish-failed"
-fi
 
 PUBLISH_OK=$(awk -F= '$1=="PUBLISH_OK"{print $2}' "$publish_out" | tail -1)
 RECOVERY_BRANCH=$(awk -F= '$1=="RECOVERY_BRANCH"{print $2}' "$publish_out" | tail -1)
+
+if [[ "$publish_rc" -ne 0 && -z "$PUBLISH_OK" ]]; then
+    log_failure "design-log-publish.sh" "$publish_err"
+    emit_fail "publish-failed"
+fi
 
 if [[ "$PUBLISH_OK" != "true" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"

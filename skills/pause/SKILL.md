@@ -33,17 +33,14 @@ if [ -z "${DESIGN_TMPDIR:-}" ] || [ -z "${ISSUE_NUMBER:-}" ]; then
   exit 0
 fi
 
-REPO=""
-if [ -x "${CLAUDE_PLUGIN_ROOT:-}/scripts/resolve-repo.sh" ]; then
+REPO="${REPO:-}"
+if [ -z "$REPO" ] && [ -x "${CLAUDE_PLUGIN_ROOT:-}/scripts/resolve-repo.sh" ]; then
   REPO=$("${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh" 2>/dev/null || true)
-fi
-if [ -z "$REPO" ]; then
-  REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
 fi
 
 printf '%s\n' "🛑 /larch:pause: saving state for issue #${ISSUE_NUMBER}..."
 mkdir -p "$DESIGN_TMPDIR"
-: > "$DESIGN_TMPDIR/.pause-requested"
+rm -f "$DESIGN_TMPDIR/.pause-requested"
 pause_args=(
   "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh"
   --design-tmpdir "$DESIGN_TMPDIR"

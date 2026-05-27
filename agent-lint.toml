@@ -898,6 +898,7 @@ exclude = [
   "scripts/test-design-reentry-guard.sh",
   "scripts/test-design-reentry-guard.md",
   "skills/design/scripts/test-design-driver.sh",
+  "skills/design/scripts/test-design-pause-resume.sh",
   # skills/design/scripts/test-write-design-current-env.sh — offline harness
   # for scripts/write-design-current-env.sh (Makefile test-write-design-
   # current-env target). Same Makefile-only pattern as other design test-*.
@@ -923,6 +924,12 @@ exclude = [
   "skills/design/scripts/decompose-prompts/risk-isolation.txt",
   "skills/design/scripts/decompose-prompts/_common-tail.txt",
   "skills/design/scripts/test-render-final-summary.sh",
+  # skills/pause/scripts/test-pause-skill.sh is the offline regression harness
+  # for the /larch:pause Bash block embedded in skills/pause/SKILL.md. It is
+  # referenced only from Makefile (test-pause-skill target) and its sibling
+  # contract, matching the same Makefile-only harness pattern as other
+  # skill-local regression tests.
+  "skills/pause/scripts/test-pause-skill.sh",
   "scripts/test-implement-rebase-macro.sh",
   # scripts/test-rebase-checkpoint-probe.sh — offline harness for
   # scripts/rebase-checkpoint-probe.sh (Makefile test-rebase-checkpoint-probe).
@@ -1026,8 +1033,13 @@ exclude = [
   # scripts/test-design-log-publish.sh exercises design-log-publish.sh
   # (Makefile test-design-log-publish target + sibling .md). Same
   # Makefile-only harness pattern as test-tracking-issue-write.sh.
+  # scripts/named-block-write.sh is reached only through sibling shell wrappers,
+  # and skills/design/scripts/test-design-pause-resume.sh is its Makefile-only
+  # pause/resume harness.
+  "scripts/named-block-write.sh",
   "scripts/test-design-log-publish.sh",
   "scripts/test-design-log-publish.md",
+  "skills/design/scripts/test-design-pause-resume.sh",
   # Phase 1 of umbrella #348 (tracking-issue foundation helpers) —
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
@@ -1268,6 +1280,7 @@ exclude = [
   # refactor. The primary scripts are cited from /design runtime prose; the
   # harnesses are referenced only from Makefile and their sibling contracts.
   "skills/design/scripts/test-design-driver.md",
+  "skills/design/scripts/test-design-pause-resume.md",
   "skills/design/scripts/test-write-design-current-env.md",
   "skills/design/scripts/test-emit-plan.md",
   "skills/design/scripts/test-parse-plan-commands.md",
@@ -1285,6 +1298,7 @@ exclude = [
   "skills/design/scripts/test-decompose-aggregator.md",
   "skills/design/scripts/test-decompose-file-issues.md",
   "skills/design/scripts/test-render-final-summary.md",
+  "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
   "scripts/test-auto-resolve-changelog.md",
   "scripts/test-rebase-push-force-lease.md",

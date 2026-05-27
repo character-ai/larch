@@ -643,13 +643,19 @@ echo "PASS: (20) Step 0b title-eligibility filter anchors OK"
 assert_bash_fences_have_pause_check() {
   local missing
   missing=$(awk '
-    /<!-- step:1c/ { start=1 }
-    start && /current-design-env-\$PPID\.sh/ {
-      line=NR
-      if ((getline nextline) <= 0 || nextline !~ /design-pause-save\.sh/) {
-        print line
-      }
+    /<!-- step:1c/ { start=1; in_fence=0 }
+    start && /^```bash$/ { in_fence=1; saw_source=0; saw_pause=0; next }
+    start && in_fence && /^```$/ {
+      if (saw_source && !saw_pause) print source_line
+      in_fence=0
+      next
     }
+    start && in_fence && /current-design-env-\$PPID\.sh/ {
+      saw_source=1
+      source_line=NR
+      next
+    }
+    start && in_fence && saw_source && /design-pause-save\.sh/ { saw_pause=1 }
   ' "$SKILL_MD")
   [[ -z "$missing" ]] || fail "(21) current-design-env source lines missing pause-check after lines: $missing"
 }

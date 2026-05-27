@@ -29,14 +29,23 @@ Mismatch emits `WARN=body-drift` and continues; the marker remains the authority
 
 Snapshot fetch uses `git fetch origin <ref>` followed by local
 `git archive <ref> larch-logs/design/<RUN_ID>/ | tar -x --strip-components=3 -C
-<staging-tmpdir>`. `LOG_RECOVERY_BRANCH` is fetched first when present;
-otherwise the origin default branch is used.
+<staging-tmpdir>`. `LOG_RECOVERY_BRANCH` is fetched first when present, and the
+loader archives the resolved fetched commit rather than the mutable
+`FETCH_HEAD` ref. Otherwise the origin default branch is used.
 
 After extraction, `plan.txt`, `run-params.json`, and `pause-state.txt` must
 exist at the staging root. Missing artifacts emit `LOAD_OK=false`
-`ERROR=missing-restored-artifact`. The marker is deleted before the staged
-restore is copied into the caller tmpdir, so delete failures leave no ambiguous
-partially-restored state behind.
+`ERROR=missing-restored-artifact`. The loader rejects staged symlinks, rejects a
+staged `.git` path, verifies enumerated restored files stay under the staging
+root, deletes the marker, and only then installs the staged restore into the
+caller tmpdir.
+
+For unrecoverable snapshot failures (`snapshot-not-found`,
+`snapshot-extract-failed`, `snapshot-contains-symlink`,
+`snapshot-path-escape`, `restore-forbidden-path`, or
+`missing-restored-artifact`), the loader best-effort clears the pause marker
+before returning `LOAD_OK=false` so later `/design` runs do not keep retrying
+the same broken snapshot.
 
 ## Output Contract
 
@@ -45,4 +54,5 @@ partially-restored state behind.
   exit 0.
 - Expected failure: `LOAD_OK=false`, `ERROR=<token>`, exit 0.
 
-The marker is deleted only after validation and artifact assertions pass.
+The marker is deleted only after validation and artifact assertions pass and
+before the staged restore is installed into the caller tmpdir.

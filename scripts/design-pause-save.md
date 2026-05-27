@@ -17,7 +17,7 @@ the run id. It computes `STEP` by walking
 `skills/design/scripts/step-name-registry.tsv` in file order and selecting the
 first step whose `.completed/step-<id>` sentinel is absent. The marker payload
 also binds the snapshot to `ISSUE_NUMBER=<argv --issue>` and, when repository
-identity can be resolved, `REPO=<owner/repo>`.
+identity can be resolved through `scripts/resolve-repo.sh`, `REPO=<owner/repo>`.
 
 ## Output Contract
 

@@ -130,6 +130,7 @@ make_design_tmpdir() {
   printf 'export SESSION_ID=RUNPAUSE1\n' >"$d/source-env.sh"
   printf 'plan\n' >"$d/plan.txt"
   printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$d/run-params.json"
+  printf '{"issue_number":"9","run_id":"RUNPAUSE1"}\n' >"$d/manifest.json"
 }
 
 echo "=== clean save/load round trip ==="
@@ -149,10 +150,27 @@ RESTORE="$TMP/restore1"
 out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_load" == *"LOAD_OK=true"* ]] || fail "load failed: $out_load"
 [[ "$out_load" == *"STEP=1d"* ]] || fail "load step mismatch: $out_load"
+[[ "$out_load" == *"WARN=pause-marker-editable"* ]] || fail "expected editable-marker warning: $out_load"
 [[ -f "$RESTORE/plan.txt" && -f "$RESTORE/run-params.json" && -f "$RESTORE/pause-state.txt" ]] || fail "restored root artifacts missing"
 ! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker not deleted"
 HOME="$TMP/home" bash "$WDCE" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
 grep -Fq 'export ISSUE_NUMBER=9' "$RESTORE/source-env.sh" || fail "issue refresh missing after restore"
+
+echo "=== restore install failure keeps marker ==="
+make_design_tmpdir "$DESIGN"
+printf 'body install fail\n' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+RESTORE_FAIL="$TMP/restore-fail"
+mkdir -p "$RESTORE_FAIL"
+chmod 500 "$RESTORE_FAIL"
+set +e
+out_install_fail=$(bash "$LOAD" --design-tmpdir "$RESTORE_FAIL" --issue 9 --repo owner/repo)
+rc_install_fail=$?
+set -e
+chmod 700 "$RESTORE_FAIL"
+[[ "$rc_install_fail" == "0" && "$out_install_fail" == *"LOAD_OK=false"* && "$out_install_fail" == *"ERROR=restore-install-failed"* ]] \
+  || fail "restore install failure mismatch: rc=$rc_install_fail out=$out_install_fail"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should be deleted before install failure"
 
 echo "=== multi-sentinel registry order and multi-cycle idempotency ==="
 DESIGN_MULTI="$TMP/design-multi"
@@ -238,6 +256,39 @@ out_hard=$(PUBLISH_MODE=hardfail bash "$SAVE" --design-tmpdir "$DESIGN" --issue 
 [[ "$out_hard" == *"PAUSE_OK=false"* && "$out_hard" == *"ERROR=publish-and-recovery-failed"* ]] || fail "hard publish failure mismatch: $out_hard"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "hard failure must not write marker"
 
+echo "=== tmpdir unset fails closed ==="
+out_tmpdir_unset=$(bash "$SAVE" --issue 9 --repo owner/repo)
+[[ "$out_tmpdir_unset" == *"PAUSE_OK=false"* && "$out_tmpdir_unset" == *"ERROR=tmpdir-unset"* ]] \
+  || fail "tmpdir unset mismatch: $out_tmpdir_unset"
+
+echo "=== prelude pause-requested path ==="
+PRELUDE_ROOT="$TMP/prelude-root"
+PRELUDE_HOME="$TMP/prelude-home"
+PRELUDE_PLUGIN="$PRELUDE_ROOT/plugin"
+PRELUDE_DESIGN="$PRELUDE_ROOT/design"
+mkdir -p "$PRELUDE_PLUGIN/scripts" "$PRELUDE_DESIGN" "$PRELUDE_HOME/.cache/larch/sessions"
+cat >"$PRELUDE_PLUGIN/scripts/design-pause-save.sh" <<'PRELUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'PRELUDE_SAVE=%s\n' "$*"
+PRELUDE
+chmod +x "$PRELUDE_PLUGIN/scripts/design-pause-save.sh"
+cat >"$PRELUDE_HOME/.cache/larch/sessions/current-design-env-$$.sh" <<PRELUDEENV
+export DESIGN_TMPDIR="$PRELUDE_DESIGN"
+export CLAUDE_PLUGIN_ROOT="$PRELUDE_PLUGIN"
+export ISSUE_NUMBER=9
+PRELUDEENV
+: >"$PRELUDE_DESIGN/.pause-requested"
+prelude_out=$(
+  HOME="$PRELUDE_HOME" bash -c '
+    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+    printf "PRELUDE_CONTINUED\n"
+  '
+)
+[[ "$prelude_out" == *"PRELUDE_SAVE=--design-tmpdir $PRELUDE_DESIGN --issue 9"* ]] || fail "prelude did not exec save helper: $prelude_out"
+[[ "$prelude_out" != *"PRELUDE_CONTINUED"* ]] || fail "prelude should exec instead of continuing"
+
 echo "=== value validation and missing artifact ==="
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=8\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_issue=$(bash "$LOAD" --design-tmpdir "$TMP/bad-issue" --issue 9 --repo owner/repo)
@@ -247,20 +298,27 @@ out_bad_repo=$(bash "$LOAD" --design-tmpdir "$TMP/bad-repo" --issue 9 --repo own
 [[ "$out_bad_repo" == *"ERROR=repo-mismatch"* ]] || fail "repo binding mismatch failed open: $out_bad_repo"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=../bad\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_run=$(bash "$LOAD" --design-tmpdir "$TMP/bad-run" --issue 9 --repo owner/repo)
-[[ "$out_bad_run" == *"LOAD_OK=false"* && "$out_bad_run" == *"ERROR=invalid-run-id"* ]] || fail "bad run validation mismatch: $out_bad_run"
+[[ "$out_bad_run" == *"LOAD_OK=false"* && "$out_bad_run" == *"ERROR=invalid-run-id"* && "$out_bad_run" == *"WARN=stale-pause-marker-cleared"* ]] || fail "bad run validation mismatch: $out_bad_run"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=nope\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_step=$(bash "$LOAD" --design-tmpdir "$TMP/bad-step" --issue 9 --repo owner/repo)
-[[ "$out_bad_step" == *"ERROR=invalid-step"* ]] || fail "bad step validation mismatch: $out_bad_step"
+[[ "$out_bad_step" == *"ERROR=invalid-step"* && "$out_bad_step" == *"WARN=stale-pause-marker-cleared"* ]] || fail "bad step validation mismatch: $out_bad_step"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nLOG_RECOVERY_BRANCH=badbranch\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/bad-branch" --issue 9 --repo owner/repo)
-[[ "$out_bad_branch" == *"ERROR=invalid-recovery-branch"* ]] || fail "bad branch validation mismatch: $out_bad_branch"
+[[ "$out_bad_branch" == *"ERROR=invalid-recovery-branch"* && "$out_bad_branch" == *"WARN=stale-pause-marker-cleared"* ]] || fail "bad branch validation mismatch: $out_bad_branch"
 
 rm -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/plan.txt"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing=$(bash "$LOAD" --design-tmpdir "$TMP/missing" --issue 9 --repo owner/repo)
-[[ "$out_missing" == *"ERROR=missing-restored-artifact"* ]] || fail "missing artifact mismatch: $out_missing"
+[[ "$out_missing" == *"ERROR=missing-restored-artifact"* && "$out_missing" == *"WARN=stale-pause-marker-cleared"* ]] || fail "missing artifact mismatch: $out_missing"
 
-echo "=== marker delete failure does not install restored state ==="
+echo "=== snapshot-not-found clears stale marker ==="
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nLOG_RECOVERY_BRANCH=larch-log-design-recovery-RUNPAUSE1\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+out_not_found=$(bash "$LOAD" --design-tmpdir "$TMP/not-found" --issue 9 --repo owner/repo)
+[[ "$out_not_found" == *"ERROR=snapshot-not-found"* && "$out_not_found" == *"WARN=stale-pause-marker-cleared"* ]] || fail "snapshot-not-found mismatch: $out_not_found"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "stale marker should be cleared after snapshot-not-found"
+
+echo "=== marker delete failure leaves installed state + marker for retry ==="
 make_design_tmpdir "$DESIGN"
 printf 'body\n' >"$BODY_FILE"
 bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
@@ -268,7 +326,8 @@ FAIL_RESTORE="$TMP/delete-fail-restore"
 mkdir -p "$FAIL_RESTORE"
 out_delete_fail=$(GH_EDIT_FAIL=1 bash "$LOAD" --design-tmpdir "$FAIL_RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_delete_fail" == *"ERROR=marker-delete-failed"* ]] || fail "delete failure mismatch: $out_delete_fail"
-[[ ! -f "$FAIL_RESTORE/plan.txt" ]] || fail "restore installed artifacts before marker deletion succeeded"
+[[ ! -f "$FAIL_RESTORE/plan.txt" ]] || fail "restore must not install artifacts before marker deletion succeeds"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should remain after delete failure"
 
 echo "=== marker name validation ==="
 set +e

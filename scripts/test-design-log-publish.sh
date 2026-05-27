@@ -336,7 +336,8 @@ git -C "$clone_pause_noop" pull -q origin main
 out_pause_noop=$(
     cd "$clone_pause_noop" && bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo
 )
-[[ "$out_pause_noop" == *"PUBLISH_OK=true"* ]] || fail "pause no-op snapshot should succeed when default branch already has snapshot: $out_pause_noop"
+[[ "$out_pause_noop" == *"PUBLISH_OK=false"* && "$out_pause_noop" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSENOOP1"* ]] \
+  || fail "pause no-op snapshot should fail closed with recovery branch when no fresh snapshot exists: $out_pause_noop"
 
 echo "=== pause publish reuses existing remote recovery branch on no-op ==="
 TMPPAUSE_REC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-recovery.XXXXXX")

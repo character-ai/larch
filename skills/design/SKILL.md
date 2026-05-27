@@ -200,7 +200,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
    ```
 
-   Parse `LOAD_OK=` from stdout. On `LOAD_OK=true`, re-export `SESSION_ID`, `RUN_ID`, `TIER`, and `BRAINSTORM_DONE` from the loader stdout; refresh the stable env symlink with `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID"` (plus `--manual-requested true` if restored run params require it); print `🔓 resumed from STEP=<id>`; then skip sub-steps 2.5 through 6 and route directly to the named `STEP=<id>`. Do not rerun title filtering, clarify routing, already-planned routing, tier gate, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes on this resumed path. On `LOAD_OK=false`, print any `WARN=` / `ERROR=` as a warning breadcrumb and continue as a fresh run through sub-step 2.5.
+   Parse `LOAD_OK=` from stdout. On `LOAD_OK=true`, re-export `SESSION_ID`, `RUN_ID`, `TIER`, and `BRAINSTORM_DONE` from the loader stdout; print any returned `WARN=` lines as warning breadcrumbs before resuming; refresh the stable env symlink with `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID"` (plus `--manual-requested true` if restored run params require it); print `🔓 resumed from STEP=<id>`. If `STEP=0c`, do **not** skip Step 0b clarify handling; resume at Step 0b sub-step 3 (Clarify loop), then continue through Step 0c and onward. Otherwise skip sub-steps 2.5 through 6 and route directly to the named `STEP=<id>`. Do not rerun title filtering, already-planned routing, tier gate, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes on the resumed non-`0c` path. On `LOAD_OK=false`, print any `WARN=` / `ERROR=` as a warning breadcrumb and continue as a fresh run through sub-step 2.5.
 2.5. **Title-eligibility filter** — run **after** resume detection and **before** sub-step 3. Mandatory predicate order: (a) lifecycle-reject (exit on match), (b) archival-report (exit on match), (c) brainstorm (set flag and continue on match). Earlier checks short-circuit.
 
    1. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-title-eligibility.sh`.
@@ -394,7 +394,6 @@ Print: `> **🔶 /design 1c: questions**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
 
-After Step 1c succeeds, write `mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-1c"` before continuing.
 At the Step 1c success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1c"` before continuing to Step 1d.
 
 <!-- step:1d — Design Discussion (Round 1) -->
@@ -409,7 +408,6 @@ Print: `> **🔶 /design 1d: discussion r1**`
 
 Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
-After Step 1d succeeds, write `mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-1d"` before continuing.
 At the Step 1d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1d"` before continuing to Step 1d.5 or Step 1e.
 
 <!-- step:1d.5 — Brainstorm Panel -->
@@ -428,6 +426,7 @@ When Step 1d.5 finishes or is skipped by its entry guard, immediately run `mkdir
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.7 — outline" || true
 ```
 
@@ -451,7 +450,6 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (Show latest design proposal / Ready for review / Discuss more); selecting **Show latest design proposal** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt, while **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
 
-After Gate A returns success, write `mkdir -p "$DESIGN_TMPDIR/.completed" && : > "$DESIGN_TMPDIR/.completed/step-1e"` before continuing.
 At the Gate A success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1e"` before continuing to Step 2a or Step 3.
 
 <!-- step:2a — Collaborative Approach Sketches -->
@@ -476,7 +474,7 @@ Launch no external agents and no Claude fallback agents. Write sentinel artifact
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-printf '%s\n' 'NO_SKETCHES_CLASSIFIED_TRIVIAL' > "$DESIGN_TMPDIR/approach-synthesis.txt"
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
 printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
 : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
 ```
@@ -625,6 +623,7 @@ fi
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 
 mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
 _launch_id="collect-agent-results.$$"
@@ -814,7 +813,7 @@ If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, tre
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt")
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt")
 VALIDATE_STATUS=ok
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
@@ -910,6 +909,7 @@ Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/em
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 _round_count_file="$DESIGN_TMPDIR/review-round-count.txt"
 _step3_cap_env="$DESIGN_TMPDIR/.step3-review-cap.env"
 _round_count=0
@@ -1229,7 +1229,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/composed-plan.md")
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md")
 VALIDATE_STATUS=ok
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0

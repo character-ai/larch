@@ -216,6 +216,13 @@ fi
 
 design_artifact_excluded() {
     local name="$1"
+    if [[ "$REASON" != "pause" ]]; then
+        case "$name" in
+            .pause-requested|pause-save.out|pause-state.txt)
+                return 0
+                ;;
+        esac
+    fi
     case "$name" in
         *.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
             return 0
@@ -428,7 +435,7 @@ if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; t
     ENUM_RC_TMP=""
 fi
 
-if [[ -e "$DESIGN_TMPDIR/.completed" || -L "$DESIGN_TMPDIR/.completed" ]]; then
+if [[ "$REASON" == "pause" && ( -e "$DESIGN_TMPDIR/.completed" || -L "$DESIGN_TMPDIR/.completed" ) ]]; then
     if [[ -L "$DESIGN_TMPDIR/.completed" ]]; then
         larch_err "design-log-publish: .completed must not be a symlink"
         emit_publish_result false
@@ -517,8 +524,9 @@ if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
 fi
 if [[ -z "$_porcelain" ]]; then
     if [[ "$REASON" == "pause" ]]; then
-        if git -C "$REPO_ROOT" cat-file -e "origin/$ORIGIN_DEFAULT:larch-logs/design/$RUN_ID/manifest.json" 2>/dev/null; then
-            emit_publish_result true "" ""
+        if [[ "$REMOTE_BRANCH_EXISTS" == true ]] && ! git -C "$REPO_ROOT" merge-base --is-ancestor "origin/$WT_BRANCH" "origin/$ORIGIN_DEFAULT" >/dev/null 2>&1; then
+            emit_publish_result false
+            emit_kv RECOVERY_BRANCH "$WT_BRANCH"
             exit 0
         fi
         if [[ "$REMOTE_BRANCH_EXISTS" == true ]]; then
@@ -526,7 +534,7 @@ if [[ -z "$_porcelain" ]]; then
             emit_kv RECOVERY_BRANCH "$WT_BRANCH"
             exit 0
         fi
-        larch_err "design-log-publish: pause publish produced no committed snapshot on origin/$ORIGIN_DEFAULT"
+        larch_err "design-log-publish: pause publish produced no fresh snapshot"
         emit_publish_result false
         exit 0
     fi

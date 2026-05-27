@@ -11,6 +11,7 @@
 #                               [--cursor-present <true|false>] \
 #                               [--codex-available <true|false>] \
 #                               [--cursor-available <true|false>] \
+#                               [--repo <owner/repo>] \
 #                               [--issue-number <n>] \
 #                               [--claude-pid <pid>]
 #
@@ -46,6 +47,7 @@ CODEX_PRESENT=""
 CURSOR_PRESENT=""
 CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
+REPO=""
 ISSUE_NUMBER=""
 CLAUDE_PID=""
 CLAUDE_PID_SPECIFIED=0
@@ -61,6 +63,7 @@ while [[ $# -gt 0 ]]; do
     --cursor-present)   CURSOR_PRESENT="$2"; shift 2 ;;
     --codex-available)  CODEX_AVAILABLE="$2"; shift 2 ;;
     --cursor-available) CURSOR_AVAILABLE="$2"; shift 2 ;;
+    --repo)             REPO="$2"; shift 2 ;;
     --issue-number)     ISSUE_NUMBER="$2"; shift 2 ;;
     --claude-pid)       CLAUDE_PID="$2"; CLAUDE_PID_SPECIFIED=1; shift 2 ;;
     *) larch_err "ERROR=Unknown argument: $1"; exit 1 ;;
@@ -87,6 +90,11 @@ validate_bool manual-requested "$MANUAL_REQUESTED"
 
 if [[ -n "$ISSUE_NUMBER" && ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
   larch_err "ERROR=Invalid --issue-number: must be a non-negative integer"
+  exit 1
+fi
+
+if [[ -n "$REPO" && ! "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+  larch_err "ERROR=Invalid --repo: must match OWNER/REPO"
   exit 1
 fi
 
@@ -141,6 +149,7 @@ build_export() {
   build_export SESSION_TMPDIR "$DESIGN_TMPDIR_ARG"
   build_export SESSION_ID "$SESSION_ID"
   [[ -n "$MANUAL_REQUESTED" ]] && build_export MANUAL_REQUESTED "$MANUAL_REQUESTED"
+  [[ -n "$REPO" ]] && build_export REPO "$REPO"
   [[ -n "$ISSUE_NUMBER" ]] && build_export ISSUE_NUMBER "$ISSUE_NUMBER"
   [[ -n "$CODEX_PRESENT" ]] && build_export CODEX_PRESENT "$CODEX_PRESENT"
   [[ -n "$CURSOR_PRESENT" ]] && build_export CURSOR_PRESENT "$CURSOR_PRESENT"
