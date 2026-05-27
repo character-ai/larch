@@ -39,13 +39,13 @@ while [ "$#" -gt 0 ]; do
 done
 
 manifest_rows=(
-    "skills/design/SKILL.md:orchestrator-inline"
-    "skills/design/references/design-outline.md:orchestrator-inline"
-    "skills/design/references/brainstorm.md:orchestrator-inline"
-    "skills/design/references/sketch-launch.md:orchestrator-inline"
-    "skills/design/references/dialectic-execution.md:orchestrator-inline"
-    "skills/design/references/approval-gates.md:orchestrator-inline"
-    "skills/design/references/discussion-rounds.md:orchestrator-inline"
+    "skills/design/SKILL.md:orchestrator-inline:4"
+    "skills/design/references/design-outline.md:orchestrator-inline:1"
+    "skills/design/references/brainstorm.md:orchestrator-inline:1"
+    "skills/design/references/sketch-launch.md:orchestrator-inline:1"
+    "skills/design/references/dialectic-execution.md:orchestrator-inline:1"
+    "skills/design/references/approval-gates.md:orchestrator-inline:1"
+    "skills/design/references/discussion-rounds.md:orchestrator-inline:1"
     "skills/design/references/brainstorm-prompts.md:external-prompt:3:standard"
     "skills/design/references/sketch-prompts.md:external-prompt:4:sketch"
     "skills/design/references/dialectic-debate.md:external-prompt:2:standard"
@@ -67,11 +67,12 @@ $row
 EOF
     file="$ROOT/$path"
     ok=false
+    count=0
+    count_message_emitted=false
 
     if [ -f "$file" ]; then
         case "$variant" in
             external-prompt)
-                count=0
                 case "${prompt_kind:-standard}" in
                     plan-review)
                         count=$(grep -Fxc "$plan_review_style_line" "$file" || true)
@@ -88,8 +89,12 @@ EOF
                 fi
                 ;;
             orchestrator-inline)
-                if grep -Eq "$orchestrator_style_re" "$file"; then
+                count=$(grep -Ec "$orchestrator_style_re" "$file" || true)
+                if [ "$count" = "${expected_count:-1}" ]; then
                     ok=true
+                else
+                    printf '%s\n' "$path: expected ${expected_count:-1} orchestrator-inline readability-style directives, found ${count:-0}" >&2
+                    count_message_emitted=true
                 fi
                 ;;
             *)
@@ -100,7 +105,9 @@ EOF
     fi
 
     if [ "$ok" != true ]; then
-        printf '%s\n' "$path: missing $variant readability-style directive" >&2
+        if [ "$count_message_emitted" != true ]; then
+            printf '%s\n' "$path: missing $variant readability-style directive" >&2
+        fi
         missing=1
     fi
 done

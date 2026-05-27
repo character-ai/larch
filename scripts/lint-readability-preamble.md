@@ -19,13 +19,17 @@ lint-readability-preamble.sh [--root <repo-or-fixture-root>]
 The script owns a hard-coded manifest of rows:
 
 ```
-path:variant
+path:variant[:expected-count[:prompt-kind]]
 ```
 
 `variant` is one of:
 
 - `external-prompt`
 - `orchestrator-inline`
+
+`expected-count` declares how many matching readability-style directives
+must appear in that file. Rows without a count default to one match.
+`prompt-kind` selects the accepted external-prompt line shape when needed.
 
 The manifest is an allowlist of real amendment sites. It intentionally excludes:
 
@@ -64,6 +68,7 @@ Failures print one stderr line per row:
 
 ```
 <path>: missing <variant> readability-style directive
+<path>: expected <n> orchestrator-inline readability-style directives, found <m>
 ```
 
 ## Edit-in-sync
