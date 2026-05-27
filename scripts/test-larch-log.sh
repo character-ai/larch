@@ -149,7 +149,9 @@ assert_contains "$out" "UNCHANGED=true" "exists found"
 
 echo "=== round artifact allowlist pins direct inclusion decisions ==="
 assert_round_artifact_included "scout-archetype-yield.tsv" "0" "round artifact includes scout-archetype-yield.tsv"
+assert_round_artifact_included "codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
 assert_round_artifact_included "coder-codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
+assert_round_artifact_included "foo.events.jsonl" "1" "round artifact excludes arbitrary events jsonl"
 assert_round_artifact_included "reviewer-output.txt" "0" "round artifact includes reviewer output txt"
 
 echo "=== manifest updates mutable fields ==="

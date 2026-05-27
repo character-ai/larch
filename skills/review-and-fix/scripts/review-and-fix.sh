@@ -254,19 +254,20 @@ run_coder_dispatch() {
     local _SERIAL_LOCK=""
     local codex_events="$round_dir/coder-codex.events.jsonl"
     local codex_wrapper_log="$round_dir/coder-codex.wrapper.log"
+    local codex_telemetry_sidecar="$round_dir/coder-codex.telemetry.sidecar"
     local codex_rc=0
 
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-    rm -f "$codex_events" "$codex_wrapper_log"
+    rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
     "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 -- \
         codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" \
         --output-last-message "$round_dir/coder-codex.log" \
         --json \
         -- \
         "$prompt_body" >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
-    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_wrapper_log" "codex_review_fix" || true
+    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_review_fix" || true
     if [[ "$codex_rc" -eq 0 ]]; then
         cp "$round_dir/coder-codex.log" "$tool_log" 2>/dev/null || : > "$tool_log"
         printf 'codex\n' > "$tool_stdout"

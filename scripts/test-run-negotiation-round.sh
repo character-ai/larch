@@ -154,6 +154,38 @@ else
 fi
 rm -rf "$CODEX_LOCK_PATH"
 
+CODEX_UNSET_ROOT_OUTPUT="$TMPROOT/codex-unset-root.out"
+CODEX_UNSET_ROOT_STDOUT="$TMPROOT/codex-unset-root.stdout"
+CODEX_UNSET_ROOT_ARGV="$TMPROOT/codex-unset-root.argv"
+CODEX_UNSET_ROOT_LOCK_SEEN="$TMPROOT/codex-unset-root.lock-seen"
+CODEX_UNSET_ROOT_LEDGER="$TMPROOT/codex-unset-root-token-ledger.jsonl"
+rm -rf "$CODEX_LOCK_PATH"
+(
+    unset CLAUDE_PLUGIN_ROOT
+    PATH="$STUB_BIN:$PATH" \
+        USER="$CODEX_LOCK_USER" \
+        CODEX_STUB_ARGV_LOG="$CODEX_UNSET_ROOT_ARGV" \
+        CODEX_STUB_LOCK_PATH="$CODEX_LOCK_PATH" \
+        CODEX_STUB_LOCK_SEEN_FILE="$CODEX_UNSET_ROOT_LOCK_SEEN" \
+        LARCH_TOKEN_LEDGER="$CODEX_UNSET_ROOT_LEDGER" \
+        LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+        LARCH_EXTERNAL_SERIAL_LOCK_DELAY=5 \
+        "$REPO_ROOT/scripts/run-negotiation-round.sh" \
+        --tool codex \
+        --prompt-file "$PROMPT_FILE" \
+        --output "$CODEX_UNSET_ROOT_OUTPUT" \
+        --workspace "$REPO_ROOT" \
+        > "$CODEX_UNSET_ROOT_STDOUT"
+)
+assert_file_equals "codex unset-root stdout envelope" "RESPONSE_FILE=$CODEX_UNSET_ROOT_OUTPUT" "$CODEX_UNSET_ROOT_STDOUT"
+assert_file_equals "codex unset-root response body" "codex negotiation final" "$CODEX_UNSET_ROOT_OUTPUT"
+if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_negotiation" and .total==1050)' "$CODEX_UNSET_ROOT_LEDGER" >/dev/null; then
+    pass
+else
+    fail "codex unset-root should still record token ledger row"
+fi
+rm -rf "$CODEX_LOCK_PATH"
+
 CODEX_FAIL_OUTPUT="$TMPROOT/codex-fail.txt"
 CODEX_FAIL_STDOUT="$TMPROOT/codex-fail.stdout"
 CODEX_FAIL_ARGV="$TMPROOT/codex-fail.argv"

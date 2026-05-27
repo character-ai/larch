@@ -116,6 +116,13 @@ case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
     printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
     exit 0
     ;;
+  codex-bad-usage:codex)
+    printf 'modified by codex stub\n' >> src/main.py
+    printf 'APPLIED: FINDING_1\n' > "$last_message"
+    printf 'APPLIED: FINDING_1\n' > "$output"
+    printf '{"type":"token_usage"\n'
+    exit 0
+    ;;
   claude-success:codex|claude-success:cursor)
     [[ "$tool" == "codex" ]] && printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
     printf 'failed\n' > "$output"
@@ -375,6 +382,24 @@ if grep -Fq '"type":"token_usage"' "$implement_tmp/round-1/coder-codex.wrapper.l
 fi
 jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review_fix" and .input==100 and .cache_read==900 and .output==50 and .total==1050)' "$codex_telemetry_ledger" >/dev/null \
     || fail "codex telemetry token ledger row"
+
+work_codex_bad_usage="$TMP/codex-bad-usage"
+make_work_repo "$work_codex_bad_usage"
+implement_tmp="$work_codex_bad_usage/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(TEST_AGENT_BEHAVIOR=codex-bad-usage run_review_and_fix "$work_codex_bad_usage" \
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id codex-bad-usage-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "codex bad-usage expected exit 0 got $rc"; }
+grep -Fq 'CODER_TOOL=codex' <<< "$out" || fail "codex bad-usage tool"
+if grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.wrapper.log"; then
+    fail "codex bad-usage wrapper log must not contain parse diagnostics"
+fi
+grep -Fq 'parse-codex-usage.sh:' "$implement_tmp/round-1/coder-codex.telemetry.sidecar" \
+    || fail "codex bad-usage telemetry sidecar should capture parse diagnostics"
 
 work_codex_fallback_telemetry="$TMP/codex-fallback-telemetry"
 make_work_repo "$work_codex_fallback_telemetry"

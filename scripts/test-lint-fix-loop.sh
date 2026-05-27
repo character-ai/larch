@@ -189,6 +189,42 @@ EOF
     chmod +x "$path"
 }
 
+write_wrapper_codex_bad_usage() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+json=false
+last_message=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --tool) shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --json) json=true; shift ;;
+        --output-last-message) last_message="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+[[ "$json" == "true" ]] || { printf 'missing --json\n' >&2; exit 64; }
+[[ -n "$last_message" ]] || { printf 'missing --output-last-message\n' >&2; exit 65; }
+printf 'CODEX FINAL MESSAGE\n' > "$last_message"
+[[ -n "$output" ]] && printf 'CODEX FINAL MESSAGE\n' > "$output"
+printf '{"type":"token_usage"\n'
+printf 'wrapper diagnostic\n' >&2
+EOF
+    chmod +x "$path"
+}
+
 write_wrapper_commit_forbidden_path() {
     local path="$1"
     cat > "$path" <<'EOF'
@@ -359,6 +395,62 @@ if grep -Fq '"type":"token_usage"' "$case0a_run_dir/codex.wrapper.log"; then
 fi
 jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .input==100 and .cache_read==900 and .output==50 and .total==1050)' "$LEDGER0A" >/dev/null \
     || fail "case0a expected codex_lint_fix token ledger row"
+
+# Case 0a.1: unset CLAUDE_PLUGIN_ROOT still records Codex telemetry through the script-dir fallback.
+CASE0A1="$TMPROOT/case0a1"
+REPO0A1="$CASE0A1/repo"
+SCRIPTS0A1="$CASE0A1/scripts"
+SESSION0A1="$CASE0A1/session"
+CHECKS0A1="$CASE0A1/checks.log"
+WRAPPER0A1="$CASE0A1/wrapper.sh"
+LEDGER0A1="$CASE0A1/token-ledger.jsonl"
+make_repo "$REPO0A1"
+make_fixture_scripts "$SCRIPTS0A1"
+make_session "$SESSION0A1"
+printf 'synthetic checks failure\n' > "$CHECKS0A1"
+write_wrapper_codex_telemetry "$WRAPPER0A1"
+
+case0a1_result=$(
+    cd "$REPO0A1" && \
+    unset CLAUDE_PLUGIN_ROOT && \
+    IMPLEMENT_TMPDIR="$SESSION0A1" \
+    LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$WRAPPER0A1" \
+    LARCH_TOKEN_LEDGER="$LEDGER0A1" \
+    bash "$SCRIPTS0A1/lint-fix-loop.sh" --tmpdir "$SESSION0A1" --site step3 --checks-log "$CHECKS0A1" 2>&1
+)
+case0a1_rc=$?
+[[ "$case0a1_rc" == "0" ]] || fail "case0a1 expected rc 0, got $case0a1_rc"
+assert_contains "$case0a1_result" 'LINT_FIX_STATUS=no-changes' "case0a1 no changes"
+case0a1_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a1_result")
+[[ -s "$case0a1_run_dir/codex.events.jsonl" ]] || fail "case0a1 expected codex.events.jsonl"
+jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050)' "$LEDGER0A1" >/dev/null \
+    || fail "case0a1 expected unset-root codex_lint_fix token ledger row"
+
+# Case 0a.2: parse diagnostics go to a telemetry sidecar instead of the publishable wrapper log.
+CASE0A2="$TMPROOT/case0a2"
+REPO0A2="$CASE0A2/repo"
+SCRIPTS0A2="$CASE0A2/scripts"
+SESSION0A2="$CASE0A2/session"
+CHECKS0A2="$CASE0A2/checks.log"
+WRAPPER0A2="$CASE0A2/wrapper.sh"
+make_repo "$REPO0A2"
+make_fixture_scripts "$SCRIPTS0A2"
+make_session "$SESSION0A2"
+printf 'synthetic checks failure\n' > "$CHECKS0A2"
+write_wrapper_codex_bad_usage "$WRAPPER0A2"
+
+case0a2_result=$(run_case "$SCRIPTS0A2" "$REPO0A2" "$SESSION0A2" "$CHECKS0A2" "$WRAPPER0A2")
+case0a2_rc=$(printf '%s\n' "$case0a2_result" | sed -n '1p')
+case0a2_out=$(printf '%s\n' "$case0a2_result" | sed -n '2,$p')
+[[ "$case0a2_rc" == "0" ]] || fail "case0a2 expected rc 0, got $case0a2_rc"
+assert_contains "$case0a2_out" 'LINT_FIX_STATUS=no-changes' "case0a2 no changes"
+case0a2_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0a2_out")
+[[ -f "$case0a2_run_dir/codex.wrapper.log" ]] || fail "case0a2 expected codex.wrapper.log"
+if grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.wrapper.log"; then
+    fail "case0a2 wrapper log must not contain parse diagnostics"
+fi
+grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.telemetry.sidecar" \
+    || fail "case0a2 telemetry sidecar should capture parse diagnostics"
 
 # Case 0b: failed Codex still writes events and telemetry while dispatch fails non-zero.
 CASE0B="$TMPROOT/case0b"

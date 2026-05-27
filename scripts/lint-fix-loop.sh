@@ -222,11 +222,12 @@ run_codex() {
     local run_dir="$1" prompt_body="$2"
     local codex_events="$run_dir/codex.events.jsonl"
     local codex_wrapper_log="$run_dir/codex.wrapper.log"
+    local codex_telemetry_sidecar="$run_dir/codex.telemetry.sidecar"
     local codex_rc=0
     local _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-    rm -f "$codex_events" "$codex_wrapper_log"
+    rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
     "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$run_dir/codex.log" --timeout 1800 -- \
         codex exec --full-auto -C "$REPO_ROOT" --add-dir "$run_dir" --add-dir "$REPO_ROOT" \
         --output-last-message "$run_dir/codex.log" \
@@ -234,7 +235,7 @@ run_codex() {
         -- \
         "$prompt_body" \
         >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
-    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_wrapper_log" "codex_lint_fix" || true
+    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_lint_fix" || true
     return "$codex_rc"
 }
 
