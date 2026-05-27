@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `faa92963` (chore(larch-logs): flush design run 6A4AC6E7-2A0F-4A45-BEB3-2B76C2FE38E0 [skip ci] (#3006))
-- **Current version**: `42.5.43`
+- **Base commit**: `30dbe2cd` (Fixes #2930: Make Gate B auto-apply findings by default (#3009))
+- **Current version**: `42.6.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.5.44`
+- **New version**: `42.6.1`
 
 ### PATCH rationale
 
