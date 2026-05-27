@@ -134,7 +134,7 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 1	in_scope	important	correctness	scripts/foo.sh:42-45	Lock acquired before parameter validation	Race between two concurrent runs	Move lock acquisition after validation passes
 
 If no issues were identified, your entire response content MUST be exactly the single-line JSON literal {"no_issues_found": true} — no surrounding prose, no TSV records, no out-of-scope items, no trailing whitespace beyond a single newline. For Cursor's --output-format json invocation this becomes .result = "{\"no_issues_found\": true}" in Cursor's JSON envelope; the larch tooling extracts .result and JSON-parses it to detect the sentinel. For Codex (which writes plain stdout), the literal is captured verbatim. Do NOT modify files.
-Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.
+__READABILITY_STYLE_BLOCK__
 EOF
 
 prompt_body="${prompt_body//__FULL_ROLE__/$full_role}"
@@ -142,11 +142,10 @@ prompt_body="${prompt_body//__TIER_EMPHASIS__/$tier_emphasis}"
 prompt_body="${prompt_body//__PLAN_FILE__/$PLAN_FILE}"
 
 if [[ -n "$readability_style" ]]; then
-    readability_token='<READABILITY_STYLE>'
+    prompt_body="${prompt_body//__READABILITY_STYLE_BLOCK__/$readability_style}"
+else
     # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
-    readability_token_wrapped='`<READABILITY_STYLE>`'
-    prompt_body="${prompt_body//$readability_token_wrapped/$readability_style}"
-    prompt_body="${prompt_body//$readability_token/$readability_style}"
+    prompt_body="${prompt_body//__READABILITY_STYLE_BLOCK__/Style requirements for finding text and OOS Descriptions: \`<READABILITY_STYLE>\`.}"
 fi
 
 printf '%s\n' "$prompt_body"

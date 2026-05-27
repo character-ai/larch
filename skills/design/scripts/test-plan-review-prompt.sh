@@ -25,6 +25,9 @@ cat >"$READABILITY_STYLE_FILE" <<'EOF'
 Write with Strunk & White discipline.
 
 Use precedence: code references > meaning > brevity.
+
+Literal token example:
+`<READABILITY_STYLE>`
 EOF
 export READABILITY_STYLE_FILE
 SIMPLE_DT="$TMPROOT/simple-design"
@@ -94,8 +97,9 @@ for archetype in "${archetypes[@]}"; do
         assert_count "$vendor/$archetype hard tier emphasis count" "Tier emphasis: HARD" 1 "$out"
         assert_contains "$vendor/$archetype readability Strunk" "Strunk & White" "$out"
         assert_contains "$vendor/$archetype readability precedence" "code references > meaning > brevity" "$out"
-        ! grep -Fq '<READABILITY_STYLE>' "$out" \
-            || fail "$vendor/$archetype: rendered prompt still contains literal <READABILITY_STYLE>"
+        assert_contains "$vendor/$archetype readability literal-token fixture" "Literal token example:" "$out"
+        assert_count "$vendor/$archetype readability preamble count" "# Fixture Readability Style" 1 "$out"
+        assert_count "$vendor/$archetype readability literal-token count" '<READABILITY_STYLE>' 1 "$out"
     done
 done
 

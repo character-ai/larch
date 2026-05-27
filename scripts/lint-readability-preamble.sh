@@ -46,10 +46,10 @@ manifest_rows=(
     "skills/design/references/dialectic-execution.md:orchestrator-inline"
     "skills/design/references/approval-gates.md:orchestrator-inline"
     "skills/design/references/discussion-rounds.md:orchestrator-inline"
-    "skills/design/references/brainstorm-prompts.md:external-prompt"
-    "skills/design/references/sketch-prompts.md:external-prompt"
-    "skills/design/references/dialectic-debate.md:external-prompt"
-    "skills/design/references/plan-review.md:external-prompt"
+    "skills/design/references/brainstorm-prompts.md:external-prompt:3:standard"
+    "skills/design/references/sketch-prompts.md:external-prompt:4:sketch"
+    "skills/design/references/dialectic-debate.md:external-prompt:2:standard"
+    "skills/design/references/plan-review.md:external-prompt:1:plan-review"
 )
 
 # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
@@ -62,16 +62,28 @@ orchestrator_style_re='^\*\*MANDATORY — READ ENTIRE FILE before [^:]+: `skills
 missing=0
 
 for row in "${manifest_rows[@]}"; do
-    path="${row%:*}"
-    variant="${row##*:}"
+    IFS=':' read -r path variant expected_count prompt_kind <<EOF
+$row
+EOF
     file="$ROOT/$path"
     ok=false
 
     if [ -f "$file" ]; then
         case "$variant" in
             external-prompt)
-                if grep -Fxq "$external_style_line" "$file" \
-                    || grep -Fxq "$plan_review_style_line" "$file"; then
+                count=0
+                case "${prompt_kind:-standard}" in
+                    plan-review)
+                        count=$(grep -Fxc "$plan_review_style_line" "$file" || true)
+                        ;;
+                    sketch)
+                        count=$(grep -Foc '<READABILITY_STYLE>' "$file" || true)
+                        ;;
+                    *)
+                        count=$(grep -Fxc "$external_style_line" "$file" || true)
+                        ;;
+                esac
+                if [ "$count" = "${expected_count:-1}" ]; then
                     ok=true
                 fi
                 ;;

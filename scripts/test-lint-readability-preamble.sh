@@ -18,7 +18,6 @@ external_paths="
 skills/design/references/brainstorm-prompts.md
 skills/design/references/sketch-prompts.md
 skills/design/references/dialectic-debate.md
-skills/design/references/plan-review.md
 "
 
 orchestrator_paths="
@@ -46,6 +45,16 @@ write_file() {
     printf '%s\n' "$body" > "$root/$rel"
 }
 
+repeat_line() {
+    local line="$1"
+    local count="$2"
+    local i
+
+    for ((i = 0; i < count; i++)); do
+        printf '%s\n' "$line"
+    done
+}
+
 populate_fixture() {
     local root="$1"
     local missing_external="${2:-}"
@@ -55,12 +64,16 @@ populate_fixture() {
     for rel in $external_paths; do
         if [ "$rel" = "$missing_external" ]; then
             write_file "$root" "$rel" "External prompt without the token."
-        elif [ "$rel" = "skills/design/references/plan-review.md" ]; then
-            write_file "$root" "$rel" "$plan_review_style_line"
+        elif [ "$rel" = "skills/design/references/brainstorm-prompts.md" ]; then
+            write_file "$root" "$rel" "$(repeat_line "$external_style_line" 3)"
+        elif [ "$rel" = "skills/design/references/sketch-prompts.md" ]; then
+            write_file "$root" "$rel" "$(repeat_line "$external_style_line" 4)"
         else
-            write_file "$root" "$rel" "$external_style_line"
+            write_file "$root" "$rel" "$(repeat_line "$external_style_line" 2)"
         fi
     done
+
+    write_file "$root" "skills/design/references/plan-review.md" "$plan_review_style_line"
 
     for rel in $orchestrator_paths; do
         if [ "$rel" = "$missing_orchestrator" ]; then
@@ -104,6 +117,8 @@ orchestrator_bad="$TMPROOT/orchestrator-bad"
 populate_fixture "$compliant"
 populate_fixture "$external_bad" "skills/design/references/brainstorm-prompts.md"
 populate_fixture "$orchestrator_bad" "" "skills/design/SKILL.md"
+
+write_file "$external_bad" "skills/design/references/brainstorm-prompts.md" "$(repeat_line "$external_style_line" 2)"
 
 assert_lint_ok compliant "$compliant"
 assert_lint_fails_for external-bad "$external_bad" "skills/design/references/brainstorm-prompts.md: missing external-prompt readability-style directive"
