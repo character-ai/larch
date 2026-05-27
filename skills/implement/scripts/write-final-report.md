@@ -96,3 +96,17 @@ the renderer's `/implement` schema: conditional `- **Outcome**:` only for
 when a PR display exists, always includes `- **Code review**:`, always includes
 `- **Cost**: N/A`, and ends with `<!-- larch:run-summary v=1 -->`. The body still
 surfaces through `--print-stdout`.
+
+Only this terminal self-composed fallback is marked as degraded. It places
+`**⚠ Degraded fallback — full renderer failed; warning recorded in execution
+issues.**` immediately after the `## /implement run ...` heading, with one
+blank line on each side, and emits
+`<!-- larch:final-summary-fallback v1 -->` directly after the existing
+`<!-- larch:run-summary v=1 -->` marker. The heading remains the first
+non-empty line for first-line outcome parsers. Exit code behavior is unchanged:
+the fallback still exits 0 after recording Warnings in `execution-issues.md`
+(published as `execution-issues.ndjson` in run logs).
+
+The Stage 1 `--cost-unavailable` retry is a real renderer body and must not
+carry the degraded-fallback banner or marker; the harness regression-guards
+that distinction.

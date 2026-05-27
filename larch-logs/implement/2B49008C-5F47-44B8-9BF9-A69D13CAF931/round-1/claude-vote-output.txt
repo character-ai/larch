@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan intentionally chose surgical duplicate literals over abstraction; shared-constant refactor adds disproportionate complexity to bash scripts
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- existing placement block at lines 387-397 already enforces heading-then-banner ordering; adding banner to schema_ordered is redundant coverage
+FINDING_4: YES CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- two adjacent printf lines with no realistic swap scenario; relative ordering between the markers carries negligible risk
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- skill-specific harnesses cover placement; adding verify-run-log integration fixtures is disproportionate to the actual risk
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- SESSION_ID is UUID-shaped in practice; the injection surface for sentinel-disrupting values is theoretical and pre-existing
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- notes appended after compose_self_fallback are system-generated and cannot realistically contain the banner or marker strings
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- append-tool-failure.sh absent is an abnormal environment; unconditional banner text is acceptable given the helper is always present in valid installations
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- unrelated-commit observation on an already-merged PR has no actionable follow-up; filing a GitHub issue adds no value

@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- shared fallback literals are intentionally surgical here; abstraction would add more Bash complexity than the drift risk warrants
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the separate stage2 placement assertion already guards heading-then-banner ordering, so adding it to the schema-order helper is redundant
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- broader composer deduplication is real maintenance debt but too vague and refactor-heavy for a useful follow-up issue
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- skill-specific harnesses already guard the fallback placement; adding verify-run-log integration fixtures is disproportionate
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the pre-publish path shares the same composer and the plan explicitly scoped fallback assertions to post-publish
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the Bash 3.2 harness is a portability regression test, not the fallback-contract test surface
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- malformed SESSION_ID disruption is theoretical in normal generated-run usage and pre-existing
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- exit-0 fallback is an explicit compatibility contract; a hard machine gate would be a larger policy change
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- substring false positives from appended notes are possible in theory but not a realistic failure mode here
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

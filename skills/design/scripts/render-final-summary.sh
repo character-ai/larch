@@ -341,9 +341,10 @@ invoke_render() {
 
 append_render_warning() {
     local rc=$1 output_file=$2
+    RENDER_WARNING_RECORDED=false
     [ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ] || return 0
     [ -f "$output_file" ] || : >"$output_file"
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+    if "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design final summary" \
         --tool "render-run-summary.sh" \
@@ -351,14 +352,21 @@ append_render_warning() {
         --category Warnings \
         --redact \
         --output-file "$output_file" \
-        >/dev/null 2>&1 || true
+        >/dev/null 2>&1; then
+        RENDER_WARNING_RECORDED=true
+    fi
     refresh_issue_counts
 }
 
 compose_self_fallback() {
     local out_file="$DESIGN_TMPDIR/final-summary.md"
+    local banner='**⚠ Degraded fallback — full renderer failed; warning recorded in execution issues.**'
+    if [ "${RENDER_WARNING_RECORDED:-false}" != "true" ]; then
+        banner='**⚠ Degraded fallback — full renderer failed; warning could not be recorded in execution issues.**'
+    fi
     {
         printf '## /design run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
+        printf '%s\n\n' "$banner"
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${MODE_STR:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
@@ -383,6 +391,7 @@ compose_self_fallback() {
         printf -- '- **Warnings**: %s\n' "${WARNINGS:-0}"
         printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_PATH:-N/A}"
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
+        printf '%s\n' '<!-- larch:final-summary-fallback v1 -->'
         if [ "$OUTCOME" = "cancelled-outline" ]; then
             printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate'
         fi

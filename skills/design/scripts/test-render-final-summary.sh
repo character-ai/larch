@@ -210,8 +210,22 @@ CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb" 2>/dev/null
 grep -Fq -- '💰 TOTAL' "$D/final-summary.md" || fail 'renderer-fail post path must preserve prior usable cost line'
 grep -Fq -- '## /design run RUN-FB — approved' "$D/final-summary.md" || fail 'renderer-fail post path must refresh title/run id'
+grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail fallback missing degraded banner'
+grep -Fq -- '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" || fail 'renderer-fail fallback missing fallback marker'
+grep -Fq -- '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'renderer-fail fallback missing run-summary marker'
+fb_run_summary_line=$(grep -nF '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+fb_fallback_line=$(grep -nF '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+[[ -n "$fb_run_summary_line" && -n "$fb_fallback_line" && "$fb_fallback_line" -gt "$fb_run_summary_line" ]] \
+    || fail 'renderer-fail fallback marker must follow run-summary marker'
 grep -Fq -- '- **Exec issues**: 0' "$D/final-summary.md" || fail 'renderer-fail post path must refresh exec issue count'
 grep -Fq -- '- **Warnings**: 1' "$D/final-summary.md" || fail 'renderer-fail post path must refresh warning count'
+fb_nonempty="$(awk 'NF { print; n++; if (n == 3) exit }' "$D/final-summary.md")"
+fb_line1="$(printf '%s\n' "$fb_nonempty" | sed -n '1p')"
+fb_line2="$(printf '%s\n' "$fb_nonempty" | sed -n '2p')"
+fb_line3="$(printf '%s\n' "$fb_nonempty" | sed -n '3p')"
+[ "$fb_line1" = '## /design run RUN-FB — approved' ] || fail 'renderer-fail fallback first non-empty line must be heading'
+case "$fb_line2" in \*\*⚠\ Degraded\ fallback*) ;; *) fail 'renderer-fail fallback second non-empty line must be degraded banner' ;; esac
+case "$fb_line3" in '- **Mode**:'*|'- **Outcome**:'*) ;; *) fail 'renderer-fail fallback third non-empty line must be first schema bullet' ;; esac
 if grep -Fq -- '- **PR**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit PR bullet'; fi
 if grep -Fq -- '- **Code review**:' "$D/final-summary.md"; then fail 'renderer-fail preserved file must not emit Code review bullet'; fi
 cmp -s "$D/final-summary.md" "$std_fb" || fail 'renderer-fail fallback stdout/file mismatch'
@@ -220,9 +234,46 @@ std_fb_cancel="$TMP/std-fallback-cancelled.log"
 : >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CANCELLED" \
     "$SUBJECT" --outcome cancelled-clarify --mode SIMPLE --post-publish-only >"$std_fb_cancel" 2>/dev/null
+grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing degraded banner'
 grep -Fq -- '- **Outcome**: cancelled-clarify' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Outcome bullet'
 grep -Fq -- '- **Cost**: N/A' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing Cost N/A'
+grep -Fq -- '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing run-summary marker'
+grep -Fq -- '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled fallback missing fallback marker'
 grep -Fq -- '- **Cost**: N/A' "$std_fb_cancel" || fail 'renderer-fail cancelled stdout missing Cost N/A'
+fb_cancel_nonempty="$(awk 'NF { print; n++; if (n == 3) exit }' "$D/final-summary.md")"
+fb_cancel_line1="$(printf '%s\n' "$fb_cancel_nonempty" | sed -n '1p')"
+fb_cancel_line2="$(printf '%s\n' "$fb_cancel_nonempty" | sed -n '2p')"
+fb_cancel_line3="$(printf '%s\n' "$fb_cancel_nonempty" | sed -n '3p')"
+[ "$fb_cancel_line1" = '## /design run RUN-FB-CANCELLED — cancelled-clarify' ] || fail 'renderer-fail cancelled fallback first non-empty line must be heading'
+case "$fb_cancel_line2" in \*\*⚠\ Degraded\ fallback*) ;; *) fail 'renderer-fail cancelled fallback second non-empty line must be degraded banner' ;; esac
+[ "$fb_cancel_line3" = '- **Outcome**: cancelled-clarify' ] || fail 'renderer-fail cancelled fallback third non-empty line must be Outcome bullet'
+fb_cancel_run_summary_line=$(grep -nF '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+fb_cancel_fallback_line=$(grep -nF '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+[[ -n "$fb_cancel_run_summary_line" && -n "$fb_cancel_fallback_line" && "$fb_cancel_fallback_line" -gt "$fb_cancel_run_summary_line" ]] \
+    || fail 'renderer-fail cancelled fallback marker must follow run-summary marker'
+cmp -s "$D/final-summary.md" "$std_fb_cancel" || fail 'renderer-fail cancelled fallback stdout/file mismatch'
+std_fb_co="$TMP/std-fallback-cancelled-outline.log"
+: >"$D/final-summary.md"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CO" \
+    "$SUBJECT" --outcome cancelled-outline --mode SIMPLE --post-publish-only >"$std_fb_co" 2>/dev/null
+grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing degraded banner'
+grep -Fq -- '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing fallback marker'
+grep -Fq -- '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing run-summary marker'
+grep -Fq -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" || fail 'renderer-fail cancelled-outline fallback missing Cancel site bullet'
+fb_co_fallback_line=$(grep -nF '<!-- larch:final-summary-fallback v1 -->' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+fb_co_cancel_line=$(grep -nF -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" | head -1 | cut -d: -f1 || true)
+[[ -n "$fb_co_fallback_line" && -n "$fb_co_cancel_line" && "$fb_co_cancel_line" -gt "$fb_co_fallback_line" ]] \
+    || fail 'renderer-fail cancelled-outline Cancel site bullet must follow fallback marker'
+pass 'renderer-fail cancelled-outline fallback preserves marker ordering before Cancel site'
+rm -f "$PLUGIN_STUB/scripts/append-tool-failure.sh"
+: >"$D/execution-issues.md"
+std_fb_nowarn="$TMP/std-fallback-no-warning.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-NOWARN" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fb_nowarn" 2>/dev/null
+grep -Fq -- '**⚠ Degraded fallback — full renderer failed; warning could not be recorded in execution issues.**' "$D/final-summary.md" \
+    || fail 'renderer-fail fallback must disclose missing warning record'
+grep -Fq -- '- **Warnings**: 0' "$D/final-summary.md" || fail 'renderer-fail fallback without warning record must keep warning count at 0'
+cmp -s "$D/final-summary.md" "$std_fb_nowarn" || fail 'renderer-fail no-warning fallback stdout/file mismatch'
 cp "$TMP/render-run-summary.real" "$PLUGIN_STUB/scripts/render-run-summary.sh"
 chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
 

@@ -443,6 +443,7 @@ run_body_render() {
 compose_self_fallback() {
     {
         printf '## /implement run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
+        printf '%s\n\n' '**⚠ Degraded fallback — full renderer failed; warning recorded in execution issues.**'
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${mode_str:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
@@ -475,6 +476,7 @@ compose_self_fallback() {
         printf -- '- **Warnings**: %s\n' "${WARN_N:-0}"
         printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_DISP:-N/A}"
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
+        printf '%s\n' '<!-- larch:final-summary-fallback v1 -->'
     } > "$body_tmp"
     if [ -n "${notes_tmp:-}" ] && [ -f "$notes_tmp" ]; then
         printf '\n' >> "$body_tmp"
