@@ -11,7 +11,7 @@
 - **Code review**: 16/34 accepted
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/B41E675E-8596-443A-8B06-CB80E34356B0/`
 
 <!-- larch:run-summary v=1 -->
