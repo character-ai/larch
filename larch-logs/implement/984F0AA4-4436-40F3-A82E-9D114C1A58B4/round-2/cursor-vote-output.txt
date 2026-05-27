@@ -1,0 +1,18 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan intentionally kept semver helper; dedup is follow-up not this PR
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- cap-prune harness already seeds mtimes via default touch -t loop and CACHE_MTIME_OVERRIDES
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- write-design-current-env validates CLAUDE_PLUGIN_ROOT but harness lacks D-style rejection cases
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- sparse-used-versions and stat-garbage-fallback exist in .sh but are absent from test-upgrade-larch-prune.md
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- test-session-env-roundtrip.md stops at section F while .sh covers G/H
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Summary header sits before G/H tests in test-session-env-roundtrip.sh
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deterministic seed-loop mtimes already drive rm-failure ordering
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- symlink referent touch is theoretical in user-owned cache; no-dereference touch adds portability cost
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- basename-only guard matches same-UID trust model; full path prefix check is out of scope
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- SECURITY.md claims non-cache paths are blocked but guard is basename-only
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- early session-setup touch is intentional; numeric-basename helper still no-ops unsafe paths
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- same-UID mtime manipulation is an accepted limitation of mtime-based retention
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- mtime proxies install/recency not historical use; accepted design tradeoff for #2958
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- tiebreaker test covers lexicographic eviction without plan's two-phase narrative
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- list_cached_versions is unused on prune path; worth a cleanup issue
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- CLAUDE_PLUGIN_ROOT validation lacks .. canonicalization; touch widens impact
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- session pins use basename-only plugin_root parsing; symlink oddities predate this change
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- cap-trim loop exits when no unpinned removable version leaves cache above eight pins
