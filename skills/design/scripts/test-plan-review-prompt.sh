@@ -80,6 +80,11 @@ for archetype in "${archetypes[@]}"; do
         err="$TMPROOT/${vendor}-${archetype}.err"
         bash "$RENDERER" --archetype "$archetype" --vendor "$vendor" --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$out" 2>"$err" \
             || fail "$vendor/$archetype: renderer exited non-zero: $(cat "$err")"
+        if [ -s "$err" ]; then
+          echo "DEBUG renderer stderr ($vendor/$archetype): $(cat "$err")" >&2
+        fi
+        _out_strunk="$(grep -c 'Strunk' "$out" 2>/dev/null || echo 0)"
+        echo "DEBUG out_strunk=$_out_strunk for $vendor/$archetype ($out)" >&2
 
         assert_contains "$vendor/$archetype focus enum" "code-quality / risk-integration / correctness / architecture / security" "$out"
         assert_contains "$vendor/$archetype sentinel instruction" '{"no_issues_found": true}' "$out"
