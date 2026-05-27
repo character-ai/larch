@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
 - **Base commit**: `1f3ab0eb` (Bump version to 44.0.1 (#3026))
-- **Current version**: `44.0.2`
+- **Current version**: `44.0.3`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `44.0.3`
+- **New version**: `44.0.4`
 
 ### PATCH rationale
 
