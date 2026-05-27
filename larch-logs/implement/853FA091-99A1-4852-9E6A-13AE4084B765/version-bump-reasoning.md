@@ -1,7 +1,7 @@
 # Version Bump Reasoning
 
-- **Base commit**: `9bb09ab8` (chore(larch-logs): flush design run 512E9E35-57B0-4487-81A6-AD1FF4D72A66 [skip ci] (#2980))
-- **Current version**: `42.6.2`
+- **Base commit**: `458f5e7b` (Fixes #2970: Surface final summaries at top chat (#2970) (#3022))
+- **Current version**: `42.6.4`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: MAJOR
@@ -10,5 +10,3 @@
 
 ### MAJOR evidence
 - Removed `--trivial` from argument-hint in `skills/design/SKILL.md`
-### MINOR evidence
-- Added `--manual` to argument-hint in `skills/design/SKILL.md`
