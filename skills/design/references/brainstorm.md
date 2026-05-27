@@ -1,6 +1,6 @@
 # Brainstorm panel (Step 1d.5)
 
-**Consumer**: `/design` Step **1d.5** — runs after Step **1d** (Round 1 discussion) and before Step **1e** (Gate A) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set in Step 0 by argv, upgrade paths, or the Step 0b `Brainstorm:` title-prefix auto-enable.
+**Consumer**: `/design` Step **1d.5** — runs after Step **1d** (Round 1 discussion) and before Step **1d.7** (Design Outline — Gate A re-entry only post-plan) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set in Step 0 by argv, upgrade paths, or the Step 0b `Brainstorm:` title-prefix auto-enable.
 
 **Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.brainstorm-done`. Produces additive `$DESIGN_TMPDIR/brainstorm.md` (never load-bearing for downstream automation). Downstream readers: **Step 2a** (sketch `<FEATURE_DESCRIPTION>` substitution), **Step 2a.5** (dialectic `{FEATURE_DESCRIPTION}` / synthesis context), **Step 2b** (plan drafting), **Step 3** (plan-review feature context merged by `plan-review-loop.sh` when `brainstorm.md` exists).
 
@@ -25,8 +25,8 @@ Step 1d.5 **overrides** the generic “never halt after Bash” anxiety **only**
 ## Entry guard
 
 1. Read `$DESIGN_TMPDIR/run-params.json` → boolean `brainstorm_requested` (default **false** when absent).
-2. If `brainstorm_requested` is not true: print `⏩ 1d.5: brainstorm — skipped` and **skip** this entire step (go to Step **1e**).
-3. If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)` and **skip** this entire step (go to Step **1e**).
+2. If `brainstorm_requested` is not true: print `⏩ 1d.5: brainstorm — skipped` and **skip** this entire step (go to Step **1d.7**).
+3. If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)` and **skip** this entire step (go to Step **1d.7**).
 4. Print `> **🔶 /design 1d.5: brainstorm**`.
 
 ---
@@ -206,13 +206,13 @@ If dirty/unknown: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=bra
 
 ### Branch order — classify-message-first
 
-1. **Terminal / ready** — If the operator message is **standalone primary-intent** (“done”, “ready for gate”, “let’s move on”) **and** it is **not** negated, conditional, or carrying an embedded refinement (“don’t X yet, but …”), then: write `$DESIGN_TMPDIR/.brainstorm-done`, print a one-line acknowledgment, and **continue to Step 1e in the same turn** without re-printing the full synthesis document.
+1. **Terminal / ready** — If the operator message is **standalone primary-intent** (“done”, “ready for gate”, “let’s move on”) **and** it is **not** negated, conditional, or carrying an embedded refinement (“don’t X yet, but …”), then: write `$DESIGN_TMPDIR/.brainstorm-done`, print a one-line acknowledgment, and **continue to Step 1d.7 in the same turn** without re-printing the full synthesis document.
 2. **Refinement** — If they want edits (add idea, merge, reorder): **mutate** `brainstorm.md`, print an `## Updated Brainstorm Digest` with changed bullets only, then **end the turn**.
 3. **Ambiguous** — If intent is unclear, `AskUserQuestion` with exactly two clarified options (no secrets in option text).
 
 **Termination vocabulary disambiguation**: Treat “done / ready / proceed” as terminal **only** when it is the **standalone primary intent** of the message. Messages that negate, defer, or bundle refinements (“not yet”, “also change …”, “done but fix …”) → **refinement** path, not terminal.
 
-When the loop ends via terminal path, ensure `.brainstorm-done` exists before entering Step **1e**.
+When the loop ends via terminal path, ensure `.brainstorm-done` exists before entering Step **1d.7**.
 
 ---
 

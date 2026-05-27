@@ -37,14 +37,14 @@ larch_quiet_init
 if [ "$OUTCOME" = "cancelled-title-filter" ]; then
     MODE_STR="Refused (title-filter)"
 fi
-if [ "$OUTCOME" = "cancelled-reentry-guard" ]; then
-    MODE_STR="Refused (session-cache re-entry guard)"
-fi
 
 [ -n "$MODE_STR" ] || MODE_STR=N/A
 
+# Enum order is file-order (newest entries appended before failed-plan-write);
+# SKILL.md Step 0b uses alphabetical-within-cancelled documentation order.
+# Both forms accept the same token set.
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-reentry-guard|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|failed-plan-write) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
@@ -54,12 +54,10 @@ esac
 RUN_ID="${SESSION_ID:-}"
 [ -n "$RUN_ID" ] || RUN_ID="unknown"
 
-DESIGN_CLASSIFICATION="$("$PLUGIN_ROOT/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf 'HARD\n')"
-case "$DESIGN_CLASSIFICATION" in
-    SIMPLE) WORKFLOW_PATH="SIMPLE (no sketches; full review)" ;;
-    HARD) WORKFLOW_PATH="HARD (4 sketches; full review)" ;;
-    *) WORKFLOW_PATH="HARD (4 sketches; full review)" ;;
-esac
+WORKFLOW_PATH="unknown"
+if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
+    WORKFLOW_PATH=$(jq -r '.workflow_path // "unknown"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo unknown)
+fi
 
 ISSUE="${ISSUE_NUMBER:-}"
 [ -n "$ISSUE" ] || ISSUE=""
@@ -242,7 +240,7 @@ refresh_issue_counts
 # --- Plan review line ---
 PLAN_LINE="0 findings"
 if [ ! -f "$DESIGN_TMPDIR/voting-tally.md" ]; then
-    PLAN_LINE="0 findings"
+    case "$MODE_STR" in *--trivial*|*trivial*) PLAN_LINE="skipped (trivial)" ;; *) PLAN_LINE="0 findings" ;; esac
 else
     apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
     oaf="$DESIGN_TMPDIR/oos-accepted-design.md"
@@ -295,31 +293,27 @@ if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ]; then
     RUN_LOGS_PATH="larch-logs/design/${RUN_ID}/"
 fi
 
-NOTE_LINES_FILE=""
-if [ "$OUTCOME" = "cancelled-reentry-guard" ]; then
-    NOTE_LINES_FILE="$DESIGN_TMPDIR/final-summary-notes.md"
-    _reentry_marker_path="${DESIGN_REENTRY_MARKER_PATH:-}"
-    if [ -z "$_reentry_marker_path" ]; then
-        _reentry_ppid="${LARCH_DESIGN_REENTRY_GUARD_PPID:-${DESIGN_REENTRY_GUARD_PPID:-}}"
-        if [ -n "${ISSUE_NUMBER:-}" ] && [ -n "$_reentry_ppid" ]; then
-            _reentry_marker_path="${HOME}/.cache/larch/sessions/design-completed-${ISSUE_NUMBER}-${_reentry_ppid}"
-        else
-            _reentry_marker_path="N/A"
-        fi
-    fi
-    {
-        printf -- '- **Guard**: session-cache re-entry guard\n'
-        printf -- "- **Marker**: \`%s\`\n" "$_reentry_marker_path"
-    } > "$NOTE_LINES_FILE"
-fi
-
 invoke_render() {
     local out_file="$DESIGN_TMPDIR/final-summary.md"
     local render_cost_args=()
+    local note_file="$DESIGN_TMPDIR/final-summary-notes.md"
+    local note_args=()
     if [ "$_cost_unavailable" = true ]; then
         render_cost_args=(--cost-unavailable)
     else
         render_cost_args=("${COST_ARGS[@]}")
+    fi
+    if [ "$OUTCOME" = "cancelled-outline" ]; then
+        printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate' >"$note_file"
+        note_args=(--note-lines-file "$note_file")
+    else
+        if rm -f "$note_file" 2>/dev/null; then
+            note_args=()
+        elif [ ! -e "$note_file" ]; then
+            note_args=()
+        else
+            note_args=(--note-lines-file "$note_file")
+        fi
     fi
     local _rr_args=(
         --skill design
@@ -341,10 +335,7 @@ invoke_render() {
         --run-logs-path "$RUN_LOGS_PATH"
         --output-file "$out_file"
     )
-    if [ -n "$NOTE_LINES_FILE" ]; then
-        _rr_args+=(--note-lines-file "$NOTE_LINES_FILE")
-    fi
-    "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${render_cost_args[@]}"
+    "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${render_cost_args[@]}" "${note_args[@]}"
 }
 
 append_render_warning() {
@@ -391,6 +382,9 @@ compose_self_fallback() {
         printf -- '- **Warnings**: %s\n' "${WARNINGS:-0}"
         printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_PATH:-N/A}"
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
+        if [ "$OUTCOME" = "cancelled-outline" ]; then
+            printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate'
+        fi
     } > "$out_file"
 }
 

@@ -1,0 +1,3 @@
+Add /design outline approval gate
+
+Introduce Step 1d.7 as the first-time direction-setting gate after discussion and brainstorm, retarget Gate A to post-plan re-entry, and document outline consumption in sketch and plan drafting. Add structure and final-summary coverage for cancelled-outline.

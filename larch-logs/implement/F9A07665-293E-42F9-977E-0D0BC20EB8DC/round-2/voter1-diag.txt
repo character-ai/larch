@@ -1,0 +1,5 @@
+voter1_rc=143
+output_bytes=    3083
+--- first 200 bytes of voter output ---
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- sprawl routing still references Gate A; decompose-panel.md says return to Step 1d.7
+FINDING_2: YES CORRECTNESS=true SEVER

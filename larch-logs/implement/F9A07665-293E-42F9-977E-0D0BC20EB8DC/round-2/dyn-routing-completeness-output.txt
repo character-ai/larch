@@ -1,0 +1,12 @@
+Reviewing the branch diff and scanning the repo for routing inconsistencies around Step 1d.7 vs Step 1e.
+### In-Scope Findings
+
+- **architecture** `skills/design/SKILL.md:706` — The Step 2b.5 Split-path “Refine plan myself (return to caller)” bullet still routes **Step 1d sprawl** to `Step 1e Gate A`, but the branch updated the parallel normative surface in `skills/design/references/decompose-panel.md:78` to return sprawl-from-**1d** to **Step 1d.7** outline approval. After a decomposition-panel exit during Round 1, an orchestrator following `SKILL.md` can land on Gate A (Shape 1 semantics) before any outline exists, bypassing the new first-time gate the feature is meant to enforce. **Suggested fix:** Change the Step 1d sprawl return target in `SKILL.md:706` to match `decompose-panel.md` (re-enter **Step 1d.7**, not Gate A), and add a `test-design-structure.sh` pin that rejects `Step 1d sprawl returns to Step 1e` in `SKILL.md`.
+
+- **architecture** `skills/design/SKILL.md:346-370` — Step **1e** remains a full step block (timing mark + unconditional `Print: > **🔶 /design 1e: gate A**`) physically **between** the new Step **1d.7** block and Step **2a**, while the anti-halt sequence explicitly omits `1e` on the first-time path (`1c→1d→1d.5→1d.7→2a`) and `design-outline.md` directs Approve → Step **2a**, not Step **1e**. Document-order followers can still enter Step 1e after outline approval, emit a Gate A banner, then rely on the runtime entry guard to skip the prompt—creating ambiguous control flow across the three normative sources (`SKILL.md`, `design-outline.md`, `approval-gates.md`). **Suggested fix:** Add an explicit first-time skip at the top of the Step 1e block (“do not execute this step—including banner/timing—unless `plan.txt` exists or control arrived from Gate B(c)/Gate C(b)”), or relocate the Step 1e section out of the sequential `1d.7 → 2a` corridor so document order matches the anti-halt chain.
+
+### Out-of-Scope Observations
+
+- **CHANGELOG.md:309** still documents `--brainstorm` as running “between Round 1 and Gate A” with no Step 1d.7 mention; that file was not in the branch diff and is consumer-doc drift, not a runtime routing defect in the changed skill surfaces.
+
+- **plan-review-loop.sh** has no `design-outline.md` merge path (brainstorm merge is pinned by Check 2754). `design-outline.md:118` documents Step 3 as optional MAY-merge; the implementation plan accepted L1 consumption at Steps 2a/2b only, so this is an intentional deferral rather than a first-time routing gap.

@@ -28,6 +28,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [44.0.5] - 2026-05-27
+
+### Changed
+
+- Closed: #2974 — Fixes #2974: Add /design outline approval gate
+
+## [44.0.4] - 2026-05-27
+
+### Changed
+
+- Closed: #2974 — Fixes #2974: Add /design outline approval gate
+
+## [44.0.3] - 2026-05-27
+
+### Changed
+
+- Closed: #2974 — Fixes #2974: Add /design outline approval gate
+
+## [44.0.2] - 2026-05-27
 ## [44.0.1] - 2026-05-27
 ## [44.0.0] - 2026-05-27
 
@@ -38,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix collect-agent-results.sh EXIT trap composition so the quiet done sentinel is written on normal exit.
 - Add the background-monitor wait regression harness and route it through Makefile, relevant-checks, docs, and agent-lint allowlists.
 - Closed: #2995
+
+## [44.1.0] - 2026-05-27
+
+### Added
+
+- `/design` now inserts a **Step 1d.7 outline-approval gate** between the Round 1 discussion (and optional Step 1d.5 brainstorm) and the sketch + plan phase. After discussion settles, the orchestrator composes a concise 5-section design outline (`## Proposed Design Outline` with Goals / Non-goals / Approach sketch / Surfaces in scope / Open questions), writes it to `$DESIGN_TMPDIR/design-outline.md`, and presents an **Approve / Refine / Cancel** prompt. Approve writes the `.outline-approved` sentinel and proceeds directly to Step 2a (sketches); Refine loops until the operator is satisfied; Cancel runs the standard final-summary block with `SUMMARY_OUTCOME=cancelled-outline`. Gate A (Step 1e) is now **re-entry-only** (reached only from Gate B(c) or Gate C(b) post-plan); first-time direction-setting is owned exclusively by Step 1d.7. The approved outline is additive feature-context for Step 2a sketch prompts and Step 2b plan drafting (same pattern as `brainstorm.md`). The `--brainstorm` flag now runs Step 1d.5 ideation before the Step 1d.7 outline-approval gate (not before Gate A). New `cancelled-outline` outcome added to `render-final-summary.sh` and the `SUMMARY_OUTCOME` enum. Closes #2974.
 
 ## [43.0.0] - 2026-05-27
 
