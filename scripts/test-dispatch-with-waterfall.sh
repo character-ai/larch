@@ -441,6 +441,7 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --require-result-pattern '^[[:space:]]*## Recommendation' \
     --timeout 5)
 assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
 [[ "$(counter_value "$codex_dedup_second_counter")" == "1" ]] || { echo "FAIL: grouped rerun should launch fresh codex once" >&2; cat "$codex_dedup_second_log" >&2; exit 1; }
 grep -Fq 'second split' "$TMPROOT/dedup-b.txt" || { echo "FAIL: rerun reused stale grouped output" >&2; exit 1; }
@@ -496,6 +497,7 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --require-result-pattern '^[[:space:]]*## Recommendation' \
     --timeout 5)
 assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex codex" "$out"
 [[ "$(counter_value "$codex_caphit_dedup_counter")" == "1" ]] || { echo "FAIL: cap_hit grouped peer should reuse codex result" >&2; cat "$codex_caphit_dedup_log" >&2; exit 1; }
 [[ -f "$TMPROOT/caphit-cursor.txt.dedup" ]] || { echo "FAIL: cap_hit reused slot sidecar missing" >&2; exit 1; }
