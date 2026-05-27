@@ -1,0 +1,5 @@
+TOOL=codex
+TIMEOUT=7200
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=false
+OUTPUT_FILE=<TMPDIR>/codex-impl-transcript.txt
