@@ -1,0 +1,5 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/test-design-structure.sh:70-73	New approval-gates assertion is too broad to enforce Gate C	The plan renames Gate A to See full plan, so a plain file-level contains "$APPROVAL_MD" "See full plan" can pass even if the Gate C structured option is missing from approval-gates.md	Assert a Gate C-specific literal, such as the new Gate C bullet text "- **See full plan** — Print the current" or the updated Gate C question text
+
+1. [correctness] `scripts/test-design-structure.sh:70-73`  
+The proposed new `approval-gates.md` test pin should be Gate C-specific. Since Gate A will also contain `See full plan` after this PR, a broad `contains "$APPROVAL_MD" 'See full plan'` would not catch the actual drift the plan is trying to prevent. Use a literal from the Gate C option bullet or updated Gate C question text instead.

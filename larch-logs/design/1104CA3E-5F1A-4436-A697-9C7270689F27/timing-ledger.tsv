@@ -1,0 +1,21 @@
+v1	mark	1779905636	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779905847	implement	-	codex	codex-phase1-dyn-codex-plan-option-arithmetic	1779905773	1779905847	74	codex-primary-plan-dyn-option-arithmetic-output.txt	0	complete
+v1	vendor	1779905854	implement	-	codex	codex-phase1-codex-plan-arch	1779905772	1779905854	82	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779905855	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779905773	1779905855	82	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779905858	implement	-	codex	codex-phase1-codex-plan-innovation	1779905772	1779905858	86	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779905866	implement	-	codex	codex-phase1-codex-plan-edge	1779905772	1779905866	94	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779905898	implement	-	codex	codex-phase1-dyn-codex-plan-test-pin-completeness	1779905773	1779905898	125	codex-primary-plan-dyn-test-pin-completeness-output.txt	0	complete
+v1	vendor	1779905904	implement	-	codex	codex-phase1-codex-plan-requirements	1779905772	1779905904	132	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779905906	implement	-	cursor	cursor-phase1-dyn-cursor-plan-test-pin-completeness	1779905773	1779905906	133	cursor-plan-dyn-test-pin-completeness-output.txt	0	complete
+v1	vendor	1779905906	implement	-	codex	codex-phase1-dyn-codex-plan-label-sweep	1779905773	1779905906	133	codex-primary-plan-dyn-label-sweep-output.txt	0	complete
+v1	vendor	1779905927	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779905772	1779905927	155	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779905934	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779905772	1779905934	162	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779905947	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779905772	1779905947	175	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779905948	implement	-	cursor	cursor-phase1-dyn-cursor-plan-label-sweep	1779905773	1779905948	175	cursor-plan-dyn-label-sweep-output.txt	0	complete
+v1	vendor	1779905948	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779905772	1779905948	176	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779905954	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779905772	1779905954	182	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779906087	implement	-	cursor	cursor-phase1-dyn-cursor-plan-option-arithmetic	1779905773	1779906087	314	cursor-plan-dyn-option-arithmetic-output.txt	0	complete
+v1	vendor	1779906134	implement	-	codex	codex-phase1-aggregator	1779906093	1779906134	41	aggregator-output.txt	0	complete
+v1	vendor	1779906331	implement	-	codex	codex-phase1-voter-2	1779906290	1779906331	41	codex-vote-output.txt	0	complete
+v1	vendor	1779906351	implement	-	cursor	cursor-phase1-voter-3	1779906290	1779906351	61	cursor-vote-output.txt	0	complete
+v1	vendor	1779906392	implement	-	codex	codex-phase2-voter-3	1779906351	1779906392	41	cursor-vote-output-phase2.txt	0	complete
