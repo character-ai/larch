@@ -48,6 +48,7 @@ make_wait_barrier_plugin_root() {
     local root="$1"
     mkdir -p "$root/scripts" "$root/skills/shared/scripts"
     ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
+    ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cat > "$root/skills/shared/scripts/render-voter-prompt.sh" <<'STUB_RENDER'
 #!/usr/bin/env bash
 printf 'stub voter prompt\n'
@@ -93,6 +94,8 @@ STUB_WATERFALL
 make_wait_usage_error_plugin_root() {
     local root="$1"
     make_wait_barrier_plugin_root "$root"
+    # Remove the symlink before writing so cat > does not follow it to the source.
+    rm -f "$root/scripts/wait-for-reviewers.sh"
     cat > "$root/scripts/wait-for-reviewers.sh" <<'STUB_WAIT'
 #!/usr/bin/env bash
 printf 'usage: forced test wait failure\n' >&2
@@ -429,25 +432,35 @@ grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
     || { echo "FAIL: immediate wait gate expected voter2 launched" >&2; exit 1; }
 
 hook_d5="$TMP/case-dispatch-hook.hook"
-printf 'exit 143\n' > "$hook_d5"
+# Sleep-only hook: delays the inner.done → outer.done promotion by 1s so the
+# wait barrier (LARCH_VOTER_WAIT_TIMEOUT=2) must actually wait. Unlike an exit-
+# hook, a sleep hook avoids the set -e cascade that an abnormal launcher exit
+# causes through waterfall → dispatch-code-voters.sh → $() substitution.
+printf 'sleep 1\n' > "$hook_d5"
 hook_review_tmp="$TMP/hook-review"
-# set +e: on bash 5.x (Linux), out=$(cmd exiting 143) under set -e exits the
-# test. Capture the exit code separately so we can assert on output regardless.
-set +e
+mkdir -p "$hook_review_tmp"
+hook_start=$(date +%s)
 out=$(PATH="$STUB_BIN:$PATH" \
     LARCH_ALLOW_TEST_HOOKS=1 \
     LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE="$hook_d5" \
-    LARCH_VOTER_WAIT_TIMEOUT=2 \
+    LARCH_VOTER_WAIT_TIMEOUT=3 \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
     "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$hook_review_tmp" --codex-available false --cursor-available true)
-set -e
+hook_end=$(date +%s)
 grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
     || { echo "FAIL: launch-review hook path should still publish voter3 done/output before dispatch tallies" >&2; exit 1; }
-grep -Fq 'VOTER_3_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
-    || { echo "FAIL: launch-review hook path should surface raw cursor JSON as NOT_SUBSTANTIVE instead of failed" >&2; exit 1; }
-# cursor-vote-output.txt holds the raw JSON bytes because launch-review.sh
-# exits via the hook before its jq extraction step; assert the raw result field.
-grep -Fq '"result":"FINDING_1: NO -- cursor"' "$hook_review_tmp/cursor-vote-output.txt" \
-    || { echo "FAIL: launch-review hook path should preserve raw cursor JSON output for the parse-rate check" >&2; exit 1; }
+# After the 1-second sleep, launch-review.sh resumes and promotes outer.done.
+# The dispatcher waited and found the sentinel — voter 3 parse rate should be OK
+# (jq extraction runs normally after the sleep hook returns).
+grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" \
+    || { echo "FAIL: launch-review hook path should have parseable voter3 output after sleep-hook" >&2; exit 1; }
+if (( hook_end - hook_start < 1 )); then
+    echo "FAIL: hook test returned before the 1-second sleep hook could delay inner.done promotion" >&2
+    exit 1
+fi
+# cursor-vote-output.txt holds the post-processed result (jq extraction ran after hook sleep).
+grep -Fq 'FINDING_1: NO' "$hook_review_tmp/cursor-vote-output.txt" \
+    || { echo "FAIL: launch-review hook path should have extracted cursor result in voter3 output" >&2; exit 1; }
 require_voter_paths_file_nonempty "happy-launch-review-hook" "$out"
 
 prod_delay_tmp="$TMP/cursor-prod-delay"

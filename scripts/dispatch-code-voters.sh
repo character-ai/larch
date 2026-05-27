@@ -169,6 +169,9 @@ manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
 
 codex_present_for_waterfall="$CODEX_AVAILABLE"
 unset LARCH_PAIRED_PID_FILE
+# Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
+# abnormally mid-run) so set -e does not abort dispatch before tally.
+set +e
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --codex-present "$codex_present_for_waterfall" \
@@ -176,6 +179,11 @@ waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --mode "$mode" \
     --timeout 1200 \
     "${ctx_args[@]+"${ctx_args[@]}"}")
+_waterfall_rc=$?
+set -e
+if [[ $_waterfall_rc -ne 0 ]]; then
+    larch_err "dispatch-code-voters.sh: dispatch-with-waterfall.sh exited $_waterfall_rc — proceeding with partial or empty result"
+fi
 
 all_outputs=""
 all_tools=""

@@ -8,6 +8,8 @@ Before invoking nested `dispatch-with-waterfall.sh`, the script defensively
 unsets any inherited `LARCH_PAIRED_PID_FILE`; this script is not a top-level
 Family B writer.
 
+The `dispatch-with-waterfall.sh` invocation is wrapped with `set +e`/`set -e` so a non-zero exit (e.g. when a reviewer launcher exits abnormally mid-run) does not abort the dispatch before the voter tally step. A non-zero waterfall exit is logged via `larch_err` and treated as an empty waterfall result; the post-wait size checks then classify individual voters as failed or launched based on file presence.
+
 ## Inputs
 
 - `--ballot-file FILE`: required markdown ballot path.
