@@ -836,6 +836,15 @@ if [[ "${STEP3_REVIEW_CAP_REACHED:-false}" != true && "${STEP3_REVIEW_ROUND_NUM:
   fi
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
+# Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 ```
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.

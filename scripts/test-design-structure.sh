@@ -35,6 +35,7 @@ contains "$SKILL_MD" '--trivial flag removed; tier consolidation in #2956. Use -
 contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
 contains "$SKILL_MD" "unless \`design_classification == SIMPLE\`, where the user-confirmed no-sketch carve-out applies" 'SKILL missing SIMPLE Design Mindset carve-out'
 contains "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_SIMPLE' 'SKILL missing SIMPLE sketch sentinel'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`' 'SKILL missing Anti-pattern #1 SIMPLE carve-out prose'
 contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
 contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroughness**.' 'SKILL missing HARD designer emphasis'
@@ -65,7 +66,7 @@ absent "$SKILL_MD" 'design-l3-velocity-notified-2670' 'SKILL must not retain Ste
 
 contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
-contains "$APPROVAL_MD" '**⚠ Step 3: review-round cap reached**' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
+contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
 contains "$APPROVAL_MD" "any Gate C re-prompt after \`Other\` must preserve that omission" 'approval-gates.md missing Gate C cap re-prompt omission contract'
 contains "$APPROVAL_MD" 'offer this option only when the current review-round count is still below the tier cap' 'approval-gates.md missing Gate C cap-aware rerun contract'
