@@ -104,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Fix #2970:** Final-summary rigid template now surfaces at top chat for both `/design` and `/implement`. The renderer infrastructure from #2837 stays intact; the change is purely the orchestrator-side emission contract: the orchestrator now reads the persisted `final-summary.md` / `summary-final.md` and emits its full body verbatim as plain chat markdown after the Bash call. The previous cost-line-only emission is replaced with full-body emission gated on a non-empty persisted file, preserving the per-agent cost breakdown invariant from #2837 and making the full structured block visible without depending on Bash-tool UI expansion.
+- Fixed the #2973 three-voter failure set: Codex launch branches now attach fd 0 to `/dev/null`, `dispatch-code-voters.sh` waits for reviewer sentinels before classifying voter outputs and only backfills Claude Voter 1 after a clean wait barrier, and `launch-review.sh --tool cursor` writes a success marker into otherwise-empty sidecars so "no stderr" is distinguishable from "sidecar missing".
+- Added regression coverage and docs for the #2973 fixes, including the `run-external-agent.sh` timeout stderr/JSONL split in `--capture-stdout-only` mode.
 - Fixed get-issue-state flag parsing so missing or flag-looking values fail instead of looping.
 - Split Codex JSONL event capture from wrapper diagnostics in lint-fix, negotiation, and review-fix paths, then record sanitized token-ledger usage buckets.
 - Kept raw events.jsonl artifacts local while allowlisting scout-archetype-yield.tsv for committed round logs.

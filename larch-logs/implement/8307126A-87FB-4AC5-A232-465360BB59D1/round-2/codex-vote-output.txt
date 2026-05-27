@@ -1,0 +1,22 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- upstream collection already treats non-zero sentinels as failed, so duplicating that logic in this barrier is not worth the added path.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the timeout/degraded-quorum behavior is an explicit availability tradeoff with an override rather than a defect to block on.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the dead skipped branch is real but currently harmless and not worth complicating this fix.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the concern depends on a hypothetical future asynchronous retry path, not the current implementation.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the usage-error branch is narrow defensive logging and extra harness coverage is low value here.
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the contract could be clearer, but the concrete timeout stdout/stderr split is already covered.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the current sibling doc says the Cursor control verifies launch/metadata, not fd0 inheritance.
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- empty failure sidecars can be sparse, but adding more marker semantics is not warranted for this low-impact diagnostic edge.
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan voters lack an added barrier, but their waterfall collection already waits on sentinels before returning usable outputs.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the branch composition concern is real, but filing a future OOS issue for this already-formed branch is not useful.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the backfill pattern exists, but the waterfall subprocess wait keeps it from reproducing the reviewed premature-tally class.
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a tradeoff characterization, not an actionable security issue to file.
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the lint-fix Codex path splits final-message and events streams, but this wrapper path does not implement codex.log-based stall detection.

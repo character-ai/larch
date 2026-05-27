@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The barrier is primarily a readiness gate and post-wait size/parse checks already cover the practical empty-output failure.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The duplication is real but too small and localized to warrant changing this PR.
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The branch duplication is deliberate enough for the stdin contract and not worth further abstraction here.
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The inclusion is mildly confusing but harmless and not worth filing as a separate issue.
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Missing red-on-main evidence affects review confidence but is not worth a separate follow-up issue.
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The hook executes code only under an explicit test opt-in in a same-user environment, so a follow-up issue is not warranted.
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- A same-user actor who can delay sentinels can already disrupt the run, and the timeout preserves availability by design.
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This describes a positive control to preserve, not a concrete defect worth filing.
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The negotiation Codex path intentionally feeds stdin from the prompt file and does not inherit the parent prompt stdin.
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

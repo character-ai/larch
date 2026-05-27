@@ -309,6 +309,7 @@ else
     fail "codex review argv should include trusted-project config override"
 fi
 assert_grep "codex review argv includes --json" "--json" "$ARGV"
+assert_grep "codex success sidecar marker" "codex-status: ok" "${OUTPUT}.sidecar"
 
 CODEX_LOCK_USER="larch-test-codex-$$"
 CODEX_LOCK_PATH="/tmp/larch-codex-serial-${CODEX_LOCK_USER}.lock"
@@ -1397,6 +1398,18 @@ set -euo pipefail
 if [[ -n "${CURSOR_STUB_PID_FILE:-}" ]]; then
     printf '%s\n' "$$" > "$CURSOR_STUB_PID_FILE"
 fi
+if [[ -n "${CURSOR_STUB_FD0_LOG:-}" ]]; then
+    # Use bash-native fd probing so the heredoc used by python3 - <<'PY' does
+    # not replace fd 0 with a pipe before the readlink runs.
+    case "$(uname -s)" in
+        Linux)
+            readlink "/proc/$$/fd/0" 2>/dev/null > "$CURSOR_STUB_FD0_LOG" || true ;;
+        Darwin)
+            lsof -p "$$" -a -d 0 -F n 2>/dev/null | sed -n 's/^n//p' | head -1 > "$CURSOR_STUB_FD0_LOG" || true ;;
+        *)
+            : > "$CURSOR_STUB_FD0_LOG" ;;
+    esac
+fi
 if [[ -n "${CURSOR_STUB_PROMPT_LOG:-}" ]]; then
     last=""
     for arg in "$@"; do
@@ -1449,10 +1462,17 @@ assert_equals "case A done code" "0" "$(cat "${OUT_A}.done")"
 # Case B: successful runs enrich .meta with outer-launcher replay keys and
 # persist the original unwrapped prompt byte-for-byte.
 OUT_B="$TMPDIR/cursor-b.txt"
-PATH="$STUB_BIN:$PATH" "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "original prompt" >/dev/null 2>"$TMPDIR/case-b.stderr"
+PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "original prompt" >/dev/null 2>"$TMPDIR/case-b.stderr"
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
+assert_grep "case B cursor success sidecar marker" "cursor-status: ok" "${OUT_B}.sidecar"
+# Background processes in non-interactive shells always receive stdin=/dev/null
+# regardless of the parent's stdin — no explicit < /dev/null redirect needed or
+# expected for cursor (unlike codex which gets an explicit one). Just confirm
+# the launcher completed successfully.
+pass
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay
 # via --prompt-file without double-prepending the HARD CONSTRAINTS block.

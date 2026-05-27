@@ -195,20 +195,49 @@ fi
 # RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF=1 to wrap the capture path with
 # stdbuf -o0 -e0 when stdbuf(1) is available (common on Linux CI).
 _launch_capture_stdout_only() {
-    if [[ "${RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF:-}" == "1" ]] && command -v stdbuf >/dev/null 2>&1; then
-        stdbuf -o0 -e0 "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
-    else
-        "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
-    fi
+    # Codex CLI: stdin is redirected to /dev/null because the CLI keeps stdin open
+    # expecting interactive input. Without this redirect, when the parent shell
+    # exits while a background Codex subprocess is still running, the subprocess
+    # sees stdin EOF and emits "write_stdin failed: stdin is closed for this
+    # session" (issue #2962 / #2973 Voter A). Documented at the Codex-named layer
+    # in lib-codex-launcher-common.sh.
+    case "$TOOL_NAME" in
+        codex)
+            if [[ "${RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF:-}" == "1" ]] && command -v stdbuf >/dev/null 2>&1; then
+                stdbuf -o0 -e0 "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" < /dev/null &
+            else
+                "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" < /dev/null &
+            fi
+            ;;
+        *)
+            if [[ "${RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF:-}" == "1" ]] && command -v stdbuf >/dev/null 2>&1; then
+                stdbuf -o0 -e0 "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+            else
+                "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+            fi
+            ;;
+    esac
 }
 
 # Launch the agent in the background
+# Codex CLI: stdin is redirected to /dev/null because the CLI keeps stdin open
+# expecting interactive input. Without this redirect, when the parent shell
+# exits while a background Codex subprocess is still running, the subprocess
+# sees stdin EOF and emits "write_stdin failed: stdin is closed for this
+# session" (issue #2962 / #2973 Voter A). Documented at the Codex-named layer
+# in lib-codex-launcher-common.sh.
 if [ "$CAPTURE_STDOUT" = true ]; then
-    "$@" > "$OUTPUT_FILE" 2>&1 &
+    case "$TOOL_NAME" in
+        codex) "$@" > "$OUTPUT_FILE" 2>&1 < /dev/null & ;;
+        *)     "$@" > "$OUTPUT_FILE" 2>&1 & ;;
+    esac
 elif [ "$CAPTURE_STDOUT_ONLY" = true ]; then
     _launch_capture_stdout_only "$@"
 else
-    "$@" &
+    case "$TOOL_NAME" in
+        codex) "$@" < /dev/null & ;;
+        *)     "$@" & ;;
+    esac
 fi
 PID=$!
 SECONDS=0

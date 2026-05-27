@@ -110,7 +110,6 @@ set +e
     "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"
 voter1_rc=$?
 set -e
-[[ -f "$VOTER_1_PATH.done" ]] || printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
 
 # Log diagnostic when Claude voter fails or produces empty output.
 if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
@@ -170,6 +169,9 @@ manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
 
 codex_present_for_waterfall="$CODEX_AVAILABLE"
 unset LARCH_PAIRED_PID_FILE
+# Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
+# abnormally mid-run) so set -e does not abort dispatch before tally.
+set +e
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --codex-present "$codex_present_for_waterfall" \
@@ -177,6 +179,11 @@ waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --mode "$mode" \
     --timeout 1200 \
     "${ctx_args[@]+"${ctx_args[@]}"}")
+_waterfall_rc=$?
+set -e
+if [[ $_waterfall_rc -ne 0 ]]; then
+    larch_err "dispatch-code-voters.sh: dispatch-with-waterfall.sh exited $_waterfall_rc — proceeding with partial or empty result"
+fi
 
 all_outputs=""
 all_tools=""
@@ -197,7 +204,6 @@ read -r -a tools_arr <<< "$all_tools"
 
 VOTER_1_TOOL="claude"
 VOTER_1_STATUS="launched"
-[[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
 VOTER_2_PATH="${outputs_arr[0]:-}"
 VOTER_3_PATH="${outputs_arr[1]:-}"
 VOTER_2_TOOL="${tools_arr[0]:-codex}"
@@ -206,8 +212,76 @@ VOTER_2_STATUS="launched"
 VOTER_3_STATUS="launched"
 [[ "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
 [[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
-[[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
-[[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
+voter1_wait_timed_out=false
+_wait_rc=0
+
+# FINDING_2: capture stdout — wait-for-reviewers.sh emits TIMEOUT rows on
+# stdout and exits 0 even when sentinels never appear, so an exit-only check
+# would silently miss timeouts. FINDING_5: use if/fi (not arithmetic && cmd)
+# because the arithmetic test returns 1 on the normal zero-exit path and would
+# abort dispatch-code-voters.sh under set -e before parse-rate/tally.
+wait_sentinels=()
+[[ -n "$VOTER_1_PATH" ]] && wait_sentinels+=("${VOTER_1_PATH}.done")
+[[ "$VOTER_2_STATUS" != "skipped" && -n "$VOTER_2_PATH" ]] && wait_sentinels+=("${VOTER_2_PATH}.done")
+[[ -n "$VOTER_3_PATH" ]] && wait_sentinels+=("${VOTER_3_PATH}.done")
+if (( ${#wait_sentinels[@]} > 0 )); then
+    _wait_out_file=$(mktemp "${REVIEW_TMPDIR}/voter-wait.XXXXXX")
+    set +e
+    "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" \
+        --timeout "${LARCH_VOTER_WAIT_TIMEOUT:-60}" \
+        "${wait_sentinels[@]}" >"$_wait_out_file" 2>&1
+    _wait_rc=$?
+    set -e
+    # FINDING_2: detect TIMEOUT rows on stdout (wait-for-reviewers exits 0
+    # even when sentinels never appear).
+    if grep -q '^TIMEOUT ' "$_wait_out_file" 2>/dev/null; then
+        while IFS= read -r _to_line; do
+            larch_err "dispatch-code-voters.sh: voter sentinel $_to_line"
+            case "$_to_line" in
+                "TIMEOUT 1 "*) voter1_wait_timed_out=true ;;
+            esac
+        done < <(grep '^TIMEOUT ' "$_wait_out_file")
+    fi
+    # FINDING_5: rc=1 is a usage error (not a sentinel timeout); log distinctly.
+    if (( _wait_rc != 0 )); then
+        larch_err "dispatch-code-voters.sh: wait-for-reviewers.sh exited $_wait_rc (usage/config error) - proceeding with whatever state exists"
+    fi
+    rm -f "$_wait_out_file"
+    unset _wait_out_file
+fi
+
+# If Claude returned successfully with substantive output but its launcher-owned
+# sentinel still never appeared, publish a local sentinel only after the wait
+# barrier so Voter 1 cannot be treated as complete before launcher completion
+# had a chance to land.
+if [[ ! -f "$VOTER_1_PATH.done" && "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" \
+      && "$voter1_wait_timed_out" != "true" && "$_wait_rc" -eq 0 ]]; then
+    printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
+fi
+unset _wait_rc
+
+read_done_exit_code() {
+    local sentinel="$1"
+    local rc=""
+    [[ -f "$sentinel" ]] || return 0
+    IFS= read -r rc < "$sentinel" || true
+    printf '%s' "$rc"
+}
+
+voter1_done_rc=""
+voter2_done_rc=""
+voter3_done_rc=""
+[[ -n "$VOTER_1_PATH" ]] && voter1_done_rc="$(read_done_exit_code "$VOTER_1_PATH.done")"
+[[ -n "$VOTER_2_PATH" ]] && voter2_done_rc="$(read_done_exit_code "$VOTER_2_PATH.done")"
+[[ -n "$VOTER_3_PATH" ]] && voter3_done_rc="$(read_done_exit_code "$VOTER_3_PATH.done")"
+
+# Re-evaluate size-based statuses AFTER the wait barrier so a voter whose
+# output became visible during the wait is correctly classified. A non-zero or
+# missing launcher-owned `.done` sentinel is still a failed slot even if the
+# output file is non-empty.
+[[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" && "$voter1_done_rc" == "0" ]] || VOTER_1_STATUS="failed"
+[[ "$VOTER_2_STATUS" == "skipped" || ( -s "$VOTER_2_PATH" && "$voter2_done_rc" == "0" ) ]] || VOTER_2_STATUS="failed"
+[[ -s "$VOTER_3_PATH" && "$voter3_done_rc" == "0" ]] || VOTER_3_STATUS="failed"
 
 VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 VOTER_2_PARSE_RATE_STATUS="SKIPPED"

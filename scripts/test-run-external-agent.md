@@ -11,6 +11,8 @@ Regression harness for `scripts/run-external-agent.sh`; the primary behavioral c
 - Verifies `scripts/lib-validate-meta-path.sh` is sourced-only, non-executable, silent when sourced, and idempotent when sourced twice.
 - Verifies the `jq` `CMD_JSON` serialization-failure path: with a `PATH`-prefixed stub `jq` that exits non-zero, the wrapper exits `1`, stderr contains `ERROR: jq failed to serialize argv to CMD_JSON`, `<output>.done` records `1` (not the pre-launch default `99`), and `<output>.meta` is not written. Pins the `EXIT_CODE=1` assignment that synchronizes the trap-written sentinel with the real exit status on this branch.
 - Verifies `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done` writes `<output>.inner.done` without publishing `<output>.done`, default mode still publishes `<output>.done`, stale cleanup removes both sentinel flavors, and unsupported suffixes fail before side effects.
+- Verifies the Codex stdin contract from #2973: default, `--capture-stdout`, `--capture-stdout-only`, and the optional `stdbuf` capture-only branch all run with fd 0 attached to `/dev/null`; the Cursor control verifies the non-Codex tool path still launches and records `TOOL=cursor` metadata (background processes always receive stdin=/dev/null from the shell regardless of the tool-specific redirect gate, so no explicit fd0 path assertion is made for the cursor case).
+- Verifies the case-18 timeout path for `--capture-stdout-only`: wrapper timeout diagnostics stay on stderr while the output file remains parseable JSONL and the timeout detail lands in `<output>.diag`.
 
 ## Wiring
 
