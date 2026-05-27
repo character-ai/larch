@@ -119,12 +119,14 @@ write_findings_classification_stub() {
 }
 
 tally_error_exit() {
-    local stderr_message="$1" stub_message="${2:-}"
+    local stderr_message="$1" stub_message="${2:-}" write_classification_stub="${3:-true}"
     larch_err "$stderr_message"
     if [[ -n "$stub_message" ]]; then
         write_tally_stub "$stub_message"
     fi
-    write_findings_classification_stub
+    if [[ "$write_classification_stub" == true ]]; then
+        write_findings_classification_stub
+    fi
     _tally_status_emitted=true
     [[ -s "$tally_file" ]] && emit_kv VOTING_TALLY_FILE "$tally_file"
     emit_kv TALLY_PLAN_REVIEW_STATUS tally-error
@@ -134,7 +136,8 @@ tally_error_exit() {
 if [[ "$SEEN_VOTER" == true && "$SEEN_VOTER_FILES" == true ]]; then
     tally_error_exit \
         "error: --voter and --voter-files are mutually exclusive" \
-        "**⚠ Tally aborted: --voter and --voter-files are mutually exclusive; no votes tallied.**"
+        "**⚠ Tally aborted: --voter and --voter-files are mutually exclusive; no votes tallied.**" \
+        false
 fi
 
 if [[ ! -r "$BALLOT_FILE" ]]; then
@@ -273,7 +276,8 @@ if [[ "$SEEN_VOTER" == true ]]; then
         if [[ "$spec" != *:* ]]; then
             tally_error_exit \
                 "error: invalid voter slot: $spec (must be 1|2|3|Claude|Codex|Cursor|MainAgent)" \
-                "**⚠ Tally aborted: invalid voter slot: $spec; no votes tallied.**"
+                "**⚠ Tally aborted: invalid voter slot: $spec; no votes tallied.**" \
+                false
         fi
         slot=""
         tool=""
@@ -290,7 +294,8 @@ if [[ "$SEEN_VOTER" == true ]]; then
         if ! valid_voter_slot "$slot"; then
             tally_error_exit \
                 "error: invalid voter slot: $slot (must be 1|2|3|Claude|Codex|Cursor|MainAgent)" \
-                "**⚠ Tally aborted: invalid voter slot: $slot; no votes tallied.**"
+                "**⚠ Tally aborted: invalid voter slot: $slot; no votes tallied.**" \
+                false
         fi
         VOTER_FILES+=("$path")
         if [[ "$slot" == "MainAgent" ]]; then
