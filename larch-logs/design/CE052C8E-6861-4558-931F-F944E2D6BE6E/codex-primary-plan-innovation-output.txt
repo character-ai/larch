@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:738; scripts/implement-bootstrap.sh:73,734-738	The plan routes EMERGENCY_REQUESTED persistence through a new post-bootstrap prompt-side persist call instead of the existing bootstrap-owned run-flags writer	Step 0 already owns persist-implement-run-flags.sh; adding a second prompt-side call conflicts with the Step 0 contract and can leave bootstrap/resume paths without a single authoritative EMERGENCY_REQUESTED value	Add --emergency-requested true|false to implement-bootstrap.sh, pass it from both initial and resume bootstrap invocations, and thread it into the existing persist-implement-run-flags.sh call
+1	in_scope	important	correctness	skills/implement/scripts/post-tracking-issue.sh:81-88; skills/implement/scripts/refresh-execution-issues.sh:72-88; skills/implement/scripts/write-final-report.sh:104-160	The plan updates the summary template but misses the scripts that actually compose larch:metadata and larch:final-summary	Even if run-flags.sh contains EMERGENCY_REQUESTED=true, metadata and final-summary comments still omit Emergency: true because these scripts only read NO_ISSUES/WORKFLOW_PATH and fixed session fields	Update the composing scripts to read EMERGENCY_REQUESTED from run-flags.sh and emit the emergency line only when true; add focused tests for metadata refresh and final summary output
+
+1. [risk-integration] `skills/implement/SKILL.md:738`; `scripts/implement-bootstrap.sh:73,734-738`
+
+The plan says to invoke `persist-implement-run-flags.sh` after Step 0 returns, but Step 0 plan materialization is explicitly bootstrap-owned and already persists run flags inside `implement-bootstrap.sh`. Minimum-change route is to extend the existing bootstrap CLI and internal writer call, not add a second prompt-side writer.
+
+2. [correctness] `skills/implement/scripts/post-tracking-issue.sh:81-88`; `skills/implement/scripts/refresh-execution-issues.sh:72-88`; `skills/implement/scripts/write-final-report.sh:104-160`
+
+The proposed `Emergency: true` audit surface will not appear unless the actual summary composers are changed. Updating only `summary-comment-template.md` documents the shape but does not change emitted `larch:metadata` or `larch:final-summary` bodies.
