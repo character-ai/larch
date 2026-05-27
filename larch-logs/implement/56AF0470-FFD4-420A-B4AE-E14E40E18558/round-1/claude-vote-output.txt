@@ -1,0 +1,29 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- phase_plan_materialize is long but functional; extracting step helpers is speculative refactoring beyond the plan scope
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- by design, SKILL.md explicitly places the dirty-tree re-check at the orchestrator level before --resume-plan-tail
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the SKILL already documents both failure cases under one bail reason; splitting is speculative future-ops work
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- resume passes through phase_infra which calls session-setup fresh; if it allocates a new tmpdir, plan.txt and feature-description.txt are missing on the resume tail; FINDING_8 confirms the test masks this with a fixed SANDBOX_TMP
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- same design decision as FINDING_4; orchestrator contract in SKILL.md line 468 is explicit
+FINDING_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false -- confirmed: test-implement-structure.sh lines 356-363 grep for token-ledger/timing-ledger "Step 0 — plan materialization" strings in SKILL.md; those strings were removed by Phase 3, so make test-implement-structure fails
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- confirmed: SKILL.md lines 379-384 uses only redact-secrets.sh for gh-issue-view stderr, not the dual redact-secrets.sh | redact-tmpdir-paths.sh pipeline that copy-plan uses
+FINDING_20: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- confirmed: lines 564-572 allow FORKED_TARGET=true with empty UPSTREAM_REPO_OPT; no argv validation requires --upstream-repo with --forked-target
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- same concern as FINDING_4/FINDING_7; design deliberately places the check at orchestrator level
+FINDING_24: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- confirmed: should_run_phase_plan_materialize skips Phase 3 when REPO_UNAVAILABLE=true, but DEFERRED=true does not halt the waterfall; Step 2 proceeds without plan.txt
+FINDING_25: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_26: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_27: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_29: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
