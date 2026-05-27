@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	Makefile:47; scripts/test-harness-shards-coverage.sh:221-229	Plan tells implementer to add test-check-contains-pins directly to the test-harnesses aggregate and also to test-harnesses-3	The shard coverage guard expects test-harnesses prerequisites to be exactly test-harnesses-N targets; an individual harness there becomes an unexpected prerequisite and fails lint	Leave Makefile:47 unchanged; add the new target only to .PHONY, one shard line, and its recipe
+
+1. [risk-integration] `Makefile:47`
+The proposed Makefile edits over-wire the new harness. Existing `scripts/test-harness-shards-coverage.sh:221-229` compares the aggregate `test-harnesses:` prerequisites against discovered shard targets only, so adding `test-check-contains-pins` directly to `test-harnesses:` will be reported as an unexpected prerequisite.
+
+Suggested revision: keep `test-harnesses:` unchanged; add `test-check-contains-pins` to `.PHONY`, `test-harnesses-3`, and the target recipe only.

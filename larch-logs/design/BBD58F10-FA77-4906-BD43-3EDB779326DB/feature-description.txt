@@ -1,0 +1,41 @@
+Title: [BUG] (URGENT) Codex review-fix test pin and implementation text diverge in same commit, causing CI stall
+
+## Context
+
+During `/implement` run `E0F6B1E7-CA9B-49D2-B113-2E0E501D2835` (issue #3035, PR #3057), `ship-pr.sh` exited with code 4 (`STALL_STEP=10-max-retries`) after CI check `test-harnesses (14)` failed with:
+
+```
+FAIL: approval-gates.md missing Gate A See-full-plan re-prompt contract
+```
+
+The stall forced manual orchestrator intervention: the CI root cause was diagnosed, a fix committed, stall state manually cleared, and `ship-pr.sh` re-invoked with `--resume-phase ci-initial`.
+
+## Root Cause
+
+Codex wrote a contradicting test pin and implementation text **in the same round-1 review-fix commit** (`07ddfab7`), addressing accepted FINDING_1 ("Gate A See-full-plan contract lacks structural pins").
+
+`scripts/test-design-structure.sh` line 72 pinned the literal:
+
+```
+'re-fires the same Gate A `AskUserQuestion` minus the `See full plan` option, leaving exactly two options (`Ready for review` / `Discuss more`)'
+```
+
+But `skills/design/references/approval-gates.md` line 47 (written in the same commit) contained:
+
+```
+then immediately re-fires the same Gate A `AskUserQuestion` minus the `See full plan` option until the user picks Ready for review or Discuss more
+```
+
+The two phrasings are semantically equivalent but literally different. The `contains` assertion fails on an exact-string match. The test pinned text that did not exist in the file being tested.
+
+This failure mode — Codex composing a test pin and its target prose independently, then the two diverging — is not caught by relevant-checks at review-fix commit time because `test-design-structure.sh` is not wired into the pre-commit hooks (it runs as a make harness target in CI only).
+
+## Suggested Fix Outline
+
+**Option A — Run test harnesses that pin literals as part of relevant-checks.** Wire `test-design-structure.sh` (and analogous pin-heavy harness scripts) into `scripts/relevant-checks.sh` so the divergence is caught at Step 3 / Step 6 before any push. Tradeoff: increases local check time.
+
+**Option B — Post-review-fix spot-check.** After `review-and-fix.sh` commits round fixes, run a targeted grep over the changed markdown files to verify that every literal appearing in `contains` assertions in test scripts actually exists verbatim in the files those scripts reference. A lightweight `scripts/check-contains-pins.sh` could implement this.
+
+**Option C — Codex prompt guidance.** Add a note to the Codex implementer system prompt directing it, when writing a `contains`-style literal test assertion against a file it is also editing, to derive the assertion text by quoting the edited file verbatim rather than paraphrasing. This is behavioral guidance only and not mechanically enforced.
+
+Option A is the most reliable. Options B and C are complementary.
