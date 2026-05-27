@@ -912,36 +912,50 @@ if [[ -f "$DESIGN_TMPDIR/.step3-review-cap.env" ]]; then
 fi
 if [[ "${STEP3_REVIEW_CAP_REACHED:-false}" == true ]]; then
   printf '%s\n' "⏩ 3: plan review — cap reached; skipping"
+  LOOP_STATUS="cap-reached"
+  TALLY_PLAN_REVIEW_STATUS="skipped-cap-reached"
 else
   if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
     _step3_prior_round_count=$((STEP3_REVIEW_ROUND_NUM - 1))
     printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$DESIGN_TMPDIR/review-round-count.txt"
   fi
+  # Foreground required: see BASH_AUTHORING.md §4
+  set +e
+  _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --plan-file "$DESIGN_TMPDIR/plan.txt" \
+    --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
+    --codex-present "$CODEX_PRESENT" \
+    --cursor-present "$CURSOR_PRESENT" \
+    --round-num "${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}")
+  _plan_review_rc=$?
+  set -e
 fi
-# Foreground required: see BASH_AUTHORING.md §4
-set +e
-_plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh" \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --plan-file "$DESIGN_TMPDIR/plan.txt" \
-  --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
-  --codex-present "$CODEX_PRESENT" \
-  --cursor-present "$CURSOR_PRESENT" \
-  --round-num "${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}")
-_plan_review_rc=$?
-set -e
-LOOP_STATUS=""; ACCEPTED_COUNT=""; DEGRADED_PANEL=""; ROUNDS_COMPLETED=""
-TALLY_PLAN_REVIEW_STATUS=""; AGGREGATOR_STATUS=""; VOTING_TALLY_FILE=""
-VOTER_1_PARSE_RATE_STATUS=""
-while IFS= read -r _line || [[ -n "$_line" ]]; do
-  _key="${_line%%=*}"; _value="${_line#*=}"
-  case "$_key" in
-    LOOP_STATUS|ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|VOTER_1_PARSE_RATE_STATUS)
-      printf -v "$_key" '%s' "$_value" ;;
-    WARN) printf '%s\n' "WARN=$_value" ;;
-  esac
-done <<<"$_plan_review_out"
-if [[ "$_plan_review_rc" -ne 0 && "$LOOP_STATUS" != "panel-failed" && "$LOOP_STATUS" != "main-agent-vote-required" ]]; then
-  printf '%s\n' "**⚠ plan-review-loop.sh exited with rc=$_plan_review_rc and unexpected LOOP_STATUS=$LOOP_STATUS**"
+if [[ "${LOOP_STATUS:-}" != "cap-reached" ]]; then
+  ACCEPTED_COUNT=""; DEGRADED_PANEL=""; ROUNDS_COMPLETED=""
+  TALLY_PLAN_REVIEW_STATUS=""; AGGREGATOR_STATUS=""; VOTING_TALLY_FILE=""
+  VOTER_1_PARSE_RATE_STATUS=""
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    _key="${_line%%=*}"; _value="${_line#*=}"
+    case "$_key" in
+      LOOP_STATUS|ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|VOTER_1_PARSE_RATE_STATUS)
+        printf -v "$_key" '%s' "$_value" ;;
+      WARN) printf '%s\n' "WARN=$_value" ;;
+    esac
+  done <<<"${_plan_review_out:-}"
+  if [[ "${_plan_review_rc:-0}" -ne 0 && "$LOOP_STATUS" != "panel-failed" && "$LOOP_STATUS" != "main-agent-vote-required" ]]; then
+    printf '%s\n' "**⚠ plan-review-loop.sh exited with rc=$_plan_review_rc and unexpected LOOP_STATUS=$LOOP_STATUS**"
+  fi
+  if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
+    _persist_round=true
+    if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" ]]; then
+      _persist_round=false
+      printf '%s\n' "${_step3_prior_round_count:-0}" >"$DESIGN_TMPDIR/review-round-count.txt"
+    fi
+    if [[ "$_persist_round" == true ]]; then
+      printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$DESIGN_TMPDIR/review-round-count.txt"
+    fi
+  fi
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
