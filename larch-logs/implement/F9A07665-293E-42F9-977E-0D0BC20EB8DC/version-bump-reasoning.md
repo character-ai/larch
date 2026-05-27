@@ -1,13 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `09b048cb` (Bump version to 42.6.1 (#3007))
-- **Current version**: `43.0.0`
+- **Base commit**: `152e512b` (Fixes #2995: Fix Cursor narration-only output failure: --mode ask, degraded-response sentinel, normalize_rcc_max_iter (#3023))
+- **Current version**: `44.0.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: PATCH
+## Result: MINOR
 
-- **New version**: `43.0.1`
+- **New version**: `44.1.0`
 
-### PATCH rationale
-
-No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy ("every PR must bump at least PATCH").
+### MINOR evidence
+- Added `--trivial` to argument-hint in `skills/design/SKILL.md`
