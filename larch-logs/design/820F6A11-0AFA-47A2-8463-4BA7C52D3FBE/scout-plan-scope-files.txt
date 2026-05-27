@@ -1,0 +1,9 @@
+scripts/ship-pr.sh
+scripts/merge-pr.sh
+scripts/test-merge-pr.sh
+scripts/test-lint-fix-loop.sh
+SECURITY.md
+scripts/ship-pr.md
+scripts/merge-pr.md
+scripts/test-merge-pr.md
+scripts/test-lint-fix-loop.md

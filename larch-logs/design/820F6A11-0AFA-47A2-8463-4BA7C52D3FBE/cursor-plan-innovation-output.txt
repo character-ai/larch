@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/test-lint-fix-loop.sh:530-629	Item C2 proposes ~60-120 lines of new defensive-branch fixtures but cases 1c/1d/1d.5/1d.6/1e already exercise detached HEAD, branch switch, history rewrite, merge commit, and dirty-baseline failures with `FAILURE_REASON=head-changed-after-dispatch`	Duplicate harness work inflates the ~180-line PR without new behavioral coverage; only SECURITY.md C1 and doc sync are needed for the stated invariant	Remove Item C2 (and `scripts/test-lint-fix-loop.md` matrix expansion) from the plan; keep the single SECURITY.md sentence (C1) only
+1	in_scope	important	correctness	plan.txt:198-201	Testing strategy claims `make test-ship-pr` covers Item A, but no fixture targets `_verify_failed_jobs_locally` after `run_per_job_local_fix_loop` returns 2 while the failed-jobs TSV still has `no-local-equivalent` rows (e.g. gitleaks) that the old `[[ "$class" == "fixable" ]] || continue` silently skips	`ci_per_job_unfixable` bails in `run_per_job_local_fix_loop` before vendor; the vendor→`_verify` push bypass (early `return 2` with unfixable still populated only at parse) stays untested and the strategy overstates regression coverage	Revise the testing strategy to acknowledge the gap, or add one minimal vendor-path case (mixed TSV + per-job `head-changed` stub + assert `exit 3` / no push) instead of claiming existing `test-ship-pr` already covers Item A
+
+1. **[OUT_OF_SCOPE]** `plan.txt` D1 / `scripts/test-merge-pr.sh` — Post-force-push `UNKNOWN→BEHIND` with empty `ERROR` (mirror of G4 in Sub-test K/Q flush fixtures) has no planned regression case; acceptable for a surgical mirror if implementer manually spot-checks flush recovery.
+
+**Numbered summary**
+
+1. **architecture** — Item C2 duplicates existing `test-lint-fix-loop.sh` coverage; drop the harness expansion and keep C1 doc-only.
+2. **correctness** — Item A fix is sound, but the plan overclaims `test-ship-pr` coverage for the vendor `_verify` path; tighten the strategy or add one targeted fixture.
