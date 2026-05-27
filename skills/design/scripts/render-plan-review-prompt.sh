@@ -112,7 +112,7 @@ if [[ -r "$readability_style_file" ]]; then
     readability_style="$(cat "$readability_style_file" || true)"
 fi
 if [[ -z "$readability_style" ]]; then
-    larch_err "render-plan-review-prompt.sh: WARNING: readability preamble missing or empty: $readability_style_file (READABILITY_STYLE_FILE_ARG=${READABILITY_STYLE_FILE_ARG:-UNSET} READABILITY_STYLE_FILE=${READABILITY_STYLE_FILE:-UNSET} file_readable=$([[ -r "$readability_style_file" ]] && echo yes || echo no))"
+    larch_err "render-plan-review-prompt.sh: WARNING: readability preamble missing or empty: $readability_style_file"
 fi
 
 prompt_body=""
@@ -143,11 +143,15 @@ prompt_body="${prompt_body//__FULL_ROLE__/$full_role}"
 prompt_body="${prompt_body//__TIER_EMPHASIS__/$tier_emphasis}"
 prompt_body="${prompt_body//__PLAN_FILE__/$PLAN_FILE}"
 
+# Use %% / ## split instead of ${var//pat/rep} to avoid bash 5.x treating '&'
+# in the replacement as the matched text (same as sed's & behaviour).
+_rs_before="${prompt_body%%__READABILITY_STYLE_BLOCK__*}"
+_rs_after="${prompt_body##*__READABILITY_STYLE_BLOCK__}"
 if [[ -n "$readability_style" ]]; then
-    prompt_body="${prompt_body//__READABILITY_STYLE_BLOCK__/$readability_style}"
+    prompt_body="${_rs_before}${readability_style}${_rs_after}"
 else
     # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
-    prompt_body="${prompt_body//__READABILITY_STYLE_BLOCK__/Style requirements for finding text and OOS Descriptions: \`<READABILITY_STYLE>\`.}"
+    prompt_body="${_rs_before}Style requirements for finding text and OOS Descriptions: \`<READABILITY_STYLE>\`.${_rs_after}"
 fi
 
 printf '%s\n' "$prompt_body"

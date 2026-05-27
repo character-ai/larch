@@ -30,10 +30,6 @@ Literal token example:
 `<READABILITY_STYLE>`
 EOF
 export READABILITY_STYLE_FILE
-# sanity-check: verify fixture file was created with expected content
-_fixture_lines="$(wc -l <"$READABILITY_STYLE_FILE" 2>/dev/null || echo MISSING)"
-_fixture_has_strunk="$(grep -c 'Strunk' "$READABILITY_STYLE_FILE" 2>/dev/null || echo 0)"
-echo "DEBUG test-plan-review-prompt: READABILITY_STYLE_FILE=$READABILITY_STYLE_FILE lines=$_fixture_lines strunk-matches=$_fixture_has_strunk" >&2
 SIMPLE_DT="$TMPROOT/simple-design"
 HARD_DT="$TMPROOT/hard-design"
 mkdir -p "$SIMPLE_DT" "$HARD_DT"
@@ -80,11 +76,6 @@ for archetype in "${archetypes[@]}"; do
         err="$TMPROOT/${vendor}-${archetype}.err"
         bash "$RENDERER" --archetype "$archetype" --vendor "$vendor" --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$out" 2>"$err" \
             || fail "$vendor/$archetype: renderer exited non-zero: $(cat "$err")"
-        if [ -s "$err" ]; then
-          echo "DEBUG renderer stderr ($vendor/$archetype): $(cat "$err")" >&2
-        fi
-        _out_strunk="$(grep -c 'Strunk' "$out" 2>/dev/null || echo 0)"
-        echo "DEBUG out_strunk=$_out_strunk for $vendor/$archetype ($out)" >&2
 
         assert_contains "$vendor/$archetype focus enum" "code-quality / risk-integration / correctness / architecture / security" "$out"
         assert_contains "$vendor/$archetype sentinel instruction" '{"no_issues_found": true}' "$out"
