@@ -547,6 +547,12 @@ def main():
                 file=sys.stderr,
             )
             return 1
+        if has_nonconforming_finding_heading_markers(outtext) and has_attest_line:
+            print(
+                "AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation",
+                file=sys.stderr,
+            )
+            return 1
         if not has_attest_line:
             print(
                 "zero merged FINDING blocks while input had findings; "
@@ -558,16 +564,12 @@ def main():
             return 1
         input_finding_count = len(input_blocks(intext))
         print(
-            "AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input",
-            file=sys.stderr,
-        )
-        print(
-            "input had %d FINDING blocks; merged output has zero "
-            "(attestation present is not sufficient when inputs were nonempty)"
+            "attestation-only empty merge accepted "
+            "(input %d FINDING blocks -> 0 merged blocks)"
             % (input_finding_count,),
             file=sys.stderr,
         )
-        return 1
+        return 0
     seen_merge_ids = set()
     for b in blocks:
         mid = finding_id_from_block(b)
@@ -633,7 +635,7 @@ _agg_pipeline_for_candidate() {
     MERGE_PIPELINE_RC=2
 
     if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
-        if grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|empty_merge_from_nonempty_input)$' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
+        if grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|nonconforming_heading_with_attestation)$' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
             MERGE_PIPELINE_RC=1
             return 0
         fi
@@ -663,7 +665,9 @@ PY
         return 0
     fi
     if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
-        [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
+        # Zero-block success path: force a whitespace-only persisted ballot so
+        # accepted narrative around the attestation cannot leak downstream.
+        printf '\n' >"$merged_tmp"
     fi
     if [[ ! -s "$merged_tmp" ]]; then
         rm -f "$merged_tmp"
@@ -755,8 +759,10 @@ case "${MERGE_PIPELINE_RC:-2}" in
         FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
         if grep -Fxq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$FAILURE_LOG" 2>/dev/null; then
             append_warning "- **findings aggregator**: validation exhausted (narrow-trigger preamble contradiction after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+        elif grep -Fxq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' "$FAILURE_LOG" 2>/dev/null; then
+            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
         else
-            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger empty merge after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+            append_warning "- **findings aggregator**: validation exhausted (narrow-trigger validator rejection after pattern-gated dispatch); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
         fi
         emit_result
         exit 0

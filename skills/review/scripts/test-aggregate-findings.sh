@@ -18,6 +18,12 @@ fail() {
     exit 1
 }
 
+assert_whitespace_only() {
+    local path="${1:?}"
+    local label="${2:?}"
+    [[ "$(tr -d '[:space:]' < "$path" | wc -c | tr -d '[:space:]')" == "0" ]] || fail "$label"
+}
+
 [[ -z "${LARCH_EXECUTION_ISSUES_LOG:-}" ]] || fail "harness entry must clear LARCH_EXECUTION_ISSUES_LOG (restore unset prelude or unset outer env)"
 
 [[ -x "$AGG" ]] || fail "$AGG not executable"
@@ -144,7 +150,23 @@ LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
 
 EOF
                 ;;
-            zero_findings_padded_attest_rejected)
+            zero_findings_pure_attest)
+                cat > "$out" <<'EOF'
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                ;;
+            zero_findings_narrative_attest)
+                cat > "$out" <<'EOF'
+The reviewers reported the same behavioral issue from different angles.
+
+After merging by root cause, no distinct finding remains to preserve.
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                ;;
+            zero_findings_padded_attest)
                 cat > "$out" <<'EOF'
 Aggregator narrative: padded empty-merge attestation should reach the validator.
 
@@ -171,6 +193,16 @@ EOF
 Aggregator narrative: pseudo-heading should fail validation.
 
 ### FINDING_1 not-a-valid-heading-line
+
+EOF
+                ;;
+            zero_findings_nonconforming_with_attestation)
+                cat > "$out" <<'EOF'
+Aggregator narrative: pseudo-heading plus attestation must fail validation.
+
+### FINDING_1 not-a-valid-heading-line
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
 
 EOF
                 ;;
@@ -575,7 +607,7 @@ grep -Fq 'MERGED_COUNT=2' "$TMP/out-oos-shared.env" || fail "oos-shared MERGED_C
 [[ "$(grep -c '^### FINDING_' "$TMP/in-oos-shared-work.md" | tr -d '[:space:]')" == "2" ]] || fail "expected two FINDING blocks after OOS shared-slot merge"
 grep -Fq '[OUT_OF_SCOPE]' "$TMP/in-oos-shared-work.md" || fail "expected [OUT_OF_SCOPE] preserved in OOS shared-slot merge"
 
-echo "=== zero output FINDING blocks fails closed when input had findings (#2536) ==="
+echo "=== zero output FINDING blocks with attestation succeeds when input had findings (#2536 #2939) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero.md"
 write_stub_dispatch
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
@@ -587,10 +619,29 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-zero.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-zero.env" || fail "zero-findings AGGREGATED"
-grep -Fq 'REASON=validation-exhausted' "$TMP/out-zero.env" || fail "zero-findings REASON"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero.env" || fail "zero-findings AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero.env" || fail "zero-findings REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero.env" || fail "zero-findings MERGED_COUNT"
 grep -Fq 'INPUT_COUNT=3' "$TMP/out-zero.env" || fail "zero-findings INPUT_COUNT"
-cmp -s "$TMP/in3.md" "$TMP/in3-zero.md" || fail "findings unchanged on zero-findings validator rejection"
+assert_whitespace_only "$TMP/in3-zero.md" "findings.md must be whitespace-only after zero-block success"
+
+echo "=== zero_findings_round_trip_pure_attestation_success (#2939) ==="
+cp "$TMP/in3.md" "$TMP/in3-zero-pure.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_pure_attest \
+"$AGG" \
+    --findings-file "$TMP/in3-zero-pure.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-zero-pure.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero-pure.env" || fail "pure-attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero-pure.env" || fail "pure-attest REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero-pure.env" || fail "pure-attest MERGED_COUNT"
+assert_whitespace_only "$TMP/in3-zero-pure.md" "pure-attest findings.md must be whitespace-only"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=' "$TMP/aggregator-validate.stderr" 2>/dev/null && fail "pure-attest success must not emit validation failure token"
 
 echo "=== zero output without model attestation: validator rejects empty-merge (#2563) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero-na.md"
@@ -659,6 +710,43 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_nonconforming_heading \
 grep -Fq 'AGGREGATED=false' "$TMP/out-nonconf.env" || fail "nonconforming-heading AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-nonconf.env" || fail "nonconforming-heading REASON"
 
+echo "=== zero_findings_nonconforming_with_attestation: validation-exhausted (#2939) ==="
+cp "$TMP/in3.md" "$TMP/in3-nonconf-attest.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_nonconforming_with_attestation \
+"$AGG" \
+    --findings-file "$TMP/in3-nonconf-attest.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-nonconf-attest.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-nonconf-attest.env" || fail "nonconforming+attest AGGREGATED"
+grep -Fq 'REASON=validation-exhausted' "$TMP/out-nonconf-attest.env" || fail "nonconforming+attest REASON"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' "$TMP/aggregator-validate.stderr" || fail "expected nonconforming_heading_with_attestation token"
+cmp -s "$TMP/in3.md" "$TMP/in3-nonconf-attest.md" || fail "findings unchanged on nonconforming+attest validator rejection"
+EX="$TMP/exec-issues-nonconf-attest"
+mkdir -p "$EX"
+cp "$TMP/in3.md" "$EX/in.md"
+: >"$EX/execution-issues.md"
+write_stub_dispatch
+LARCH_EXECUTION_ISSUES_LOG="$EX/execution-issues.md" \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_nonconforming_with_attestation \
+"$AGG" \
+    --findings-file "$EX/in.md" \
+    --review-tmpdir "$EX" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-nonconf-attest-exec.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-nonconf-attest-exec.env" || fail "nonconforming+attest exec-isolation AGGREGATED"
+grep -Fq 'REASON=validation-exhausted' "$TMP/out-nonconf-attest-exec.env" || fail "nonconforming+attest exec-isolation REASON"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' "$TMP/aggregator-validate.stderr" || fail "nonconforming+attest exec-isolation missing token"
+grep -Fq 'validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation)' "$EX/execution-issues.md" || fail "nonconforming+attest rejection must log validation-exhausted warning to execution-issues.md"
+cmp -s "$TMP/in3.md" "$EX/in.md" || fail "findings unchanged on nonconforming+attest exec-isolation validator rejection"
+
 echo "=== zero_findings_nospace_pseudo_heading: validation-failed ==="
 cp "$TMP/in3.md" "$TMP/in3-nospace-pseudo.md"
 write_stub_dispatch
@@ -690,7 +778,7 @@ grep -Fq 'AGGREGATED=false' "$TMP/out-finding-ids-prose.env" || fail "finding-id
 grep -Fq 'REASON=validation-failed' "$TMP/out-finding-ids-prose.env" || fail "finding-ids-prose REASON"
 cmp -s "$TMP/in3.md" "$TMP/in3-finding-ids-prose.md" || fail "findings unchanged on prose FINDING_ids validator rejection"
 
-echo "=== zero_findings_input_nonempty rejected: input had findings, output empty + attestation => validation-exhausted (#2782) ==="
+echo "=== zero_findings_input_nonempty accepted: output empty + attestation => REASON=ok (#2939 supersedes #2782) ==="
 cp "$TMP/in3.md" "$TMP/in3-zfn.md"
 write_stub_dispatch
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
@@ -702,29 +790,45 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-zfn.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-zfn.env" || fail "#2782: aggregation must fail when input had findings and output is empty"
-grep -Fq 'REASON=validation-exhausted' "$TMP/out-zfn.env" || fail "#2782: REASON must be validation-exhausted"
-grep -Fq 'AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input' "$TMP/aggregator-validate.stderr" \
-    || fail "#2782: validator must emit empty_merge_from_nonempty_input reason"
-cmp -s "$TMP/in3.md" "$TMP/in3-zfn.md" || fail "#2782: findings.md must remain unchanged on validator rejection"
-[[ "$(grep -c '^### FINDING_' "$TMP/in3-zfn.md" | tr -d '[:space:]')" == "3" ]] \
-    || fail "#2782: original 3 FINDING blocks must survive"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zfn.env" || fail "#2939: aggregation should succeed when attestation is present"
+grep -Fq 'REASON=ok' "$TMP/out-zfn.env" || fail "#2939: REASON must be ok"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zfn.env" || fail "#2939: MERGED_COUNT must be zero"
+assert_whitespace_only "$TMP/in3-zfn.md" "#2939: findings.md must be whitespace-only after attested empty merge"
 
-echo "=== zero output rejects whitespace-padded empty-merge attestation for nonempty input (#2536) ==="
+echo "=== zero output accepts whitespace-padded empty-merge attestation for nonempty input (#2939) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero-pad.md"
 write_stub_dispatch
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
 AGGREGATE_STUB_MODE=ok \
-AGGREGATE_STUB_MERGE_KIND=zero_findings_padded_attest_rejected \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_padded_attest \
 "$AGG" \
     --findings-file "$TMP/in3-zero-pad.md" \
     --review-tmpdir "$TMP" \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-zero-pad.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-zero-pad.env" || fail "padded-attest AGGREGATED"
-grep -Fq 'REASON=validation-exhausted' "$TMP/out-zero-pad.env" || fail "padded-attest REASON"
-cmp -s "$TMP/in3.md" "$TMP/in3-zero-pad.md" || fail "findings unchanged on padded-attest validator rejection"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero-pad.env" || fail "padded-attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero-pad.env" || fail "padded-attest REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero-pad.env" || fail "padded-attest MERGED_COUNT"
+assert_whitespace_only "$TMP/in3-zero-pad.md" "padded-attest findings.md must be whitespace-only"
+
+echo "=== zero_findings_narrative_plus_attestation_succeeds_whitespace_only_persist (#2939) ==="
+cp "$TMP/in3.md" "$TMP/in3-zero-narrative.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_narrative_attest \
+"$AGG" \
+    --findings-file "$TMP/in3-zero-narrative.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-zero-narrative.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero-narrative.env" || fail "narrative-attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero-narrative.env" || fail "narrative-attest REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero-narrative.env" || fail "narrative-attest MERGED_COUNT"
+assert_whitespace_only "$TMP/in3-zero-narrative.md" "narrative-attest findings.md must be whitespace-only"
+grep -Fq 'reviewers reported' "$TMP/in3-zero-narrative.md" && fail "narrative text must not persist into findings.md"
 
 echo "=== merged FINDING blocks plus spurious empty-merge token fails validation ==="
 cp "$TMP/in3.md" "$TMP/in3-spurious.md"
@@ -1193,7 +1297,10 @@ AGGREGATE_STUB_REQUIRE_PATTERN_LOG="$PAT/require-pattern.txt" \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-pattern-attest.env"
-grep -Fq 'REASON=validation-exhausted' "$TMP/out-pattern-attest.env" || fail "attestation should reach validator narrow-trigger path"
+grep -Fq 'AGGREGATED=true' "$TMP/out-pattern-attest.env" || fail "attestation pattern AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-pattern-attest.env" || fail "attestation should reach validator ok path"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-pattern-attest.env" || fail "attestation pattern MERGED_COUNT"
+assert_whitespace_only "$PAT/in.md" "attestation pattern findings.md must be whitespace-only"
 grep -Fq "$EXPECTED_REQUIRE_PATTERN" "$PAT/require-pattern.txt" || fail "attestation pattern not threaded"
 
 echo "=== codex_primary_narration_routes_to_phase2_cursor ==="
