@@ -198,10 +198,14 @@ assert_contains "lint-fix PROHIBITION via lib" \
 # ── render-plan-review-prompt.sh runtime render smoke ────────────────────────
 
 plan_review_out="$TMP/render-plan-review-prompt.txt"
+design_tmpdir="$TMP/design-tmpdir"
+mkdir -p "$design_tmpdir"
+printf '{"schema_version":2,"design_classification":"HARD","partition_requested":false,"brainstorm_requested":false,"manual_gate_b":false}\n' > "$design_tmpdir/run-params.json"
 "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" \
     --archetype arch \
     --vendor codex \
-    --plan-file "$plan_file" > "$plan_review_out"
+    --plan-file "$plan_file" \
+    --design-tmpdir "$design_tmpdir" > "$plan_review_out"
 
 assert_contains "plan-reviewer TSV header literal" \
     'schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix' "$plan_review_out"
