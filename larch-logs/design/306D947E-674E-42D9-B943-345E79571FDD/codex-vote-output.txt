@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- legitimate edge case, but per-block anchoring adds more complexity than this lint micro-change warrants

@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly chose file-level counting with no section parsing for SIMPLE scope; per-block anchor remedy contradicts that design choice and warrants a follow-up issue rather than a plan change
