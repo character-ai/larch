@@ -1,0 +1,14 @@
+I'll read the pre-computed diff and the dispatcher/test code paths the scout notes call out, then verify whether the Bug A two-run test and the cap_hit stub actually exercise the intended ledger behavior.
+I need to trace how `collect-agent-results.sh` parses Codex output and whether `STATUS=cap_hit` in stub content becomes the summary status or ends up in the result file.
+Checking whether phase-2 output paths in the ledger explain how the two-run test behaves when outputs are deleted.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Reviewed the branch diff (`157bea27` + log flush) against the scout focus areas. The production fixes and tests are internally consistent; no introduced or amplified correctness defects were found.
+
+**Bug A two-run test oracle (verified sound).** Grouped phase-2 dedup reads `waterfall-group-results.tsv` via `find_group_ok_for_tool`, not `.dedup` sidecars. In `scripts/dispatch-with-waterfall.sh`, `find_group_ok_for_tool` (293–301) greps `$GROUP_LEDGER` for `$5 == "ok"`, and the grouped phase-2 loop (471–474) calls it before `reuse_slot_result`. Deleting `dedup-a.txt`, `dedup-b.txt`, and their `.dedup` sidecars while keeping the same `$TMPROOT` manifest directory leaves the append-only ledger intact. On unfixed code, run 2 would match the stale `ok` row and reuse without launching Codex (`counter_value == 0`, content still `split` not `second split`). The test would fail on both the counter assertion (445) and the content assertion (446). Notably, the ledger `ok` row stores the phase-2 path (`dedup-a-phase2.txt`, from `output_for_phase`), which the test deliberately does not delete — that makes stale reuse succeed on buggy code and is appropriate for this regression.
+
+**Bug B cap_hit stub (verified sound).** The Codex stub writes `CODEX_STUB_RESULT_CONTENT` verbatim to the output file (test lines 41–43). `collect-agent-results.sh:763` promotes a first line of `STATUS=cap_hit` to summary `STATUS=cap_hit`. In `collect_phase`, the `--require-result-pattern` gate is `OK`-only (385–395), so `cap_hit` correctly bypasses pattern validation even though `STATUS=cap_hit` remains in the result file. With the production fix, `append_group_ledger_ok` fires for `cap_hit`, enabling peer reuse and satisfying the ledger grep at test line 505.

@@ -1,0 +1,12 @@
+larch:bc t=2026-05-27T00:53:30Z d=0 p=77539 s=review-and-fix.sh c=progress text=→ Step 5 round 1/5
+larch:bc t=2026-05-27T00:53:30Z d=0 p=77539 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T00:53:55Z d=0 p=77800 s=dispatch-panel.sh c=progress text=→ review: launching 9 reviewers (6 Cursor static, 3 dynamic)
+larch:bc t=2026-05-27T00:58:12Z d=0 p=77713 s=review-core.sh c=progress text=→ review: consolidating findings
+larch:bc t=2026-05-27T01:03:27Z d=0 p=77539 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 2 accepted, 3 rejected (3 exonerated)
+larch:bc t=2026-05-27T01:03:27Z d=0 p=77539 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (2 fixes)
+larch:bc t=2026-05-27T01:04:48Z d=0 p=77539 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 2 fixes (commit 6c5c613)
+larch:bc t=2026-05-27T01:05:12Z d=0 p=77539 s=review-and-fix.sh c=progress text=⏳ Step 5: bulk-skip-ratio gate triggered (ratio=0.5; threshold=0.5); continuing
+larch:bc t=2026-05-27T01:05:12Z d=0 p=77539 s=review-and-fix.sh c=progress text=→ Step 5 round 2/5
+larch:bc t=2026-05-27T01:05:12Z d=0 p=77539 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T01:05:41Z d=0 p=82785 s=dispatch-panel.sh c=progress text=→ review: launching 9 reviewers (6 Cursor static, 3 dynamic)
+larch:bc t=2026-05-27T01:12:40Z d=0 p=82644 s=review-core.sh c=progress text=→ review: consolidating findings
