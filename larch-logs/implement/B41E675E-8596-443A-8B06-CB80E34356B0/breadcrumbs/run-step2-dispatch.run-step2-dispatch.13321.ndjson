@@ -1,0 +1,1114 @@
+larch:bc t=2026-05-27T04:25:53Z d=0 p=65263 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:25:54Z d=0 p=65263 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:25:54Z d=0 p=65263 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:25:56Z d=0 p=67554 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:25:56Z d=0 p=67554 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:25:57Z d=0 p=68630 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:25:57Z d=0 p=68630 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:25:58Z d=0 p=68630 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:25:58Z d=0 p=68630 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 6b1c78e)
+larch:bc t=2026-05-27T04:26:02Z d=0 p=72845 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:02Z d=0 p=72845 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:03Z d=0 p=72845 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:26:03Z d=0 p=72845 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit f87e20c)
+larch:bc t=2026-05-27T04:26:07Z d=0 p=77932 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:08Z d=0 p=77932 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:08Z d=0 p=77932 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:26:09Z d=0 p=77932 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit aadd81c)
+larch:bc t=2026-05-27T04:26:14Z d=0 p=84015 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:15Z d=0 p=84015 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:15Z d=0 p=84015 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:26:16Z d=0 p=84015 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 5296b65)
+larch:bc t=2026-05-27T04:26:21Z d=0 p=91337 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:22Z d=0 p=91337 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:25Z d=0 p=94233 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:26Z d=0 p=94233 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:27Z d=0 p=94233 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:26:28Z d=0 p=94233 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:26:31Z d=0 p=99356 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:32Z d=0 p=99356 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:34Z d=0 p=1961 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:34Z d=0 p=1961 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:38Z d=0 p=6309 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:26:39Z d=0 p=6309 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:42Z d=0 p=9594 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:43Z d=0 p=9594 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:46Z d=0 p=13518 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:47Z d=0 p=13518 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:47Z d=0 p=13518 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:26:47Z d=0 p=13518 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 122336d)
+larch:bc t=2026-05-27T04:26:50Z d=0 p=18217 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:26:51Z d=0 p=18217 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:26:51Z d=0 p=18217 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:26:52Z d=0 p=18217 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:27:17Z d=0 p=41406 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:17Z d=0 p=41406 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:17Z d=0 p=41406 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:27:19Z d=0 p=43618 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:27:19Z d=0 p=43618 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:27:20Z d=0 p=44831 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:20Z d=0 p=44831 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:21Z d=0 p=44831 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:27:21Z d=0 p=44831 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit fab1fa1)
+larch:bc t=2026-05-27T04:27:24Z d=0 p=48995 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:25Z d=0 p=48995 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:26Z d=0 p=48995 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:27:27Z d=0 p=48995 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit a722175)
+larch:bc t=2026-05-27T04:27:30Z d=0 p=54368 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:31Z d=0 p=54368 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:31Z d=0 p=54368 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:27:32Z d=0 p=54368 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit e17ce17)
+larch:bc t=2026-05-27T04:27:35Z d=0 p=59297 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:35Z d=0 p=59297 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:36Z d=0 p=59297 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:27:37Z d=0 p=59297 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit a9d76ee)
+larch:bc t=2026-05-27T04:27:40Z d=0 p=64001 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:40Z d=0 p=64001 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:42Z d=0 p=66007 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:43Z d=0 p=66007 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:44Z d=0 p=66007 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:27:45Z d=0 p=66007 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:27:49Z d=0 p=71804 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:51Z d=0 p=71804 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:54Z d=0 p=75450 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:27:55Z d=0 p=75450 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:27:59Z d=0 p=79788 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:27:59Z d=0 p=79788 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:28:04Z d=0 p=84250 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:28:05Z d=0 p=84250 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:28:09Z d=0 p=88974 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:28:11Z d=0 p=88974 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:28:11Z d=0 p=88974 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:28:12Z d=0 p=88974 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit bf50873)
+larch:bc t=2026-05-27T04:28:19Z d=0 p=98378 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:28:21Z d=0 p=98378 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:28:21Z d=0 p=98378 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:28:22Z d=0 p=98378 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:28:42Z d=0 p=18628 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:28:44Z d=0 p=18628 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:28:44Z d=0 p=18628 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:28:48Z d=0 p=23348 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:28:48Z d=0 p=23348 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:28:49Z d=0 p=24937 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:28:50Z d=0 p=24937 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:28:51Z d=0 p=24937 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:28:52Z d=0 p=24937 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 950731f)
+larch:bc t=2026-05-27T04:28:57Z d=0 p=31692 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:28:59Z d=0 p=31692 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:00Z d=0 p=31692 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:29:02Z d=0 p=31692 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit b278f82)
+larch:bc t=2026-05-27T04:29:09Z d=0 p=40828 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:29:11Z d=0 p=40828 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:12Z d=0 p=40828 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:29:13Z d=0 p=40828 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 8fb563f)
+larch:bc t=2026-05-27T04:29:20Z d=0 p=49681 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:29:22Z d=0 p=49681 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:23Z d=0 p=49681 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:29:24Z d=0 p=49681 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit f405e9f)
+larch:bc t=2026-05-27T04:29:32Z d=0 p=60963 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:29:34Z d=0 p=60963 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:37Z d=0 p=66299 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:29:38Z d=0 p=66299 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:39Z d=0 p=66299 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:29:40Z d=0 p=66299 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:29:45Z d=0 p=73171 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:29:47Z d=0 p=73171 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:50Z d=0 p=77850 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:29:52Z d=0 p=77850 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:56Z d=0 p=82893 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:29:56Z d=0 p=82893 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:29:59Z d=0 p=84895 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:29:59Z d=0 p=84895 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:30:01Z d=0 p=87397 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:30:02Z d=0 p=87397 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:30:02Z d=0 p=87397 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:30:03Z d=0 p=87397 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 010d28c)
+larch:bc t=2026-05-27T04:30:07Z d=0 p=91521 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:30:08Z d=0 p=91521 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:30:08Z d=0 p=91521 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:30:10Z d=0 p=91521 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:32:28Z d=0 p=3995 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:32:29Z d=0 p=3995 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:32:29Z d=0 p=3995 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:32:31Z d=0 p=5855 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:32:31Z d=0 p=5855 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:32:32Z d=0 p=6889 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:32:33Z d=0 p=6889 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:32:33Z d=0 p=6889 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:32:34Z d=0 p=6889 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 79bc558)
+larch:bc t=2026-05-27T04:32:37Z d=0 p=11841 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:32:38Z d=0 p=11841 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:32:39Z d=0 p=11841 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:32:39Z d=0 p=11841 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 84ce631)
+larch:bc t=2026-05-27T04:32:42Z d=0 p=16293 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:32:43Z d=0 p=16293 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:32:43Z d=0 p=16293 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:32:44Z d=0 p=16293 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit f6e1301)
+larch:bc t=2026-05-27T04:32:47Z d=0 p=20773 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:32:48Z d=0 p=20773 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:32:48Z d=0 p=20773 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:32:49Z d=0 p=20773 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 068930c)
+larch:bc t=2026-05-27T04:32:53Z d=0 p=26391 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:32:54Z d=0 p=26391 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:32:57Z d=0 p=30711 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:32:58Z d=0 p=30711 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:32:59Z d=0 p=30711 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:32:59Z d=0 p=30711 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:33:02Z d=0 p=35819 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:33:03Z d=0 p=35819 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:33:05Z d=0 p=38241 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:33:05Z d=0 p=38241 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:33:09Z d=0 p=41787 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:33:09Z d=0 p=41787 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:33:13Z d=0 p=46013 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:33:14Z d=0 p=46013 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:33:18Z d=0 p=50200 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:33:19Z d=0 p=50200 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:33:20Z d=0 p=50200 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:33:21Z d=0 p=50200 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 4078fd3)
+larch:bc t=2026-05-27T04:33:26Z d=0 p=57886 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:33:27Z d=0 p=57886 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:33:27Z d=0 p=57886 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:33:29Z d=0 p=57886 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:34:05Z d=0 p=86604 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:06Z d=0 p=86604 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:34:06Z d=0 p=86604 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:34:09Z d=0 p=89706 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:34:09Z d=0 p=89706 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:34:10Z d=0 p=91221 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:11Z d=0 p=91221 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:34:12Z d=0 p=91221 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:34:13Z d=0 p=91221 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit ede773b)
+larch:bc t=2026-05-27T04:34:18Z d=0 p=97323 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:19Z d=0 p=97323 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:34:20Z d=0 p=97323 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:34:21Z d=0 p=97323 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 0a13044)
+larch:bc t=2026-05-27T04:34:26Z d=0 p=5596 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:27Z d=0 p=5596 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:34:28Z d=0 p=5596 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:34:28Z d=0 p=5596 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 6b7b8c7)
+larch:bc t=2026-05-27T04:34:32Z d=0 p=11336 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:33Z d=0 p=11336 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:34:35Z d=0 p=11336 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:34:38Z d=0 p=11336 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 7a2cbcd)
+larch:bc t=2026-05-27T04:34:44Z d=0 p=20912 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:45Z d=0 p=20912 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:34:49Z d=0 p=25039 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:50Z d=0 p=25039 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:34:50Z d=0 p=25039 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:34:51Z d=0 p=25039 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:34:57Z d=0 p=32299 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:34:59Z d=0 p=32299 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:35:03Z d=0 p=37367 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:35:04Z d=0 p=37367 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:35:10Z d=0 p=42857 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:35:10Z d=0 p=42857 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:35:14Z d=0 p=47334 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:35:15Z d=0 p=47334 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:35:19Z d=0 p=51908 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:35:20Z d=0 p=51908 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:35:21Z d=0 p=51908 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:35:22Z d=0 p=51908 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 3e8ef22)
+larch:bc t=2026-05-27T04:35:29Z d=0 p=60395 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:35:30Z d=0 p=60395 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:35:30Z d=0 p=60395 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:35:32Z d=0 p=60395 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:36:00Z d=0 p=87309 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:01Z d=0 p=87309 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:01Z d=0 p=87309 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:36:04Z d=0 p=89891 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:36:05Z d=0 p=89891 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:36:06Z d=0 p=91930 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:07Z d=0 p=91930 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:07Z d=0 p=91930 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:36:08Z d=0 p=91930 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 244afc7)
+larch:bc t=2026-05-27T04:36:15Z d=0 p=236 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:17Z d=0 p=236 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:18Z d=0 p=236 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:36:20Z d=0 p=236 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit d05d5d0)
+larch:bc t=2026-05-27T04:36:25Z d=0 p=9727 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:26Z d=0 p=9727 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:27Z d=0 p=9727 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:36:28Z d=0 p=9727 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 2206a73)
+larch:bc t=2026-05-27T04:36:33Z d=0 p=16809 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:34Z d=0 p=16809 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:36Z d=0 p=16809 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:36:37Z d=0 p=16809 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 035a3ce)
+larch:bc t=2026-05-27T04:36:43Z d=0 p=25909 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:44Z d=0 p=25909 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:46Z d=0 p=29243 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:47Z d=0 p=29243 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:48Z d=0 p=29243 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:36:48Z d=0 p=29243 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:36:51Z d=0 p=33811 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:52Z d=0 p=33811 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:55Z d=0 p=37268 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:36:56Z d=0 p=37268 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:36:58Z d=0 p=41570 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:36:59Z d=0 p=41570 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:01Z d=0 p=44186 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:37:02Z d=0 p=44186 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:05Z d=0 p=47654 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:37:06Z d=0 p=47654 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:07Z d=0 p=47654 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:37:08Z d=0 p=47654 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 3e603ba)
+larch:bc t=2026-05-27T04:37:13Z d=0 p=54590 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:37:14Z d=0 p=54590 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:15Z d=0 p=54590 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:37:16Z d=0 p=54590 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:37:36Z d=0 p=79156 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:37:37Z d=0 p=79156 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:37Z d=0 p=79156 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:37:39Z d=0 p=81612 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:37:40Z d=0 p=81612 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:37:40Z d=0 p=83019 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:37:41Z d=0 p=83019 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:42Z d=0 p=83019 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:37:42Z d=0 p=83019 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 4751c0b)
+larch:bc t=2026-05-27T04:37:47Z d=0 p=89673 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:37:48Z d=0 p=89673 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:48Z d=0 p=89673 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:37:49Z d=0 p=89673 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 1d7108c)
+larch:bc t=2026-05-27T04:37:53Z d=0 p=96019 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:37:54Z d=0 p=96019 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:37:55Z d=0 p=96019 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:37:56Z d=0 p=96019 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit c9a951e)
+larch:bc t=2026-05-27T04:38:01Z d=0 p=3512 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:02Z d=0 p=3512 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:03Z d=0 p=3512 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:38:04Z d=0 p=3512 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 9ed9a62)
+larch:bc t=2026-05-27T04:38:09Z d=0 p=9417 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:10Z d=0 p=9417 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:12Z d=0 p=13264 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:13Z d=0 p=13264 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:14Z d=0 p=13264 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:38:14Z d=0 p=13264 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:38:18Z d=0 p=19572 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:19Z d=0 p=19572 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:22Z d=0 p=23978 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:23Z d=0 p=23978 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:25Z d=0 p=28047 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:38:26Z d=0 p=28047 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:29Z d=0 p=32467 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:30Z d=0 p=32467 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:33Z d=0 p=36590 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:34Z d=0 p=36590 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:35Z d=0 p=36590 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:38:36Z d=0 p=36590 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 0ee9cc4)
+larch:bc t=2026-05-27T04:38:41Z d=0 p=44258 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:38:42Z d=0 p=44258 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:38:42Z d=0 p=44258 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:38:44Z d=0 p=44258 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:39:06Z d=0 p=66716 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:39:08Z d=0 p=66716 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:39:09Z d=0 p=66716 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:39:12Z d=0 p=70738 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:39:13Z d=0 p=70738 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:39:14Z d=0 p=72449 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:39:17Z d=0 p=72449 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:39:18Z d=0 p=72449 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:39:19Z d=0 p=72449 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit a44f344)
+larch:bc t=2026-05-27T04:39:26Z d=0 p=82579 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:39:28Z d=0 p=82579 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:39:29Z d=0 p=82579 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:39:30Z d=0 p=82579 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit a179b2d)
+larch:bc t=2026-05-27T04:39:38Z d=0 p=91494 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:39:39Z d=0 p=91494 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:39:40Z d=0 p=91494 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:39:41Z d=0 p=91494 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 1d78225)
+larch:bc t=2026-05-27T04:39:48Z d=0 p=98137 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:39:49Z d=0 p=98137 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:39:49Z d=0 p=98137 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:39:50Z d=0 p=98137 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 78a6562)
+larch:bc t=2026-05-27T04:39:57Z d=0 p=6008 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:39:58Z d=0 p=6008 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:03Z d=0 p=12235 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:40:04Z d=0 p=12235 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:05Z d=0 p=12235 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:40:05Z d=0 p=12235 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:40:13Z d=0 p=20444 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:40:15Z d=0 p=20444 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:20Z d=0 p=25760 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:40:22Z d=0 p=25760 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:27Z d=0 p=31574 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:40:27Z d=0 p=31574 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:30Z d=0 p=35425 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:40:32Z d=0 p=35425 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:34Z d=0 p=38622 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:40:36Z d=0 p=38622 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:37Z d=0 p=38622 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:40:38Z d=0 p=38622 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit c1c4207)
+larch:bc t=2026-05-27T04:40:43Z d=0 p=46699 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:40:44Z d=0 p=46699 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:40:44Z d=0 p=46699 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:40:45Z d=0 p=46699 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:41:06Z d=0 p=65693 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:08Z d=0 p=65693 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:41:09Z d=0 p=65693 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:41:11Z d=0 p=69802 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:41:12Z d=0 p=69802 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:41:13Z d=0 p=71896 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:14Z d=0 p=71896 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:41:15Z d=0 p=71896 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:41:15Z d=0 p=71896 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 95d6c2a)
+larch:bc t=2026-05-27T04:41:21Z d=0 p=79534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:22Z d=0 p=79534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:41:23Z d=0 p=79534 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:41:24Z d=0 p=79534 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit d91a972)
+larch:bc t=2026-05-27T04:41:29Z d=0 p=87451 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:30Z d=0 p=87451 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:41:31Z d=0 p=87451 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:41:31Z d=0 p=87451 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 7de29d4)
+larch:bc t=2026-05-27T04:41:36Z d=0 p=93074 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:37Z d=0 p=93074 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:41:39Z d=0 p=93074 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:41:40Z d=0 p=93074 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit f803f4e)
+larch:bc t=2026-05-27T04:41:47Z d=0 p=1287 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:48Z d=0 p=1287 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:41:51Z d=0 p=5467 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:53Z d=0 p=5467 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:41:53Z d=0 p=5467 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:41:54Z d=0 p=5467 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:41:58Z d=0 p=11741 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:41:59Z d=0 p=11741 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:42:02Z d=0 p=15130 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:42:04Z d=0 p=15130 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:42:07Z d=0 p=19198 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:42:07Z d=0 p=19198 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:42:11Z d=0 p=22210 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:42:12Z d=0 p=22210 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:42:15Z d=0 p=24618 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:42:16Z d=0 p=24618 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:42:17Z d=0 p=24618 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:42:18Z d=0 p=24618 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 9115703)
+larch:bc t=2026-05-27T04:42:23Z d=0 p=30322 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:42:24Z d=0 p=30322 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:42:24Z d=0 p=30322 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:42:25Z d=0 p=30322 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:43:18Z d=0 p=70192 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:43:20Z d=0 p=70192 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:43:20Z d=0 p=70192 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:43:23Z d=0 p=74226 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:43:24Z d=0 p=74226 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:43:25Z d=0 p=76171 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:43:28Z d=0 p=76171 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:43:29Z d=0 p=76171 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:43:30Z d=0 p=76171 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 72a8686)
+larch:bc t=2026-05-27T04:43:38Z d=0 p=88624 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:43:39Z d=0 p=88624 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:43:40Z d=0 p=88624 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:43:42Z d=0 p=88624 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 91d1d5d)
+larch:bc t=2026-05-27T04:43:51Z d=0 p=98109 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:43:54Z d=0 p=98109 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:43:55Z d=0 p=98109 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:43:57Z d=0 p=98109 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit fce1137)
+larch:bc t=2026-05-27T04:44:02Z d=0 p=9259 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:03Z d=0 p=9259 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:04Z d=0 p=9259 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:44:05Z d=0 p=9259 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 580947d)
+larch:bc t=2026-05-27T04:44:10Z d=0 p=17785 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:11Z d=0 p=17785 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:13Z d=0 p=21076 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:14Z d=0 p=21076 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:15Z d=0 p=21076 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:44:15Z d=0 p=21076 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:44:18Z d=0 p=26200 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:19Z d=0 p=26200 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:21Z d=0 p=29352 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:22Z d=0 p=29352 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:26Z d=0 p=33510 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:44:26Z d=0 p=33510 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:30Z d=0 p=37063 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:33Z d=0 p=37063 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:37Z d=0 p=41089 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:38Z d=0 p=41089 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:39Z d=0 p=41089 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:44:40Z d=0 p=41089 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 2bdbeaa)
+larch:bc t=2026-05-27T04:44:47Z d=0 p=47868 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:44:48Z d=0 p=47868 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:44:48Z d=0 p=47868 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary
+larch:bc t=2026-05-27T04:44:49Z d=0 p=47868 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush
+larch:bc t=2026-05-27T04:45:06Z d=0 p=59966 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:45:07Z d=0 p=59966 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:45:07Z d=0 p=59966 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:45:10Z d=0 p=62472 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:45:11Z d=0 p=62472 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:45:12Z d=0 p=64077 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:45:14Z d=0 p=64077 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:45:15Z d=0 p=64077 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:45:16Z d=0 p=64077 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 9a745c3)
+larch:bc t=2026-05-27T04:45:23Z d=0 p=72391 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:45:24Z d=0 p=72391 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:45:26Z d=0 p=72391 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:45:27Z d=0 p=72391 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit c7bba3d)
+larch:bc t=2026-05-27T04:45:35Z d=0 p=80683 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:45:37Z d=0 p=80683 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:45:38Z d=0 p=80683 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:45:39Z d=0 p=80683 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit cdfe00c)
+larch:bc t=2026-05-27T04:45:44Z d=0 p=86534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:45:45Z d=0 p=86534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:45:45Z d=0 p=86534 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:45:46Z d=0 p=86534 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit d463699)
+larch:bc t=2026-05-27T04:45:50Z d=0 p=90839 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:45:51Z d=0 p=90839 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:45:54Z d=0 p=93605 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:45:56Z d=0 p=93605 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:45:59Z d=0 p=93605 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:46:00Z d=0 p=93605 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:46:10Z d=0 p=178 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:46:11Z d=0 p=178 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:46:15Z d=0 p=3441 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:46:16Z d=0 p=3441 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:46:19Z d=0 p=6534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:46:20Z d=0 p=6534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:46:24Z d=0 p=9266 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:46:25Z d=0 p=9266 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:46:28Z d=0 p=11914 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:46:29Z d=0 p=11914 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:46:30Z d=0 p=11914 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:46:30Z d=0 p=11914 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 691c564)
+larch:bc t=2026-05-27T04:46:49Z d=0 p=26527 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:46:49Z d=0 p=26527 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:46:50Z d=0 p=26527 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:46:51Z d=0 p=28530 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:46:52Z d=0 p=28530 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:46:53Z d=0 p=29900 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:46:55Z d=0 p=29900 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:46:56Z d=0 p=29900 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:46:57Z d=0 p=29900 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 8ba579f)
+larch:bc t=2026-05-27T04:47:03Z d=0 p=39136 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:04Z d=0 p=39136 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:05Z d=0 p=39136 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:47:05Z d=0 p=39136 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 5f31849)
+larch:bc t=2026-05-27T04:47:10Z d=0 p=46409 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:11Z d=0 p=46409 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:12Z d=0 p=46409 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:47:13Z d=0 p=46409 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 60e97db)
+larch:bc t=2026-05-27T04:47:17Z d=0 p=51489 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:18Z d=0 p=51489 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:18Z d=0 p=51489 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:47:19Z d=0 p=51489 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 3d0c648)
+larch:bc t=2026-05-27T04:47:22Z d=0 p=56459 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:23Z d=0 p=56459 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:25Z d=0 p=59428 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:26Z d=0 p=59428 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:26Z d=0 p=59428 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:47:27Z d=0 p=59428 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:47:30Z d=0 p=64862 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:30Z d=0 p=64862 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:32Z d=0 p=66944 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:33Z d=0 p=66944 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:35Z d=0 p=69028 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:47:35Z d=0 p=69028 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:37Z d=0 p=70998 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:38Z d=0 p=70998 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:40Z d=0 p=73289 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:41Z d=0 p=73289 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:42Z d=0 p=73289 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:47:42Z d=0 p=73289 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 545d9f7)
+larch:bc t=2026-05-27T04:47:49Z d=0 p=80489 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:49Z d=0 p=80489 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:50Z d=0 p=80489 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:47:50Z d=0 p=80489 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:47:51Z d=0 p=82318 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:51Z d=0 p=82318 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:52Z d=0 p=82318 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:47:52Z d=0 p=82318 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:47:53Z d=0 p=83909 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:47:54Z d=0 p=83909 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:47:54Z d=0 p=83909 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:47:55Z d=0 p=83909 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:48:19Z d=0 p=197 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:20Z d=0 p=197 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:20Z d=0 p=197 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:48:23Z d=0 p=3718 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:48:24Z d=0 p=3718 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:48:24Z d=0 p=5738 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:26Z d=0 p=5738 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:27Z d=0 p=5738 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:48:28Z d=0 p=5738 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit e6a53a5)
+larch:bc t=2026-05-27T04:48:32Z d=0 p=14211 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:33Z d=0 p=14211 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:34Z d=0 p=14211 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:48:34Z d=0 p=14211 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit a5141d9)
+larch:bc t=2026-05-27T04:48:38Z d=0 p=20454 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:39Z d=0 p=20454 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:39Z d=0 p=20454 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:48:40Z d=0 p=20454 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit d3edc5f)
+larch:bc t=2026-05-27T04:48:42Z d=0 p=25684 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:43Z d=0 p=25684 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:44Z d=0 p=25684 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:48:44Z d=0 p=25684 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 23f6eee)
+larch:bc t=2026-05-27T04:48:47Z d=0 p=30127 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:48Z d=0 p=30127 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:50Z d=0 p=32723 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:51Z d=0 p=32723 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:51Z d=0 p=32723 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:48:52Z d=0 p=32723 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:48:54Z d=0 p=36293 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:54Z d=0 p=36293 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:56Z d=0 p=38212 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:48:57Z d=0 p=38212 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:48:58Z d=0 p=39851 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:48:58Z d=0 p=39851 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:00Z d=0 p=41135 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:00Z d=0 p=41135 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:02Z d=0 p=42534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:02Z d=0 p=42534 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:02Z d=0 p=42534 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:49:03Z d=0 p=42534 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 5dd461a)
+larch:bc t=2026-05-27T04:49:07Z d=0 p=45969 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:07Z d=0 p=45969 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:07Z d=0 p=45969 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:07Z d=0 p=45969 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:49:08Z d=0 p=46969 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:08Z d=0 p=46969 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:09Z d=0 p=46969 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:09Z d=0 p=46969 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:49:09Z d=0 p=47893 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:10Z d=0 p=47893 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:10Z d=0 p=47893 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:10Z d=0 p=47893 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:49:26Z d=0 p=54719 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:27Z d=0 p=54719 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:27Z d=0 p=54719 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:49:28Z d=0 p=55866 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:29Z d=0 p=55866 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:49:29Z d=0 p=56472 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:29Z d=0 p=56472 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:30Z d=0 p=56472 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:30Z d=0 p=56472 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 94d35bc)
+larch:bc t=2026-05-27T04:49:32Z d=0 p=58183 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:32Z d=0 p=58183 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:33Z d=0 p=58183 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:33Z d=0 p=58183 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 74d550e)
+larch:bc t=2026-05-27T04:49:35Z d=0 p=60686 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:36Z d=0 p=60686 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:36Z d=0 p=60686 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:37Z d=0 p=60686 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 64ef5ab)
+larch:bc t=2026-05-27T04:49:38Z d=0 p=63252 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:39Z d=0 p=63252 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:39Z d=0 p=63252 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:40Z d=0 p=63252 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 9fe625b)
+larch:bc t=2026-05-27T04:49:42Z d=0 p=65985 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:43Z d=0 p=65985 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:44Z d=0 p=67421 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:44Z d=0 p=67421 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:44Z d=0 p=67421 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:45Z d=0 p=67421 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:49:46Z d=0 p=68532 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:46Z d=0 p=68532 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:48Z d=0 p=69170 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:48Z d=0 p=69170 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:49Z d=0 p=70079 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:49:49Z d=0 p=70079 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:51Z d=0 p=70703 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:51Z d=0 p=70703 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:52Z d=0 p=71353 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:52Z d=0 p=71353 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:53Z d=0 p=71353 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:49:53Z d=0 p=71353 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit d11403b)
+larch:bc t=2026-05-27T04:49:56Z d=0 p=74852 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:56Z d=0 p=74852 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:57Z d=0 p=74852 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:57Z d=0 p=74852 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:49:57Z d=0 p=76299 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:58Z d=0 p=76299 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:58Z d=0 p=76299 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:49:58Z d=0 p=76299 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:49:59Z d=0 p=77743 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:49:59Z d=0 p=77743 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:49:59Z d=0 p=77743 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:50:00Z d=0 p=77743 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:50:20Z d=0 p=97160 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:26Z d=0 p=97160 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:26Z d=0 p=97160 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:50:29Z d=0 p=1733 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:50:30Z d=0 p=1733 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:50:30Z d=0 p=3144 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:31Z d=0 p=3144 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:31Z d=0 p=3144 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:50:32Z d=0 p=3144 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit d9e4a4e)
+larch:bc t=2026-05-27T04:50:34Z d=0 p=7390 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:35Z d=0 p=7390 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:35Z d=0 p=7390 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:50:36Z d=0 p=7390 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 9e25876)
+larch:bc t=2026-05-27T04:50:38Z d=0 p=11399 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:39Z d=0 p=11399 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:39Z d=0 p=11399 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:50:40Z d=0 p=11399 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 9cfc01b)
+larch:bc t=2026-05-27T04:50:42Z d=0 p=16347 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:43Z d=0 p=16347 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:43Z d=0 p=16347 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:50:44Z d=0 p=16347 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit ef389a7)
+larch:bc t=2026-05-27T04:50:46Z d=0 p=20255 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:46Z d=0 p=20255 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:48Z d=0 p=22113 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:48Z d=0 p=22113 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:48Z d=0 p=22113 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:50:49Z d=0 p=22113 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:50:51Z d=0 p=25642 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:51Z d=0 p=25642 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:53Z d=0 p=28205 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:53Z d=0 p=28205 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:55Z d=0 p=30226 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:50:55Z d=0 p=30226 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:56Z d=0 p=31957 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:57Z d=0 p=31957 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:58Z d=0 p=33852 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:50:58Z d=0 p=33852 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:50:59Z d=0 p=33852 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:50:59Z d=0 p=33852 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 5d2da03)
+larch:bc t=2026-05-27T04:51:02Z d=0 p=38712 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:02Z d=0 p=38712 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:03Z d=0 p=38712 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:03Z d=0 p=38712 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:51:04Z d=0 p=40255 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:04Z d=0 p=40255 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:05Z d=0 p=40255 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:05Z d=0 p=40255 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:51:06Z d=0 p=42039 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:06Z d=0 p=42039 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:07Z d=0 p=42039 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:07Z d=0 p=42039 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:51:20Z d=0 p=51465 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:20Z d=0 p=51465 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:20Z d=0 p=51465 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:51:21Z d=0 p=53085 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:22Z d=0 p=53085 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:51:22Z d=0 p=54033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:23Z d=0 p=54033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:23Z d=0 p=54033 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:24Z d=0 p=54033 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 07541d4)
+larch:bc t=2026-05-27T04:51:26Z d=0 p=57634 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:26Z d=0 p=57634 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:27Z d=0 p=57634 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:28Z d=0 p=57634 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit d91c842)
+larch:bc t=2026-05-27T04:51:32Z d=0 p=61984 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:33Z d=0 p=61984 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:33Z d=0 p=61984 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:34Z d=0 p=61984 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 5d15241)
+larch:bc t=2026-05-27T04:51:37Z d=0 p=65265 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:37Z d=0 p=65265 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:37Z d=0 p=65265 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:38Z d=0 p=65265 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 9c49eae)
+larch:bc t=2026-05-27T04:51:40Z d=0 p=69773 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:41Z d=0 p=69773 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:43Z d=0 p=72933 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:43Z d=0 p=72933 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:44Z d=0 p=72933 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:51:44Z d=0 p=72933 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:51:47Z d=0 p=77708 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:48Z d=0 p=77708 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:49Z d=0 p=80222 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:50Z d=0 p=80222 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:51Z d=0 p=82275 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:51:51Z d=0 p=82275 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:52Z d=0 p=84033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:53Z d=0 p=84033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:55Z d=0 p=86578 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:51:55Z d=0 p=86578 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:51:55Z d=0 p=86578 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:51:56Z d=0 p=86578 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 4f12216)
+larch:bc t=2026-05-27T04:51:59Z d=0 p=92505 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:00Z d=0 p=92505 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:00Z d=0 p=92505 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:00Z d=0 p=92505 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:52:01Z d=0 p=94498 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:01Z d=0 p=94498 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:02Z d=0 p=94498 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:02Z d=0 p=94498 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:52:03Z d=0 p=96099 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:03Z d=0 p=96099 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:03Z d=0 p=96099 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:03Z d=0 p=96099 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:52:04Z d=0 p=97885 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:04Z d=0 p=97885 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:04Z d=0 p=97885 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:05Z d=0 p=99720 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:06Z d=0 p=99720 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:06Z d=0 p=99720 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:07Z d=0 p=2154 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:07Z d=0 p=2154 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:08Z d=0 p=2154 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — all accepted findings scrubbed; nothing to apply
+larch:bc t=2026-05-27T04:52:08Z d=0 p=3168 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:09Z d=0 p=3168 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:09Z d=0 p=3168 s=review-and-fix.sh c=warn text=⚠ review-and-fix: submodule scrub failed; refusing to dispatch coder
+larch:bc t=2026-05-27T04:52:09Z d=0 p=3916 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:09Z d=0 p=3916 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:11Z d=0 p=5844 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10
+larch:bc t=2026-05-27T04:52:11Z d=0 p=5844 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:12Z d=0 p=7453 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:52:12Z d=0 p=7453 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:13Z d=0 p=9033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4
+larch:bc t=2026-05-27T04:52:13Z d=0 p=9033 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:15Z d=0 p=10763 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:15Z d=0 p=10763 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:16Z d=0 p=10763 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to flush code-review-tally batch
+larch:bc t=2026-05-27T04:52:37Z d=0 p=32645 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:37Z d=0 p=32645 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:37Z d=0 p=32645 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:52:38Z d=0 p=34276 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:39Z d=0 p=34276 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:52:39Z d=0 p=35341 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:40Z d=0 p=35341 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:40Z d=0 p=35341 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:41Z d=0 p=35341 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 6c95362)
+larch:bc t=2026-05-27T04:52:43Z d=0 p=39867 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:43Z d=0 p=39867 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:44Z d=0 p=39867 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:44Z d=0 p=39867 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 7c8d63c)
+larch:bc t=2026-05-27T04:52:46Z d=0 p=44277 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:47Z d=0 p=44277 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:48Z d=0 p=44277 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:49Z d=0 p=44277 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 5601fd2)
+larch:bc t=2026-05-27T04:52:52Z d=0 p=49452 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:53Z d=0 p=49452 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:52:53Z d=0 p=49452 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:52:54Z d=0 p=49452 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 96a30ac)
+larch:bc t=2026-05-27T04:52:57Z d=0 p=53188 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:52:58Z d=0 p=53188 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:00Z d=0 p=55333 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:00Z d=0 p=55333 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:01Z d=0 p=55333 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:01Z d=0 p=55333 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:53:04Z d=0 p=58438 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:05Z d=0 p=58438 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:06Z d=0 p=59885 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:07Z d=0 p=59885 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:09Z d=0 p=62212 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:53:09Z d=0 p=62212 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:11Z d=0 p=63481 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:12Z d=0 p=63481 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:15Z d=0 p=66484 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:16Z d=0 p=66484 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:16Z d=0 p=66484 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:53:17Z d=0 p=66484 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit f8e8e9f)
+larch:bc t=2026-05-27T04:53:23Z d=0 p=73506 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:23Z d=0 p=73506 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:24Z d=0 p=73506 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:24Z d=0 p=73506 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:53:25Z d=0 p=75871 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:25Z d=0 p=75871 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:26Z d=0 p=75871 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:29Z d=0 p=75871 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:53:30Z d=0 p=80193 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:30Z d=0 p=80193 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:30Z d=0 p=80193 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:30Z d=0 p=80193 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:53:31Z d=0 p=81688 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:31Z d=0 p=81688 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:32Z d=0 p=81688 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:33Z d=0 p=83554 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:34Z d=0 p=83554 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:35Z d=0 p=83554 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:37Z d=0 p=86586 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:37Z d=0 p=86586 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:38Z d=0 p=86586 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — all accepted findings scrubbed; nothing to apply
+larch:bc t=2026-05-27T04:53:38Z d=0 p=88159 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:39Z d=0 p=88159 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:39Z d=0 p=88159 s=review-and-fix.sh c=warn text=⚠ review-and-fix: submodule scrub failed; refusing to dispatch coder
+larch:bc t=2026-05-27T04:53:39Z d=0 p=89000 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:40Z d=0 p=89000 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:42Z d=0 p=91325 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10
+larch:bc t=2026-05-27T04:53:42Z d=0 p=91325 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:44Z d=0 p=93850 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:53:44Z d=0 p=93850 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:46Z d=0 p=95626 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4
+larch:bc t=2026-05-27T04:53:47Z d=0 p=95626 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:49Z d=0 p=97763 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:50Z d=0 p=97763 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:51Z d=0 p=97763 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to flush code-review-tally batch
+larch:bc t=2026-05-27T04:53:51Z d=0 p=99268 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:52Z d=0 p=99268 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 2 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:52Z d=0 p=99268 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (2 fixes)
+larch:bc t=2026-05-27T04:53:53Z d=0 p=99268 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 2 fixes (commit d13a6d7)
+larch:bc t=2026-05-27T04:53:54Z d=0 p=1568 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:54Z d=0 p=1568 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 2 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:55Z d=0 p=1568 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (2 fixes)
+larch:bc t=2026-05-27T04:53:55Z d=0 p=1568 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 2 fixes (commit 3858a19)
+larch:bc t=2026-05-27T04:53:56Z d=0 p=2541 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:56Z d=0 p=2541 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:53:57Z d=0 p=3091 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:53:57Z d=0 p=3091 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:53:58Z d=0 p=3091 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:53:58Z d=0 p=3091 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 2c1bf40)
+larch:bc t=2026-05-27T04:53:59Z d=0 p=3091 s=review-and-fix.sh c=warn text=⚠ review-and-fix: late round log flush failed (round 1, rc=9)
+larch:bc t=2026-05-27T04:54:00Z d=0 p=5565 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:01Z d=0 p=5565 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:03Z d=0 p=7888 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:04Z d=0 p=7888 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:04Z d=0 p=7888 s=review-and-fix.sh c=warn text=⚠ review-and-fix: reviewer panel failed (>50% slots)
+larch:bc t=2026-05-27T04:54:05Z d=0 p=9250 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:06Z d=0 p=9250 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:08Z d=0 p=11283 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:09Z d=0 p=11283 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:12Z d=0 p=13704 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:12Z d=0 p=13704 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:15Z d=0 p=16102 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:16Z d=0 p=16102 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:39Z d=0 p=32159 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:40Z d=0 p=32159 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:40Z d=0 p=32159 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:54:42Z d=0 p=33784 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:54:42Z d=0 p=33784 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:54:42Z d=0 p=34693 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:43Z d=0 p=34693 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:43Z d=0 p=34693 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:54:44Z d=0 p=34693 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 274c291)
+larch:bc t=2026-05-27T04:54:45Z d=0 p=36728 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:46Z d=0 p=36728 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:46Z d=0 p=36728 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:54:47Z d=0 p=36728 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit ce96706)
+larch:bc t=2026-05-27T04:54:48Z d=0 p=38873 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:49Z d=0 p=38873 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:49Z d=0 p=38873 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:54:50Z d=0 p=38873 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 7fa0efc)
+larch:bc t=2026-05-27T04:54:51Z d=0 p=40972 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:52Z d=0 p=40972 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:52Z d=0 p=40972 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:54:53Z d=0 p=40972 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 30655a4)
+larch:bc t=2026-05-27T04:54:55Z d=0 p=43438 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:55Z d=0 p=43438 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:57Z d=0 p=44687 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:54:57Z d=0 p=44687 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:54:57Z d=0 p=44687 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:54:58Z d=0 p=44687 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:54:59Z d=0 p=46722 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:00Z d=0 p=46722 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:01Z d=0 p=47927 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:01Z d=0 p=47927 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:03Z d=0 p=49285 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:55:03Z d=0 p=49285 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:04Z d=0 p=50447 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:05Z d=0 p=50447 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:06Z d=0 p=51800 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:06Z d=0 p=51800 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:07Z d=0 p=51800 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:55:07Z d=0 p=51800 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit e970dec)
+larch:bc t=2026-05-27T04:55:10Z d=0 p=54928 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:10Z d=0 p=54928 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:11Z d=0 p=54928 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:11Z d=0 p=54928 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:55:12Z d=0 p=55763 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:12Z d=0 p=55763 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:12Z d=0 p=55763 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:12Z d=0 p=55763 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:55:13Z d=0 p=56635 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:13Z d=0 p=56635 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:13Z d=0 p=56635 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:14Z d=0 p=56635 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:55:14Z d=0 p=57434 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:14Z d=0 p=57434 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:15Z d=0 p=57434 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:16Z d=0 p=58476 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:16Z d=0 p=58476 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:16Z d=0 p=58476 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:17Z d=0 p=59278 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:17Z d=0 p=59278 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:18Z d=0 p=59278 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — all accepted findings scrubbed; nothing to apply
+larch:bc t=2026-05-27T04:55:18Z d=0 p=59856 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:18Z d=0 p=59856 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:18Z d=0 p=59856 s=review-and-fix.sh c=warn text=⚠ review-and-fix: submodule scrub failed; refusing to dispatch coder
+larch:bc t=2026-05-27T04:55:19Z d=0 p=60225 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:19Z d=0 p=60225 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:20Z d=0 p=61495 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10
+larch:bc t=2026-05-27T04:55:20Z d=0 p=61495 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:22Z d=0 p=62445 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:55:22Z d=0 p=62445 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:23Z d=0 p=63536 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4
+larch:bc t=2026-05-27T04:55:23Z d=0 p=63536 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:24Z d=0 p=64731 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:25Z d=0 p=64731 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:26Z d=0 p=64731 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to flush code-review-tally batch
+larch:bc t=2026-05-27T04:55:26Z d=0 p=66137 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:27Z d=0 p=66137 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 2 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:27Z d=0 p=66137 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (2 fixes)
+larch:bc t=2026-05-27T04:55:28Z d=0 p=66137 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 2 fixes (commit bd8c06a)
+larch:bc t=2026-05-27T04:55:29Z d=0 p=68008 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:29Z d=0 p=68008 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 2 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:30Z d=0 p=68008 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (2 fixes)
+larch:bc t=2026-05-27T04:55:30Z d=0 p=68008 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 2 fixes (commit ba3e62a)
+larch:bc t=2026-05-27T04:55:31Z d=0 p=68924 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:31Z d=0 p=68924 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:55:32Z d=0 p=69552 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:32Z d=0 p=69552 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:33Z d=0 p=69552 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:33Z d=0 p=69552 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 7d0fd22)
+larch:bc t=2026-05-27T04:55:34Z d=0 p=69552 s=review-and-fix.sh c=warn text=⚠ review-and-fix: late round log flush failed (round 1, rc=9)
+larch:bc t=2026-05-27T04:55:35Z d=0 p=71266 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:35Z d=0 p=71266 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:38Z d=0 p=73882 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:38Z d=0 p=73882 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:38Z d=0 p=73882 s=review-and-fix.sh c=warn text=⚠ review-and-fix: reviewer panel failed (>50% slots)
+larch:bc t=2026-05-27T04:55:40Z d=0 p=75616 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:40Z d=0 p=75616 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:42Z d=0 p=76861 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:42Z d=0 p=76861 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:45Z d=0 p=79340 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:46Z d=0 p=79340 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:48Z d=0 p=81712 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:49Z d=0 p=81712 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:51Z d=0 p=83696 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:51Z d=0 p=83696 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:52Z d=0 p=83696 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:52Z d=0 p=83696 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 3ea19b6)
+larch:bc t=2026-05-27T04:55:55Z d=0 p=87469 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:55:55Z d=0 p=87469 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:55:56Z d=0 p=87469 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:55:56Z d=0 p=87469 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:56:07Z d=0 p=505 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:09Z d=0 p=505 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:09Z d=0 p=505 s=review-and-fix.sh c=warn text=⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch
+larch:bc t=2026-05-27T04:56:10Z d=0 p=3003 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:11Z d=0 p=3003 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:56:11Z d=0 p=4198 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:12Z d=0 p=4198 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:13Z d=0 p=4198 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:13Z d=0 p=4198 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 5aebff5)
+larch:bc t=2026-05-27T04:56:20Z d=0 p=10395 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:21Z d=0 p=10395 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:21Z d=0 p=10395 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:22Z d=0 p=10395 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit a341e72)
+larch:bc t=2026-05-27T04:56:26Z d=0 p=16428 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:27Z d=0 p=16428 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:27Z d=0 p=16428 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:28Z d=0 p=16428 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 1c9cb22)
+larch:bc t=2026-05-27T04:56:31Z d=0 p=21972 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:31Z d=0 p=21972 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:32Z d=0 p=21972 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:32Z d=0 p=21972 s=review-and-fix.sh c=progress text=→ review-and-fix: cursor applied 1 fixes (commit 2eac923)
+larch:bc t=2026-05-27T04:56:35Z d=0 p=27245 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:35Z d=0 p=27245 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:37Z d=0 p=29069 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:37Z d=0 p=29069 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:38Z d=0 p=29069 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:38Z d=0 p=29069 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
+larch:bc t=2026-05-27T04:56:40Z d=0 p=31963 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:40Z d=0 p=31963 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:42Z d=0 p=33671 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:43Z d=0 p=33671 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:45Z d=0 p=35504 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:56:45Z d=0 p=35504 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:47Z d=0 p=37109 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:47Z d=0 p=37109 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 1 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:49Z d=0 p=39447 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:49Z d=0 p=39447 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 4 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:50Z d=0 p=39447 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (3 fixes)
+larch:bc t=2026-05-27T04:56:50Z d=0 p=39447 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 3 fixes (commit 569231f)
+larch:bc t=2026-05-27T04:56:55Z d=0 p=43969 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:55Z d=0 p=43969 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:55Z d=0 p=43969 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:55Z d=0 p=43969 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:56:56Z d=0 p=45142 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:56Z d=0 p=45142 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:57Z d=0 p=45142 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:57Z d=0 p=45142 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:56:58Z d=0 p=46564 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:58Z d=0 p=46564 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:56:58Z d=0 p=46564 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:56:59Z d=0 p=46564 s=review-and-fix.sh c=warn text=⚠ review-and-fix: coder dispatch failed (both codex and cursor)
+larch:bc t=2026-05-27T04:56:59Z d=0 p=47590 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:56:59Z d=0 p=47590 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:00Z d=0 p=47590 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:57:01Z d=0 p=48653 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:01Z d=0 p=48653 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:02Z d=0 p=48653 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:57:03Z d=0 p=49784 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:03Z d=0 p=49784 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:04Z d=0 p=49784 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — all accepted findings scrubbed; nothing to apply
+larch:bc t=2026-05-27T04:57:04Z d=0 p=50726 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:05Z d=0 p=50726 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:05Z d=0 p=50726 s=review-and-fix.sh c=warn text=⚠ review-and-fix: submodule scrub failed; refusing to dispatch coder
+larch:bc t=2026-05-27T04:57:05Z d=0 p=51353 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:06Z d=0 p=51353 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:08Z d=0 p=53259 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10
+larch:bc t=2026-05-27T04:57:08Z d=0 p=53259 s=review-and-fix.sh c=progress text=→ review-and-fix: round 10 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:10Z d=0 p=54495 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:57:10Z d=0 p=54495 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:12Z d=0 p=55704 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4
+larch:bc t=2026-05-27T04:57:12Z d=0 p=55704 s=review-and-fix.sh c=progress text=→ review-and-fix: round 4 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:13Z d=0 p=56847 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:14Z d=0 p=56847 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:14Z d=0 p=56847 s=review-and-fix.sh c=warn text=⚠ review-and-fix: failed to flush code-review-tally batch
+larch:bc t=2026-05-27T04:57:15Z d=0 p=58032 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:15Z d=0 p=58032 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 2 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:15Z d=0 p=58032 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (2 fixes)
+larch:bc t=2026-05-27T04:57:16Z d=0 p=58032 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 2 fixes (commit cf33b3b)
+larch:bc t=2026-05-27T04:57:17Z d=0 p=59223 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:17Z d=0 p=59223 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 2 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:17Z d=0 p=59223 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (2 fixes)
+larch:bc t=2026-05-27T04:57:18Z d=0 p=59223 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 2 fixes (commit ec296f4)
+larch:bc t=2026-05-27T04:57:18Z d=0 p=60220 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:57:19Z d=0 p=60220 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit )
+larch:bc t=2026-05-27T04:57:19Z d=0 p=60947 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:19Z d=0 p=60947 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:20Z d=0 p=60947 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:57:20Z d=0 p=60947 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit fe8b808)
+larch:bc t=2026-05-27T04:57:20Z d=0 p=60947 s=review-and-fix.sh c=warn text=⚠ review-and-fix: late round log flush failed (round 1, rc=9)
+larch:bc t=2026-05-27T04:57:21Z d=0 p=62647 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:22Z d=0 p=62647 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:24Z d=0 p=64648 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:25Z d=0 p=64648 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:25Z d=0 p=64648 s=review-and-fix.sh c=warn text=⚠ review-and-fix: reviewer panel failed (>50% slots)
+larch:bc t=2026-05-27T04:57:26Z d=0 p=65942 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:26Z d=0 p=65942 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:28Z d=0 p=67884 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:28Z d=0 p=67884 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:30Z d=0 p=69646 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:31Z d=0 p=69646 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:32Z d=0 p=71406 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:57:33Z d=0 p=71406 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:33Z d=0 p=71406 s=review-and-fix.sh c=progress text=⏳ /implement Step 5: converged after round 3 (round 3=1, round 2=2 both <= 3; degraded rounds excluded).
+larch:bc t=2026-05-27T04:57:34Z d=0 p=72609 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:57:34Z d=0 p=72609 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:36Z d=0 p=73941 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:57:36Z d=0 p=73941 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:36Z d=0 p=73941 s=review-and-fix.sh c=progress text=⏳ /implement Step 5: converged after round 3 (round 3=1, round 1=1 both <= 3; degraded rounds excluded).
+larch:bc t=2026-05-27T04:57:38Z d=0 p=75510 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:57:38Z d=0 p=75510 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:44Z d=0 p=78125 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:57:45Z d=0 p=78125 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:50Z d=0 p=81422 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:57:50Z d=0 p=81422 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:53Z d=0 p=83470 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:57:55Z d=0 p=83470 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 5 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:57:59Z d=0 p=87626 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:00Z d=0 p=87626 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 5 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:03Z d=0 p=91908 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:04Z d=0 p=91908 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 5 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:06Z d=0 p=95220 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:07Z d=0 p=95220 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:10Z d=0 p=98245 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:11Z d=0 p=98245 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:13Z d=0 p=1985 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:58:13Z d=0 p=1985 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:14Z d=0 p=1985 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:58:14Z d=0 p=1985 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit ea8e659)
+larch:bc t=2026-05-27T04:58:17Z d=0 p=5823 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:58:17Z d=0 p=5823 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:20Z d=0 p=7567 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3
+larch:bc t=2026-05-27T04:58:20Z d=0 p=7567 s=review-and-fix.sh c=progress text=→ review-and-fix: round 3 — 8 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:23Z d=0 p=10244 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:58:24Z d=0 p=10244 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:28Z d=0 p=13638 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:58:28Z d=0 p=13638 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:31Z d=0 p=15803 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:58:31Z d=0 p=15803 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:31Z d=0 p=15803 s=review-and-fix.sh c=progress text=⏳ /implement Step 5: converged after round 2 (round 2=1, round 1=1 both <= 1; degraded rounds excluded).
+larch:bc t=2026-05-27T04:58:33Z d=0 p=17403 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:35Z d=0 p=17403 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:38Z d=0 p=19949 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2
+larch:bc t=2026-05-27T04:58:38Z d=0 p=19949 s=review-and-fix.sh c=progress text=→ review-and-fix: round 2 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:39Z d=0 p=20773 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:40Z d=0 p=20773 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:44Z d=0 p=24109 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:45Z d=0 p=24109 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:47Z d=0 p=25651 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:49Z d=0 p=25651 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:49Z d=0 p=25651 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:58:50Z d=0 p=25651 s=review-and-fix.sh c=progress text=→ review-and-fix: codex applied 1 fixes (commit 9681e19)
+larch:bc t=2026-05-27T04:58:53Z d=0 p=29268 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-27T04:58:54Z d=0 p=29268 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 1 accepted, 0 rejected (0 exonerated)
+larch:bc t=2026-05-27T04:58:55Z d=0 p=29268 s=review-and-fix.sh c=progress text=→ review-and-fix: dispatching coder (1 fixes)
+larch:bc t=2026-05-27T04:58:56Z d=0 p=29268 s=review-and-fix.sh c=warn text=⚠ review-and-fix: round 1 — coder dispatch exited 0 but did not modify the working tree; halting loop
