@@ -1,0 +1,5 @@
+⏳ cursor agent: still running (15m elapsed)
+❌ cursor agent: FAILED (exit code 1, 959s elapsed, output 124 bytes)
+--- cursor output (last 5 lines) ---
+[31m✗ Failed to reach the Cursor API. If you are behind a corporate proxy, set the HTTPS_PROXY environment variable.[0m
+--- end ---

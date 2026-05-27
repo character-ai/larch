@@ -1,0 +1,5 @@
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_4 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt' in FINDING_5 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt' in FINDING_8 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_9 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_10 (not present on any input finding)
