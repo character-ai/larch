@@ -292,13 +292,15 @@ post_tracking_metadata() {
 
     args=(
         --implement-tmpdir "$IMPLEMENT_TMPDIR"
-        --run-id "$RUN_ID"
-        --adopted true
-        --emergency-requested "$EMERGENCY_REQUESTED"
     )
     if [ "$write_sentinel" = "true" ]; then
         args+=(--issue-number "$ISSUE_NUMBER_RESOLVED")
     fi
+    args+=(
+        --run-id "$RUN_ID"
+        --adopted true
+        --emergency-requested "$EMERGENCY_REQUESTED"
+    )
 
     post_out=$("$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/post-tracking-issue.sh" \
         "${args[@]}" \
@@ -744,10 +746,10 @@ phase_tracking() {
                 BRANCH_SELECTED=branch-1-resume
                 ISSUE_NUMBER_RESOLVED=$sentinel_issue
                 RUN_ID=$sentinel_run_id
+                rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 persist_run_flags HARD || return 0
                 post_tracking_metadata false || true
-                rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 emit_tracking_breadcrumb_if_enabled
                 return 0
             fi
