@@ -1,0 +1,27 @@
+Reading the implementation plan and exploring the referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:327-338	No Step 1e skip when outline already approved	After Approve outline the sequential SKILL still runs Step 1e; Gate A Shape 1/2 can fire again and undo the gate replacement	Add Step 1e entry guard: when `$DESIGN_TMPDIR/.outline-approved` exists, `plan.txt` absent, and entry is not Gate B(c)/Gate C(b) re-entry, print a skip breadcrumb and `proceed to Step 2a` without executing Gate A; pin in the new `test-design-structure.sh` Check
+2	in_scope	important	correctness	skills/design/SKILL.md:30	Anti-halt carve-out limited to Step 1d.5 in THIS file	SKILL.md says non-sequential jumps must be explicit in THIS file; `design-outline.md` yield/approve prose is not binding, so the agent may halt after printing the outline or advance to Step 1e instead of 2a after Approve	Extend the narrow exception to Step 1d.7 (Refine yield + post-Approve `proceed to Step 2a`) in the anti-halt paragraph, mirroring the 1d.5 wording; reference `design-outline.md`
+3	in_scope	important	risk-integration	skills/design/references/discussion-rounds.md:52-69	Short-circuit/cap still route to Step 1e	Normative Round 1 text says proceed to Step 1e and that Step 1e always follows 1d; executors can skip Step 1d.7 and hit deprecated first-time Gate A	Update to the post-1d.7 sequence (1d.5 when requested, then 1d.7; Gate A re-entry only); remove first-time Gate A promises
+4	in_scope	important	risk-integration	skills/design/references/brainstorm.md:3-29,185	Brainstorm skip/terminal paths still target Step 1e	Skipped or completed brainstorm jumps to Gate A instead of the new outline gate, bypassing outline approval on brainstorm runs	Retarget skip/terminal navigation to Step 1d.7; update the Consumer header (before Step 1d.7, not Gate A)
+5	in_scope	important	correctness	skills/design/scripts/test-render-final-summary.sh:381-411	New outcome not added to post-publish matrix	Plan adds a dedicated `cancelled-outline` row but not the all-outcome matrix loop; regression can pass the row test while the matrix still omits the enum	Add `cancelled-outline` to the `for summary_outcome in` list and refresh the pass label/count
+6	in_scope	important	architecture	skills/design/references/approval-gates.md:11,55-57	Gate A first-time semantics remain in cross-tier/loop-exit prose	Plan rewrites Shape 1 but leaves lines claiming trivial/simple Gate A short-circuit on first prompt and first-time loop exit from Step 1d → 2a	Revise cross-tier invariant and Loop exit for re-entry-only Gate A; state first-time direction check is Step 1d.7
+7	in_scope	nit	correctness	skills/design/references/design-outline.md:7-7	Approve-path acknowledgment breadcrumb unspecified	Acceptance criteria require a post-Approve breadcrumb; implementers may omit it or diverge	Add a one-line acknowledgment literal in the Approve branch (mirror `.brainstorm-done` pattern)
+
+1. **[correctness]** `skills/design/SKILL.md:327-338` — No Step 1e skip when `.outline-approved` is already set. After outline Approve, the file order still runs the Step 1e block; without an entry guard, Gate A can run again. Add a first-time skip (sentinel present, no `plan.txt`, not B(c)/C(b) re-entry) that jumps to Step 2a; pin it in the new structural Check.
+
+2. **[correctness]** `skills/design/SKILL.md:30` — Anti-halt exceptions must live in SKILL.md (“THIS file”). `design-outline.md` alone cannot authorize Refine turn-yields or post-Approve `proceed to Step 2a`. Extend the narrow exception to Step 1d.7 alongside 1d.5.
+
+3. **[risk-integration]** `skills/design/references/discussion-rounds.md:52-69` — Short-circuit and cap still say “proceed to Step 1e” / “Step 1e always fires after Step 1d.” Update to 1d.5 → 1d.7 and re-entry-only Gate A.
+
+4. **[risk-integration]** `skills/design/references/brainstorm.md:3-29,185` — Skip and terminal paths still `go to Step 1e`. Retarget to Step 1d.7 and fix the Consumer line.
+
+5. **[correctness]** `skills/design/scripts/test-render-final-summary.sh:381-411` — Add `cancelled-outline` to the all-outcome matrix loop, not only a standalone row.
+
+6. **[architecture]** `skills/design/references/approval-gates.md:11,55-57` — Cross-tier invariant and Loop exit still describe first-time Gate A; align with re-entry-only Gate A after 1d.7.
+
+7. **[correctness/nit]** `skills/design/references/design-outline.md` — Specify the post-Approve acknowledgment breadcrumb text.
+
+**[OUT_OF_SCOPE]** `CHANGELOG.md` — User-visible `/design` flow change; no plan entry for a changelog bullet (conflict risk if another PR touches `CHANGELOG.md`).
+
+**[OUT_OF_SCOPE]** `docs/skills.md`, `skills/design/references/flags.md:21` — Still say brainstorm runs “before Gate A”; update when documenting the outline gate.

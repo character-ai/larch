@@ -1,0 +1,8 @@
+skills/design/references/design-outline.md
+skills/design/SKILL.md
+skills/design/references/approval-gates.md
+skills/design/scripts/step-name-registry.tsv
+skills/design/scripts/render-final-summary.sh
+skills/design/scripts/render-final-summary.md
+skills/design/scripts/test-render-final-summary.sh
+scripts/test-design-structure.sh

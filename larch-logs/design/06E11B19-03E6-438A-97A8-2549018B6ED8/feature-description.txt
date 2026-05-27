@@ -1,0 +1,4 @@
+# In /design, after outputting Brainstorm Synthesis, main agent should propose an outline of design
+
+It should be a balance of pragmatism, solid software engineering, and making sure to meet the task requirements.
+User should be able to decide how to proceed after seeing both the Brainstorm Synthesis as well as the outline of the proposed design.

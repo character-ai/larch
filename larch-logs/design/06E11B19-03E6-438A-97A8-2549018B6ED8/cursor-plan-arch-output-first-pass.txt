@@ -1,0 +1,33 @@
+Reading the implementation plan and exploring referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	integration	skills/design/references/brainstorm.md:3,28-29,185,191	Skip/terminal routing still targets Step 1e, not Step 1d.7	After brainstorm skip or terminal path, orchestrator can jump to Gate A and miss the new outline gate (or double-prompt)	Update consumer line and all "go to Step **1e**" / "entering Step **1e**" targets to Step **1d.7**; add `brainstorm.md` to the plan's UPDATED file list
+2	in_scope	important	integration	skills/design/references/discussion-rounds.md:52,69	Round 1 exit still says "proceed to Step 1e (Gate A)"	Short-circuit and deferred-questions paths bypass Step 1d.7 on every run	Rewrite exits to Step **1d.7** and drop "Step 1e always fires after Step 1d" wording; add `discussion-rounds.md` to the plan
+3	in_scope	important	architecture	skills/design/SKILL.md:327-338	Step 1e block always prints the Gate A banner and executes Gate A with no first-pass skip	After outline Approve, Step 1e can still fire Shape 1/2 and contradict "first-time entry replaced by 1d.7"	Add Step 1e entry guard: when `.outline-approved` exists and entry is not Gate B(c)/Gate C(b), print a skip breadcrumb and continue to Step 2a without Gate A; mirror in `approval-gates.md` "When" section
+4	in_scope	important	correctness	skills/design/SKILL.md:30; skills/design/references/design-outline.md:54-55	Anti-halt sequence is 1d.7→1e but Approve says proceed to Step 2a	Generic "NEXT numbered step" after 1d.7 can land on Gate A instead of sketches	Extend anti-halt prose with an explicit 1d.7 Approve exception (jump to 2a, same turn); in `design-outline.md` Approve, require "continue to Step 2a in the same turn (skip Step 1e)"
+5	in_scope	important	correctness	scripts/test-design-structure.sh:692-693	New outline Check pins 1d.7 in anti-halt but Check 19 still requires the old sequence	`make lint` fails: new Check wants `1c→1d→1d.5→1d.7→1e`, Check 19 still greps `1c→1d→1d.5→1e`	Update Check 19 grep to the new substring (or subsumes into the new Check and remove the duplicate assertion)
+6	in_scope	latent	correctness	skills/design/scripts/test-render-final-summary.sh:381-391	Parameterized outcome matrix omits `cancelled-outline`	Plan adds a single-row test only; cost-line/sentinel regression matrix stays incomplete for the new terminal outcome	Append `cancelled-outline` to the `for summary_outcome in` matrix loop (same as `cancelled-decompose`)
+7	in_scope	nit	architecture	skills/design/references/approval-gates.md:11,17,40-45,55-57,146	Gate A first-time / Shape 1 prose not fully retired	Stale "first prompt", Shape 1 Discuss-more, and "Step 1d / Gate A" invariant text mislead implementers after Shape 1 moves to 1d.7	Expand `approval-gates.md` edits: refresh cross-tier invariant, discussion sub-round (Shape 2 only on re-entry), loop-exit, and state invariant #3
+8	in_scope	nit	integration	skills/design/SKILL.md:20; skills/design/references/flags.md:21	`--brainstorm` still documented as "before Gate A"	Operator/docs imply brainstorm precedes Gate A, not the outline gate	Update both strings to "before Step 1d.7 (outline gate)" / "before outline approval"
+9	in_scope	nit	code-quality	skills/design/references/design-outline.md:50-55	Approve path lacks required acknowledgment breadcrumb	Acceptance criterion 2 expects a breadcrumb; section 7 only writes the sentinel	Add explicit one-line Approve acknowledgment (mirror brainstorm terminal acknowledgment)
+
+**1. Upstream routing still targets Gate A (important, integration)**  
+`brainstorm.md` and `discussion-rounds.md` still send the orchestrator to Step **1e** after skip/terminal/short-circuit. The plan adds Step **1d.7** but does not list those references as UPDATED, so the outline gate can be skipped on common paths.
+
+**2. Step 1e has no first-pass skip guard (important, architecture)**  
+`SKILL.md` Step 1e always prints `> **🔶 /design 1e: gate A**` and runs Gate A. Prose says first-time entry is replaced by 1d.7, but there is no mechanical skip when `.outline-approved` is set on the forward path—risk of a second approval prompt after outline Approve.
+
+**3. Anti-halt vs Approve jump conflict (important, correctness)**  
+The anti-halt line will read `1d.7→1e` while Approve should jump to **2a**. Without an explicit exception, "continue NEXT step" can pull operators into Gate A.
+
+**4. Check 19 vs new Check anti-halt pin (important, correctness)**  
+The new structural Check requires `1c→1d→1d.5→1d.7→1e`, but Check 19 at `scripts/test-design-structure.sh:692-693` still greps `1c→1d→1d.5→1e`—CI regression once `SKILL.md` is updated.
+
+**5. Render-final-summary matrix gap (latent)**  
+`test-render-final-summary.sh` matrix loop (`381-391`) should include `cancelled-outline` for parity with other cancel outcomes.
+
+**6. Partial `approval-gates.md` cleanup (nit, architecture)**  
+Plan updates Shape 1 / "When" but leaves cross-tier invariant, discussion sub-round Shape 1 branches, loop-exit "first-time from Step 1d", and invariant #3 describing first-time Gate A writes.
+
+**[OUT_OF_SCOPE]**  
+- [docs/skills.md](docs/skills.md) — still describes `--brainstorm` before Gate A  
+- [CHANGELOG.md](CHANGELOG.md) — no entry for Step 1d.7 (release hygiene)

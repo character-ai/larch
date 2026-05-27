@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/brainstorm.md:28-29,185-191	Skip and terminal paths still target Step 1e	After brainstorm skip or terminal ready, orchestrator can jump to Gate A and duplicate or bypass the new outline gate	Add go to Step 1d.7 (or continue to Step 1d.7 in the same turn) on all skip/terminal paths; update Consumer header before Step 1e to before Step 1d.7
