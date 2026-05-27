@@ -12,6 +12,7 @@
 .PHONY: lint-bash32 test-lint-bash32 lint-foreground lint-foreground-markers test-lint-foreground-markers lint-mermaid agent-sync test-ci-failed-jobs
 .PHONY: test-step-7a
 .PHONY: test-breadcrumb-monitor-bash32
+.PHONY: test-stall-recovery-report
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -50,7 +51,7 @@ test-harnesses-3: test-dispatch-code-voters-happy
 
 test-harnesses-4: test-dispatch-code-voters-edge-and-r3-claude
 
-test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths
+test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths test-stall-recovery-report
 
 test-harnesses-6: test-add-blocked-by test-blocked-by-issue test-ci-status test-compose-plan-goals-test test-dispatch-panel-limits test-implement-cleanup-script test-larch-logs-manifest test-local-cleanup test-relevant-checks-byte-budget test-review-and-fix-dispatch test-review-and-fix-parsers test-sentinel-write test-subskill-anchors test-write-run-params test-write-design-current-env
 
@@ -507,6 +508,9 @@ test-run-step2-dispatch:
 
 test-step2-dispatch:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step2-dispatch.sh
+
+test-stall-recovery-report:
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-stall-recovery-report.sh
 
 test-cursor-implementer:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-cursor-implementer.sh
