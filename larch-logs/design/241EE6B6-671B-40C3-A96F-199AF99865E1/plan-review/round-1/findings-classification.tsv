@@ -1,0 +1,9 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Innovation, Cursor-Requirements, Codex-Requirements	accepted	YES	true	blocker	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Codex-Arch, Codex-Edge	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_3	Codex-Arch, Cursor-Edge, Codex-Pragmatic, Codex-Requirements	accepted	EXONERATE	partially-true	minor	good	false	Claude	YES	true	major	adequate	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_4	Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_5	Codex-Innovation, Codex-Pragmatic	accepted	EXONERATE	true	nit	good	false	Claude	YES	true	nit	adequate	false	Codex	YES	true	nit	good	false	Cursor
+FINDING_6	Codex-Requirements	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	excellent	false	Cursor
+FINDING_7	Cursor-dyn-collector-sentinel-vars, Codex-dyn-collector-sentinel-vars	accepted	YES	true	blocker	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_8	Cursor-dyn-test-scope-completeness, Codex-dyn-test-scope-completeness	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor

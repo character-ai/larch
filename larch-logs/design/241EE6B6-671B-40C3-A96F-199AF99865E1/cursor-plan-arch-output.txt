@@ -1,0 +1,28 @@
+Reviewing the implementation plan and validating it against the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/launch-review.sh:1022-1040	Degraded-response snippet measures wc -c on $EXTRACT_TMP after mv installs extracted bytes into $OUTPUT	Heuristic never runs or always no-ops; narration-only JSON with high outputTokens still lands as STATUS=OK	After successful jq mv, use RESULT_BYTES=$(wc -c < "$OUTPUT") (or run the check before mv); drop the erroneous rm -f "$EXTRACT_TMP" on the post-mv path
+2	in_scope	important	correctness	scripts/test-validate-research-output.sh:283-293	Testing strategy reuses Case 19g for CURSOR_DEGRADED_RESPONSE but 19g is already inline-TSV fence coverage	Implementer overwrites or duplicates Case 19g; harness fails or loses regression coverage	Rename to Case 19h (or next free id) and add a dedicated fixture; keep existing 19g unchanged
+3	in_scope	important	risk-integration	scripts/test-launch-review.sh:1473+	Case B3 cites nonexistent extraction-only mode; default cursor stub hardcodes usage.outputTokens=2	Threshold test never exercises outputTokens>1000 path; false confidence in launcher backstop	Extend STUB_BIN/cursor with env-driven usage (e.g. CURSOR_STUB_OUTPUT_TOKENS) or use LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE to pre-seed ${OUT}.json before the jq block; drop extraction-only wording
+4	in_scope	important	risk-integration	scripts/test-ship-pr.sh:3647-3661	Plan equates STUB_LINT_FIX_STATUS=main-agent-required with helper override run_per_job_local_fix_loop(){ return 1; }	Full ship-pr may run per-job loop work first; launcher/order.txt/verified-total-count assertions (3 launches, total 6) flake or fail	Keep a sourced helper that calls run_evaluate_failure only, or re-stub run_per_job_local_fix_loop to return 1 while still invoking ship-pr.sh; only switch to full main after proving identical side effects
+5	in_scope	important	correctness	scripts/collect-agent-results.sh:734-841	Always-on sentinel pseudocode uses continue inside section 2 but that loop builds RESULTS via STATUS=	Sentinel lines stay STATUS=OK and bypass the new failure path	Set STATUS=CURSOR_EMPTY_RESPONSE and FAILURE_REASON=... before RESULTS+= when first non-blank line matches; do not use continue
+6	in_scope	latent	correctness	scripts/collect-agent-results.sh:1138-1140	Always-on sentinel check is not planned for empty-output retry success path	Retry output containing CURSOR_DEGRADED_RESPONSE is promoted to STATUS=OK and skips sentinel detection	Reuse the same first-non-blank helper when rewriting RESULTS after retry success (or run a shared pre-RESULTS normalization pass)
+7	in_scope	latent	risk-integration	skills/design/scripts/dispatch-plan-review-panel.sh:145-152	--require-result-pattern uses grep -Eq on the whole file; pretty-printed {"no_issues_found": true} may not match \{"no_issues_found) on any line	Valid no-findings JSON triggers unnecessary Codex/Claude fallback despite --mode ask fix	Tighten prompt to single-line JSON only, or extend the ERE to allow leading { on line 1 plus no_issues_found within N lines (and add a harness case)
+8	in_scope	nit	architecture	skills/design/scripts/test-dispatch-plan-review-panel.sh	N/A	Acceptance criterion 6 adds --require-result-pattern but testing strategy has no panel-harness assertion	Regression in dispatch argv wiring goes unnoticed until e2e	Add a stubbed dispatch test that expects the new flag on DISPATCH_WATERFALL_SH argv (mirror scripts/test-dispatch-with-waterfall.sh pattern tests)
+
+1. **[correctness]** `scripts/launch-review.sh:1022-1040` — The proposed degraded-response block uses `wc -c < "$EXTRACT_TMP"` after the successful path already `mv`s the extract into `$OUTPUT`, so `$EXTRACT_TMP` is gone. Measure `$OUTPUT` (or check before `mv`).
+
+2. **[correctness]** `scripts/test-validate-research-output.sh:283-293` — Case **19g** already exists (inline TSV fence). Pick a new case id (e.g. **19h**) for `CURSOR_DEGRADED_RESPONSE`.
+
+3. **[risk-integration]** `scripts/test-launch-review.sh:1473+` — B3 needs stub/hook support for `usage.outputTokens` (default stub uses `2`); “extraction-only mode” is not a real harness flag.
+
+4. **[risk-integration]** `scripts/test-ship-pr.sh:3647-3661` — Replacing the helper that forces `run_per_job_local_fix_loop(){ return 1; }` with full `ship-pr.sh` + `STUB_LINT_FIX_STATUS=main-agent-required` may change per-job iteration counts and break the `launcher=3` / `verified-total-count=6` contract.
+
+5. **[correctness]** `scripts/collect-agent-results.sh:734-841` — Replace `continue` in the always-on sentinel snippet with `STATUS=CURSOR_EMPTY_RESPONSE` (and `FAILURE_REASON`) before `RESULTS+=`.
+
+6. **[latent]** `scripts/collect-agent-results.sh:1138-1140` — Apply the same sentinel detection when empty-output retry succeeds.
+
+7. **[latent]** `skills/design/scripts/dispatch-plan-review-panel.sh:145-152` — Whole-file `grep -Eq` may not match pretty-printed JSON no-findings; align pattern or prompt.
+
+8. **[nit]** `skills/design/scripts/test-dispatch-plan-review-panel.sh` — Add a regression that the new `--require-result-pattern` is forwarded.
+
+[OUT_OF_SCOPE] `SECURITY.md` — Still documents `cursor agent ... --mode plan`; should be updated to `--mode ask` when this PR lands (security-relevant behavior change per `AGENTS.md`).
