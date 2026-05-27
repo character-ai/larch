@@ -99,14 +99,15 @@ printf '%s\n' "$out2" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail 
 
 [[ -f "$DESIGN_SKILL" ]] || fail "missing skills/design/SKILL.md"
 
-trivial_row=$'| `--trivial` |'
 simple_row=$'| `--simple` |'
 hard_row=$'| `--hard` |'
-grep -Fq "$trivial_row" "$DESIGN_SKILL" || fail "design SKILL missing trivial tier row"
+if grep -Fq "| \`--trivial\` |" "$DESIGN_SKILL"; then
+    fail "design SKILL still exposes trivial tier row"
+fi
 grep -Fq "$simple_row" "$DESIGN_SKILL" || fail "design SKILL missing simple tier row"
 grep -Fq "$hard_row" "$DESIGN_SKILL" || fail "design SKILL missing hard tier row"
-grep -Fq 'sketch_budget=0' "$DESIGN_SKILL" || fail "design SKILL missing sketch_budget=0 mapping pin"
-grep -Fq 'review_budget=quick' "$DESIGN_SKILL" || fail "design SKILL missing review_budget=quick mapping pin"
-grep -Fq 'workflow_path=HARD' "$DESIGN_SKILL" || fail "design SKILL missing workflow_path=HARD tier mapping pin"
+grep -Fq 'design_classification=SIMPLE' "$DESIGN_SKILL" || fail "design SKILL missing SIMPLE v2 mapping pin"
+grep -Fq 'design_classification=HARD' "$DESIGN_SKILL" || fail "design SKILL missing HARD v2 mapping pin"
+grep -Fq 'invoke-plan-validator.sh' "$DESIGN_SKILL" || fail "design SKILL missing unconditional validator helper pin"
 
 echo "PASS: test-design-driver.sh"

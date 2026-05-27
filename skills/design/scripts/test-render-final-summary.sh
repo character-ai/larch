@@ -15,7 +15,7 @@ D="$TMP/design"
 mkdir -p "$D"
 
 cat >"$D/run-params.json" <<'JSON'
-{"classification":"SIMPLE","workflow_path":"SIMPLE"}
+{"schema_version":2,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}
 JSON
 cat >"$D/voting-tally.md" <<'EOF'
 # Tally
@@ -35,6 +35,7 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std" 2>/dev/null
 
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'missing Cost bullet'
+grep -Fq -- 'SIMPLE (no sketches; full review)' "$D/final-summary.md" || fail 'missing SIMPLE summary label'
 grep -Fq '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'missing sentinel'
 cmp -s "$D/final-summary.md" "$std" || fail 'stdout vs final-summary.md byte mismatch'
 pass 'approved happy path + cmp'
@@ -48,7 +49,7 @@ pass 'pre-publish writes file without chat output'
 
 std_reentry="$TMP/std-reentry.log"
 DESIGN_REENTRY_MARKER_PATH="$HOME/.cache/larch/sessions/design-completed-2935-12345" \
-DESIGN_TMPDIR="$D" ISSUE_NUMBER="2935" SESSION_ID="RUN-REENTRY" \
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-REENTRY" \
     "$SUBJECT" --outcome cancelled-reentry-guard --mode SIMPLE --post-publish-only >"$std_reentry" 2>/dev/null
 grep -Fq -- '- **Outcome**: cancelled-reentry-guard' "$D/final-summary.md" || fail 'reentry guard summary missing Outcome bullet'
 grep -Fq -- '- **Mode**: Refused (session-cache re-entry guard)' "$D/final-summary.md" || fail 'reentry guard summary missing guard mode'
@@ -56,6 +57,16 @@ grep -Fq -- '- **Guard**: session-cache re-entry guard' "$D/final-summary.md" ||
 grep -Fq -- '- **Marker**: `'"$HOME/.cache/larch/sessions/design-completed-2935-12345"'`' "$D/final-summary.md" || fail 'reentry guard summary missing marker path'
 cmp -s "$D/final-summary.md" "$std_reentry" || fail 'reentry guard stdout/file mismatch'
 pass 'reentry guard outcome summary'
+
+cat >"$D/run-params.json" <<'JSON'
+{"schema_version":2,"design_classification":"HARD","partition_requested":false,"brainstorm_requested":false}
+JSON
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-HARD" \
+    "$SUBJECT" --outcome approved --mode HARD --pre-publish-only >/dev/null 2>/dev/null
+grep -Fq -- 'HARD (4 sketches; full review)' "$D/final-summary.md" || fail 'missing HARD summary label'
+cat >"$D/run-params.json" <<'JSON'
+{"schema_version":2,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}
+JSON
 
 PLUGIN_STUB="$TMP/plugin"
 mkdir -p "$PLUGIN_STUB/scripts"
@@ -378,6 +389,7 @@ grep -Fq -- '- **Outcome**: cancelled-title-filter' "$D/final-summary.md" || fai
 grep -Fq -- '- **Mode**: Refused (title-filter)' "$D/final-summary.md" || fail 'missing Refused (title-filter) mode line'
 pass 'cancelled-title-filter outcome'
 
+unset DESIGN_REENTRY_MARKER_PATH
 LARCH_DESIGN_REENTRY_GUARD_PPID=4242 DESIGN_TMPDIR="$D" ISSUE_NUMBER="2935" SESSION_ID="RUN-FIX" \
     "$SUBJECT" --outcome cancelled-reentry-guard --mode SIMPLE --post-publish-only >/dev/null 2>&1
 grep -Fq '## /design run RUN-FIX — cancelled-reentry-guard' "$D/final-summary.md" || fail 'cancelled-reentry-guard title missing'

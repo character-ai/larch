@@ -7,7 +7,6 @@ paths:
   - "skills/design/references/sketch-launch.md"
   - "skills/design/references/flags.md"
   - "skills/design/references/plan-review.md"
-  - "skills/design/references/plan-review-quick.md"
   - "skills/design/references/decompose-panel.md"
   - "skills/design/scripts/decompose-panel-dispatch.sh"
   - "skills/design/scripts/decompose-aggregator.sh"

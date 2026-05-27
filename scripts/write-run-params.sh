@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# write-run-params.sh - Atomically write run-depth router parameters.
+# write-run-params.sh - Atomically write /design router parameters.
 
 set -euo pipefail
 
@@ -9,11 +9,6 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 CLASSIFICATION=""
-REASON=""
-SOURCE=""
-SKETCH_BUDGET=""
-REVIEW_BUDGET=""
-WORKFLOW_PATH=""
 OUTPUT=""
 PARTITION_REQUESTED=""
 BRAINSTORM_REQUESTED=""
@@ -21,7 +16,7 @@ MANUAL_GATE_B=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path> [--partition-requested <true|false>] [--brainstorm-requested <true|false>] [--manual-gate-b <true|false>]
+usage: write-run-params.sh --classification <SIMPLE|HARD> --output <path> [--partition-requested <true|false>] [--brainstorm-requested <true|false>] [--manual-gate-b <true|false>]
 USAGE
 }
 
@@ -29,26 +24,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --classification)
             CLASSIFICATION="${2:?--classification requires a value}"
-            shift 2
-            ;;
-        --reason)
-            REASON="${2:?--reason requires a value}"
-            shift 2
-            ;;
-        --source)
-            SOURCE="${2:?--source requires a value}"
-            shift 2
-            ;;
-        --sketch-budget)
-            SKETCH_BUDGET="${2:?--sketch-budget requires a value}"
-            shift 2
-            ;;
-        --review-budget)
-            REVIEW_BUDGET="${2:?--review-budget requires a value}"
-            shift 2
-            ;;
-        --workflow-path)
-            WORKFLOW_PATH="${2:?--workflow-path requires a value}"
             shift 2
             ;;
         --output)
@@ -102,18 +77,9 @@ require_enum() {
 }
 
 require_present "--classification" "$CLASSIFICATION"
-require_present "--reason" "$REASON"
-require_present "--source" "$SOURCE"
-require_present "--sketch-budget" "$SKETCH_BUDGET"
-require_present "--review-budget" "$REVIEW_BUDGET"
-require_present "--workflow-path" "$WORKFLOW_PATH"
 require_present "--output" "$OUTPUT"
 
-require_enum "--classification" "$CLASSIFICATION" TRIVIAL_DOC_ONLY SIMPLE HARD
-require_enum "--source" "$SOURCE" caller-forwarded
-require_enum "--sketch-budget" "$SKETCH_BUDGET" 0 2 4
-require_enum "--review-budget" "$REVIEW_BUDGET" quick full
-require_enum "--workflow-path" "$WORKFLOW_PATH" SIMPLE HARD
+require_enum "--classification" "$CLASSIFICATION" SIMPLE HARD
 
 if [[ -n "$PARTITION_REQUESTED" ]]; then
     require_enum "--partition-requested" "$PARTITION_REQUESTED" true false
@@ -149,22 +115,12 @@ trap cleanup EXIT
 
 jq -n \
     --arg classification "$CLASSIFICATION" \
-    --arg reason "$REASON" \
-    --arg source "$SOURCE" \
-    --argjson sketch_budget "$SKETCH_BUDGET" \
-    --arg review_budget "$REVIEW_BUDGET" \
-    --arg workflow_path "$WORKFLOW_PATH" \
     --arg partition_requested "${PARTITION_REQUESTED:-false}" \
     --arg brainstorm_requested "${BRAINSTORM_REQUESTED:-false}" \
     --arg manual_gate_b "${MANUAL_GATE_B:-false}" \
     '{
-      schema_version: 1,
+      schema_version: 2,
       design_classification: $classification,
-      design_classification_reason: $reason,
-      design_classification_source: $source,
-      sketch_budget: $sketch_budget,
-      review_budget: $review_budget,
-      workflow_path: $workflow_path,
       partition_requested: ($partition_requested == "true"),
       brainstorm_requested: ($brainstorm_requested == "true"),
       manual_gate_b: ($manual_gate_b == "true")

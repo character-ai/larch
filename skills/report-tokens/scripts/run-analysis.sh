@@ -131,7 +131,7 @@ if [[ -z "$PLOT_FROM" ]]; then
 
         workflow_path="unknown"
         if [[ -f "$timing_report_json" ]]; then
-            workflow_path=$(jq -r '.workflow_path // "unknown"' "$timing_report_json" 2>/dev/null || printf 'unknown')
+            workflow_path=$(jq -r '.workflow_path // .design_classification // "unknown"' "$timing_report_json" 2>/dev/null || printf 'unknown')
             case "$workflow_path" in SIMPLE|HARD|unknown) ;; *) workflow_path="unknown" ;; esac
         fi
         if [[ "$workflow_path" == "unknown" && -f "$plan_tally_json" ]]; then

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # plan-review-loop.sh — Single-pass /design plan-review driver (scout → panel → collect → ballot → aggregate → voters → tally).
+# --round-num is a stateless integer supplied by the caller; this script does
+# not read or write review-round-count.txt.
 
 set -euo pipefail
 

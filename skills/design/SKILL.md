@@ -1,28 +1,27 @@
 ---
 name: design
-description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tiered sketches (0/2/4) plus a 10-reviewer panel and clarify loop; verbal prompts create an issue first."
-argument-hint: "[--trivial|--simple|--hard] [-p|--partition] [--brainstorm] [--manual|-m] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
+description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Two-tier design flow (SIMPLE/HARD) with full plan review and clarify loop; verbal prompts create an issue first."
+argument-hint: "[--simple|--hard] [-p|--partition] [--brainstorm] [--manual|-m] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with a **full** panel when using `--simple` or `--hard` (10 reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The **`--trivial`** tier intentionally uses a **smaller** plan-review budget (`review_budget=quick` per `skills/design/references/flags.md`) and **`sketch_budget` 0** — do not extrapolate the full 10-reviewer cost model to trivial runs. The sketch phase (Step 2a) reads `run-params.json`: **`sketch_budget` is 0, 2, or 4** from the selected **tier** (`trivial` / `simple` / `hard`). Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
+Design an implementation plan for a feature and review it with the **full** panel on both tiers (10 static reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the full plan-review panel; HARD runs 4 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--trivial`, `--simple`, `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). **`--trivial` is mutually exclusive with `-p` / `--partition`** — see Pre-Step-0 below and `references/flags.md`. **`--trivial` combined with `--brainstorm`** is handled by the Pre-Step-0 / Step 0b **Upgrade to `--simple`** / **Cancel** prompts (not the same hard argv gate as `--partition`). If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
+**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--simple`, `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). `--trivial` has been removed and is a Pre-Step-0 hard error. If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--trivial` | `false` | Tier: `sketch_budget=0`, `quick_mode=true`, `review_budget=quick` (main-agent plan + quick self-review path; Gate B defaults to auto-apply unless `manual_gate_b=true`) |
-| `--simple` | `false` | Tier: `sketch_budget=2`, `quick_mode=true`, `review_budget=full` (2 generic sketches + 10-reviewer panel; Gate B defaults to auto-apply unless `manual_gate_b=true`) |
-| `--hard` | `false` | Tier: `sketch_budget=4`, `quick_mode=false`, `review_budget=full` (4 sketches + panel; Gate B mode per `references/approval-gates.md` and `--manual` / `-m`) |
+| `--simple` | `false` | Tier: `design_classification=SIMPLE` (no sketches, no dialectic, full review panel, 3 total review runs) |
+| `--hard` | `false` | Tier: `design_classification=HARD` (4 sketches, dialectic when contested, full review panel, 5 total review runs) |
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Gate A (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
 | `--manual` / `-m` | `false` | Restore today's Gate B 3-option `AskUserQuestion`. Default is auto-apply every accepted finding (persisted as `manual_gate_b` in `run-params.json`; see `references/flags.md` and `references/approval-gates.md` §Gate B). |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0. **`--trivial` and `-p` / `--partition` are mutually exclusive** — Pre-Step-0 rejects that pair before `session-setup.sh` runs. **`--trivial` + `--brainstorm`** uses the Pre-Step-0 / tier-gate `AskUserQuestion` upgrade flow (see Pre-Step-0 and Step 0b) — do not treat it as a silent downgrade.
+**Mutual exclusion**: at most one of `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0. If `--trivial` appears anywhere in the tier-flag scan, print the removal warning in Pre-Step-0 and abort before `session-setup.sh`.
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
@@ -90,7 +89,7 @@ Before invoking `/design`, the orchestrator should internalize these questions. 
 
 Consolidated NEVER rules collected from the procedural steps below. Each rule states the WHY so edits can respect the original constraint. Inline step-local mentions remain where they carry load-bearing context.
 
-1. **NEVER skip Step 2a** (the sketch phase), except for the router-confirmed trivial-task carve-out. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** normally run the configured `sketch_budget` slots (4 full or 2 quick/simple), with Claude fallbacks preserving the configured lane count when externals are unavailable. **Exception:** when the Step 0 router classifies `TRIVIAL_DOC_ONLY` after a codebase scan, `sketch_budget=0` is permitted. The router/Step 2a path must write sentinel stubs (`approach-synthesis.txt` = `NO_SKETCHES_CLASSIFIED_TRIVIAL`, `contested-decisions.md` = `NO_CONTESTED_DECISIONS`, and empty `dialectic-resolutions.md`) so downstream steps have stable inputs.
+1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE` (write `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel); HARD always runs 4 personality sketches. Why: anchoring bias still locks architectural direction; SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
 
 2. **NEVER substitute Claude into a dialectic debate as the PRIMARY or 1ST-RETRY debater.** **Why:** the debate path uses externals (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; see GitHub issue #98. **How to apply:** the original launch and the 1st-retry launch in the per-side waterfall both target external tools only. **Exception:** Claude IS permitted as the 2nd-retry (FINAL) waterfall step for a side that has already failed with both externals — this trades a small attribution-leak risk for the chance to actually hear the antithesis instead of always defaulting to synthesis. The judge-panel path remains under the repo-wide replacement-first pattern (Claude permitted as a panel slot per `dialectic-protocol.md`).
 
@@ -104,9 +103,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 ## Pre-Step-0 — argv gate (before `session-setup.sh`)
 
-Before running the **Step 0a** `session-setup.sh` Bash block, scan the start of `$ARGUMENTS` for tier flags (`--trivial` / `--simple` / `--hard`), partition flags (`-p` / `--partition`), and brainstorm (`--brainstorm`). If **both** `--trivial` **and** (`-p` or `--partition`) are present, print `**⚠ /design: --trivial and --partition are mutually exclusive — re-classify or drop one.**` and exit **1**. Do **not** run `session-setup.sh` on this path — no `DESIGN_TMPDIR` is created. Step **0b** still performs the full argv parse after Step 0a; this gate is validation-only for the `--trivial` + `--partition` collision.
-
-If **both** `--trivial` **and** `--brainstorm` are present on argv **before** Step 0a, do **not** run `session-setup.sh` until resolved. Run `AskUserQuestion` with **Upgrade to `--simple` (keep brainstorm)** / **Cancel**. On **Cancel**: print `**ℹ /design cancelled by operator (trivial + brainstorm collision).**`, exit **0** (no `DESIGN_TMPDIR`). On **Upgrade**: bind mental `effective_tier=simple` and `brainstorm_requested=true` — Step 0b maps tier fields using **simple** while still passing `--brainstorm-requested true` into `write-run-params.sh`.
+Before running the **Step 0a** `session-setup.sh` Bash block, scan the start of `$ARGUMENTS` for tier flags (`--trivial` / `--simple` / `--hard`), partition flags (`-p` / `--partition`), and brainstorm (`--brainstorm`). If `--trivial` is present, print `**⚠ /design: --trivial flag removed; tier consolidation in #2956. Use --simple or --hard.**` and exit **1**. Do **not** run `session-setup.sh` on this path — no `DESIGN_TMPDIR` is created. Step **0b** still performs the full argv parse after Step 0a; this gate is validation-only for the removed flag.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -180,7 +177,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
-1. Parse public flags (`--trivial|--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Remaining tokens after flags:
+1. Parse public flags (`--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Treat `--trivial` as the removed-flag hard error from Pre-Step-0. Remaining tokens after flags:
    - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
    - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`. The title-eligibility filter at sub-step **2.5** still applies once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
 2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field.
@@ -249,19 +246,16 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
-4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv, the Pre-Step-0 / tier-gate upgrade path, or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**.
-5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). When the operator answers **`trivial`** and `--brainstorm` was parsed on argv (or `brainstorm_requested` is already true), run the same **Upgrade to `--simple` (keep brainstorm)** / **Cancel** `AskUserQuestion` used in Pre-Step-0; **Cancel** follows the same `cancelled-tier-gate` / **Final summary block** path as other non-tier answers. Non-tier `Other` answers → export `SUMMARY_OUTCOME=cancelled-tier-gate` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
+4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` by direct `jq` merge preserving any existing fields and without invoking `write-run-params.sh`; conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**.
+5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **two options** `simple` / `hard`. SIMPLE description: "No upfront sketches, no dialectic. Full external review panel still runs. Designer + reviewers bias toward simplicity and minimum-change. Re-run cap: 3 total review runs." HARD description: "4 personality sketches + dialectic + full review panel. Designer + reviewers bias toward thoroughness. Re-run cap: 5 total review runs." Non-tier `Other` answers → export `SUMMARY_OUTCOME=cancelled-tier-gate` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
 5.5. **Rename issue to `[DESIGNING]`** (best-effort, idempotent) now that all cancel paths have been cleared. Resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` or `gh repo view` fallback if not already bound. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). On non-zero exit, log `Step 0 — [DESIGNING] rename failed` to `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` and continue.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh` and **partition + brainstorm + manual Gate B persistence**:
-   - Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false` (Pre-Step-0 already rejected `--trivial` + `--partition` collisions).
-   - Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv, set by the Pre-Step-0 / tier-gate upgrade path, **or** auto-enabled by the Step 0b Brainstorm title-prefix check, else `false`.
+   - Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false`.
+   - Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv or auto-enabled by the Step 0b Brainstorm title-prefix check, else `false`.
    - Set mental boolean `manual_requested` to `true` when `--manual` or `-m` was parsed on argv, else `false`.
    - Immediately refresh `$DESIGN_TMPDIR/source-env.sh` via `write-design-current-env.sh` so subsequent Bash blocks can source `ISSUE_NUMBER` and `MANUAL_REQUESTED` from the stable session-env file instead of relying on prompt-local argv memory. Pass `--issue-number "$ISSUE_NUMBER"` on that follow-up invocation, and append `--manual-requested true` only when `manual_requested=true` (omit the flag entirely when `manual_requested=false`). Keep the existing `--output`, `--design-tmpdir`, `--session-id`, and `--claude-pid "$PPID"` arguments.
-   - When Pre-Step-0 **Upgrade** applies, map **simple** tier fields below even if argv contained `--trivial`.
-   - `trivial`: `design_classification=TRIVIAL_DOC_ONLY`, `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE`.
-   - `simple`: `design_classification=SIMPLE`, `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE`.
-   - `hard`: `design_classification=HARD`, `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
-   Set `design_classification_source=caller-forwarded` (the orchestrator forwards tier selection; `run-params.json` is not re-derived from argv here).
+   - `simple`: `design_classification=SIMPLE`.
+   - `hard`: `design_classification=HARD`.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -280,18 +274,13 @@ fi
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --classification "$design_classification" \
-  --reason "$design_classification_reason" \
-  --source "$design_classification_source" \
-  --sketch-budget "$sketch_budget" \
-  --review-budget "$review_budget" \
-  --workflow-path "$workflow_path" \
   --partition-requested "$partition_requested" \
   --brainstorm-requested "$brainstorm_requested" \
   --manual-gate-b "$manual_requested" \
   --output "$DESIGN_TMPDIR/run-params.json"
 ```
 
-If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue.
+If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD classification.**`, set in-memory default `design_classification=HARD`, and continue.
 
 **Router-flag persistence on write failure**: when argv-derived `partition_requested`, `brainstorm_requested`, **or** `manual_requested` is `true` and `command -v jq` succeeds, ensure all three flags persist so Step **1d.5** / Step **2b.5** / Gate B still see them after a subshell re-read. Use one canonical merge rule: `partition_requested` and `brainstorm_requested` are true-only OR-merges, while `manual_gate_b` is overwritten from the current argv-derived `manual_requested` value because this run's Gate B mode must be authoritative and a stale persisted `true` must not silently force manual mode after the operator omitted `--manual`.
 
@@ -314,12 +303,7 @@ if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$man
     fi
   else
     "${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh" \
-      --classification "${design_classification:-HARD}" \
-      --reason "${design_classification_reason:-run-params write failed; router-flag recovery}" \
-      --source caller-forwarded \
-      --sketch-budget "${sketch_budget:-4}" \
-      --review-budget "${review_budget:-full}" \
-      --workflow-path "${workflow_path:-HARD}" \
+      --classification HARD \
       --partition-requested "${partition_requested:-false}" \
       --brainstorm-requested "${brainstorm_requested:-false}" \
       --manual-gate-b "${manual_requested:-false}" \
@@ -416,26 +400,26 @@ Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for 
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
-Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Also read `review_budget` (`quick` vs `full`): it gates the Step 2b plan-command validator (skipped on `quick` alongside the full plan-review panel) and is consumed again explicitly in Step 3. Do not re-classify here; Step 0 owns router judgment.
+Before branching, read `design_classification` from `$DESIGN_TMPDIR/run-params.json` via `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh`. Valid values are `SIMPLE` and `HARD`; if the file is absent or schema-invalid, default to `HARD` with the helper warning. Do not re-classify here; Step 0 owns router judgment.
 
-**IMPORTANT: The collaborative sketch phase MUST run with the configured `sketch_budget` — 4 in full mode, 2 in quick/simple mode, or 0 only for codebase-scan-confirmed `TRIVIAL_DOC_ONLY` (using Claude replacements when external tools are unavailable on non-zero budgets). Never abbreviate a non-zero sketch budget regardless of how simple or obvious the feature appears. The sketch synthesis is required architectural input for the implementation plan — skipping it outside the explicit zero-sketch carve-out causes anchoring bias where a single perspective locks in the direction before alternatives are considered.**
+**IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with 4 personality sketch agents (using Claude replacements when external tools are unavailable). SIMPLE is the only no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD regardless of how simple or obvious the feature appears.**
 
 A diverge-then-converge phase where multiple agents independently produce short architectural sketches before writing the full plan. This surfaces different perspectives early — when they can still influence architectural direction — rather than waiting for review when the plan is already anchored.
 
-### Zero-sketch mode (`sketch_budget=0`) — no sketch agents
+### SIMPLE branch (`design_classification == SIMPLE`) — no sketch agents
 
-This path is allowed only when Step 0 classified `TRIVIAL_DOC_ONLY` after a codebase scan. Launch no external agents and no Claude fallback agents. Write sentinel artifacts:
+Launch no external agents and no Claude fallback agents. Write sentinel artifacts:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-printf '%s\n' 'NO_SKETCHES_CLASSIFIED_TRIVIAL' > "$DESIGN_TMPDIR/approach-synthesis.txt"
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
 printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
 : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
 ```
 
 Skip Step 2a.5 and proceed directly to Step 2b. Do NOT call `collect-agent-results.sh`.
 
-### Regular mode (`sketch_budget=4`) — 4 sketch agents
+### HARD branch (`design_classification == HARD`) — 4 sketch agents
 
 The 4 sketch agents are **2 Cursor + 2 Codex**, with per-slot Claude fallback when an external tool is unavailable:
 
@@ -446,12 +430,7 @@ The 4 sketch agents are **2 Cursor + 2 Codex**, with per-slot Claude fallback wh
 
 When the assigned external is unavailable, the slot's Claude fallback uses the same personality prompt; the configured 4-agent shape is preserved.
 
-### Quick/simple mode (`sketch_budget=2`) — 2 sketch agents
-
-1. **Cursor — Generic** — or **Claude (Generic)** fallback: a broad-scope sketch without personality specialization.
-2. **Codex — Generic** — or **Claude (Generic)** fallback: same generic prompt as Cursor-Generic.
-
-### Sketch phase (regular and quick mode)
+### Sketch phase (HARD branch)
 
 Print `> **🔶 /design 2a: sketches**`.
 
@@ -459,15 +438,13 @@ The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent off
 
 ### 2a.2 — Launch Sketches in Parallel
 
-If `sketch_budget=0`, perform the Zero-sketch mode sentinel writes above and proceed directly to Step 2b.
+If `design_classification == SIMPLE`, perform the SIMPLE sentinel writes above and proceed directly to Step 2b.
 
-**Regular mode**: when `sketch_budget=4`, 4 sketch agents run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety), with per-slot Claude Agent-tool fallback when an external tool is unavailable so the 4-agent count is preserved.
+**HARD branch**: when `design_classification == HARD`, 4 sketch agents run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety), with per-slot Claude Agent-tool fallback when an external tool is unavailable so the 4-agent count is preserved.
 
-**Quick/simple mode**: when `sketch_budget=2`, 2 sketch agents run in parallel: 1 Cursor-Generic + 1 Codex-Generic, with per-slot Claude Agent-tool fallback so the 2-agent count is preserved.
+**MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, and `PRAGMATIC_PROMPT` — the four personality-prompt bodies substituted into the launch shell blocks via the corresponding `<…>` token names.
 
-**MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the four personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
-
-**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 4 regular-mode external slots (2 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes.
+**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 4 HARD-mode external slots (2 Cursor + 2 Codex), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes.
 
 **`<FEATURE_DESCRIPTION>` substitution (brainstorm additive)**: Read `$DESIGN_TMPDIR/feature-description.txt` as the base feature text. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, build the substitution string as: base text prefixed by a short `## Brainstorm context` section containing a tight digest of `brainstorm.md` (do not dump the entire file if large). Replace each `<FEATURE_DESCRIPTION>` token in the resolved sketch prompt bodies with this combined string before launch.
 
@@ -477,9 +454,9 @@ Execute the launches per `sketch-launch.md` — all external and fallback launch
 
 Collect and validate external sketch outputs using the shared collection script. Pass the output paths for whichever external slots were actually launched (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
 
-If `sketch_budget=0`, skip this section entirely. Do NOT call `collect-agent-results.sh`.
+If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `collect-agent-results.sh`.
 
-**Regular mode** (4 external output files when both tools available):
+**HARD mode** (4 external output files when both tools available):
 
 **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
@@ -513,38 +490,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   --paired-pid-file "$LARCH_PAIRED_PID_FILE"
 ```
 
-**Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
-
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
-```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-
-mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
-export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
-  "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
-  "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
-
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-```
-
 Use `timeout: 1260000` on the Bash tool call. Set `run_in_background: true` on the long-script Bash tool call and pair with foreground `breadcrumb-monitor.sh`. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).
 
 Note: This is a separate `collect-agent-results.sh` call from the one in Step 3. Both are permitted because they operate on completely distinct output file sets (`*-sketch-*-output.txt` vs `*-plan-output.txt`).
@@ -563,14 +508,12 @@ Read all sketches (or their Claude fallbacks if an external tool was unavailable
 2. Identifies where they **diverge** and makes a reasoned call on each contested point with justification
 3. Notes which ideas from each sketch are being incorporated into the full plan
 
-**Regular mode only** (`sketch_budget=4`, personality-specific highlights — skip these when `sketch_budget=2`):
+**HARD mode** personality-specific highlights:
 
 4. Highlights any **Architecture/Standards** concerns that should be addressed in the plan
 5. Highlights any **Pragmatism/Safety** warnings about regression risk or unnecessary complexity
 6. Surfaces any **Edge-case/Failure-mode** risks that should be addressed in the plan's Failure modes section
 7. Notes any **Innovation/Exploration** alternatives worth preserving as options even when not chosen
-
-**Quick mode** (`sketch_budget=2`): attribute sketches by tool (Cursor-Generic vs Codex-Generic). Skip personality-specific highlight bullets 4-7 above. Use generic agreement/divergence analysis only.
 
 8. Lists contested decisions as a structured markdown list in `$DESIGN_TMPDIR/contested-decisions.md`. Use this schema:
 
@@ -596,7 +539,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Print: `> **🔶 /design 2a.5: dialectic**`
 
-If `sketch_budget=0`, print `⏩ 2a.5: dialectic — skipped (trivial doc-only) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`.
+If `design_classification == SIMPLE`, print `⏩ 2a.5: dialectic — skipped (simple tier) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`.
 
 Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONTESTED_DECISIONS` (ignoring leading/trailing whitespace and newlines), print `⏩ 2a.5: dialectic — no contested decisions (<elapsed>)` and IMMEDIATELY proceed to Step 2b — do NOT halt after the skip breadcrumb.
 
@@ -643,7 +586,12 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
 
-Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions. If it contains exactly `NO_SKETCHES_CLASSIFIED_TRIVIAL`, treat that as a sentinel that no sketches ran because the router confirmed trivial doc-only scope; write the plan from direct codebase/doc inspection instead of fabricating sketch agreement.
+Read the tier with `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh "$DESIGN_TMPDIR/run-params.json"` and apply this emphasis before drafting:
+
+- SIMPLE: "This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
+- HARD: "This is a HARD-tier design. Bias the plan toward **thoroughness**. Surface all relevant edge cases, failure modes, and cross-cutting concerns; do not omit considerations to save effort. Address invariants, contract boundaries, and downstream consumers explicitly."
+
+Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions. If it contains exactly `NO_SKETCHES_CLASSIFIED_SIMPLE`, treat that as a sentinel that no sketches ran because the user selected SIMPLE; write the plan from direct codebase/doc inspection instead of fabricating sketch agreement.
 
 Also read `$DESIGN_TMPDIR/discussion-round1.md` if it exists and is non-empty. Incorporate the scope boundaries and hard constraints established during the design discussion into the plan — these define what is in-scope, what must not break, and what the user explicitly does not want.
 
@@ -679,11 +627,11 @@ printf '%s\n' 'ACTION=EMIT_PLAN' \
 
 If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, treat it as a hard Step 2b failure and repair `$DESIGN_TMPDIR/plan.txt` before proceeding to Step 2b.5 / Step 3.
 
-**Plan-command validator (Tier 2 + opt-in Tier 3)** — skip entirely when `review_budget` from `$DESIGN_TMPDIR/run-params.json` is `quick` (same read/validation rules as Step 3). Otherwise, immediately after a successful `ACTION=EMIT_PLAN`, run:
+**Plan-command validator (Tier 2 + opt-in Tier 3)** — runs unconditionally on both SIMPLE and HARD immediately after a successful `ACTION=EMIT_PLAN`:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt")
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt")
 VALIDATE_STATUS=ok
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
@@ -702,7 +650,7 @@ while IFS= read -r _vl || [[ -n "$_vl" ]]; do
 done <<< "$_validate_out"
 ```
 
-Mechanical dispatch: `ACTION=VALIDATE_PLAN_COMMANDS` is issued from `invoke-plan-validator-if-not-quick.sh` into `design-driver.sh` when `review_budget` is not `quick` (see `read-design-review-budget.sh` for JSON fallbacks when `python3` is unavailable).
+Mechanical dispatch: `ACTION=VALIDATE_PLAN_COMMANDS` is issued from `invoke-plan-validator.sh` into `design-driver.sh` for both tiers.
 
 When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`).
 
@@ -761,6 +709,37 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 **Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
 
+**Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). If the cap is reached, print `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**`, skip `plan-review-loop.sh` entirely, and jump to Step 3b/4/4b with existing artifacts.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+_round_count_file="$DESIGN_TMPDIR/review-round-count.txt"
+_round_count=0
+if [[ -s "$_round_count_file" ]]; then
+  _raw_count="$(tr -d '[:space:]' <"$_round_count_file" 2>/dev/null || true)"
+  case "$_raw_count" in
+    ''|*[!0-9]*)
+      printf '%s\n' "**⚠ Step 3: review-round-count.txt non-numeric; treating as 0**"
+      _round_count=0
+      ;;
+    *) _round_count=$((10#$_raw_count)) ;;
+  esac
+fi
+_tier="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")"
+# SIMPLE gets 3 total review runs; HARD gets 5 total review runs per #2956.
+case "$_tier" in SIMPLE) _round_cap=3 ;; *) _round_cap=5 ;; esac
+if (( _round_count >= _round_cap )); then
+  printf '%s\n' "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and returning to Gate C.**"
+  STEP3_REVIEW_CAP_REACHED=true
+else
+  count=$((_round_count + 1))
+  printf '%s\n' "$count" >"$_round_count_file"
+  STEP3_REVIEW_CAP_REACHED=false
+fi
+```
+
+After the cap guard, emit the Step 3 plan preview before launching the panel.
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
@@ -769,12 +748,6 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 ```
 
 Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`.
-
-**Read `review_budget` from `$DESIGN_TMPDIR/run-params.json` before the quick/full branches below** (parse JSON from disk; do not infer from tier prose alone). Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
-
-**If `review_budget=quick`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5.
-
-**If `review_budget=full`**:
 
 **IMPORTANT: Plan review MUST ALWAYS run the full Step 3 panel: **10 static** external slots (5 Cursor + 5 Codex for Arch, Edge, Innovation, Pragmatic, Requirements) plus **up to 12 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 6). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
 
@@ -802,7 +775,7 @@ _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop
   --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
   --codex-present "$CODEX_PRESENT" \
   --cursor-present "$CURSOR_PRESENT" \
-  --round-num 1)
+  --round-num "$count")
 _plan_review_rc=$?
 set -e
 LOOP_STATUS=""; ACCEPTED_COUNT=""; DEGRADED_PANEL=""; ROUNDS_COMPLETED=""
@@ -1014,11 +987,11 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt:
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
-2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator-if-not-quick.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
+2. Run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/composed-plan.md")
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md")
 VALIDATE_STATUS=ok
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
@@ -1053,33 +1026,6 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
 9. If step 4 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
 10. If step 4 succeeds, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh --outcome approved --mode "$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)" ${REPO:+--repo "$REPO"} --post-publish-only` (`final-summary.md` refresh + `larch:final-summary` upsert when issue-bound — rerenders after publish so warnings/exec-issue counts match committed logs). When `SESSION_ID` was empty in item 8, this single post-publish call still runs (no Phase-1 file was written for the design log bundle). If the helper exits 0 and $DESIGN_TMPDIR/final-summary.md is non-empty, apply the shared post-publish full-body emit rule immediately after this callsite, and no other summary prose.
 11. If step 4 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 9 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
-
-### 5d — Gated L3 velocity deferral comment (best-effort)
-
-When **all** of the following guards succeed in order, post **one** tracking comment on issue **#2672** via `gh issue comment` naming the deferred per-round velocity scope (>20% plan growth **and** >10 accepted findings between rounds; skipped on `--trivial` per `references/flags.md`). Otherwise **skip silently** (no warning — multi-source paper trail also lives in `flags.md`).
-
-1. `[ "$ISSUE_NUMBER" = "2670" ]`
-2. **`REPO` identity (fork/clone safety)**: `[ "${REPO:-}" = "character-ai/larch" ]` using the `REPO` value resolved in Step **5c** item **6** (same `owner/repo` the session used for `gh` on the design issue — avoids posting upstream noise when a different repository reuses issue **#2670**).
-3. Sentinel absent: `test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"`
-4. **Upstream argv pin (same shell snippet as `gh`)**: immediately before the `gh` invocation, assert `[ "$ISSUE_NUMBER" = "2670" ]` again and run **only** the `gh` line below so `--repo character-ai/larch` is always present (never rely on hub default / consumer `origin` for this cross-repo comment).
-
-Post with an **explicit upstream repo** (consumer checkout may not match the tracker default). The `--body-file` argument MUST be the committed file `skills/design/references/l3-velocity-deferral-comment.txt` — **never** assemble comment text from `plan.txt`, `composed-plan.md`, token reports, or other dynamic session material (secret exfiltration / instruction-injection risk on a public upstream issue).
-
-```bash
-if [ "$ISSUE_NUMBER" = "2670" ] && [ "${REPO:-}" = "character-ai/larch" ] && test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"; then
-  set +e
-  gh issue comment 2672 --repo character-ai/larch --body-file "${CLAUDE_PLUGIN_ROOT}/skills/design/references/l3-velocity-deferral-comment.txt" >"$DESIGN_TMPDIR/gh-l3-velocity-comment.log" 2>&1
-  _l3_rc=$?
-  set -e
-  if [ "$_l3_rc" -eq 0 ]; then
-    touch "$HOME/.cache/larch/design-l3-velocity-notified-2670"
-  else
-    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 5d" --tool "gh issue comment" --exit-code "$_l3_rc" --category Warnings --output-file "$DESIGN_TMPDIR/gh-l3-velocity-comment.log" --redact >/dev/null 2>&1 || true
-  fi
-fi
-```
-
-On successful `gh issue comment` (exit 0), the `touch` above creates the sentinel. On non-zero exit, `append-tool-failure.sh` records the capture (non-fatal) and **do not** create the sentinel.
 
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
@@ -1131,8 +1077,8 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.awk` — awk implementation loaded by `parse-plan-commands.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh` — gates `ACTION=VALIDATE_PLAN_COMMANDS` on `review_budget` (quick skips validator dispatch). When `$DESIGN_TMPDIR/run-params.json` is readable, invokes `read-design-review-budget.sh`; when it is missing or unreadable, skips validator dispatch (same as quick tier).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-review-budget.sh` — resolves `review_budget` (`quick`|`full`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — always dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. Sibling: `invoke-plan-validator.md`.
+- `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`.

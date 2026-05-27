@@ -6,9 +6,13 @@
 
 **When to load**: before executing Step 1e, Step 3.5, or Step 4b.
 
-**Binding convention**: single normative source for the three gate prompts, their per-tier behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
+**Binding convention**: single normative source for the three gate prompts, the severity-classification rubric used in Gate B, the per-tier review-round cap, and the loop semantics between A/B/C.
 
-**Cross-tier invariant**: the gates apply uniformly across `--trivial`, `--simple`, and `--hard`. In `--trivial` and `--simple`, Gate A short-circuits on the first prompt (one round of "ready for review?"); in `--hard`, Gate A may iterate. Gate B and Gate C apply identically in all three tiers — the only difference is the source of findings (Gate B reads `accepted-plan-findings.md` produced by either `plan-review.md` full panel or `plan-review-quick.md` self-review). The auto-apply default and the `--manual` opt-out apply uniformly across `--trivial`, `--simple`, and `--hard`. In `--trivial` the source of `accepted-plan-findings.md` is the quick self-review (`plan-review-quick.md`); in `--simple` and `--hard` it is the full 10-reviewer panel. Gate B's mode branch reads `manual_gate_b` identically in all three tiers.
+**Cross-tier invariant**: Gates apply uniformly across `--simple` and `--hard`. Gate B reads `accepted-plan-findings.md` produced by the full `plan-review.md` panel on both tiers. The auto-apply default and the `--manual` opt-out apply uniformly across both tiers. Gate B's mode branch reads `manual_gate_b` identically in both tiers.
+
+## Per-tier review-round cap
+
+Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-numeric as 0; log Warning if non-numeric) and `design_classification` via `read-design-classification.sh`. Cap: SIMPLE = 3, HARD = 5. When counter >= cap, the "Re-run review panel" option is omitted from the Gate C `AskUserQuestion`; only Approve / Discuss further remain. Step 3 also enforces the cap at every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits to Gate C with a `**⚠ Step 3: review-round cap reached**` breadcrumb when counter >= cap. SKILL.md Step 3 is the sole writer of the counter; `plan-review-loop.sh` is stateless w.r.t. the file. Gate A "Discuss more" loops remain uncapped.
 
 ---
 
@@ -38,11 +42,6 @@ Question text (both shapes): `"All open design questions appear discussed. Ready
 ### Discussion sub-round body
 
 When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with the **same Gate A shape as the prior prompt**: Shape 1 uses the same two-option `AskUserQuestion` (Ready for review / Discuss more); Shape 2 uses the same three-option `AskUserQuestion` (Show latest design proposal / Ready for review / Discuss more). Append resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` (or `discussion-round2.md` when re-entered post-review — see "Re-entry from Gate B/C" below) using the existing Q&A schema in `discussion-rounds.md`.
-
-**Per-tier behavior** (the prompt is always fired at least once before sketches/review; further iterations follow the user's **Discuss more** choice):
-- `--trivial`: after Step 1d's short-circuit (`⏩ 1d: discussion r1 — no scope decisions require discussion`) prints, the user typically picks **Ready for review** on the first prompt. The loop still accommodates **Discuss more** if the user wants to add context.
-- `--simple`: fire after Step 1d. Users typically pick **Ready for review** on the first prompt; the loop accommodates iteration without forcing it.
-- `--hard`: same prompt; users are more likely to iterate.
 
 ### Re-entry from Gate B(c) or Gate C(b)
 
@@ -128,7 +127,7 @@ After the chosen findings have been applied to `plan.txt` (either the full accep
 3. Rewrite `plan.txt` via the Write tool with duplicates removed.
 4. Print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran).
 5. Only after the breadcrumb proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
-6. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
+6. Immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
 7. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
 8. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
 

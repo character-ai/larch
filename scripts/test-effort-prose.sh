@@ -12,7 +12,6 @@ FILES=(
   skills/design/references/sketch-prompts.md
   skills/design/references/sketch-launch.md
   skills/design/references/plan-review.md
-  skills/design/references/plan-review-quick.md
   skills/design/references/dialectic-execution.md
   skills/design/references/dialectic-debate.md
   skills/implement/SKILL.md

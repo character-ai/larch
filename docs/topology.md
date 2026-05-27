@@ -8,9 +8,8 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 
 | Key | Value | Composition | Runtime Authority |
 |---|---:|---|---|
-| <a id="design.sketch.zero_slots"></a>`design.sketch.zero_slots` | 0 sketch agents | trivial doc-only sentinel path | `skills/design/references/sketch-launch.md` |
+| <a id="design.sketch.simple_slots"></a>`design.sketch.simple_slots` | 0 sketch agents | SIMPLE sentinel path | `skills/design/references/sketch-launch.md` |
 | <a id="design.sketch.regular_slots"></a>`design.sketch.regular_slots` | 4 regular | 2 Cursor + 2 Codex | `skills/design/references/sketch-launch.md` |
-| <a id="design.sketch.quick_slots"></a>`design.sketch.quick_slots` | 2 sketch agents | 1 Cursor-Generic + 1 Codex-Generic | `skills/design/references/flags.md` |
 | <a id="design.plan_review.cursor_archetypes"></a>`design.plan_review.cursor_archetypes` | 5 Cursor | Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.codex_archetypes"></a>`design.plan_review.codex_archetypes` | 5 Codex | Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 6 | scout proposes specialists fanned into Cursor+Codex dyn slots | `skills/design/references/plan-review.md` |
@@ -22,7 +21,6 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | test-decompose-panel-dispatch.sh | offline panel regression harness | `skills/design/scripts/test-decompose-panel-dispatch.sh` |
 | <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | test-decompose-aggregator.sh | offline aggregator merge harness | `skills/design/scripts/test-decompose-aggregator.sh` |
 | <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | test-decompose-file-issues.sh | offline prepare annotate close-original harness | `skills/design/scripts/test-decompose-file-issues.sh` |
-| <a id="design.plan_review.quick_mode"></a>`design.plan_review.quick_mode` | Claude-only | 1 Claude | `skills/design/references/plan-review-quick.md` |
 | <a id="design.plan.preview_emit"></a>`design.plan.preview_emit` | Step 3 plan-candidate preview | Gate C final-plan preview | `skills/design/scripts/emit-design-plan-preview.sh` |
 | <a id="design.plan_commands.validate"></a>`design.plan_commands.validate` | Tier2+opt-in Tier3 | plan fenced bash/sh | `skills/design/scripts/validate-plan.sh` |
 | <a id="design.dialectic.judge_panel"></a>`design.dialectic.judge_panel` | 3-judge | Claude Code Reviewer subagent + Codex + Cursor | `skills/shared/dialectic-protocol.md` |

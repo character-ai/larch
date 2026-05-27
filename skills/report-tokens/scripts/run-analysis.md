@@ -33,7 +33,7 @@ The scan uses:
 - `git -C "$(pwd)" rev-parse --show-toplevel` to locate the repository root.
 - `larch-logs/implement/*/manifest.json` — provides `issue_number`, `updated_at`, `started_at` per run.
 - `larch-logs/implement/*/token-report.json` — structured token data; runs without it are skipped.
-- `larch-logs/implement/*/timing-report.json` — preferred workflow path source via `.workflow_path`.
+- `larch-logs/implement/*/timing-report.json` — preferred workflow path source via `.workflow_path`; design v2 reports may fall back to `.design_classification`.
 - `larch-logs/implement/*/plan-review-tally.json` — fallback workflow-path source via `.body // .tally`; starts with `"Quick mode"` or `"Both externals unavailable"` → `SIMPLE`; non-empty other value → `HARD`; absent or unrecognized → `unknown`.
 
 `gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the `[Analysis Report]` issue (active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.
@@ -42,7 +42,7 @@ The scan uses:
 
 - Token data is read directly from `token-report.json` files and converted to the existing cost totals without markdown parsing.
 - `--plot-from <N>` paths still parse legacy markdown out of tracking-issue bodies fetched from GitHub: the `latest_token_block` fallback (`if "### Claude" in text or "**Grand total**" in text: return text`) handles those, and `parse_report` accepts both the current six-cell Claude `**Grand total**` table shape (`Step`, `Skill`, input, cache read, cache create, output) and the legacy four-cell shape (`Step`, `Skill`, input, output).
-- `workflow_path` is stored directly in the cache for structured logs.
+- `workflow_path` is stored directly in the cache for structured logs; when absent, `design_classification` is accepted as the tier label fallback.
 - Run-level JSON is cached under a fresh `${TMPDIR:-/tmp}/larch-report-tokens.*` directory. The cache file is written via a temporary file and `mv`.
 
 ## Outputs

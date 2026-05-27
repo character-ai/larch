@@ -1,17 +1,15 @@
-# scripts/test-write-run-params.sh - contract
+# test-write-run-params.sh
 
-`scripts/test-write-run-params.sh` regression-tests `scripts/write-run-params.sh`, the shared writer for `/design` `run-params.json`.
+Regression harness for v2 `/design` `run-params.json`.
 
-## Coverage
+Coverage:
 
-- Valid schema write with JSON escaping for quotes, newlines, and shell-shaped prose.
-- Rejection of invalid `design_classification` and `sketch_budget` values.
-- Rejection of relative `--output` paths.
-- Rejection of invalid `--partition-requested` / `--brainstorm-requested` / `--manual-gate-b` enum tokens.
-- Representation of the `--full` + `--quick` budget combination (`sketch_budget=4`, `review_budget=quick`).
-- Representation of the `TRIVIAL_DOC_ONLY` zero-sketch path (asserts `partition_requested`, `brainstorm_requested`, and `manual_gate_b` default false).
+- Valid `SIMPLE` and `HARD` writes with schema version 2.
+- Rejection of invalid `design_classification`, including `TRIVIAL_DOC_ONLY`.
+- Rejection of relative output paths.
+- Validation of `--partition-requested`, `--brainstorm-requested`, and `--manual-gate-b`.
 - Explicit `--manual-gate-b true` and `--manual-gate-b false` persistence.
-- Triple-flag persistence: `--partition-requested true` plus `--brainstorm-requested true` plus `--manual-gate-b true` (FINDING_15 recovery-path coverage).
+- Triple-flag persistence: `--partition-requested true` plus `--brainstorm-requested true` plus `--manual-gate-b true`.
 
 ## Callers
 
