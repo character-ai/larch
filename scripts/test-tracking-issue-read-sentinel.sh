@@ -149,18 +149,17 @@ run_issue_read_with_stub() {
         # shellcheck disable=SC2016  # \n is JSON-literal backslash-n, not shell escape
         body_json='{"id":101,"body":"<!-- larch:diagrams v1 -->\n## Code Flow Diagram\n\n```mermaid\ngraph TD\n  A --> B\n```"}'
     fi
+    local escaped_body_json="$body_json"
     cat > "$stub_dir/gh" <<GHSTUB
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${1:-}" == "api" && "${2:-}" == "/repos/owner/repo/issues/7" ]]; then
+if [[ "\${1:-}" == "api" && "\${2:-}" == "/repos/owner/repo/issues/7" ]]; then
     printf 'Issue body\n'
     exit 0
 fi
-if [[ "${1:-}" == "api" && "${2:-}" == "/repos/owner/repo/issues/7/comments" ]]; then
-    cat <<'EOF'
-$body_json
-{"id":102,"body":"operator comment"}
-EOF
+if [[ "\${1:-}" == "api" && "\${2:-}" == "/repos/owner/repo/issues/7/comments" ]]; then
+    printf '%s\n' '$escaped_body_json'
+    printf '%s\n' '{"id":102,"body":"operator comment"}'
     exit 0
 fi
 exit 1
