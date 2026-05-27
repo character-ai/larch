@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `22cf10bc` (Bump version to 45.1.13 (#3075))
-- **Current version**: `45.1.13`
+- **Base commit**: `8b9a0d7a` (Fixes #2870: Add standalone design plan revision waterfall (#3079))
+- **Current version**: `45.1.15`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.1.14`
+- **New version**: `45.1.16`
 
 ### PATCH rationale
 
