@@ -7,6 +7,7 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD || true
+unset LARCH_BREADCRUMB_STREAM LARCH_BREADCRUMBS_SURFACED_FILE || true
 SCRIPT="$REPO_ROOT/skills/review/scripts/review-core.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-core.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -255,6 +256,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$review_tmpdir"
+printf 'dispatch-voters\n' >> "$review_tmpdir/dispatch-voters.log"
 if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
   printf 'voters\n' >> "$review_tmpdir/invoke-order.log"
 fi
@@ -351,6 +353,24 @@ if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
 fi
 : > "${findings:?}"
 printf 'AGGREGATED=true\nINPUT_COUNT=2\nMERGED_COUNT=0\nREASON=ok\n'
+STUB
+cat > "$TMP/aggregate-zero-success-missing-count-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+findings=""
+review_tmpdir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --findings-file) findings="$2"; shift 2 ;;
+    --review-tmpdir) review_tmpdir="$2"; shift 2 ;;
+    *) shift 2 ;;
+  esac
+done
+if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
+  printf 'aggregate\n' >> "${review_tmpdir:?}/invoke-order.log"
+fi
+: > "${findings:?}"
+printf 'AGGREGATED=true\nINPUT_COUNT=2\nREASON=ok\n'
 STUB
     chmod +x "$TMP"/*.sh
 }
@@ -489,10 +509,13 @@ assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'PANEL_MODE=both-down'
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 REVIEW_CORE_AGGREGATE_FINDINGS_SH="$TMP/aggregate-zero-success-stub.sh" run_core "$TMP/agg-zero")
-assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
-assert_contains "$out" 'VOTER_1_STATUS=launched'
-assert_contains "$out" 'VOTER_2_STATUS=launched'
-assert_contains "$out" 'VOTER_3_STATUS=launched'
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+if grep -Fq 'VOTER_' <<< "$out"; then
+    echo "FAIL: agg-zero should not emit voter status lines" >&2
+    echo "$out" >&2
+    exit 1
+fi
+[[ ! -e "$TMP/agg-zero/dispatch-voters.log" ]] || { echo "FAIL: agg-zero should not dispatch voters" >&2; exit 1; }
 assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero/findings-classification-round-1.tsv"
 read -r agg_zero_classification_header < "$TMP/agg-zero/findings-classification-round-1.tsv"
 [[ "$agg_zero_classification_header" == $'finding_id\treviewer_slots\tvoting_result' ]] || { echo "FAIL: agg-zero classification TSV should be header-only" >&2; exit 1; }
@@ -501,6 +524,20 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero/findings-classi
     exit 1
 }
 [[ ! -s "$TMP/agg-zero/accepted-findings.md" ]] || { echo "FAIL: agg-zero accepted-findings.md should remain empty" >&2; exit 1; }
+[[ -f "$TMP/agg-zero/voting-tally.md" ]] || { echo "FAIL: agg-zero missing voting-tally.md" >&2; exit 1; }
+
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 REVIEW_CORE_AGGREGATE_FINDINGS_SH="$TMP/aggregate-zero-success-missing-count-stub.sh" run_core "$TMP/agg-zero-missing-count")
+assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
+if grep -Fq 'REVIEW_CORE_STATUS=zero-findings' <<< "$out"; then
+    echo "FAIL: agg-zero-missing-count should not degrade to zero-findings when MERGED_COUNT is absent" >&2
+    exit 1
+fi
+[[ -f "$TMP/agg-zero-missing-count/dispatch-voters.log" ]] || { echo "FAIL: agg-zero-missing-count should dispatch voters" >&2; exit 1; }
+assert_contains "$out" "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero-missing-count/findings-classification-round-1.tsv"
+grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/agg-zero-missing-count/findings-classification-round-1.tsv" "$TMP/agg-zero-missing-count/findings-classification-round-map.env" || {
+    echo "FAIL: agg-zero-missing-count round map missing round-1 binding" >&2
+    exit 1
+}
 
 set +e
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_THRESHOLD_OK=false TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=2 run_core "$TMP/panel-failed")

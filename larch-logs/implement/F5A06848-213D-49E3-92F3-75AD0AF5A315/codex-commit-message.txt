@@ -1,0 +1,3 @@
+Skip review voters after empty aggregate merge
+
+Reuse the zero-findings tally and emit path when aggregate-findings reports REASON=ok with MERGED_COUNT=0, so review-core does not launch voters for an attestation-only empty merge. Strengthen the plan-review fallback_group harness and update review-core artifact documentation for phase-suffixed aggregator outputs.

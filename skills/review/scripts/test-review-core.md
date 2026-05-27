@@ -5,6 +5,8 @@ Regression harness skeleton for `skills/review/scripts/review-core.sh`.
 The harness stubs the one-round helper scripts through `REVIEW_CORE_*_SH` environment-variable seams, so it does not launch real reviewers. It covers:
 
 - zero-findings exit
+- aggregate-success zero-findings exit, including the voter-skip artifact path
+- aggregate-success with missing `MERGED_COUNT` staying on the voter path instead of degrading to zero-findings
 - all-findings-rejected convergence exit
 - diff-mode `fix-required` signal
 - both-down `PANEL_MODE` preservation

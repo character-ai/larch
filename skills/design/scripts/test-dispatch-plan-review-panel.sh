@@ -87,6 +87,11 @@ for archetype in arch edge innovation pragmatic requirements; do
     expected="plan-${archetype}"
     got_count=$(jq -r --arg fg "$expected" 'select(.fallback_group == $fg) | .slot' "$D1/plan-review-slots.ndjson" | wc -l | tr -d ' ')
     [[ "$got_count" == "2" ]] || fail "expected static fallback_group $expected on two rows, got $got_count"
+    jq -s -e --arg a "$archetype" --arg fg "$expected" '
+        [.[] | select(.slot == ("cursor-plan-" + $a) or .slot == ("codex-plan-" + $a))]
+        | length == 2 and all(.[]; .fallback_group == $fg)
+    ' "$D1/plan-review-slots.ndjson" >/dev/null \
+        || fail "static fallback_group pairing mismatch for $archetype"
 done
 
 echo "=== two dynamic archetypes => 14 slots ==="
@@ -120,13 +125,11 @@ jq -s -e 'all(.[]; .fallback_group != null)' "$D2/plan-review-slots.ndjson" >/de
     || fail "every static+dynamic plan-review row must include fallback_group"
 for slug in alpha beta; do
     expected="plan-dyn-${slug}"
-    got_count=$(jq -r --arg fg "$expected" 'select(.fallback_group == $fg) | .slot' "$D2/plan-review-slots.ndjson" | wc -l | tr -d ' ')
-    [[ "$got_count" == "2" ]] || fail "expected dynamic fallback_group $expected on two rows, got $got_count"
-    jq -e --arg s "$slug" --arg fg "$expected" '
-        select(.slot == ("dyn-cursor-plan-" + $s) or .slot == ("dyn-codex-plan-" + $s))
-        | .fallback_group == $fg
+    jq -s -e --arg s "$slug" --arg fg "$expected" '
+        [.[] | select(.slot == ("dyn-cursor-plan-" + $s) or .slot == ("dyn-codex-plan-" + $s))]
+        | length == 2 and all(.[]; .fallback_group == $fg)
     ' "$D2/plan-review-slots.ndjson" >/dev/null \
-        || fail "dynamic fallback_group mismatch for $slug"
+        || fail "dynamic fallback_group pairing mismatch for $slug"
 done
 
 echo "=== prompts must not demand **Reviewer** attribution line ==="

@@ -213,6 +213,75 @@ flush_round_log() {
     fi
 }
 
+emit_zero_findings_branch() {
+    local zero_findings_tally_out="$REVIEW_TMPDIR/review-core-zero-findings-tally.env"
+    local zero_findings_voter="$REVIEW_TMPDIR/zero-findings-voter.txt"
+    local zero_emit_out="$REVIEW_TMPDIR/review-core-zero-findings-emit.env"
+    local zero_voting_tally_file=""
+    local zero_findings_classification_tsv_file=""
+    local zero_tally_file=""
+    local zero_accepted_file=""
+    local zero_tally_args=()
+    local zero_emit_args=()
+
+    : > "$zero_findings_voter"
+    zero_tally_args=(
+        --ballot-file "$REVIEW_TMPDIR/findings.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --cursor-available "$CURSOR_AVAILABLE"
+        --codex-available "$CODEX_AVAILABLE"
+        --round-num "$ROUND_NUM"
+        --voter-files "$zero_findings_voter"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && zero_tally_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && zero_tally_args+=(--manifest-file "$panel_manifest")
+    [[ -f "$collector_results_file" ]] && zero_tally_args+=(--collector-results-file "$collector_results_file")
+    [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")
+    "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
+    zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
+    zero_findings_classification_tsv_file=$(kv_get "$zero_findings_tally_out" FINDINGS_CLASSIFICATION_TSV_FILE)
+    record_findings_classification_round "$zero_findings_classification_tsv_file"
+    zero_tally_file=$(kv_get "$zero_findings_tally_out" TALLY_FILE)
+    zero_accepted_file=$(kv_get "$zero_findings_tally_out" ACCEPTED_FINDINGS_FILE)
+    zero_tally_file="${zero_tally_file:-$REVIEW_TMPDIR/review-tally.env}"
+    zero_accepted_file="${zero_accepted_file:-$REVIEW_TMPDIR/accepted-findings.md}"
+
+    : > "$REVIEW_TMPDIR/accepted-findings.md"
+    : > "$REVIEW_TMPDIR/rejected-findings.md"
+    : > "$REVIEW_TMPDIR/oos-accepted-review.md"
+    zero_emit_args=(
+        --tally-file "$zero_tally_file"
+        --accepted-findings-file "$zero_accepted_file"
+        --oos-file "$REVIEW_TMPDIR/oos.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --round "$ROUND_NUM"
+        --mode "$MODE"
+        --scout-status "$scout_status"
+        --dynamic-slots "$dynamic_slots"
+        --static-slot-count "$static_slot_count"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && zero_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && zero_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+    if emit_tally_with_failure_isolation "5" "zero-findings" "$zero_emit_out" "${zero_emit_args[@]}"; then
+        copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
+        copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    fi
+    flush_round_log
+    emit_kv REVIEW_CORE_STATUS zero-findings
+    emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv ACCEPTED_COUNT 0
+    emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
+    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
+    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
+    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
+    emit_kv PANEL_MODE "$panel_mode"
+    emit_kv PANEL_SHAPE "$panel_shape"
+    [[ -n "$zero_voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$zero_voting_tally_file"
+}
+
 join_comma() {
     local IFS=,
     printf '%s' "$*"
@@ -451,65 +520,7 @@ fi
 findings_count=$(kv_get "$collect_out" FINDINGS_COUNT)
 findings_count="${findings_count:-0}"
 if [[ "$findings_count" == "0" ]]; then
-    zero_findings_tally_out="$REVIEW_TMPDIR/review-core-zero-findings-tally.env"
-    zero_findings_voter="$REVIEW_TMPDIR/zero-findings-voter.txt"
-    zero_emit_out="$REVIEW_TMPDIR/review-core-zero-findings-emit.env"
-    : > "$zero_findings_voter"
-    zero_tally_args=(
-        --ballot-file "$REVIEW_TMPDIR/findings.md"
-        --review-tmpdir "$REVIEW_TMPDIR"
-        --cursor-available "$CURSOR_AVAILABLE"
-        --codex-available "$CODEX_AVAILABLE"
-        --round-num "$ROUND_NUM"
-        --voter-files "$zero_findings_voter"
-    )
-    [[ -n "$SESSION_ENV_PATH" ]] && zero_tally_args+=(--session-env-path "$SESSION_ENV_PATH")
-    [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && zero_tally_args+=(--manifest-file "$panel_manifest")
-    [[ -f "$collector_results_file" ]] && zero_tally_args+=(--collector-results-file "$collector_results_file")
-    [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")
-    "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
-    zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
-    zero_findings_classification_tsv_file=$(kv_get "$zero_findings_tally_out" FINDINGS_CLASSIFICATION_TSV_FILE)
-    record_findings_classification_round "$zero_findings_classification_tsv_file"
-    zero_tally_file=$(kv_get "$zero_findings_tally_out" TALLY_FILE)
-    zero_accepted_file=$(kv_get "$zero_findings_tally_out" ACCEPTED_FINDINGS_FILE)
-    zero_tally_file="${zero_tally_file:-$REVIEW_TMPDIR/review-tally.env}"
-    zero_accepted_file="${zero_accepted_file:-$REVIEW_TMPDIR/accepted-findings.md}"
-
-    : > "$REVIEW_TMPDIR/accepted-findings.md"
-    : > "$REVIEW_TMPDIR/rejected-findings.md"
-    : > "$REVIEW_TMPDIR/oos-accepted-review.md"
-    zero_emit_args=(
-        --tally-file "$zero_tally_file"
-        --accepted-findings-file "$zero_accepted_file"
-        --oos-file "$REVIEW_TMPDIR/oos.md"
-        --review-tmpdir "$REVIEW_TMPDIR"
-        --round "$ROUND_NUM"
-        --mode "$MODE"
-        --scout-status "$scout_status"
-        --dynamic-slots "$dynamic_slots"
-        --static-slot-count "$static_slot_count"
-    )
-    [[ -n "$SESSION_ENV_PATH" ]] && zero_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
-    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && zero_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
-    if emit_tally_with_failure_isolation "5" "zero-findings" "$zero_emit_out" "${zero_emit_args[@]}"; then
-        copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
-        copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
-    fi
-    flush_round_log
-    emit_kv REVIEW_CORE_STATUS zero-findings
-    emit_kv ROUND_NUM "$ROUND_NUM"
-    emit_kv ACCEPTED_COUNT 0
-    emit_kv REJECTED_COUNT 0
-    emit_kv EXONERATED_COUNT 0
-    emit_kv NEUTRAL_COUNT 0
-    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
-    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
-    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
-    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
-    emit_kv PANEL_MODE "$panel_mode"
-    emit_kv PANEL_SHAPE "$panel_shape"
-    [[ -n "$zero_voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$zero_voting_tally_file"
+    emit_zero_findings_branch
     exit 0
 fi
 
@@ -593,6 +604,12 @@ if [[ "$aggregate_reason" == "validation-exhausted" ]]; then
     emit_kv THRESHOLD_REASON aggregation-validation-exhausted
     [[ -n "$agg_exhaust_classification_tsv_file" ]] && emit_kv FINDINGS_CLASSIFICATION_TSV_FILE "$agg_exhaust_classification_tsv_file"
     exit 2
+fi
+
+aggregate_merged_count_raw=$(kv_get "$aggregate_out" MERGED_COUNT)
+if [[ "$aggregate_reason" == "ok" && "$aggregate_merged_count_raw" == "0" ]]; then
+    emit_zero_findings_branch
+    exit 0
 fi
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"

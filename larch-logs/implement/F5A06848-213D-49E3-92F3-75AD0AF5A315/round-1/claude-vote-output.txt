@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- test is slightly broad but a nit; adding specific VOTER_ KV assertions adds complexity without meaningful benefit
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is an observation about reviewer output format, not a behavioral code concern in the diff
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit-level doc gap in harness contract doc; minimal operator impact
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly accepts this design; aggregate env is process-generated in tmp dir, not externally injectable
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly accepted this trade-off as consistent with aggregator contract
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- pre-existing trust-boundary issue not meaningfully amplified by one additional code path using the same override mechanism
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- describes unchanged behavior; optimization opportunity not taken is not a regression
