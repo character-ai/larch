@@ -136,23 +136,34 @@ run_capture "$SANDBOX/case7-policy.out" "$SCRIPT" retry-policy --class same-caus
 assert_eq same-cause-repeat "$(kv FAILURE_CLASS "$SANDBOX/case7-policy.out")" "7: retry-policy echoes class"
 assert_eq 1 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy.out")" "7: retry-policy same-cause cap"
 assert_eq none "$(kv RETRY_DELAY "$SANDBOX/case7-policy.out")" "7: retry-policy same-cause delay"
+run_capture "$SANDBOX/case7-policy-transient.out" "$SCRIPT" retry-policy --class transient-infra
+assert_eq 4 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy-transient.out")" "7: retry-policy transient cap"
+assert_eq "sleep-seconds.sh 5" "$(kv RETRY_DELAY "$SANDBOX/case7-policy-transient.out")" "7: retry-policy transient delay"
+run_capture "$SANDBOX/case7-policy-terminal.out" "$SCRIPT" retry-policy --class unrecoverable
+assert_eq 0 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy-terminal.out")" "7: retry-policy unrecoverable cap"
 
-dir=$(make_tmp case8)
+dir=$(make_tmp case8a)
+run_capture "$SANDBOX/case8a.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq 0 "$RC" "8: missing ship state exits 0"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case8a.out")" "8: no-signal missing ship state is unrecoverable"
+assert_eq false "$(kv STALL_TRACKING "$SANDBOX/case8a.out")" "8: no-signal missing ship state stays non-stalled"
+
+dir=$(make_tmp case8b)
 cat >"$dir/session-env.sh" <<'EOF'
 STALL_TRACKING=true
 STALL_STEP=8
 PHASE=ci-initial
 IMPLEMENT_BAIL_REASON=api rate limit
 EOF
-run_capture "$SANDBOX/case8.out" "$SCRIPT" classify --implement-tmpdir "$dir"
-assert_eq 0 "$RC" "8: missing ship state exits 0"
-assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case8.out")" "8: session env stall still classifies"
-assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case8.out")" "8: session env stall tracking wins when state missing"
-dir=$(make_tmp case8b)
-printf 'STALL_TRACKING=true\n' >"$dir/session-env.sh"
 run_capture "$SANDBOX/case8b.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq 0 "$RC" "8: session-env-only missing ship state exits 0"
+assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case8b.out")" "8: session env stall still classifies"
+assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case8b.out")" "8: session env stall tracking wins when state missing"
+dir=$(make_tmp case8c)
+printf 'STALL_TRACKING=true\n' >"$dir/session-env.sh"
+run_capture "$SANDBOX/case8c.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "8: missing ship state with no evidence exits 0"
-assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case8b.out")" "8: missing ship state without recoverable evidence is unrecoverable"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case8c.out")" "8: missing ship state without recoverable evidence is unrecoverable"
 
 dir=$(make_tmp case9)
 write_state "$dir" 8 ci-initial
@@ -222,6 +233,9 @@ EOF
 "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/class.env" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
 "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$(kv BODY_FILE "$dir/body.out")" >"$dir/input.out"
 assert_not_contains "SENTINEL_SECRET_13" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")" "$(kv INPUT_FILE "$dir/input.out")")" "13: public outputs omit raw sentinels"
+assert_not_contains "SENTINEL_SECRET_13" "$(cat "$(kv BODY_FILE "$dir/body.out")")" "13: chat-print payload omits raw sentinels"
+assert_eq "" "$(kv BAIL_REASON "$SANDBOX/case5a.out")" "13: empty bail reason stays single-line empty"
+assert_not_contains "BAIL_REASON=redacted" "$(cat "$SANDBOX/case5a.out")" "13: empty bail reason does not fall through to redacted"
 
 dir=$(make_tmp case13b)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
@@ -360,6 +374,11 @@ EOF
 run_capture "$SANDBOX/case19b.out" "$SCRIPT" classify --implement-tmpdir "$dir" --in-memory-stall-tracking true
 assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case19b.out")" "19: in-memory true overrides disk false"
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case19b.out")" "19: emitted stall tracking preserves in-memory true"
+STALL_TRACKING=true
+case "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" in
+    false) STALL_TRACKING=false ;;
+esac
+assert_eq false "$STALL_TRACKING" "19: in-memory clear happens only after false-on-disk is durable"
 
 dir=$(make_tmp case20a)
 write_state "$dir" 12d ci-merge "" "NOTE=network/auth issue"
@@ -412,6 +431,12 @@ write_state "$dir" 8 ci-initial
 printf 'authentication failed for profile default\n' >"$dir/failure.log"
 run_capture "$SANDBOX/case20g.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20g.out")" "20: standalone auth failure is unrecoverable"
+
+dir=$(make_tmp case20h)
+write_state "$dir" 8 ci-initial "" "NOTE=api rate limit from stale state"
+printf 'build finished without retry markers\n' >"$dir/failure.log"
+run_capture "$SANDBOX/case20h.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20h.out")" "20: stale state note does not override clean failure-detail log"
 
 run_capture "$SANDBOX/case21-badargv.out" "$SCRIPT" unknown-subcommand
 assert_eq 1 "$RC" "21: bad argv exits 1"

@@ -281,7 +281,7 @@ latest_attempt_signature() {
 
 cmd_classify() {
     local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file=""
-    local state_file session_env evidence=""
+    local state_file session_env evidence="" detail_log_valid=false
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
     local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
     local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig
@@ -334,12 +334,14 @@ cmd_classify() {
     if [ -n "$detail_log" ]; then
         if validate_failure_detail_log "$tmpdir" "$detail_log"; then
             evidence=$(cat "$detail_log")
+            detail_log_valid=true
         fi
-    elif [ -r "$state_file" ]; then
+    fi
+    if [ "$detail_log_valid" != true ] && [ -r "$state_file" ]; then
         evidence="$evidence
 $(cat "$state_file")"
     fi
-    if [ -z "$evidence" ] && [ -r "$session_env" ]; then
+    if [ "$detail_log_valid" != true ] && [ -r "$session_env" ]; then
         evidence="$evidence
 $(cat "$session_env")"
     fi
