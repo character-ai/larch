@@ -1,0 +1,277 @@
+## Plan
+
+# Implementation Plan — issue #3013
+
+PR ship/merge/lint-fix-loop follow-ups consolidating items A (ship-pr.sh non-fixable bail), B (postmerge-comment path drift), C1 (SECURITY.md doc), C2 (lint-fix-loop detached-HEAD harness narrowed), D1 (merge-pr post-force-push BEHIND re-check), D2 (named retry constants), D3 (merge-pr __EMPTY__ recovery harness + post-force-push UNKNOWN→BEHIND regression).
+
+## Files to modify/create
+
+### UPDATED: `scripts/ship-pr.sh`
+
+**Item A — `_verify_failed_jobs_locally` non-fixable bail (lines 1985-1996)**
+
+Replace the single guard line:
+
+```bash
+[[ "$class" == "fixable" ]] || continue
+if _per_job_argv "$job_name" "$shard"; then
+    fixable_jobs+=("$job_name")
+    fixable_shards+=("$shard")
+else
+    unfixable+=("$job_token")
+fi
+```
+
+with the case-pattern from `run_per_job_local_fix_loop` at lines 2089-2099:
+
+```bash
+case "$class" in
+    fixable)
+        if _per_job_argv "$job_name" "$shard"; then
+            fixable_jobs+=("$job_name")
+            fixable_shards+=("$shard")
+        else
+            unfixable+=("$job_token")
+        fi
+        ;;
+    *)
+        unfixable+=("$job_token")
+        ;;
+esac
+```
+
+Keep the `[[ -n "$job_name" ]] || continue` blank-row guard at line 1988 ahead of the new `case` block (matches the order in `run_per_job_local_fix_loop` at line 2086-2087).
+
+The existing tail handler at lines 2058-2069 already iterates `unfixable[]`, writes `$IMPLEMENT_TMPDIR/ci-local-unfixable-${phase}-verify.txt`, calls `state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"`, and `exit 3`. No new code path needed once `unfixable[]` is populated by non-fixable rows.
+
+**Item B — postmerge comment path drift (lines 3169-3171 and 3231-3233)**
+
+Update two comment blocks to accurately describe the file paths.
+
+At line 3169-3171 (current text):
+> `# manifest and final-summary.md are updated in place; no post-merge git`
+
+Change to:
+> `# manifest and tmpdir summary-final.md are updated in place (run-log mirror at final-summary.md when not --comment-only); no post-merge git`
+
+At line 3231-3233 (current text):
+> `# Re-render final-summary.md under $IMPLEMENT_TMPDIR now that MERGE_RESULT is set`
+> `# in state, so tmpdir final-summary.md / report output aligns with merged OUTCOME`
+
+Change to:
+> `# Re-render summary-final.md under $IMPLEMENT_TMPDIR now that MERGE_RESULT is set`
+> `# in state, so tmpdir summary-final.md / run-log final-summary.md mirror align with merged OUTCOME`
+
+Comment-text-only change per Step 1c clarification. No behavior change, no caller update.
+
+### UPDATED: `scripts/merge-pr.sh`
+
+**Item D2 — Named retry constants**
+
+After the EXIT trap setup and before `refresh_pr_info()` (around line 78), add:
+
+```bash
+# UNKNOWN/empty-state retry budgets for mergeStateStatus. Asymmetric on purpose:
+# the initial probe runs against a cold cache and needs more propagation tolerance,
+# while post-force-push runs immediately after a known recent write so 3 retries
+# suffice for transient propagation delay (#2342). Update call sites together.
+MERGE_PR_INITIAL_UNKNOWN_RETRIES=4
+MERGE_PR_POST_PUSH_UNKNOWN_RETRIES=3
+```
+
+Update line 149 from `retry_pr_info_unknown_recovery 4` to `retry_pr_info_unknown_recovery "$MERGE_PR_INITIAL_UNKNOWN_RETRIES"`.
+
+Update line 244 from `retry_pr_info_unknown_recovery 3` to `retry_pr_info_unknown_recovery "$MERGE_PR_POST_PUSH_UNKNOWN_RETRIES"`.
+
+Update error messages to interpolate the constant value. Line 160:
+
+`ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid (state=\"$MERGE_STATE\") after ${MERGE_PR_INITIAL_UNKNOWN_RETRIES} retries"`
+
+Line 248:
+
+`ERROR="mergeStateStatus still UNKNOWN after ${MERGE_PR_POST_PUSH_UNKNOWN_RETRIES} retries post-force-push (state=\"$MERGE_STATE\")"`
+
+**Confirm string-byte equivalence**: `MERGE_PR_INITIAL_UNKNOWN_RETRIES=4` interpolates to the literal string `"4"`, so existing G1/G2 assertions in `scripts/test-merge-pr.sh` matching `"after 4 retries"` continue to pass.
+
+**Item D1 — Post-force-push BEHIND re-check (between existing retry guard and UNKNOWN error)**
+
+**Insert ONE new code block — the BEHIND check — between the existing retry guard at line 244 and the existing UNKNOWN error block at line 246-250. Do NOT add a second `retry_pr_info_unknown_recovery` call. The existing retry call (now using `$MERGE_PR_POST_PUSH_UNKNOWN_RETRIES`) is unchanged in count and structure; only the BEHIND short-circuit is new.**
+
+The final structure of lines 244-251 after both D1 and D2 changes is:
+
+```bash
+        if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
+            retry_pr_info_unknown_recovery "$MERGE_PR_POST_PUSH_UNKNOWN_RETRIES"
+        fi
+        # NEW (D1): post-force-push BEHIND short-circuit mirroring pre-force-push line 243.
+        if [[ "$MERGE_STATE" == "BEHIND" ]]; then
+            MERGE_RESULT="main_advanced"
+            ERROR=""
+            exit 0
+        fi
+        if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
+            MERGE_RESULT="error"
+            ERROR="mergeStateStatus still UNKNOWN after ${MERGE_PR_POST_PUSH_UNKNOWN_RETRIES} retries post-force-push (state=\"$MERGE_STATE\")"
+            exit 0
+        fi
+```
+
+This catches the case where post-force-push UNKNOWN resolves to BEHIND (main advanced during force-push window). MERGE_RESULT contract unchanged — reuses existing `main_advanced` value. Net diff: 5 added lines (`# NEW (D1)` comment + 4-line `if` block); retry budget is still spent at most once per force-push recovery (insertion-point-conflict from FINDING_5 addressed).
+
+### UPDATED: `scripts/test-merge-pr.sh`
+
+**Item D3 — `__EMPTY__` recovery and post-force-push UNKNOWN→BEHIND test cases**
+
+Three new cases:
+
+1. **G5: `empty_state_recovers_clean`** — symmetric to existing G3 (`unknown_state_recovers_clean`) but with `GH_MERGE_STATE=__EMPTY__`. Validates the empty initial state can recover to CLEAN through the retry loop.
+2. **G6: `empty_state_recovers_behind`** — symmetric to existing G4 (`unknown_state_recovers_behind`) but with `GH_MERGE_STATE=__EMPTY__`. Validates the empty initial state can recover to BEHIND.
+3. **G7: `post_force_push_unknown_recovers_behind`** — NEW per FINDING_4. Covers D1's actual fixed path: triggers the force-push recovery branch (initial LOCAL_HEAD != PR_HEAD_OID via the flush-commit recovery shape), force-push completes, post-push refresh returns UNKNOWN, retry resolves to BEHIND. Asserts `MERGE_RESULT=main_advanced`, empty `ERROR=`, no merge commands invoked, and no second post-retry CI check (because BEHIND short-circuits before `refresh_ci_state` would run).
+
+For G5/G6, append after existing G4 case (line 420):
+
+```bash
+run_case "empty_state_recovers_clean" \
+    env GH_MERGE_STATE=__EMPTY__ STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=__EMPTY__ GH_VIEW_FLIP_AT_CALL=3 GH_VIEW_FLIP_MERGE_STATE=CLEAN GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "empty_state_recovers_clean" "MERGE_RESULT=admin_merged" "G5: empty resolving to CLEAN proceeds to admin merge"
+assert_command_count "empty_state_recovers_clean" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "3" "G5: pr view called 3x before CLEAN recovery"
+assert_command_count "empty_state_recovers_clean" "gh.log" "pr merge 123 --repo owner/repo --squash --admin" "1" "G5: admin merge runs after CLEAN recovery"
+
+run_case "empty_state_recovers_behind" \
+    env GH_MERGE_STATE=__EMPTY__ STUB_PR_HEAD_OID=aaaa1111 GH_VIEW_SECOND_HEAD_OID=aaaa1111 GH_VIEW_SECOND_MERGE_STATE=__EMPTY__ GH_VIEW_FLIP_AT_CALL=3 GH_VIEW_FLIP_MERGE_STATE=BEHIND GH_CHECKS_JSON='[{"name":"ci","bucket":"pending"}]' GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "empty_state_recovers_behind" "MERGE_RESULT=main_advanced" "G6: empty resolving to BEHIND emits main_advanced"
+assert_stdout_contains "empty_state_recovers_behind" "ERROR=" "G6: BEHIND recovery preserves empty ERROR"
+assert_no_merge_commands "empty_state_recovers_behind" "G6: BEHIND recovery skips merge commands"
+assert_command_count "empty_state_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "3" "G6: pr view called 3x before BEHIND recovery"
+```
+
+For G7, the force-push recovery branch requires more complex stub setup. **Probe before writing**: inspect the existing test-merge-pr.sh stub harness (search for `STUB_FORCE_PUSH_RESULT`, `STUB_FLUSH_AHEAD_OUTPUT`, `git-force-push.sh` mocking) to determine the right env-vars to drive the force-push branch at `merge-pr.sh:218-220`. If the harness already supports force-push simulation (likely from existing flush-commit recovery testing), write G7 using the same env-vars. If not, the implementer scopes G7 as a stub-helper extension OR documents the gap in `scripts/test-merge-pr.md` and recommends manual integration coverage instead. Either resolution closes FINDING_4; choose the cheaper one after inspection.
+
+### UPDATED: `scripts/test-ship-pr.sh` (or a sourced helper / new test file)
+
+**Item A — vendor-path coverage for `_verify_failed_jobs_locally` (FINDING_3)**
+
+Add a small fixture that:
+
+1. Sources `scripts/ship-pr.sh` (or evaluates the `_verify_failed_jobs_locally` function in a sub-shell with mocked dependencies).
+2. Provides a `failed_jobs_tsv` file containing at least one row with `class != fixable` (e.g., `class=no-local-equivalent` or `class=external-only`).
+3. Stubs `_per_job_argv` and the `state_set_many` helper so the function reaches the `unfixable[]` bail path.
+4. Asserts the function exits **3** and that `BAIL_REASON=ci-local-unfixable:<sanitized-job-token>` was set with the matching `BAIL_FAILURE_DETAIL_LOG` path.
+
+If sourcing `ship-pr.sh` is impractical due to its top-level execution side-effects, add an end-to-end test that invokes ship-pr through a controlled stub harness (similar to test-ship-pr-fix-loop-2632.inc.sh) and exercises the verifier path. Verify `make test-ship-pr` passes the new case.
+
+If neither approach is feasible without significant harness expansion, the implementer documents the gap in `scripts/ship-pr.md` and adds a TODO note pointing at the missing coverage. **Whatever path is chosen, do NOT claim existing test coverage suffices** — that claim was the original FINDING_3 defect.
+
+### UPDATED: `scripts/test-lint-fix-loop.sh`
+
+**Item C2 — Narrow scope per FINDING_2**
+
+The existing harness cases 1c/1d/1d5/1d6/1e all already assert `LINT_FIX_STATUS=failed` + `FAILURE_REASON=head-changed-after-dispatch` for the major defensive branches (detached HEAD, branch switch, history rewrite, merge commit, dirty baseline). **Do not duplicate them.**
+
+**Before adding any new fixture, probe the existing harness**: read all 1c-1e case bodies and identify whether the `current_parent != baseline_head` branch (with `baseline_head` as ancestor of `current_head`, no second parent, on the same branch) is already exercised. If yes, Item C2 is **closed by reuse** — no new fixture needed.
+
+If no existing case covers same-branch two-commit parent-mismatch (where baseline is ancestor, no merge), add **one** new fixture (e.g., `case1f`) that:
+
+1. Sets up a baseline commit on `main`.
+2. Has the simulated fixer make two sequential commits on the same branch, advancing HEAD by two commits.
+3. Runs lint-fix-loop.sh.
+4. Asserts `LINT_FIX_STATUS=failed` and `FAILURE_REASON=head-changed-after-dispatch` (because `current_parent != baseline_head`).
+5. No `LINT_FIX_DELTA_PATHS_FILE` export.
+
+Do not add separate fixtures for detached HEAD, sibling-branch, merge-commit, or non-ancestor cases — they are either already covered (1c-1e) or would fail at the branch-name guard before exercising the intended branch.
+
+### UPDATED: `SECURITY.md`
+
+**Item C1 — Defensive-branch invariant clarification per FINDING_1**
+
+In the existing `lint-fix-loop.sh coder-owned commits` paragraph (currently at line 204), append one clarifying sentence. **The reset-to-baseline claim is wrong** — `fail_status` emits the status/reason and exits without calling `reset_head_to_baseline` for these branches. Suggested text:
+
+> "The post-dispatch HEAD-validation branches — detached HEAD, non-ancestor baseline, merge-commit advancement, branch switch, and dirty-baseline HEAD movement — remain fail-closed: `LINT_FIX_STATUS=failed` is emitted with `FAILURE_REASON=head-changed-after-dispatch` and no coder-owned commit is accepted; the loop does not reset the working tree to `baseline_head` in these branches (only forbidden-path violations trigger an explicit reset)."
+
+This addresses the AGENTS.md requirement to surface the strengthened invariant without introducing a new section and without overstating the contract.
+
+### UPDATED: `scripts/ship-pr.md`
+
+Sibling contract doc for `scripts/ship-pr.sh`. Update the section describing `_verify_failed_jobs_locally` (currently around line 136) to note that non-fixable rows now bail with `BAIL_REASON=ci-local-unfixable:<list>` and `exit 3`, matching `run_per_job_local_fix_loop`. Note the postmerge comment-path clarification briefly if the doc previously referenced `final-summary.md` under `$IMPLEMENT_TMPDIR`. If FINDING_3's vendor-path test gap remains documented (option chosen above), update this doc with the TODO.
+
+### UPDATED: `scripts/merge-pr.md`
+
+Sibling contract doc for `scripts/merge-pr.sh`. Update the section that documents retry budgets to reference the new named constants `MERGE_PR_INITIAL_UNKNOWN_RETRIES` and `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES`. Add a note that post-force-push UNKNOWN→BEHIND short-circuits to `MERGE_RESULT=main_advanced` mirroring the pre-force-push behavior.
+
+### UPDATED: `scripts/test-merge-pr.md`
+
+Sibling contract doc for `scripts/test-merge-pr.sh`. Extend the test-matrix listing to include G5/G6 (empty_state_recovers_clean, empty_state_recovers_behind) and G7 (post_force_push_unknown_recovers_behind) alongside existing G3/G4.
+
+### UPDATED: `scripts/test-lint-fix-loop.md`
+
+Sibling contract doc for `scripts/test-lint-fix-loop.sh`. List the new case (if any) added by Item C2. If the audit shows no new fixture was needed, note that C2 was closed by reuse of existing 1c-1e cases (and possibly link the matrix to the AGENTS-level invariant in `SECURITY.md`).
+
+## Approach
+
+Surgical edits across four scripts, two harnesses, one SECURITY.md paragraph, and four sibling .md docs. No new scripts, no new helpers, no new contract values. Each edit reuses an existing pattern from the surrounding file or narrows scope to match the actual production contract:
+
+- Item A mirrors `run_per_job_local_fix_loop` at the production-code level **and** adds vendor-path test coverage (FINDING_3).
+- Item B is comment-text-only — no behavior change, no caller update.
+- Item C1 documents the actual fail-closed-without-reset contract (FINDING_1 corrected).
+- Item C2 scope narrowed: probe existing harness first; add at most one same-branch two-commit case if `current_parent != baseline_head` is genuinely uncovered (FINDING_2).
+- Item D1 inserts ONLY the BEHIND check between existing retry and UNKNOWN error — does NOT duplicate the retry call (FINDING_5).
+- Item D2 introduces module-level constants in the same style as other `merge-pr.sh` script-level vars; constant values match existing inline literals so harness assertions stay byte-equivalent.
+- Item D3 adds the symmetric `__EMPTY__` recovery cases AND the post-force-push UNKNOWN→BEHIND case that exercises D1's actual fixed path (FINDING_4).
+
+The combine is coherent because all six artifacts (ship-pr.sh, merge-pr.sh, lint-fix-loop.sh, their harnesses, SECURITY.md) form the PR finalization surface and benefit from a single review/CI pass.
+
+## Edge cases
+
+- **Item A — `unfixable[]` already populated by `_per_job_argv` failure**: the new `case` block adds to the same array, so an entry that is both non-fixable and unparseable would land twice. Acceptable — the tail handler dedupes via `_sanitize_bail_list`/`paste -sd,` and the sanitized BAIL_REASON token is content-key not slot-key.
+- **Item A — blank TSV rows**: the existing early-return at line 1979-1981 handles the empty/whitespace-only file case before the loop; the `[[ -n "$job_name" ]] || continue` at line 1988 protects against blank rows mid-file. Both guards must remain ahead of the new `case` block exactly as in `run_per_job_local_fix_loop` lines 2086-2087.
+- **Item B — comments referenced by tests/lints**: grep confirms no harness asserts on the exact comment text; comments are documentation only.
+- **Item D1 — pre-existing BEHIND path**: the pre-force-push BEHIND short-circuit at line 243 already handles initial BEHIND. The new check only runs after force-push recovery, so no double-handling.
+- **Item D2 — backward-compat for inline literals**: G1/G2 ERROR assertions match `"after 4 retries"` literally; constant value `MERGE_PR_INITIAL_UNKNOWN_RETRIES=4` interpolates to exactly that string. Confirm with `bash scripts/test-merge-pr.sh` before submitting.
+- **Item D3 G5/G6 `GH_VIEW_FLIP_AT_CALL=3`**: same value as G3/G4 because the flip semantics are call-counter-based, not state-based. The fixture stub triggers the flip on the third `pr view` call regardless of initial state value.
+- **Item D3 G7**: requires the force-push branch to actually fire; if the existing stub harness does not support this, FINDING_4 may need a follow-up. Document the chosen resolution in `scripts/test-merge-pr.md`.
+- **Item C2 fixture portability**: even the single same-branch two-commit fixture must `cd` into its own scratch directory under the harness's existing `$TMPROOT` (or equivalent) so it does not collide with parallel test runs. Follow the existing 1c-1e fixture-isolation pattern verbatim.
+
+## Failure modes
+
+1. **D2 constant substitution breaks G1/G2 assertions**. The G1/G2 tests at `scripts/test-merge-pr.sh:386-397` assert on the literal string `"after 4 retries"` in ERROR. Earliest signal: `make test-merge-pr` fails the G1/G2 assertion lines. Mitigation: the interpolated string `"after ${MERGE_PR_INITIAL_UNKNOWN_RETRIES} retries"` evaluates to `"after 4 retries"` byte-for-byte, so existing assertions continue to pass. Confirm with `bash scripts/test-merge-pr.sh` before submitting.
+2. **Item A regresses TSV parsing for blank rows**. The existing `[[ -n "$job_name" ]] || continue` at line 1988 protects against blank rows; the new `case` block must come AFTER that guard, not before. Earliest signal: vendor-path test fixture (FINDING_3) or `make test-ship-pr` fails. Mitigation: preserve the `[[ -n "$job_name" ]] || continue` line ahead of the new `case` block exactly as in `run_per_job_local_fix_loop` lines 2086-2087.
+3. **Item D3 G7 force-push stub gap**. If the existing harness does not support driving `merge-pr.sh:218-220` force-push recovery, the implementer may underbuild G7 or omit it. Earliest signal: G7 either doesn't compile (missing stub env-var) or passes vacuously (force-push branch never fired). Mitigation: explicit probe before writing; if the harness is too thin, document the gap in `scripts/test-merge-pr.md` and recommend manual integration coverage rather than ship a misleading test.
+
+## Testing strategy
+
+- `make test-merge-pr` covers Items D1, D2, D3 (G5/G6/G7 new; G3/G4 unchanged regression). G7 explicitly exercises the post-force-push UNKNOWN→BEHIND path that D1 actually fixes (FINDING_4).
+- A new vendor-path fixture for `_verify_failed_jobs_locally` (FINDING_3) — either a sourced-function test in `scripts/test-ship-pr.sh` or a stub-based end-to-end harness — covers Item A. **Do not assume existing test-ship-pr coverage suffices** (FINDING_3 found this gap).
+- `make test-lint-fix-loop` runs the existing 1c-1e cases (which already cover detached/switch/rewrite/merge/dirty-baseline) plus at most one new same-branch two-commit case if FINDING_2's probe confirms a coverage gap.
+- `make lint` runs `pre-commit run --all-files` and exercises shellcheck on changed scripts.
+- `make lint-bash32` enforces Bash 3.2 portability — the new `case` block in Item A and the constants in Item D2 use only Bash 3.2-safe syntax.
+- Sibling `.md` doc updates require no automated test but should be inspected against the corresponding `.sh` after edits.
+- No new env-vars introduced; no new permissions surface; no `gh` calls added.
+
+## Diff size estimate
+
+About 200 changed lines across the edited files (4 scripts, 4 docs, plus the new vendor-path fixture):
+
+- ship-pr.sh: ~14 lines (A: 8, B: 6 across two sites)
+- merge-pr.sh: ~22 lines (D1: 5 added + comment, D2: 12 constants + interpolations)
+- test-merge-pr.sh: ~50 lines (D3: G5+G6+G7)
+- test-ship-pr.sh (or sourced helper): ~25 lines (FINDING_3 vendor-path fixture)
+- test-lint-fix-loop.sh: ~30 lines IF C2 needs a new fixture, else ~0
+- SECURITY.md: ~2 lines (C1: one corrected sentence)
+- ship-pr.md / merge-pr.md / test-merge-pr.md / test-lint-fix-loop.md: ~20 lines combined
+
+
+## Acceptance
+
+- **Item A** — `_verify_failed_jobs_locally` in `scripts/ship-pr.sh` exits 3 with `BAIL_REASON=ci-local-unfixable:<sanitized-list>` and a populated `BAIL_FAILURE_DETAIL_LOG` when the failed-jobs TSV contains any non-fixable row. Fixable rows continue to be processed through the existing per-job fix loop. A new vendor-path test fixture (FINDING_3) covers this; existing fixable-only assertions still pass.
+- **Item B** — postmerge comments in `scripts/ship-pr.sh:3169-3171` and `:3231-3233` accurately describe `$IMPLEMENT_TMPDIR/summary-final.md` and the `larch-logs/.../final-summary.md` run-log mirror. No behavioral change; no test impact.
+- **Item C1** — `SECURITY.md`'s `lint-fix-loop.sh coder-owned commits` paragraph documents the actual fail-closed-without-reset contract for head-changed-after-dispatch branches (`LINT_FIX_STATUS=failed` + `FAILURE_REASON=head-changed-after-dispatch`; no reset to baseline except for forbidden-path violations).
+- **Item C2** — `scripts/test-lint-fix-loop.sh` retains existing 1c-1e coverage; one new same-branch two-commit fixture is added ONLY if pre-implementation probe confirms `current_parent != baseline_head` (with baseline ancestor, no merge) is not already covered. Otherwise the audit finding alone closes C2.
+- **Item D1** — `scripts/merge-pr.sh` post-force-push UNKNOWN-resolves-to-BEHIND short-circuits to `MERGE_RESULT=main_advanced` with empty `ERROR`. The new BEHIND check is inserted between the existing retry call and the existing UNKNOWN error block — no second retry call added.
+- **Item D2** — `scripts/merge-pr.sh` retry budgets named via `MERGE_PR_INITIAL_UNKNOWN_RETRIES=4` and `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES=3` with a comment documenting the asymmetry. All call sites and error-message strings interpolate the constants. Existing G1/G2 ERROR assertions remain byte-equivalent.
+- **Item D3** — `scripts/test-merge-pr.sh` gains G5 (`empty_state_recovers_clean`), G6 (`empty_state_recovers_behind`), and G7 (`post_force_push_unknown_recovers_behind`) covering the symmetric empty-state recovery cases and the post-force-push UNKNOWN→BEHIND path that D1 actually fixes. G7 may be scoped/documented as a gap if existing harness stubs cannot drive the force-push branch (FINDING_4 resolution documented in `scripts/test-merge-pr.md`).
+- **Sibling .md docs** — `scripts/ship-pr.md`, `scripts/merge-pr.md`, `scripts/test-merge-pr.md`, and (if C2 adds a fixture) `scripts/test-lint-fix-loop.md` are updated in the same PR per `.claude/rules/script-md-siblings.md`.
+- **Linting** — `make lint`, `make lint-bash32`, `make test-merge-pr`, `make test-ship-pr`, and `make test-lint-fix-loop` all pass on the resulting PR. No new shellcheck violations.
+
+diff_lines: 200

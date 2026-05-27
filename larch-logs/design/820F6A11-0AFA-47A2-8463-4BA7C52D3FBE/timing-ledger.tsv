@@ -1,0 +1,19 @@
+v1	mark	1779902728	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779902937	implement	-	codex	codex-phase1-dyn-codex-plan-insertion-point-conflict	1779902874	1779902937	63	codex-primary-plan-dyn-insertion-point-conflict-output.txt	0	complete
+v1	vendor	1779902959	implement	-	codex	codex-phase1-dyn-codex-plan-harness-stub-contract	1779902875	1779902959	84	codex-primary-plan-dyn-harness-stub-contract-output.txt	0	complete
+v1	vendor	1779902989	implement	-	codex	codex-phase1-codex-plan-edge	1779902874	1779902989	115	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779903005	implement	-	codex	codex-phase1-codex-plan-arch	1779902874	1779903005	131	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779903006	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779902874	1779903006	132	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779903008	implement	-	cursor	cursor-phase1-dyn-cursor-plan-insertion-point-conflict	1779902874	1779903008	134	cursor-plan-dyn-insertion-point-conflict-output.txt	0	complete
+v1	vendor	1779903015	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779902874	1779903015	141	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779903026	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779902874	1779903026	152	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779903027	implement	-	cursor	cursor-phase1-dyn-cursor-plan-harness-stub-contract	1779902875	1779903027	152	cursor-plan-dyn-harness-stub-contract-output.txt	0	complete
+v1	vendor	1779903037	implement	-	codex	codex-phase1-codex-plan-requirements	1779902875	1779903036	161	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779903048	implement	-	codex	codex-phase1-codex-plan-innovation	1779902874	1779903048	174	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779903048	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779902874	1779903048	174	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779903051	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779902874	1779903051	177	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779903098	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779902874	1779903098	224	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779903171	implement	-	codex	codex-phase1-aggregator	1779903110	1779903171	61	aggregator-output.txt	0	complete
+v1	vendor	1779903387	implement	-	codex	codex-phase1-voter-2	1779903326	1779903387	61	codex-vote-output.txt	0	complete
+v1	vendor	1779903438	implement	-	cursor	cursor-phase1-voter-3	1779903326	1779903437	111	cursor-vote-output.txt	0	complete
+v1	vendor	1779903508	implement	-	codex	codex-phase2-voter-3	1779903438	1779903508	70	cursor-vote-output-phase2.txt	0	complete
