@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/shared/external-reviewers.md:44-68	Family B collect-agent-results fence omitted from Markdown sweep list	Lint scans skills/shared/*.md; fence stays without shell & PID capture and wait after monitor, so copied examples still allow wrapper exit before collector finishes	Add skills/shared/external-reviewers.md to Files to modify and apply the canonical writer-& PID wait pattern to the Collection fence

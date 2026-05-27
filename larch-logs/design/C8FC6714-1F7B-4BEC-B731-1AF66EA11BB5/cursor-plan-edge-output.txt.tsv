@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/shared/external-reviewers.md:46-68	Lint-scoped shared docs omitted from sweep	New PID/wait lint fails CI on files the plan never lists	Add skills/shared/external-reviewers.md and skills/shared/dialectic-protocol.md to the sweep; grep skills/shared/*.md for all five writer basenames
