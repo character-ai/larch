@@ -3642,10 +3642,21 @@ write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+cat > "$tmp/vendor-verify-sweep.sh" <<'STUB'
+#!/usr/bin/env bash
+set -uo pipefail
+root=$1
+tmp=$2
+source "$root/scripts/ship-pr.sh"
+STATE_FILE="$tmp/ship-pr-state.sh"
+IMPLEMENT_TMPDIR="$tmp"
+run_per_job_local_fix_loop() { return 1; }
+run_evaluate_failure ci-initial
+STUB
+chmod +x "$tmp/vendor-verify-sweep.sh"
 set +e
 (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+  bash "$tmp/vendor-verify-sweep.sh" "$root" "$tmp" >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
 assert_rc "$tmp/rc" 4 "vendor_verify_sweep_regression exits 4"
