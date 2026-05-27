@@ -28,6 +28,8 @@ Path resolution:
 6. `$REVIEW_TMPDIR/timing-ledger.tsv` when set.
 7. Fails closed with a stderr warning when none of the above are set. Callers MUST set at least one root or pass `--ledger`.
 
+`timing-ledger.sh` is write-only with respect to workflow/tier metadata: it does **not** read `run-params.json` or derive `workflow_path` / `design_classification`. That fallback belongs to readers such as `scripts/timing-report.sh`, which may inspect `run-params.json` beside the resolved ledger.
+
 Appends use `flock -w 5` when available. If `flock` is missing entirely, the script warns once per process and falls back to a plain append (single-writer assumption). If `flock` is present but lock acquisition times out, the script warns once per process and skips the append (fail closed — an unlocked append would produce interleaved garbage). The ledger is `chmod 600` after each successful append. All failures warn to stderr and exit 0 so observability never interrupts the workflow. When ledger path resolution fails (no per-run root configured), `dump` writes the warning to stderr and produces no stdout output; callers that assume the first line is always a valid path must handle the empty case.
 
 Task-kind validation sources `scripts/lib-timing-kinds.sh`. Unknown but syntactically valid kebab-case kinds are written with a warning to avoid data loss. Malformed kinds are rejected.

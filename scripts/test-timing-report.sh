@@ -2,6 +2,7 @@
 # Regression tests for scripts/timing-report.sh.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 # Hermetic: clear any caller-supplied timing/session env so the test exercises
 # the resolver fallback chain deterministically.
@@ -57,6 +58,38 @@ jq -e '
   (.per_step[] | select(.skill == "implement" and .step == "Step 2 — implementation" and .duration_seconds == 120)) and
   (.vendor_task_averages[] | select(.vendor == "codex" and .task_kind == "codex-implement" and .samples == 2 and .min_seconds == 120 and .max_seconds == 180))
 ' "$JSON_OUT" >/dev/null
+
+V2_DIR="$TMP_BASE/design-v2"
+mkdir -p "$V2_DIR"
+V2_LEDGER="$V2_DIR/timing.tsv"
+cat > "$V2_LEDGER" <<'EOF'
+v1	mark	10	design	Step 0	-	-	-	-	-	-	-	-
+v1	mark	70	design	Step 2a	-	-	-	-	-	-	-	-
+EOF
+cat > "$V2_DIR/run-params.json" <<'EOF'
+{"schema_version":2,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}
+EOF
+LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V2_LEDGER" --full --markdown > "$TMP_BASE/v2.out"
+grep -Fq '**Workflow path**: SIMPLE' "$TMP_BASE/v2.out"
+V2_JSON="$TMP_BASE/v2.json"
+LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V2_LEDGER" --full --format json --output "$V2_JSON"
+jq -e '.workflow_path == "SIMPLE"' "$V2_JSON" >/dev/null
+
+V1_PATH_DIR="$TMP_BASE/design-v1-path"
+mkdir -p "$V1_PATH_DIR"
+V1_PATH_LEDGER="$V1_PATH_DIR/timing.tsv"
+cat > "$V1_PATH_LEDGER" <<'EOF'
+v1	mark	10	design	Step 0	-	-	-	-	-	-	-	-
+v1	mark	70	design	Step 2a	-	-	-	-	-	-	-	-
+EOF
+cat > "$V1_PATH_DIR/run-params.json" <<'EOF'
+{"schema_version":1,"design_classification":"TRIVIAL_DOC_ONLY","workflow_path":"SIMPLE","partition_requested":false}
+EOF
+LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --markdown > "$TMP_BASE/v1-path.out"
+grep -Fq '**Workflow path**: SIMPLE' "$TMP_BASE/v1-path.out"
+V1_PATH_JSON="$TMP_BASE/v1-path.json"
+LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --format json --output "$V1_PATH_JSON"
+jq -e '.workflow_path == "SIMPLE"' "$V1_PATH_JSON" >/dev/null
 
 TERSE=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --since-last-mark --terse)
 # Review FINDING_5: terse mode now counts vendor rows whose --end-s ($9) is

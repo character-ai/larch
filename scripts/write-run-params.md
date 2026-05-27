@@ -1,6 +1,6 @@
 # scripts/write-run-params.sh - contract
 
-`scripts/write-run-params.sh` writes the `/design` run-depth router artifact, `run-params.json`, using `jq -n` and an atomic `mktemp` + `mv` replace.
+`scripts/write-run-params.sh` writes the `/design` router artifact, `run-params.json`, using `jq -n` and an atomic `mktemp` + `mv` replace.
 
 ## Purpose And Callers
 
@@ -10,20 +10,17 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 
 - Runs with `set -euo pipefail`.
 - Requires an absolute `--output` path and an existing output directory.
-- Requires all schema fields up front: `--classification`, `--reason`, `--source`, `--sketch-budget`, `--review-budget`, `--workflow-path`, and `--output`. Optional `--partition-requested <true|false>`, optional `--brainstorm-requested <true|false>`, and optional `--manual-gate-b <true|false>` (when omitted: JSON defaults `partition_requested: false`, `brainstorm_requested: false`, `manual_gate_b: false`) — see [`skills/design/references/flags.md`](../skills/design/references/flags.md) for the public `-p` / `--partition`, `--brainstorm`, and `--manual` / `-m` flag semantics wired from `/design` Step 0b.
-- Validates `--classification` as `TRIVIAL_DOC_ONLY`, `SIMPLE`, or `HARD`.
-- Validates `--source` as `caller-forwarded` only (obsolete `router-pre-design` is rejected).
-- Validates `--sketch-budget` as `0`, `2`, or `4`.
-- Validates `--review-budget` as `quick` or `full`.
-- Validates `--workflow-path` as `SIMPLE` or `HARD`.
-- Emits JSON with `schema_version=1`, `design_classification`, `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, `workflow_path`, and always `partition_requested`, `brainstorm_requested`, and `manual_gate_b` (booleans; additive fields — callers that predate issue #2754 may ignore `brainstorm_requested`, and callers that predate issue #2930 may ignore `manual_gate_b`).
+- Requires `--classification <SIMPLE|HARD>` and `--output <absolute-path>`.
+- Optional `--partition-requested <true|false>`, optional `--brainstorm-requested <true|false>`, and optional `--manual-gate-b <true|false>` default to JSON false. See [`skills/design/references/flags.md`](../skills/design/references/flags.md) for the public `-p` / `--partition`, `--brainstorm`, and `--manual` / `-m` flag semantics wired from `/design` Step 0b.
+- Validates `--classification` as `SIMPLE` or `HARD`; `TRIVIAL_DOC_ONLY` is rejected.
+- Emits v2 JSON only: `schema_version`, `design_classification`, `partition_requested`, `brainstorm_requested`, and `manual_gate_b`.
+- Does not emit derived or legacy fields: no `quick_mode`, `sketch_budget`, `review_budget`, `workflow_path`, `design_classification_source`, or `design_classification_reason`.
 - `manual_gate_b` is consumed only by `skills/design/references/approval-gates.md` Gate B; missing/null readers coerce it to `false`.
-- Uses `jq --arg` for prose fields so quotes, newlines, and shell-shaped text are JSON data, not syntax.
 - Prints `RUN_PARAMS_WRITTEN=<path>` on success and exits non-zero on validation or write failure.
 
 ## Harness
 
-`scripts/test-write-run-params.sh` exercises valid writes, JSON escaping for prose, enum rejection, absolute-output validation, the quick/full precedence budget examples, `--partition-requested` / `--brainstorm-requested` / `--manual-gate-b` validation, default-`false` shape, explicit `true`/`false` cases, and the **FINDING_15** triple-flag `partition_requested` + `brainstorm_requested` + `manual_gate_b` persistence case.
+`scripts/test-write-run-params.sh` exercises valid v2 writes, enum rejection including `TRIVIAL_DOC_ONLY`, absolute-output validation, `--partition-requested` / `--brainstorm-requested` / `--manual-gate-b` validation, and the triple-flag `partition_requested` + `brainstorm_requested` + `manual_gate_b` persistence case.
 
 ## Edit In Sync
 

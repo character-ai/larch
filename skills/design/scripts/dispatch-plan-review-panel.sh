@@ -54,7 +54,7 @@ DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 append_shared_prompt_tail() {
     local plan_path="$1"
     bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-        --archetype arch --vendor cursor --plan-file "$plan_path" | tail -n +2
+        --archetype arch --vendor cursor --plan-file "$plan_path" --design-tmpdir "$DESIGN_TMPDIR" | tail -n +2
 }
 
 write_dynamic_prompt() {
@@ -74,10 +74,10 @@ _scout_manifest="$DESIGN_TMPDIR/scout-plan-manifest.json"
 
 for _archetype in arch edge innovation pragmatic requirements; do
     bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-        --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" \
+        --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
         >"$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt"
     bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-        --archetype "$_archetype" --vendor codex --plan-file "$PLAN_FILE" \
+        --archetype "$_archetype" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
         >"$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt"
 done
 

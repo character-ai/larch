@@ -1,6 +1,6 @@
 # plan-review-loop.sh
 
-**Consumer**: `/design` Step 3 (`review_budget=full`) — single-pass plan-review driver.
+**Consumer**: `/design` Step 3 — single-pass plan-review driver.
 
 **Primary callers**: `skills/design/SKILL.md` Step 3 (foreground Bash block).
 
@@ -13,6 +13,7 @@
 - Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv`
   for normal tally runs and writes a header-only TSV on empty-artifact exits
   that bypass tally.
+- SKILL.md Step 3 owns cap enforcement, counter persistence, and writes `$DESIGN_TMPDIR/review-round-count.txt`; Gate C only reads that counter for UI-cap-aware prompting. `plan-review-loop.sh` is stateless and consumes the supplied `--round-num <int>` only for emitted KVs and round-N artifact paths.
 
 ## Argv
 
@@ -49,6 +50,8 @@ Introduced for #2676; absorbs aggregator use in /design (`aggregate-findings.sh`
 ## Harness
 
 `skills/design/scripts/test-plan-review-loop.sh` exercises argv validation, a stubbed end-to-end path (optional `LARCH_PLAN_REVIEW_SCOUT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH`, `LARCH_PLAN_REVIEW_COLLECT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH`, `LARCH_PLAN_REVIEW_TALLY_SH` pointing at test doubles), zero-finding vs single-finding ballots with real `tally-plan-review.sh`, panel-failed header-only artifact materialization, tally failure recovery KVs, and degraded `voting-tally.md` materialization when the tally stub exits non-zero. It is not a full production panel simulation.
+
+Structural coverage: Step 3 must not pass `--round-num 1` unconditionally; supplied `--round-num 2` must produce round-2 artifact paths.
 
 ## Edit-in-sync
 

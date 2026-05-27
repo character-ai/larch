@@ -10,13 +10,13 @@ Without the sketch phase, the first idea considered tends to dominate the plan. 
 
 The sketch phase runs the topology selected by `/design`'s run-depth router. Each non-zero external slot has a Claude subagent fallback that activates when the respective tool is unavailable, preserving the configured lane shape.
 
-### Zero-Sketch Mode
+### Simple Mode
 
-For codebase-scan-confirmed trivial doc-only work, the router may choose [0 sketch agents](topology.md#design.sketch.zero_slots). `/design` writes sentinel synthesis artifacts and proceeds directly to plan writing; no collector runs on this path.
+For SIMPLE work, `/design` uses [0 sketch agents](topology.md#design.sketch.simple_slots). It writes sentinel synthesis artifacts and proceeds directly to plan writing; no collector runs on this path.
 
-### Regular Mode
+### Hard Mode
 
-Regular mode keeps one slot per personality across a Cursor/Codex diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic):
+HARD mode keeps one slot per personality across a Cursor/Codex diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic):
 
 | Agent | Harness | Role | Focus |
 |---|---|---|---|
@@ -24,15 +24,6 @@ Regular mode keeps one slot per personality across a Cursor/Codex diagonal split
 | **Cursor — Edge** (fallback: Claude) | Cursor | Edge-cases/Failure-modes | Boundary conditions, error handling, failure recovery |
 | **Codex — Innovation** (fallback: Claude) | Codex | Innovation/Exploration | Creative alternatives, unconventional solutions, questioned assumptions |
 | **Codex — Pragmatic** (fallback: Claude) | Codex | Pragmatism/Safety | Smallest change set, avoid regressions, protect existing features |
-
-### Quick Mode
-
-A lightweight path using generic (non-personality-specialized) prompts:
-
-| Agent | Harness | Role | Focus |
-|---|---|---|---|
-| **Cursor — Generic** (fallback: Claude) | Cursor | General sketch | Broad-scope approach without personality specialization |
-| **Codex — Generic** (fallback: Claude) | Codex | General sketch | Broad-scope approach without personality specialization |
 
 ### Important Distinction
 
@@ -58,57 +49,22 @@ The handling of unavailable external tools differs across workflow phases:
 
 ## How It Works
 
-```mermaid
+```text
 flowchart TD
-    START([Feature description]) --> ROUTER{Sketch budget?}
-    ROUTER -->|4| LAUNCH_REG
-    ROUTER -->|2| LAUNCH_QUICK
-    ROUTER -->|0| SENTINEL[Write sentinel artifacts]
-
-    subgraph LAUNCH_REG["Regular: Launch 4 external in parallel"]
-        direction LR
-        CA["Cursor: Arch"] ~~~ CE["Cursor: Edge"]
-        CE ~~~ XI["Codex: Innovation"]
-        XI ~~~ XP["Codex: Pragmatic"]
-    end
-
-    subgraph LAUNCH_QUICK["Quick: Launch 2 external in parallel"]
-        direction LR
-        CG["Cursor: Generic"] ~~~ XG["Codex: Generic"]
-    end
-
-    LAUNCH_REG --> WAIT[Wait for all sketches]
-    LAUNCH_QUICK --> WAIT
-    WAIT --> SYNTHESIS[Synthesis]
-    SENTINEL --> PLAN[Full implementation plan]
-
-    subgraph SYNTHESIS["Approach Synthesis"]
-        AGREE[Where agents agree] ~~~ DIVERGE[Where agents diverge]
-        DIVERGE ~~~ DECISION[Reasoned decisions on contested points]
-    end
-
-    SYNTHESIS --> CHECK{Contested\ndecisions?}
-    CHECK -->|None| PLAN[Full implementation plan]
-    CHECK -->|1-5 found| DIALECTIC
-
-    subgraph DIALECTIC["Dialectic Debate (/design only)"]
-        direction LR
-        THESIS[Thesis agents] ~~~ ANTITHESIS[Antithesis agents]
-    end
-
+    START([Feature description]) --> TIER{Design tier}
+    TIER -->|SIMPLE| SIMPLE_SENTINEL[Write SIMPLE sentinel artifacts]
+    TIER -->|HARD| HARD_LAUNCH[Launch 4 personality sketches]
+    HARD_LAUNCH --> HARD_WAIT[Wait for sketches]
+    HARD_WAIT --> SYNTHESIS[Approach synthesis]
+    SYNTHESIS --> CONTESTED{Contested decisions}
+    CONTESTED -->|none| PLAN[Full implementation plan]
+    CONTESTED -->|present| DIALECTIC[Dialectic debate]
     DIALECTIC --> PLAN
-
-    style CA fill:#1a4a6e,color:#fff
-    style CE fill:#1a4a6e,color:#fff
-    style XI fill:#4a3a6e,color:#fff
-    style XP fill:#4a3a6e,color:#fff
-    style CG fill:#1a4a6e,color:#fff
-    style XG fill:#4a3a6e,color:#fff
-    style DIALECTIC fill:#5a3a2e,color:#fff
-    style CHECK fill:#f6ad55,color:#000
+    SIMPLE_SENTINEL --> PLAN
+    PLAN --> REVIEW[Full plan review panel]
 ```
 
-1. **Parallel launch** — For non-zero sketch budgets, all external and per-slot Claude fallback sketches are launched simultaneously. In regular mode: all Cursor slots first (slowest), then all Codex slots, then any Claude fallback sketches. In quick mode: Cursor-Generic first, then Codex-Generic. The zero-sketch path launches nothing and writes sentinel artifacts instead.
+1. **Parallel launch** — HARD launches all external and per-slot Claude fallback sketches simultaneously: all Cursor slots first (slowest), then all Codex slots, then any Claude fallback sketches. SIMPLE launches nothing and writes sentinel artifacts instead.
 
 2. **Each agent produces** a short sketch covering:
    - Key architectural decisions and approach
@@ -120,8 +76,7 @@ flowchart TD
    - Identifies divergence points and makes reasoned calls with justification
    - Notes which ideas from each sketch are incorporated
    - (Regular mode only) Highlights personality-specific concerns: **Architecture/Standards**, **Pragmatism/Safety**, **Edge-case/Failure-mode**, **Innovation/Exploration**
-   - (Quick mode) Attributes by tool (Cursor-Generic vs Codex-Generic)
-   - (Zero-sketch mode) Uses the sentinel `NO_SKETCHES_CLASSIFIED_TRIVIAL` instead of fabricated agreement
+   - (SIMPLE mode) Uses the sentinel `NO_SKETCHES_CLASSIFIED_SIMPLE` instead of fabricated agreement
    - Lists contested decisions in a structured format for the dialectic debate phase
 
 4. **Dialectic debate and adjudication** (`/design` only) — If the synthesis identifies contested decisions (points where sketches genuinely diverged), the prioritized set is submitted to structured thesis/antithesis debates run on Cursor and Codex via deterministic per-decision bucketing. For each contested decision, a thesis agent defends the synthesis choice and an antithesis agent argues for the strongest alternative. Both run in parallel with codebase access. Successful debates are then forwarded to the binary judge panel described in `skills/shared/dialectic-protocol.md`, which casts `THESIS` / `ANTI_THESIS` votes on each decision. The orchestrator writes resolutions as directed by the panel, recording `Disposition: voted | fallback-to-synthesis | bucket-skipped | over-cap` per decision. This step is skipped when all sketches agree. See [Dialectic Debate](#dialectic-debate-design-only) below for details.

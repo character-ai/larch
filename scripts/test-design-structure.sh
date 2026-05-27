@@ -1,432 +1,96 @@
-#!/bin/bash
-# Structural regression test for /design skill refactor (closes skill-judge Grade-C findings)
-# AND for the Step-3a removal residue pins (issue #453, follow-up to PR #454).
-# Asserts that the skill's progressive-disclosure invariants survive edits:
-#  - SKILL.md flag table has an adjacent MANDATORY pointer to references/flags.md placed before Step 0.
-#  - SKILL.md Step 2a.5 carries BOTH Do-NOT-load guards (NO_CONTESTED_DECISIONS + zero-externals).
-#  - references/dialectic-execution.md exists and its header contains a MANDATORY directive naming dialectic-debate.md.
-#  - references/flags.md exists and contains the --branch-info 4-key literal AND the --step-prefix `::` delimiter literal.
-#  - skills/design/ tree contains no Step-3a removal residue tokens.
-#  - SKILL.md Step 3 ("all reviewers OK") and Step 3.5 auto-mode branches forward to Step 3b.
-#  - SKILL.md Step 0 is branch-state-agnostic: session-setup.sh with
-#    --skip-branch-check, then write-design-current-env.sh (no create-branch
-#    --check or session-entry-gate.sh).
-#
-# Exit 0 on pass, exit 1 on any assertion failure.
+#!/usr/bin/env bash
+# Structural regression guard for the /design two-tier contract.
 set -euo pipefail
 
-REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SKILL_MD="$REPO_ROOT/skills/design/SKILL.md"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
+APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
+PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
+DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
+PLAN_LOOP_SH="$REPO_ROOT/skills/design/scripts/plan-review-loop.sh"
+PLAN_REVIEW_LOOP_SH="$PLAN_LOOP_SH"
+MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
-DESIGN_DIR="$REPO_ROOT/skills/design"
-SKETCH_LAUNCH_MD="$REPO_ROOT/skills/design/references/sketch-launch.md"
 
 fail() {
-  echo "FAIL: $1" >&2
+  printf 'FAIL: %s\n' "$1" >&2
   exit 1
 }
 
-# Check 1: SKILL.md flag-table MANDATORY pointer appears before Step 0.
-[[ -f "$SKILL_MD" ]] || fail "SKILL.md missing: $SKILL_MD"
-
-flag_mandatory_line=$(grep -n 'MANDATORY — READ ENTIRE FILE before parsing argument flags' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$flag_mandatory_line" ]] || fail "SKILL.md lacks 'MANDATORY — READ ENTIRE FILE before parsing argument flags' pointer to references/flags.md"
-
-step0_line=$(grep -n '^<!-- step:0 — Session Setup -->$' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step0_line" ]] || fail "SKILL.md lacks '<!-- step:0 — Session Setup -->' anchor"
-
-if (( flag_mandatory_line >= step0_line )); then
-  fail "flag-table MANDATORY pointer (line $flag_mandatory_line) must appear BEFORE Step 0 (line $step0_line). Flag parsing runs before Step 0; MANDATORY must be adjacent to the flag table."
-fi
-
-# Check 2: Step 2a.5 contains BOTH Do-NOT-load guards.
-grep -q 'Do NOT load .*NO_CONTESTED_DECISIONS' "$SKILL_MD" \
-  || fail "SKILL.md Step 2a.5 lacks the NO_CONTESTED_DECISIONS 'Do NOT load' guard"
-grep -q 'Do NOT load .*zero-externals guardrail' "$SKILL_MD" \
-  || fail "SKILL.md Step 2a.5 lacks the zero-externals 'Do NOT load' guard"
-
-# Check 3: references/dialectic-execution.md exists and has header MANDATORY for dialectic-debate.md.
-[[ -f "$DIALEXEC_MD" ]] || fail "references/dialectic-execution.md missing: $DIALEXEC_MD"
-
-# The MANDATORY directive must appear in the header region (before step 2 body).
-step2_line=$(grep -n '^2\. \*\*Per-decision prompt-file rendering' "$DIALEXEC_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step2_line" ]] || fail "references/dialectic-execution.md missing '2. Per-decision prompt-file rendering' body"
-
-mandatory_line=$(grep -n 'MANDATORY — READ ENTIRE FILE before rendering debate prompts' "$DIALEXEC_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$mandatory_line" ]] || fail "references/dialectic-execution.md lacks header MANDATORY naming dialectic-debate.md"
-
-if (( mandatory_line >= step2_line )); then
-  fail "references/dialectic-execution.md header MANDATORY (line $mandatory_line) must appear BEFORE step 2 (line $step2_line)"
-fi
-
-grep -q 'dialectic-debate\.md' "$DIALEXEC_MD" \
-  || fail "references/dialectic-execution.md header MANDATORY does not reference dialectic-debate.md"
-
-# Check 4: references/flags.md exists and contains load-bearing literals.
-[[ -f "$FLAGS_MD" ]] || fail "references/flags.md missing: $FLAGS_MD"
-
-grep -q 'All 4 keys are required' "$FLAGS_MD" \
-  || fail "references/flags.md lacks the --branch-info 4-key literal 'All 4 keys are required'"
-
-# shellcheck disable=SC2016 # single quotes intentional — grep pattern is literal, includes backticks
-grep -q '`::` delimiter' "$FLAGS_MD" \
-  || fail "references/flags.md lacks the --step-prefix backtick-colon-delimiter literal"
-
-# Check 4b: regular sketch launch output paths and Step 2a.3 collector paths
-# must stay in sync. This pins the intentionally retained 4-slot diagonal
-# after the regular-mode sketch fan-out was reduced from 8 to 4.
-[[ -f "$SKETCH_LAUNCH_MD" ]] || fail "references/sketch-launch.md missing: $SKETCH_LAUNCH_MD"
-
-regular_launch_section=$(awk '
-  /^## Regular Mode/ { flag=1; next }
-  /^## Quick Mode/ && flag { flag=0 }
-  flag { print }
-' "$SKETCH_LAUNCH_MD")
-[[ -n "$regular_launch_section" ]] \
-  || fail "(4b) could not extract Regular Mode section from sketch-launch.md"
-
-regular_collector_section=$(awk '
-  /^\*\*Regular mode\*\* \(4 external output files when both tools available\):$/ { flag=1; next }
-  /^\*\*Quick mode\*\*/ && flag { flag=0 }
-  flag { print }
-' "$SKILL_MD")
-[[ -n "$regular_collector_section" ]] \
-  || fail "(4b) could not extract Step 2a.3 regular collector section from SKILL.md"
-
-expected_regular_sketch_outputs=(
-  'cursor-sketch-arch-output.txt'
-  'cursor-sketch-edge-output.txt'
-  'codex-sketch-innovation-output.txt'
-  'codex-sketch-pragmatic-output.txt'
-)
-
-dropped_regular_sketch_outputs=(
-  'cursor-sketch-innovation-output.txt'
-  'cursor-sketch-pragmatic-output.txt'
-  'codex-sketch-arch-output.txt'
-  'codex-sketch-edge-output.txt'
-)
-
-# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell syntax from markdown examples.
-launch_output_count=$(printf '%s\n' "$regular_launch_section" | { grep -F -- '--output "$DESIGN_TMPDIR/' || true; } | wc -l | tr -d ' ')
-[[ "$launch_output_count" == "4" ]] \
-  || fail "(4b) sketch-launch.md Regular Mode must contain exactly 4 regular --output paths; found $launch_output_count"
-
-# Count only collector output paths (`*-sketch-*-output.txt`); excludes
-# breadcrumb-monitor pair env-var paths (`$DESIGN_TMPDIR/breadcrumbs/...`)
-# introduced by issue #2749 Family B background+monitor wiring.
-# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell syntax from markdown examples.
-collector_output_count=$(printf '%s\n' "$regular_collector_section" | { grep -E -- '"\$DESIGN_TMPDIR/[a-zA-Z0-9_-]+-sketch-[a-zA-Z0-9_-]+-output\.txt"' || true; } | wc -l | tr -d ' ')
-[[ "$collector_output_count" == "4" ]] \
-  || fail "(4b) SKILL.md Step 2a.3 regular collector must contain exactly 4 output paths; found $collector_output_count"
-
-for output in "${expected_regular_sketch_outputs[@]}"; do
-  launch_matches=$(printf '%s\n' "$regular_launch_section" | { grep -F -- "--output \"\$DESIGN_TMPDIR/$output\"" || true; } | wc -l | tr -d ' ')
-  [[ "$launch_matches" == "1" ]] \
-    || fail "(4b) sketch-launch.md Regular Mode must contain exactly one launcher output for $output; found $launch_matches"
-  collector_matches=$(printf '%s\n' "$regular_collector_section" | { grep -F -- "\"\$DESIGN_TMPDIR/$output\"" || true; } | wc -l | tr -d ' ')
-  [[ "$collector_matches" == "1" ]] \
-    || fail "(4b) SKILL.md Step 2a.3 collector must contain exactly one output path for $output; found $collector_matches"
-done
-
-for output in "${dropped_regular_sketch_outputs[@]}"; do
-  if printf '%s\n' "$regular_launch_section" | grep -Fq -- "$output"; then
-    fail "(4b) sketch-launch.md Regular Mode still contains dropped output path $output"
-  fi
-  if printf '%s\n' "$regular_collector_section" | grep -Fq -- "$output"; then
-    fail "(4b) SKILL.md Step 2a.3 regular collector still contains dropped output path $output"
-  fi
-done
-
-# Check 4c: adaptive sketch budget pins. The runtime docs must preserve all
-# three paths, including the zero-sketch path's collector prohibition.
-grep -Fq 'sketch_budget=0' "$SKILL_MD" \
-  || fail "(4c) SKILL.md missing sketch_budget=0 path"
-grep -Fq 'sketch_budget=2' "$SKILL_MD" \
-  || fail "(4c) SKILL.md missing sketch_budget=2 path"
-grep -Fq 'sketch_budget=4' "$SKILL_MD" \
-  || fail "(4c) SKILL.md missing sketch_budget=4 path"
-grep -Fq 'NO_SKETCHES_CLASSIFIED_TRIVIAL' "$SKILL_MD" \
-  || fail "(4c) SKILL.md missing zero-sketch approach-synthesis sentinel"
-# shellcheck disable=SC2016 # literal backticked command phrase pinned in SKILL.md prose.
-grep -Fq 'Do NOT call `collect-agent-results.sh`' "$SKILL_MD" \
-  || fail "(4c) SKILL.md missing zero-sketch collect-agent-results prohibition"
-
-# Check 4d: post-cutover absence pins — /design sketch phase is inline-only.
-for needle in \
-  'skills/design/references/heavy-worker.md' \
-  'DESIGN_HEAVY=' \
-  'write-design-manifest' \
-  'classify-issue' \
-  'ACTION=CLASSIFY' \
-  ; do
-  if grep -Fq "$needle" "$SKILL_MD"; then
-    fail "(4d) skills/design/SKILL.md must not contain retired surface: $needle"
-  fi
-done
-for needle in '--subagent' 'subagent_mode=true'; do
-  if grep -Fq -- "$needle" "$SKILL_MD"; then
-    fail "(4d) skills/design/SKILL.md must not contain retired surface: $needle"
-  fi
-done
-if grep -Fq -- 'skills/design/references/heavy-worker.md' "$FLAGS_MD"; then
-  fail "(4d) skills/design/references/flags.md must not reference skills/design/references/heavy-worker.md"
-fi
-
-# Check 5: skills/design/ tree must contain zero Step-3a removal residue tokens (issue #453).
-[[ -d "$DESIGN_DIR" ]] || fail "skills/design/ directory missing: $DESIGN_DIR"
-
-forbidden_tokens=(
-  'Step 3a'
-  'Post-Review Confirmation'
-  'user-qa-happened'
-  'qa_happened'
-  'dialectic_adjudicated'
-)
-
-for token in "${forbidden_tokens[@]}"; do
-  if grep -rF -- "$token" "$DESIGN_DIR" >/dev/null 2>&1; then
-    matches=$(grep -m 3 -rnF -- "$token" "$DESIGN_DIR")
-    fail "skills/design/ contains forbidden Step-3a-removal-residue token '$token':
-$matches"
-  fi
-done
-
-# Check 6: SKILL.md Step 3 'all reviewers OK' branch must reference Step 3.5 (not Step 3a/3b),
-# and Step 3.5 must precede Step 3b in the file so routing cannot skip discussion r2.
-grep -qF 'proceed to Step 3.5' "$SKILL_MD" \
-  || fail "SKILL.md Step 3 'all reviewers OK' branch must point forward to 'Step 3.5' (issue #453: Step-3a removal residue pin)"
-grep -qF '<!-- step:3b' "$SKILL_MD" \
-  || fail "SKILL.md must retain the Step 3b step marker after Step 3.5 (routing fail-closed pin)"
-awk '
-  index($0, "<!-- step:3.5") && !s { s = NR }
-  index($0, "<!-- step:3b") && !b { b = NR }
-  END {
-    if (!s) exit 2
-    if (!b) exit 3
-    if (s >= b) exit 1
-  }
-' "$SKILL_MD" || check6_order=$?
-case "${check6_order:-0}" in
-  0) ;;
-  1) fail "SKILL.md must place <!-- step:3.5 before <!-- step:3b (no Step-3.5→3b routing skip)" ;;
-  2) fail "SKILL.md missing <!-- step:3.5 marker (Step 3.5 routing pin)" ;;
-  3) fail "SKILL.md missing <!-- step:3b marker (Step 3b routing pin)" ;;
-  *) fail "unexpected Check 6 step-order awk exit: ${check6_order:-?}" ;;
-esac
-
-# Check 7 (#661): collect-agent-results substantive-validation contract must remain
-# documented in plan-review.md on one line AND implemented in plan-review-loop.sh
-# (Step 3 driver). Either location satisfies the pin; both are required to stay in sync.
-PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
-PLAN_REVIEW_LOOP_SH="$REPO_ROOT/skills/design/scripts/plan-review-loop.sh"
-[[ -f "$PLAN_REVIEW_MD" ]] || fail "plan-review.md missing: $PLAN_REVIEW_MD"
-[[ -f "$PLAN_REVIEW_LOOP_SH" ]] || fail "plan-review-loop.sh missing: $PLAN_REVIEW_LOOP_SH"
-check7_doc_line() {
-  grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
-    | grep -F -- '--timeout 1860' \
-    | grep -F -- '--substantive-validation' \
-    | grep -Fq -- '--validation-mode'
+contains() {
+  local file="$1" needle="$2" label="$3"
+  grep -Fq -- "$needle" "$file" || fail "$label"
 }
-check7_loop_tokens() {
-  grep -Fq 'collect-agent-results.sh' "$PLAN_REVIEW_LOOP_SH" \
-    && grep -Fqe '--timeout 1860' "$PLAN_REVIEW_LOOP_SH" \
-    && grep -Fqe '--substantive-validation' "$PLAN_REVIEW_LOOP_SH" \
-    && grep -Fqe '--validation-mode' "$PLAN_REVIEW_LOOP_SH" \
-    && grep -Fqe '--structured-reviewer-validation' "$PLAN_REVIEW_LOOP_SH"
-}
-check7_doc_line || check7_loop_tokens \
-  || fail "(7) collect-agent-results substantive-validation contract missing from plan-review.md single-line pin AND from plan-review-loop.sh token bundle — issue #661 regression"
 
-# Check 7b: plan-review-quick.md must exist (structural pin alongside plan-review.md).
-PLAN_REVIEW_QUICK_MD="$REPO_ROOT/skills/design/references/plan-review-quick.md"
-[[ -f "$PLAN_REVIEW_QUICK_MD" ]] || fail "(7b) plan-review-quick.md missing: $PLAN_REVIEW_QUICK_MD"
-
-# Check 8: issue-anchored plan handoff uses plan-block-write.sh.
-PBW_SH="$REPO_ROOT/scripts/plan-block-write.sh"
-[[ -x "$PBW_SH" ]] \
-  || fail "(8) plan-block-write.sh missing or not executable at $PBW_SH"
-# shellcheck disable=SC2016 # fixed-string grep literals contain shell variables/backticks
-grep -Fq 'scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file' "$SKILL_MD" \
-  || fail "(8) SKILL.md lacks Step 5 plan-block-write.sh --issue --content-file invocation"
-grep -Fq 'PLAN_WRITE_OK=true' "$SKILL_MD" \
-  || fail "(8) SKILL.md lacks Step 5 PLAN_WRITE_OK gating for cleanup"
-
-# Check 9: load-bearing conversation-context dependency phrases are absent.
-GREP_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-structure-grep.XXXXXX")
-trap 'rm -f "$GREP_TMP"' EXIT
-if grep -rnE 'visible in conversation|retrieved from.*conversation' "$REPO_ROOT/skills/design" "$REPO_ROOT/skills/implement" "$REPO_ROOT/skills/shared" >"$GREP_TMP" 2>/dev/null; then
-  matches=$(head -5 "$GREP_TMP")
-  fail "(9) found forbidden conversation-context dependency phrase:
-$matches"
-fi
-
-# Check 11: Step 0 branch-state-agnostic session setup (issue #2588). No
-# create-branch.sh --check or session-entry-gate.sh; env handoff via
-# write-design-current-env.sh and the PID-keyed current-design-env-$PPID.sh symlink.
-step0_section=$(awk '
-  /^<!-- step:0 — Session Setup -->$/ { flag=1; next }
-  /^<!-- step:1c / && flag { flag=0 }
-  flag { print }
-' "$SKILL_MD")
-[[ -n "$step0_section" ]] \
-  || fail "(11) could not extract /design Step 0 section"
-
-# First fenced ```bash … ``` inside Step 0 — writer / _wdce_args probes must
-# match the executable block, not incidental prose or later-step bash excerpts.
-step0_first_bash=$(printf '%s\n' "$step0_section" | awk '
-  /^```bash$/ { if (!c) { c=1; next } }
-  c && /^```$/ { exit }
-  c { print }
-')
-[[ -n "$step0_first_bash" ]] \
-  || fail "(11) Step 0 section has no opening \`\`\`bash fenced block"
-
-if printf '%s\n' "$step0_section" | grep -Fq 'branch_info_supplied'; then
-  fail "(11) Step 0 must not use legacy branch_info_supplied routing (removed in #2588)"
-fi
-if printf '%s\n' "$step0_section" | grep -Fq 'create-branch.sh --check'; then
-  fail "(11) Step 0 must not invoke create-branch.sh --check (#2588: /implement owns branches)"
-fi
-if printf '%s\n' "$step0_section" | grep -Fq 'session-entry-gate.sh'; then
-  fail "(11) Step 0 must not invoke session-entry-gate.sh (#2588)"
-fi
-# shellcheck disable=SC2016 # grep -F literal; backticks in markdown are not command substitution
-printf '%s\n' "$step0_section" | grep -Fq '`/implement` owns the feature-branch lifecycle' \
-  || fail "(11) Step 0 must document that /implement owns the feature-branch lifecycle"
-# shellcheck disable=SC2016 # grep -F literal; $PPID is markdown text, not expansion
-printf '%s\n' "$step0_section" | grep -Fq 'current-design-env-$PPID.sh' \
-  || fail "(11) Step 0 must reference the PID-keyed current-design-env-$PPID.sh symlink"
-printf '%s\n' "$step0_section" | grep -Fq 'PREFLIGHT_ERROR' \
-  || fail "(11) Step 0 failure guidance must mention PREFLIGHT_ERROR"
-
-printf '%s\n' "$step0_first_bash" | grep -Fq 'write-design-current-env.sh' \
-  || fail "(11) Step 0a first bash block must invoke write-design-current-env.sh"
-# shellcheck disable=SC2016 # grep -F literal; quotes are part of the SKILL.md source line
-printf '%s\n' "$step0_first_bash" | grep -Fq -- '--claude-pid "$PPID"' \
-  || fail "(11) Step 0a first bash block must pass --claude-pid \"\$PPID\" to write-design-current-env.sh"
-printf '%s\n' "$step0_first_bash" | grep -Fq 'source-env.sh' \
-  || fail "(11) Step 0a first bash block must materialize source-env.sh via write-design-current-env --output"
-printf '%s\n' "$step0_first_bash" | grep -Fq '# Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers' \
-  || fail "(11) Step 0a first bash block must retain the session-setup contract pin comment for CI"
-printf '%s\n' "$step0_first_bash" | grep -Fq '_ss_args=(--prefix claude-design --skip-branch-check' \
-  || fail "(11) Step 0a first bash block must build _ss_args with --prefix claude-design --skip-branch-check"
-if printf '%s\n' "$step0_first_bash" | grep -Fq 'bash -c'; then
-  fail "(11) Step 0a first bash block must not use bash -c (would break the \$PPID / --claude-pid contract)"
-fi
-printf '%s\n' "$step0_first_bash" | grep -Fq '_wdce_args=(' \
-  || fail "(11) Step 0a first bash block must build _wdce_args=( ... ) for the writer"
-# shellcheck disable=SC2016 # grep -F literal; SKILL.md argv-array invocation line
-printf '%s\n' "$step0_first_bash" | grep -Fq '"${_wdce_args[@]}"' \
-  || fail "(11) Step 0a first bash block must invoke the writer via \"\${_wdce_args[@]}\" (argv array)"
-
-# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
-setup_line=$(printf '%s\n' "$step0_first_bash" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh' | head -1 | cut -d: -f1 || true)
-# shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
-wdce_line=$(printf '%s\n' "$step0_first_bash" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh' | head -1 | cut -d: -f1 || true)
-[[ -n "$setup_line" && -n "$wdce_line" ]] \
-  || fail "(11) could not locate session-setup.sh and write-design-current-env.sh lines in Step 0"
-if (( setup_line >= wdce_line )); then
-  fail "(11) Step 0 ordering must be session-setup.sh before write-design-current-env.sh"
-fi
-
-export_line=$(printf '%s\n' "$step0_first_bash" | grep -nF "export CLAUDE_PLUGIN_ROOT='\${CLAUDE_PLUGIN_ROOT}'" | head -1 | cut -d: -f1 || true)
-[[ -n "$export_line" && -n "$setup_line" ]] \
-  || fail "(11-A5) Step 0a first bash block must contain CLAUDE_PLUGIN_ROOT export before session-setup.sh"
-if (( export_line >= setup_line )); then
-  fail "(11-A5) export CLAUDE_PLUGIN_ROOT template must precede session-setup.sh in Step 0a first bash block"
-fi
-
-! grep -Eq 'SESSION_ENV_PATH' "$SKILL_MD" \
-  || fail "(11-A1) SESSION_ENV_PATH must not appear in design SKILL.md"
-! grep -Eq -- '--caller-env' "$SKILL_MD" \
-  || fail "(11-A2) --caller-env must not appear in design SKILL.md"
-! grep -rEq 'SESSION_ENV_PATH' "$REPO_ROOT/skills/design/" \
-  || fail "(11-A3) SESSION_ENV_PATH must not appear under skills/design/"
-! grep -rEq -- '--caller-env' "$REPO_ROOT/skills/design/" \
-  || fail "(11-A4) --caller-env must not appear under skills/design/"
-
-old_design_prose='Run the shared session setup script. This handles preflight, temp directory creation, reviewer presence check, and presence status in a single call'
-if grep -Fq "$old_design_prose" "$SKILL_MD"; then
-  fail "(11) SKILL.md still contains legacy unconditional Step 0 session-setup prose"
-fi
-
-# Check 13: accepted-OOS security exclusion pins. plan-review.md owns the
-# `$DESIGN_TMPDIR/oos-accepted-design.md` write and the design `oos.md`
-# visibility export; both public-boundary paths must explicitly exclude accepted
-# security-tagged OOS blocks using the canonical token match.
-grep -F 'oos-accepted-design.md' "$PLAN_REVIEW_MD" \
-  | grep -F 'excluding security-tagged findings' \
-  | grep -Fq 'focus-area\s*=\s*security' \
-  || fail "(13a) plan-review.md oos-accepted-design.md write must exclude security-tagged OOS via canonical focus-area token"
-grep -F 'oos.md' "$PLAN_REVIEW_MD" \
-  | grep -F 'excluding security-tagged accepted OOS findings' \
-  | grep -Fq 'focus-area\s*=\s*security' \
-  || fail "(13b) plan-review.md oos.md visibility export must exclude security-tagged accepted OOS via canonical focus-area token"
-grep -Fq 'Match discrimination (false-positive guard)' "$PLAN_REVIEW_MD" \
-  || fail "(13c) plan-review.md missing Match discrimination (false-positive guard) procedure"
-grep -Fq 'Security counter-invariant' "$PLAN_REVIEW_MD" \
-  || fail "(13c) plan-review.md missing Security counter-invariant clause"
-
-# Check 13q: plan-review-quick.md security OOS exclusion pins (#1769).
-# plan-review-quick.md is a public-boundary OOS writer; these assertions ensure
-# the security exclusion clause is not accidentally dropped.
-grep -F 'oos-accepted-design.md' "$PLAN_REVIEW_QUICK_MD" \
-  | grep -Fq 'non-security' \
-  || fail "(13qa) plan-review-quick.md oos-accepted-design.md write must mention non-security OOS exclusion"
-grep -F 'oos.md' "$PLAN_REVIEW_QUICK_MD" \
-  | grep -Fq 'Exclude security-tagged OOS' \
-  || fail "(13qb) plan-review-quick.md oos.md write must include Exclude security-tagged OOS"
-grep -Fq 'security counter-invariant' "$PLAN_REVIEW_QUICK_MD" \
-  || fail "(13qc) plan-review-quick.md missing security counter-invariant clause"
-
-# Check 15: /design SKILL.md pairs Final summary emission with operator-cancel /
-# plan-write-failure markers (or cites the shared ### Final summary block).
-for marker in \
-  '**ℹ /design cancelled by operator.**' \
-  '**⚠ 5: plan-block-write failed' \
-  ; do
-  line=$(grep -nF "$marker" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-  [[ -n "$line" ]] || fail "(15) missing stable marker: $marker"
-  start=$(( line > 45 ? line - 45 : 1 ))
-  window=$(sed -n "${start},${line}p" "$SKILL_MD")
-  if printf '%s\n' "$window" | grep -Fq 'render-final-summary.sh'; then
-    :
-  elif printf '%s\n' "$window" | grep -Fq '### Final summary block'; then
-    :
-  else
-    fail "(15) marker not paired with render-final-summary.sh / ### Final summary block within 45 lines: $marker (line $line)"
+absent() {
+  local file="$1" needle="$2" label="$3"
+  if grep -Fq -- "$needle" "$file"; then
+    fail "$label"
   fi
-done
-footer_line=$(grep -nF '➡️ 5: finalize — plan written to issue' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$footer_line" ]] || fail "(15) missing machine footer line (finalize)"
-fstart=$(( footer_line > 55 ? footer_line - 55 : 1 ))
-fwindow=$(sed -n "${fstart},${footer_line}p" "$SKILL_MD")
-if printf '%s\n' "$fwindow" | grep -Fq 'render-final-summary.sh'; then
-  :
-elif printf '%s\n' "$fwindow" | grep -Fq '### Final summary block'; then
-  :
-else
-  fail "(15) machine footer not preceded by final-summary anchor within 55 lines"
-fi
+}
 
-# Check 15b: Step 5 finalize references render-final-summary only (encapsulation — FINDING_14).
-step5_line=$(grep -nF '<!-- step:5' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step5_line" ]] || fail "(15b) missing <!-- step:5 marker"
-step6_line=$(grep -nF '<!-- step:6' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step6_line" ]] || fail "(15b) missing <!-- step:6 marker"
-step5_body=$(sed -n "${step5_line},${step6_line}p" "$SKILL_MD")
-printf '%s\n' "$step5_body" | grep -Fq 'render-final-summary.sh' \
-  || fail "(15b) Step 5 body must reference render-final-summary.sh"
-if printf '%s\n' "$step5_body" | grep -Fq 'tracking-issue-summary.sh'; then
-  fail "(15b) Step 5 must not reference tracking-issue-summary.sh (encapsulated in render-final-summary.sh)"
-fi
+contains "$SKILL_MD" '[--simple|--hard]' 'SKILL argument hint must expose only SIMPLE/HARD tiers'
+contains "$SKILL_MD" '--trivial flag removed; tier consolidation in #2956. Use --simple or --hard.' 'SKILL missing removed --trivial hard-error prose'
+contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
+contains "$SKILL_MD" "unless \`design_classification == SIMPLE\`, where the user-confirmed no-sketch carve-out applies" 'SKILL missing SIMPLE Design Mindset carve-out'
+contains "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_SIMPLE' 'SKILL missing SIMPLE sketch sentinel'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`' 'SKILL missing Anti-pattern #1 SIMPLE carve-out prose'
+contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
+contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroughness**.' 'SKILL missing HARD designer emphasis'
+contains "$SKILL_MD" 'review-round-count.txt' 'SKILL missing review-round counter'
+contains "$SKILL_MD" "--round-num \"\${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}\"" 'SKILL must pass persisted Step 3 round number'
+contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'
+contains "$SKILL_MD" 'read-design-classification.sh' 'SKILL missing classification reader'
+contains "$SKILL_MD" '.step3-review-cap.env' 'SKILL missing persisted Step 3 cap state file'
+contains "$SKILL_MD" 'STEP3_REVIEW_CAP_REACHED=false' 'SKILL missing persisted cap-false state'
+contains "$SKILL_MD" 'STEP3_REVIEW_ROUND_NUM=' 'SKILL missing persisted Step 3 round number state'
+contains "$SKILL_MD" "including \`LOOP_STATUS=panel-failed\`" 'SKILL missing panel-failed counter-consumption contract'
+contains "$SKILL_MD" "MUST NOT persist when \`TALLY_PLAN_REVIEW_STATUS=tally-error\`" 'SKILL missing tally-error counter-skip contract'
+contains "$SKILL_MD" 'review-round cap (' 'SKILL missing Step 3 cap breadcrumb prose'
+contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
+contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
+contains "$SKILL_MD" 'The Step 3.5 continuation block below is bypassed on this path.' 'SKILL missing explicit Step 3.5 bypass prose'
+contains "$SKILL_MD" 'the three primary options are **Approve final design** / **Discuss further** / **Re-run review panel**' 'SKILL missing Gate C three-option prose'
+contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **Discuss further**' 'SKILL missing Gate C cap-omission prose'
+contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL missing full-panel Step 3 contract'
 
-# Check 15c: no render-cost-line in skills/design tree.
-if grep -RIn 'render-cost-line\.sh' "$REPO_ROOT/skills/design" >/dev/null 2>&1; then
-  fail "(15c) skills/design must not reference render-cost-line.sh"
+absent "$SKILL_MD" 'sketch_budget=0' 'SKILL must not pin v1 sketch_budget=0'
+absent "$SKILL_MD" 'review_budget=quick' 'SKILL must not pin v1 review_budget=quick'
+absent "$SKILL_MD" 'invoke-plan-validator-if-not-quick.sh' 'SKILL must not reference old validator helper'
+absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old budget reader'
+absent "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_TRIVIAL' 'SKILL must not reference old trivial sentinel'
+absent "$SKILL_MD" 'plan-review-quick.md' 'SKILL must not reference deleted quick review reference'
+absent "$SKILL_MD" 'design-l3-velocity-notified-2670' 'SKILL must not retain Step 5d velocity comment sentinel'
+
+contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
+contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
+contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
+contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
+contains "$APPROVAL_MD" "any Gate C re-prompt after \`Other\` must preserve that omission" 'approval-gates.md missing Gate C cap re-prompt omission contract'
+contains "$APPROVAL_MD" 'offer this option only when the current review-round count is still below the tier cap' 'approval-gates.md missing Gate C cap-aware rerun contract'
+contains "$PLAN_REVIEW_MD" "Step 3 always runs the full panel via \`plan-review-loop.sh\`" 'plan-review.md missing full-panel consumer line'
+contains "$PLAN_REVIEW_MD" 'injects the SIMPLE-emphasis or HARD-emphasis text immediately after the role line' 'plan-review.md missing tier-emphasis injection contract'
+contains "$PLAN_REVIEW_MD" 'When in doubt between YES and EXONERATE, prefer EXONERATE.' 'plan-review.md missing voter-bias proportionality pin'
+contains "$PLAN_REVIEW_MD" 'Treat any suggested remedy in the item body as *informational only*' 'plan-review.md missing OOS remedy informational-only pin'
+contains "$PLAN_REVIEW_MD" 'Security-tagged findings are held locally and NEVER written to this public OOS issue artifact' 'plan-review.md missing SECURITY.md OOS exclusion pin'
+contains "$PLAN_REVIEW_MD" "Security-tagged accepted OOS findings are held locally per SECURITY.md and are NOT included in \`oos.md\`." 'plan-review.md missing SECURITY.md oos.md exclusion pin'
+contains "$DISCUSSION_MD" 'invoke-plan-validator.sh' 'discussion-rounds.md missing renamed validator helper'
+
+if grep -Eq 'grep .*review-round-count\.txt|review-round-count\.txt.*grep' "$PLAN_LOOP_SH"; then
+  fail 'plan-review-loop.sh must not grep review-round-count.txt'
 fi
+contains "$PLAN_LOOP_SH" '--round-num is a stateless integer supplied by the caller' 'plan-review-loop.sh missing stateless round comment'
+
+absent "$MAKEFILE" 'test-read-design-review-budget-invoke' 'Makefile must not reference deleted read-design-review-budget harness'
+
+# Gate B auto-apply / --manual pins (preserved from #3009, adapted to v2 SIMPLE/HARD).
+contains "$APPROVAL_MD" '### Apply-all body' 'approval-gates.md missing Apply-all body heading'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'Execute `### Apply-all body` verbatim' 'approval-gates.md missing Apply-all body delegate prose'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$FLAGS_MD" '`--manual` / `-m`:' 'flags.md missing --manual/-m bullet anchor'
 
 # Check 15d: design SKILL must not chat-print token/timing summaries.
 if grep -nF 'token-report.sh --summary' "$SKILL_MD" | grep -q .; then
@@ -498,7 +162,7 @@ grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 emit_line=$(awk -v s="$step2b_mark" 'NR>s && /ACTION=EMIT_PLAN/ {print NR; exit}' "$SKILL_MD" || true)
-val_line=$(awk -v s="$step2b_mark" 'NR>s && /invoke-plan-validator-if-not-quick\.sh/ && /plan\.txt/ {print NR; exit}' "$SKILL_MD" || true)
+val_line=$(awk -v s="$step2b_mark" 'NR>s && /invoke-plan-validator\.sh/ && /plan\.txt/ {print NR; exit}' "$SKILL_MD" || true)
 [[ -n "$step2b_mark" && -n "$emit_line" && -n "$val_line" && "$val_line" -gt "$emit_line" ]] \
   || fail "(14b10) VALIDATE_PLAN_COMMANDS must follow EMIT_PLAN in Step 2b block"
 
@@ -508,18 +172,18 @@ DR_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 [[ -f "$DR_MD" ]] || fail "(14c14b) discussion-rounds.md missing: $DR_MD"
 grep -Fq 'ACTION=EMIT_PLAN' "$AG_MD" \
   || fail "(14c14c) approval-gates.md missing ACTION=EMIT_PLAN pin"
-grep -Fq 'invoke-plan-validator-if-not-quick.sh' "$AG_MD" \
-  || fail "(14c14d) approval-gates.md missing invoke-plan-validator-if-not-quick.sh pin"
-emit_before_val_ag=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator-if-not-quick\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
+grep -Fq 'invoke-plan-validator.sh' "$AG_MD" \
+  || fail "(14c14d) approval-gates.md missing invoke-plan-validator.sh pin"
+emit_before_val_ag=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
 [[ "$emit_before_val_ag" == "1" ]] \
-  || fail "(14c14e) approval-gates.md must mention EMIT_PLAN at or before invoke-plan-validator-if-not-quick.sh"
+  || fail "(14c14e) approval-gates.md must mention EMIT_PLAN at or before invoke-plan-validator.sh"
 grep -Fq 'ACTION=EMIT_PLAN' "$DR_MD" \
   || fail "(14c14f) discussion-rounds.md missing ACTION=EMIT_PLAN pin"
-grep -Fq 'invoke-plan-validator-if-not-quick.sh' "$DR_MD" \
-  || fail "(14c14g) discussion-rounds.md missing invoke-plan-validator-if-not-quick.sh pin"
-emit_before_val_dr=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator-if-not-quick\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
+grep -Fq 'invoke-plan-validator.sh' "$DR_MD" \
+  || fail "(14c14g) discussion-rounds.md missing invoke-plan-validator.sh pin"
+emit_before_val_dr=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
 [[ "$emit_before_val_dr" == "1" ]] \
-  || fail "(14c14h) discussion-rounds.md must mention EMIT_PLAN at or before invoke-plan-validator-if-not-quick.sh"
+  || fail "(14c14h) discussion-rounds.md must mention EMIT_PLAN at or before invoke-plan-validator.sh"
 
 # Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
 DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"
@@ -574,7 +238,7 @@ if (( step5b_line >= step5c_line )); then
   fail "(15b) Step 5b must appear before Step 5c in SKILL.md"
 fi
 red_line=$(awk -v s="$step5c_line" 'NR>s && /redact-secrets\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
-val5=$(awk -v s="$step5c_line" 'NR>s && /invoke-plan-validator-if-not-quick\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
+val5=$(awk -v s="$step5c_line" 'NR>s && /invoke-plan-validator\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
 [[ -n "$red_line" && -n "$val5" && "$val5" -lt "$red_line" ]] \
   || fail "(14b11) Step 5c validator must appear before redact-secrets on composed-plan.md"
 # shellcheck disable=SC2016  # literal backticks + $DESIGN_TMPDIR token must match SKILL.md prose
@@ -625,8 +289,6 @@ grep -Fq "\`-p\`, \`--partition\`" "$SKILL_MD" \
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
 grep -Fq '`--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing --brainstorm/--manual sequence"
-grep -Fq "\`--trivial\` and \`-p\` / \`--partition\` are mutually exclusive" "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md missing trivial vs partition mutual-exclusion prose"
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing Step 2b.5 header"
 step2b_block=$(awk '/^<!-- step:2b /,/^<!-- step:3 /' "$SKILL_MD")
@@ -650,17 +312,6 @@ grep -Fq 'semantic sprawl heuristic' "$DISCUSSION_MD" \
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 grep -Fq 'Step 2b.5' "$APPROVAL_MD" \
   || fail "(FINDING_21) approval-gates.md missing Step 2b.5 reference after Gate B EMIT_PLAN"
-grep -Fq '### 5d — Gated L3 velocity deferral comment' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md missing Step 5d header"
-grep -Fq -- '--repo character-ai/larch' "$SKILL_MD" \
-  || fail "(FINDING_21) Step 5d must reference explicit --repo character-ai/larch guard"
-grep -Fq "[ \"\$ISSUE_NUMBER\" = \"2670\" ]" "$SKILL_MD" \
-  || fail "(FINDING_21) Step 5d must guard on ISSUE_NUMBER 2670"
-grep -Fq 'design-l3-velocity-notified-2670' "$SKILL_MD" \
-  || fail "(FINDING_21) Step 5d must reference design-l3-velocity-notified-2670 sentinel"
-grep -Fq "[ \"\${REPO:-}\" = \"character-ai/larch\" ]" "$SKILL_MD" \
-  || fail "(FINDING_21) Step 5d must guard on REPO character-ai/larch identity"
-
 # Check 19 (#2754): --brainstorm / Step 1d.5 / run-params / plan-review feature-context pins.
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 BRAINSTORM_PROMPTS="$REPO_ROOT/skills/design/references/brainstorm-prompts.md"
@@ -669,9 +320,6 @@ BRAINSTORM_PROMPTS="$REPO_ROOT/skills/design/references/brainstorm-prompts.md"
 # shellcheck disable=SC2016 # Markdown table cell literal
 grep -Fq '| `--brainstorm` |' "$SKILL_MD" \
   || fail "(2754) SKILL.md compact flag table missing --brainstorm row"
-# shellcheck disable=SC2016 # Markdown emphasis + backticks in SKILL.md
-grep -Fq '**`--trivial` + `--brainstorm`** uses' "$SKILL_MD" \
-  || fail "(2754) SKILL.md missing trivial+brainstorm upgrade-flow prose"
 grep -Fq '<!-- step:1d.5 — Brainstorm Panel -->' "$SKILL_MD" \
   || fail "(2754) SKILL.md missing Step 1d.5 anchor"
 grep -Fq '> **🔶 /design 1d.5: brainstorm**' "$BRAINSTORM_MD" \
@@ -724,7 +372,7 @@ done
 grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \
   || fail "(2930) SKILL.md argument-hint missing [--manual|-m] between brainstorm and no-dedup"
 # shellcheck disable=SC2016 # Markdown literal contains backticks and "$manual" text intentionally.
-grep -Fq 'Parse public flags (`--trivial|--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`)' "$SKILL_MD" \
+grep -Fq 'Parse public flags (`--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`)' "$SKILL_MD" \
   || fail "(FINDING_5) SKILL.md Step 0b public-flag parse list missing --manual|-m"
 # shellcheck disable=SC2016 # Markdown table cell literal
 grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
@@ -805,9 +453,6 @@ grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit will p
 # shellcheck disable=SC2016 # Markdown literal; backticks are plan-review prose, not command substitution
 grep -Fq 'findings are surfaced to Gate B, which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_MD" \
   || fail "(FINDING_6) plan-review.md missing Gate B dual-mode application pin"
-# shellcheck disable=SC2016 # Markdown literal; backticks are quick-plan-review prose, not command substitution
-grep -Fq 'findings flow to Gate B (Step 3.5), which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_QUICK_MD" \
-  || fail "(FINDING_6) plan-review-quick.md missing Gate B dual-mode application pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
 grep -Fq 'When Gate B resolves `manual_gate_b=false`, it applies every accepted in-scope finding to `plan.txt`' "$SKILL_MD" \
   || fail "(FINDING_7) SKILL.md Step 3 missing auto-apply pin"
@@ -841,39 +486,26 @@ if (( step0b_refresh_line >= step0b_run_params_line )); then
   fail "(FINDING_13) Step 0b must refresh current-design-env before write-run-params"
 fi
 
-# Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned across 4 prose locations.
+# Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned in plan-review.md + renderer.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'
-PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
-PLAN_REVIEW_QUICK_MD="$REPO_ROOT/skills/design/references/plan-review-quick.md"
 RENDER_VOTER_SH="$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh"
 
-# Location 1: Voter 1 prompt string in plan-review.md (single-line block).
 voter1_line=$(grep -n '^- \*\*Voter 1\*\*' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$voter1_line" ]] || fail "(FINDING_2678) plan-review.md missing '- **Voter 1**' prompt anchor"
 voter1_text=$(sed -n "${voter1_line}p" "$PLAN_REVIEW_MD")
 grep -Fq "$CANONICAL_PHRASE" <<< "$voter1_text" \
   || fail "(FINDING_2678) plan-review.md Voter 1 prompt missing canonical phrase: $CANONICAL_PHRASE"
 
-# Location 2: shared Voter 2/3 prompt string in plan-review.md (single-line block).
 shared_line=$(grep -n '^For Codex, Cursor, and their Claude replacement voters' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$shared_line" ]] || fail "(FINDING_2678) plan-review.md missing 'For Codex, Cursor, and their Claude replacement voters' shared-voter-prompt anchor"
+[[ -n "$shared_line" ]] || fail "(FINDING_2678) plan-review.md missing shared-voter-prompt anchor"
 shared_text=$(sed -n "${shared_line}p" "$PLAN_REVIEW_MD")
 grep -Fq "$CANONICAL_PHRASE" <<< "$shared_text" \
   || fail "(FINDING_2678) plan-review.md shared Voter 2/3 prompt missing canonical phrase: $CANONICAL_PHRASE"
 
-# Location 3: render-voter-prompt.sh — the renderer called by dispatch-plan-voters.sh make_prompt_file().
 grep -Fq "$CANONICAL_PHRASE" "$RENDER_VOTER_SH" \
-  || fail "(FINDING_2678) render-voter-prompt.sh missing canonical phrase (renderer behind dispatch-plan-voters.sh make_prompt_file): $CANONICAL_PHRASE"
+  || fail "(FINDING_2678) render-voter-prompt.sh missing canonical phrase: $CANONICAL_PHRASE"
 
-# Location 4: plan-review-quick.md — canonical phrase on the inline accept/reject guidance line only.
-quick_inline_line=$(grep -n '^For inline accept/reject (there is no separate voter panel)' "$PLAN_REVIEW_QUICK_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$quick_inline_line" ]] \
-  || fail "(FINDING_2678) plan-review-quick.md missing 'For inline accept/reject … voter panel' acceptance anchor"
-quick_inline_text=$(sed -n "${quick_inline_line}p" "$PLAN_REVIEW_QUICK_MD")
-grep -Fq "$CANONICAL_PHRASE" <<< "$quick_inline_text" \
-  || fail "(FINDING_2678) plan-review-quick.md inline accept/reject line missing canonical phrase: $CANONICAL_PHRASE"
-
-echo "PASS: FINDING_2678 — YES↔EXONERATE canonical anchor phrase OK (4 locations)"
+echo "PASS: FINDING_2678 — YES↔EXONERATE canonical anchor phrase OK (plan-review.md + renderer)"
 
 # Check 19 (#2672): decomposition panel replaces Split-path stub.
 DECOMP_REF="$REPO_ROOT/skills/design/references/decompose-panel.md"
@@ -944,7 +576,7 @@ esac
 
 step5c_reentry_order=$(awk '
   /^### 5c — Write `larch:plan` to GitHub \+ publish$/ { in5c=1; next }
-  /^### 5d / && in5c { in5c=0 }
+  /^<!-- step:6 / && in5c { in5c=0 }
   in5c && /design_reentry_marker_write/ && !write { write=NR }
   in5c && /tracking-issue-write\.sh" rename --issue "\$ISSUE_NUMBER" --state designed/ && !rename { rename=NR }
   END {

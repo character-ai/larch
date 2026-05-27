@@ -28,6 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [43.0.0] - 2026-05-27
+
+### Changed
+
+- Collapsed /design tiering to the SIMPLE/HARD v2 contract and removed TRIVIAL/quick-review routing.
+- Replaced review-budget helpers with design_classification run-params, classification reading, unconditional plan validation, and tier-specific review emphasis/caps.
+- Updated design docs, topology projections, security notes, and public skill metadata to match the two-tier behavior.
+- Adjusted focused harnesses and relevant-checks coverage for the new contract.
+
 ## [42.6.4] - 2026-05-27
 
 ### Changed

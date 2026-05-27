@@ -959,7 +959,7 @@ assert_family_count() {
     PASS=$((PASS + 1))
 }
 
-assert_family_count "$REPO_ROOT/skills/design/references/sketch-launch.md" 9 'sketch-launch.md'
+assert_family_count "$REPO_ROOT/skills/design/references/sketch-launch.md" 7 'sketch-launch.md'
 assert_family_count "$REPO_ROOT/skills/design/references/dialectic-execution.md" 5 'dialectic-execution.md'
 assert_family_count "$REPO_ROOT/skills/shared/voting-protocol.md" 3 'voting-protocol.md'
 assert_family_count "$REPO_ROOT/skills/shared/dialectic-protocol.md" 3 'dialectic-protocol.md'

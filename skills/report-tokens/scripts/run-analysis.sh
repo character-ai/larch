@@ -117,8 +117,7 @@ if [[ -z "$PLOT_FROM" ]]; then
         manifest="$dir/manifest.json"
         token_report_json="$dir/token-report.json"
         timing_report_json="$dir/timing-report.json"
-        plan_tally_json="$dir/plan-review-tally.json"
-
+        run_params_json="$dir/run-params.json"
         [[ -f "$manifest" ]] || continue
         [[ -f "$token_report_json" ]] || continue
 
@@ -131,16 +130,12 @@ if [[ -z "$PLOT_FROM" ]]; then
 
         workflow_path="unknown"
         if [[ -f "$timing_report_json" ]]; then
-            workflow_path=$(jq -r '.workflow_path // "unknown"' "$timing_report_json" 2>/dev/null || printf 'unknown')
+            workflow_path=$("$PLUGIN_ROOT/scripts/read-workflow-path.sh" "$timing_report_json" 2>/dev/null || printf 'unknown')
             case "$workflow_path" in SIMPLE|HARD|unknown) ;; *) workflow_path="unknown" ;; esac
         fi
-        if [[ "$workflow_path" == "unknown" && -f "$plan_tally_json" ]]; then
-            tally_body=$(jq -r '(.body // .tally) // ""' "$plan_tally_json" 2>/dev/null || true)
-            if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
-                workflow_path="SIMPLE"
-            elif [[ -n "$tally_body" ]]; then
-                workflow_path="HARD"
-            fi
+        if [[ "$workflow_path" == "unknown" && -f "$run_params_json" ]]; then
+            workflow_path=$("$PLUGIN_ROOT/scripts/read-workflow-path.sh" "$run_params_json" 2>/dev/null || printf 'unknown')
+            case "$workflow_path" in SIMPLE|HARD|unknown) ;; *) workflow_path="unknown" ;; esac
         fi
 
         combined_body="**Workflow path**: ${workflow_path}"

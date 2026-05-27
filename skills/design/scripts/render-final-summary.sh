@@ -54,10 +54,12 @@ esac
 RUN_ID="${SESSION_ID:-}"
 [ -n "$RUN_ID" ] || RUN_ID="unknown"
 
-WORKFLOW_PATH="unknown"
-if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
-    WORKFLOW_PATH=$(jq -r '.workflow_path // "unknown"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo unknown)
-fi
+DESIGN_CLASSIFICATION="$("$PLUGIN_ROOT/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf 'HARD\n')"
+case "$DESIGN_CLASSIFICATION" in
+    SIMPLE) WORKFLOW_PATH="SIMPLE (no sketches; full review)" ;;
+    HARD) WORKFLOW_PATH="HARD (4 sketches; full review)" ;;
+    *) WORKFLOW_PATH="HARD (4 sketches; full review)" ;;
+esac
 
 ISSUE="${ISSUE_NUMBER:-}"
 [ -n "$ISSUE" ] || ISSUE=""
@@ -240,7 +242,7 @@ refresh_issue_counts
 # --- Plan review line ---
 PLAN_LINE="0 findings"
 if [ ! -f "$DESIGN_TMPDIR/voting-tally.md" ]; then
-    case "$MODE_STR" in *--trivial*|*trivial*) PLAN_LINE="skipped (trivial)" ;; *) PLAN_LINE="0 findings" ;; esac
+    PLAN_LINE="0 findings"
 else
     apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
     oaf="$DESIGN_TMPDIR/oos-accepted-design.md"

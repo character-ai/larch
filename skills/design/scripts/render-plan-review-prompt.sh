@@ -13,10 +13,11 @@ larch_quiet_init
 ARCHETYPE=""
 VENDOR=""
 PLAN_FILE=""
+DESIGN_TMPDIR_ARG=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'EOF'
-Usage: render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file <path>
+Usage: render-plan-review-prompt.sh --archetype <arch|edge|innovation|pragmatic|requirements> --vendor <codex|cursor> --plan-file <path> --design-tmpdir <path>
 EOF
 }
 
@@ -35,6 +36,7 @@ while [[ $# -gt 0 ]]; do
         --archetype) ARCHETYPE="$(take_value --archetype "${2:-}")"; shift 2 ;;
         --vendor) VENDOR="$(take_value --vendor "${2:-}")"; shift 2 ;;
         --plan-file) PLAN_FILE="$(take_value --plan-file "${2:-}")"; shift 2 ;;
+        --design-tmpdir) DESIGN_TMPDIR_ARG="$(take_value --design-tmpdir "${2:-}")"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) larch_err "render-plan-review-prompt.sh: unknown argument: $1"; usage; exit 2 ;;
     esac
@@ -86,9 +88,25 @@ if [[ ! -r "$PLAN_FILE" ]]; then
     larch_err "render-plan-review-prompt.sh: --plan-file path is missing or unreadable: $PLAN_FILE"
     exit 2
 fi
+DESIGN_TMPDIR="${DESIGN_TMPDIR_ARG:-${DESIGN_TMPDIR:-}}"
+if [[ -z "$DESIGN_TMPDIR" || ! -d "$DESIGN_TMPDIR" ]]; then
+    larch_err "render-plan-review-prompt.sh: --design-tmpdir or DESIGN_TMPDIR must name a directory"
+    exit 2
+fi
+
+classification=$("$SCRIPT_DIR/../../../scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")
+case "$classification" in
+    SIMPLE)
+        tier_emphasis="**Tier emphasis: SIMPLE.** This is a minimum-change review lane. Bias your findings toward flagging **scope creep and unnecessary complexity**. Do NOT request additions unless they are materially required for correctness, security, or safety hardening. Accept YES only for findings that keep or restore that minimum-change contract. Prefer EXONERATE on nits, style concerns, and forward-looking issues. When in doubt, EXONERATE."
+        ;;
+    HARD|*)
+        tier_emphasis="**Tier emphasis: HARD.** Bias your findings toward **thoroughness**. Flag missed considerations, edge cases, and architectural concerns. Request additions when warranted. Engage seriously with all findings."
+        ;;
+esac
 
 cat <<EOF
 ${full_role}
+${tier_emphasis}
 Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel {"no_issues_found": true} (when you have none). Do not write any preamble, no "I'll review...", no "Examining the plan...", no "Looking at file X...". The first non-whitespace character of your response must be either \`s\` (start of \`schema_version\`) or \`{\` (start of the sentinel).
 Review the implementation plan file at ${PLAN_FILE}. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
 The plan describes the codebase AFTER this PR lands. Files cited in \`### NEW:\` / \`### UPDATED:\` / \`### REWRITTEN:\` subsections have NOT yet been changed when you read them — the plan PROPOSES those changes. Do NOT flag a current-state behavior as a finding when the plan already addresses it; the plan's mention of current state is motivation for the change, not a claim about post-change state. Findings should target deficiencies of the PROPOSED change: missing steps, wrong target file, incomplete contracts, conflicts with other proposed changes, or actual code paths the plan fails to address.

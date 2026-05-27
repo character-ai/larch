@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of three votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor) for SIMPLE and HARD. `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on every round. Claude replacement voters cover unavailable external voters. Each voter casts one of three votes:
 
 | Vote | Meaning |
 |---|---|
@@ -51,7 +51,6 @@ The dispatch scripts emit loud degraded-panel warnings when effective judges dro
 | Skill | Voters |
 |---|---|
 | `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
-| `/design` (plan review, `--quick` mode) | Claude only — no external reviewers, no voting panel |
 | `/review` (code review) | Claude + Codex + Cursor — all 3 launched every round, with Claude replacements for unhealthy external voters |
 
 ## Ballot Format

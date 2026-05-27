@@ -1,0 +1,291 @@
+{
+  "schema_version": 1,
+  "status": "complete",
+  "files_touched": [
+    {
+      "path": ".claude-plugin/plugin.json",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": ".claude/rules/topology-generation.md",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "Makefile",
+      "lines_added": 2,
+      "lines_removed": 4
+    },
+    {
+      "path": "README.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "SECURITY.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "agent-lint.toml",
+      "lines_added": 0,
+      "lines_removed": 2
+    },
+    {
+      "path": "docs/collaborative-sketches.md",
+      "lines_added": 17,
+      "lines_removed": 61
+    },
+    {
+      "path": "docs/issue-anchored-plan.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "docs/linting.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "docs/review-agents.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "docs/skills.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "docs/topology.md",
+      "lines_added": 1,
+      "lines_removed": 3
+    },
+    {
+      "path": "docs/voting-process.md",
+      "lines_added": 1,
+      "lines_removed": 2
+    },
+    {
+      "path": "docs/workflow-lifecycle.md",
+      "lines_added": 8,
+      "lines_removed": 21
+    },
+    {
+      "path": "scripts/test-design-structure.md",
+      "lines_added": 6,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/test-design-structure.sh",
+      "lines_added": 51,
+      "lines_removed": 794
+    },
+    {
+      "path": "scripts/test-effort-prose.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-write-run-params.md",
+      "lines_added": 8,
+      "lines_removed": 18
+    },
+    {
+      "path": "scripts/test-write-run-params.sh",
+      "lines_added": 7,
+      "lines_removed": 98
+    },
+    {
+      "path": "scripts/timing-report.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/write-run-params.md",
+      "lines_added": 7,
+      "lines_removed": 10
+    },
+    {
+      "path": "scripts/write-run-params.sh",
+      "lines_added": 4,
+      "lines_removed": 48
+    },
+    {
+      "path": "skills/design/SKILL.md",
+      "lines_added": 78,
+      "lines_removed": 132
+    },
+    {
+      "path": "skills/design/references/approval-gates.md",
+      "lines_added": 8,
+      "lines_removed": 9
+    },
+    {
+      "path": "skills/design/references/discussion-rounds.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/references/flags.md",
+      "lines_added": 24,
+      "lines_removed": 28
+    },
+    {
+      "path": "skills/design/references/l3-velocity-deferral-comment.txt",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/references/plan-review-quick.md",
+      "lines_added": 0,
+      "lines_removed": 62
+    },
+    {
+      "path": "skills/design/references/plan-review.md",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "skills/design/references/sketch-launch.md",
+      "lines_added": 17,
+      "lines_removed": 52
+    },
+    {
+      "path": "skills/design/references/sketch-prompts.md",
+      "lines_added": 3,
+      "lines_removed": 4
+    },
+    {
+      "path": "skills/design/scripts/design-driver.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/scripts/dispatch-plan-review-panel.sh",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "skills/design/scripts/invoke-plan-validator-if-not-quick.sh",
+      "lines_added": 0,
+      "lines_removed": 25
+    },
+    {
+      "path": "skills/design/scripts/plan-review-loop.md",
+      "lines_added": 4,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/scripts/plan-review-loop.sh",
+      "lines_added": 2,
+      "lines_removed": 0
+    },
+    {
+      "path": "skills/design/scripts/read-design-review-budget.sh",
+      "lines_added": 0,
+      "lines_removed": 51
+    },
+    {
+      "path": "skills/design/scripts/render-final-summary.sh",
+      "lines_added": 7,
+      "lines_removed": 5
+    },
+    {
+      "path": "skills/design/scripts/render-plan-review-prompt.md",
+      "lines_added": 4,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/scripts/render-plan-review-prompt.sh",
+      "lines_added": 19,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/scripts/test-design-driver.sh",
+      "lines_added": 6,
+      "lines_removed": 5
+    },
+    {
+      "path": "skills/design/scripts/test-plan-review-prompt.sh",
+      "lines_added": 39,
+      "lines_removed": 5
+    },
+    {
+      "path": "skills/design/scripts/test-read-design-review-budget-invoke.md",
+      "lines_added": 0,
+      "lines_removed": 20
+    },
+    {
+      "path": "skills/design/scripts/test-read-design-review-budget-invoke.sh",
+      "lines_added": 0,
+      "lines_removed": 126
+    },
+    {
+      "path": "skills/design/scripts/test-render-final-summary.sh",
+      "lines_added": 12,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/report-tokens/scripts/run-analysis.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "skills/report-tokens/scripts/run-analysis.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/shared/topology.tsv",
+      "lines_added": 1,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/read-design-classification.md",
+      "lines_added": 5,
+      "lines_removed": 0
+    },
+    {
+      "path": "scripts/read-design-classification.sh",
+      "lines_added": 52,
+      "lines_removed": 0
+    },
+    {
+      "path": "skills/design/scripts/invoke-plan-validator.md",
+      "lines_added": 10,
+      "lines_removed": 0
+    },
+    {
+      "path": "skills/design/scripts/invoke-plan-validator.sh",
+      "lines_added": 15,
+      "lines_removed": 0
+    }
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-design-structure.md",
+    "scripts/test-design-structure.sh",
+    "scripts/test-effort-prose.sh",
+    "scripts/test-write-run-params.md",
+    "scripts/test-write-run-params.sh",
+    "skills/design/scripts/test-design-driver.sh",
+    "skills/design/scripts/test-plan-review-prompt.sh",
+    "skills/design/scripts/test-read-design-review-budget-invoke.md",
+    "skills/design/scripts/test-read-design-review-budget-invoke.sh",
+    "skills/design/scripts/test-render-final-summary.sh"
+  ],
+  "summary_bullets": [
+    "Collapsed /design tiering to the SIMPLE/HARD v2 contract and removed TRIVIAL/quick-review routing.",
+    "Replaced review-budget helpers with design_classification run-params, classification reading, unconditional plan validation, and tier-specific review emphasis/caps.",
+    "Updated design docs, topology projections, security notes, and public skill metadata to match the two-tier behavior.",
+    "Adjusted focused harnesses and relevant-checks coverage for the new contract."
+  ],
+  "commit_message": "Remove /design trivial mode\n\nCollapse /design routing to SIMPLE/HARD, remove the quick review and budget helpers, and update docs/tests/topology for the v2 run-params contract.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": null,
+  "needs_qa": {
+    "questions": []
+  }
+}

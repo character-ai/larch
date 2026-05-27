@@ -899,7 +899,6 @@ exclude = [
   "skills/design/scripts/test-write-design-current-env.sh",
   "skills/design/scripts/test-emit-plan.sh",
   "skills/design/scripts/test-parse-plan-commands.sh",
-  "skills/design/scripts/test-read-design-review-budget-invoke.sh",
   "skills/design/scripts/test-validate-plan-commands.sh",
   "skills/design/scripts/test-tally-plan-review.sh",
   "skills/design/scripts/test-findings-classification.sh",
@@ -1267,7 +1266,6 @@ exclude = [
   "skills/design/scripts/test-write-design-current-env.md",
   "skills/design/scripts/test-emit-plan.md",
   "skills/design/scripts/test-parse-plan-commands.md",
-  "skills/design/scripts/test-read-design-review-budget-invoke.md",
   "skills/design/scripts/test-validate-plan-commands.md",
   "skills/design/scripts/test-tally-plan-review.md",
   "skills/design/scripts/test-findings-classification.md",
@@ -1363,6 +1361,14 @@ exclude = [
   # Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-write-run-params.sh",
   "scripts/test-write-run-params.md",
+  # scripts/test-read-design-classification.sh is the offline regression harness
+  # for scripts/read-design-classification.sh (the /design tier reader).
+  # Referenced only from Makefile (test-read-design-classification target),
+  # docs/linting.md, scripts/read-design-classification.md, and the sibling
+  # contract scripts/test-read-design-classification.md, matching the same
+  # Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-read-design-classification.sh",
+  "scripts/test-read-design-classification.md",
   # scripts/test-implement-fork-env.sh is the offline regression harness for
   # scripts/implement-fork-env.sh (the pre-Step-0 fork bootstrap helper used
   # by /implement --forked). Referenced only from Makefile

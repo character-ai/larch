@@ -1,0 +1,4 @@
+larch:bc t=2026-05-27T07:40:08Z d=0 p=60971 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-merge)
+larch:bc t=2026-05-27T07:40:08Z d=0 p=61452 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-27T07:40:12Z d=0 p=61452 s=ci-wait.sh c=wait-ci text=→ Action: rebase (4s, 0 polls)
+larch:bc t=2026-05-27T07:40:12Z d=0 p=60971 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
