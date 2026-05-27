@@ -884,15 +884,27 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --coder "$coder"
+    --coder "$coder" &
+RUN_STEP2_DISPATCH_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$RUN_STEP2_DISPATCH_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$RUN_STEP2_DISPATCH_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `run-step2-dispatch.sh` with `run_in_background: true` paired with foreground `breadcrumb-monitor.sh`. The launcher, in turn, invokes `step2-implement.sh` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
@@ -1149,15 +1161,27 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
-  --starting-round 1
+  --starting-round 1 &
+RUN_STEP5_REVIEW_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$RUN_STEP5_REVIEW_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$RUN_STEP5_REVIEW_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 Parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
@@ -1208,15 +1232,27 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
-  --starting-round "$((FINAL_ROUND_NUM + 1))"
+  --starting-round "$((FINAL_ROUND_NUM + 1))" &
+RUN_STEP5_REVIEW_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$RUN_STEP5_REVIEW_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$RUN_STEP5_REVIEW_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
@@ -1466,20 +1502,32 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
   --tool-label "${coder:-claude}" \
   --no-admin-fallback "$no_admin_fallback" \
   --no-logs-commit "$no_logs_commit" \
-  --repo "$REPO"
+  --repo "$REPO" &
+SHIP_PR_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$SHIP_PR_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$SHIP_PR_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction only; do not source it.
 
-> **Post-/bump-version boundary (Step 8 direct path).** Bump work runs inside `ship-pr.sh`; sub-steps 3/3b are `check-bump-version.sh --mode post` and `implement-finalize.sh postbump` (script-internal). After each `ship-pr.sh` return, continue Step 8+ mechanically — parse exit code and state keys, then run the next required Bash continuation (resume `ship-pr.sh`, Step 9a.1 OOS helpers, CI merge resume, etc.). Do NOT end the turn replaying `classify-bump.sh` / `apply-bump.sh` stdout as a substitute for advancing the state machine. Any turn end (with or without text output) before that Bash call is a halt in disguise that skips sub-steps 3/3b.
+> **Post-/bump-version boundary (Step 8 direct path).** Bump work runs inside `ship-pr.sh`; sub-steps 3/3b are `check-bump-version.sh --mode post` and `implement-finalize.sh postbump` (script-internal). After each `ship-pr.sh` return, continue Step 8+ mechanically — parse `EXIT_CODE` from `$LARCH_STATUS_FILE` for the writer status, parse state keys, then run the next required Bash continuation (resume `ship-pr.sh`, Step 9a.1 OOS helpers, CI merge resume, etc.). The wrapper exit code equals `writer_rc` when `breadcrumb-monitor.sh` succeeds and `monitor_rc` when the monitor itself fails; a non-zero monitor failure is an infrastructure-failure stall signal, distinct from writer-driven bail/conflict-handoff/retry paths. Do NOT end the turn replaying `classify-bump.sh` / `apply-bump.sh` stdout as a substitute for advancing the state machine. Any turn end (with or without text output) before that Bash call is a halt in disguise that skips sub-steps 3/3b.
 
 For Step 10/12 rebase + re-bump retries, `ship-pr.sh` owns one extra freshness correction not present on the direct Step 8 path: if `classify-bump.sh` emits `NEW_VERSION < origin/main` after rebasing, it recomputes the bump from the refreshed `origin/main` version, rewrites `BUMP_REASONING_FILE` to the corrected version, and only then refreshes the committed `version-bump-reasoning` batch.
 

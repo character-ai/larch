@@ -333,6 +333,11 @@ exclude = [
   "scripts/test-breadcrumb-monitor.md",
   "scripts/test-breadcrumb-monitor-bash32.sh",
   "scripts/test-breadcrumb-monitor-bash32.md",
+  # scripts/test-background-monitor-wait.sh is the Makefile-only regression
+  # harness for the caller-side Family B writer wait contract. It is covered by
+  # the test-background-monitor-wait target and test-harnesses-19.
+  "scripts/test-background-monitor-wait.sh",
+  "scripts/test-background-monitor-wait.md",
   # Makefile/ship-pr-only CI recovery helpers. ci-failed-jobs.sh is invoked
   # by scripts/ship-pr.sh after gh-run-logs succeeds; check-focus-area-enum.sh
   # is invoked by the Makefile's agent-sync target, which mirrors the CI job.

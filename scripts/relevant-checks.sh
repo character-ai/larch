@@ -36,6 +36,51 @@ run_post_checks() {
     fi
 }
 
+append_target_once() {
+    local target="$1"
+    case " $DIRECT_TARGETS " in
+        *" $target "*) ;;
+        *) DIRECT_TARGETS="${DIRECT_TARGETS}${DIRECT_TARGETS:+ }$target" ;;
+    esac
+}
+
+run_direct_relevant_targets() {
+    local f=""
+    DIRECT_TARGETS=""
+    while IFS= read -r f; do
+        case "$f" in
+            BASH_AUTHORING.md|AGENTS.md|docs/linting.md|scripts/breadcrumb-monitor.md|scripts/lint-foreground-markers.sh|scripts/lint-foreground-markers.md|scripts/test-lint-foreground-markers.sh|scripts/test-lint-foreground-markers.md|skills/*/SKILL.md|skills/*/references/*.md|skills/shared/*.md|skills/*.md)
+                append_target_once test-lint-foreground-markers
+                ;;
+        esac
+        case "$f" in
+            scripts/test-background-monitor-wait.sh|scripts/test-background-monitor-wait.md|scripts/breadcrumb-monitor.sh|scripts/ship-pr.sh|scripts/run-step5-review.sh|scripts/collect-agent-results.sh|scripts/dispatch-plan-voters.sh|skills/implement/scripts/run-step2-dispatch.sh) # lint-foreground-markers: ok relevant-checks case pattern
+                append_target_once test-background-monitor-wait
+                ;;
+        esac
+        case "$f" in
+            scripts/collect-agent-results.sh|scripts/test-collect-agent-results.sh) # lint-foreground-markers: ok relevant-checks case pattern
+                append_target_once test-collect-agent-results
+                ;;
+        esac
+    done <<< "$MODIFIED_FILES"
+
+    if [ -n "$DIRECT_TARGETS" ]; then
+        local targets=()
+        local target=""
+        for target in $DIRECT_TARGETS; do
+            targets+=("$target")
+        done
+        echo ""
+        echo "=== Running direct relevant make target(s): $DIRECT_TARGETS ==="
+        make "${targets[@]}"
+        local rc=$?
+        PHASES_RUN=$((PHASES_RUN + 1))
+        return "$rc"
+    fi
+    return 0
+}
+
 exit_with_phase_check() {
     local rc="$1"
 
@@ -122,6 +167,12 @@ if [ "$PRE_COMMIT_EXIT" -ne 0 ]; then
 fi
 
 PHASES_RUN=$((PHASES_RUN + 1))
+
+run_direct_relevant_targets
+DIRECT_EXIT=$?
+if [ "$DIRECT_EXIT" -ne 0 ]; then
+    exit "$DIRECT_EXIT"
+fi
 
 # ---------------------------------------------------------------------------
 # Pre-commit succeeded — run agent-lint on the full repo.

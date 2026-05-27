@@ -273,15 +273,27 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
-  <each launched external-judge output path>
+  <each launched external-judge output path> &
+COLLECTOR_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$COLLECTOR_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$COLLECTOR_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
    The collector does not update `SESSION_ENV_PATH` or any session-env file; dialectic availability remains phase-local. Background the collector launch (`run_in_background: true`) and foreground `breadcrumb-monitor.sh` in the same Bash message.

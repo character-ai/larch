@@ -106,15 +106,27 @@ export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
-"${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation --paths-file "$_manifest.output-files"
+"${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation --paths-file "$_manifest.output-files" &
+COLLECTOR_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$COLLECTOR_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$COLLECTOR_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=plan-review-collection`.
@@ -154,20 +166,35 @@ export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
-_plan_voter_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" \
+_plan_voter_dispatch_file="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.stdout.XXXXXX")"
+"${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" \
   --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --codex-available "$codex_available" \
-  --cursor-available "$cursor_available")
-eval "$_plan_voter_dispatch"
+  --cursor-available "$cursor_available" \
+  > "$_plan_voter_dispatch_file" &
+DISPATCH_PLAN_VOTERS_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$DISPATCH_PLAN_VOTERS_PID" || writer_rc=$?
+  _plan_voter_dispatch="$(cat "$_plan_voter_dispatch_file")"
+  eval "$_plan_voter_dispatch"
+  exit "$writer_rc"
+else
+  wait "$DISPATCH_PLAN_VOTERS_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude fallback for that slot and `VOTER_2_PATH` contains the Claude output — do NOT launch a duplicate replacement. `VOTER_3_STATUS=fallback` is analogous for Voter 3. Include voter paths with `STATUS=launched` or `STATUS=fallback` in vote tallying; only exclude paths with `STATUS=failed`.

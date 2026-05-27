@@ -13,6 +13,7 @@
 .PHONY: lint-bash32 test-lint-bash32 lint-foreground lint-foreground-markers test-lint-foreground-markers lint-mermaid agent-sync test-ci-failed-jobs
 .PHONY: test-step-7a
 .PHONY: test-breadcrumb-monitor-bash32
+.PHONY: test-background-monitor-wait
 .PHONY: test-stall-recovery-report
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
@@ -79,7 +80,7 @@ test-harnesses-17: test-audit-edit-write test-check-review-changes test-collect-
 
 test-harnesses-18: test-audit-runs test-breadcrumb-monitor test-breadcrumb-monitor-bash32 test-check-reviewer-failure-threshold test-commit-implementation test-dispatch-code-voters-retry-codex-fail-and-fallback test-keepalive-sentinel test-lint-literal-counts test-redact-tmpdir-paths test-research-structure test-run-step5-review test-step-7a test-tracking-issue-read-sentinel test-get-issue-state test-verify-skill-called
 
-test-harnesses-19: test-auto-resolve-changelog test-check-stale-plugin test-commit-review-fixes test-dispatch-code-voters-retry-codex-success test-implement-anti-halt test-larch-log test-lint-no-raw-stderr-after-quiet-init test-pipe-sigpipe-safety test-references-headers test-resolve-repo test-scoreboard test-slack-issue-announce test-tracking-issue-summary test-wait-for-reviewers
+test-harnesses-19: test-auto-resolve-changelog test-background-monitor-wait test-check-stale-plugin test-commit-review-fixes test-dispatch-code-voters-retry-codex-success test-implement-anti-halt test-larch-log test-lint-no-raw-stderr-after-quiet-init test-pipe-sigpipe-safety test-references-headers test-resolve-repo test-scoreboard test-slack-issue-announce test-tracking-issue-summary test-wait-for-reviewers
 
 test-harnesses-20: test-ballot-parse test-check-topology-rule-paths test-upsert-diagrams-comment test-design-log-publish test-dispatch-code-voters-retry-cursor test-implement-anti-polling-rule test-larch-log-write-round test-lib-title-markers test-lint-skill-invocations test-plan-block test-refresh-execution-issues test-restore-finalize-state test-scout-dynamic-archetypes test-step-8a-changelog test-tracking-issue-write test-write-final-report test-report-tokens-recompute
 
@@ -88,6 +89,9 @@ test-breadcrumb-monitor:
 
 test-breadcrumb-monitor-bash32:
 	bash scripts/harness-timer.sh $@ bash scripts/test-breadcrumb-monitor-bash32.sh
+
+test-background-monitor-wait:
+	bash scripts/harness-timer.sh $@ bash scripts/test-background-monitor-wait.sh
 
 test-pipe-sigpipe-safety:
 	bash scripts/harness-timer.sh $@ bash scripts/test-pipe-sigpipe-safety.sh
