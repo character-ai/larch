@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=important QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already states extraction as regular function so all outer variables are in scope; REVIEW_TMPDIR omission from the illustrative audit list creates no real scope risk
