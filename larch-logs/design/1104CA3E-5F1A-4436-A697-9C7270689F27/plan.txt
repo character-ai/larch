@@ -1,0 +1,94 @@
+# Plan — Add structured "See full plan" option at Gate C (and rename Gate A Shape 2 label)
+
+## Files to modify/create
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+The single normative source for Gate A / Gate B / Gate C prompts. Three sections change (Gate A Shape 2, the Per-tier review-round cap paragraph at the top, and the entire Gate C block including Presentation / Large-plan summary mode / Prompt / Opt-in via Other):
+
+- **Gate A — Discussion Mode Loop (Step 1e), Shape 2**: rename the first option label from `Show latest design proposal` to `See full plan` everywhere it appears in this section (the Shape 2 bulleted option list, the Question-text recap line that lists the three options, the `### Discussion sub-round body` paragraph that names all three options, and the `Show latest design proposal branch (re-entry only)` heading + paragraph — that heading and prose are renamed to `See full plan branch (re-entry only)` with the same behavior contract). Update the after-pick behavior contract to: when the user picks `See full plan`, the orchestrator reads `$DESIGN_TMPDIR/plan.txt`, prints its content under a `## Latest Design Plan` header (header preserved — Gate A is post-plan re-entry where the plan may have just been revised, so `Latest` carries information), then re-fires the **same Gate A `AskUserQuestion` minus the `See full plan` option** — leaving exactly two options (`Ready for review` / `Discuss more`). The Show-plan branch still performs no state mutation and still writes nothing to `discussion-round2.md`. The missing-or-empty-plan warning and re-prompt path are unchanged in spirit but the re-prompt now uses the two-option shape (the `See full plan` option is dropped on the same logical loop entry that already showed the plan).
+- **Per-tier review-round cap paragraph (top of file)**: change `only Approve / Discuss further remain` to `only Approve final design / See full plan / Discuss further remain` so the cap section matches the new Gate C cap-state option list. Also update the same paragraph's re-prompt sentence so it makes explicit that the at-cap re-prompt after `Other` preserves the three at-cap options (`Approve final design` / `See full plan` / `Discuss further`) and that a `See full plan` pick at cap re-fires the same prompt minus the `See full plan` option (leaving two options at cap: `Approve final design` / `Discuss further`).
+- **Gate C — Final-Approval Loop (Step 4b)**, in lock-step across **Presentation**, **Large-plan summary mode**, **Prompt**, and **Opt-in to see the full plan via `Other`**:
+  - **Prompt bulleted list** grows from three to four below cap. Add `See full plan` as the 2nd option. Update the bulleted list in this exact order: `Approve final design`, `See full plan`, `Discuss further`, `Re-run review panel`. The `See full plan` bullet's description: `- **See full plan** — Print the current $DESIGN_TMPDIR/plan.txt into chat under a ## Final Design Plan header (verbatim — same content the Gate C plan-emit produced or would produce in full mode), then re-fire the same Gate C AskUserQuestion minus the See full plan option. The remaining options preserve their cap-aware shape (Approve final design / Discuss further / Re-run review panel below cap, or Approve final design / Discuss further at cap). This option performs no state mutation and never advances control past Gate C.` Update the tier-cap omission contract paragraph: when at cap, omit `Re-run review panel` so three options remain (`Approve final design` / `See full plan` / `Discuss further`); after a `See full plan` pick at cap, the re-fired prompt has two options (`Approve final design` / `Discuss further`).
+  - **Question text** changes from `"Final design plan is ready. Approve, discuss further, or re-run the review panel against this plan?"` to `"Final design plan is ready. Approve, see the full plan, discuss further, or re-run the review panel against this plan?"` below cap. The at-cap variant omits the rerun phrase: `"Final design plan is ready. Approve, see the full plan, or discuss further?"`.
+  - **Large-plan summary mode paragraph**: replace the closing sentence (`When the user picks Other on the Prompt below and asks for the full plan, the executor MUST cat the full $DESIGN_TMPDIR/plan.txt into chat and re-fire the same Gate C AskUserQuestion — including when the plan was already printed in full (non-summary path); the three primary options are unchanged after the re-prompt.`) with cap-aware prose: when the user picks the structured `See full plan` option, the executor MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion` minus the `See full plan` option — including when the plan was already printed in full (non-summary path); the remaining options preserve their cap-aware shape (below cap: `Approve final design` / `Discuss further` / `Re-run review panel`; at cap: `Approve final design` / `Discuss further`). When the user picks `Other` and asks for the full plan, the executor MUST also `cat` the full plan and re-fire the same Gate C `AskUserQuestion`, but the `Other` re-prompt preserves the **same option set unchanged** (no option removed) and may be invoked repeatedly without mutating the option count.
+  - **Opt-in to see the full plan via `Other` paragraph**: prepend a new lead sentence explicitly noting that `See full plan` is the preferred structured path. Then keep the existing `Other` description, but explicitly state that the `Other` path does **not** mutate the option set on its re-prompt (any number of repeat `Other` requests preserve the same option count), distinguishing it from the structured `See full plan` option which drops itself on its re-prompt. The Gate-C-versus-Step-0-tier-gate distinction (Gate C `Other` never cancels) is unchanged.
+
+### UPDATED: `skills/design/SKILL.md`
+
+- **Step 1e Gate A prose**: the literal three-option recap line currently reads `presents three options (Show latest design proposal / Ready for review / Discuss more); selecting **Show latest design proposal** re-displays …`. Replace `Show latest design proposal` with `See full plan` in both the parenthetical option list and the `selecting **Show latest design proposal**` clause. Append a clause noting drop-on-re-fire: `… and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more)`.
+- **Step 4b Gate C prose**: the line currently reads `the three primary options are **Approve final design** / **Discuss further** / **Re-run review panel**`. Update to `the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**`. The cap-omission line currently reads `Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **Discuss further**`; update to `Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**`. Update the `Other` sentence (currently `If the user picks Other and asks for the full plan, cat $DESIGN_TMPDIR/plan.txt into chat and re-fire the same cap-aware Gate C AskUserQuestion`): add a leading clarifier that `See full plan` is the structured path and `Other` remains as a backward-compat escape; both paths cat the plan, but only `See full plan` drops itself from the re-fired prompt. Add a new clause on the actions list: `On **See full plan**, cat $DESIGN_TMPDIR/plan.txt under a ## Final Design Plan header, then re-fire the same Gate C AskUserQuestion minus the See full plan option.`
+
+### UPDATED: `skills/design/scripts/emit-design-plan-preview.sh`
+
+Update only the `_large_note_gatec` variable string. Current:
+
+```
+**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — pick "Other" on the prompt below and ask for the full plan if you want it printed in chat before deciding.**
+```
+
+Replace with:
+
+```
+**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — pick "See full plan" on the prompt below if you want it printed in chat before deciding.**
+```
+
+The `_large_note_step3` variable is **not** touched — Step 3 has no `AskUserQuestion` and the existing `say "show full plan"` free-form interrupt prose remains accurate for that surface.
+
+### UPDATED: `skills/design/scripts/test-emit-design-plan-preview.sh`
+
+The Gate C large-plan assertion currently reads `printf '%s\n' "$out6" | grep -Fq 'pick "Other"' || fail "gatec large missing Other-path note"`. Update the literal to the **full new phrase** `'pick "See full plan" on the prompt below if you want it printed in chat before deciding'` (not just the bare token `pick "See full plan"`), and update the fail message to `gatec large missing See-full-plan-path note`. Using the longer literal guards against stale trailing prose such as `and ask for the full plan` surviving the change unnoticed. No other assertions in the file reference the bold-note text.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+Several Gate-C-related `contains` calls pin SKILL.md / approval-gates.md literals. Update them in lock-step with the SKILL.md / approval-gates.md edits above and add two new Gate-C-scoped pins:
+
+- The line that pins `the three primary options are **Approve final design** / **Discuss further** / **Re-run review panel**` becomes `the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**` with the message `'SKILL missing Gate C four-option prose'`.
+- The cap-omission line pinning `Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **Discuss further**` becomes `Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**` with the message `'SKILL missing Gate C cap-omission prose with See full plan'`.
+- The existing `approval-gates.md` literal `Re-run review panel` assertion is unchanged because the option text is preserved in the new option set.
+- **NEW Gate-C-scoped `See full plan` pin** (replacing the previously-proposed bare-token pin called out as ambiguous by reviewers, because the Gate A rename also adds the bare token). Pin a **Gate-C-specific** literal from the new Gate C bullet, e.g.: `- **See full plan** — Print the current $DESIGN_TMPDIR/plan.txt into chat under a ## Final Design Plan header` with the message `'approval-gates.md missing Gate C See-full-plan bullet'`. This phrase is unique to the Gate C bullet (Gate A's rename uses the `## Latest Design Plan` header, not `## Final Design Plan`), so it cannot be satisfied by the Gate A rename alone.
+- **NEW Gate-C-scoped Other-path pin**: add a `contains "$APPROVAL_MD"` assertion pinning the preserved Gate C Other-path contract phrase, e.g.: `the Other re-prompt preserves the **same option set unchanged**` (or another long Gate C-only sentence from the updated Opt-in paragraph). Fail message `'approval-gates.md missing Gate C Other-path unchanged-option-set contract'`. This guards against silent drift of the Other-path semantics in future edits.
+
+## Approach
+
+The work is doc + one string-literal in a shell helper + two test-script updates. No new files, no new flags, no new shell helpers, no new env vars. The change is structural in the `AskUserQuestion` shape (3 → 4 options below cap, 2 → 3 options at cap) and a label rename for cross-gate consistency. The drop-on-re-fire behavior is described in prose only — the orchestrator already constructs `AskUserQuestion` arguments per-call, so dropping one option on the re-fire requires no code change, only the contract pinned in `approval-gates.md`.
+
+Approach decisions resolved up-front:
+
+- **Position**: `See full plan` is the 2nd option at Gate C (after `Approve final design`), per the issue body's example ordering. At Gate A Shape 2 the new label replaces the existing 1st-position option in the same slot.
+- **Always present (before re-fire)**: independent of summary-mode threshold. Below cap = 4 options, at cap = 3 options. After `See full plan` pick the option is dropped from the re-fire only.
+- **Backward compat**: `Other` + free-form "show full plan" still works at Gate C (no removal of that code path); it acts as a long-tail escape hatch and does not mutate the option set on its re-fire.
+- **Gate B is unchanged**: the user-confirmed scope is plan-preview surfaces. Gate B is finding-focused and does not currently preview the plan; adding `See full plan` there is out of scope for this change.
+
+## Edge cases
+
+- **Cap-reached Gate C with `See full plan`**: 3 options on first prompt (Approve / See full plan / Discuss further). After `See full plan` pick: 2 options (Approve / Discuss further). `Re-run review panel` is omitted on both prompts.
+- **Small plan (under threshold)**: Gate C still emits the full plan body inline under `## Final Design Plan`. The `See full plan` option is still offered (per always-show). Picking it `cat`s the same body again — slightly redundant in chat, but allowed for simplicity.
+- **Gate A Shape 2 entered with missing `plan.txt`**: the existing missing-or-empty warning fires; the re-prompt uses the new Shape 2 three-option list (See full plan / Ready for review / Discuss more). After `See full plan` pick with empty plan, the warning re-fires and the re-prompt uses the two-option list (Ready for review / Discuss more).
+- **Multiple Gate C entries from a new review round**: each fresh Gate C entry restarts with the full option set. Drop-on-re-fire applies only within one logical loop entry (one user-visible chain of prompts).
+- **Historic `Other` free-form on Gate C**: still works for backward compat. Users typing "show full plan" in Other get the same cat-and-re-prompt behavior. The option set does not mutate on the Other re-fire (any number of repeat Other requests preserve the same option count). This is pinned by the new `scripts/test-design-structure.sh` Other-path assertion.
+- **`larch-logs/` references to old label**: historical files in `larch-logs/design/*` and `larch-logs/implement/*` reference "Show latest design proposal" as frozen artifacts. They are left as-is — only the active code surface is renamed.
+
+## Failure modes
+
+Documentation + label edits do not introduce architectural failure modes. The three material risks (now caught by the new test pins per the four accepted plan-review findings):
+
+1. **Stale literal pins in tests** — `test-design-structure.sh` and `test-emit-design-plan-preview.sh` pin Gate C option text and bold-note text. The plan updates both in lock-step and extends the `pick "See full plan"` grep to the longer phrase so stale trailing prose like `and ask for the full plan` cannot survive unnoticed (FINDING_4 mitigation). **Earliest signal**: CI `make lint` fails. **Mitigation**: update assertions in the same patch as the SKILL/script edits; verify locally before commit.
+2. **Documentation drift between SKILL.md and approval-gates.md** — these two files duplicate the Gate C option list. The plan updates both. The new Gate-C-specific approval-gates.md pin (`- **See full plan** — Print the current $DESIGN_TMPDIR/plan.txt … ## Final Design Plan`) cannot be satisfied by the Gate A rename alone, so it guards against the case where only Gate A receives the rename and the Gate C bullet is forgotten (FINDING_2 mitigation). **Earliest signal**: `test-design-structure.sh` `contains` assertions on the SKILL.md literal and on the Gate-C-scoped approval-gates.md bullet catch divergence in either direction.
+3. **Silent drift of the Gate C Other-path semantics** — without a test pin, a future edit could change Other to mutate the option set without failing CI. The new `contains "$APPROVAL_MD"` assertion on the Other-path unchanged-option-set sentence (FINDING_3 mitigation) catches that drift. **Earliest signal**: `test-design-structure.sh` fails when the pinned sentence drifts.
+
+(Failure-mode section remains short because this is doc + literal-string-only; no new code paths.)
+
+## Testing strategy
+
+- **Updated unit assertions**:
+  - `skills/design/scripts/test-emit-design-plan-preview.sh`: extend the Gate C large-plan assertion from `pick "Other"` (current) to the full new phrase `pick "See full plan" on the prompt below if you want it printed in chat before deciding` so stale trailing prose cannot survive (FINDING_4).
+  - `scripts/test-design-structure.sh`:
+    - Update the SKILL.md three-option assertion to the new four-option form.
+    - Update the SKILL.md cap-omission assertion to the new three-option-at-cap form.
+    - **Replace** the originally-proposed bare-token approval-gates.md `See full plan` pin with a Gate-C-scoped longer literal (e.g., the Gate C bullet text `- **See full plan** — Print the current $DESIGN_TMPDIR/plan.txt into chat under a ## Final Design Plan header`) so Gate A's rename cannot inadvertently satisfy the Gate C presence check (FINDING_2).
+    - **Add** a new `contains "$APPROVAL_MD"` assertion pinning the preserved Gate C Other-path contract sentence (FINDING_3).
+- **Local lint**: run `bash scripts/relevant-checks.sh` (or `make lint`). Both updated test scripts must pass; markdownlint must pass (the new `See full plan` literal does not introduce code-span-with-whitespace issues).
+- **Manual smoke (operator)**: invoke `/design --simple <existing issue>` through to Gate C. Verify (a) Gate C prints four options under `Final design`: Approve final design / See full plan / Discuss further / Re-run review panel; (b) picking `See full plan` re-prints the plan under `## Final Design Plan` and re-fires with three options (no `See full plan`); (c) picking `Discuss further` re-enters Gate A Shape 2 with the new `See full plan` label and the same drop-on-re-fire behavior (two options after pick: Ready for review / Discuss more); (d) picking `Other` and asking for the plan re-fires with the **same** option set (option count unchanged). No script test exists for the `AskUserQuestion` shape today — the behavior contract is enforced by `test-design-structure.sh` literal-pinning on SKILL.md + approval-gates.md.
+
+diff_lines: 70
