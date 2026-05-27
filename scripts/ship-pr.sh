@@ -531,15 +531,134 @@ ship_pr_changelog_ready_after_rebump() {
     [ -z "$status_out" ]
 }
 
+ship_pr_rebump_bullets_path() {
+    printf '%s/.rrr-rebump-bullets.md\n' "$IMPLEMENT_TMPDIR"
+}
+
+# After drop-bump-commit removes the stale "Bump version to <OLD>" commit,
+# (a) extract the bullets from the matching `## [OLD]` section in CHANGELOG.md
+# to a staging file under $IMPLEMENT_TMPDIR, and (b) drop the matching
+# "Update CHANGELOG for <OLD>" commit so the rebase replay does not reproduce
+# the stale section (issue #2952 Bug A).
+#
+# Bullets-file presence is the canonical signal for the consumer
+# (ship_pr_commit_changelog_after_rebump): the file is kept iff the
+# companion changelog commit was successfully dropped, so the consumer can
+# safely reconstruct a fresh `## [NEW]` section without a `--replaces-version`
+# argument that would otherwise drop main's `## [OLD]` section. Partial-
+# completion shapes (extract OK + drop refused, or extract refused + drop
+# OK) collapse to "no bullets staged", reverting to the legacy commit-
+# changelog.sh `--replaces-version` path which still handles the on-branch
+# `## [OLD]` heading via the awk rename in scripts/commit-changelog.sh.
+#
+# A stale file from a prior invocation is overwritten or cleared up-front,
+# so partial runs cannot leak bullets across attempts.
+ship_pr_stage_rebump_bullets() {
+    local phase=$1 bullets_path drop_chg_out drop_chg_rc drop_dropped old_version fail_file
+    bullets_path=$(ship_pr_rebump_bullets_path)
+    rm -f "$bullets_path"
+
+    old_version=$(read_state RRR_OLD_BUMP_VERSION "")
+    [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
+    [ -f CHANGELOG.md ] || return 0
+
+    # Extract bullets first so we still have them after the drop strips the
+    # commit (and thus the working-tree `## [OLD]` section). Missing or empty
+    # body removes the file and we will fall back to the legacy path below.
+    changelog_extract_version_body "$old_version" "$bullets_path" CHANGELOG.md || rm -f "$bullets_path"
+
+    fail_file=$(failure_capture_path rebase)
+    set +e
+    drop_chg_out=$("$SCRIPT_DIR/drop-changelog-commit.sh" \
+        --version "$old_version" --max-depth 20 2>"$fail_file")
+    drop_chg_rc=$?
+    set +e
+    printf '%s\n' "$drop_chg_out" >> "$fail_file"
+    if [ "$drop_chg_rc" -ne 0 ]; then
+        record_failure rebase "drop-changelog-commit.sh" "$drop_chg_rc" "$fail_file" Warnings
+        rm -f "$bullets_path"
+        return 0
+    fi
+
+    drop_dropped=$(kv_value DROPPED "$drop_chg_out")
+    if [ "$drop_dropped" != "true" ]; then
+        rm -f "$bullets_path"
+        if drop_changelog_no_matching_commit "$fail_file"; then
+            # No matching commit within the walk window — nothing stale to
+            # replay. Fall through to the legacy commit-changelog.sh path
+            # which inserts the new entry via insert_version_heading and
+            # commits.
+            return 0
+        fi
+        # A guard (dirty tree, parent-missing, unexpected files) refused the
+        # drop. The stale `Update CHANGELOG for OLD` commit is still on the
+        # branch and will replay during rebase, producing the same #2952 Bug A
+        # loop we are trying to break. Stall instead of force-pushing into
+        # the same conflict cycle.
+        printf 'run_rebase_rebump: drop-changelog-commit returned DROPPED=false without "no match" reason; stalling to prevent stale Update CHANGELOG replay loop\n' >> "$fail_file"
+        record_failure rebase "drop-changelog-commit.sh DROPPED=false" 1 "$fail_file" "CI Issues"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fi
+}
+
 ship_pr_commit_changelog_after_rebump() {
     local new_version=$1 fail_file=$2 commit_out commit_rc old_version committed
+    local bullets_path entry_rc dup_count used_bullets=false
     local -a commit_args
     [ -f CHANGELOG.md ] || return 0
     [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
 
     old_version=$(read_state RRR_OLD_BUMP_VERSION "")
+    bullets_path=$(ship_pr_rebump_bullets_path)
+
+    # When ship_pr_stage_rebump_bullets dropped the companion "Update CHANGELOG"
+    # commit, the working tree CHANGELOG.md is now at origin/main's state and
+    # the new `## [NEW]` section must be reconstructed from the staged bullets
+    # before commit-changelog.sh can produce a non-empty diff. Without this
+    # reconstruction the rebump path emits an empty section and (when OLD ==
+    # NEW) the loop stalls in commit-changelog.sh's "no diff" return path
+    # (issue #2952 Bug A).
+    if [ -s "$bullets_path" ]; then
+        dup_count=$(changelog_duplicate_version_heading_count "$new_version" CHANGELOG.md)
+        if [ "$dup_count" -eq 0 ]; then
+            set +e
+            write_changelog_entry "$new_version" "$bullets_path" CHANGELOG.md.rrr.$$
+            entry_rc=$?
+            set +e
+            if [ "$entry_rc" -eq 0 ] && [ -f CHANGELOG.md.rrr.$$ ]; then
+                mv CHANGELOG.md.rrr.$$ CHANGELOG.md
+                used_bullets=true
+            else
+                rm -f CHANGELOG.md.rrr.$$
+                rm -f "$bullets_path"
+                printf 'ERROR: run_rebase_rebump: write_changelog_entry rc=%s with staged bullets present; cannot safely commit\n' \
+                    "$entry_rc" >> "$fail_file"
+                return 1
+            fi
+        else
+            # origin/main already has `## [NEW]` (rare concurrent same-version
+            # bump path that survived to this point). Inserting our `## [NEW]`
+            # would trip write_changelog_entry's duplicate-heading exit-4 guard;
+            # silently skipping would discard this branch's bullets. Stall so
+            # the operator can merge by hand rather than lose data.
+            rm -f "$bullets_path"
+            printf 'ERROR: run_rebase_rebump: origin/main already has ## [%s] section but staged rebump bullets exist; refusing to silently discard them. Manually merge bullets into the existing section and re-run.\n' \
+                "$new_version" >> "$fail_file"
+            return 1
+        fi
+    fi
+    rm -f "$bullets_path"
+
     commit_args=(--version "$new_version")
-    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]]; then
+    # When bullets were restored, the fresh `## [NEW]` from write_changelog_entry
+    # is the only entry for that version on our side — the companion changelog
+    # drop already stripped the on-branch `## [OLD]` heading. Passing
+    # --replaces-version OLD here would direct commit-changelog.sh's awk to
+    # main's `## [OLD]` (if main bumped through OLD in the past) and drop that
+    # section. Only pass --replaces-version on the legacy path where a stale
+    # `## [OLD]` heading is still on-branch from a replayed Update CHANGELOG
+    # commit (drop-changelog-commit refused or was skipped).
+    if [ "$used_bullets" = "false" ] && [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]]; then
         commit_args+=(--replaces-version "$old_version")
     fi
 
@@ -599,6 +718,11 @@ resolve_existing_file() {
 drop_bump_no_matching_commit() {
     local fail_file=$1
     grep -Fq 'WARN: no bump commit found within ' "$fail_file" 2>/dev/null
+}
+
+drop_changelog_no_matching_commit() {
+    local fail_file=$1
+    grep -Fq "WARN: no 'Update CHANGELOG for " "$fail_file" 2>/dev/null
 }
 
 resolve_checks_log_path() {
@@ -2518,6 +2642,17 @@ run_rebase_rebump() {
         plan_args=(--plan-file "$plan_file")
     fi
 
+    # 0. Pre-flush any pending larch-log writes so drop-bump-commit.sh's
+    # Guard 1 (clean tracked tree) does not false-positive on modified
+    # larch-logs/ files that an intermediate operation left uncommitted
+    # (see issue #2952 Bug B). Failure is non-fatal: refresh-run-logs.sh
+    # short-circuits cleanly on post-merge or missing-state and any
+    # remaining dirtiness will be surfaced by Guard 1 below.
+    fail_file=$(failure_capture_path rebase)
+    "$SCRIPT_DIR/refresh-run-logs.sh" \
+        --state-file "$STATE_FILE" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
+
     # 1. Drop existing bump commit before rebasing. No-op is acceptable only
     # when no bump commit exists in the walk window; other DROPPED=false cases
     # stall so a stale bump is never silently force-pushed.
@@ -2542,6 +2677,15 @@ run_rebase_rebump() {
             exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
         fi
     fi
+
+    # 1b. Stage bullets and drop the stale "Update CHANGELOG for <OLD>" commit
+    # that the bump dropped above carried as its companion. Without this drop
+    # the stale commit replays during rebase; on subsequent iterations where
+    # origin/main bumps to the same OLD version, the duplicate `## [OLD]`
+    # section produces an unresolvable CHANGELOG.md conflict (issue #2952
+    # Bug A). Bullets are extracted up-front so the re-bump path can
+    # reconstruct the entry under the new version.
+    ship_pr_stage_rebump_bullets "$phase"
 
     run_id=$(read_state RUN_ID)
 

@@ -42,12 +42,17 @@
 
 `scripts/test-drop-bump-commit.sh` — offline regression harness wired into `make test-harnesses` (Makefile target `test-drop-bump-commit`). Creates isolated temp repos with controlled commit shapes.
 
+## Companion primitive
+
+`scripts/drop-changelog-commit.sh` strips the matching `Update CHANGELOG for $version` commit. The Rebase + Re-bump Sub-procedure pairs the two: after a successful bump drop, `scripts/ship-pr.sh run_rebase_rebump` calls the changelog dropper with the just-dropped bump version so the companion changelog commit does not replay onto the new `origin/main`. Without this pairing, a re-rebase against a main that has bumped to the same version dead-locks on a CHANGELOG.md conflict (issue #2952 Bug A).
+
 ## Edit-in-sync
 
 When editing `scripts/drop-bump-commit.sh`:
 - Update this file (`scripts/drop-bump-commit.md`) for any behavioral change.
 - Update `scripts/test-drop-bump-commit.sh` for any Guard 4 logic change.
 - Update `scripts/commit-changelog.md` when changing the bump/changelog commit shape.
+- Update `scripts/drop-changelog-commit.md` when the bump/changelog drop pairing contract changes.
 - Update `docs/configuration-and-permissions.md` `LARCH_BUMP_FILES` section for any env var contract change.
 - Update `skills/implement/references/rebase-rebump-subprocedure.md` step 1 for any output-contract or walk-back search change.
 - Update `skills/implement/references/bump-verification.md` for any `DROPPED=false` scenario change.

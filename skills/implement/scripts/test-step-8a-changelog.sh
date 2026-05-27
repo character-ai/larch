@@ -70,6 +70,7 @@ CL
     cp "$REAL_FINALIZE" "$s/implement-finalize.sh"
     cp "$REAL_SCRIPTS_DIR/lib-quiet.sh" "$s/lib-quiet.sh"
     cp "$REAL_SCRIPTS_DIR/lib-execution-issues.sh" "$s/lib-execution-issues.sh"
+    cp "$REAL_SCRIPTS_DIR/lib-changelog.sh" "$s/lib-changelog.sh"
     chmod +x "$s/implement-finalize.sh"
 
     # --- Stub scripts (check-changelog-present.sh always reports present) ---
