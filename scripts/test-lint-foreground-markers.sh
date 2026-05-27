@@ -117,8 +117,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -136,8 +141,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -156,8 +166,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -177,8 +192,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -221,8 +241,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -289,8 +314,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
 SHIP_PR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$SHIP_PR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -310,8 +340,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
    COLLECTOR_PID=$!
-   ${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-   wait "$COLLECTOR_PID"
+   monitor_rc=0
+   ${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+   if [ "$monitor_rc" -eq 0 ]; then
+       wait "$COLLECTOR_PID"
+   else
+       wait "$COLLECTOR_PID" 2>/dev/null || true
+   fi
    ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -331,8 +366,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -352,8 +392,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" --flag &
 RUN_STEP5_REVIEW_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$RUN_STEP5_REVIEW_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$RUN_STEP5_REVIEW_PID"
+else
+    wait "$RUN_STEP5_REVIEW_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -456,8 +501,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh --tmpdir "$TMP" &
 DISPATCH_PLAN_VOTERS_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$DISPATCH_PLAN_VOTERS_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$DISPATCH_PLAN_VOTERS_PID"
+else
+    wait "$DISPATCH_PLAN_VOTERS_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -478,8 +528,13 @@ export LARCH_PAIRED_PID_FILE
 exit 99
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -539,8 +594,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 scripts/run-step5-review.sh --mode loop &
 RUN_STEP5_REVIEW_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$RUN_STEP5_REVIEW_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$RUN_STEP5_REVIEW_PID"
+else
+    wait "$RUN_STEP5_REVIEW_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -560,8 +620,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 FOO=1 bash "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -706,8 +771,13 @@ write_md skills/missing-pid-alloc/SKILL.md <<'EOF'
 # Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -784,8 +854,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -805,8 +880,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh --help &
 RUN_STEP2_DISPATCH_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$RUN_STEP2_DISPATCH_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$RUN_STEP2_DISPATCH_PID"
+else
+    wait "$RUN_STEP2_DISPATCH_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -944,8 +1024,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 
 Use `timeout: 1000`. Do NOT set `run_in_background: true`.
@@ -967,8 +1052,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 
 Use `run_in_background: true` and wait on the paired monitor.
@@ -990,8 +1080,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
 COLLECTOR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$COLLECTOR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$COLLECTOR_PID"
+else
+    wait "$COLLECTOR_PID" 2>/dev/null || true
+fi
 ```
 
 Do NOT set `run_in_background: true`. # lint-foreground-markers: ok fixture
@@ -1037,8 +1132,13 @@ write_sh scripts/local-pid-capture.sh <<'EOF'
 run_pair() {
     "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" --dry-run &
     local SHIP_PR_PID=$!
-    "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" --stream s
-    wait "$SHIP_PR_PID"
+    local monitor_rc=0
+    "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" --stream s || monitor_rc=$?
+    if [ "$monitor_rc" -eq 0 ]; then
+        wait "$SHIP_PR_PID"
+    else
+        wait "$SHIP_PR_PID" 2>/dev/null || true
+    fi
 }
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -1060,8 +1160,13 @@ LARCH_PAIRED_PID_FILE="\$(mktemp "\$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXX
 export LARCH_PAIRED_PID_FILE
 \${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
 SHIP_PR_PID=\$!
-\${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "\$LARCH_PAIRED_PID_FILE"
-${wait_form}
+monitor_rc=0
+\${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "\$LARCH_PAIRED_PID_FILE" || monitor_rc=\$?
+if [ "\$monitor_rc" -eq 0 ]; then
+    ${wait_form}
+else
+    wait "\$SHIP_PR_PID" 2>/dev/null || true
+fi
 \`\`\`
 EOF
     rc="$(run_lint "$stderr_file")"
@@ -1142,8 +1247,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run
 SHIP_PR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$SHIP_PR_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -1163,8 +1273,13 @@ LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXX
 export LARCH_PAIRED_PID_FILE
 ${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
 SHIP_PR_PID=$!
-${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
-wait "$OTHER_PID"
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$OTHER_PID"
+else
+    wait "$OTHER_PID" 2>/dev/null || true
+fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -1186,6 +1301,98 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d
 EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "nested Family B child unchanged" "$stderr_file" "$rc"
+
+# 54 — missing monitor_rc init/capture/branch reports all three defects.
+reset_tree
+write_md skills/monitor-rc-none/SKILL.md <<'EOF'
+# Case 54
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+wait "$SHIP_PR_PID"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "missing monitor_rc tokens" "$stderr_file" "$rc" \
+    'missing monitor_rc= initialization' \
+    'missing "|| monitor_rc=$?"' \
+    'missing conditional branching on monitor_rc'
+
+# 55 — monitor_rc capture without a branch is rejected.
+reset_tree
+write_md skills/monitor-rc-no-branch/SKILL.md <<'EOF'
+# Case 55
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+wait "$SHIP_PR_PID"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "missing monitor_rc branch" "$stderr_file" "$rc" 'missing conditional branching on monitor_rc'
+
+# 56 — monitor_rc inside a heredoc body does not satisfy the init window.
+reset_tree
+write_md skills/monitor-rc-heredoc/SKILL.md <<'EOF'
+# Case 56
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+cat <<'SCRIPT'
+monitor_rc=0
+SCRIPT
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "heredoc monitor_rc init ignored" "$stderr_file" "$rc" 'missing monitor_rc= initialization'
+
+# 57 — shell-file top-level writer also requires monitor_rc initialization.
+reset_tree
+write_sh scripts/shell-missing-monitor-rc.sh <<'EOF'
+#!/usr/bin/env bash
+run_pair() {
+    "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" --dry-run &
+    local SHIP_PR_PID=$!
+    "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" --stream s || monitor_rc=$?
+    if [ "$monitor_rc" -eq 0 ]; then
+        wait "$SHIP_PR_PID"
+    else
+        wait "$SHIP_PR_PID" 2>/dev/null || true
+    fi
+}
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "shell file missing monitor_rc init" "$stderr_file" "$rc" 'missing monitor_rc= initialization'
 
 # 16 — Family A: minimum run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {

@@ -331,6 +331,91 @@ extract_wait_ident() {
     return 1
 }
 
+line_mentions_monitor_rc_word() {
+    local line="$1"
+    printf '%s\n' "$line" | LC_ALL=C grep -Eq '(^|[^A-Za-z0-9_])monitor_rc([^A-Za-z0-9_]|$)'
+}
+
+line_is_heredoc_body_idx() {
+    local target_idx="$1"
+    shift
+    local -a lines=("$@")
+    local active_hd_delim=""
+    local active_hd_strip=0
+    local i line
+
+    for ((i = 0; i <= target_idx && i < ${#lines[@]}; i++)); do
+        line="${lines[$i]}"
+        if [[ -n "$active_hd_delim" ]]; then
+            if heredoc_close_matches "$line" "$active_hd_delim" "$active_hd_strip"; then
+                active_hd_delim=""
+                active_hd_strip=0
+                continue
+            fi
+            if ((i == target_idx)); then
+                return 0
+            fi
+            continue
+        fi
+        if try_begin_heredoc "$line"; then
+            active_hd_delim="$HEREDOC_OPEN_DELIM"
+            active_hd_strip="$HEREDOC_OPEN_USE_TAB_STRIP"
+        fi
+    done
+    return 1
+}
+
+fence_has_monitor_rc_init_before() {
+    local monitor_idx="$1"
+    shift
+    local -a lines=("$@")
+    local i line nonblank_seen=0
+
+    for ((i = monitor_idx - 1; i >= 0; i--)); do
+        if line_is_heredoc_body_idx "$i" "${lines[@]}"; then
+            continue
+        fi
+        line="${lines[$i]}"
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        if [[ "$line" =~ ^[[:space:]]*(local[[:space:]]+)?monitor_rc=[[:space:]]*[0-9]+([[:space:]]|$) ]]; then
+            return 0
+        fi
+        nonblank_seen=$((nonblank_seen + 1))
+        if ((nonblank_seen >= 3)); then
+            break
+        fi
+    done
+    return 1
+}
+
+fence_has_monitor_rc_conditional_after() {
+    local start_idx="$1"
+    shift
+    local -a lines=("$@")
+    local i j line body_line
+
+    for ((i = start_idx; i < ${#lines[@]}; i++)); do
+        if line_is_heredoc_body_idx "$i" "${lines[@]}"; then
+            continue
+        fi
+        line="${lines[$i]}"
+        if [[ ! "$line" =~ ^[[:space:]]*(if|elif|case|while|until)([[:space:]]|$) ]]; then
+            continue
+        fi
+        for ((j = i; j < ${#lines[@]}; j++)); do
+            if line_is_heredoc_body_idx "$j" "${lines[@]}"; then
+                continue
+            fi
+            body_line="${lines[$j]}"
+            if line_mentions_monitor_rc_word "$body_line"; then
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
 fence_has_family_b_pid_capture_and_wait() {
     local rel="$1" open_fence_line="$2" anchor_idx="$3" bn="$4"
     shift 4
@@ -339,7 +424,7 @@ fence_has_family_b_pid_capture_and_wait() {
     local end_idx=$((anchor_idx - 1))
     local abs_anchor=$((open_fence_line + anchor_idx))
     local line ident capture_idx=-1 nonblank_seen=0 i monitor_idx=-1
-    local wait_ident wait_before_monitor=0
+    local wait_ident wait_before_monitor=0 wait_idx=-1 monitor_end_idx monitor_logical_line
 
     line_has_lint_suppression "${lines[$((anchor_idx - 1))]}" && return 0
 
@@ -403,15 +488,40 @@ fence_has_family_b_pid_capture_and_wait() {
             VIOLATIONS=$((VIOLATIONS + 1))
             return 0
         fi
-        return 0
+        wait_idx="$i"
+        break
     done
 
-    if ((wait_before_monitor == 1)); then
-        printf '%s:%s: wait must follow breadcrumb-monitor.sh for captured PID variable %s\n' "$rel" "$abs_anchor" "$ident" >&2
-    else
-        printf '%s:%s: missing wait for captured PID variable %s after breadcrumb-monitor.sh for %s\n' "$rel" "$abs_anchor" "$ident" "$bn" >&2
+    if [[ "$wait_idx" -lt 0 ]]; then
+        if ((wait_before_monitor == 1)); then
+            printf '%s:%s: wait must follow breadcrumb-monitor.sh for captured PID variable %s\n' "$rel" "$abs_anchor" "$ident" >&2
+        else
+            printf '%s:%s: missing wait for captured PID variable %s after breadcrumb-monitor.sh for %s\n' "$rel" "$abs_anchor" "$ident" "$bn" >&2
+        fi
+        VIOLATIONS=$((VIOLATIONS + 1))
+        return 0
     fi
-    VIOLATIONS=$((VIOLATIONS + 1))
+
+    monitor_end_idx="$monitor_idx"
+    monitor_logical_line="${lines[$monitor_idx]}"
+    while ((monitor_end_idx + 1 < n)) && line_ends_with_backslash_continuation "${lines[$monitor_end_idx]}"; do
+        monitor_end_idx=$((monitor_end_idx + 1))
+        monitor_logical_line="${monitor_logical_line%\\}${lines[$monitor_end_idx]}"
+    done
+
+    if ! fence_has_monitor_rc_init_before "$monitor_idx" "${lines[@]}"; then
+        printf '%s:%s: missing monitor_rc= initialization within 3 non-blank lines above breadcrumb-monitor.sh for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+        VIOLATIONS=$((VIOLATIONS + 1))
+    fi
+    if ! printf '%s\n' "$monitor_logical_line" | LC_ALL=C grep -Eq '\|\|[[:space:]]+monitor_rc=\$\?[[:space:]]*(#.*)?$'; then
+        printf '%s:%s: missing "|| monitor_rc=$?" on breadcrumb-monitor.sh logical-end line for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+        VIOLATIONS=$((VIOLATIONS + 1))
+    fi
+    if ! fence_has_monitor_rc_conditional_after "$((monitor_end_idx + 1))" "${lines[@]}"; then
+        printf '%s:%s: missing conditional branching on monitor_rc between breadcrumb-monitor.sh and end-of-fence for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+        VIOLATIONS=$((VIOLATIONS + 1))
+    fi
+    return 0
 }
 
 line_mentions_diagnostic_tool_string() {

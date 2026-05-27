@@ -18,11 +18,20 @@ consumer. Top-level Family B writers
 and export `LARCH_PAIRED_PID_FILE` with `mktemp` under a session
 `breadcrumbs/` directory, pass `--paired-pid-file` to the monitor, end the
 writer command with shell `&`, capture `$!` in the next three non-blank lines,
-and `wait` on that same identifier after the monitor invocation. Missing tokens
+initialize `monitor_rc=0` within three non-blank lines above the monitor
+invocation, append `|| monitor_rc=$?` on the monitor's logical-end line, route
+the post-monitor `wait` through an `if`/`case` conditional that branches on
+`monitor_rc`, and `wait` on that same identifier after the monitor invocation.
+The conditional opens before the line-initial waits in the canonical two-branch
+shape from `BASH_AUTHORING.md` §4. Missing tokens
 emit `missing LARCH_PAIRED_PID_FILE allocation for <basename>`, `missing
 --paired-pid-file monitor argument for <basename>`, `missing shell ampersand`,
 `missing PID capture`, `missing breadcrumb-monitor.sh`, `missing wait`, or an
-identifier-mismatch diagnostic. The foreground-only
+identifier-mismatch diagnostic, plus `missing monitor_rc= initialization within
+3 non-blank lines above breadcrumb-monitor.sh for <basename>`, `missing "||
+monitor_rc=$?" on breadcrumb-monitor.sh logical-end line for <basename>`, or
+`missing conditional branching on monitor_rc between breadcrumb-monitor.sh and
+end-of-fence for <basename>`. The foreground-only
 `step-7a.sh` carve-out and nested-only children (`ci-wait.sh`,
 `review-and-fix.sh`, `step2-implement.sh`, `dispatch-with-waterfall.sh`) do not
 need the paired-PID or writer-wait tokens.
