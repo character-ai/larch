@@ -109,6 +109,19 @@ export CLAUDE_PLUGIN_ROOT
 "${CLAUDE_PLUGIN_ROOT}/scripts/extract-closes-issue-from-pr.sh"
 ```
 
+### Bash block prelude
+
+The Claude Code Bash tool does NOT preserve shell state between calls, and `CLAUDE_PLUGIN_ROOT` is not in the inherited environment after Step 0. Every Bash block after Step 0 that calls a plugin script via `"${CLAUDE_PLUGIN_ROOT}/..."` MUST first rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/session-env.sh` using the canonical 4-line awk block below — do not invent variants:
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+```
+
+The awk extract intentionally avoids `source "$IMPLEMENT_TMPDIR/session-env.sh"` because it would pull in the entire session-env namespace and might shadow caller-side state. A sourced helper script is NOT feasible: until `CLAUDE_PLUGIN_ROOT` is set, the orchestrator has no portable way to find the helper. The 4-line awk block is the bootstrap and must be inlined at each site. This is **the** canonical snippet; the 43 existing sites in this file are byte-identical instances of it. The `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` helper is used for OTHER session-env keys (after `CLAUDE_PLUGIN_ROOT` is rehydrated) — see the `LARCH_TOKEN_SESSION_ID` rehydration prose below for that pattern.
+
 ### Verbosity Control
 
 Use empty `description` on Bash calls; terse 3-5-word `description` on Agent calls; no explanatory prose between tool outputs beyond the preserved categories below.
