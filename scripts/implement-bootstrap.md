@@ -77,7 +77,7 @@ Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged
 | 2 | Infrastructure/tracking helper failure: `STEP_FAILED=` plus diagnostic (`GATE_ERROR=` or `PREFLIGHT_ERROR=` on stdout where applicable). `STEP_FAILED=get-issue-state` is emitted when Branch 2 cannot verify issue state or returns a non-`OPEN`/non-`CLOSED` issue state, and `STEP_FAILED=issue-number-required-for-resume` is emitted when a resume sentinel exists but argv omitted `--issue-number`. |
 | (other) | argv validation failures (`die_usage`). |
 
-Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_TMPDIR/plan-from-issue.txt` cannot be copied, and `STEP_FAILED=gh-issue-view` when issue title/body composition fails.
+Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_TMPDIR/plan-from-issue.txt` cannot be copied, `STEP_FAILED=gh-issue-view` when issue title/body composition fails, and `STEP_FAILED=resume-plan-tail-sentinel` when dirty-tree resume cannot validate the tracking sentinel or equivalent persisted plan artifacts.
 
 ## Bail reasons (`IMPLEMENT_BAIL_REASON`)
 
@@ -112,6 +112,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | Metadata summary (`post-tracking-issue.sh`) | `phase_tracking` Branch 2 |
 | Rename to `[IMPLEMENTING]` (`tracking-issue-write.sh rename`) | Best-effort inside `phase_tracking` Branch 1 and Branch 2 |
 | Session untracked baseline (`snapshot-untracked.sh --output … --nul`) | `phase_plan_materialize` |
+| Repo-unavailable snapshot-only path (`ensure_untracked_baseline_snapshot`) | `main()` before `phase_plan_materialize`, when `REPO_UNAVAILABLE=true` and `--up-to-phase` is `plan`, `coder`, or `all` |
 | Post-bootstrap token/timing marks for plan materialization (`implement Step 0 — plan materialization`) | `phase_plan_materialize` |
 | Copy Preflight plan to `$IMPLEMENT_TMPDIR/plan.txt` | `phase_plan_materialize` |
 | Issue title/body compose (`gh issue view`) | `phase_plan_materialize` |

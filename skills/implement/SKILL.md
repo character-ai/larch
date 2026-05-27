@@ -380,6 +380,11 @@ _ib_handle_bootstrap_exit2() {
     printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not read the issue title/body. Aborting.**'
     exit 2
   fi
+  if [ "$_ib_sf" = "resume-plan-tail-sentinel" ]; then
+    printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true
+    printf '%s\n' '**⚠ /implement Step 0 dirty-tree recovery: the resume tail could not validate tracking state from the existing session artifacts. Restore or inspect `$IMPLEMENT_TMPDIR`, then restart `/implement`.**'
+    exit 2
+  fi
   exit 2
 }
 # Foreground required: see BASH_AUTHORING.md §4

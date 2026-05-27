@@ -193,6 +193,13 @@ should_run_phase_plan_materialize() {
         && [ "${REPO_UNAVAILABLE:-false}" != "true" ]
 }
 
+resume_tail_plan_artifacts_ready() {
+    [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 1
+    [ -f "$IMPLEMENT_TMPDIR/plan.txt" ] || return 1
+    [ -f "$IMPLEMENT_TMPDIR/feature-description.txt" ] || return 1
+    [ -n "${ISSUE_NUMBER_OPT:-}" ] || return 1
+}
+
 ensure_untracked_baseline_snapshot() {
     local snapshot_out
 
@@ -527,6 +534,51 @@ phase_tracking() {
         return 0
     fi
 
+    if [ "$RESUME_PLAN_TAIL" = "true" ]; then
+        sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
+        if [ -f "$sentinel" ]; then
+            if [ -z "$ISSUE_NUMBER_OPT" ]; then
+                larch_err "**⚠ Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel.**"
+                emit_kv STEP_FAILED issue-number-required-for-resume
+                exit 2
+            fi
+            read_out=$("$SCRIPT_DIR/tracking-issue-read.sh" --sentinel "$sentinel" 2>"$IMPLEMENT_TMPDIR/tracking-issue-read.stderr.log")
+            read_rc=$?
+            read_failed=$(kv_value_from_block FAILED "$read_out")
+            sentinel_issue=$(kv_value_from_block ISSUE_NUMBER "$read_out")
+            sentinel_run_id=$(kv_value_from_block RUN_ID "$read_out")
+            sentinel_adopted=$(kv_value_from_block ADOPTED "$read_out")
+
+            if [ "$read_rc" -eq 0 ] && [ "$read_failed" != "true" ] && [ "$sentinel_adopted" = "true" ] \
+                && valid_issue_number "$sentinel_issue" && valid_run_id "$sentinel_run_id"; then
+                if [ "$sentinel_issue" != "$ISSUE_NUMBER_OPT" ]; then
+                    larch_err "**⚠ Step 0 tracking: --resume-plan-tail requires the adopted tracking sentinel to match --issue-number.**"
+                    emit_kv STEP_FAILED resume-plan-tail-sentinel
+                    exit 2
+                fi
+                BRANCH_SELECTED=branch-1-resume
+                ISSUE_NUMBER_RESOLVED=$sentinel_issue
+                RUN_ID=$sentinel_run_id
+                return 0
+            fi
+            larch_err "**⚠ Step 0 tracking: --resume-plan-tail requires a valid adopted tracking sentinel.**"
+            emit_kv STEP_FAILED resume-plan-tail-sentinel
+            exit 2
+        fi
+        if resume_tail_plan_artifacts_ready; then
+            ISSUE_NUMBER_RESOLVED=$ISSUE_NUMBER_OPT
+            if ! valid_run_id "${RUN_ID:-}"; then
+                RUN_ID=$(resolve_run_id 2>/dev/null || true)
+            fi
+            BRANCH_SELECTED=branch-2-adopt
+            DEFERRED=true
+            return 0
+        fi
+        larch_err "**⚠ Step 0 tracking: --resume-plan-tail requires \$IMPLEMENT_TMPDIR/parent-issue.md or existing plan artifacts in \$IMPLEMENT_TMPDIR.**"
+        emit_kv STEP_FAILED resume-plan-tail-sentinel
+        exit 2
+    fi
+
     sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
     if [ -f "$sentinel" ]; then
         if [ -z "$ISSUE_NUMBER_OPT" ]; then
@@ -766,42 +818,54 @@ phase_plan_materialize() {
         RUN_PLAN_LOGGED=true
     fi
 
-    tally_body_raw="$IMPLEMENT_TMPDIR/plan-review-tally-body.raw.md"
-    {
-        printf '%s\n' '# Plan Review Tally'
-        printf '\n'
-        printf 'Plan read from issue larch:plan block for issue #%s.\n' "${gh_issue_arg:-}"
-    } >"$tally_body_raw"
-    tally_body="$IMPLEMENT_TMPDIR/plan-review-tally-body.md"
-    if ! "$SCRIPT_DIR/redact-secrets.sh" <"$tally_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$tally_body" 2>/dev/null; then
-        cp "$tally_body_raw" "$tally_body" 2>/dev/null || true
-    fi
-    tally_err="$IMPLEMENT_TMPDIR/write-tally.stderr.log"
-    "$SCRIPT_DIR/write-tally.sh" \
-        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-        --skill implement \
-        --run-id "$RUN_ID" \
-        --phase plan-review \
-        --mode hard \
-        --rounds 0 \
-        --accepted 0 \
-        --rejected 0 \
-        --body-file "$tally_body" \
-        >"$IMPLEMENT_TMPDIR/write-tally.out" \
-        2>"$tally_err"
-    tally_rc=$?
-    if [ "$tally_rc" -ne 0 ]; then
+    if ! valid_run_id "${RUN_ID:-}"; then
+        printf '%s\n' 'RUN_ID missing or invalid after resolution; skipping plan-review tally and larch:plan summary.' >"$IMPLEMENT_TMPDIR/run-id-resolution.warning.log"
         "$SCRIPT_DIR/append-tool-failure.sh" \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-            --site "Step 0 plan materialization — plan-review tally" \
-            --tool "write-tally.sh" \
-            --exit-code "$tally_rc" \
+            --site "Step 0 plan materialization — run id resolution" \
+            --tool "resolve_run_id" \
+            --exit-code 1 \
             --category Warnings \
-            --output-file "$tally_err" \
+            --output-file "$IMPLEMENT_TMPDIR/run-id-resolution.warning.log" \
             --redact || true
+    else
+        tally_body_raw="$IMPLEMENT_TMPDIR/plan-review-tally-body.raw.md"
+        {
+            printf '%s\n' '# Plan Review Tally'
+            printf '\n'
+            printf 'Plan read from issue larch:plan block for issue #%s.\n' "${gh_issue_arg:-}"
+        } >"$tally_body_raw"
+        tally_body="$IMPLEMENT_TMPDIR/plan-review-tally-body.md"
+        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$tally_body_raw" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" >"$tally_body" 2>/dev/null; then
+            cp "$tally_body_raw" "$tally_body" 2>/dev/null || true
+        fi
+        tally_err="$IMPLEMENT_TMPDIR/write-tally.stderr.log"
+        "$SCRIPT_DIR/write-tally.sh" \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+            --skill implement \
+            --run-id "$RUN_ID" \
+            --phase plan-review \
+            --mode hard \
+            --rounds 0 \
+            --accepted 0 \
+            --rejected 0 \
+            --body-file "$tally_body" \
+            >"$IMPLEMENT_TMPDIR/write-tally.out" \
+            2>"$tally_err"
+        tally_rc=$?
+        if [ "$tally_rc" -ne 0 ]; then
+            "$SCRIPT_DIR/append-tool-failure.sh" \
+                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                --site "Step 0 plan materialization — plan-review tally" \
+                --tool "write-tally.sh" \
+                --exit-code "$tally_rc" \
+                --category Warnings \
+                --output-file "$tally_err" \
+                --redact || true
+        fi
     fi
 
-    if [ "$FORKED_TARGET" != "true" ] && [ -n "${ISSUE_NUMBER_RESOLVED:-}" ]; then
+    if valid_run_id "${RUN_ID:-}" && [ "$FORKED_TARGET" != "true" ] && [ -n "${ISSUE_NUMBER_RESOLVED:-}" ]; then
         summary_body_raw="$IMPLEMENT_TMPDIR/larch-plan-summary.raw.md"
         {
             printf "Plan materialized for run \`%s\`.\n" "${RUN_ID:-}"

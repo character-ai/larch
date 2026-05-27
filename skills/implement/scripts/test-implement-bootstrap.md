@@ -17,7 +17,7 @@
 | GP3 | Fork mode emits `BRANCH_SELECTED=forked-target-skip`, empty `ISSUE_NUMBER`, `DEFERRED=true`, and writes `FORKED_TARGET=true` to session-env. |
 | GP3-upstream-context-fail | Fork mode still continues when `get-issue-context.sh` fails and appends a redacted Warning entry to `execution-issues.md`. |
 | GP-repo-unavail-tracking | Tracking phase with `REPO_UNAVAILABLE=true` emits `BRANCH_SELECTED=repo-unavailable-skip`, empty `ISSUE_NUMBER`, and `DEFERRED=true`. |
-| GP-repo-unavail-plan | Repo-unavailable `--up-to-phase plan` skips plan-materialization helpers entirely and leaves `PLAN_FILE` empty. |
+| GP-repo-unavail-plan | Repo-unavailable `--up-to-phase plan` still snapshots the untracked baseline, but skips `gh issue view`, run-flags persist, dirty-tree checkpoint, branch creation/capture, plan logging, and summary upsert; `PLAN_FILE` stays empty. |
 | GP4 | Infra-only repo-unavailable path emits `REPO_UNAVAILABLE=true` and repo-unavailable warning on stderr. |
 | B1 | Sentinel issue mismatch clears and replaces the sentinel via Branch 2 fresh adoption. |
 | B2 | CLOSED target issue emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed`. |
@@ -35,6 +35,7 @@
 | B7-plan-dirty-tree | `STATUS=dirty` and `STATUS=unknown` emit `IMPLEMENT_BAIL_REASON=dirty-tree` without setting `STALL_TRACKING`, and stop subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree probe-failure | Dirty-tree checkpoint probe failure is treated as `STATUS=unknown`, preserving the `dirty-tree` bail and stopping the tail. |
 | B7-plan-dirty-tree resume-tail | `--resume-plan-tail` re-runs the dirty-tree checkpoint inside the same tmpdir after a prior dirty-tree bail: clean resumes the post-checkpoint tail, dirty/unknown preserves `IMPLEMENT_BAIL_REASON=dirty-tree`, and both paths avoid duplicate snapshot / `gh` work. |
+| B4-plan-dirty-resume | `POSTED=false` + dirty-tree bail resumes Phase 3 tail from existing plan artifacts without requiring a tracking sentinel, and still avoids duplicate snapshot / `gh` work. |
 | B8-plan-forked-target | Fork mode still materializes plan/feature files with upstream `gh --repo`, skips branch creation, captures the current branch, and skips the local `larch:plan` upsert. |
 | B9-plan-user-branch | Existing user branch skips branch creation but still writes the local `larch:plan` summary. |
 | B10-plan-missing-preflight-tmpdir | `--up-to-phase plan --issue-number N` without `--preflight-tmpdir` exits 2 with usage. |
@@ -42,6 +43,9 @@
 | B12-plan-gh-issue-view-failure | `gh issue view` failure exits 2 with `STEP_FAILED=gh-issue-view`. |
 | B13-plan-branch-create | Branch creation failure stalls tracking with `IMPLEMENT_BAIL_REASON=branch-create-failed` before branch capture or plan logs. |
 | B14-plan-branch-capture | Branch capture failure or empty `BRANCH=` stalls tracking with `IMPLEMENT_BAIL_REASON=branch-create-failed` after create-branch. |
+| B15-resume-plan-tail-sentinel-mismatch | `--resume-plan-tail` with a sentinel that targets a different issue exits 2 with `STEP_FAILED=resume-plan-tail-sentinel` before any Phase 3 tail helper runs. |
+| B16-resume-plan-tail-sentinel-malformed | `--resume-plan-tail` with a malformed or invalid adopted sentinel exits 2 with `STEP_FAILED=resume-plan-tail-sentinel` before any Phase 3 tail helper runs. |
+| B17-resume-plan-tail-sentinel-missing | `--resume-plan-tail` without a sentinel and without existing plan artifacts exits 2 with `STEP_FAILED=resume-plan-tail-sentinel`. |
 | B6 | `get-issue-state.sh` failure exits 2 with `STEP_FAILED=get-issue-state`. |
 | B7-non-open-state | Unexpected non-`OPEN`/`CLOSED` issue state exits 2 with `STEP_FAILED=get-issue-state`. |
 | B-sentinel-malformed | Malformed sentinel is cleared and replaced via Branch 2 fresh adoption. |
