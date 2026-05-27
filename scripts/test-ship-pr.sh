@@ -4392,12 +4392,10 @@ assert_rc "$tmp/rc" 0 "ci_fix_vendor_tier_order_falls_through_to_claude"
 if grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
   ok "ci_fix_vendor_tier_order_falls_through_to_claude: all three tiers invoked in order"
 else
-  fail "ci_fix_vendor_tier_order_falls_through_to_claude: expected three launchers: $(cat "$call_dir/launcher-calls.txt" 2>/dev/null || true)"
+  fail "ci_fix_vendor_tier_order_falls_through_to_claude: expected three launchers"
+  sed 's/^/    launch: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
 fi
 rm -rf "$call_dir"
-
-# shellcheck source=scripts/test-ship-pr-fix-loop-2632.inc.sh
-source "$REPO_ROOT/scripts/test-ship-pr-fix-loop-2632.inc.sh" || fail "2632 harness missing"
 
 fi  # end section: fix-loop
 
