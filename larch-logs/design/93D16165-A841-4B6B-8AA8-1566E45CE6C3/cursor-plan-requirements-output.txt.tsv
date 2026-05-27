@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-get-issue-state.sh:117-129	Proposed new cases reuse labels (f) and (g) but harness already ends at (g) for gh failure/success	Add-after-(e) cases would overwrite or duplicate existing (f)/(g) and break the regression matrix	Rename new missing-value cases to (h) and (i) (or renumber) and update Testing strategy text accordingly

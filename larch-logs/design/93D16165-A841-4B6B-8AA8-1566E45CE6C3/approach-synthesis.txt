@@ -1,0 +1,81 @@
+# Approach Synthesis
+
+## Inputs
+
+- **Codex-Generic sketch** (1718 bytes, substantive): 3 paragraphs, file-path-anchored
+- **Cursor-Generic sketch** (152 bytes, non-substantive — Cursor `--mode plan` produced only meta-prose). Backfilled by Claude fallback sketch (substantive 3 paragraphs).
+
+## Areas of Agreement
+
+Both substantive sketches (Codex + Claude fallback) converge tightly on the design:
+
+### Item A — `scripts/get-issue-state.sh:35-38` parser fix
+- Approach: detect missing-value condition **before** `${2:-}` assignment and `shift 2`.
+- Specific shape: a `[ $# -ge 2 ]` guard inside the case branch, or analogous `${2:?<msg>}` mechanism that maps the failure to the existing `FAILED=true` / `ERROR=<single-line>` / `exit 1` envelope.
+- Keep `set -uo pipefail` unchanged (explicit Round 1 Decision 6 + 7).
+- Error envelope: same shape as the unknown-flag branch already at lines 39-42 (KV via `emit_kv FAILED true` + `emit_kv ERROR "..."`).
+- Prior art cited: existing `lint-fix-loop.sh:248-251`-style guard.
+
+### Item B — codex exec JSONL telemetry at 3 non-launcher sites
+- Per-site shape (mirror the launcher prior art at `launch-codex-implement.sh:317-338` and `launch-codex-ci.sh:172-230`):
+  1. Define a per-site `*.events.jsonl` artifact path local to the call site.
+  2. Add `--json` to the `codex exec` argv.
+  3. Redirect Codex stdout to `>"$EVENTS"`; keep wrapper.log shape on stderr.
+  4. After the codex run, call `codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$EVENTS" "$SIDECAR_LOG" "<bucket-name>"`.
+- Per-site bucket names:
+  - `review-and-fix.sh:257` → bucket `codex_review_fix`, events at `$round_dir/coder-codex.events.jsonl`
+  - `lint-fix-loop.sh:223` → bucket `codex_lint_fix`, events at `$run_dir/codex.events.jsonl`
+  - `run-negotiation-round.sh:84` → bucket `codex_negotiation`, events at `$OUTPUT_FILE.events.jsonl`
+- `--capture-stdout` use in `RUN_EXTERNAL_AGENT_SH` calls must be **dropped or switched to `--capture-stdout-only`** at the 3 sites and replaced by explicit shell-level `>"$EVENTS"` redirection (because `--capture-stdout` currently consolidates stdout into wrapper.log via the wrapper, which is what produced the combined `2>&1` shape the OOS complaint flags).
+- New bucket slugs must be added to `scripts/lib-timing-kinds.sh` `TIMING_TASK_KINDS_ALLOWED` per `.claude/rules/timing-task-kind-allowlist.md`.
+- `lib-codex-launcher-common.sh` (where `codex_launcher_record_usage_from_events` lives) must be sourced at any of the 3 sites that doesn't already source it.
+
+### Item C — `scripts/larch-log.sh round_artifact_included` strict addition
+- Single literal `scout-archetype-yield.tsv` insertion into the include alternation at line 89, alongside `findings-classification.tsv`.
+- No broader sweep (Round 1 Decision 3).
+- Sibling `scripts/larch-log.md` allowlist documentation must be updated in the same PR.
+
+### Tests per item (Round 1 Decision 5)
+- Item A: extend `scripts/test-get-issue-state.sh` — assert exit 1 + FAILED envelope when `--issue` or `--repo` is the final argv, no infinite loop (bound by wall-clock or `timeout 5s`).
+- Item B: extend `skills/review-and-fix/scripts/test-review-and-fix.sh`, `scripts/test-lint-fix-loop.sh`, `scripts/test-run-negotiation-round.sh` — assert per-site events.jsonl created + wrapper.log shape preserved.
+- Item C: extend `scripts/test-larch-log.sh` — assert `round_artifact_included scout-archetype-yield.tsv` returns 0; add a write-round end-to-end case staging the file into a round source dir.
+
+### Non-goals (Round 1 Decisions 6 + 7)
+- Do NOT change `set -uo pipefail` to `set -euo pipefail` in `get-issue-state.sh`.
+- Do NOT modify Cursor fallback paths in the 3 Item B files. Codex-only changes.
+- Do NOT modify `scripts/check-reviewers.sh:199` (one-shot probe, excluded by Round 1 Q1).
+- Do NOT modify launcher sites that already use `--json`.
+
+## Architectural Concern Both Sketches Missed
+
+The Round 1 Decision 4 mandates adding new `coder-codex.events.jsonl`-named files to `round_artifact_included`. **However**, the existing `case` statement at `scripts/larch-log.sh:70` ALREADY has a blanket exclusion `*.events.jsonl` that returns 1 (excludes). This is checked **before** the include alternation at line 89, so Bash case ordering means the include line won't override the exclusion match.
+
+Two resolution paths:
+
+**Path 1 — rename the new artifacts to bypass the wildcard**: use a name that does NOT end in `.events.jsonl`, e.g., `coder-codex-events.jsonl` (hyphen, not dot, before `events`). The existing `*.events.jsonl` glob requires a literal `.` before `events`, so `coder-codex-events.jsonl` would not match. Minimal-touch — no edit to existing exclusion patterns.
+
+**Path 2 — add specific includes before the exclusion**: move the new events.jsonl include lines ABOVE the `*.events.jsonl` exclusion line so Bash case order grants them. Requires restructuring the case statement (the current exclusion-then-include layout is a readable convention).
+
+**Recommended**: **Path 1** (rename) — minimal disruption to the existing case-statement convention; preserves the original intent that launcher-generated events.jsonl files remain excluded.
+
+## Pragmatism / Safety Warnings
+
+- Item B's primary regression risk is **wrapper.log shape changes**: today `2>&1` consolidates stdout+stderr into wrapper.log. After Item B, stdout goes to `events.jsonl`, so wrapper.log will only contain stderr (and any messages emitted by the `run-external-agent.sh` wrapper itself). Downstream forensic-analysis consumers reading wrapper.log may have to adapt. Mitigation: per-site regression assertions on wrapper.log content shape.
+- Item C carries effectively zero regression risk (additive allowlist entry).
+- Item A carries zero regression risk for callers (envelope contract preserved per Round 1 Decision 6).
+
+## Edge Cases / Failure Modes
+
+- Item A: `case "$ISSUE"` validation at line 53 still triggers if value passes initial guard; double-check the new guard doesn't shadow the numeric-check error path.
+- Item B: when Cursor fallback is taken at the 3 sites (lines 263-280 of review-and-fix.sh, analogous in others), the existing Cursor path is untouched — but ensure no contract leak (no `codex_launcher_record_usage_from_events` call attempted with Cursor's text output).
+- Item C: write-round end-to-end test must use a sample TSV with at least the documented columns so larch_redact passes through correctly.
+
+## Innovation / Alternatives
+
+No "crazy but might work" ideas surfaced. The design is mechanical alignment with existing launcher prior art for Item B, surgical guard insertion for Item A, and one-line allowlist addition for Item C.
+
+## Contested Decisions
+
+None — both substantive sketches (Codex + Claude fallback) converged on the same architectural direction. See `contested-decisions.md` (`NO_CONTESTED_DECISIONS`).
+
+The Path 1 vs Path 2 decision for the events.jsonl exclusion conflict is an architectural issue surfaced by the orchestrator (not contested between sketches). The synthesis recommends Path 1 (rename) and Step 2b will encode this in the plan unless reviewers disagree.

@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-get-issue-state.sh:117-129	Plan assigns new cases (f)/(g) for missing --issue/--repo values but those labels already cover gh-failure and gh-success tests	Renumbering would break existing harness labels or duplicate case ids; new regressions may be added under wrong ids or skipped	Add cases as (h) and (i) (or next free letters) and update the plan and get-issue-state.md harness section accordingly
