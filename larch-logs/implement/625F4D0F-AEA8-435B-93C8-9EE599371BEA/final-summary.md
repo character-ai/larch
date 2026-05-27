@@ -11,7 +11,7 @@
 - **Code review**: 4/10 accepted
 - **OOS filed**: 2 — https://github.com/character-ai/larch/issues/3050\\n-
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/625F4D0F-AEA8-435B-93C8-9EE599371BEA/`
 
 <!-- larch:run-summary v=1 -->
