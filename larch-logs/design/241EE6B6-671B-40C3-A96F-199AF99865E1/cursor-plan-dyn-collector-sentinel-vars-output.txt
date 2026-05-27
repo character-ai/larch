@@ -1,0 +1,35 @@
+Reviewing the plan against the collector script's first-pass loop; reading both sources now.
+Searching the collector script for variable names and the OK-path insertion point the plan references.
+Checking the first-pass loop for early `continue` behavior and whether a post-retry always-on path fits better.
+Checking whether the plan's degraded heuristic references `EXTRACT_TMP` after `mv`, and confirming bash behavior for unset `j`.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/collect-agent-results.sh:729-841	Plan pseudocode uses $REVIEWER_FILE $ENTRY_TOOL and loop index j but the first-pass collector loop defines $OUTPUT $TOOL and index i only	Implementing the snippet literally in the §2 loop leaves undefined variables or wrong paths; sentinel detection never runs on the intended file	Insert a new always-on pass after §3 retry (before §3.5 at ~1160) that parses each RESULTS[j] entry into REVIEWER_FILE/ENTRY_TOOL like §3.5, or rewrite the snippet to use $OUTPUT/$TOOL inside the i-loop
+2	in_scope	important	correctness	scripts/collect-agent-results.sh:841	Plan `continue` would skip the sole RESULTS+= append for that output index	A sentinel-marked reviewer is dropped from RESULTS entirely so dispatch/waterfall never sees CURSOR_EMPTY_RESPONSE	In a post-RESULTS loop use RESULTS[j]= rewrite only (no continue). In the first-pass loop set STATUS/FAILURE_REASON and fall through to RESULTS+=
+3	in_scope	important	correctness	scripts/collect-agent-results.sh:728-842	RESULTS[j]= in the first-pass loop is not equivalent to RESULTS+=: j is undefined there so Bash 3.2 treats the subscript as 0	First sentinel hit corrupts RESULTS[0] instead of appending a new record; later indices shift and summaries mis-associate reviewers with slots	Use RESULTS+= after setting STATUS/EXIT_CODE/FAILURE_REASON or only assign via RESULTS[j]= inside `for j in "${!RESULTS[@]}"`
+4	in_scope	latent	correctness	scripts/collect-agent-results.sh:1138-1140	Plan does not require sentinel detection after the empty-output retry path rewrites an entry to STATUS=OK	Retry success can leave CURSOR_DEGRADED_RESPONSE in a *-retry.txt while STATUS=OK bypassing always-on detection if logic is only in the first-pass loop	Run always-on detection after §3 retry completes (same post-RESULTS loop as finding 1) so retry-updated OK entries are rewritten too
+5	in_scope	important	correctness	scripts/launch-review.sh:1022-1024	Degraded-response heuristic plans wc -c on $EXTRACT_TMP immediately after a successful jq extract mv's that temp file onto $OUTPUT	EXTRACT_TMP is removed after mv so byte count is wrong or empty and the narration backstop never fires or misfires	Measure RESULT_BYTES from $OUTPUT (post-promotion) or snapshot byte count before mv; keep ordering before the CURSOR_EMPTY_RESPONSE jq guard at 1039
+6	in_scope	important	risk-integration	scripts/test-ship-pr.sh:3647-3661	Replacing the vendor-verify helper that sources ship-pr.sh stubs run_per_job_local_fix_loop(){ return 1; } and calls run_evaluate_failure directly with a full ship-pr.sh main entry plus only STUB_LINT_FIX_STATUS differs materially from the fixture at 3299-3305 which expects rc 0	Acceptance asserts rc 4 STALL_STEP=10-max-retries three launchers and verified-total-count 6 may fail under main() ci-initial→evaluate_failure without the per_job return-1 stub	Spell out required state (PHASE/evaluate-failure path) and whether run_per_job must still be short-circuited or ci-failed-jobs/env stubs alone reproduce return 4; keep helper shape if parity is uncertain
+
+**1. [correctness]** [`scripts/collect-agent-results.sh:729-841`](scripts/collect-agent-results.sh) — The plan’s always-on block uses `$REVIEWER_FILE`, `$ENTRY_TOOL`, and `j`, but the first-pass loop that builds `RESULTS` via `RESULTS+=` only binds `$OUTPUT`, `$TOOL`, and `i`:
+
+```729:841:scripts/collect-agent-results.sh
+for i in "${!OUTPUT_FILES[@]}"; do
+    OUTPUT="${OUTPUT_FILES[$i]}"
+    ...
+    TOOL=$(derive_tool "$OUTPUT")
+    ...
+    RESULTS+=("REVIEWER_FILE=$OUTPUT|TOOL=$TOOL|STATUS=$STATUS|...")
+done
+```
+
+Those names appear later when parsing existing `RESULTS` entries in §3.5 (`1173-1208`). The pseudocode matches §3.5, not §2.
+
+**2. [correctness]** [`scripts/collect-agent-results.sh:841`](scripts/collect-agent-results.sh) — In the first-pass loop, `continue` (as in the plan pseudocode) jumps past the only `RESULTS+=` for that reviewer, so the output slot vanishes from `RESULTS` rather than being recorded with `STATUS=CURSOR_EMPTY_RESPONSE`. That defeats the plan’s goal of making non-validation callers (e.g. `dispatch-with-waterfall.sh:366`) see failure status.
+
+**3. [correctness]** [`scripts/collect-agent-results.sh:728-842`](scripts/collect-agent-results.sh) — `RESULTS[j]=` is not semantically equivalent to `RESULTS+=` when `j` is unset: Bash 3.2 treats a null subscript as `0`, so the first sentinel could overwrite `RESULTS[0]` instead of appending.
+
+**4. [correctness]** [`scripts/collect-agent-results.sh:1138-1140`](scripts/collect-agent-results.sh) — Retry success sets `RESULTS[IDX]` to `STATUS=OK` without reading the file. Always-on detection confined to the first-pass loop would miss sentinel literals in `*-retry.txt` outputs.
+
+**5. [correctness]** [`scripts/launch-review.sh:1022-1024`](scripts/launch-review.sh) — After a successful extract, `mv "$EXTRACT_TMP" "$OUTPUT"` removes `EXTRACT_TMP`. The planned `wc -c < "$EXTRACT_TMP"` would not measure the promoted `.result` body.
+
+**6. [risk-integration]** [`scripts/test-ship-pr.sh:3647-3661`](scripts/test-ship-pr.sh) — The vendor-verify regression relies on a minimal helper that stubs `run_per_job_local_fix_loop` to `return 1` and calls `run_evaluate_failure ci-initial` directly. The proposed full `ship-pr.sh` invocation is a different entry shape than the passing helper and than the `main-agent-required` case at `3299-3305` (which expects `rc 0`). The plan should document how the same `rc 4` / launcher-count / verification-count contract is preserved.

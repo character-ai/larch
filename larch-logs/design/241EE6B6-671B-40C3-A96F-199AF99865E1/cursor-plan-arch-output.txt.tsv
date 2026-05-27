@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/launch-review.sh:1022-1040	Degraded-response snippet measures wc -c on $EXTRACT_TMP after mv installs extracted bytes into $OUTPUT	Heuristic never runs or always no-ops; narration-only JSON with high outputTokens still lands as STATUS=OK	After successful jq mv, use RESULT_BYTES=$(wc -c < "$OUTPUT") (or run the check before mv); drop the erroneous rm -f "$EXTRACT_TMP" on the post-mv path
