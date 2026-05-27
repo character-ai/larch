@@ -58,6 +58,28 @@ assert_append_rejects_markdown() {
     assert_contains "$out" "json-lines sanitizer rejected $batch" "$label error mentions json-lines sanitizer"
 }
 
+assert_round_artifact_included() {
+    local name="$1" expected="$2" label="$3"
+    local rc=0
+    if bash -c '
+        eval "$(awk '"'"'
+            /^round_artifact_included\(\)/ { in_fn=1 }
+            in_fn { print }
+            in_fn && /^}/ { exit }
+        '"'"' "$1")"
+        round_artifact_included "$2"
+    ' bash "$LARCH_LOG" "$name" >/dev/null 2>&1; then
+        rc=0
+    else
+        rc=$?
+    fi
+    if [ "$rc" = "$expected" ]; then
+        pass "$label"
+    else
+        fail "$label (expected rc=$expected got rc=$rc for $name)"
+    fi
+}
+
 echo "=== init creates manifest ==="
 out="$("$LARCH_LOG" init --skill implement --run-id abc123 --issue 1438)"
 assert_contains "$out" "LOG_WRITTEN=true" "init writes"
@@ -124,6 +146,13 @@ echo "=== exists reports path without writing ==="
 out="$("$LARCH_LOG" exists --skill implement --run-id abc123 --batch execution-issues)"
 assert_contains "$out" "LOG_WRITTEN=false" "exists no write"
 assert_contains "$out" "UNCHANGED=true" "exists found"
+
+echo "=== round artifact allowlist pins direct inclusion decisions ==="
+assert_round_artifact_included "scout-archetype-yield.tsv" "0" "round artifact includes scout-archetype-yield.tsv"
+assert_round_artifact_included "codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
+assert_round_artifact_included "coder-codex.events.jsonl" "1" "round artifact excludes codex events jsonl"
+assert_round_artifact_included "foo.events.jsonl" "1" "round artifact excludes arbitrary events jsonl"
+assert_round_artifact_included "reviewer-output.txt" "0" "round artifact includes reviewer output txt"
 
 echo "=== manifest updates mutable fields ==="
 out="$("$LARCH_LOG" manifest --skill implement --run-id abc123 --field status=done --field pr_number=99)"
@@ -790,7 +819,11 @@ mkdir -p "$_wr_source/dynamic-archetypes"
 printf 'SCOUT_STATUS=ok\nSCOUT_RESULT=fired\n' > "$_wr_source/scout-round1-status.env"
 printf '{"archetypes":["api-contract","edge-cases"]}\n' > "$_wr_source/scout-round1-manifest.json"
 printf '{"raw":"scout output"}\n' > "$_wr_source/scout-round1-manifest.json.raw"
+printf 'specialist\tyield\n' > "$_wr_source/scout-archetype-yield.tsv"
 printf 'findings here\n' > "$_wr_source/findings.md"
+printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' > "$_wr_source/codex.events.jsonl"
+printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' > "$_wr_source/coder-codex.events.jsonl"
+printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' > "$_wr_source/foo.events.jsonl"
 # Flattened from dynamic-archetypes/
 printf '# reviewer-dyn-api-contract\n' > "$_wr_source/dynamic-archetypes/reviewer-dyn-api-contract.md"
 printf '# dyn-api-contract-prompt\n' > "$_wr_source/dynamic-archetypes/dyn-api-contract-prompt.md"
@@ -847,6 +880,11 @@ if [ -f "$_wr_round/findings.md" ]; then
 else
     fail "write-round no-regression: findings.md missing"
 fi
+if [ -f "$_wr_round/scout-archetype-yield.tsv" ]; then
+    pass "write-round commits scout-archetype-yield.tsv"
+else
+    fail "write-round must commit scout-archetype-yield.tsv"
+fi
 
 # Test 5: denied files stay denied
 if [ ! -f "$_wr_round/cursor-specialist-correctness-output.txt" ]; then
@@ -858,6 +896,13 @@ if [ ! -f "$_wr_round/main-agent-vote-prompt.txt" ]; then
     pass "write-round denied: *-vote-prompt.txt excluded"
 else
     fail "write-round must exclude *-vote-prompt.txt"
+fi
+if [ ! -f "$_wr_round/foo.events.jsonl" ] \
+    && [ ! -f "$_wr_round/coder-codex.events.jsonl" ] \
+    && [ ! -f "$_wr_round/codex.events.jsonl" ]; then
+    pass "write-round denied: *.events.jsonl artifacts excluded"
+else
+    fail "write-round must exclude raw Codex events.jsonl artifacts"
 fi
 
 # Test 5b: cursor-ci stall JSON sidecars (committed round forensics)

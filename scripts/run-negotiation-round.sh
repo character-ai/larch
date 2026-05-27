@@ -27,6 +27,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
@@ -65,6 +66,8 @@ rm -f "$OUTPUT_FILE"
 
 case "$TOOL" in
     codex)
+        codex_events="${OUTPUT_FILE%.txt}.events.jsonl"
+        codex_sidecar="${OUTPUT_FILE%.txt}.sidecar"
         CODEX_MODEL_ARGS_TMP=$(mktemp)
         if "$SCRIPT_DIR/agent-model-args.sh" --tool codex > "$CODEX_MODEL_ARGS_TMP"; then
             :
@@ -81,8 +84,18 @@ case "$TOOL" in
         _SERIAL_LOCK=""
         external_serial_lock_acquire _SERIAL_LOCK "codex"
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
+        rm -f "$codex_events" "$codex_sidecar"
+        codex_rc=0
         codex exec --full-auto -C "$WORKSPACE" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
-            --output-last-message "$OUTPUT_FILE" - < "$PROMPT_FILE" 2>&1
+            --output-last-message "$OUTPUT_FILE" \
+            --json \
+            -- \
+            - < "$PROMPT_FILE" >"$codex_events" 2>"$codex_sidecar" || codex_rc=$?
+        external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_sidecar" "codex_negotiation" || true
+        if [[ "$codex_rc" -ne 0 ]]; then
+            emit_kv RESPONSE_FILE "$OUTPUT_FILE"
+            exit 2
+        fi
         ;;
     cursor)
         CURSOR_MODEL_ARGS_TMP=$(mktemp)

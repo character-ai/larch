@@ -34,8 +34,26 @@ REPO=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --issue) ISSUE="${2:-}"; shift 2 ;;
-        --repo)  REPO="${2:-}"; shift 2 ;;
+        --issue)
+            if [ $# -lt 2 ]; then
+                emit_kv FAILED true
+                emit_kv ERROR "--issue requires a value"
+                exit 1
+            fi
+            case "$2" in
+                --*) emit_kv FAILED true; emit_kv ERROR "--issue requires a value"; exit 1 ;;
+            esac
+            ISSUE="$2"; shift 2 ;;
+        --repo)
+            if [ $# -lt 2 ]; then
+                emit_kv FAILED true
+                emit_kv ERROR "--repo requires a value"
+                exit 1
+            fi
+            case "$2" in
+                --*) emit_kv FAILED true; emit_kv ERROR "--repo requires a value"; exit 1 ;;
+            esac
+            REPO="$2"; shift 2 ;;
         *)
             emit_kv FAILED true
             emit_kv ERROR "unknown flag: $1"

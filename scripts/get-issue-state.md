@@ -28,7 +28,7 @@ ERROR=<single-line>
 
 ## Behavior notes
 
-- **Self-validation**: `--issue` is checked for non-empty first, then validated as numeric before repo resolution or `gh` invocation. Non-empty non-numeric values fail with `FAILED=true` and `ERROR=--issue must be numeric`.
+- **Self-validation**: `--issue` is checked for a present value before the parser shifts argv, then validated as numeric before repo resolution or `gh` invocation. `--repo` likewise requires a present value before shifting. A missing final value or a next token that looks like another flag (`--issue --repo ...`, `--repo --some-flag`) fails with `FAILED=true` and `ERROR=--issue requires a value` or `ERROR=--repo requires a value`; non-empty non-numeric issue values fail later with `FAILED=true` and `ERROR=--issue must be numeric`.
 - `gh` returns the URL of whatever `<N>` resolves to, including pull-request URLs, because `gh issue view` accepts a number and dispatches against either issue or PR objects sharing the repo's number namespace. The `/pull/` substring check is the load-bearing PR-vs-issue discriminator and matches the inline rule SKILL.md previously used.
 - The script does not encode the SKILL.md branching ("if `IS_PR=true`, abort; if `STATE=CLOSED`, emit `IMPLEMENT_BAIL_REASON=adopted-issue-closed`"). Callers consume the envelope and apply the policy. Keeping policy out of the wrapper means future **Step 0** adoption-branch changes (e.g., honoring `STATE=DRAFT` PRs differently) do not require touching this script.
 

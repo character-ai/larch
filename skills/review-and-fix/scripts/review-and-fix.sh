@@ -28,6 +28,9 @@ SCRIPT_DIR="$PLUGIN_ROOT/scripts"
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-cursor-launcher-common.sh"
+# shellcheck source=scripts/lib-codex-launcher-common.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-codex-launcher-common.sh"
 # shellcheck source=scripts/lib-submodule-prohibition.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
@@ -249,12 +252,23 @@ compose_coder_prompt() {
 run_coder_dispatch() {
     local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
     local _SERIAL_LOCK=""
+    local codex_events="$round_dir/coder-codex.events.jsonl"
+    local codex_wrapper_log="$round_dir/coder-codex.wrapper.log"
+    local codex_telemetry_sidecar="$round_dir/coder-codex.sidecar"
+    local codex_rc=0
 
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-    if "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 --capture-stdout -- \
-        codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" "$prompt_body" > "$round_dir/coder-codex.wrapper.log" 2>&1; then
+    rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
+    "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 -- \
+        codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" \
+        --output-last-message "$round_dir/coder-codex.log" \
+        --json \
+        -- \
+        "$prompt_body" >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
+    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_review_fix" || true
+    if [[ "$codex_rc" -eq 0 ]]; then
         cp "$round_dir/coder-codex.log" "$tool_log" 2>/dev/null || : > "$tool_log"
         printf 'codex\n' > "$tool_stdout"
         return 0

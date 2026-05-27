@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- legitimate drift risk, but extracting this now would add abstraction overhead beyond the current need
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicated test fixtures are not enough burden to justify a shared fixture layer yet
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the Python helper is extra code, but it is a portable timeout and not worth changing just to match the plan wording
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the awk/eval unit-hook is brittle, but replacing it would likely be more ceremony than the risk warrants
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the style inconsistency is real but too small to raise as review feedback
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- wrapper logs are reused for parse diagnostics, but the claimed prompt-fragment leak is not supported by the current parser diagnostics
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stderr progress is real, but the output-mode contract is already documented enough for this change
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the 5-second delay is in the negotiation test harness, while production still defaults to 0.5 seconds
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- empty or unparseable events already produce sidecar diagnostics, and adding zero ledger rows would risk noisy accounting
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- empty values are not classified as requires-value, but the current failure is still clear enough for an optional edge case
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- non-.txt outputs get a less tidy artifact basename, but the local-only side artifact behavior is not worth a follow-up issue
