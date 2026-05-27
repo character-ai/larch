@@ -1304,7 +1304,7 @@ Remove the session temp directory and all files within it. Run `cleanup-tmpdir.s
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 ```
-When Step 6 completes on a preserved tmpdir path, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-6"` after cleanup gating succeeds.
+Before invoking `cleanup-tmpdir.sh` on the happy path, run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-6"`.
 
 ### Plan command validator failure (shared)
 

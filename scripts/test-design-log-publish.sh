@@ -304,7 +304,7 @@ git -C "$clone_pause" fetch -q origin larch-log-design-RUNPAUSE1:larch-log-desig
 pause_subject=$(git -C "$clone_pause" log -1 --format=%s larch-log-design-RUNPAUSE1)
 [[ "$pause_subject" == "chore(larch-logs): pause design run RUNPAUSE1 [skip ci]" ]] || fail "pause commit subject mismatch: $pause_subject"
 
-echo "=== pause publish rejects no-op snapshot delta ==="
+echo "=== pause publish accepts no-op when default branch already has snapshot ==="
 TMPPAUSE_NOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-noop.XXXXXX")
 clone_pause_noop=$(setup_clone_with_origin_head "$TMPPAUSE_NOOP")
 stub_pause_noop="$TMPPAUSE_NOOP/stub"
@@ -336,7 +336,40 @@ git -C "$clone_pause_noop" pull -q origin main
 out_pause_noop=$(
     cd "$clone_pause_noop" && bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo
 )
-[[ "$out_pause_noop" == *"PUBLISH_OK=false"* ]] || fail "pause no-op snapshot should fail closed: $out_pause_noop"
+[[ "$out_pause_noop" == *"PUBLISH_OK=true"* ]] || fail "pause no-op snapshot should succeed when default branch already has snapshot: $out_pause_noop"
+
+echo "=== pause publish reuses existing remote recovery branch on no-op ==="
+TMPPAUSE_REC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-recovery.XXXXXX")
+clone_pause_rec=$(setup_clone_with_origin_head "$TMPPAUSE_REC")
+stub_pause_rec="$TMPPAUSE_REC/stub"
+make_gh_stub "$stub_pause_rec"
+date_stub_rec="$TMPPAUSE_REC/date-stub"
+mkdir -p "$date_stub_rec"
+cat >"$date_stub_rec/date" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-u" && "${2:-}" == "+%Y-%m-%dT%H:%M:%SZ" ]]; then
+    printf '%s\n' '2026-01-01T00:00:00Z'
+    exit 0
+fi
+exec /bin/date "$@"
+EOF
+chmod +x "$date_stub_rec/date"
+export PATH="$date_stub_rec:$stub_pause_rec:$PATH"
+unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL
+export GH_STUB_MERGE_RC=1
+mkdir -p "$TMPPAUSE_REC/design/.completed"
+printf 'p\n' >"$TMPPAUSE_REC/design/plan.txt"
+printf 'done\n' >"$TMPPAUSE_REC/design/.completed/step-1c"
+(
+    cd "$clone_pause_rec" || exit 1
+    seed_out=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REC/design" --run-id "RUNPAUSEREC1" --issue 42 --repo owner/repo)
+    [[ "$seed_out" == *"PUBLISH_OK=false"* && "$seed_out" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREC1"* ]] || fail "pause recovery seed should leave remote branch: $seed_out"
+    git branch -D larch-log-design-RUNPAUSEREC1 >/dev/null 2>&1 || true
+    out_pause_rec=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REC/design" --run-id "RUNPAUSEREC1" --issue 42 --repo owner/repo)
+    [[ "$out_pause_rec" == *"PUBLISH_OK=false"* ]] || fail "pause recovery no-op should fail soft: $out_pause_rec"
+    [[ "$out_pause_rec" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREC1"* ]] || fail "pause recovery no-op missing recovery branch: $out_pause_rec"
+)
+unset GH_STUB_MERGE_RC
 
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")

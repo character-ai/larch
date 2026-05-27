@@ -656,8 +656,9 @@ assert_bash_fences_have_pause_check() {
 
 assert_step_completion_sentinels() {
   local step start_pat end_pat start_line end_line section
-  for step in 1c 1d 1d.5 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b 5b 5c 5d 6; do
+  for step in 0c 1c 1d 1d.5 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b 5b 5c 5d 6; do
     case "$step" in
+      0c) start_pat='### 0c —'; end_pat='<!-- step:1c' ;;
       1c) start_pat='<!-- step:1c'; end_pat='<!-- step:1d' ;;
       1d) start_pat='<!-- step:1d —'; end_pat='<!-- step:1d.5' ;;
       1d.5) start_pat='<!-- step:1d.5'; end_pat='<!-- step:1e' ;;
