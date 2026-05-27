@@ -598,15 +598,27 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
-  "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
+  "$DESIGN_TMPDIR/codex-sketch-generic-output.txt" &
+COLLECTOR_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$COLLECTOR_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$COLLECTOR_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 Use `timeout: 1260000` on the Bash tool call. Set `run_in_background: true` on the long-script Bash tool call and pair with foreground `breadcrumb-monitor.sh`. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).
