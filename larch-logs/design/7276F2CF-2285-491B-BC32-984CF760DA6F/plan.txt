@@ -1,0 +1,180 @@
+## Implementation Plan — Stall recovery gate for `/implement`
+
+When `/implement` stalls (`STALL_TRACKING=true`), a **recovery gate** runs as the **first sub-step inside Step 18** (before the existing teardown). The gate classifies the stall, files (or prints) a sanitized larch bug issue, attempts a class-dependent recovery — which itself completes any remaining `/implement` steps inline (impl + commit + review + checks + ship-pr) using the existing wrapper scripts — and on success atomically clears `STALL_TRACKING` so the existing teardown takes the `[DONE]` branch. On exhausted recovery (or `unrecoverable` from the start), a terminal-failure comment is posted (or printed) and the existing teardown takes the `[STALLED]` branch unchanged.
+
+## Files to modify/create
+
+### NEW: `skills/implement/scripts/stall-recovery-report.sh`
+
+Single helper that owns classification, sanitization, and per-class retry policy. **Subcommand list (closed enum)**:
+
+- `classify` — flags: `--implement-tmpdir <path>` (required), `--in-memory-stall-tracking <true|false>` (when `ship-pr-state.sh` is absent), `--bail-reason <token>` (when in-memory), `--failure-detail-log <path>` (optional; the helper rejects any path that is not absolute, not canonical, not a regular file, is a symlink, or is not physically under `--implement-tmpdir`), `--attempts-file <path>` (the durable retry-state file — see `init-attempts`). Reads `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present, else falls back to `--in-memory-stall-tracking` + `--bail-reason` + `$IMPLEMENT_TMPDIR/session-env.sh`. Emits via `lib-quiet.sh` `emit_kv`: `FAILURE_CLASS` (closed enum: `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, `unrecoverable`), `FAILURE_SIGNATURE` (stable hash of discriminating evidence), `RESUME_HINT` (closed enum, exactly: `step2-impl`, `step5-review`, `step8-shippr`, `none` — no other tokens; `contract-failure` and `unrecoverable` always emit `RESUME_HINT=none`; `step3-checks` and `step6-checks` are NOT resume hints — both classify as `contract-failure` per F4), `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`. The helper compares the current signature to the most recent `attempt.<N>.signature` value persisted in `--attempts-file` and sets `FAILURE_CLASS=same-cause-repeat` (overriding the underlying class) when they match.
+- `init-attempts` — flags: `--implement-tmpdir <path>` (required), `--output <path>` (default `$IMPLEMENT_TMPDIR/stall-recovery-attempts.env`). Atomically (`mktemp` in same dir → `mv -f`) creates the attempts file with `version=1`, `created_utc=<ISO8601>`, `attempt_count=0`. Idempotent: if the file already exists with `version=1`, succeeds without changes. Emits `ATTEMPTS_FILE=<path>` and `ATTEMPTS_INIT=created|preserved`.
+- `record-attempt` — flags: `--attempts-file <path>` (required), `--attempt-index <N>`, `--failure-class <class>`, `--failure-signature <hash>`, `--resume-hint <token>`, `--outcome <success|failed|in-progress>`. Atomic append: read current content into temp, append `attempt.<N>.class=...` / `attempt.<N>.signature=...` / `attempt.<N>.resume_hint=...` / `attempt.<N>.outcome=...` / `attempt.<N>.utc=...`, write to temp in same dir, `mv -f`. Increments `attempt_count`. Emits `ATTEMPT_RECORDED=true`.
+- `is-larch-dev-clone` — emits `LARCH_DEV_CLONE=true|false` based on the canonical marker (working-tree root contains `skills/implement/SKILL.md`). Uses the same predicate as `scripts/check-stale-plugin.sh`; factor that predicate into a shared shell function in `scripts/lib-larch-dev-clone.sh` so both consumers stay byte-identical.
+- `bug-body` — flags: `--implement-tmpdir <path>`, `--classify-env <path>` (KV file from `classify`), `--output <path>`, `--dry-run <true|false>`. Composes the public bug-report markdown body from the explicit allowlist below (file `skills/implement/scripts/stall-recovery-report-allowlists.tsv`). Runs `scripts/redact-secrets.sh` over the assembled body as a mechanical backstop. Includes a `<!-- larch-stall:signature=<hash> -->` HTML comment for byte-exact dedup. Emits `BODY_FILE=<path>` and `DRY_RUN_DECISION=true|false`.
+- `bug-comment` — flags identical to `bug-body` plus `--attempts-file <path>`. Composes the **terminal-failure** comment body from a SEPARATE allowlist (terminal-failure has different fields: retry-attempt table, final classifier output, last signature hash). Same `redact-secrets.sh` backstop. Emits `COMMENT_FILE=<path>` and `DRY_RUN_DECISION=true|false`.
+- `issue-input-file` — flags: `--bug-body-file <path>`, `--failure-class <class>`, `--stall-step <step>`, `--output <path>`. Composes the **generic batch-mode** input file for `/larch:issue`: the first line is `### [Bug] /implement stall: <failure-class> at <stall-step>` followed by a blank line then the body content. This matches the `/larch:issue --input-file` parser contract (per F2). Emits `INPUT_FILE=<path>`.
+
+**Allowlists** (committed at `skills/implement/scripts/stall-recovery-report-allowlists.tsv`, format `surface<TAB>field_key<TAB>source<TAB>transform`):
+- `bug-body` surface: `failing_step` (from `STALL_STEP`, enum-mapped to short token), `failing_phase` (from `PHASE`, enum-mapped), `failure_class` (from `FAILURE_CLASS`), `exit_code` (from classified evidence, integer), `signature_hash` (from `FAILURE_SIGNATURE`, hex), `inferred_root_cause` (from classifier enum → fixed prose templates only), `suggested_mitigation` (classifier enum → fixed prose templates).
+- `bug-comment` surface: all `bug-body` fields plus `attempt_count`, `attempt_table` (rendered from `attempts-file` allowlisted fields only — class/signature/outcome/utc, NOT raw stdout), `final_class`, `final_signature`.
+- `issue-input-file` surface: synthesized title (`[Bug] /implement stall: <class> at <step>`) + body.
+- `chat-print` surface (consumer-repo path): same as `bug-body`.
+
+**Source allowlist (input side)**: classifier reads ONLY `ship-pr-state.sh`, `execution-issues.md`, `session-env.sh`, and `--failure-detail-log` (validated). Any field NOT listed in the surface allowlist above is forbidden in any public output. The helper has a `lint` subcommand (run from the harness) that asserts the source-key set equals the surface-key set; deny-list assertions in the harness inject sentinel values into every classifier input and grep all 4 output surfaces for those sentinels.
+
+**Exit codes**: `0` success; `1` argv error; `2` missing **required** input (e.g. `--implement-tmpdir`); `3` reserved EXCLUSIVELY for malformed/unparseable `ship-pr-state.sh` content. Missing `ship-pr-state.sh` is NOT exit 3 — it is a normal classified outcome that falls back to the in-memory + `session-env.sh` path and may emit `FAILURE_CLASS=unrecoverable` with a bounded `BAIL_REASON=...` token when no other recoverable evidence exists.
+
+### NEW: `skills/implement/scripts/stall-recovery-report.md`
+
+Contract sibling. Sections: subcommand list (with stdout KV contracts), the four surface allowlists (verbatim TSV), classifier evidence sources (mapping each `FAILURE_CLASS` → permitted evidence patterns), the closed `RESUME_HINT` enum and its mapping to `references/stall-recovery.md` dispatch arms, the per-class retry caps table (this file is the **single normative source** for caps — `references/stall-recovery.md` points here and never duplicates values), exit-code table (with the explicit "missing ship-pr-state.sh ≠ exit 3" rule), `--failure-detail-log` validation rules (absolute + canonical + regular + non-symlink + physically under `--implement-tmpdir` + read-capped at 64 KB), dry-run semantics (the helper only emits `DRY_RUN_DECISION`; the reference decides whether to call `/larch:issue`), and SECURITY.md cross-references.
+
+Per-class retry caps (this is the only place these are written):
+- `transient-infra`: 4 attempts, 5-second delay between (`sleep-seconds.sh 5`).
+- `test-failure`: 8 attempts, no delay (each attempt iterates the test repair).
+- `lint-failure`: 8 attempts, no delay.
+- `dispatch-failure`: 3 attempts, no delay.
+- `same-cause-repeat`: 1 attempt with alternate strategy (re-read `larch:plan`, restart the failed step from scratch).
+- `contract-failure`: 0 attempts (no main-agent edits per F4 — the underlying contract forbids them).
+- `unrecoverable`: 0 attempts.
+
+### NEW: `skills/implement/references/stall-recovery.md`
+
+Orchestrator-facing reference loaded by SKILL.md Step 18 entry-guard. Procedure (each sub-step ends with an explicit "continue to ..." anti-halt directive):
+
+1. **Resolve `STALL_TRACKING`**: read in-memory orchestrator variable first; if absent, key-extract from `$IMPLEMENT_TMPDIR/ship-pr-state.sh` (do not source); if absent, key-extract from `$IMPLEMENT_TMPDIR/session-env.sh`. When any layer reports `true`, the gate fires.
+2. **`init-attempts`** call to create `$IMPLEMENT_TMPDIR/stall-recovery-attempts.env` BEFORE classify / issue filing / dispatch (per F15).
+3. **Classify**: invoke `stall-recovery-report.sh classify` with `--implement-tmpdir`, `--in-memory-stall-tracking`, `--bail-reason`, `--failure-detail-log` (only when a validated path is available — the reference enforces validation via `realpath` + symlink check + tmpdir-prefix check before passing), `--attempts-file`. Parse `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `BAIL_REASON`.
+4. **First-detection issue filing** (only on `attempt_count==0`): call `is-larch-dev-clone`. Then call `bug-body` to a redacted output file. Then evaluate `DRY_RUN_DECISION` (the helper emits it). When `DRY_RUN_DECISION=true`, skip the actual filing/print and write the artifact to `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md`. Otherwise:
+   - **Larch clone**: build the input file via `issue-input-file`, invoke `/larch:issue` via the Skill tool with `--input-file <generated path>`. Capture stdout-only to `$IMPLEMENT_TMPDIR/stall-recovery-issue.stdout.txt`. Parse `ISSUE_URL` / `ISSUE_NUMBER` and persist to `$IMPLEMENT_TMPDIR/stall-recovery-issue.env`.
+   - **Consumer repo**: print the bug body verbatim to chat under a `## Action required — file larch bug` header with a one-line preamble.
+5. **Dispatch on `RESUME_HINT`** (closed enum, switch is exhaustive):
+   - `step2-impl`: main Claude reads `$IMPLEMENT_TMPDIR/plan.txt`, performs the impl edits inline via Edit/Write, runs the existing relevant-checks helper, commits via the same path Step 4 uses, then **continues into Step 5 recovery (step5-review)** without exiting the gate. After Step 5 recovery returns, **continues into Step 8 ship-pr** automatically — recovery drives the run to merge inline (per F9).
+   - `step5-review`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round <next>` using the **Family B background+monitor pair** (six `LARCH_*` env vars allocated under `$IMPLEMENT_TMPDIR/breadcrumbs/`, `run_in_background: true` on the script call, foreground `breadcrumb-monitor.sh` paired). On success, continue into `step8-shippr`.
+   - `step8-shippr`: re-invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh` with the same Step 8+ background+monitor envelope as the main flow (no `--resume-phase`; persisted `PHASE` resumes the main loop). On Exit 6 (transient): retry per `transient-infra` cap. On Exit 4 (hard stall): retry once per `same-cause-repeat` if the new signature matches; otherwise terminal failure.
+   - `none` (paired with `FAILURE_CLASS=contract-failure` or `unrecoverable`): no dispatch arm runs. The gate proceeds directly to terminal-failure handling (step 8 below).
+6. **Retry loop control**: between attempts, increment `attempt_count` via `record-attempt`, re-run `classify` to detect `same-cause-repeat` against the prior attempt's signature, and enforce per-class caps read from `stall-recovery-report.md`. The reference does NOT inline cap values (F16).
+7. **Success path** (one attempt's RESUME_HINT dispatch returned 0 AND any subsequent recovery dispatch arms also returned 0):
+   - Compose the new `ship-pr-state.sh` content with `STALL_TRACKING=false` and `STALL_STEP=` cleared.
+   - Write to `$IMPLEMENT_TMPDIR/ship-pr-state.sh.tmp.<rand>` (same dir for atomic-rename atomicity).
+   - Re-read the temp file via `read-session-env-key.sh --key STALL_TRACKING` and assert it returns `false`.
+   - `mv -f` the temp file over `ship-pr-state.sh`.
+   - Re-read the destination file again via `read-session-env-key.sh --key STALL_TRACKING` and assert it returns `false`.
+   - **Only after** all four steps succeed: clear the in-memory orchestrator `STALL_TRACKING` variable. If any of the four fails: leave in-memory and on-disk `STALL_TRACKING=true` and route to terminal-failure handling.
+8. **Terminal-failure path**: invoke `bug-comment` with the attempts file; evaluate `DRY_RUN_DECISION`; post via `gh issue comment` (larch-clone) or chat-print (consumer); leave `STALL_TRACKING=true`.
+9. **Continue to teardown**: regardless of success or terminal failure, after sub-step 7 or 8 returns, continue to the existing Step 18 teardown body (token refresh, `restore-finalize-state.sh`, `implement-finalize.sh teardown`). Teardown branches on the disk `STALL_TRACKING` value as it does today.
+
+**Safety constraints** (enumerated, each with a "Why"): NEVER spawn Agent-tool subagents for the actual code-writing work (Round 1 decision 1; main Claude only); NEVER mutate `finalize-state.sh` (NEVER #13); NEVER call `ScheduleWakeup` (NEVER #9); ALWAYS use the Family B background+monitor pair when invoking `run-step5-review.sh` / `ship-pr.sh` (NEVER #16); NEVER recurse into Step 18 from inside the recovery loop (the gate runs once per `/implement` run).
+
+### NEW: `skills/implement/scripts/stall-recovery-report-allowlists.tsv`
+
+Machine-readable allowlist table (TSV, 4 surfaces × N fields). Loaded by the helper at startup and by `test-stall-recovery-report.sh` for parity diffing. Format: `surface\tfield_key\tsource\ttransform`. The contract sibling documents the same table verbatim so doc-vs-code drift is caught by the harness.
+
+### NEW: `scripts/lib-larch-dev-clone.sh`
+
+Shared shell library exposing `is_larch_dev_clone()` — single source of truth for the working-tree marker check. Sourced by `scripts/check-stale-plugin.sh` (factored from its existing inline check) and by `skills/implement/scripts/stall-recovery-report.sh`. Trivial: ~15 lines.
+
+### NEW: `skills/implement/scripts/test-stall-recovery-report.sh`
+
+Hermetic offline harness. Wired via `scripts/harness-timer.sh`. Test cases:
+
+1. `classify` returns `transient-infra` for gh rate-limit pattern + network-touching PHASE.
+2. `classify` returns `test-failure` for pytest/jest markers in the checks log.
+3. `classify` returns `lint-failure` for lint-fix exhaustion markers.
+4. `classify` returns `dispatch-failure` for invalid step2-implement envelope.
+5. `classify` returns `contract-failure` with `RESUME_HINT=none` for `STALL_STEP=3` and `STALL_STEP=6` (the no-edit invariant per F4).
+6. `classify` returns `unrecoverable` with `RESUME_HINT=none` for `BAIL_REASON=adopted-issue-closed` / `tracking-init-failed`.
+7. `classify` returns `same-cause-repeat` when the prior `attempt.<N>.signature` in `--attempts-file` matches the new signature.
+8. `classify` falls back gracefully when `ship-pr-state.sh` is absent — uses `--in-memory-stall-tracking true --bail-reason <token>` and emits a bounded `FAILURE_CLASS=unrecoverable` (NOT exit 3).
+9. `classify` rejects `--failure-detail-log` outside `--implement-tmpdir`, symlink, relative path, or non-regular file with a distinct error each.
+10. `init-attempts` is idempotent — second call preserves the file.
+11. `record-attempt` atomically appends without race on temp/mv.
+12. `is-larch-dev-clone` returns `true` when working-tree contains `skills/implement/SKILL.md`, `false` otherwise.
+13. **Deny-list parity**: inject unique sentinel values into every classifier input field (raw stdout-like lines in `execution-issues.md`, paths in `ship-pr-state.sh`, `BAIL_REASON` payload). Run `bug-body`, `bug-comment`, `issue-input-file`, and the chat-print equivalent. Assert NO sentinel appears in any output.
+14. **Allowlist-source parity (`lint` subcommand)**: assert the surfaces listed in `stall-recovery-report-allowlists.tsv` equal the surfaces emitted by the helper code and described in `stall-recovery-report.md`.
+15. `bug-body` output is byte-stable for identical inputs (deterministic signature hash).
+16. `redact-secrets.sh` mechanical backstop is invoked (inject a `ghp_...`-shaped token and assert it is redacted).
+17. `bug-comment` includes the retry-attempt table from the attempts file.
+18. `DRY_RUN_DECISION` emitted from `bug-body` / `bug-comment` correctly reflects `--dry-run true` (and a separate harness case proves the reference's dispatch on this flag prevents an actual `/larch:issue` call — using a stub `gh` on `PATH` that records all invocations to a file).
+19. Atomic state-rewrite ordering: simulate a crash between in-memory clear and disk write — separate test asserts that disk `STALL_TRACKING` flips before in-memory variable, so a post-crash restart reads the consistent disk value.
+20. `issue-input-file` output starts with `### [Bug] /implement stall: <class> at <step>` (so `/larch:issue --input-file` batch parser accepts it).
+21. Bad argv → exit 1; missing required `--implement-tmpdir` → exit 2; malformed `ship-pr-state.sh` content → exit 3 (and only this case is exit 3).
+
+### NEW: `skills/implement/scripts/test-stall-recovery-report.md`
+
+Harness contract sibling — input fixtures layout, expected outputs per case, environment hermeticity invariants, sentinel-injection patterns for the deny-list test, and the doc-vs-code parity invariant for the `lint` subcommand.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+- **Step 18 restructure**: split Step 18 into **Step 18a — Stall recovery gate** (new) and **Step 18b — Teardown** (the existing teardown body). Step 18a is the first sub-step inside Step 18 on every entry. When in-memory `STALL_TRACKING=false` AND no disk fallback signal, Step 18a prints `⏩ 18a: stall recovery — no stall detected` and proceeds to Step 18b. When any layer reports `STALL_TRACKING=true`, Step 18a loads `references/stall-recovery.md` via a MANDATORY directive and executes the procedure. The prelude line uses the existing `$IMPLEMENT_TMPDIR/session-env.sh` rehydration pattern (per F6); the previously-mentioned `current-implement-env-$PPID.sh` is removed from the plan.
+- **No new "skip to Step 17.5" routing**: all 24 existing `STALL_TRACKING=true` bail-path bullets continue to "skip to Step 18 cleanup" verbatim. The single intercept lives at Step 18 entry. This addresses F1 because Step 18a runs UNCONDITIONALLY at Step 18 entry — every bail path that arrives at Step 18 passes through it.
+- **Step 18b teardown prose**: clarify that Branch A `[STALLED]` fires only when Step 18a left `STALL_TRACKING=true` on disk; Branch B `[DONE]` fires when Step 18a recovery cleared `STALL_TRACKING=false`. No teardown-script logic change is required — teardown already reads `STALL_TRACKING` from the state file.
+- **Title-prefix lifecycle**: update the prose to mention Step 18a's role in the `[STALLED]` outcome.
+- **New NEVER bullet**: **NEVER spawn Agent-tool subagents for actual code-writing work during stall recovery**. Why: Round 1 decision 1. How to apply: dispatch in `references/stall-recovery.md` uses inline Edit/Write/Bash only.
+- **Anti-halt** prose in Step 18a explicitly enumerates the recovery-loop continuation directives and the "no recursion into Step 18 from inside the loop" rule.
+
+### UPDATED: `Makefile`
+
+- Add `test-stall-recovery-report` to `.PHONY`.
+- Define the recipe with `scripts/harness-timer.sh`.
+- Add the target to exactly one `test-harnesses-N` shard line (the shard with the lightest current line count).
+
+### UPDATED: `SECURITY.md`
+
+Add a "Stall recovery sanitization" section: enumerate the four output surfaces (bug-body, bug-comment, issue-input-file, chat-print), state the allowlist invariant ("public surfaces emit only fields listed in `stall-recovery-report-allowlists.tsv`"), document the `redact-secrets.sh` backstop, document the `--failure-detail-log` validation rules, and link to the `lint` and deny-list parity tests as the regression backstop. Note the residual risk: classifier inference templates are static strings under maintainer control; a malicious patch to the templates could exfiltrate via the public bug surface, but the diff is reviewer-visible by construction.
+
+### UPDATED: `scripts/check-stale-plugin.sh`
+
+Replace the inline `[ -f "$WORKING_TREE_ROOT/skills/implement/SKILL.md" ]` check with `source` + `is_larch_dev_clone` from `scripts/lib-larch-dev-clone.sh`. Behaviorally identical.
+
+## Approach
+
+The recovery gate is orchestrator-side prose (Step 18a inside `skills/implement/SKILL.md` + `references/stall-recovery.md`) backed by a deterministic helper (`stall-recovery-report.sh`). The helper owns three security-critical concerns — classification, sanitization (allowlist + redact backstop), and dev-clone detection — and exposes a tight closed-enum API. The reference prose handles dispatch, retry-loop control, atomic state-rewrite ordering, and downstream-step continuation.
+
+Key design decisions and how they address the review findings:
+
+- **Single intercept at Step 18a (not a new "skip-to-17.5" routing)**: every existing bail path that "skips to Step 18 cleanup" passes through Step 18a unconditionally. No prose change to the 24 `STALL_TRACKING=true` bail-path bullets. Addresses F1.
+- **`/larch:issue --input-file` batch shape**: the input file starts with `### [Bug] /implement stall: <class> at <step>`. Addresses F2.
+- **`run-step5-review.sh` wrapper reuse for step5 recovery**: Family B background+monitor pair, six `LARCH_*` env vars, etc. — same envelope as the main Step 5 invocation. Addresses F3.
+- **Step 3/6 checks classify as `contract-failure`, no main-agent edits**: preserves the existing Step 8 Exit 4 invariant ("`STATUS=stalled` is the only orchestrator-visible outcome for unrecoverable `PHASE=checks` failures"). Addresses F4. (Resolving the invariant in the other direction — allowing main-agent edits for `STALL_STEP=6` — was rejected as too broad-scope; that work would belong in a follow-up issue that also updates ship-pr.sh tests.)
+- **`classify --attempts-file` + `record-attempt`**: durable retry state lives in `$IMPLEMENT_TMPDIR/stall-recovery-attempts.env`. Atomic temp-then-mv writes. Addresses F5 and F15.
+- **`session-env.sh` rehydration, no new prelude file**: Step 18a uses the existing `/implement` pattern; the proposed `current-implement-env-$PPID.sh` is dropped. Addresses F6.
+- **`test-harnesses-N` shard + `.PHONY` + `scripts/harness-timer.sh`**: standard wiring. Addresses F7.
+- **In-memory `STALL_TRACKING` is authoritative, with `ship-pr-state.sh` and `session-env.sh` fallback**: Step 18a resolves the flag from three layers; the in-memory value (set by every existing bail path) is the primary signal. Addresses F8.
+- **One control-flow model**: recovery drives the run forward to merge inline. `step2-impl` recovery rolls through `step5-review` then `step8-shippr` automatically within the gate. After recovery success, Step 18b teardown takes Branch B `[DONE]` because the work is actually finished. Steps 14-17 (post-merge / final-report) ran in their normal positions before Step 18 was reached on the bail path — the gate does NOT re-run them. Step 17 (write-final-report) is acceptable to skip on recovery success because the cost line and final summary already reflect a stalled run; an explicit prose note in `references/stall-recovery.md` directs operators to the final-report's normal terminal output. Addresses F9.
+- **Dry-run lives in the reference**, helper only emits `DRY_RUN_DECISION`: `references/stall-recovery.md` branches on the emitted decision before calling `/larch:issue`. Harness test case 18 proves no real call happens under dry-run via a `gh` stub. Addresses F10.
+- **Four surface allowlists in a committed TSV + `lint` subcommand + deny-list sentinel parity test**: addresses F11. SECURITY.md documents the invariant.
+- **`--failure-detail-log` validation**: absolute + canonical + regular + non-symlink + physically under `--implement-tmpdir` + 64 KB cap. Addresses F12.
+- **Missing-state ≠ exit 3**: missing `ship-pr-state.sh` is a normal classified outcome (often `unrecoverable` with a bounded `BAIL_REASON`). Exit 3 reserved for malformed/unparseable present state. Addresses F13.
+- **Atomic state-rewrite ordering**: write temp → read-back-verify → `mv -f` → read-disk-verify → clear in-memory. Addresses F14.
+- **Single caps authority**: `stall-recovery-report.md` is the only place caps values live. The reference points to it without duplicating values. The `--caps` subcommand idea is dropped. Addresses F16.
+- **Closed `RESUME_HINT` enum**: exactly `step2-impl`, `step5-review`, `step8-shippr`, `none`. `step3-checks` / `step6-checks` are NOT resume hints. Harness case asserts emitted tokens match the dispatch arms. Addresses F17.
+
+## Edge cases
+
+- **No `$IMPLEMENT_TMPDIR/ship-pr-state.sh`** (early Step 0 bailouts): classify uses `--in-memory-stall-tracking` + `--bail-reason` + `session-env.sh`. Result is typically `unrecoverable` with a bounded reason token; no exit 3.
+- **Consumer repo with no `gh` auth**: the consumer-repo branch only prints to chat. The larch-clone branch's `gh` failure is logged as a Tool Failures entry and recovery proceeds with empty issue URL.
+- **Stall during the recovery gate itself**: NEVER recurse into Step 18 from inside the recovery loop. If a sub-dispatch (e.g., `ship-pr.sh` re-invocation) itself stalls, the recovery loop handles it via the per-class cap; if the cap is exhausted, terminal-failure handling fires.
+- **`/larch:issue` semantic-dedup match against an existing open larch issue**: accept the dedup outcome; the existing issue receives the terminal-failure comment instead of a new issue being filed.
+- **`forked_target=true`**: Step 18a short-circuits the larch-clone branch and uses the consumer-repo print path.
+- **Operator runs `/implement` again on the same issue while the recovery gate is in flight**: the existing `parent-issue.md` sentinel guard prevents double-adoption. `stall-recovery-attempts.env` is per-tmpdir so a fresh run starts fresh.
+- **Crash between in-memory clear and disk write**: the atomic-write order (disk first, then in-memory) makes this case impossible by construction — F14 mitigation.
+- **`--failure-detail-log` outside tmpdir**: validator rejects with a distinct error; classify continues without the optional log.
+- **Long retry runs**: per-class caps from `stall-recovery-report.md` are conservative (`transient-infra` 4, `test/lint` 8, `same-cause` 1, `dispatch` 3, `contract`/`unrecoverable` 0).
+
+## Failure modes
+
+1. **Allowlist regression leaks consumer IP into a public larch issue.** Earliest signal: harness case 13 (deny-list sentinel parity) fails. Mitigation: the deny-list parity test plus the doc-vs-code parity (`lint` subcommand) plus `redact-secrets.sh` form three independent backstops. SECURITY.md documents residual risk.
+2. **Classifier misroutes a stall to the wrong retry class** (e.g., `unrecoverable` auth failure classified as `transient-infra`, 4 wasted attempts). Earliest signal: retry-attempt table in the terminal comment shows 4 identical attempts with identical signatures. Mitigation: the classifier is string-pattern-based with documented evidence sources per class; harness cases 1-8 cover each branch; `same-cause-repeat` catches the degenerate retry-loop case after attempt 2.
+3. **Recovery success but disk `STALL_TRACKING=true`** (would cause Step 18b to take Branch A `[STALLED]` despite a real merge). Earliest signal: harness case 19 (atomic-ordering simulation) regresses. Mitigation: the four-step write → read-back → `mv -f` → read-disk-verify sequence makes the wrong order impossible by construction; on any read-back failure, recovery routes to terminal-failure instead of clearing the flag.
+
+## Testing strategy
+
+- **Hermetic offline unit harness** at `skills/implement/scripts/test-stall-recovery-report.sh` (21 cases enumerated above). Wired via `scripts/harness-timer.sh` and assigned to exactly one `test-harnesses-N` shard line.
+- **Linter check** for `make lint` (`scripts/relevant-checks.sh`): assert `Makefile` has `test-stall-recovery-report` in `.PHONY` and on at least one shard line.
+- **Manual integration verification**: induce a synthetic stall (`LARCH_STALL_RECOVERY_DRY_RUN=1`) and observe Step 18a prose flow + chat output. The `gh` stub in test case 18 proves no real issue is filed.
+- **No new external-reviewer test fixtures** — recovery prose is orchestrator-internal.
+- **Final validation**: `bash scripts/relevant-checks.sh` (equivalent to `make lint`).
+
+diff_lines: 1450
