@@ -53,3 +53,10 @@ larch:bc t=2026-05-27T19:12:03Z d=0 p=49612 s=ship-pr.sh c=progress text=→ shi
 larch:bc t=2026-05-27T19:12:03Z d=0 p=31021 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
 larch:bc t=2026-05-27T19:12:08Z d=0 p=31021 s=ci-wait.sh c=wait-ci text=→ Action: rebase_then_evaluate (5s, 0 polls)
 larch:bc t=2026-05-27T19:12:08Z d=0 p=49612 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
+larch:bc t=2026-05-27T19:12:43Z d=0 p=49612 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-27T19:12:43Z d=0 p=58705 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-27T19:12:48Z d=0 p=58705 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-27T19:13:02Z d=0 p=58705 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-27T19:13:16Z d=0 p=58705 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-27T19:13:29Z d=0 p=58705 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (46s, 3 polls)
+larch:bc t=2026-05-27T19:13:42Z d=0 p=49612 s=ship-pr.sh c=stall text=⛔ ship-pr: stalled at step 10-max-retries

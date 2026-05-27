@@ -1,6 +1,6 @@
-## /implement run E0F6B1E7-CA9B-49D2-B113-2E0E501D2835 — bailed
+## /implement run E0F6B1E7-CA9B-49D2-B113-2E0E501D2835 — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 00:29:47
@@ -11,7 +11,7 @@
 - **Code review**: 2/4 accepted
 - **OOS filed**: 1
 - **Exec issues**: 0
-- **Warnings**: 3
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/E0F6B1E7-CA9B-49D2-B113-2E0E501D2835/`
 
 <!-- larch:run-summary v=1 -->

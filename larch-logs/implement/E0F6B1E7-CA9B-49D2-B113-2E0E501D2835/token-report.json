@@ -269,38 +269,64 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 15,
-          "cache_read": 2564078,
-          "cache_create": 13811,
-          "cache_create_5m": 13811,
+          "input": 28,
+          "cache_read": 4793312,
+          "cache_create": 192378,
+          "cache_create_5m": 192378,
           "cache_create_1h": 0,
-          "output": 9790,
-          "total": 2587694
+          "output": 14602,
+          "total": 5000320
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 15,
-              "cache_read": 2564078,
-              "cache_create": 13811,
-              "cache_create_5m": 13811,
+              "input": 28,
+              "cache_read": 4793312,
+              "cache_create": 192378,
+              "cache_create_5m": 192378,
               "cache_create_1h": 0,
-              "output": 9790,
-              "total": 2587694
+              "output": 14602,
+              "total": 5000320
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 4 — commit implementation",
+        "totals": {
+          "input": 2,
+          "cache_read": 383319,
+          "cache_create": 537,
+          "cache_create_5m": 537,
+          "cache_create_1h": 0,
+          "output": 352,
+          "total": 384210
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 2,
+              "cache_read": 383319,
+              "cache_create": 537,
+              "cache_create_5m": 537,
+              "cache_create_1h": 0,
+              "output": 352,
+              "total": 384210
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 79,
-      "cache_read": 11389220,
-      "cache_create": 192767,
-      "cache_create_5m": 192767,
+      "input": 94,
+      "cache_read": 14001773,
+      "cache_create": 371871,
+      "cache_create_5m": 371871,
       "cache_create_1h": 0,
-      "output": 38031,
-      "total": 11620097
+      "output": 43195,
+      "total": 14416933
     }
   },
   "codex": {
@@ -395,6 +421,14 @@
       },
       {
         "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 4 — commit implementation",
         "totals": {
           "input": 0,
           "output": 0,
@@ -505,6 +539,14 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 4 — commit implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -514,12 +556,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 79,
-    "cache_read": 11389220,
-    "cache_create_5m": 192767,
+    "input": 94,
+    "cache_read": 14001773,
+    "cache_create_5m": 371871,
     "cache_create_1h": 0,
-    "output": 38031,
-    "total": 11620097
+    "output": 43195,
+    "total": 14416933
   },
   "BUCKETS_codex": {
     "input": 239379,
