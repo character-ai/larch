@@ -1,0 +1,1 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"## Filed\n- **[OOS] _verify_failed_jobs_locally silently skips non-fixable TSV rows** — #2997: https://github.com/character-ai/larch/issues/2997\n  Reviewers: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt | Vote: YES=3 NO=0 EXON=0"}
