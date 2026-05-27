@@ -4,3 +4,4 @@ larch:bc t=2026-05-27T08:17:07Z d=0 p=63716 s=ship-pr.sh c=progress text=→ shi
 larch:bc t=2026-05-27T08:17:07Z d=0 p=71168 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
 larch:bc t=2026-05-27T08:17:11Z d=0 p=71168 s=ci-wait.sh c=wait-ci text=→ Action: rebase (4s, 0 polls)
 larch:bc t=2026-05-27T08:17:11Z d=0 p=63716 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
+larch:bc t=2026-05-27T08:17:20Z d=0 p=63716 s=ship-pr.sh c=escalate text=⚠ ship-pr: rebase-push keep-on-conflict pause (exit 1); deterministic pre-pass / vendor / Phase 1–4 handoff follows

@@ -1,12 +1,13 @@
 # Version Bump Reasoning
 
-- **Base commit**: `5866dd8b` (chore(larch-logs): flush design run 241EE6B6-671B-40C3-A96F-199AF99865E1 [skip ci] (#3019))
-- **Current version**: `43.0.0`
+- **Base commit**: `152e512b` (Fixes #2995: Fix Cursor narration-only output failure: --mode ask, degraded-response sentinel, normalize_rcc_max_iter (#3023))
+- **Current version**: `44.0.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: MAJOR
+## Result: PATCH
 
-- **New version**: `44.0.0`
+- **New version**: `44.0.1`
 
-### MAJOR evidence
-- Removed `--trivial` from argument-hint in `skills/design/SKILL.md`
+### PATCH rationale
+
+No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy ("every PR must bump at least PATCH").
