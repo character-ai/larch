@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.6.0] - 2026-05-26
+
+### Changed
+
+- Add manual_gate_b persistence to run-params and cover default, true, false, and invalid values
+- Thread /design --manual/-m through the skill prompt, flag reference, and router recovery path
+- Refactor Gate B so auto-apply and manual Apply all both share the named Apply-all body
+- Update design docs and structural pins for the new auto-apply default
+
 ## [42.5.43] - 2026-05-26
 
 ### Changed
