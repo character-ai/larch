@@ -661,13 +661,12 @@ deg_out=$(PATH="$STUB_BIN:$PATH" \
     --slots-file "$manifest_deg" \
     --codex-present false \
     --cursor-present true \
-    --claude-model claude-sonnet-4-6 \
     --mode description \
     --timeout 30 2>/dev/null)
-grep -Fxq 'STEP_STATUS=COMPLETE' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected STEP_STATUS=COMPLETE (claude fallback)" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
-grep -Fq 'claude ok' "$TMPROOT/cursor-deg.txt" 2>/dev/null || {
-    # Claude fallback should have written to the slot output
-    true
-}
+grep -Fxq 'DISPATCH_OK=true' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected DISPATCH_OK=true after claude fallback" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+grep -Fxq 'ALL_OUTPUT_TOOLS=claude' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected claude final tool after fallback" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+grep -Fxq 'FALLBACK_COUNT=1' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected one Claude fallback" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+grep -Fq 'claude ok' "$TMPROOT/cursor-deg-phase3.txt" \
+    || { echo "FAIL: degraded-cursor: Claude fallback output missing" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
 
 echo "PASS: test-dispatch-with-waterfall.sh"

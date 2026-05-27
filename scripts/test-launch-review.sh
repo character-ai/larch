@@ -1505,11 +1505,23 @@ PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_JS
     "$LAUNCHER" --output "$OUT_B3_JSON" --timeout 5 --prompt "json sentinel" >/dev/null 2>"$TMPDIR/case-b3-json.stderr"
 assert_equals "case B3 JSON sentinel whitelist preserves result" "$B3_JSON" "$(cat "$OUT_B3_JSON")"
 
+OUT_B3_JSON_TRAILING="$TMPDIR/cursor-b3-json-trailing.txt"
+B3_JSON_TRAILING=$'{\n  "no_issues_found": true\n}\noperator note'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_JSON_TRAILING" \
+    "$LAUNCHER" --output "$OUT_B3_JSON_TRAILING" --timeout 5 --prompt "json sentinel trailing note" >/dev/null 2>"$TMPDIR/case-b3-json-trailing.stderr"
+assert_equals "case B3 pretty JSON sentinel with trailing note preserves result" "$B3_JSON_TRAILING" "$(cat "$OUT_B3_JSON_TRAILING")"
+
 OUT_B3_TSV="$TMPDIR/cursor-b3-tsv.txt"
-B3_TSV=$'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tplan\timportant\tarch\tfile.sh:1\tshort\tbreak\tfix'
+B3_TSV=$'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tin_scope\timportant\tarchitecture\tfile.sh:1\tshort\tbreak\tfix'
 PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_TSV" \
     "$LAUNCHER" --output "$OUT_B3_TSV" --timeout 5 --prompt "tsv sentinel" >/dev/null 2>"$TMPDIR/case-b3-tsv.stderr"
 assert_equals "case B3 TSV header whitelist preserves result" "$B3_TSV" "$(cat "$OUT_B3_TSV")"
+
+OUT_B3_FALSE_JSON="$TMPDIR/cursor-b3-false-json.txt"
+B3_FALSE_JSON='narration only mentioning "no_issues_found": true inline'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_FALSE_JSON" \
+    "$LAUNCHER" --output "$OUT_B3_FALSE_JSON" --timeout 5 --prompt "false json mention" >/dev/null 2>"$TMPDIR/case-b3-false-json.stderr"
+assert_equals "case B3 prose mentioning no_issues_found still degrades" "CURSOR_DEGRADED_RESPONSE" "$(cat "$OUT_B3_FALSE_JSON")"
 
 # Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
 # Issue #1529: the wrapper output (last argv to cursor) has the form
