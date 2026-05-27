@@ -1,0 +1,3 @@
+Fix render final summary Bash 3.2 empty-array expansion (#3039)
+
+Guard render-final-summary.sh array expansions with the Bash 3.2-safe empty-array idiom and add a Makefile-wired regression harness for issue #3039. Register the harness in the shard and agent-lint exclusion list with a sibling contract stub.

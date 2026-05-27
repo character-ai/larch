@@ -1,0 +1,14 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan already treats stderr-log grep as primary witness; rc check is redundant corroboration not worth removing.
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Missing stderr log skips the nounset grep, but fallback still surfaces via execution-issues assertion.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Fixture duplication is real but extracting a shared helper costs more than the maintenance risk here.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Single-line static pin is an intentional tradeoff documented in the plan for Case 1.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Repo may still have other unguarded empty-array expansions under nounset; valid follow-up issue.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Affirmative security clearance, not a defect worth action in this diff.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Documents intentional safe-empty idiom, not a security problem.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Affirmative no-secrets clearance, not a finding to fix.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- compose_self_fallback can yield rc 0 and plausible output when invoke_render fails; pre-existing audit risk.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Prompt-only subprocess guard is longstanding documented design, not introduced by this change.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Case 2 only exercises empty note_args, but Case 1 statically pins the render_cost_args guard at line 304.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Success wording is slightly broad but harmless for a regression harness message.
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Step 5c emit is gated on helper exit 0; helper failure can skip the rigid chat block.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- lint-bash32 lacks nounset empty-array scanning, but that broad repo gap predates this scoped fix.
