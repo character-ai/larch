@@ -790,7 +790,11 @@ mkdir -p "$_wr_source/dynamic-archetypes"
 printf 'SCOUT_STATUS=ok\nSCOUT_RESULT=fired\n' > "$_wr_source/scout-round1-status.env"
 printf '{"archetypes":["api-contract","edge-cases"]}\n' > "$_wr_source/scout-round1-manifest.json"
 printf '{"raw":"scout output"}\n' > "$_wr_source/scout-round1-manifest.json.raw"
+printf 'specialist\tyield\n' > "$_wr_source/scout-archetype-yield.tsv"
 printf 'findings here\n' > "$_wr_source/findings.md"
+printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' > "$_wr_source/codex.events.jsonl"
+printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' > "$_wr_source/coder-codex.events.jsonl"
+printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' > "$_wr_source/foo.events.jsonl"
 # Flattened from dynamic-archetypes/
 printf '# reviewer-dyn-api-contract\n' > "$_wr_source/dynamic-archetypes/reviewer-dyn-api-contract.md"
 printf '# dyn-api-contract-prompt\n' > "$_wr_source/dynamic-archetypes/dyn-api-contract-prompt.md"
@@ -847,6 +851,11 @@ if [ -f "$_wr_round/findings.md" ]; then
 else
     fail "write-round no-regression: findings.md missing"
 fi
+if [ -f "$_wr_round/scout-archetype-yield.tsv" ]; then
+    pass "write-round commits scout-archetype-yield.tsv"
+else
+    fail "write-round must commit scout-archetype-yield.tsv"
+fi
 
 # Test 5: denied files stay denied
 if [ ! -f "$_wr_round/cursor-specialist-correctness-output.txt" ]; then
@@ -858,6 +867,13 @@ if [ ! -f "$_wr_round/main-agent-vote-prompt.txt" ]; then
     pass "write-round denied: *-vote-prompt.txt excluded"
 else
     fail "write-round must exclude *-vote-prompt.txt"
+fi
+if [ ! -f "$_wr_round/foo.events.jsonl" ] \
+    && [ ! -f "$_wr_round/coder-codex.events.jsonl" ] \
+    && [ ! -f "$_wr_round/codex.events.jsonl" ]; then
+    pass "write-round denied: *.events.jsonl artifacts excluded"
+else
+    fail "write-round must exclude raw Codex events.jsonl artifacts"
 fi
 
 # Test 5b: cursor-ci stall JSON sidecars (committed round forensics)

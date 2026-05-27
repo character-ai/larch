@@ -24,12 +24,18 @@ Primary verbs:
   artifacts always use the trimmed form and fail closed if trimming fails. It
   writes only to the log root; `commit` later picks up the round directory.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
-  `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`), dynamic-archetype files
+  `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`,
+  `scout-archetype-yield.tsv`), dynamic-archetype files
   (`reviewer-dyn-*.md`, `dyn-*-prompt.md`), voter parse-retry first-pass sidecars
   (`*-vote-output-first-pass.txt`), and NS-retry specialist first-pass sidecars
   (`*-output-first-pass.txt`). Files under `dynamic-archetypes/`
   inside `--source-dir` are walked one level deep and flattened to the round
   root (no nested `dynamic-archetypes/` directory in committed output).
+  Raw `*.events.jsonl` files remain excluded by design, including local Codex
+  telemetry inputs such as `codex.events.jsonl`, `coder-codex.events.jsonl`, and
+  `<output-base>.events.jsonl`; they may contain prompts, responses, repo
+  snippets, and tool output. Downstream consumers should read the sanitized
+  per-bucket telemetry rows in `larch-tokens-*.jsonl` instead.
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
 - `manifest` updates mutable manifest fields. Dotted keys `steps_ran.<step>` set per-step boolean flags under `.steps_ran` (shell step name after the dot; value must be `true` or `false`). Other keys use flat `field=value` syntax. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings).

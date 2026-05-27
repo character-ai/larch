@@ -48,6 +48,13 @@ Behavior:
    case-statement dispatcher, not from this file.
 5. Dispatch Codex first via `scripts/run-external-agent.sh` when Codex is
    present; if Codex is absent or fails and Cursor is present, dispatch Cursor.
+   `run_codex()` runs `codex exec --json --output-last-message "$run_dir/codex.log" -- ...`,
+   redirects JSONL stdout to the local-only `$run_dir/codex.events.jsonl`, and
+   leaves wrapper diagnostics in `$run_dir/codex.wrapper.log` without JSONL
+   bleed. It parses that event stream best-effort into the sanitized token
+   ledger raw bucket `codex_lint_fix`; telemetry failures never overwrite the
+   Codex exit code, and the raw `.events.jsonl` artifact is not a committed
+   run-log artifact.
    Both `run_cursor()` and `run_codex()` acquire the
    per-tool KeyChain serial lock (`external_serial_lock_acquire` from
    `scripts/lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`)

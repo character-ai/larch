@@ -83,6 +83,35 @@ run_script() {
     set -e
 }
 
+run_script_timeout() {
+    local label="$1"
+    shift
+    LAST_STDOUT=""
+    LAST_STDERR=""
+    LAST_EXIT=0
+    local out_file="$TMPROOT/$label.out" err_file="$TMPROOT/$label.err"
+    set +e
+    GH_LOG="$TMPROOT/$label-gh.log" GH_STUB_MODE="$STUB_MODE" PATH="$stub_dir:$PATH" \
+        python3 - "$SCRIPT" "$out_file" "$err_file" "$@" <<'PYEOF'
+import os
+import subprocess
+import sys
+
+script, out_file, err_file, *argv = sys.argv[1:]
+with open(out_file, "wb") as out, open(err_file, "wb") as err:
+    try:
+        proc = subprocess.run([script, *argv], stdout=out, stderr=err, timeout=5, env=os.environ.copy())
+        raise SystemExit(proc.returncode)
+    except subprocess.TimeoutExpired:
+        err.write(b"timeout after 5s\n")
+        raise SystemExit(124)
+PYEOF
+    LAST_EXIT=$?
+    set -e
+    LAST_STDOUT=$(cat "$out_file" 2>/dev/null || true)
+    LAST_STDERR=$(cat "$err_file" 2>/dev/null || true)
+}
+
 echo "(a) missing --issue"
 run_script missing --repo upstream/repo
 assert_exit "$LAST_EXIT" "1" "(a) exit 1"
@@ -127,6 +156,34 @@ assert_exit "$LAST_EXIT" "0" "(g) exit 0"
 assert_contains "$LAST_STDOUT" "STATE=OPEN" "(g) state emitted"
 assert_contains "$LAST_STDOUT" "URL=https://example.test/issues/12" "(g) url emitted"
 assert_contains "$LAST_STDOUT" "IS_PR=false" "(g) issue url classified as non-PR"
+
+STUB_MODE=failure
+
+echo "(h) --issue with no value as final argv"
+run_script_timeout issue_missing_value --issue
+assert_exit "$LAST_EXIT" "1" "(h) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(h) FAILED envelope"
+assert_contains "$LAST_STDOUT" "ERROR=--issue requires a value" "(h) value-required error"
+assert_not_contains "$LAST_STDERR" "shift" "(h) no shift-error spam"
+
+echo "(i) --repo with no value as final argv"
+run_script_timeout repo_missing_value --issue 12 --repo
+assert_exit "$LAST_EXIT" "1" "(i) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(i) FAILED envelope"
+assert_contains "$LAST_STDOUT" "ERROR=--repo requires a value" "(i) value-required error"
+assert_not_contains "$LAST_STDERR" "shift" "(i) no shift-error spam"
+
+echo "(j) --issue with flag-looking next token"
+run_script_timeout issue_flag_value --issue --repo upstream/repo
+assert_exit "$LAST_EXIT" "1" "(j) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(j) FAILED envelope"
+assert_contains "$LAST_STDOUT" "ERROR=--issue requires a value" "(j) flag-looking value rejected"
+
+echo "(k) --repo with flag-looking next token"
+run_script_timeout repo_flag_value --issue 12 --repo --some-flag
+assert_exit "$LAST_EXIT" "1" "(k) exit 1"
+assert_contains "$LAST_STDOUT" "FAILED=true" "(k) FAILED envelope"
+assert_contains "$LAST_STDOUT" "ERROR=--repo requires a value" "(k) flag-looking value rejected"
 
 echo
 echo "=========================================="

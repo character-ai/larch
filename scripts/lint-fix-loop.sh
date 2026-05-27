@@ -4,12 +4,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
+# shellcheck source=scripts/lib-codex-launcher-common.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-codex-launcher-common.sh"
 # shellcheck source=scripts/lib-submodule-prohibition.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-submodule-prohibition.sh"
@@ -216,12 +220,22 @@ delta_paths_after_dispatch() {
 
 run_codex() {
     local run_dir="$1" prompt_body="$2"
+    local codex_events="$run_dir/codex.events.jsonl"
+    local codex_sidecar="$run_dir/codex.sidecar"
+    local codex_rc=0
     local _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-    "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$run_dir/codex.log" --timeout 1800 --capture-stdout -- \
-        codex exec --full-auto -C "$REPO_ROOT" --add-dir "$run_dir" --add-dir "$REPO_ROOT" "$prompt_body" \
-        > "$run_dir/codex.wrapper.log" 2>&1
+    rm -f "$codex_events" "$codex_sidecar"
+    "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$run_dir/codex.log" --timeout 1800 -- \
+        codex exec --full-auto -C "$REPO_ROOT" --add-dir "$run_dir" --add-dir "$REPO_ROOT" \
+        --output-last-message "$run_dir/codex.log" \
+        --json \
+        -- \
+        "$prompt_body" \
+        >"$codex_events" 2>"$run_dir/codex.wrapper.log" || codex_rc=$?
+    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_sidecar" "codex_lint_fix" || true
+    return "$codex_rc"
 }
 
 run_cursor() {
