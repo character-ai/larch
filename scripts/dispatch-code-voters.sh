@@ -239,7 +239,7 @@ if (( ${#wait_sentinels[@]} > 0 )); then
         larch_err "dispatch-code-voters.sh: wait-for-reviewers.sh exited $_wait_rc (usage/config error) - proceeding with whatever state exists"
     fi
     rm -f "$_wait_out_file"
-    unset _wait_out_file _wait_rc
+    unset _wait_out_file
 fi
 
 # If Claude returned successfully with substantive output but its launcher-owned
@@ -250,6 +250,7 @@ if [[ ! -f "$VOTER_1_PATH.done" && "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" \
       && "$voter1_wait_timed_out" != "true" && "$_wait_rc" -eq 0 ]]; then
     printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
 fi
+unset _wait_rc
 
 read_done_exit_code() {
     local sentinel="$1"
