@@ -960,6 +960,8 @@ esac
 
 grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
   || fail "(26) SKILL.md missing literal session-cache banner"
+grep -Fq 'delete <DESIGN_REENTRY_MARKER_PATH> to override.' "$SKILL_MD" \
+  || fail "(26) SKILL.md must document DESIGN_REENTRY_MARKER_PATH in the session-cache banner literal"
 echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"

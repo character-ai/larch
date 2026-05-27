@@ -887,7 +887,9 @@ exclude = [
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
   # scripts/test-design-reentry-guard.sh is a Makefile-only harness for
-  # scripts/lib-design-reentry-guard.sh; the sibling .md is a contract file.
+  # scripts/lib-design-reentry-guard.sh, a sourced-only /design Step 0b
+  # library; the sibling .md is a contract file.
+  "scripts/lib-design-reentry-guard.sh",
   "scripts/test-design-reentry-guard.sh",
   "scripts/test-design-reentry-guard.md",
   "skills/design/scripts/test-design-driver.sh",

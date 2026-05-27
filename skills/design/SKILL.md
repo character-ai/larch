@@ -199,7 +199,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    4. On miss (`MARKER_HIT=false`, exit 1), proceed to sub-step 3. On helper return 2, print the helper's KV line as a warning and proceed to sub-step 3 because caller-error should not create a hard block on a fresh design.
 
    ```text
-   **⚠ /design: refusing spurious re-entry — guard=session-cache issue=#<N> ppid=<PPID> marker_age=<seconds>s ttl=<TTL>s. Wait <remaining>s or delete ~/.cache/larch/sessions/design-completed-<N>-<PPID> to override.**
+   **⚠ /design: refusing spurious re-entry — guard=session-cache issue=#<N> ppid=<PPID> marker_age=<seconds>s ttl=<TTL>s. Wait <remaining>s or delete <DESIGN_REENTRY_MARKER_PATH> to override.**
    ```
 
    Reference Bash shape:
@@ -226,8 +226,19 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      LARCH_DESIGN_REENTRY_GUARD_PPID="$PPID"
      DESIGN_REENTRY_MARKER_PATH="$(design_reentry_marker_path "$ISSUE_NUMBER" "$PPID")"
      export LARCH_DESIGN_REENTRY_GUARD_PPID DESIGN_REENTRY_MARKER_PATH
-     # Run the Final summary block here.
-     printf '%s\n' "**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#${ISSUE_NUMBER} ppid=${PPID} marker_age=${MARKER_AGE}s ttl=${MARKER_TTL}s. Wait ${MARKER_REMAINING}s or delete ~/.cache/larch/sessions/design-completed-${ISSUE_NUMBER}-${PPID} to override.**" >&2
+     export CLAUDE_PLUGIN_ROOT
+     SUMMARY_MODE_STRING=""
+     if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
+       SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
+     fi
+     [ -n "$SUMMARY_MODE_STRING" ] || SUMMARY_MODE_STRING=N/A
+     DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
+       "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+       --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
+       --mode "${SUMMARY_MODE_STRING}" \
+       ${REPO:+--repo "$REPO"} \
+       --post-publish-only
+     printf '%s\n' "**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#${ISSUE_NUMBER} ppid=${PPID} marker_age=${MARKER_AGE}s ttl=${MARKER_TTL}s. Wait ${MARKER_REMAINING}s or delete ${DESIGN_REENTRY_MARKER_PATH} to override.**" >&2
      exit 1
    fi
    ```
