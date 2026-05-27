@@ -248,6 +248,8 @@ STUB
 
     cat >"$SANDBOX/scripts/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'larch-log %s\n' "$*" >>"$script_dir/../invoke-log.txt"
 if [ "${LARCH_TEST_LARCH_LOG_FAIL:-false}" = "true" ]; then
   echo LOG_WRITTEN=false
   echo LOG_PATH=
@@ -284,6 +286,8 @@ STUB
 
     cat >"$SANDBOX/skills/implement/scripts/post-tracking-issue.sh" <<'STUB'
 #!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+printf 'post-tracking-issue %s\n' "$*" >>"$script_dir/invoke-log.txt"
 tmpdir=""
 issue=""
 run_id=""
@@ -777,6 +781,7 @@ assert_not_contains "STALL_TRACKING=true" "$out" "B4 no stall"
 assert_not_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B4 no tracking-init-failed bail"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4 rename fires before post-tracking-issue"
+assert_order "tracking-issue-write rename --issue 123 --state implementing" "post-tracking-issue --implement-tmpdir $SANDBOX_TMP --issue-number 123 --run-id runD --adopted true" "$invoke" "B4 rename before post-tracking-issue"
 if [ ! -f "$SANDBOX_TMP/parent-issue.md" ]; then
     PASS=$((PASS + 1))
     echo "PASS: B4 no sentinel"
@@ -814,6 +819,7 @@ else
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4-plan rename fires before post-tracking-issue"
+assert_order "tracking-issue-write rename --issue 123 --state implementing" "post-tracking-issue --implement-tmpdir $SANDBOX_TMP --issue-number 123 --run-id runD --adopted true" "$invoke" "B4-plan rename before post-tracking-issue"
 assert_contains "gh issue view 123" "$invoke" "B4-plan gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-plan persist invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -844,6 +850,7 @@ else
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B4-all rename fires before post-tracking-issue"
+assert_order "tracking-issue-write rename --issue 123 --state implementing" "post-tracking-issue --implement-tmpdir $SANDBOX_TMP --issue-number 123 --run-id runD --adopted true" "$invoke" "B4-all rename before post-tracking-issue"
 assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -858,6 +865,9 @@ assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5 bail rea
 assert_contains "STALL_TRACKING=true" "$out" "B5 stall"
 assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B5 branch"
 assert_contains "ISSUE_NUMBER=123" "$out" "B5 preserves issue"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B5 rename attempted"
+assert_order "tracking-issue-write rename --issue 123 --state implementing" "larch-log init --log-root $SANDBOX_TMP/larch-logs --skill implement --run-id runE" "$invoke" "B5 rename before larch-log init"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-all larch-log init fail guard ---
@@ -899,6 +909,9 @@ assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-branch1 
 assert_contains "STALL_TRACKING=true" "$out" "B5-branch1 stall"
 assert_contains "RUN_ID=resume-fail" "$out" "B5-branch1 preserves run id"
 assert_contains "ISSUE_NUMBER=123" "$out" "B5-branch1 preserves issue"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "tracking-issue-write rename --issue 123 --state implementing" "$invoke" "B5-branch1 rename attempted"
+assert_order "tracking-issue-write rename --issue 123 --state implementing" "larch-log init --log-root $SANDBOX_TMP/larch-logs --skill implement --run-id resume-fail" "$invoke" "B5-branch1 rename before larch-log init"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan-green ---
