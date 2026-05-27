@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/render-plan-review-prompt.sh:107-127	Plan-review external prompts are authored in the renderer heredoc, not in plan-review.md	Updating plan-review.md with a reviewer style line does not change prompts written by dispatch-plan-review-panel.sh (static slots and dynamic tail via append_shared_prompt_tail); Step 3 externals stay on the current dense prompt	Add an UPDATED subsection for render-plan-review-prompt.sh (inject readability guidance or <READABILITY_STYLE> plus substitution) and extend test-plan-review-prompt.sh; keep plan-review.md changes only if they document the renderer contract
+2	in_scope	important	correctness	skills/design/references/brainstorm-prompts.md;skills/design/references/sketch-prompts.md;skills/design/references/dialectic-debate.md	Literal <READABILITY_STYLE> token is added to external prompt bodies without a normative expansion step	Prompt assembly may ship the backtick-wrapped token to Cursor/Codex instead of the preamble (unlike <FEATURE_DESCRIPTION>, which SKILL.md explicitly replaces before launch)	Document and implement the same substitution contract as other tokens: expand <READABILITY_STYLE> from readability-style.md in brainstorm.md, sketch-launch/SKILL.md Step 2a, dialectic-execution step 2, and render-plan-review-prompt.sh before external launch
+3	in_scope	important	correctness	skills/design/SKILL.md:675-705	Step 2a.4 approach synthesis is operator-facing but omitted from the six SKILL.md MANDATORY sites	HARD runs still print ## Approach Synthesis without a required readability-style read adjacent to synthesis composition	Add a MANDATORY readability-style directive immediately before ### 2a.4 — Synthesis (or move synthesis prose into a reference file covered by the lint manifest)
+
+**1. Renderer vs plan-review.md (correctness / architecture)**  
+`dispatch-plan-review-panel.sh` renders every static slot and the shared tail of dynamic prompts exclusively through `render-plan-review-prompt.sh`. The plan’s `plan-review.md` edit does not feed that path; `render-plan-review-prompt.md` already lists the renderer as the interface to change. Edge cases mention helper substitution but the file list omits the renderer.
+
+**2. Token expansion (correctness / risk-integration)**  
+External prompt files will contain `Style requirements: <READABILITY_STYLE>.` The plan does not add an orchestrator or shell expansion step comparable to `<FEATURE_DESCRIPTION>` substitution in `SKILL.md`. Without it, the lint can pass while runtime prompts stay unchanged.
+
+**3. Step 2a synthesis gap (correctness)**  
+The plan’s six `SKILL.md` directives cover 1d.5, 2b, 3b, 4, and 5c but not 2a.4 synthesis, which is explicitly printed to the operator.
+
+**Exonerated / out of scope (SIMPLE lane):** approval-gate question wording, final-summary verbatim block, decompose-panel prompts, Claude fallback `reviewer-templates.md`, and `docs/linting.md` wiring are reasonable follow-ups but not required for the minimum fix of the renderer + substitution contract.

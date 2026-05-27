@@ -1,0 +1,99 @@
+## Operator-refined direction (supersedes scope alternatives and pragmatic slices below)
+
+### Approach — Prompt-augmentation across the design flow (no rewriter, no duality)
+**Source:** operator
+Instead of generating dense text and rewriting it post-hoc, augment every prompt in the `/design` flow that produces user-accessible output of meaningful size so the text is born with the sought properties. There is one canonical version of every artifact; no "original vs simplified" duality, no fall-back semantics, no rewriter validator, no protected-span tokenizer. The Round-1 decisions (always-on, precision contract, scope = plan + OOS, fall-back on failure) still apply but their mechanical meaning shifts: "always-on" becomes "the style preamble is unconditional in every relevant prompt," "fall-back on failure" becomes "if an agent ignores the style guidance the text is still correct, just denser."
+
+**Amendment surfaces** (orchestrator-inline writing + external agent prompts):
+- `skills/design/SKILL.md` step bodies that have the orchestrator (Claude) generate user-facing text: the Step 2b plan-drafting body, the Step 3b architecture diagram body, the Step 4 rejected-findings printout body, the Step 5c `composed-plan.md` composition body, and the Step 1d.5 brainstorm-synthesis body (the orchestrator-side write that produced `brainstorm.md` in this very run).
+- `skills/design/references/design-outline.md` — outline generation guidance for Step 1d.7.
+- `skills/design/references/brainstorm-prompts.md` — `<BRAINSTORM_FRAMING_PROMPT>`, `<BRAINSTORM_SCOPE_PROMPT>`, `<BRAINSTORM_PRAGMATIC_PROMPT>` bodies.
+- `skills/design/references/sketch-prompts.md` (HARD-tier) — `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, `GENERIC_PROMPT` bodies.
+- `skills/design/references/dialectic-debate.md` (HARD-tier) — thesis/antithesis template bodies.
+- `skills/design/references/plan-review.md` — reviewer prompts (so reviewer findings, OOS Descriptions, and reviewer-authored prose follow the same style).
+- `skills/design/references/discussion-rounds.md` — Round 1 / Round 2 / Step 1c prose templates so the orchestrator's `AskUserQuestion` text and discussion-round writes follow the style.
+
+**Single source of style truth**: introduce one shared style preamble file (e.g., `skills/design/references/readability-style.md` or `skills/shared/readability-style.md`) defining the Strunk & White discipline AND the dyslexia-friendly accessibility scaffold AND the precision-contract carve-out (code fences, backticks, `### NEW|UPDATED|REWRITTEN:` grammar, `diff_lines:` trailer all byte-stable). Every amended prompt either includes the preamble verbatim at render time (via a substitution token) or links to it with a directive to read it before responding. A CI / lint check verifies every amendment point references the preamble so future amendments don't drift.
+
+**OOS coverage**: still in scope per Round-1 Decision 6. Implemented by amending the prompt that drafts OOS Description fields (the part of the reviewer prompt / plan-review-loop pipeline that produces `oos.md` / `oos-accepted-design.md` entries) — same prompt-augmentation pattern, no separate Step 5b rewriter.
+
+**Implementation cost**: small-medium. One new preamble file plus many small prompt amendments. No new helper script, no new ACTION in `design-driver.sh`, no validator, no new step in the pipeline.
+
+**Tradeoffs surfaced by this approach (load-bearing for Step 2b plan drafting)**:
+- **Compliance variance** — external agents (Cursor, Codex) may comply more or less consistently than orchestrator-inline writing. There is no post-hoc safety net; a non-compliant agent silently produces denser-than-target text. Mitigation: include explicit examples in the preamble; rely on the Round-1 fail-quiet posture ("denser text is still correct text").
+- **Per-agent prompt drift** — five reference files plus several SKILL.md step bodies need amendments. A future contributor amending only one of them creates style drift. Mitigation: a single-source preamble + a CI grep that every amendment site includes the preamble token.
+- **`AskUserQuestion` text** — the orchestrator's `AskUserQuestion` option labels and descriptions also reach the operator. Including these in the amendment surface is consistent but inflates the touch-point count. May be out of scope for v1 since these texts are already short.
+- **`/research`, `/implement`, `/review` etc.** — out of scope. The amendment is `/design`-only per Round-1 Decision 6.
+- **Idempotency / re-run semantics** — Trivially preserved: re-running `/design` re-applies the same amended prompts and produces the same readable text. No "rewriter consumed an already-simplified plan" footgun.
+
+---
+
+## Brainstorm Synthesis (pre-refinement — scope alternatives and pragmatic slices below are SUPERSEDED by the operator-refined prompt-augmentation direction above; framings are retained as the WHY layer)
+
+### Framing — Operator approval surface (comprehension at Gate C)
+**Source:** cursor-brainstorm
+Treat the new step as the change that makes human oversight tractable: at Gate C, in-chat plan previews, and the published `larch:plan` block, the operator should approve scope and risk without re-parsing dense agent prose. The win is a mandatory readability pass on the same canonical plan reviewers and `/implement` consume — Strunk & White tightening plus dyslexia-friendly scaffolding — with code references, fenced commands, `diff_lines:` trailer, and `### NEW|UPDATED|REWRITTEN:` grammar byte-identical so mechanical parsers are untouched.
+
+### Framing — Accessibility layer on a precision-critical artifact
+**Source:** cursor-brainstorm
+Frame the work as inclusive design documentation. Today's plans are optimized for agent-to-agent and implementer precision, creating friction for operators with mild dyslexia or high visual-processing load. The step adds an accessibility scaffold (sentence length caps, vocabulary simplification, structural air) on top of prose discipline — explicitly not a correctness gate, because rewriter failure falls back to the original and logs a Warning.
+
+### Framing — Dual-register translation (spec register → operator register)
+**Source:** cursor-brainstorm
+Position the work as a register shift, not a replan: Steps 2b–4b produce a technically faithful implementation spec; the new step translates only connective prose between frozen code-reference tokens into operator-readable language while preserving a verbatim fact layer. Value is measured by whether a non-implementer can skim Plan + Acceptance + OOS descriptions and answer "what will change and how we'll know it worked" without wading through reviewer-register density.
+
+### Framing — Non-blocking UX polish in the finalize pipeline
+**Source:** cursor-brainstorm
+Position the step alongside `redact-secrets.sh` as a late-stage human-facing polish in the Step 5 sequence: compose → simplify → validate → redact → `plan-block-write.sh`. It reshapes how the plan reads but must never reshape what `/implement` can trust — hence fail-open semantics, idempotency expectations, and strict exclusion of feature-context, dialectic, and brainstorm artifacts. Success is invisible when it works; failure is visible only in `execution-issues.md`.
+
+### Framing — Unified canonical plan for every downstream consumer
+**Source:** cursor-brainstorm | codex-brainstorm | claude-brainstorm
+One simplified source of truth flows to every human-facing surface (chat display, `composed-plan.md`, GitHub issue body, and — by inheritance — the review panel and `/implement`). Cursor frames it ("artifact convergence"); Codex proposes the in-place mechanism ("Pre-Review In-Place Helper" rewriting `plan.txt` after Step 2b); Claude phrases the smallest-viable cut ("MVP-4: rewrite `plan.txt` at the source, let everything inherit"). The shared design problem is pipeline placement and contracts so simplification is a single mandatory transform rather than a divergent "nice summary."
+
+### Framing — Cognitive-load restructuring (information architecture, not just word choice)
+**Source:** cursor-brainstorm
+Emphasize information architecture: long prose blocks force serial reading; the step's job is to re-chunk content (more `##`/`###`, bullets, shorter paragraphs) under Strunk & White rules while leaving machine-parseable regions as fixed islands. Reader benefit is scanability — finding acceptance criteria, touch points, and OOS scope by heading. OOS Description simplification extends the same readability standard to public GitHub issues filed at Step 5b.
+
+### Scope — Minimal: Pre-Review In-Place Helper
+**Source:** codex-brainstorm
+After Step 2b writes `plan.txt`, a new helper rewrites it in place before Step 2b.5, Step 3 preview, reviewers, Gate B/C, and Step 5c composition. Step 5b gets a separate narrow pass over accepted-OOS Description fields before `file-design-oos.sh prepare`. Lowest implementation cost and best alignment with "one canonical simplified plan," but highest pressure on the helper's precision because it mutates the artifact reviewers and `/implement` consume.
+
+### Scope — Moderate: Structured Protected-Span Rewriter
+**Source:** codex-brainstorm
+First tokenize protected spans (fenced code, backticks, headings, `diff_lines:` trailer), replace them with sentinels, rewrite only unprotected prose, then restore the original bytes. Fire it after every settled `plan.txt` write (initial Step 2b, Gate B revision, post-plan discussion re-emits) and inside Step 5b for OOS Description fields. Precision risk drops because the LLM never sees mutable code references as editable text. Idempotency needs care so repeated loops do not keep shortening already-simple prose.
+
+### Scope — Moderate Split: Plan Rewriter Plus OOS Field Rewriter
+**Source:** codex-brainstorm | claude-brainstorm
+Treat plan simplification and OOS Description simplification as two related but separate helpers. The plan helper fires after Step 2b and after each Gate B/discussion rewrite; the OOS helper fires only on parsed `- **Description**:` fields in `oos-accepted-design.md` before Step 5b prepares `oos-combined.md`. Smaller purpose-built prompts and separate validators fit the different artifact shapes, but duplicate prompt and validation plumbing. Claude's `MVP-3` is the same shape with explicit per-artifact fall-back.
+
+### Scope — Ambitious: Dedicated Simplification Skill
+**Source:** codex-brainstorm
+A dedicated internal skill invoked by `/design` at required boundaries: after `plan.txt` creation/revision and before OOS filing. Reusable prompt contract, style rubric, protected-span rules, fallback behavior, and a testable interface for plan and OOS modes. Cleanest long-term maintainability if this style pass may spread to other skills, but larger scope and topology/docs burden for a feature currently locked to `/design` plan + OOS. The skill must not make activation optional, because Round-1 requires always-on canonical simplification.
+
+### Scope — Ambitious Verification: Reviewer-Panel Guardrail
+**Source:** codex-brainstorm
+Use the structured rewriter, then run a small Code Reviewer-style verification panel (or a `launch-review.sh`-style Codex/Cursor check) that compares original vs simplified for factual drift. Fires before Step 3 so reviewers see the simplified plan only after the guard passes; suspicious result → fall back to original + warn. Best semantic assurance, worst latency and operational complexity; consumes reviewer infrastructure before the actual Step 3 panel. Must remain fail-open to satisfy the "never block" Round-1 decision.
+
+### Scope — Low-LLM: Deterministic Normalizer Only
+**Source:** codex-brainstorm | claude-brainstorm
+No LLM rewriting. A deterministic formatter splits long paragraphs, normalizes headings/bullets, trims obvious filler phrases, and preserves every protected span by construction. Predictable, low-latency, strong idempotency, minimal precision risk. Cuts real Strunk & White sentence rewrites, vocabulary simplification, and active-voice improvements. Claude's `MVP-5` extends this idea as a two-pass: deterministic pre-pass plus an LLM polish over only the short paragraphs that survived unchanged.
+
+### Pragmatic slice — MVP-1: composed-plan.md prose-only rewrite, no validator
+**Source:** claude-brainstorm
+Run the rewriter exactly once at Step 5c between `compose composed-plan.md` and `redact-secrets.sh`. Single LLM call with a Strunk & White + short-sentence + simpler-vocabulary prompt, plus a precision contract for fenced code, backticks, `### NEW|UPDATED|REWRITTEN:` grammar, and `diff_lines:`. Hard fall-back on any non-zero / malformed output. Biggest risk: the rewriter silently mangles a backticked function-name or shell flag that a simple byte-equality check doesn't catch (e.g., `--no-edit` → `–no-edit` with an en-dash). Cost: small.
+
+### Pragmatic slice — MVP-2: MVP-1 plus a structural diff guard
+**Source:** claude-brainstorm
+Same single-call rewrite on `composed-plan.md` only, plus a mechanical pre-write guard that extracts and compares fenced code blocks, backticked tokens, `### NEW|UPDATED|REWRITTEN:` headings, and `diff_lines:` from input vs output. Any token differs → fall back to original + Warnings entry naming the mismatched token class. Risk: false positives where the guard rejects every rewrite (e.g., LLM stripped a code-fence newline) and the feature ships always-fall-back. Cost: small-medium.
+
+### Pragmatic slice — MVP-6: Always-on rewrite, fail-open with no validator
+**Source:** claude-brainstorm
+Leanest cut: single LLM call at Step 5c with a strong precision-contract prompt, no programmatic guard, success detected only by "did output still contain `## Plan` / `## Acceptance` / `diff_lines: <N>` anchors." Risk: a silent precision regression ships to `/implement`, the engineer doesn't notice because the plan still reads well, and the LLM-introduced bug surfaces downstream — exactly the failure mode the precision contract was meant to prevent. Cost: small.
+
+## Tensions and tradeoff axes surfaced
+
+- **Where to insert (plan.txt source vs composed-plan.md)**: Codex's Minimal + Claude's MVP-4 favor source-level rewrite so every downstream surface inherits; Claude's MVP-1/2/6 favor finalize-pipeline placement so reviewers see the engineer-authored plan. The Round-1 "both surfaces" decision implies source-level, but source-level pollutes the review signal.
+- **Validator strictness**: MVP-6 (no validator) ↔ MVP-2 / Codex Moderate (protected-span tokenizer + byte-identity check) ↔ Codex Ambitious Verification (full Reviewer-Panel drift check). More validation lowers precision risk but raises false-positive-always-fall-back risk.
+- **Mechanism**: pure LLM (MVP-1, MVP-6) ↔ protected-span tokenize-then-LLM (Codex Moderate) ↔ deterministic-only (Codex Low-LLM) ↔ two-pass deterministic+LLM (Claude MVP-5). Tradeoff: style fidelity vs precision safety vs implementation cost.
+- **OOS coverage**: separate helper at Step 5b (Codex Moderate Split, Claude MVP-3) ↔ shared helper with `--mode oos` flag (single artifact-aware tool) ↔ Cursor accessibility framing implies "yes" but Cursor framings stay agnostic on mechanism.
+- **Skill abstraction**: inline helper script in `skills/design/scripts/` ↔ dedicated new internal Skill (Codex Ambitious). New-skill cost is real; reuse temptation pulls toward inline.
