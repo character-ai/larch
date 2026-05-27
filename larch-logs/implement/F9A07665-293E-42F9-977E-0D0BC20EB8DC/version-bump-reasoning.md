@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `152e512b` (Fixes #2995: Fix Cursor narration-only output failure: --mode ask, degraded-response sentinel, normalize_rcc_max_iter (#3023))
-- **Current version**: `44.1.0`
+- **Base commit**: `1f3ab0eb` (Bump version to 44.0.1 (#3026))
+- **Current version**: `44.0.1`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `44.1.1`
+- **New version**: `44.0.2`
 
 ### PATCH rationale
 
