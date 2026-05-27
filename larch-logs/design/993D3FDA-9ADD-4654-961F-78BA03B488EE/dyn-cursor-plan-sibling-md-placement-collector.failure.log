@@ -1,0 +1,16 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-dyn-sibling-md-placement-output.txt|TOOL=cursor|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/cursor-plan-dyn-sibling-md-placement-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	scripts/launch-codex-ci.md:5-20	The launch-codex-ci.md fallback branch is not the branch that should execute: existing H2 sections already document prompt inputs/construction via Interface and Behavior.	The plan says to add ## Subprocess tool discipline if no prompt-context section exists; an implementer keying off the absence of exact headings like Prompt construction or Inputs could add a spurious new H2 beside the existing Interface/Behavior prompt documentation.	Revise the plan to name the exact placement: append the one-line bullet under ## Behavior after the fixed-prompt paragraph, or under ## Interface after the prompt-injection input descriptions; remove the conditional fallback for this file.
+
+1. [code-quality] `scripts/launch-codex-ci.md:5-20`: The current file has `## Interface` documenting prompt inputs at lines 11-14 and `## Behavior` documenting fixed prompt construction at line 18. So the plan’s `scripts/launch-codex-ci.md` conditional should not fall through to a new `## Subprocess tool discipline` section. Tighten the plan to specify the exact existing H2 placement.
+
+I found no sibling-structure blocker for `skills/implement/scripts/test-codex-implementer.md:5-20` or `scripts/test-launch-codex-ci.md:5-17`: both have Coverage lists that can accept one appended bullet without renumbering ordered content or disturbing structured assertions.
+## Reviewer stderr (<TMPDIR>/cursor-plan-dyn-sibling-md-placement-output.txt.diag)
+
+(file missing: <TMPDIR>/cursor-plan-dyn-sibling-md-placement-output.txt.diag)
+

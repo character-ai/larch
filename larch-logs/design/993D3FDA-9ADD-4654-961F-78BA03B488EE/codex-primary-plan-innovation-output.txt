@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	agents/_implementer-base.md:23-34; scripts/generate-cursor-implementer.sh:67-70	Codex-only abort rule is proposed in the shared hard-guard base that Cursor also copies verbatim	Cursor implementer inherits a non-negotiable abort instruction for a Codex-specific failure class; a Cursor run that can safely use its own terminal/session mechanics may bail or avoid better verification even though #2991 is not a Cursor failure	Keep the new guard Codex-only by injecting it in scripts/generate-codex-implementer.sh or by adding a vendor-conditional base section filtered out by generate-cursor-implementer.sh; pin absence or non-abort wording in the Cursor artifact
+1	in_scope	important	correctness	skills/implement/references/codex-manifest-schema.md:69-90	New planned bail_reason token is not added to the manifest schema token list	The prompt tells Codex to emit bail_reason="interactive-subprocess-unsupported", but the normative schema says stable bail reasons are listed there and downstream tooling pattern-matches them; docs and digest drift and reviewers/operators cannot distinguish this token from arbitrary free-form bail text	Add interactive-subprocess-unsupported to codex-manifest-schema.md and codex-manifest-schema.digest.md with ownership semantics, and update any token-list harness if present
+1	in_scope	latent	risk-integration	scripts/test-launch-codex-ci.sh:42-48; scripts/test-launch-codex-ci.sh:75-82	The planned launcher assertion greps source instead of the composed prompt it claims to pin	A future edit can leave the phrase in a comment, docs string, or dead branch while removing it from PROMPT; the test still passes but Codex CI fixer never receives the prohibition	After the existing stub invocation writes ${OUT_FIX}.prompt, grep that prompt file for the phrase; keep or drop the source grep as secondary coverage
+
+1. [architecture] `agents/_implementer-base.md:23-34`; `scripts/generate-cursor-implementer.sh:67-70`  
+Concern: the plan puts a Codex-specific abort rule in the shared base and intentionally ships it to Cursor.  
+Suggested revision: inject the guard only into `agents/codex-implementer.md`, or make the generator filter a vendor-conditional section.
+
+2. [correctness] `skills/implement/references/codex-manifest-schema.md:69-90`  
+Concern: the new directed `bail_reason` token is omitted from the schema’s stable token list and digest.  
+Suggested revision: document `interactive-subprocess-unsupported` in both schema files so the prompt and manifest contract stay aligned.
+
+3. [risk-integration] `scripts/test-launch-codex-ci.sh:42-48`; `scripts/test-launch-codex-ci.sh:75-82`  
+Concern: source grep does not prove the runtime prompt contains the prohibition.  
+Suggested revision: assert against `${OUT_FIX}.prompt` in the existing stubbed launcher path.

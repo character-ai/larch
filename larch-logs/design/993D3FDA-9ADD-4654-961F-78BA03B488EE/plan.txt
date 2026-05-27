@@ -1,0 +1,236 @@
+# Plan: Prohibit persistent interactive subprocess sessions in Codex implementer + CI fixer prompts (issue #2991, blocked by #2973)
+
+## Summary
+
+Codex's `write_stdin` tool against an `exec_command` session without `tty=true` fails with `stdin is closed for this session`, killing the implementer mid-run, leaving 600+ uncommitted lines and no manifest (the failure mode reported in #2991). This design adds a prompt-level prohibition against persistent interactive subprocess patterns to the Codex implementer prompt (via the shared base file with a Cursor-strip in the Cursor generator) and to the inline Codex CI fixer prompt; regenerates the auto-generated agent artifacts; adds the new stable bail token to the manifest schema; and pins the clause via two grep-style harness assertions plus one absence-pin in the Cursor harness.
+
+This is a prompt-only fix per Round 1 Decision 1 (Option 2). It does NOT add a recovery branch in `step2-implement.sh`, does NOT add a setsid/PTY launcher wrapper, and does NOT change any launcher argv. #2991 is recorded as **blocked by #2973** in GitHub (native blocked-by relationship). #2973 lands first and addresses a different failure class (parent-shell stdin closure on background Codex spawns) via `< /dev/null` redirects in `scripts/run-external-agent.sh:206-213`; #2991 lands afterward and addresses Codex's own use of `exec_command`/`write_stdin` against child subprocesses.
+
+## Files to modify/create
+
+### UPDATED: `agents/_implementer-base.md`
+
+Add a new Hard guard #9 to the existing numbered list inside `## Hard guards` (the section ends after rule #8 today; the new rule extends the existing numbered list and inherits the section's "MUST cause you to abort with `status=bailed`" framing). The clause is Codex-flavored in the base — the Cursor generator strips it (see `scripts/generate-cursor-implementer.sh` UPDATE below) so the Cursor artifact does not inherit a Codex-specific abort instruction. The clause text:
+
+```
+9. **NEVER spawn or maintain persistent interactive subprocess sessions.** Do NOT use `exec_command` to hold a child shell open for later input, do NOT call `write_stdin` against a held child, and do NOT poll with `read_stdout`. The stdin-is-closed-for-this-session error class kills the implementer mid-run, leaving uncommitted edits in the working tree and no manifest (issue #2991). When a command needs input, pass it up front via a heredoc (e.g. ``cmd <<'EOF' ... EOF``), a pipe (e.g. ``printf '...' | cmd``), an input file (e.g. ``cmd < /tmp/input``), or a single-shot shell command. If the work genuinely requires an interactive subprocess pattern, set `status=bailed`, `bail_reason="interactive-subprocess-unsupported"`, and return.
+```
+
+Place the new rule directly after the existing rule #8 (which ends with `... contaminates the PR diff and makes OOS contamination harder to review.`). Maintain one blank line between rule #8 and rule #9, and another blank line between rule #9 and the following `## How to declare completion` H2. Do NOT modify rules #1-#8.
+
+Rationale for placement inside the Hard guards numbered list (rather than a new section):
+- Inherits the section's strongest framing ("non-negotiable", "MUST abort with status=bailed") without restating it.
+- Keeps the prompt scannable — implementers see a single numbered list of hard rules.
+- Matches the existing pattern of rule #2 (vendor-flavored phrasing differs between Cursor base and Codex sed-substituted artifact).
+
+### UPDATED: `scripts/generate-cursor-implementer.sh`
+
+Extend the existing sed pipeline (currently lines 67-70) with a new deletion that strips Hard guard #9 from the Cursor artifact. The deletion targets the entire block from the `9. **NEVER spawn or maintain` line up to and including its terminating blank line. Add a new sed expression alongside the existing two:
+
+```bash
+sed \
+  -e 's/TOOL_MODIFIED_HISTORY/cursor-modified-history/g' \
+  -e 's/TOOL_COMMIT_STDERR/cursor-commit-stderr.txt/g' \
+  -e '/^9\. \*\*NEVER spawn or maintain persistent interactive subprocess sessions\*\*/,/^$/d' \
+  "$BASE" >>"$TMP"
+```
+
+This deletion deletes rule #9 and its single trailing blank line. Rule #8's trailing blank line (between #8 and #9) is preserved and serves as the blank line before the following `## How to declare completion` H2 (markdownlint MD022 satisfied).
+
+### UPDATED: `scripts/generate-cursor-implementer.md`
+
+Add one bullet under the existing description of the sed transformations naming the new deletion. The bullet text:
+
+```
+- Strips Hard guard #9 from the Cursor artifact via `sed -e '/^9\. \*\*NEVER spawn or maintain persistent interactive subprocess sessions\*\*/,/^$/d'` so the Cursor implementer does not inherit Codex-specific subprocess-tool prohibitions (issue #2991). `agents/cursor-implementer.md` ends with rule #8; pin is asserted in `skills/implement/scripts/test-cursor-implementer.sh`.
+```
+
+### UPDATED: `agents/codex-implementer.md`
+
+Regenerate via `bash scripts/generate-codex-implementer.sh` after editing the base. The Codex generator's existing sed substitutions (rule #2 wording swap, `TOOL_COMMIT_STDERR`, `TOOL_MODIFIED_HISTORY`) do not target rule #9, so the rule lands verbatim. Do NOT hand-edit (the `<!-- AUTO-GENERATED -->` comment marks the file; drift is caught by `bash scripts/check-generators.sh`).
+
+### UPDATED: `agents/cursor-implementer.md`
+
+Regenerate via `bash scripts/generate-cursor-implementer.sh` after editing the base and the generator. With the new sed deletion in place, the Cursor artifact will NOT contain rule #9 — rule #8 is the last numbered Hard guard followed directly by `## How to declare completion`. Do NOT hand-edit.
+
+### UPDATED: `scripts/launch-codex-ci.sh`
+
+Extend the inline `PROMPT=` body (currently at line 138 through line 150) with one new paragraph. Place it after the existing context expansion lines (`$LARCH_PATTERNS`, `$LOCAL_REPRO`) and before the closing `Inspect the repository...` sentence. The clause text uses NO literal double quotes inside the existing double-quoted shell assignment (avoids breaking PROMPT= shell syntax — FINDING_3):
+
+```
+Subprocess tool discipline (issue #2991): do not spawn or maintain persistent interactive subprocess sessions, do not call write_stdin against a held child, and do not poll with read_stdout. When a command needs input, pass it up front via a heredoc, a pipe, an input file, or a single-shot shell command. The stdin-is-closed-for-this-session failure class kills the launcher mid-run.
+```
+
+Do NOT add literal `"..."` substrings, single quotes, or backticks inside this paragraph — the wrapping `PROMPT="..."` assignment is double-quoted shell and any inner double-quote would terminate the assignment early. The phrase appears unquoted in the rendered prompt; Codex still understands it as a stable phrase.
+
+### UPDATED: `scripts/launch-codex-ci.md`
+
+Add a one-line bullet under the existing `## Behavior` section (line 16), placed after the existing paragraph that documents the prompt construction. The bullet text:
+
+```
+- Inline `PROMPT` body now carries the Codex subprocess-tool prohibition matching `agents/_implementer-base.md` Hard guard #9 (issue #2991): the CI fixer must not spawn persistent interactive subprocess sessions and must use heredocs / pipes / input files for subprocess input. The signature phrase `persistent interactive subprocess` is grep-pinned in `scripts/test-launch-codex-ci.sh`.
+```
+
+Do NOT add a new H2 section.
+
+### UPDATED: `skills/implement/references/codex-manifest-schema.md`
+
+Add `interactive-subprocess-unsupported` as a new stable bail-reason token in the `## Bail-reason tokens` section (starts at line 69 of the file). Insert the bullet at the bottom of the existing implementer-set token group (immediately above the "Free-form Codex-authored token" closing bullet). Bullet text:
+
+```
+- `interactive-subprocess-unsupported` — Codex's plan requires a persistent interactive subprocess session pattern that the Codex CLI cannot reliably support (`exec_command` kept alive for `write_stdin` / `read_stdout`). Set by Codex itself per `agents/_implementer-base.md` Hard guard #9 (issue #2991). Operators inspect the plan and rephrase the affected step to use heredoc / pipe / input-file input before retrying.
+```
+
+### UPDATED: `skills/implement/references/codex-manifest-schema.digest.md`
+
+Mirror the new token in the digest's `## Bail-reason tokens` section, using the digest's terser style (one-line description):
+
+```
+`interactive-subprocess-unsupported` — Codex hit a plan step requiring a persistent interactive subprocess session (`exec_command` + `write_stdin` / `read_stdout`); rephrase as heredoc/pipe/file input (issue #2991).
+```
+
+Place it directly above the existing `Free-form: any other implementer-authored string...` line.
+
+### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+
+Add a NEW helper function `assert_subprocess_guard_present` (separate from `assert_manifest_template_present` — FINDING_2: keep the failure message specific). Place the new helper directly below `assert_manifest_template_present` (around line 45). The helper:
+
+```bash
+assert_subprocess_guard_present() {
+    local test_id="$1"
+    if grep -Fq "persistent interactive subprocess sessions" "$AGENT_PROMPT" \
+       && grep -Fq 'interactive-subprocess-unsupported' "$AGENT_PROMPT"; then
+        pass
+    else
+        fail "$test_id" "generated codex prompt missing Hard guard #9 (issue #2991 subprocess-tool prohibition)"
+    fi
+}
+```
+
+Invoke the new helper after the existing `assert_manifest_template_present "manifest-template"` call (near line 100):
+
+```bash
+assert_subprocess_guard_present "subprocess-guard"
+```
+
+### UPDATED: `skills/implement/scripts/test-codex-implementer.md`
+
+Add a one-line bullet under the existing test-coverage description:
+
+```
+- Asserts `agents/codex-implementer.md` carries Hard guard #9 (signature phrase `persistent interactive subprocess sessions` and stable bail token `interactive-subprocess-unsupported`) via the new `assert_subprocess_guard_present` helper (issue #2991).
+```
+
+### UPDATED: `skills/implement/scripts/test-cursor-implementer.sh`
+
+Add a NEW helper `assert_subprocess_guard_absent` and one invocation. This is the absence-pin that protects against accidental rule-#9 leak into the Cursor artifact (FINDING_5 regression coverage). Place the new helper directly below the existing `assert_manifest_template_present` (around line 58, mirror of the codex-side line). The helper:
+
+```bash
+assert_subprocess_guard_absent() {
+    local test_id="$1"
+    if grep -Fq "persistent interactive subprocess sessions" "$AGENT_PROMPT"; then
+        fail "$test_id" "cursor implementer prompt unexpectedly contains Codex Hard guard #9 (Cursor generator sed strip regressed)"
+    else
+        pass
+    fi
+}
+```
+
+Invoke after the existing `assert_manifest_template_present "manifest-template"` call:
+
+```bash
+assert_subprocess_guard_absent "subprocess-guard-absent"
+```
+
+### UPDATED: `skills/implement/scripts/test-cursor-implementer.md`
+
+Add a one-line bullet under the existing test-coverage description:
+
+```
+- Asserts `agents/cursor-implementer.md` does NOT contain Hard guard #9 (Codex-only subprocess-tool prohibition) — guards against regression in `scripts/generate-cursor-implementer.sh`'s sed strip (issue #2991).
+```
+
+### UPDATED: `scripts/test-launch-codex-ci.sh`
+
+Add a runtime prompt assertion (FINDING_1: grep the rendered `${OUT_FIX}.prompt`, not the source script). The existing stub-launch block at lines 73-82 already creates `${OUT_FIX}.prompt` via a stub-codex invocation. Add a new assertion immediately after the existing `topology.tsv` check inside that block:
+
+```bash
+if grep -qF 'persistent interactive subprocess' "${OUT_FIX}.prompt" 2>/dev/null; then
+    ok "fix-role prompt prohibits persistent interactive subprocesses (issue #2991)"
+else
+    fail "fix-role prompt prohibits persistent interactive subprocesses (issue #2991)"
+fi
+```
+
+Do NOT add a source-grep variant — the rendered-prompt assertion is strictly stronger (catches the case where the literal phrase is in a dead branch or comment in the source but missing from the rendered prompt).
+
+### UPDATED: `scripts/test-launch-codex-ci.md`
+
+Add a one-line bullet under the existing test-coverage description:
+
+```
+- Asserts the rendered `${OUT_FIX}.prompt` (fix-role) contains the persistent-interactive-subprocess prohibition (issue #2991). The check runs against the prompt actually written to disk by `scripts/launch-codex-ci.sh`, not against the source script.
+```
+
+## Approach
+
+The implementer makes the canonical edit in `agents/_implementer-base.md` first (adding Hard guard #9), then extends `scripts/generate-cursor-implementer.sh` with the sed deletion that strips rule #9 from the Cursor artifact. Then run BOTH generator scripts (`bash scripts/generate-codex-implementer.sh` and `bash scripts/generate-cursor-implementer.sh`) to update the two implementer artifacts. After that, edit `scripts/launch-codex-ci.sh` inline prompt, update the three `.md` siblings (one for the CI launcher, two for the generator-side test harnesses), add the bail token to the two manifest-schema files, add the new helpers in `test-codex-implementer.sh` (presence) and `test-cursor-implementer.sh` (absence), and add the rendered-prompt assertion in `test-launch-codex-ci.sh`.
+
+Final validation: explicitly run `bash scripts/check-generators.sh` (or `make agent-sync`, which invokes the walker via line 949 of the Makefile) to confirm both implementer artifacts match the base. The walker `scripts/check-generators.sh` takes no flags; it invokes each registered generator in `--check` mode (see `scripts/check-generators.sh:2` and the per-generator `--check` mode entry points at `scripts/generate-codex-implementer.sh:22-28` and `scripts/generate-cursor-implementer.sh:22-28`). `make lint` does NOT transitively invoke `check-generators.sh` (no pre-commit hook covers it), so the implementer must run it explicitly. Then run the three harness scripts (`test-codex-implementer.sh`, `test-cursor-implementer.sh`, `test-launch-codex-ci.sh`) and `make lint`.
+
+Key constraint: rule #9 must use phrasing the implementer can recognize as a behavior contract, not just a tool-name ban. The clause centers the failure mode (the stdin-is-closed-for-this-session class, persistent interactive subprocess sessions) and provides explicit positive alternatives (heredoc, pipe, input file, single-shot command), so it survives Codex CLI tool renames and does not over-restrict legitimate single-shot `bash -c` invocations.
+
+## Edge cases
+
+- **Generator regenerates only when invoked**: `scripts/check-generators.sh` is the explicit drift gate; `make lint` does not currently run it (no pre-commit hook references it). The implementer MUST invoke it explicitly after editing the base or either generator.
+- **Cursor generator sed deletion robustness**: the deletion pattern `/^9\. \*\*NEVER spawn or maintain persistent interactive subprocess sessions\*\*/,/^$/d` deletes from the rule line through the first following blank line. The base file MUST place a blank line immediately after rule #9 (between #9 and `## How to declare completion`) for the pattern to terminate correctly. Tested via `bash scripts/check-generators.sh` after both edits land — if the blank line is missing, the sed deletion eats into the next section and the regenerated Cursor artifact fails `--check`.
+- **Auto-generated comment on hand edits**: the `<!-- AUTO-GENERATED -->` marker is a documentation hint. Drift is mechanically caught by `bash scripts/check-generators.sh`; the existing CI harness `test-check-generators.sh` covers the walker itself.
+- **`test-codex-implementer.sh` helper separation**: the new `assert_subprocess_guard_present` is a separate helper with its own failure message — FINDING_2's concern (misleading manifest-template error) is resolved by NOT folding the check into the existing helper.
+- **`test-cursor-implementer.sh` absence-pin**: the absence-pin is a positive-test-for-negative-property — it passes when the rule is NOT present. If a future contributor reverts the sed deletion, the test fails with a clear message attributing the regression to the Cursor generator.
+- **`test-launch-codex-ci.sh` rendered-prompt assertion**: the new assertion lives inside the existing stub-launch block at lines 73-82, so it relies on the stub `codex` having already been invoked and `${OUT_FIX}.prompt` having been written. Placing the assertion outside that block would race the stub setup.
+- **Inline-prompt quote hygiene**: the `PROMPT="..."` body is double-quoted shell. Any unescaped `"` inside terminates the assignment early. The new paragraph uses no inner double quotes (FINDING_3 fix); the phrase `the stdin-is-closed-for-this-session failure class` is recognizable without quote marks.
+- **Bail-reason token additions to schema vs digest**: the full schema lists bail-reason tokens with full descriptions, the digest lists them tersely. Both files must be updated in the same PR (the digest's contract is "keep in sync with the corresponding sections above" per `codex-manifest-schema.md:154`).
+- **#2973 ordering**: #2973's `< /dev/null` fix in `scripts/run-external-agent.sh` lands first. This design's edits do NOT touch `run-external-agent.sh` and do NOT conflict with that PR. The blocking relationship is recorded natively via `/larch:block-issue` (already established before this plan was written).
+
+## Failure modes
+
+1. **The implementer forgets to run `bash scripts/check-generators.sh`.** Symptom: a future PR's CI catches the drift (if drift is caught at all), or worse, the regenerated artifact ships with stale content. Earliest signal: a CI harness run of `test-check-generators.sh` or an explicit `make agent-sync` discovers the mismatch. Mitigation: the plan's "Approach" section explicitly names both `bash scripts/check-generators.sh` and the two per-generator commands; the plan does NOT claim `make lint` covers this.
+
+2. **A future PR weakens the clause phrasing in the base or in the inline prompt.** A subtle edit could drop the positive guidance, or replace `persistent interactive subprocess` with a narrower phrase. The grep pins use the literal signature phrase, so weakening edits that drop "persistent" or "interactive" would break the pin. Earliest signal: harness failure in `test-codex-implementer.sh` or `test-launch-codex-ci.sh`.
+
+3. **Codex CLI tool surface changes (renames `write_stdin` or removes `exec_command`).** A future Codex CLI version could rename or remove the tools the clause references. The clause references the failure surface (the stdin-is-closed-for-this-session class), the tool names (`exec_command`, `write_stdin`, `read_stdout`), AND the architectural pattern (persistent interactive sessions). If only the names change, the architectural-pattern phrasing still applies; the implementer reading the prompt will recognize the failure class even if the tool name is unfamiliar. If the pattern itself disappears (CLI loses the interactive-session tool family), the clause becomes a harmless no-op until cleanup. Mitigation: track Codex CLI release notes for tool renames; refresh the clause text via a follow-up OOS issue when needed.
+
+## Testing strategy
+
+- `bash skills/implement/scripts/test-codex-implementer.sh` runs to completion with the new `assert_subprocess_guard_present "subprocess-guard"` check passing. The harness re-reads `agents/codex-implementer.md` and confirms both the signature phrase and the stable bail token are present.
+- `bash skills/implement/scripts/test-cursor-implementer.sh` runs to completion with the new `assert_subprocess_guard_absent "subprocess-guard-absent"` check passing. The harness confirms the Cursor artifact does NOT carry the rule.
+- `bash scripts/test-launch-codex-ci.sh` runs to completion with the new rendered-prompt assertion passing (the existing stub-launch writes `${OUT_FIX}.prompt`; the new grep confirms the clause is in that rendered file).
+- `bash scripts/check-generators.sh` exits 0 — both implementer artifacts match the base after regeneration.
+- `make lint` passes (shellcheck, markdownlint, bash32 portability, sibling-md presence, all the standard checks listed in `docs/linting.md`). Note: `make lint` does NOT cover generator drift; that is a separate explicit step.
+- No live `/implement` re-run required. The fix is prompt-level guidance; the grep pins establish the contract.
+
+## Acceptance
+
+- `agents/_implementer-base.md` contains the new Hard guard #9 with the exact signature phrase `persistent interactive subprocess sessions` and the stable bail token `interactive-subprocess-unsupported`. Rules #1-#8 are unchanged. A blank line separates rule #9 from the following `## How to declare completion` H2.
+- `agents/codex-implementer.md` is regenerated and contains rule #9 verbatim with the same signature phrase.
+- `agents/cursor-implementer.md` is regenerated and does NOT contain rule #9 (the Cursor generator's new sed deletion strips it). Rule #8 is the last numbered Hard guard in the Cursor artifact, followed by the existing `## How to declare completion` H2 with proper blank-line spacing.
+- `scripts/generate-cursor-implementer.sh` has the new sed deletion expression in its pipeline; the existing `TOOL_MODIFIED_HISTORY` / `TOOL_COMMIT_STDERR` substitutions are unchanged.
+- `scripts/launch-codex-ci.sh` PROMPT body contains the inline-prompt prohibition with the signature phrase `persistent interactive subprocess`. No literal double quotes appear inside the new paragraph (PROMPT= shell syntax intact). The existing context variables (`$LARCH_PATTERNS`, `$LOCAL_REPRO`) are unchanged.
+- `scripts/launch-codex-ci.md` has one new bullet under the existing `## Behavior` section documenting the prompt context.
+- `scripts/generate-cursor-implementer.md` has one new bullet documenting the sed deletion.
+- `skills/implement/references/codex-manifest-schema.md` and `codex-manifest-schema.digest.md` both list `interactive-subprocess-unsupported` as a new stable bail-reason token.
+- `skills/implement/scripts/test-codex-implementer.sh` has the new `assert_subprocess_guard_present` helper and one invocation.
+- `skills/implement/scripts/test-cursor-implementer.sh` has the new `assert_subprocess_guard_absent` helper and one invocation.
+- `scripts/test-launch-codex-ci.sh` has the new rendered-prompt assertion inside the existing stub-launch block.
+- All three matching sibling `.md` files (`test-codex-implementer.md`, `test-cursor-implementer.md`, `test-launch-codex-ci.md`) have one new coverage bullet each.
+- `bash skills/implement/scripts/test-codex-implementer.sh` passes.
+- `bash skills/implement/scripts/test-cursor-implementer.sh` passes.
+- `bash scripts/test-launch-codex-ci.sh` passes.
+- `bash scripts/check-generators.sh` passes (no drift).
+- `make lint` passes.
+- No changes to `scripts/launch-codex-implement.sh` (it loads the agent prompt via `--agent-prompt`; the content change in the agent file is enough).
+- No changes to `scripts/run-external-agent.sh` (that file is owned by #2973's design).
+- No changes to `step2-implement.sh` or any recovery branch logic (Option 1 from the issue is explicitly out of scope per Round 1 Decision 1).
+- No changes to setsid/PTY launcher wrapper logic (Option 3 from the issue is explicitly out of scope per Round 1 Decision 1).
+
+diff_lines: 60
