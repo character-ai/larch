@@ -455,6 +455,28 @@ grep -Fq "PLAN_FILE=*) PLAN_FILE=\${_ib_tok#PLAN_FILE=} ;;" "$SKILL_MD" \
   || fail "SKILL.md must retain PLAN_FILE _ib_kv_scan case arm"
 grep -Fq "coder=*) coder=\${_ib_tok#coder=} ;;" "$SKILL_MD" \
   || fail "SKILL.md must retain coder _ib_kv_scan case arm"
+grep -Fq '_ib_caller_env=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain bootstrap caller-env argv assembly"
+grep -Fq '_ib_issue=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain bootstrap issue argv assembly"
+grep -Fq '_ib_fork=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain bootstrap fork argv assembly"
+grep -Fq '_ib_run_id=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain bootstrap run-id argv assembly"
+grep -Fq '_ib_preflight=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain bootstrap preflight argv assembly"
+grep -Fq '_ib_coder=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain bootstrap coder argv assembly"
+grep -Fq 'copy-plan)' "$SKILL_MD" \
+  || fail "SKILL.md must retain copy-plan exit-2 handler"
+grep -Fq 'gh-issue-view)' "$SKILL_MD" \
+  || fail "SKILL.md must retain gh-issue-view exit-2 handler"
+# shellcheck disable=SC2016
+grep -Fq 'run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"`' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 2 conventional plan-file wording"
+# shellcheck disable=SC2016
+grep -Fq 'launcher must fail closed if session-env later says `CURSOR_PRESENT!=true`' "$SKILL_MD" \
+  || fail "SKILL.md must document fail-closed cursor selection drift handling"
 
 step0_plan_structure_status=0
 awk '

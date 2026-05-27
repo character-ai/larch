@@ -43,6 +43,12 @@ assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "old waterf
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
 assert_contains "$BOOTSTRAP_SH" 'Cursor unavailable — falling back to Codex implementer' "cursor-to-codex warning"
 assert_contains "$BOOTSTRAP_SH" 'Codex unavailable — falling back to Claude implementer' "codex-to-claude warning"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '[ -z "${PLAN_FILE:-}" ]' "missing-plan empty PLAN_FILE guard"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '[ ! -f "${PLAN_FILE:-/nonexistent}" ]' "missing-plan unreadable PLAN_FILE guard"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '[ ! -f "${IMPLEMENT_TMPDIR:-/nonexistent}/feature-description.txt" ]' "missing-plan feature-description guard"
 assert_contains "$IMPLEMENT_SKILL" 'does not route the implementer' "diff_lines informational non-routing clause"
 
 assert_contains "$DESIGN_SKILL" 'diff_lines: <N>' "design plan diff_lines"

@@ -1168,6 +1168,34 @@ assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-expli
 assert_contains "--coder=codex requested but Codex runtime probe failed / auth error" "$err" "B5-coder-explicit-unavailable-runtime-probe-failed warning"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B5-coder-explicit-codex-binary-missing ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=false
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=false
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-codex-binary-missing.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCodexBinaryMissing --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-explicit-codex-binary-missing exit 0"
+assert_line "coder=" "$out" "B5-coder-explicit-codex-binary-missing empty coder"
+assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-codex-binary-missing bail"
+assert_contains "STALL_TRACKING=true" "$out" "B5-coder-explicit-codex-binary-missing stall"
+assert_contains "--coder=codex requested but Codex binary not found" "$err" "B5-coder-explicit-codex-binary-missing warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B5-coder-skip-repo-unavailable ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox

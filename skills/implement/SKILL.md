@@ -335,8 +335,30 @@ _ib_handle_bootstrap_exit2() {
     session-setup) printf '%s\n' "$_ib_out" | grep '^PREFLIGHT_ERROR=' || true; printf '%s\n' '**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run; (c) commit or stash uncommitted changes on `main` first.**' ;;
     get-issue-state) printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**' ;;
     issue-number-required-for-resume) printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel'\''s issue.**' ;;
-    copy-plan) [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" || true; printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not copy the preflight plan into the implement session. Aborting.**' ;;
-    gh-issue-view) [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" || true; printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not read the issue title/body. Aborting.**' ;;
+    copy-plan)
+      if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ]; then
+        _ib_redacted_err=$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-copy-plan.XXXXXX")
+        if "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" >"$_ib_redacted_err"; then
+          cat "$_ib_redacted_err"
+        else
+          printf '%s\n' '**⚠ /implement Step 0 plan materialization: copy-plan stderr redaction failed; raw stderr suppressed. See execution issues / local logs.**'
+        fi
+        rm -f "$_ib_redacted_err"
+      fi
+      printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not copy the preflight plan into the implement session. Aborting.**'
+      ;;
+    gh-issue-view)
+      if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ]; then
+        _ib_redacted_err=$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-gh-issue-view.XXXXXX")
+        if "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" >"$_ib_redacted_err"; then
+          cat "$_ib_redacted_err"
+        else
+          printf '%s\n' '**⚠ /implement Step 0 plan materialization: gh-issue-view stderr redaction failed; raw stderr suppressed. See execution issues / local logs.**'
+        fi
+        rm -f "$_ib_redacted_err"
+      fi
+      printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not read the issue title/body. Aborting.**'
+      ;;
     resume-plan-tail-sentinel) printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0 dirty-tree recovery: the resume tail could not validate tracking state from the existing session artifacts. Restore or inspect `$IMPLEMENT_TMPDIR`, then restart `/implement`.**' ;;
   esac
   exit 2
@@ -388,7 +410,7 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 Dirty-tree recovery bootstrap fence:
 
 ```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase coder --issue-number "$TARGET_ISSUE_NUMBER" --run-id "$RUN_ID" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --resume-plan-tail
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase coder "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_coder[@]+"${_ib_coder[@]}"}" --resume-plan-tail
 ```
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit Cursor → Codex → Claude waterfall arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.
@@ -640,7 +662,7 @@ fi
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `run-step2-dispatch.sh` with `run_in_background: true` paired with foreground `breadcrumb-monitor.sh`. The launcher, in turn, invokes `step2-implement.sh` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
 
-The launcher `run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and `--workflow HARD` (it does **not** assemble those from `PLAN_FILE` / `POST_PLAN_WORKFLOW_PATH` keys in `session-env.sh`). It still reads `CURSOR_PRESENT` from `$IMPLEMENT_TMPDIR/session-env.sh` and uses the conventional feature file `$IMPLEMENT_TMPDIR/feature-description.txt`. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
+The launcher `run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and `--workflow HARD` (it does **not** assemble those from `PLAN_FILE` / `POST_PLAN_WORKFLOW_PATH` keys in `session-env.sh`). It still reads `CURSOR_PRESENT` from `$IMPLEMENT_TMPDIR/session-env.sh` and uses the conventional feature file `$IMPLEMENT_TMPDIR/feature-description.txt`. When Step 0 resolved `coder=cursor`, the launcher must fail closed if session-env later says `CURSOR_PRESENT!=true`; do not silently override the bootstrap choice by letting Step 2 fall through to Claude. The dispatcher's internal `--cursor-present false -> claude_fallback` branch is legacy defense-in-depth, not the normal Step 0-driven routing path. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
 
 ```bash
 case "$TOOL" in
@@ -700,8 +722,8 @@ Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory), th
 **Recovery sub-branch**: when `RECOVERY_FROM=manifest-schema-invalid`, do not ask opportunistic questions and do not re-implement. Treat the working tree edits left by the external implementer as the implementation to preserve. Run `${CLAUDE_PLUGIN_ROOT}/scripts/check-recovery-paths-in-plan-scope.sh --plan-file "$IMPLEMENT_TMPDIR/plan.txt" --paths-file "$RECOVERY_PATHS_FILE"` and fail closed with `FINAL_BAIL_REASON=recovery-out-of-scope` if it exits non-zero. Synthesize a concise commit message from the plan title / issue context and pipe it through `${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh`; store it for Step 4. After Step 3 checks and any checks-repair mutations, recompute the recovery delta against the dispatcher's prelaunch baseline with `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/compute-step2-recovery-paths.sh --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/step2-recovery-paths-final.nul"`, re-run the same plan-scope check against `step2-recovery-paths-final.nul`, and use that final file for Step 4. NEVER use `git reset --hard`, `git restore`, `git checkout -- <path>`, or `git add -A` against recovered edits during this branch.
 
 Print one of the following based on which path landed here, evaluated **in this exact order** (first match wins):
-- When `coder=cursor` was the resolved choice but the dispatcher fell back to claude because Cursor was unavailable or unavailable: `**⚠ Cursor unavailable — implementing with main agent.**` Also log `Step 2 — Cursor unavailable/unavailable: fell back to claude` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
 - When `coder=claude` AND `coder_fallback=true`: `**⚠ Cursor and Codex unavailable — implementing with main agent.**`
+- When `coder=cursor`: `**⚠ Cursor selection drifted after Step 0; Step 2 fell back to the main agent.**` Also log `Step 2 — cursor selection drift: session-env no longer permits cursor, dispatcher returned claude_fallback` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
 - When `coder=claude`: `**ℹ Implementing with main agent (coder=claude).**`
 
 **Opportunistic questions**: before edits, if the plan leaves ambiguous choices — interpretations the plan does not pin down and the codebase does not unambiguously dictate — first consult `CLAUDE.md` when it may resolve the interpretation, then batch any remaining 1-4 into a single `AskUserQuestion`. Ask freely about plan ambiguities; do NOT ask about whether to do the plan, scope, or capacity (see "No mid-run scope re-litigation").
