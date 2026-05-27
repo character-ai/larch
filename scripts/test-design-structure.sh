@@ -86,7 +86,9 @@ absent "$MAKEFILE" 'test-read-design-review-budget-invoke' 'Makefile must not re
 
 # Gate B auto-apply / --manual pins (preserved from #3009, adapted to v2 SIMPLE/HARD).
 contains "$APPROVAL_MD" '### Apply-all body' 'approval-gates.md missing Apply-all body heading'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'Execute `### Apply-all body` verbatim' 'approval-gates.md missing Apply-all body delegate prose'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$FLAGS_MD" '`--manual` / `-m`:' 'flags.md missing --manual/-m bullet anchor'
 
 # Check 15d: design SKILL must not chat-print token/timing summaries.
