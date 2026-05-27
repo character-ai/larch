@@ -325,14 +325,16 @@ fi
 export ISSUE_NUMBER RUN_ID
 
 REPO=""
-if [ "${forked_target:-false}" = "true" ]; then
-    REPO=$(read_session_key UPSTREAM_REPO "")
-fi
-if [ -z "$REPO" ]; then
-    REPO=$(read_session_key REPO "")
-fi
-if [ -z "$REPO" ]; then
-    REPO=$(read_session_key UPSTREAM_REPO "")
+if [ -f "${SESSION_ENV_FILE:-/dev/null}" ]; then
+    if [ "${forked_target:-false}" = "true" ]; then
+        REPO=$(awk -F= '/^UPSTREAM_REPO=/{print substr($0, index($0,"=")+1); exit}' "$SESSION_ENV_FILE" 2>/dev/null || true)
+    fi
+    if [ -z "$REPO" ]; then
+        REPO=$(awk -F= '/^REPO=/{print substr($0, index($0,"=")+1); exit}' "$SESSION_ENV_FILE" 2>/dev/null || true)
+    fi
+    if [ -z "$REPO" ]; then
+        REPO=$(awk -F= '/^UPSTREAM_REPO=/{print substr($0, index($0,"=")+1); exit}' "$SESSION_ENV_FILE" 2>/dev/null || true)
+    fi
 fi
 export REPO
 
