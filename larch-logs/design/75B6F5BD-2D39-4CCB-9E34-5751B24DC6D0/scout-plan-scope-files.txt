@@ -1,0 +1,6 @@
+skills/design/scripts/render-final-summary.sh
+skills/implement/scripts/write-final-report.sh
+skills/design/scripts/test-render-final-summary.sh
+skills/implement/scripts/test-write-final-report.sh
+skills/design/scripts/render-final-summary.md
+skills/implement/scripts/write-final-report.md
