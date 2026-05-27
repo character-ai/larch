@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The heading overlap is real but file-scoped and speculative, and changing the plan-accepted heading is more churn than warranted.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Clearer failure would help, but imposing a new fail-closed contract on the canonical snippet exceeds this doc-only sweep.
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The cross-skill heading collision is plausible but too speculative to justify a follow-up issue by itself.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Step 18 already points to the same rehydration pattern, and adding more cross-references is low-value documentation churn.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The adjacent duplicate examples are an intentional minor readability cost under the accepted plan, not worth filing separately.

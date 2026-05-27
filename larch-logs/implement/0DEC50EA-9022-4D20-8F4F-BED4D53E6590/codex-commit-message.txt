@@ -1,0 +1,3 @@
+Document lint harness and CLAUDE_PLUGIN_ROOT prelude
+
+Add the missing stall recovery harness inventory row, correct the /design final-summary item reference, and document the canonical /implement CLAUDE_PLUGIN_ROOT rehydration prelude without changing existing snippets.
