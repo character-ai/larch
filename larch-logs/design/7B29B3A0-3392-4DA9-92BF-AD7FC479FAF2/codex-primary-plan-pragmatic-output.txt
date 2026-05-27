@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:1130-1137	New Makefile-only harness is not added to agent-lint exclusions	agent-lint does not follow Makefile-only references, so scripts/test-render-final-summary-bash32.sh can be flagged as dead even though the Makefile target is wired	Add scripts/test-render-final-summary-bash32.sh to agent-lint.toml beside the test-collect-agent-bash32 precedent
+1	in_scope	important	correctness	skills/design/scripts/render-final-summary.sh:432-438	Proposed dynamic test checks the wrong stderr surface	The nounset failure inside invoke_render is redirected to DESIGN_TMPDIR/render-final-summary.stderr.log, then fallback can still produce rc=0 and a non-empty final-summary.md, so Case 2 can pass while the runtime bug fired	Have Case 2 also assert DESIGN_TMPDIR/render-final-summary.stderr.log and execution-issues.md do not contain unbound variable or a render-run-summary fallback warning
+1	in_scope	important	security	skills/design/scripts/render-final-summary.sh:460-474	Proposed harness invocation does not clear ISSUE_NUMBER	A developer running the harness from an issue-bound environment can trigger tracking-issue-summary.sh upsert-summary during --post-publish-only and mutate GitHub comments from a regression test	Invoke the subject with ISSUE_NUMBER="" and a test SESSION_ID, plus explicit DESIGN_TMPDIR and CLAUDE_PLUGIN_ROOT, so the harness is hermetic
+
+1. [risk-integration] agent-lint.toml:1130-1137
+Concern: the plan adds `scripts/test-render-final-summary-bash32.sh` and wires it only through `Makefile`, matching the `test-collect-agent-bash32` pattern that already needs an explicit `agent-lint.toml` exclusion.
+Suggested revision: add `scripts/test-render-final-summary-bash32.sh` to the exclude list near that precedent.
+
+2. [correctness] skills/design/scripts/render-final-summary.sh:432-438
+Concern: Case 2’s proposed `stderr does NOT contain unbound variable` assertion misses the actual captured error path. `invoke_render` stderr is redirected to `render-final-summary.stderr.log`, and fallback can still return rc 0 with a non-empty summary.
+Suggested revision: check the subject’s captured stderr file, and preferably `execution-issues.md`, for the unbound-variable/fallback signal.
+
+3. [security] skills/design/scripts/render-final-summary.sh:460-474
+Concern: the proposed harness invocation does not explicitly clear `ISSUE_NUMBER`. With an inherited issue-bound environment, `--post-publish-only` can attempt a real tracking-comment upsert.
+Suggested revision: run the subject with explicit env, including `ISSUE_NUMBER=""`, `SESSION_ID="TEST-BASH32"`, `DESIGN_TMPDIR="$D"`, and `CLAUDE_PLUGIN_ROOT="$REPO_ROOT"`.

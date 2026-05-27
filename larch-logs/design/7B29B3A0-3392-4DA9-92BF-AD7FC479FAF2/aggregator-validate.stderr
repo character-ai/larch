@@ -1,0 +1,4 @@
+warning: unknown From slot label 'Cursor-Arch, Codex-Arch, Cursor-Edge, Codex-Edge, Codex-Innovation, Codex-Pragmatic' in FINDING_1 (not present on any input finding)
+warning: unknown From slot label 'Cursor-Innovation, Cursor-Requirements' in FINDING_1 (not present on any input finding)
+warning: unknown From slot label 'Cursor-dyn-shard-registry, Codex-dyn-shard-registry' in FINDING_4 (not present on any input finding)
+warning: unknown From slot label 'Cursor-dyn-precedent-fidelity, Codex-dyn-precedent-fidelity' in FINDING_5 (not present on any input finding)
