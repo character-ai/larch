@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- trivial duplication in test-only code; prefer EXONERATE on close nit-level calls
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- opt-in flag is the explicit consent signal; write scope is intentional by design per SECURITY.md
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- _findings_canon is unset and raw path reused for the in-tmpdir mv too; pre-existing pattern, same-UID trust model documented
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- widening is proportionate to the explicit opt-in contract; in-tmpdir mv failures in a freshly-created tmpdir are marginal
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly chose dispatch-failed and SECURITY.md documents it; adding a new REASON value would touch callers
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing behavior; default-path aborting on mv failure under set -e is plausibly intentional for infrastructure-level failures
