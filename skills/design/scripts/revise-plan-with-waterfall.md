@@ -9,7 +9,7 @@ Between-round /design plan revision driver. It is a standalone library script fo
 | Flag | Required | Meaning |
 | --- | --- | --- |
 | `--design-tmpdir DIR` | yes | Session tmpdir. Outputs are written under `DIR/plan-review/round-<N>/revise/`. |
-| `--plan-file FILE` | yes | The in-place plan to revise. It must canonically resolve to `$DESIGN_TMPDIR/plan.txt`; mismatch exits 2. |
+| `--plan-file FILE` | yes | The in-place plan to revise. It must canonically resolve to `$DESIGN_TMPDIR/plan.txt`, including the final `plan.txt` path component; mismatch exits 2. |
 | `--findings-file FILE` | yes | Accepted in-scope plan-review findings for the current round. |
 | `--feature-file FILE` | yes | Feature description context. |
 | `--round-num N` | yes | Numeric round identifier for output paths. |
@@ -55,7 +55,7 @@ Per-tier status values are `skipped-not-present`, `not-attempted`, `no-patch`, `
 
 ## Patch Validator
 
-In `unified-diff` mode, the candidate may be raw diff text or wrapped in one outer ```diff fence. Header validation requires every file header path to be exactly `a/plan.txt` or `b/plan.txt`, and every `diff --git` header to be exactly `a/plan.txt b/plan.txt`. No other path form is accepted. The script then runs `git apply --check --whitespace=nowarn` from `dirname "$plan_file"` and applies with `git apply --whitespace=nowarn`; it never uses `--unsafe-paths`.
+In `unified-diff` mode, the candidate may be raw diff text or wrapped in one outer ```diff fence. Header validation requires every file header path to be exactly `a/plan.txt` or `b/plan.txt`, and every `diff --git` header to be exactly `a/plan.txt b/plan.txt`. No other path form is accepted. The script then runs `git apply --check --whitespace=nowarn` from `dirname "$plan_file"` and classifies any failure there as `invalid-patch`; only a failing live `git apply --whitespace=nowarn` is reported as `apply-failed`. The script never uses `--unsafe-paths`.
 
 In `file-replacement` mode, the candidate must be non-empty and its last non-blank line must be `diff_lines: <N>` with numeric `N`.
 
@@ -63,7 +63,7 @@ After either apply path, if the original plan had any `### NEW:`, `### UPDATED:`
 
 ## Apply And Revert
 
-The script snapshots the plan to `$plan_file.before-revise` before launching any tier. Validation, apply, heading-check, and emit-plan failures restore the plan from that snapshot before the next tier is attempted. The snapshot is removed only when one tier succeeds; on overall failure it remains for caller inspection.
+The script snapshots the plan to `$plan_file.before-revise` before launching any tier. Validation, apply, heading-check, and emit-plan failures restore the plan from that snapshot before the next tier is attempted. Restore failures are fatal and stop the waterfall immediately rather than continuing on a partially mutated plan. The snapshot is removed only when one tier succeeds; on overall failure it remains for caller inspection.
 
 ## Invariants
 

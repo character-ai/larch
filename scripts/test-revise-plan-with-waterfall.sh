@@ -308,7 +308,7 @@ assert_line "REVISE_PATCH_PATH=" "$out"
 [[ -f "$case_dir/plan.txt.before-revise" ]] || fail "all-fail did not preserve snapshot"
 echo "PASS: case 4"
 
-# 5. Apply check fails, then Cursor wins.
+# 5. Apply check fails validation, then Cursor wins.
 clear_stubs
 case_dir=$(make_case case5)
 bad_context="$TMPROOT/case5-bad-context.diff"
@@ -318,7 +318,7 @@ write_valid_diff "$cursor_patch" "Write revised after apply failure." 17
 export CODEX_STUB_CONTENT_FILE="$bad_context"
 export CURSOR_STUB_CONTENT_FILE="$cursor_patch"
 out=$(run_subject "$case_dir" true true)
-assert_line "REVISE_TIER_1_STATUS=apply-failed" "$out"
+assert_line "REVISE_TIER_1_STATUS=invalid-patch" "$out"
 assert_line "REVISE_TIER_2_STATUS=ok" "$out"
 assert_line "REVISE_TIER=cursor" "$out"
 assert_contains "Write revised after apply failure." "$case_dir/plan.txt"
@@ -368,7 +368,7 @@ set -e
 ! grep -q '^REVISE_' "$TMPROOT/case8.out" || fail "argv defect emitted KVs"
 echo "PASS: case 8"
 
-# 9. Canonical-plan invariant violation.
+# 9. Canonical-plan invariant violation also rejects a final-component symlink.
 clear_stubs
 case_dir=$(make_case case9)
 printf '## Plan\n\ndiff_lines: 1\n' >"$TMPROOT/other-plan.txt"
@@ -385,6 +385,22 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || fail "canonical invariant exit=$rc"
 grep -Fq 'must resolve to DESIGN_TMPDIR/plan.txt' "$TMPROOT/case9.err" || fail "canonical invariant diagnostic missing"
+
+case_dir=$(make_case case9b)
+ln -s "$TMPROOT/other-plan.txt" "$case_dir/plan-link.txt"
+set +e
+"$SUBJECT" \
+    --design-tmpdir "$case_dir" \
+    --plan-file "$case_dir/plan-link.txt" \
+    --findings-file "$case_dir/findings.md" \
+    --feature-file "$case_dir/feature.txt" \
+    --round-num 1 \
+    --codex-present true \
+    --cursor-present true >"$TMPROOT/case9b.out" 2>"$TMPROOT/case9b.err"
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "final-component symlink invariant exit=$rc"
+grep -Fq 'must resolve to DESIGN_TMPDIR/plan.txt' "$TMPROOT/case9b.err" || fail "final-component symlink diagnostic missing"
 echo "PASS: case 9"
 
 # 10. Heading-loss revert, then Cursor wins.

@@ -65,10 +65,22 @@ case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "revise-plan-with-waterfall.sh: --ti
 [[ "$PATCH_FORMAT" == "unified-diff" || "$PATCH_FORMAT" == "file-replacement" ]] || { larch_err "revise-plan-with-waterfall.sh: --patch-format must be unified-diff or file-replacement"; exit 2; }
 
 canonical_path() {
-    local path="$1" dir base
+    local path="$1" dir base target
     dir=$(dirname "$path")
     base=$(basename "$path")
-    printf '%s/%s\n' "$(cd "$dir" && pwd -P)" "$base"
+    dir=$(cd "$dir" && pwd -P)
+    while [[ -L "$dir/$base" ]]; do
+        target=$(readlink "$dir/$base")
+        if [[ "$target" = /* ]]; then
+            path="$target"
+        else
+            path="$dir/$target"
+        fi
+        dir=$(dirname "$path")
+        base=$(basename "$path")
+        dir=$(cd "$dir" && pwd -P)
+    done
+    printf '%s/%s\n' "$dir" "$base"
 }
 
 CANONICAL_DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
@@ -151,6 +163,13 @@ get_tier_status() {
 
 restore_plan() {
     cp "$SNAPSHOT" "$PLAN_FILE"
+}
+
+restore_plan_or_die() {
+    restore_plan || {
+        larch_err "revise-plan-with-waterfall.sh: failed to restore $PLAN_FILE from $SNAPSHOT"
+        exit 1
+    }
 }
 
 last_nonblank_line() {
@@ -291,8 +310,8 @@ attempt_tier() {
             return 1
         fi
         if ! check_git_apply "$patch_file"; then
-            set_tier_status "$ordinal" apply-failed
-            restore_plan || true
+            set_tier_status "$ordinal" invalid-patch
+            restore_plan_or_die
             return 1
         fi
     elif ! validate_file_replacement "$patch_file"; then
@@ -302,22 +321,22 @@ attempt_tier() {
 
     if ! apply_patch_file "$patch_file"; then
         set_tier_status "$ordinal" apply-failed
-        restore_plan || true
+        restore_plan_or_die
         return 1
     fi
 
     if [[ "$ORIG_FILE_HEADING_COUNT" -gt 0 ]]; then
         post_heading_count=$(heading_count "$PLAN_FILE")
         if [[ "$post_heading_count" -eq 0 ]]; then
-            restore_plan || true
             set_tier_status "$ordinal" invalid-patch
+            restore_plan_or_die
             return 1
         fi
     fi
 
     if ! run_emit_plan_gate; then
-        restore_plan || true
         set_tier_status "$ordinal" emit-plan-failed
+        restore_plan_or_die
         return 1
     fi
 

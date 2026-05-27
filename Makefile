@@ -912,6 +912,9 @@ test-launch-claude-review:
 test-dispatch-with-waterfall:
 	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-with-waterfall.sh
 
+test-revise-plan-with-waterfall:
+	bash scripts/harness-timer.sh $@ bash scripts/test-revise-plan-with-waterfall.sh
+
 test-agent-model-args:
 	bash scripts/harness-timer.sh $@ bash scripts/test-agent-model-args.sh
 
