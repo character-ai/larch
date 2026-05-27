@@ -87,6 +87,11 @@ for archetype in arch edge innovation pragmatic requirements; do
     expected="plan-${archetype}"
     got_count=$(jq -r --arg fg "$expected" 'select(.fallback_group == $fg) | .slot' "$D1/plan-review-slots.ndjson" | wc -l | tr -d ' ')
     [[ "$got_count" == "2" ]] || fail "expected static fallback_group $expected on two rows, got $got_count"
+    jq -s -e --arg a "$archetype" --arg fg "$expected" '
+        [.[] | select(.slot == ("cursor-plan-" + $a) or .slot == ("codex-plan-" + $a))]
+        | length == 2 and all(.[]; .fallback_group == $fg)
+    ' "$D1/plan-review-slots.ndjson" >/dev/null \
+        || fail "static fallback_group pairing mismatch for $archetype"
 done
 
 echo "=== two dynamic archetypes => 14 slots ==="
