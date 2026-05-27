@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [45.1.4] - 2026-05-27
+
+### Changed
+
+- Guard render-final-summary.sh empty-array expansions with the Bash 3.2-safe ${ARR[@]+...} idiom.
+- Add a Makefile-wired Bash 3.2 regression harness that pins the static call-site idiom and dynamically exercises the empty-note_args path on vulnerable /bin/bash versions.
+- Register the new harness in test-harnesses-14 and agent-lint exclusions, with a sibling contract stub.
+
 ## [45.1.3] - 2026-05-27
 
 ### Changed
