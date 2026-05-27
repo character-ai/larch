@@ -96,7 +96,7 @@ Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_
 
 ## Phase-skip semantics
 
-Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there is no bail reason, no stall, and the repo is available. This intentionally allows `DEFERRED=true` paths such as forked targets and `POSTED=false` metadata defers so Step 2 still receives `feature-description.txt` and `plan.txt`. Phase 4 keeps the stricter `should_run_post_tracking_phase`, which also skips when `DEFERRED=true`.
+Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there is no bail reason, no stall, and the repo is available. This intentionally allows `DEFERRED=true` paths such as forked targets and `POSTED=false` metadata defers (the implementing rename has already fired before `post-tracking-issue.sh` so the title visibly reflects in-progress status even on defer) so Step 2 still receives `feature-description.txt` and `plan.txt`. Phase 4 keeps the stricter `should_run_post_tracking_phase`, which also skips when `DEFERRED=true`.
 
 ## Behavior mapping (Step 0 SKILL.md)
 

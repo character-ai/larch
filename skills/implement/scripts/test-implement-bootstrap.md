@@ -23,7 +23,7 @@
 | B2 | CLOSED target issue emits `IMPLEMENT_BAIL_REASON=adopted-issue-closed`. |
 | B2-plan | CLOSED target issue on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=adopted-issue-closed` and does not overwrite it with Phase 3 bail reasons. |
 | B3 | PR target emits `IMPLEMENT_BAIL_REASON=adopted-issue-is-pr`. |
-| B4 | `POSTED=false` emits `DEFERRED=true`, exits 0, and removes any stale sentinel. |
+| B4 | Rename fires before `post-tracking-issue.sh`; `POSTED=false` then emits `DEFERRED=true`, exits 0, and removes any stale sentinel. |
 | B5 | `larch-log.sh init` failure emits `IMPLEMENT_BAIL_REASON=tracking-init-failed` and `STALL_TRACKING=true`. |
 | B5-all | `larch-log.sh init` failure on `--up-to-phase all` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips later placeholder bail reasons. |
 | B5-plan | `larch-log.sh init` failure on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips the phase-3 placeholder. |
