@@ -1299,7 +1299,8 @@ for _flag in branch-name expected-session-id expected-tmpdir-basename-prefix iss
     fi
 done
 
-fi  # end section: state
+# end section: state
+fi
 
 if section_runs postmerge; then
 root=$(make_repo ci_watch_skip_breadcrumb)
@@ -1969,7 +1970,8 @@ else
     ok "pr-create no-logs-commit skips pre-PR larch-log commit"
 fi
 rm -rf "$sentinel_dir"
-fi  # end section: postmerge
+# end section: postmerge
+fi
 
 if section_runs fix-loop; then
 # Regression: CI-fix vendors receive the design plan path from session-env.
@@ -4397,7 +4399,8 @@ else
 fi
 rm -rf "$call_dir"
 
-fi  # end section: fix-loop
+# end section: fix-loop
+fi
 
 if section_runs transient; then
 # --- Transient-net exit-6 tests (Part C) ---
@@ -4793,7 +4796,8 @@ assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: ski
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: skip-merge guard clears STALL_TRACKING"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: skip-merge guard clears STALL_STEP"
 assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: skip-merge guard leaves final-bail-reason.txt empty"
-fi  # end section: transient
+# end section: transient
+fi
 
 if section_runs phase14; then
 # run_rebase_rebump: non-bump-only conflict → exit_stall (rc 4) after recovery waterfall exhausts.
@@ -5209,7 +5213,8 @@ else
     sed 's/^/    changelog: /' "$root/CHANGELOG.md" | head -n 20 || true
 fi
 
-fi  # end section: phase14
+# end section: phase14
+fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
