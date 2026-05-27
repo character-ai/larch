@@ -14,6 +14,12 @@
 
 ---
 
+## Style preamble expansion
+
+Before launching each external slot (Cursor framing, Codex scope) and before composing the always-Claude pragmatic slot, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
+
+---
+
 ## Anti-halt override (Step 1d.5 only)
 
 Step 1d.5 **overrides** the generic “never halt after Bash” anxiety **only** for the narrow case: after externals return and you print the **brainstorm synthesis digest** once, you may yield the turn so the operator can speak in the discussion loop below.
@@ -166,8 +172,6 @@ fi
 
 Guard this call exactly like Step 2a.3: **omit paths** for slots that were not launched as externals (tool unavailable with parent-written Agent fallback is **not** an external launch). **Never** invoke `collect-agent-results.sh` with zero paths.
 
----
-
 ## Post-collection dirty-tree checkpoint
 
 After the collector returns for whichever externals actually ran, consult `${OUTPUT}.dirty-tree` sidecars, then run:
@@ -179,6 +183,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint
 If dirty/unknown: write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STAGE=brainstorm-collection` and `RECOVERY_REQUIRED=true`, prompt once per boundary using `$DESIGN_TMPDIR/.dirty-tree-prompted-brainstorm-collection` as the idempotency sentinel (same semantics as sketch collection).
 
 ---
+
+**MANDATORY — READ ENTIRE FILE before composing the synthesis and any free-form discussion-loop response: `skills/design/references/readability-style.md`.**
 
 ## Synthesis → `brainstorm.md`
 

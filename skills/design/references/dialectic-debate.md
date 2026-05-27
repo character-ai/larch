@@ -65,6 +65,8 @@ These tags are prompt-level delimiters, not a sanitization boundary — they red
 <debater_decision>
 {DECISION_BLOCK}
 </debater_decision>
+
+Style requirements: `<READABILITY_STYLE>`.
 ```
 
 The same **structured deliverable vs. in-prompt meta** boundary applies to the antithesis template below.
@@ -121,4 +123,6 @@ These tags are prompt-level delimiters, not a sanitization boundary — they red
 <debater_decision>
 {DECISION_BLOCK}
 </debater_decision>
+
+Style requirements: `<READABILITY_STYLE>`.
 ```

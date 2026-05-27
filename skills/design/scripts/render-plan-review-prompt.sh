@@ -14,6 +14,7 @@ ARCHETYPE=""
 VENDOR=""
 PLAN_FILE=""
 DESIGN_TMPDIR_ARG=""
+READABILITY_STYLE_FILE_ARG=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'EOF'
@@ -37,6 +38,7 @@ while [[ $# -gt 0 ]]; do
         --vendor) VENDOR="$(take_value --vendor "${2:-}")"; shift 2 ;;
         --plan-file) PLAN_FILE="$(take_value --plan-file "${2:-}")"; shift 2 ;;
         --design-tmpdir) DESIGN_TMPDIR_ARG="$(take_value --design-tmpdir "${2:-}")"; shift 2 ;;
+        --readability-style-file) READABILITY_STYLE_FILE_ARG="$(take_value --readability-style-file "${2:-}")"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) larch_err "render-plan-review-prompt.sh: unknown argument: $1"; usage; exit 2 ;;
     esac
@@ -104,12 +106,22 @@ case "$classification" in
         ;;
 esac
 
-cat <<EOF
-${full_role}
-${tier_emphasis}
-Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel {"no_issues_found": true} (when you have none). Do not write any preamble, no "I'll review...", no "Examining the plan...", no "Looking at file X...". The first non-whitespace character of your response must be either \`s\` (start of \`schema_version\`) or \`{\` (start of the sentinel).
-Review the implementation plan file at ${PLAN_FILE}. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
-The plan describes the codebase AFTER this PR lands. Files cited in \`### NEW:\` / \`### UPDATED:\` / \`### REWRITTEN:\` subsections have NOT yet been changed when you read them — the plan PROPOSES those changes. Do NOT flag a current-state behavior as a finding when the plan already addresses it; the plan's mention of current state is motivation for the change, not a claim about post-change state. Findings should target deficiencies of the PROPOSED change: missing steps, wrong target file, incomplete contracts, conflicts with other proposed changes, or actual code paths the plan fails to address.
+readability_style_file="${READABILITY_STYLE_FILE_ARG:-${READABILITY_STYLE_FILE:-$SCRIPT_DIR/../references/readability-style.md}}"
+readability_style=""
+if [[ -r "$readability_style_file" ]]; then
+    readability_style="$(cat "$readability_style_file" || true)"
+fi
+if [[ -z "$readability_style" ]]; then
+    larch_err "render-plan-review-prompt.sh: WARNING: readability preamble missing or empty: $readability_style_file"
+fi
+
+prompt_body=""
+IFS= read -r -d '' prompt_body <<'EOF' || true
+__FULL_ROLE__
+__TIER_EMPHASIS__
+Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel {"no_issues_found": true} (when you have none). Do not write any preamble, no "I'll review...", no "Examining the plan...", no "Looking at file X...". The first non-whitespace character of your response must be either `s` (start of `schema_version`) or `{` (start of the sentinel).
+Review the implementation plan file at __PLAN_FILE__. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
+The plan describes the codebase AFTER this PR lands. Files cited in `### NEW:` / `### UPDATED:` / `### REWRITTEN:` subsections have NOT yet been changed when you read them — the plan PROPOSES those changes. Do NOT flag a current-state behavior as a finding when the plan already addresses it; the plan's mention of current state is motivation for the change, not a claim about post-change state. Findings should target deficiencies of the PROPOSED change: missing steps, wrong target file, incomplete contracts, conflicts with other proposed changes, or actual code paths the plan fails to address.
 Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
 Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
 Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
@@ -124,4 +136,22 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 1	in_scope	important	correctness	scripts/foo.sh:42-45	Lock acquired before parameter validation	Race between two concurrent runs	Move lock acquisition after validation passes
 
 If no issues were identified, your entire response content MUST be exactly the single-line JSON literal {"no_issues_found": true} — no surrounding prose, no TSV records, no out-of-scope items, no trailing whitespace beyond a single newline. For Cursor's --output-format json invocation this becomes .result = "{\"no_issues_found\": true}" in Cursor's JSON envelope; the larch tooling extracts .result and JSON-parses it to detect the sentinel. For Codex (which writes plain stdout), the literal is captured verbatim. Do NOT modify files.
+__READABILITY_STYLE_BLOCK__
 EOF
+
+prompt_body="${prompt_body//__FULL_ROLE__/$full_role}"
+prompt_body="${prompt_body//__TIER_EMPHASIS__/$tier_emphasis}"
+prompt_body="${prompt_body//__PLAN_FILE__/$PLAN_FILE}"
+
+# Use %% / ## split instead of ${var//pat/rep} to avoid bash 5.x treating '&'
+# in the replacement as the matched text (same as sed's & behaviour).
+_rs_before="${prompt_body%%__READABILITY_STYLE_BLOCK__*}"
+_rs_after="${prompt_body##*__READABILITY_STYLE_BLOCK__}"
+if [[ -n "$readability_style" ]]; then
+    prompt_body="${_rs_before}${readability_style}${_rs_after}"
+else
+    # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
+    prompt_body="${_rs_before}Style requirements for finding text and OOS Descriptions: \`<READABILITY_STYLE>\`.${_rs_after}"
+fi
+
+printf '%s\n' "$prompt_body"

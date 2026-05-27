@@ -18,6 +18,18 @@ trap 'rm -rf "$TMPROOT"' EXIT
 
 PLAN_FILE="$TMPROOT/plan.txt"
 printf 'Implement reviewer prompt consolidation in skills/design/SKILL.md and scripts/launch-review.sh.\n' > "$PLAN_FILE"
+READABILITY_STYLE_FILE="$TMPROOT/readability-style.md"
+cat >"$READABILITY_STYLE_FILE" <<'EOF'
+# Fixture Readability Style
+
+Write with Strunk & White discipline.
+
+Use precedence: code references > meaning > brevity.
+
+Literal token example:
+`<READABILITY_STYLE>`
+EOF
+export READABILITY_STYLE_FILE
 SIMPLE_DT="$TMPROOT/simple-design"
 HARD_DT="$TMPROOT/hard-design"
 mkdir -p "$SIMPLE_DT" "$HARD_DT"
@@ -62,7 +74,7 @@ for archetype in "${archetypes[@]}"; do
     for vendor in "${vendors[@]}"; do
         out="$TMPROOT/${vendor}-${archetype}.txt"
         err="$TMPROOT/${vendor}-${archetype}.err"
-        bash "$RENDERER" --archetype "$archetype" --vendor "$vendor" --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" >"$out" 2>"$err" \
+        bash "$RENDERER" --archetype "$archetype" --vendor "$vendor" --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$out" 2>"$err" \
             || fail "$vendor/$archetype: renderer exited non-zero: $(cat "$err")"
 
         assert_contains "$vendor/$archetype focus enum" "code-quality / risk-integration / correctness / architecture / security" "$out"
@@ -83,6 +95,11 @@ for archetype in "${archetypes[@]}"; do
         assert_contains "$vendor/$archetype no-findings mutual exclusion" "no TSV records" "$out"
         assert_contains "$vendor/$archetype hard tier emphasis" "Tier emphasis: HARD" "$out"
         assert_count "$vendor/$archetype hard tier emphasis count" "Tier emphasis: HARD" 1 "$out"
+        assert_contains "$vendor/$archetype readability Strunk" "Strunk & White" "$out"
+        assert_contains "$vendor/$archetype readability precedence" "code references > meaning > brevity" "$out"
+        assert_contains "$vendor/$archetype readability literal-token fixture" "Literal token example:" "$out"
+        assert_count "$vendor/$archetype readability preamble count" "# Fixture Readability Style" 1 "$out"
+        assert_count "$vendor/$archetype readability literal-token count" '<READABILITY_STYLE>' 1 "$out"
     done
 done
 
@@ -91,14 +108,14 @@ for _arch_check in "arch:Emphasize maintainability" "edge:boundary conditions" "
     _arch="${_arch_check%%:*}"
     _phrase="${_arch_check#*:}"
     _out="$TMPROOT/full-role-${_arch}.txt"
-    bash "$RENDERER" --archetype "$_arch" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" >"$_out"
+    bash "$RENDERER" --archetype "$_arch" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$_out"
     assert_contains "$_arch full_role" "$_phrase" "$_out"
 done
 
 simple_out="$TMPROOT/simple.txt"
 hard_out="$TMPROOT/hard.txt"
-bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$SIMPLE_DT" >"$simple_out"
-bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" >"$hard_out"
+bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$SIMPLE_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$simple_out"
+bash "$RENDERER" --archetype arch --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$HARD_DT" --readability-style-file "$READABILITY_STYLE_FILE" >"$hard_out"
 assert_contains "simple emphasis" "Tier emphasis: SIMPLE" "$simple_out"
 assert_contains "simple minimum-change lane" "This is a minimum-change review lane." "$simple_out"
 assert_contains "simple locked phrase" "Bias your findings toward flagging" "$simple_out"

@@ -24,6 +24,20 @@ for needle in '<BRAINSTORM_FRAMING_PROMPT>' '<BRAINSTORM_SCOPE_PROMPT>' '<BRAINS
     grep -Fq -- "$needle" "$BM" || fail "brainstorm.md must reference token $needle"
 done
 
+# shellcheck disable=SC2016 # literal prompt token line, not shell expansion.
+style_line='Style requirements: `<READABILITY_STYLE>`.'
+style_count=$(grep -Fxc -- "$style_line" "$BP" || true)
+[[ "$style_count" == 3 ]] || fail "brainstorm-prompts.md must contain three exact readability style lines, got $style_count"
+
+for section in '<BRAINSTORM_FRAMING_PROMPT>' '<BRAINSTORM_SCOPE_PROMPT>' '<BRAINSTORM_PRAGMATIC_PROMPT>'; do
+    awk -v section="$section" -v style_line="$style_line" '
+        $0 ~ "^## `" section "`" { in_section=1; next }
+        in_section && /^---$/ { exit }
+        in_section && $0 == style_line { found=1 }
+        END { exit found ? 0 : 1 }
+    ' "$BP" || fail "brainstorm-prompts.md missing readability line in $section"
+done
+
 grep -Fq 'MANDATORY — READ ENTIRE FILE' "$BM" || fail "brainstorm.md missing MANDATORY directive"
 grep -Fq 'skills/design/references/brainstorm-prompts.md' "$BM" \
     || fail "brainstorm.md missing path literal skills/design/references/brainstorm-prompts.md"

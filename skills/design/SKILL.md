@@ -100,6 +100,8 @@ Before invoking `/design`, the orchestrator should internalize these questions. 
 
 Consolidated NEVER rules collected from the procedural steps below. Each rule states the WHY so edits can respect the original constraint. Inline step-local mentions remain where they carry load-bearing context.
 
+Read `skills/design/references/readability-style.md` as the single source of style truth before composing user-facing `/design` prose.
+
 1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE` (write `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel); HARD always runs 4 personality sketches. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
 
 2. **NEVER substitute Claude into a dialectic debate as the PRIMARY or 1ST-RETRY debater.** **Why:** the debate path uses externals (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; see GitHub issue #98. **How to apply:** the original launch and the 1st-retry launch in the per-side waterfall both target external tools only. **Exception:** Claude IS permitted as the 2nd-retry (FINAL) waterfall step for a side that has already failed with both externals — this trades a small attribution-leak risk for the chance to actually hear the antithesis instead of always defaulting to synthesis. The judge-panel path remains under the repo-wide replacement-first pattern (Claude permitted as a panel slot per `dialectic-protocol.md`).
@@ -788,6 +790,8 @@ Also read `$DESIGN_TMPDIR/dialectic-resolutions.md` if it exists and is non-empt
 
 Produce a plan that includes:
 
+**MANDATORY — READ ENTIRE FILE before drafting the implementation plan: `skills/design/references/readability-style.md`.**
+
 - **Files to modify/create**: Under a single **Files to modify/create** (or equivalent) section, use **per-file subsections** with headings exactly one path each: `### NEW:` for new files, `### UPDATED:` for modified files, and `### REWRITTEN:` for files rewritten in place. Each heading names **exactly one** file path (backticked path token); the description follows on subsequent lines. Heading parsing requires **at least one ASCII whitespace after `###`** before the keyword, and tolerates extra whitespace before `:` (per the scout regex in `scout-plan-archetypes-wrapper.sh` and `check-plan-size.sh`). Concatenated forms such as `###NEW:` are **not** headings for scout / plan-size counts.
 - **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.
 - **Edge cases**: Note important input/boundary conditions and how they'll be handled.
@@ -1074,6 +1078,8 @@ If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diag
 
 **Otherwise** (plan is architectural): generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
+**MANDATORY — READ ENTIRE FILE before composing architecture diagram prose: `skills/design/references/readability-style.md`.**
+
 Choose the most appropriate mermaid diagram type for the feature (e.g., `graph TD`, `flowchart`, `C4Context`, `classDiagram`, etc.). The diagram type is flexible — pick whatever best communicates the architecture.
 
 Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md` to avoid sanitizer rejection.
@@ -1119,6 +1125,8 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 ```
 
 Print any rejected plan review findings:
+
+**MANDATORY — READ ENTIRE FILE before composing rejected findings output: `skills/design/references/readability-style.md`.**
 
 1. Emit `ACTION=FINALIZE` to ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist and to validate non-empty finalize-required artifacts before Step 5:
    ```bash
@@ -1222,6 +1230,8 @@ At the Step 5b success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.comp
 ### 5c — Write `larch:plan` to GitHub + publish
 
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt:
+
+**MANDATORY — READ ENTIRE FILE before composing the final plan block: `skills/design/references/readability-style.md`.**
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
 2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:

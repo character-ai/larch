@@ -18,6 +18,10 @@
 
 **Personality prompts**: the four personality prompts are shared across external slots (Cursor/Codex) and Claude fallbacks (Agent tool). Token bodies are defined in `references/sketch-prompts.md`.
 
+**MANDATORY — READ ENTIRE FILE before assembling sketch prompts: `skills/design/references/readability-style.md`.**
+
+Before launching, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt body with the full preamble contents.
+
 ## SIMPLE Mode
 
 Use when `design_classification == SIMPLE`. This path uses 0 sketch agents: launch no external agents and no Claude fallback agents. Write these sentinel artifacts immediately, then skip Step 2a.5 and proceed directly to Step 2b:

@@ -33,10 +33,12 @@
 
    **Original-launch output paths**: `$DESIGN_TMPDIR/debate-<n>-<cursor|codex>-<thesis|antithesis>.txt` must match the tool that actually runs each side (`<n>` is the decision index printed in `contested-decisions.md`, not the rank-within-cap ordinal — stay consistent with existing run artifacts).
 
-2. **Per-decision prompt-file rendering**. For each queued decision, render the thesis and antithesis prompts (loaded from `references/dialectic-debate.md` loaded via this file's header MANDATORY directive) with `{FEATURE_DESCRIPTION}`, `{SYNTHESIS_TEXT}`, `{DECISION_BLOCK}`, `{CHOSEN}`, `{ALTERNATIVE}`, `{TENSION}`, `{AFFECTED_FILES}` substituted, and use the **Write tool** (not heredoc/cat) to write each rendered prompt to its own file:
+2. **Per-decision prompt-file rendering**. For each queued decision, render the thesis and antithesis prompts (loaded from `references/dialectic-debate.md` loaded via this file's header MANDATORY directive) with `{FEATURE_DESCRIPTION}`, `{SYNTHESIS_TEXT}`, `{DECISION_BLOCK}`, `{CHOSEN}`, `{ALTERNATIVE}`, `{TENSION}`, `{AFFECTED_FILES}` substituted. Before launching each debater, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the rendered prompt body with the full preamble contents. Then use the **Write tool** (not heredoc/cat) to write each rendered prompt to its own file:
    - `$DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt`
    - `$DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt`
    File-based prompt delivery eliminates shell-quoting hazards from synthesis/decision content that may contain `"`, `$()`, backticks, or newlines.
+
+**MANDATORY — READ ENTIRE FILE before rendering dialectic prompts: `skills/design/references/readability-style.md`.**
 
 3. **Parallel launch** — issue all queued launches in a **single Bash message** (up to 10 background calls: 5 decisions × 2 sides). Each launch uses `launch-review.sh` with `run_in_background: true` and `timeout: 1860000`. Substitute the `--timing-task-kind` literal directly per launch (do NOT use the `VAR=value cmd ... "$VAR"` env-prefix anti-pattern documented below).
 
