@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:197-202	Planned regression test pre-seeds waterfall-group-results.tsv before invoking the dispatcher, but dispatcher startup truncates that ledger whenever fallback_group is present	The new test can pass without exercising the proposed cp-failure fallback: the stale row is erased, the first grouped slot launches Codex normally, and the second reuses the fresh row	Revise the test so the stale ok row exists after dispatcher ledger initialization, or simulate deletion of a source output after an ok row is appended during the run; assert the stale-row path by requiring the expected relaunch count rather than merely at least one Codex launch
+
+1. [correctness] `scripts/dispatch-with-waterfall.sh:197-202`
+
+The proposed test setup pre-seeds `waterfall-group-results.tsv`, but this script immediately truncates that file at startup for any grouped manifest. That means the stale ledger row described in the plan will not be present when `find_group_ok_for_tool` runs, so the test does not actually cover the failing `cp` branch. With the current test assertions, the scenario could still pass on the old buggy implementation because Codex would simply launch normally for the first grouped slot.
+
+Suggested revision: make the stale row survive ledger initialization, or create the stale condition during the dispatcher run after an `ok` row is appended. Also tighten the counter assertion so it proves the stale-row reuse attempt fell through to relaunch, instead of only checking that Codex launched at least once.

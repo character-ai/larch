@@ -1,0 +1,14 @@
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	cursor-plan-edge	cursor	<TMPDIR>/cursor-plan-edge-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-shell-semantics	dyn-codex-plan-shell-semantics	codex	<TMPDIR>/codex-primary-plan-dyn-shell-semantics-output.txt	ok
+plan-dyn-ledger-state	dyn-codex-plan-ledger-state	codex	<TMPDIR>/codex-primary-plan-dyn-ledger-state-output.txt	ok
+plan-arch	cursor-plan-arch	codex	<TMPDIR>/cursor-plan-arch-output.txt	reused	codex-plan-arch
+plan-requirements	cursor-plan-requirements	codex	<TMPDIR>/cursor-plan-requirements-output.txt	reused	codex-plan-requirements
+plan-dyn-shell-semantics	dyn-cursor-plan-shell-semantics	codex	<TMPDIR>/cursor-plan-dyn-shell-semantics-output.txt	reused	dyn-codex-plan-shell-semantics
+plan-dyn-ledger-state	dyn-cursor-plan-ledger-state	codex	<TMPDIR>/cursor-plan-dyn-ledger-state-output.txt	reused	dyn-codex-plan-ledger-state
