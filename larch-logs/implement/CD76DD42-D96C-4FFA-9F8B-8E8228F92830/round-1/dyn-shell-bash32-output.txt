@@ -1,0 +1,12 @@
+Reviewing the branch diff and key Bash files for correctness and Bash 3.2 portability.
+Checking whether the mtime `!= 0` guard can leave a persistent orphan marker and reviewing the diff for `render-final-summary` changes.
+### In-Scope Findings
+
+- **correctness** `scripts/lib-design-reentry-guard.sh:619-622` — When the marker file exists but `_design_reentry_marker_mtime` cannot produce a usable timestamp (both `stat` forms fail or return non-numeric output, including the deliberate `!= "0"` rejection), `design_reentry_marker_hit` reports `REASON=absent` and admits the run without removing the file. A persistent unreadable marker therefore disables the guard for the full TTL window while leaving a misleading “absent” reason, which is fail-open relative to the stated goal of blocking same-session re-entry after a successful plan write. **Suggested fix:** On the `[ -f "$marker_path" ]` branch, if mtime resolution fails, best-effort `rm -f "$marker_path"` (or return a distinct `REASON=unreadable` and treat as hit) so a broken marker cannot silently neutralize the guard; add a harness fixture that creates a marker and forces both stat paths to fail (e.g., permission fixture where feasible).
+
+### Out-of-Scope Observations
+
+- Bash 3.2 portability on the changed shell surface looks sound: no `declare -A`, `mapfile`, `${var^^}`, `&>>`, or `coproc`; `[[ =~ ]]`, compound `stat`+regex guards, and `_rr_args+=(--note-lines-file …)` inside `invoke_render()`’s existing `local _rr_args=(…)` are valid for Bash 3.2 and match patterns already used in `scripts/check-reviewers.sh` and `scripts/test-session-env-roundtrip.sh`.
+- The `capture_fixture` `eval` + `set -euo pipefail` pattern in `scripts/test-design-reentry-guard.sh` correctly propagates assertion failures from F3–F8: inner fixtures wrap `design_reentry_marker_hit` with `set +e`/`hit_rc=$?` before re-enabling `set -e`, and post-stale `[ ! -f "$marker" ]` checks would fail the wrapper when cleanup does not occur.
+- For the originally reported post-completion re-entry where the issue already has `[DESIGNED]` or an in-body `larch:plan`, Step 0b sub-step **2.5** still runs before **2.6**, so behavior remains a title/plan bail—not the new session-cache banner. The branch mainly closes the rename-failed / plan-written gap described in the plan, not the primary `[DESIGNED]` path.
+- Commits on this branch: `8a94842e Add /design same-session re-entry guard`, `0acaae6c chore(larch-logs): flush implement run CD76DD42-D96C-4FFA-9F8B-8E8228F92830`.
