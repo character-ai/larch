@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:79-314	Tally fallback trap as planned is installed too late and can lose the original failing rc	Early exits before the current trap registration, such as mutual-exclusion, missing required args, unreadable ballot, and voter validation, still emit no TALLY_PLAN_REVIEW_STATUS; if the fallback is appended after rm -rf, $? can also become 0 before the conditional runs	Initialize _tally_status_emitted=false and WORKDIR="" near the top, install the EXIT trap before any nonzero exit path, capture local rc=$? as the first cleanup statement, rm WORKDIR only when nonempty, then emit tally-error when rc is nonzero and the guard is false
+1	in_scope	important	risk-integration	scripts/dispatch-plan-voters.sh:224-236	Per-voter KV helper shape conflicts with the existing stdout KV order contract	Sequential calls to a helper that emits all four KVs per voter cannot preserve today's interleaved Voter 2/Voter 3 path order or VOTER_PATHS_FILE placement, despite the plan requiring byte-identical behavior and order-regression coverage	Revise the plan so the helper emits the whole existing KV block in one function with VOTER_PATHS_FILE placement preserved, or leave the KV emit block inline and only extract effective-judge/degraded-warning logic
+
+1. [correctness] `skills/design/scripts/tally-plan-review.sh:79-314`
+
+Concern: the proposed always-emit `tally-error` fallback does not actually cover the named early exits if it only extends the current `cleanup` trap at line 314. Several `exit 2` paths happen before that trap exists. Also, a literal "add at the end of cleanup" implementation will run `rm -rf "$WORKDIR"` before testing `$?`, which can clobber the original failing exit code.
+
+Suggested revision: register the trap before any nonzero exit path and capture `rc=$?` as the first line of `cleanup`. Use a blank-safe `WORKDIR=""` initialization so early cleanup does not trip `set -u`.
+
+2. [risk-integration] `scripts/dispatch-plan-voters.sh:224-236`
+
+Concern: the proposed `voter_coverage_emit_voter_kvs(index, path, tool, status, parse_rate_status)` abstraction conflicts with the plan’s byte-identical stdout requirement. The current block emits `VOTER_2_PATH`, then `VOTER_3_PATH`, then `VOTER_PATHS_FILE`, then the remaining Voter 2/3 fields. A sequential per-voter helper would change that order.
+
+Suggested revision: either keep the KV block inline, or make the helper own the whole existing emit sequence so it can preserve the exact order and `VOTER_PATHS_FILE` placement.

@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:314-321	EXIT trap stays at line ~314 while most exit 2 paths are earlier	Plan claims tally-error on exits at 81/87/112/321 and the new test uses unreadable ballot (112), but trap is not registered until 314; only post-trap exit 321 gets fallback—contradicts always-emit contract and the proposed harness case	Register cleanup EXIT immediately after `_tally_status_emitted` init (post-mkdir); guard `rm -rf` with `[[ -n "${WORKDIR:-}" ]]`; or emit `tally-error` explicitly on each pre-trap exit 2 path
+2	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:311-313	`$?` checked at end of cleanup after `rm -rf`	After `rm -rf "$WORKDIR"`, `$?` reflects rm, not the script exit code; fallback may be skipped on real failures or fire incorrectly	Save `_exit_rc=$?` as the first line of `cleanup` and test `_exit_rc -ne 0` for the fallback emit
+3	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:53-57	`local _tally_status_emitted` in script main body	Bash rejects `local` outside functions; script errors when that line runs, blocking the always-emit change	Use `_tally_status_emitted=false` at top level (no `local`) or keep the guard as a variable `cleanup` can read
+4	in_scope	important	architecture	scripts/lib-voter-coverage.sh:15 / scripts/dispatch-plan-voters.sh:224-236	`voter_coverage_emit_voter_kvs` implies four consecutive KVs per voter	Dispatcher order is VOTER_1 block, VOTER_2/3_PATH, optional VOTER_PATHS_FILE, then VOTER_2/3 tool/status; three per-voter helper calls reorder stdout and break KV-order regression tests	Implement helper as cut-paste of today’s emit block (plan failure-mode #1) or split path vs status emitters; do not loop three identical per-voter emit calls
+
+**1. [correctness]** `skills/design/scripts/tally-plan-review.sh:314-321` — The plan extends the existing `cleanup` EXIT trap at ~314 but states that exits at 81, 87, 112, and 321 all emit `TALLY_PLAN_REVIEW_STATUS=tally-error`, and the new test targets unreadable ballot (112). In the current script, `trap cleanup EXIT` is at 314; exits at 74, 81, 87, 112, 199, 204, 244, 260, 288, and 306 all run before the trap is installed, so the fallback never runs on those paths. Only the split-failure exit at 321 is covered. `plan-review-loop.sh` already forces `tally-error` when `_tally_rc != 0`, but direct/harness callers of `tally-plan-review.sh` and the documented always-emit invariant would still be wrong.
+
+**Suggested revision:** Register `trap cleanup EXIT` right after initializing `_tally_status_emitted` (after `mkdir -p`), and make `cleanup` safe when `WORKDIR` is unset; or emit `tally-error` explicitly on every pre-trap `exit 2`.
+
+**2. [correctness]** `skills/design/scripts/tally-plan-review.sh:311-313` — The plan checks `$? != 0` at the *end* of `cleanup`, after `rm -rf "$WORKDIR"`. In Bash, `$?` in the trap is the triggering exit status only until another command runs; after `rm`, `$?` is rm’s status.
+
+**Suggested revision:** Capture `_exit_rc=$?` as the first statement in `cleanup`, then use `_exit_rc` for the fallback condition.
+
+**3. [correctness]** `skills/design/scripts/tally-plan-review.sh:53-57` — The plan specifies `local _tally_status_emitted=false` in the script’s main body. `local` is only valid inside functions and fails at runtime in Bash.
+
+**Suggested revision:** Use `_tally_status_emitted=false` without `local`, or restructure so the guard lives in a scope `cleanup` can read.
+
+**4. [architecture]** `scripts/lib-voter-coverage.sh` (proposed) / `scripts/dispatch-plan-voters.sh:224-236` — `voter_coverage_emit_voter_kvs` is described as emitting four KVs per voter index, but today’s order interleaves `VOTER_2_PATH`/`VOTER_3_PATH`, optional `VOTER_PATHS_FILE`, then `VOTER_2_*`/`VOTER_3_*` status fields. Three sequential helper calls would change stdout order (plan failure-mode #1 flags this but the API shape still invites the mistake).
+
+**Suggested revision:** One helper that mirrors the full 224–236 block verbatim, or separate path vs metadata emit steps matching the current sequence.
+
+[OUT_OF_SCOPE] `skills/design/scripts/tally-plan-review.md:44-45` — The plan adds an invariant that `TALLY_PLAN_REVIEW_STATUS` is emitted on every exit path, but the existing sidecar exempts missing-required-args/unknown-argument branches. The planned doc edits do not reconcile that exemption; consider narrowing the new invariant or updating line 44 in the same change.

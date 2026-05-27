@@ -1,0 +1,8 @@
+scripts/lib-voter-coverage.sh
+scripts/lib-voter-coverage.md
+scripts/dispatch-plan-voters.sh
+scripts/dispatch-plan-voters.md
+skills/design/scripts/tally-plan-review.sh
+skills/design/scripts/tally-plan-review.md
+scripts/test-dispatch-plan-voters.sh
+skills/design/scripts/test-tally-plan-review.sh

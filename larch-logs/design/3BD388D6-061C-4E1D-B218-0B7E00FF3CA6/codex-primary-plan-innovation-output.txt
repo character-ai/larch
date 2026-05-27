@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:79-112,310-314	Planned EXIT fallback is registered too late and may lose the original rc	Current early exits before the existing trap registration would still produce no TALLY_PLAN_REVIEW_STATUS, and checking $? at the end of cleanup after rm -rf can see rm's rc instead of the script failure	Initialize the guard and WORKDIR early, register the trap before the first possible non-zero exit, capture local rc=$? as the first cleanup statement, emit tally-error based on that rc, then return rc
+1	in_scope	latent	risk-integration	scripts/dispatch-plan-voters.sh:224-236	Per-voter KV helper shape conflicts with byte-identical stdout order	The proposed helper emits four grouped KVs per voter, but today's block interleaves VOTER_2_PATH, VOTER_3_PATH, VOTER_PATHS_FILE, then tool/status/parse-rate fields; a literal helper call sequence can silently reorder the public KV stream	Define the helper to emit the exact existing block order, or document the helper as lower-level primitives and keep VOTER_PATHS_FILE placement unchanged
+
+1. [correctness] `skills/design/scripts/tally-plan-review.sh:79-112,310-314`
+
+The tally status fallback plan does not actually cover the stated early exits. The existing trap is only installed around line 314, after the mutual-exclusion, required-argv, unreadable-ballot, invalid-voter, duplicate-voter, and missing-voter checks. Also, adding the fallback “at the end of cleanup” risks reading `$?` after `rm -rf "$WORKDIR"` has overwritten the original exit status.
+
+Suggested revision: make the status trap an early trap. Initialize `_tally_status_emitted=false` and `WORKDIR=""` before argv validation, define `cleanup()` so its first line is `local rc=$?`, conditionally remove `WORKDIR` only when set, emit `TALLY_PLAN_REVIEW_STATUS=tally-error` when `rc != 0` and the guard is false, then `return "$rc"`.
+
+2. [risk-integration] `scripts/dispatch-plan-voters.sh:224-236`
+
+The proposed `voter_coverage_emit_voter_kvs` API suggests grouped per-voter emission, but the current public KV order is not grouped that way. If implemented literally, it moves Voter 2 tool/status/parse-rate before `VOTER_3_PATH` and `VOTER_PATHS_FILE`, which conflicts with the plan’s “byte-identical” and regression-order goals.
+
+Suggested revision: either make one helper emit the whole current `224-236` block in the same order, including `VOTER_PATHS_FILE`, or keep the path-file placement inline and use narrower helper calls that cannot reorder the stream.

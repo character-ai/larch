@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:311-314	Proposed cleanup checks `$?` after `rm -rf "$WORKDIR"`	EXIT trap runs after `exit 2` or `set -e`; `rm` succeeds and sets `$?=0`, so `_tally_status_emitted=false && $? != 0` is false and `tally-error` is never emitted (including the post-trap `exit 2` at line 321)	Capture exit status first (`local _ec=$?` at top of `cleanup`, per `scripts/launch-review.sh:260`); test `_ec` instead of raw `$?`
