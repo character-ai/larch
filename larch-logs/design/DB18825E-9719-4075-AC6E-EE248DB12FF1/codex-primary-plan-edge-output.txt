@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/implement-bootstrap.sh:671-674; scripts/implement-admission.sh:207-210	Early Branch 2 rename can create a no-sentinel IMPLEMENTING issue that fresh admission rejects	With the proposed ordering, POSTED=false removes or never writes parent-issue.md after the title has already changed to [IMPLEMENTING]. If the run stops before same-session resume-tail recovery, the next /implement has no sentinel bypass and implement-admission exits 5 on the managed prefix, whereas the current POSTED=false path remains retryable as [DESIGNED].	Revise the Branch 2 failure contract before moving the rename: either keep the POSTED=false path retryable by not renaming before successful sentinel publication, or add a narrow recovery-preserving contract for this adopted-deferred state and cover it with a regression test.
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:699-702	Runtime Skill contract remains inconsistent with the proposed ordering	The plan says no SKILL.md changes, but the runtime orchestrator prompt still documents Branch 2 as larch-log init then post-tracking-issue then rename, and explicitly says POSTED=false means no rename. After the proposed change, future runs and maintainers get a false contract from the shipped skill surface.	Update the Bootstrap behavior map in skills/implement/SKILL.md to match the new ordering and the POSTED=false behavior, or keep the implementation consistent with the existing documented contract.
+
+1. **[correctness] `scripts/implement-bootstrap.sh:671-674`; `scripts/implement-admission.sh:207-210`**
+
+   The proposed Branch 2 move changes `POSTED=false` from “no sentinel, still `[DESIGNED]`, retryable” to “no sentinel, already `[IMPLEMENTING]`.” A fresh retry cannot use the sentinel resume bypass and `implement-admission.sh` rejects `[IMPLEMENTING]` as `managed-prefix`.
+
+   Suggested revision: preserve retryability for the deferred-post path before moving the rename, and add one focused regression for `POSTED=false` followed by a fresh admission/retry.
+
+2. **[risk-integration] `skills/implement/SKILL.md:699-702`**
+
+   The plan’s “no SKILL.md text changes” leaves the shipped runtime contract stale. The table still says Branch 2 posts metadata before rename and that `POSTED=false` means “No sentinel, no rename.”
+
+   Suggested revision: update that table as part of this PR if the new ordering is kept.

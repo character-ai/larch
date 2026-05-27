@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan explicitly documents this tradeoff as "per user, acceptable"; admission exit-5 consequence is derivable from the documented [IMPLEMENTING] title + removed sentinel state
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

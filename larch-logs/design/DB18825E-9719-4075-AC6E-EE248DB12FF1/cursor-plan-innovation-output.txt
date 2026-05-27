@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:701-702	Plan omits the authoritative Step 0 behavior map even though the proposed ordering makes it false	After the PR, the runtime renames before post-tracking-issue.sh, but the /implement contract would still say Branch 2 posts before rename and POSTED=false means no rename, so future orchestrator/debug work can follow the wrong deferred-path contract	Add the smallest SKILL.md table edit: Branch 2 open issue should state rename happens after OPEN/non-PR validation before RUN_ID/log/post, and the POSTED=false row should say no sentinel, rename already attempted, DEFERRED=true
+
+1. [risk-integration] `skills/implement/SKILL.md:701-702`
+
+The plan says no `SKILL.md` prose changes are expected, but these two rows are the live `/implement` behavior map and will be stale after the proposed move. This is not a broad documentation cleanup; it is the contract for exactly the path being changed.
+
+Suggested revision: include a minimal update to those two rows so the Branch 2 ordering and `POSTED=false` deferred behavior match the new runtime semantics.
