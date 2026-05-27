@@ -11,6 +11,7 @@ The harness unsets `LARCH_EXECUTION_ISSUES_LOG`, `SESSION_ENV_PATH`, and `IMPLEM
 Every `--section` shard asserts `VOTER_PATHS_FILE` points at a non-empty `code-voter-paths.txt`; `happy` additionally checks 3-line vs 2-line paths files for round 1 vs round 2.
 
 - `happy` (scenarios 1-3): all voters available; codex/cursor absent; voter1 fails; asserts no `*-vote-output-first-pass.txt` sidecars on the no-retry path.
+- `happy` also covers the #2973 voter `.done` barrier: delayed Voter 2/3 sentinel publication is waited on before size-based status checks, and an immediate-sentinel path proves the normal `_wait_rc=0` branch survives under `set -e`.
 - `edge-and-r3-claude` (scenarios 4-5 + Regression 3 claude case): symlink diff; 2 MB diff; production-shape claude voter parse-rate failure.
 - `retry-claude` (scenarios 6-7): claude voter parse-rate retry success (first-pass sidecar present, differs from promoted output); parse-rate retry failure (no sidecar).
 - `retry-codex-success` (scenario 8): codex voter parse-rate retry success (first-pass sidecar present, differs from promoted output).

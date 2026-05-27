@@ -35,6 +35,12 @@ The script always writes both waterfall slots into the NDJSON manifest and calls
 
 A `voter1_rc=1` exit with non-zero `output_bytes` and empty launcher-stderr indicates the claude CLI received an API-level error response (rate limit, server overload, or transient auth failure) rather than a wrapper validation failure; the CLI exits 1 with JSON error body on stdout while the `launch-claude-review.sh` shell wrapper passes all its own checks and emits nothing to stderr. This shape is distinct from `voter1_rc=2`, which indicates a wrapper validation failure caught inside `launch-claude-review.sh` before the CLI return. When only Voter 1 is affected, the remaining waterfall voters still run under the three-slot contract. See #2433 for the investigation that identified and characterized this pattern.
 
+## Voter `.done` sentinel barrier
+
+Before assigning size-based `failed` statuses, the dispatcher waits for the `.done` sentinel for each launched voter by calling [scripts/wait-for-reviewers.sh](wait-for-reviewers.md). The barrier is deliberately positioned after voter path/tool/status binding and before any `-s` output checks, so outputs that become visible while their sentinel is still pending are re-evaluated after completion (#2973).
+
+The wait captures stdout because `wait-for-reviewers.sh` reports `TIMEOUT <idx> <basename>` rows on stdout and exits 0 for normal timeout operation. Timeout rows are logged with `larch_err`; exit 1 is treated separately as a usage/config error and is also logged. Both paths are non-blocking: the dispatcher proceeds with whatever files exist and lets the post-barrier size checks preserve degraded-quorum behavior. The default timeout is 60 seconds and can be overridden with `LARCH_VOTER_WAIT_TIMEOUT`. The branch uses `if/fi` guards so the normal `_wait_rc=0` path remains safe under `set -e`.
+
 ## Output
 
 - `VOTER_1_PATH`, `VOTER_2_PATH`, `VOTER_3_PATH`: final output path per slot.

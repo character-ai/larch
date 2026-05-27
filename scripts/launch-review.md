@@ -83,6 +83,12 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   the parser diagnostic to `${OUTPUT}.sidecar` and writes no Codex token row.
   See [scripts/parse-codex-usage.md](parse-codex-usage.md) for the KV
   contract and fail-closed validation semantics.
+- On successful Codex or Cursor review launches, an empty `${OUTPUT}.sidecar`
+  is populated with an informational status marker
+  (`codex-status: ok...` or `cursor-status: ok...`). This distinguishes "no
+  stderr emitted during a successful run" from "sidecar was never populated";
+  no production consumer parses the marker, and vote tallying reads only the
+  main `.txt` output.
 - `--commit-count <n>` (optional): passed through to `render-specialist-prompt.sh`
   on `--agent-file` paths; when `1 ≤ n ≤ 5`, the rendered specialist prompt omits
   the `git log` instruction from its diff preamble. Stored in the specialist prompt

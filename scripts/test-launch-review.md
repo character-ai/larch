@@ -12,6 +12,8 @@
   post-processing, explicit empty `.result` marker promotion, outer retry
   metadata, prompt byte preservation, signal-trap sentinel publication,
   auth-preflight short-circuit, and dirty-tree sidecars.
+- Successful Codex and Cursor launches with no stderr populate their sidecars
+  with informational `codex-status: ok` / `cursor-status: ok` markers.
   model rejection, prompt hardening, token-session rehydration, timeout
   clamping, and snapshot guard behavior.
 

@@ -309,6 +309,7 @@ else
     fail "codex review argv should include trusted-project config override"
 fi
 assert_grep "codex review argv includes --json" "--json" "$ARGV"
+assert_grep "codex success sidecar marker" "codex-status: ok" "${OUTPUT}.sidecar"
 
 CODEX_LOCK_USER="larch-test-codex-$$"
 CODEX_LOCK_PATH="/tmp/larch-codex-serial-${CODEX_LOCK_USER}.lock"
@@ -1453,6 +1454,7 @@ PATH="$STUB_BIN:$PATH" "$LAUNCHER" --output "$OUT_B" --timeout 5 --prompt "origi
 assert_grep "case B outer launcher" "^OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-review.sh$" "${OUT_B}.meta"
 assert_grep "case B outer prompt" "^OUTER_LAUNCHER_PROMPT_FILE=${OUT_B}.prompt$" "${OUT_B}.meta"
 assert_grep "case B workdir" "^OUTER_LAUNCHER_WORKDIR=$(pwd -P)$" "${OUT_B}.meta"
+assert_grep "case B cursor success sidecar marker" "cursor-status: ok" "${OUT_B}.sidecar"
 # Issue #1529: the OUTPUT.prompt sidecar holds the user-original prompt
 # (no preamble) so collect-agent-results.sh empty-output retry can replay
 # via --prompt-file without double-prepending the HARD CONSTRAINTS block.

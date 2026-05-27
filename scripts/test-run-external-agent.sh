@@ -75,6 +75,45 @@ run_subject() {
     set -e
 }
 
+STDIN_PROBE="$TMPDIR/stdin-probe.sh"
+cat > "$STDIN_PROBE" <<'STDIN_PROBE_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+fd0=""
+case "$(uname -s)" in
+    Linux)
+        fd0=$(readlink "/proc/$$/fd/0" 2>/dev/null || true)
+        ;;
+    Darwin)
+        fd0=$(lsof -p "$$" -a -d 0 -F n 2>/dev/null | sed -n 's/^n//p' | head -1 || true)
+        ;;
+esac
+if [[ -z "$fd0" ]]; then
+    if IFS= read -r line; then
+        fd0="read:$line"
+    else
+        fd0="eof"
+    fi
+fi
+printf 'FD0=%s\n' "$fd0"
+STDIN_PROBE_EOF
+chmod +x "$STDIN_PROBE"
+
+run_stdin_probe() {
+    local label="$1"
+    local tool="$2"
+    local output="$3"
+    shift 3
+    local input="$TMPDIR/${label}.stdin"
+    printf 'wrapper-stdin-%s\n' "$label" > "$input"
+    RUN_STDOUT="$TMPDIR/${label}.stdout"
+    RUN_STDERR="$TMPDIR/${label}.stderr"
+    set +e
+    "$WRAPPER" --tool "$tool" --output "$output" --timeout 5 "$@" -- "$STDIN_PROBE" < "$input" >"$RUN_STDOUT" 2>"$RUN_STDERR"
+    RUN_CODE=$?
+    set -e
+}
+
 assert_no_artifacts() {
     local label="$1"
     local output="$2"
@@ -226,6 +265,37 @@ if [[ -e "${DEFAULT_OUT}.inner.done" ]]; then
 else
     pass
 fi
+
+# 15b-15f. Codex-specific stdin redirect applies to every spawn branch while
+# non-Codex tools continue to inherit wrapper stdin.
+STDIN_DEFAULT_OUT="$TMPDIR/stdin-default.txt"
+run_stdin_probe "stdin-codex-default" codex "$STDIN_DEFAULT_OUT"
+assert_equals "stdin-codex-default exit" "0" "$RUN_CODE"
+assert_grep "stdin-codex-default fd0" "/dev/null" "$RUN_STDOUT"
+
+STDIN_CAPTURE_OUT="$TMPDIR/stdin-capture.txt"
+run_stdin_probe "stdin-codex-capture" codex "$STDIN_CAPTURE_OUT" --capture-stdout
+assert_equals "stdin-codex-capture exit" "0" "$RUN_CODE"
+assert_grep "stdin-codex-capture fd0" "/dev/null" "$STDIN_CAPTURE_OUT"
+
+STDIN_CAPTURE_ONLY_OUT="$TMPDIR/stdin-capture-only.txt"
+run_stdin_probe "stdin-codex-capture-only" codex "$STDIN_CAPTURE_ONLY_OUT" --capture-stdout-only
+assert_equals "stdin-codex-capture-only exit" "0" "$RUN_CODE"
+assert_grep "stdin-codex-capture-only fd0" "/dev/null" "$STDIN_CAPTURE_ONLY_OUT"
+
+if command -v stdbuf >/dev/null 2>&1; then
+    STDIN_STDBUF_OUT="$TMPDIR/stdin-capture-only-stdbuf.txt"
+    RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF=1 run_stdin_probe "stdin-codex-capture-only-stdbuf" codex "$STDIN_STDBUF_OUT" --capture-stdout-only
+    assert_equals "stdin-codex-capture-only-stdbuf exit" "0" "$RUN_CODE"
+    assert_grep "stdin-codex-capture-only-stdbuf fd0" "/dev/null" "$STDIN_STDBUF_OUT"
+else
+    printf 'SKIP: stdbuf not on PATH\n'
+fi
+
+STDIN_CURSOR_OUT="$TMPDIR/stdin-cursor.txt"
+run_stdin_probe "stdin-cursor-control" cursor "$STDIN_CURSOR_OUT"
+assert_equals "stdin-cursor-control exit" "0" "$RUN_CODE"
+assert_grep "stdin-cursor-control meta tool" "^TOOL=cursor$" "${STDIN_CURSOR_OUT}.meta"
 
 # 16. Pre-launch cleanup removes stale public and inner sentinels in either mode.
 CLEANUP_OUT="$TMPDIR/cleanup-mode.txt"

@@ -26,6 +26,10 @@ The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%
 
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 
+### Codex stdin contract
+
+When `--tool codex` is used, every background spawn redirects stdin from `/dev/null`. The implementation lives at the launch site in `scripts/run-external-agent.sh` for the default and `--capture-stdout` branches, and inside `_launch_capture_stdout_only` for both the `stdbuf` and non-`stdbuf` arms. Codex keeps stdin open for possible interactive input; if it inherits the parent shell's stdin during a background run, parent-shell EOF can surface as `write_stdin failed: stdin is closed for this session` (#2962 / #2973). Other tools, including Cursor, continue to inherit stdin because they have not shown this Codex-specific stdin-close failure mode.
+
 ### Line buffering / `stdbuf` (`RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF`)
 
 When `--capture-stdout-only` is active, the wrapper spawns the child with shell redirect `> "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag"`. libc may fully buffer the writer even when the tool uses unbuffered Python (`-u`), so poll-based stall monitors that watch the output file's byte size can observe false stalls. If `RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF` is set to `1` and `stdbuf(1)` is on `PATH`, the wrapper wraps the child with `stdbuf -o0 -e0` for that capture path so line-buffered writers flush promptly (common on Linux CI). When `stdbuf` is unavailable or the env var is unset / not `1`, the wrapper runs the command without `stdbuf` (typical macOS).

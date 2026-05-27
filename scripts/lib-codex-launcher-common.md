@@ -11,6 +11,10 @@ fail-closed parser diagnostics to the sidecar when parsing fails, and otherwise
 either writes a `TOOL=codex` token-record sidecar or records a `vendor=codex`
 ledger row depending on whether the optional fifth argument is present.
 
+## Codex stdin contract
+
+All background Codex spawns inherit `/dev/null` as stdin at the actual spawn site in [scripts/run-external-agent.sh](run-external-agent.md), across the default, `--capture-stdout`, and `--capture-stdout-only` branches. This Codex-named launcher layer documents the contract so future Codex callers do not accidentally add an interactive stdin dependency while using the shared background wrapper.
+
 The library intentionally does not install traps or set shell options; callers own exit semantics.
 
 **Edit-in-sync**: `scripts/lib-external-launcher-common.sh`, `scripts/launch-review.sh --tool codex`, `scripts/launch-review.md`, `scripts/collect-agent-results.sh`, and `scripts/test-launch-review.sh`.

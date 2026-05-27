@@ -44,6 +44,46 @@ require_voter_paths_file_nonempty() {
     [[ -f "$f" && -s "$f" ]] || { echo "FAIL: $ctx VOTER_PATHS_FILE not a non-empty file: $f" >&2; exit 1; }
 }
 
+make_wait_barrier_plugin_root() {
+    local root="$1"
+    mkdir -p "$root/scripts" "$root/skills/shared/scripts"
+    ln -sf "$REPO_ROOT/scripts/wait-for-reviewers.sh" "$root/scripts/wait-for-reviewers.sh"
+    cat > "$root/skills/shared/scripts/render-voter-prompt.sh" <<'STUB_RENDER'
+#!/usr/bin/env bash
+printf 'stub voter prompt\n'
+STUB_RENDER
+    chmod +x "$root/skills/shared/scripts/render-voter-prompt.sh"
+    cat > "$root/scripts/dispatch-with-waterfall.sh" <<'STUB_WATERFALL'
+#!/usr/bin/env bash
+set -euo pipefail
+review_tmpdir="$(dirname "${LARCH_WAIT_BARRIER_VOTER2:?}")"
+case "${LARCH_WAIT_BARRIER_MODE:-delayed}" in
+    delayed)
+        (
+            sleep "${LARCH_WAIT_BARRIER_DELAY:-0.2}"
+            printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
+            printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
+            printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
+            printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
+        ) >/dev/null 2>&1 &
+        ;;
+    immediate)
+        printf 'FINDING_1: YES\n' > "$LARCH_WAIT_BARRIER_VOTER2"
+        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER2}.done"
+        printf 'FINDING_1: NO\n' > "$LARCH_WAIT_BARRIER_VOTER3"
+        printf '0\n' > "${LARCH_WAIT_BARRIER_VOTER3}.done"
+        ;;
+    timeout)
+        : > "$review_tmpdir/timeout-mode-observed"
+        ;;
+esac
+printf 'ALL_OUTPUT_FILES=%s %s\n' "$LARCH_WAIT_BARRIER_VOTER2" "$LARCH_WAIT_BARRIER_VOTER3"
+printf 'ALL_OUTPUT_TOOLS=codex cursor\n'
+printf 'DISPATCH_OK=true\n'
+STUB_WATERFALL
+    chmod +x "$root/scripts/dispatch-with-waterfall.sh"
+}
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/dispatch-code-voters.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-code-voters.XXXXXX")"
@@ -261,6 +301,44 @@ grep -Fq '3-judge voting panel' "$TMP/round2/claude-vote-prompt.txt" \
 require_voter_paths_file_nonempty "happy-round2" "$out"
 r2pf=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
 [[ $(wc -l < "$r2pf" | tr -d ' ') -eq 3 ]] || { echo "FAIL: round2 code-voter paths file expects 3 lines" >&2; exit 1; }
+
+wait_plugin="$TMP/wait-plugin"
+make_wait_barrier_plugin_root "$wait_plugin"
+wait_tmp="$TMP/wait-delayed"
+mkdir -p "$wait_tmp"
+wait_start=$(date +%s)
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$wait_plugin" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    LARCH_VOTER_WAIT_TIMEOUT=2 \
+    LARCH_WAIT_BARRIER_DELAY=1 \
+    LARCH_WAIT_BARRIER_VOTER2="$wait_tmp/codex-vote-output.txt" \
+    LARCH_WAIT_BARRIER_VOTER3="$wait_tmp/cursor-vote-output.txt" \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$wait_tmp" --codex-available true --cursor-available true)
+wait_end=$(date +%s)
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: delayed .done wait gate expected voter2 launched (got: $(grep VOTER_2_STATUS <<< "$out"))" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: delayed .done wait gate expected voter3 launched (got: $(grep VOTER_3_STATUS <<< "$out"))" >&2; exit 1; }
+if (( wait_end - wait_start < 1 )); then
+    echo "FAIL: delayed .done wait gate returned before delayed sentinels could be written" >&2
+    exit 1
+fi
+
+wait_immediate_tmp="$TMP/wait-immediate"
+mkdir -p "$wait_immediate_tmp"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_PLUGIN_ROOT="$wait_plugin" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    LARCH_VOTER_WAIT_TIMEOUT=2 \
+    LARCH_WAIT_BARRIER_MODE=immediate \
+    LARCH_WAIT_BARRIER_VOTER2="$wait_immediate_tmp/codex-vote-output.txt" \
+    LARCH_WAIT_BARRIER_VOTER3="$wait_immediate_tmp/cursor-vote-output.txt" \
+    "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$wait_immediate_tmp" --codex-available true --cursor-available true)
+grep -Fq 'DISPATCH_OK=true' <<< "$out" \
+    || { echo "FAIL: immediate wait gate should survive normal _wait_rc=0 path" >&2; exit 1; }
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" \
+    || { echo "FAIL: immediate wait gate expected voter2 launched" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then
