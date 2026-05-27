@@ -1,0 +1,14 @@
+Implemented the Gate B default flip and `--manual` / `-m` opt-out.
+
+Changed:
+- [scripts/write-run-params.sh](<OPERATOR_REPO_PATH>/scripts/write-run-params.sh) now persists `manual_gate_b`.
+- [skills/design/SKILL.md](<OPERATOR_REPO_PATH>/skills/design/SKILL.md) threads `--manual|-m` through argv docs, run-params writes, and recovery.
+- [approval-gates.md](<OPERATOR_REPO_PATH>/skills/design/references/approval-gates.md) now branches Gate B on `manual_gate_b`, auto-applies by default, and shares a named `### Apply-all body`.
+- Updated docs and structural tests across README, docs, and plan-review references.
+- Wrote the required manifest at `<TMPDIR>/manifest.json` with `status=complete`; no `qa-pending.json` was written.
+
+Verification:
+- `bash scripts/test-write-run-params.sh` passed.
+- `bash scripts/test-design-structure.sh` passed.
+- Stale manual-only contract grep returned no matches.
+- `bash scripts/relevant-checks.sh` passed all hooks except `lint-mermaid-fences`; that fails on all existing Mermaid fences in `docs/workflow-lifecycle.md` because local Chromium/Puppeteer cannot launch in this macOS sandbox. I reproduced the same launch failure with a minimal Mermaid chart, so this is not caused by the edited Mermaid syntax.

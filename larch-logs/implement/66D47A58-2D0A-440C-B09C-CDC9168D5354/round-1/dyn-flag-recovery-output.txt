@@ -1,0 +1,10 @@
+Reviewing the four-arm router-flag recovery block in `skills/design/SKILL.md` Step 0b against the branch diff.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** `skills/design/SKILL.md:233-248` — If `run-params.json` already exists but is corrupt/unparseable, the jq merge arm logs via `append-tool-failure.sh` and does not fall through to the `else` branch’s `write-run-params.sh` rewrite; a `/design --manual` run could still reach Gate B with `manual_gate_b` unset and coerce to auto-apply. This is the same pre-existing partition/brainstorm recovery limitation, not a missing fourth arm in this branch.
+- **correctness** `skills/design/SKILL.md:249-260` — The no-`run-params.json` recovery path ends with `write-run-params.sh … || true`, so a failed rewrite emits no operator-visible warning (unlike the `elif` jq-unavailable path at 262–263). Again pre-existing; `--manual-gate-b` is wired correctly when the fallback succeeds.
+- **correctness** `scripts/test-design-structure.sh:733-739` — Structural pins cover the jq filter and warning string but not the `--argjson merge_m` declaration; removing that line while keeping `$merge_m` in the filter would pass lint and fail at runtime. Coverage gap only; the current tree declares `merge_m` at `skills/design/SKILL.md:240` before the filter at 241.
+
+**Verification summary (four-arm recovery):** All four arms required by the scout are present and consistent with the partition/brainstorm precedent: outer guard ORs `manual_requested` (233), jq merge includes `manual_gate_b = (.manual_gate_b == true or $merge_m)` with `--argjson merge_m` declared on the same `jq` invocation (237–241), `elif` includes `manual_requested` and names manual in the warning (262–263), and the graceful-degrade fallback passes `--manual-gate-b "${manual_requested:-false}"` (259). Commits on branch: `d998883b` (feature), `6b40eb3a` (implement log).

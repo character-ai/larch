@@ -1,0 +1,3 @@
+Make Gate B auto-apply findings by default
+
+Add the --manual/-m opt-out, persist manual_gate_b in run-params, and update Gate B documentation so default auto-apply and manual Apply all share the same Apply-all body. Update docs and structural tests for the new flag surface.

@@ -1,0 +1,12 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Branch adds MANUAL_REQUESTED/session-env precedence and SECURITY.md guidance; residual subshell risk matches existing /design prelude contract
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Cross-tier invariant in approval-gates.md already states trivial uses the same Gate B mode branch
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Normative duplication across gates/SKILL/SECURITY is standard maintenance cost, not a branch defect
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Option (a) redundantly lists pipeline steps but normatively delegates once to Apply-all body
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Lowercase execute in Apply-all body is a trivial casing inconsistency
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Auto-apply without per-finding consent is the intentional default, documented in SECURITY.md with --manual opt-out
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Truncated excerpts are an intentional compact-visibility tradeoff; full review is available via --manual
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- Same-UID tmpdir trust model predates this branch and is already acknowledged in SECURITY.md
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Blocked-by edge is explicitly deferred to after PR open per plan acceptance criteria
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
