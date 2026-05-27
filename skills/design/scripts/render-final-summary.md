@@ -3,30 +3,19 @@
 **Purpose**: `/design` terminal summary dispatcher. Gathers token/timing JSON,
 parses `execution-issues.md`, `voting-tally.md`, accepted findings, and OOS URLs,
 then invokes `scripts/render-run-summary.sh --skill design` and (post-publish
-phase) renders the body to `final-summary.md`, streams it via stdout (or FD 3
-when `LARCH_QUIET_PID=$$`), and upserts
-`<!-- larch:final-summary v1 runid=… -->` via
-`scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only this
-helper). The calling skill's orchestrator then emits the full file body
-verbatim as plain chat markdown so the block is visible at top chat without
-depending on Bash-tool UI expansion.
+phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=… -->`
+via `scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only
+this helper).
 
 ## Callers (eleven)
 
-Step 0b title-filter refuse (`cancelled-title-filter`), session-cache re-entry refuse (`cancelled-reentry-guard`), clarify exit, already-planned cancel, tier-gate cancel; Step 1c/1d sprawl
-cancel; Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
+Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-planned cancel, tier-gate cancel; Step 1c/1d sprawl
+cancel; Step 1d.7 outline cancel (`cancelled-outline`); Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
 partition filing (`cancelled-decompose`, `approved-partition`); Step 5c happy path (two-phase: `--pre-publish-only`
 before `design-log-publish.sh`, `--post-publish-only` after); Step 5c
 plan-block-write failure (`--outcome failed-plan-write`).
 
-## Re-entry Guard Outcome
-
-`cancelled-reentry-guard` renders as `Refused (session-cache re-entry guard)`.
-When the caller exports `DESIGN_REENTRY_MARKER_PATH`, the rendered body appends
-guard context lines naming the session-cache guard and marker path so the final
-summary preserves the same operator-visible override target as the refusal
-banner. If that env var is absent, the helper reconstructs the path from
-`ISSUE_NUMBER` and `LARCH_DESIGN_REENTRY_GUARD_PPID`.
+The shell enum keeps file-order with newest cancelled entries appended before `failed-plan-write`; `SKILL.md` Step 0b documents the same token set alphabetically within `cancelled-*`.
 
 ## Split-path / pre–Step 0a
 
@@ -70,15 +59,6 @@ is preserved.
 Post phase prints `final-summary.md` exactly once via the FD-3-aware chat loop.
 The renderer itself is not called with `--print-stdout`, so the file and chat
 body share one source and fallback bodies are printed through the same path.
-
-## Top-chat visibility contract
-
-This script writes the canonical block to disk and to its print stream. The
-calling `/design` orchestrator, per `skills/design/SKILL.md` anti-halt prose, is
-responsible for reading `$DESIGN_TMPDIR/final-summary.md` after the Bash call
-and emitting its full body verbatim at top chat when the file is non-empty. FD-3
-versus stdout only controls the renderer stream; the orchestrator emission is
-the top-chat visibility channel.
 
 ## Exec issues / warnings (FINDING_13)
 

@@ -6,28 +6,19 @@
 
 **When to load**: before executing Step 1e, Step 3.5, or Step 4b.
 
-**Binding convention**: single normative source for the three gate prompts, the severity-classification rubric used in Gate B, the per-tier review-round cap, and the loop semantics between A/B/C.
+**Binding convention**: single normative source for the three gate prompts, their per-tier behavior, the severity-classification rubric used in Gate B, and the loop semantics between A/B/C.
 
-**Cross-tier invariant**: Gates apply uniformly across `--simple` and `--hard`. Gate B reads `accepted-plan-findings.md` produced by the full `plan-review.md` panel on both tiers. The auto-apply default and the `--manual` opt-out apply uniformly across both tiers. Gate B's mode branch reads `manual_gate_b` identically in both tiers.
-
-## Per-tier review-round cap
-
-Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-numeric as 0; log Warning if non-numeric) and `design_classification` via `read-design-classification.sh`. Cap: SIMPLE = 3, HARD = 5. When counter >= cap, the "Re-run review panel" option is omitted from the Gate C `AskUserQuestion`; only Approve / Discuss further remain, and any Gate C re-prompt after `Other` must preserve that omission. Step 3 also enforces the cap at every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits to Gate C with the breadcrumb `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**` when counter >= cap. SKILL.md Step 3 is the sole writer of the counter; `plan-review-loop.sh` is stateless w.r.t. the file. Gate A "Discuss more" loops remain uncapped.
+**Cross-tier invariant**: the gates apply uniformly across `--trivial`, `--simple`, and `--hard`. Gate A is re-entry-only after a plan exists; first-time direction-setting is handled by Step 1d.7 outline-approval across all tiers. Gate B and Gate C apply identically in all three tiers — the only difference is the source of findings (Gate B reads `accepted-plan-findings.md` produced by either `plan-review.md` full panel or `plan-review-quick.md` self-review). The auto-apply default and the `--manual` opt-out apply uniformly across `--trivial`, `--simple`, and `--hard`. In `--trivial` the source of `accepted-plan-findings.md` is the quick self-review (`plan-review-quick.md`); in `--simple` and `--hard` it is the full 10-reviewer panel. Gate B's mode branch reads `manual_gate_b` identically in all three tiers.
 
 ---
 
 ## Gate A — Discussion Mode Loop (Step 1e)
 
-**When**: after Step 1d Round 1 settles (decisions recorded to `$DESIGN_TMPDIR/discussion-round1.md`, or the short-circuit breadcrumb printed). Also re-entered from Gate B option (c) and Gate C option (b).
+**When**: **Re-entry-only**. Gate A is reached **only** from Gate B option (c) "switch to discussion mode" or Gate C option (b) "discuss further" (post-plan). First-time entry from Step 1d / Step 1d.5 is replaced by the **Step 1d.7 outline-approval gate** — see `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md`.
 
-**Behavior**: when the orchestrator believes the open scope/requirements questions are discussed, prompt the user via `AskUserQuestion`. The prompt has **two shapes** depending on entry path:
+**Behavior**: when the orchestrator believes the open scope/requirements questions are discussed on a post-plan re-entry, prompt the user via `AskUserQuestion`.
 
-**Shape 1 — first-time entry (from Step 1d)**: exactly two options.
-
-- **Ready for review** — exit Gate A; proceed to Step 2a (collaborative sketches → plan → Step 3 review).
-- **Discuss more** — remain in Gate A; conduct another discussion sub-round, then re-prompt.
-
-The **Show latest design proposal** option is **absent on first-time Gate A** because `$DESIGN_TMPDIR/plan.txt` does not yet exist (Step 2b has not run).
+**First-time entry**: handled by Step 1d.7 outline-approval, not by Gate A. See `design-outline.md` for the Approve/Refine/Cancel prompt.
 
 **Shape 2 — re-entry from Gate B(c) or Gate C(b) (post-plan)**: exactly three options.
 
@@ -37,11 +28,13 @@ The **Show latest design proposal** option is **absent on first-time Gate A** be
 
 The trigger for Shape 2 is exactly "Gate A entered from Gate B(c) or Gate C(b)" — the same trigger that already routes the discussion sub-round body to `discussion-round2.md`.
 
-Question text (both shapes): `"All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?"` Header: `"Design discussion"`.
+Question text: `"All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?"` Header: `"Design discussion"`.
 
 ### Discussion sub-round body
 
-When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with the **same Gate A shape as the prior prompt**: Shape 1 uses the same two-option `AskUserQuestion` (Ready for review / Discuss more); Shape 2 uses the same three-option `AskUserQuestion` (Show latest design proposal / Ready for review / Discuss more). Append resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` (or `discussion-round2.md` when re-entered post-review — see "Re-entry from Gate B/C" below) using the existing Q&A schema in `discussion-rounds.md`.
+When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with Shape 2, the same three-option `AskUserQuestion` (Show latest design proposal / Ready for review / Discuss more). Gate A re-entries always use Shape 2 because first-time entry is replaced by Step 1d.7. Append resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` using the existing Q&A schema in `discussion-rounds.md`.
+
+**Per-tier behavior**: Gate A fires only on re-entry. First-time entry across all three tiers (`--trivial` / `--simple` / `--hard`) is handled by Step 1d.7 outline-approval.
 
 ### Re-entry from Gate B(c) or Gate C(b)
 
@@ -52,7 +45,7 @@ When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") o
 ### Loop exit
 
 When the user picks **Ready for review**:
-- First-time entry (from Step 1d): proceed to Step 2a (sketches).
+- First-time entry: handled by Step 1d.7 outline-approval; Approve → Step 2a, Cancel → exit, Refine → loop.
 - Re-entry (from Gate B or Gate C): proceed directly to Step 3 (plan review) with the current `$DESIGN_TMPDIR/plan.txt`. Do NOT re-run sketches or dialectic.
 
 ---
@@ -127,7 +120,7 @@ After the chosen findings have been applied to `plan.txt` (either the full accep
 3. Rewrite `plan.txt` via the Write tool with duplicates removed.
 4. Print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran).
 5. Only after the breadcrumb proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
-6. Immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
+6. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
 7. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
 8. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
 
@@ -149,15 +142,15 @@ Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partiti
 
 ### Prompt
 
-`AskUserQuestion` with a cap-aware primary-option set plus the host's standard `Other` free-form channel:
+`AskUserQuestion` with three primary options plus the host's standard `Other` free-form channel:
 
 - **Approve final design** — exit Gate C; proceed to Step 5b publish (compose `composed-plan.md`, write `larch:plan` block to issue, run `design-log-publish.sh`, rename tracking issue).
 - **Discuss further** — re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`.
-- **Re-run review panel** — offer this option only when the current review-round count is still below the tier cap. Re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
+- **Re-run review panel** — re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
 
 Question text: `"Final design plan is ready. Approve, discuss further, or re-run the review panel against this plan?"` Header: `"Final design"`.
 
-**Opt-in to see the full plan via `Other`**: the user may pick `Other` on this prompt and request the full plan (whether or not large-plan summary mode applied on the prior emit). The executor MUST `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion`; the primary options remain cap-aware (Approve / Discuss further / optional Re-run review panel). This Gate C `Other` behavior is distinct from the Step 0 tier-gate `Other` (which is a terminal cancel) — Gate C `Other` never cancels `/design`; it only displays the full plan and re-prompts.
+**Opt-in to see the full plan via `Other`**: the user may pick `Other` on this prompt and request the full plan (whether or not large-plan summary mode applied on the prior emit). The executor MUST `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion`; the three primary options (Approve / Discuss further / Re-run review panel) are unchanged. This Gate C `Other` behavior is distinct from the Step 0 tier-gate `Other` (which is a terminal cancel) — Gate C `Other` never cancels `/design`; it only displays the full plan and re-prompts.
 
 ### Loop exit
 
@@ -171,6 +164,6 @@ When the user picks **Approve final design**, proceed to Step 5b. The skill no l
 
 2. **No preserved findings across review runs**: when Step 3 is re-entered from Gate C(c), the prior `accepted-plan-findings.md` / `rejected-findings.md` / `oos.md` / `voting-tally.md` are overwritten by the new run. Gate B operates on the latest run's artifacts only.
 
-3. **Discussion outputs accumulate**: `discussion-round1.md` is written by Step 1d / Gate A on first-time entry. `discussion-round2.md` accumulates entries across all Gate A re-entries from Gate B(c) / Gate C(b). Both files remain readable inputs to subsequent plan revisions.
+3. **Discussion outputs accumulate**: `discussion-round1.md` is written by Step 1d. Step 1d.7 writes the approved outline separately to `design-outline.md`. `discussion-round2.md` accumulates entries across all Gate A re-entries from Gate B(c) / Gate C(b). All three files remain readable inputs to subsequent plan revisions.
 
 4. **Gate B apply contract**: in default auto-apply mode (no `--manual` flag), Gate B revises `plan.txt` by applying every accepted in-scope finding after the compact findings list, with no user prompt. In manual mode (`--manual` set), Gate B revises `plan.txt` only when the user explicitly picks option (a) Apply all or option (b) per-finding Apply. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. The mode is sticky for the entire `/design` run with this precedence chain: sourced `MANUAL_REQUESTED=true` override, then in-memory `manual_requested=true` override, then persisted `run-params.json` as the authority when it is readable, else the default auto-apply contract (`manual_gate_b=false`) remains in force.

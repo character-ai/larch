@@ -337,8 +337,8 @@ grep -Fq '<BRAINSTORM_PRAGMATIC_PROMPT>' "$BRAINSTORM_PROMPTS" \
 # shellcheck disable=SC2016 # flags.md list marker uses backticks
 grep -Fq '`--brainstorm`:' "$FLAGS_MD" \
   || fail "(2754) flags.md missing --brainstorm bullet anchor"
-grep -Fq '1c→1d→1d.5→1e' "$SKILL_MD" \
-  || fail "(2754) SKILL.md anti-halt sequence missing 1d.5 transition"
+grep -Fq '1c→1d→1d.5→1d.7→2a' "$SKILL_MD" \
+  || fail "(2754) SKILL.md anti-halt sequence missing 1d.5→1d.7→2a transition"
 grep -Fq 'MANDATORY — READ ENTIRE FILE' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing MANDATORY directive"
 grep -Fq 'skills/design/references/brainstorm-prompts.md' "$BRAINSTORM_MD" \
@@ -367,6 +367,63 @@ for _bk in cursor-brainstorm codex-brainstorm; do
   grep -Fq "$_bk" "$TIMING_KINDS_SH" \
     || fail "(2754) scripts/lib-timing-kinds.sh missing timing kind: $_bk"
 done
+
+# Check 20 (#2974): Step 1d.7 outline approval replaces first-time Gate A.
+DESIGN_OUTLINE_MD="$REPO_ROOT/skills/design/references/design-outline.md"
+[[ -f "$DESIGN_OUTLINE_MD" ]] || fail "(2974) design-outline.md missing"
+line_1d5=$(grep -nF '<!-- step:1d.5 — Brainstorm Panel -->' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+line_1d7=$(grep -nF '<!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+line_1e=$(grep -nF '<!-- step:1e — Discussion Mode Gate (Gate A) -->' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$line_1d5" && -n "$line_1d7" && -n "$line_1e" ]] || fail "(2974) missing Step 1d.5, 1d.7, or 1e anchor"
+if (( line_1d5 >= line_1d7 || line_1d7 >= line_1e )); then
+  fail "(2974) Step 1d.7 anchor must appear between Step 1d.5 and Step 1e"
+fi
+grep -Fq $'1d.7\toutline' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
+  || fail "(2974) step-name-registry.tsv missing 1d.7 outline row"
+grep -Fq '> **🔶 /design 1d.7: outline**' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing outline banner"
+grep -Fq '⏩ 1d.7: outline — skipped (already approved; .outline-approved present)' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing approved-sentinel skip breadcrumb"
+# shellcheck disable=SC2016 # literal env var reference pinned in markdown
+grep -Fq '$DESIGN_TMPDIR/.outline-approved' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing .outline-approved sentinel reference"
+grep -Fq 'proceed to Step 2a' "$DESIGN_OUTLINE_MD" \
+  || fail "(2974) design-outline.md missing Step 2a skip handoff"
+if grep -Fq 'proceed to Step 1e' "$DESIGN_OUTLINE_MD"; then
+  fail "(2974) design-outline.md must not hand off outline approval to Step 1e"
+fi
+grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
+  || fail "(2974) SKILL.md missing updated anti-halt sequence"
+if grep -Fq '1c→1d→1d.5→1e' "$SKILL_MD"; then
+  fail "(2974) SKILL.md still contains stale 1d.5→1e anti-halt sequence"
+fi
+grep -Fq '**Narrow exception — Step 1d.5 and Step 1d.7 only**' "$SKILL_MD" \
+  || fail "(2974) SKILL.md missing Step 1d.5 and Step 1d.7 anti-halt exception"
+grep -Fq 'Re-entry-only' "$APPROVAL_MD" \
+  || fail "(2974) approval-gates.md Gate A must be re-entry-only"
+grep -Fq 'design-outline.md' "$APPROVAL_MD" \
+  || fail "(2974) approval-gates.md must cross-reference design-outline.md"
+if grep -Fq 'first-time entry from Step 1d / Step 1d.5, proceed to Step 2a' "$APPROVAL_MD"; then
+  fail "(2974) approval-gates.md still contains stale first-time Gate A proceed language"
+fi
+grep -Fq 'before entering Step **1d.7**' "$BRAINSTORM_MD" \
+  || fail "(2974) brainstorm.md missing Step 1d.7 terminal handoff"
+if grep -Fq 'before entering Step **1e**' "$BRAINSTORM_MD"; then
+  fail "(2974) brainstorm.md still mentions Step 1e terminal handoff"
+fi
+grep -Fq 'Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off' "$DISCUSSION_MD" \
+  || fail "(2974) discussion-rounds.md missing Step 1d.7 short-circuit/cap successor"
+if grep -Fq 'proceed to Step 1e (Gate A)' "$DISCUSSION_MD"; then
+  fail "(2974) discussion-rounds.md still routes Step 1d exits to Step 1e"
+fi
+grep -Fq 'cancelled-outline' "$REPO_ROOT/skills/design/scripts/render-final-summary.sh" \
+  || fail "(2974) render-final-summary.sh missing cancelled-outline enum"
+# shellcheck disable=SC2016 # Markdown enum literal in SKILL.md
+grep -Fq 'cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard' "$SKILL_MD" \
+  || fail "(2974) SKILL.md SUMMARY_OUTCOME enum missing cancelled-outline in documented order"
+grep -Fq 'first-time entry handled by Step 1d.7; proceed to Step 2a' "$SKILL_MD" \
+  || fail "(2974) SKILL.md missing Step 1e defensive entry guard"
+echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 
 # Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.
 grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \

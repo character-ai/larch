@@ -49,7 +49,7 @@ After each `AskUserQuestion` answer is recorded, apply the **same semantic spraw
 
 ## Short-circuit
 
-If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)` and proceed to Step 1e (Gate A). Step 1e always fires after Step 1d, including on this short-circuit path — users may still pick "Discuss more" to add context before sketches.
+If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off. Step 1d.7 always fires on new-plan runs after Step 1d / Step 1d.5, including this short-circuit path; users may use **Refine outline** there to add context before sketches.
 
 ## Output
 
@@ -66,7 +66,7 @@ This file captures scope boundaries and hard constraints only — NOT architectu
 
 ## Cap
 
-At most **7 `AskUserQuestion` calls** in this step. If more than 7 decision branches remain after 7 questions, print: `⏩ Remaining scope questions deferred to implementation.` and proceed to Step 1e (Gate A) — users may pick "Discuss more" there to surface any deferred branches before sketches launch.
+At most **7 `AskUserQuestion` calls** in this step. If more than 7 decision branches remain after 7 questions, print: `⏩ Remaining scope questions deferred to implementation.` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off — users may pick **Refine outline** there to surface any deferred branches before sketches launch.
 
 ## Terse answers
 
@@ -112,7 +112,7 @@ If all plan decisions are already covered by Round 1, no reviewer findings chall
 
 ## Output
 
-The caller (Gate A) selects the target file: write resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` on first-time Gate A entry (when the body is invoked because Step 1d Round 1's main flow ran short), or to `$DESIGN_TMPDIR/discussion-round2.md` on post-plan Gate A re-entries (from Gate B(c) or Gate C(b)). Use the same Q&A format as Round 1:
+The caller (Gate A) selects the target file: Gate A is re-entry-only, so post-plan Gate A re-entries (from Gate B(c) or Gate C(b)) write resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md`. Step 1d remains the only first-time writer for `$DESIGN_TMPDIR/discussion-round1.md`. Use the same Q&A format as Round 1:
 
 ```markdown
 ## Decision 1: <short title>

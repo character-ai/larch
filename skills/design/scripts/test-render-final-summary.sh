@@ -15,7 +15,7 @@ D="$TMP/design"
 mkdir -p "$D"
 
 cat >"$D/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}
+{"classification":"SIMPLE","workflow_path":"SIMPLE"}
 JSON
 cat >"$D/voting-tally.md" <<'EOF'
 # Tally
@@ -35,7 +35,6 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std" 2>/dev/null
 
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'missing Cost bullet'
-grep -Fq -- 'SIMPLE (no sketches; full review)' "$D/final-summary.md" || fail 'missing SIMPLE summary label'
 grep -Fq '<!-- larch:run-summary v=1 -->' "$D/final-summary.md" || fail 'missing sentinel'
 cmp -s "$D/final-summary.md" "$std" || fail 'stdout vs final-summary.md byte mismatch'
 pass 'approved happy path + cmp'
@@ -47,26 +46,13 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-PRE" \
 grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail 'pre-publish path missing Cost bullet'
 pass 'pre-publish writes file without chat output'
 
-std_reentry="$TMP/std-reentry.log"
-DESIGN_REENTRY_MARKER_PATH="$HOME/.cache/larch/sessions/design-completed-2935-12345" \
-DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-REENTRY" \
-    "$SUBJECT" --outcome cancelled-reentry-guard --mode SIMPLE --post-publish-only >"$std_reentry" 2>/dev/null
-grep -Fq -- '- **Outcome**: cancelled-reentry-guard' "$D/final-summary.md" || fail 'reentry guard summary missing Outcome bullet'
-grep -Fq -- '- **Mode**: Refused (session-cache re-entry guard)' "$D/final-summary.md" || fail 'reentry guard summary missing guard mode'
-grep -Fq -- '- **Guard**: session-cache re-entry guard' "$D/final-summary.md" || fail 'reentry guard summary missing Guard note'
-grep -Fq -- '- **Marker**: `'"$HOME/.cache/larch/sessions/design-completed-2935-12345"'`' "$D/final-summary.md" || fail 'reentry guard summary missing marker path'
-cmp -s "$D/final-summary.md" "$std_reentry" || fail 'reentry guard stdout/file mismatch'
-pass 'reentry guard outcome summary'
-
-cat >"$D/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"HARD","partition_requested":false,"brainstorm_requested":false}
-JSON
-DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-HARD" \
-    "$SUBJECT" --outcome approved --mode HARD --pre-publish-only >/dev/null 2>/dev/null
-grep -Fq -- 'HARD (4 sketches; full review)' "$D/final-summary.md" || fail 'missing HARD summary label'
-cat >"$D/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}
-JSON
+outline_std="$TMP/std-outline.log"
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-OUTLINE" \
+    "$SUBJECT" --outcome cancelled-outline --mode SIMPLE --post-publish-only >"$outline_std" 2>/dev/null
+grep -Fq -- '- **Outcome**: cancelled-outline' "$D/final-summary.md" || fail 'cancelled-outline missing Outcome bullet'
+grep -Fq -- '- **Cancel site**: Step 1d.7 outline gate' "$D/final-summary.md" || fail 'cancelled-outline missing Step 1d.7 outline phrasing'
+cmp -s "$D/final-summary.md" "$outline_std" || fail 'cancelled-outline stdout/file mismatch'
+pass 'cancelled-outline outcome renders'
 
 PLUGIN_STUB="$TMP/plugin"
 mkdir -p "$PLUGIN_STUB/scripts"
@@ -362,25 +348,6 @@ fi
 grep -Fq -- '--cost-unavailable' "$TMP/render-badjson-args.log" || fail 'malformed token JSON path must pass --cost-unavailable to renderer'
 pass 'malformed token JSON renders Cost N/A'
 
-BAD_CLASS_D="$TMP/design-bad-class"
-mkdir -p "$BAD_CLASS_D"
-cat >"$BAD_CLASS_D/run-params.json" <<'JSON'
-{"schema_version":2,"design_classification":"INVALID","partition_requested":false,"brainstorm_requested":false}
-JSON
-cat >"$BAD_CLASS_D/voting-tally.md" <<'EOF'
-# Tally
-EOF
-: >"$BAD_CLASS_D/accepted-plan-findings.md"
-: >"$BAD_CLASS_D/oos-accepted-design.md"
-: >"$BAD_CLASS_D/execution-issues.md"
-: >"$BAD_CLASS_D/oos-issues-created.md"
-BAD_CLASS_STDERR="$TMP/bad-class.stderr"
-DESIGN_TMPDIR="$BAD_CLASS_D" ISSUE_NUMBER="" SESSION_ID="RUN-BAD-CLASS" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --pre-publish-only >/dev/null 2>"$BAD_CLASS_STDERR"
-grep -Fq '**⚠ read-design-classification: design_classification missing or invalid; defaulting to HARD**' "$BAD_CLASS_STDERR" \
-    || fail 'classification fallback warning must surface on stderr'
-pass 'classification fallback warning surfaces'
-
 EMPTY_MODE_D="$TMP/design-empty-mode"
 mkdir -p "$EMPTY_MODE_D"
 : >"$EMPTY_MODE_D/execution-issues.md"
@@ -408,15 +375,6 @@ grep -Fq -- '- **Outcome**: cancelled-title-filter' "$D/final-summary.md" || fai
 grep -Fq -- '- **Mode**: Refused (title-filter)' "$D/final-summary.md" || fail 'missing Refused (title-filter) mode line'
 pass 'cancelled-title-filter outcome'
 
-unset DESIGN_REENTRY_MARKER_PATH
-LARCH_DESIGN_REENTRY_GUARD_PPID=4242 DESIGN_TMPDIR="$D" ISSUE_NUMBER="2935" SESSION_ID="RUN-FIX" \
-    "$SUBJECT" --outcome cancelled-reentry-guard --mode SIMPLE --post-publish-only >/dev/null 2>&1
-grep -Fq '## /design run RUN-FIX — cancelled-reentry-guard' "$D/final-summary.md" || fail 'cancelled-reentry-guard title missing'
-grep -Fq -- '- **Outcome**: cancelled-reentry-guard' "$D/final-summary.md" || fail 'missing cancelled-reentry-guard outcome bullet'
-grep -Fq -- 'session-cache re-entry guard' "$D/final-summary.md" || fail 'cancelled-reentry-guard summary missing guard name'
-grep -Fq -- "$HOME/.cache/larch/sessions/design-completed-2935-4242" "$D/final-summary.md" || fail 'cancelled-reentry-guard summary missing marker path'
-pass 'cancelled-reentry-guard outcome'
-
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
     "$SUBJECT" --outcome approved-partition --mode SIMPLE --post-publish-only >/dev/null 2>&1
 grep -Fq '## /design run RUN-FIX — approved-partition' "$D/final-summary.md" || fail 'approved-partition title missing'
@@ -435,7 +393,6 @@ for summary_outcome in \
     cancelled-already-planned \
     cancelled-tier-gate \
     cancelled-title-filter \
-    cancelled-reentry-guard \
     cancelled-sprawl \
     cancelled-plan-size-hard \
     cancelled-decompose \
@@ -459,7 +416,7 @@ do
         grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
     fi
 done
-pass 'eleven-outcome post-publish matrix'
+pass 'ten-outcome post-publish matrix'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
 pass 'render-final-summary append warning redacts stderr'
