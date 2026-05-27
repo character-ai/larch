@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan deliberately chose no shared helper; each site uses contextually different function names, paths, and labels making extraction non-trivial
+FINDING_3: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- two-case symmetric pattern does not warrant extracting a helper; added indirection for marginal gain
+FINDING_5: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- test pattern likely pre-existing and not introduced by this PR; ownership unclear
+FINDING_6: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- redundant assignment is harmless and likely pre-existing; nit severity does not warrant a fix
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- behavioral stub coverage already catches dropped flags indirectly when stubs emit JSONL only on --json and write output-last-message path
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- risk is hypothetical and conditional on a future allowlist change; current behavior is safe
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- no events on crash is correct behavior; adding sentinel rows adds complexity without proportionate benefit
+FINDING_17: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=good UNCERTAIN=true
+FINDING_18: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true

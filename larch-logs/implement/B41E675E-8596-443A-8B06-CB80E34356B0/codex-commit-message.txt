@@ -1,0 +1,5 @@
+Fix orphan script edge cases
+
+Reject missing get-issue-state flag values before shifting argv, capture Codex JSONL usage streams separately from wrapper diagnostics at the remaining non-launcher sites, and allow scout-archetype-yield.tsv through round log publication while keeping raw events streams local.
+
+Add focused regression coverage for the parser guards, Codex telemetry buckets, legacy final-message logs, and events.jsonl exclusion rules.
