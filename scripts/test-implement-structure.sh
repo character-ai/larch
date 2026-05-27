@@ -52,10 +52,13 @@ grep -Fq 'FINAL_BAIL_REASON=main-branch-post-dispatch' "$SKILL_MD" \
 STALL_RECOVERY_MD="$REPO_ROOT/skills/implement/references/stall-recovery.md"
 grep -Fq 'BAIL_FAILURE_DETAIL_LOG' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must route BAIL_FAILURE_DETAIL_LOG into Step 18a classification"
+# shellcheck disable=SC2016
 grep -Fq '[--failure-detail-log "$VALIDATED_BAIL_FAILURE_DETAIL_LOG"]' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must document validated --failure-detail-log handoff for classify"
+# shellcheck disable=SC2016
 grep -Fq 'retry-policy --class "$FAILURE_CLASS"' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must mechanically gate dispatch with retry-policy"
+# shellcheck disable=SC2016
 grep -Fq 'If `attempt_count >= MAX_ATTEMPTS`, do not dispatch; continue directly to terminal-failure handling.' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must fail closed when retry caps are exhausted before dispatch"
 grep -Fq 'PHASE=ci-initial' "$STALL_RECOVERY_MD" \
