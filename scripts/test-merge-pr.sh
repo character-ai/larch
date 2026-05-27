@@ -676,6 +676,28 @@ assert_command_count "post_force_push_unknown_recovers_behind" "gh.log" "pr view
 assert_stdout_line_count "post_force_push_unknown_recovers_behind" '^ERROR=$' "1" "Q2f: post-force-push BEHIND emits exactly one empty ERROR line"
 
 echo
+echo "Sub-test Q2g: post-force-push EMPTY state recovers to BEHIND (Inline-triage rule 2: FINDING_8)"
+run_case "post_force_push_empty_recovers_behind" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    GH_VIEW_SECOND_HEAD_OID=cccc3333 \
+    GH_VIEW_SECOND_MERGE_STATE=__EMPTY__ \
+    GH_VIEW_FLIP_AT_CALL=5 \
+    GH_VIEW_FLIP_MERGE_STATE=BEHIND \
+    GH_CHECKS_SECOND_JSON='[{"name":"ci","bucket":"pending"}]' \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    STUB_PUSH_EXIT=0 \
+    STUB_BRANCH_NAME=feature-branch \
+    STUB_REMOTE_OID=cccc3333 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "post_force_push_empty_recovers_behind" "MERGE_RESULT=main_advanced" "Q2g: empty after force-push resolving to BEHIND emits main_advanced"
+assert_stdout_contains "post_force_push_empty_recovers_behind" "ERROR=" "Q2h: post-force-push empty BEHIND recovery preserves empty ERROR"
+assert_no_merge_commands "post_force_push_empty_recovers_behind" "Q2i: post-force-push empty BEHIND skips merge commands"
+assert_command_count "post_force_push_empty_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "Q2j: pr view called 5x before BEHIND recovery from empty"
+assert_stdout_line_count "post_force_push_empty_recovers_behind" '^ERROR=$' "1" "Q2k: post-force-push empty BEHIND emits exactly one empty ERROR line"
+
+echo
 echo "Sub-test R: post-force-push UNKNOWN persists, fails after 3 retries (#2342)"
 run_case "post_force_push_unknown_retry_failure" \
     env GH_MERGE_STATE=CLEAN \
