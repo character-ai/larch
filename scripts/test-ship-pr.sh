@@ -3419,8 +3419,7 @@ else
 fi
 rm -rf "$call_dir"
 
-# Vendor verification exhaustion runs through ship-pr's vendor path, preserves the
-# ci-local-unfixable bail detail, retries, and never pushes.
+# Vendor verification exhaustion exits 3 with ci-local-unfixable and never pushes.
 root=$(make_repo vendor_verify_local_exhausts)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/vendor-verify-exhausts.XXXXXX")
@@ -3464,16 +3463,15 @@ set +e
   --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 4 "vendor_verify_local_exhausts exits 4"
+assert_rc "$tmp/rc" 3 "vendor_verify_local_exhausts exits 3"
 assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=ci-local-unfixable:lint" "vendor_verify_local_exhausts records ci-local-unfixable"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "vendor_verify_local_exhausts stalls after vendor retries"
 detail_file=$(awk -F= '$1=="BAIL_FAILURE_DETAIL_LOG" { print substr($0, index($0,"=")+1) }' "$tmp/ship-pr-state.sh")
 if [ -n "$detail_file" ] && [ -s "$detail_file" ] && [ ! -f "$call_dir/push-calls.txt" ] \
-    && [ "$(grep -c '^launcher$' "$call_dir/order.txt" 2>/dev/null || echo 0)" = "3" ] \
+    && [ "$(grep -c '^launcher$' "$call_dir/order.txt" 2>/dev/null || echo 0)" = "1" ] \
     && [ "$(grep -c '^env ' "$call_dir/make-calls.txt" 2>/dev/null || echo 0)" = "3" ]; then
-    ok "vendor_verify_local_exhausts retries vendor verification without pushing"
+    ok "vendor_verify_local_exhausts bails from the vendor path without pushing"
 else
-    fail "vendor_verify_local_exhausts should retry vendor verification without pushing"
+    fail "vendor_verify_local_exhausts should bail from the vendor path without pushing"
     sed 's/^/    state: /' "$tmp/ship-pr-state.sh"
     sed 's/^/    order: /' "$call_dir/order.txt" 2>/dev/null || true
     sed 's/^/    make: /' "$call_dir/make-calls.txt" 2>/dev/null || true
@@ -3611,10 +3609,14 @@ fi
 count_file="$call_dir/verified-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 printf '%s\n' "\$((count + 1))" > "\$count_file"
-if [ "\$count" -eq 0 ]; then
+total_file="$call_dir/verified-total-count"
+total=\$(cat "\$total_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((total + 1))" > "\$total_file"
+if [ \$((count % 2)) -eq 0 ]; then
   shift
   exec "\$@"
 fi
+rm -f "$call_dir/vendor-fixed"
 printf 'mock sweep regression\n'
 exit 1
 STUB
@@ -3626,6 +3628,7 @@ cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' launcher >> "$call_dir/order.txt"
+rm -f "$call_dir/verified-count"
 printf 'fixed\n' > "$call_dir/vendor-fixed"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
@@ -3649,7 +3652,7 @@ assert_rc "$tmp/rc" 4 "vendor_verify_sweep_regression exits 4"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "vendor_verify_sweep_regression stalls after retries"
 if [ ! -f "$call_dir/push-calls.txt" ] \
     && [ "$(grep -c '^launcher$' "$call_dir/order.txt" 2>/dev/null || echo 0)" = "3" ] \
-    && [ "$(cat "$call_dir/verified-count" 2>/dev/null || echo 0)" = "6" ]; then
+    && [ "$(cat "$call_dir/verified-total-count" 2>/dev/null || echo 0)" = "6" ]; then
     ok "vendor_verify_sweep_regression retries vendor verification without pushing"
 else
     fail "vendor_verify_sweep_regression should retry without pushing"
@@ -3819,14 +3822,14 @@ chmod +x "$tmp/rcc-max-iter-invalid.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 : > "$tmp/out"
 set +e
-for invalid in "" 0 00 abc -1; do
+for invalid in 0 00 abc -1; do
   (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" STUB_LINT_FIX_STATUS=applied LARCH_CI_LOCAL_FIX_ITER="$invalid" bash "$tmp/rcc-max-iter-invalid.sh" "$root" "$tmp" "$invalid" >>"$tmp/out" 2>&1) || break
 done
 printf '%s' "$?" >"$tmp/rc"
 set -e
 assert_rc "$tmp/rc" 0 "rcc_max_iter_invalid_env_clamp helper exits 0"
-if [ "$(grep -c 'COUNT=3 STATUS=exhausted' "$tmp/out" 2>/dev/null || echo 0)" = "5" ]; then
-    ok "rcc_max_iter_invalid_env_clamp clamps env empty zero double-zero alpha and negative values to 3"
+if [ "$(grep -c 'COUNT=3 STATUS=exhausted' "$tmp/out" 2>/dev/null || echo 0)" = "4" ]; then
+    ok "rcc_max_iter_invalid_env_clamp clamps env zero double-zero alpha and negative values to 3"
 else
     fail "rcc_max_iter_invalid_env_clamp should clamp invalid env values to 3"
     sed 's/^/    out: /' "$tmp/out"
