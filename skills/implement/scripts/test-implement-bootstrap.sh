@@ -574,6 +574,9 @@ out=$(run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc
 assert_rc "$rc" 0 "GP-adopt-session-id exit 0"
 assert_contains "RUN_ID=sessstub" "$out" "GP-adopt-session-id run id"
 assert_contains "RUN_ID=sessstub" "$(cat "$SANDBOX_TMP/parent-issue.md")" "GP-adopt-session-id sentinel run id"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_occurrences 'token-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP-adopt-session-id bootstrap token mark once"
+assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP-adopt-session-id bootstrap timing mark once"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP2 sentinel resume ---
@@ -587,6 +590,9 @@ assert_contains "BRANCH_SELECTED=branch-1-resume" "$out" "GP2 branch"
 assert_contains "ISSUE_NUMBER=123" "$out" "GP2 issue"
 assert_contains "RUN_ID=resume1" "$out" "GP2 run id"
 assert_contains "DEFERRED=false" "$out" "GP2 not deferred"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_occurrences 'token-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP2 bootstrap token mark once"
+assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "GP2 bootstrap timing mark once"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP3 forked_target ---

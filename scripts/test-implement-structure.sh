@@ -391,20 +391,6 @@ grep -Fq '### Step 0 — tracking issue adoption' "$SKILL_MD" \
   || fail "SKILL.md must contain Step 0 tracking issue adoption heading"
 grep -Fq '### Plan materialization from issue body' "$SKILL_MD" \
   || fail "SKILL.md must contain plan materialization heading"
-read -r tok0_track <<'EOF'
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue"
-EOF
-read -r time0_track <<'EOF'
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue"
-EOF
-grep -Fq "$tok0_track" "$SKILL_MD" \
-  || fail "SKILL.md must retain token-ledger Step 0 — tracking issue mark"
-grep -Fq "$time0_track" "$SKILL_MD" \
-  || fail "SKILL.md must retain timing-ledger Step 0 — tracking issue mark"
-grep -Fq '# token-mark Step 0 — tracking issue' "$SKILL_MD" \
-  || fail "SKILL.md must retain token-mark Step 0 — tracking issue comment pair"
-grep -Fq '# timing-mark Step 0 — tracking issue' "$SKILL_MD" \
-  || fail "SKILL.md must retain timing-mark Step 0 — tracking issue comment pair"
 read -r tok0_plan_bootstrap <<'EOF'
 "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization"
 EOF

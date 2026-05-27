@@ -190,7 +190,7 @@ if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ] && command -v jq >/dev/null 2>&1
       and ((.claude.totals.total // 0) == 0)
       and (if $codex_present then ((.codex.totals.total // 0) == 0) else true end)
       and (if $cursor_present then ((.cursor.totals.total // 0) == 0) else true end)
-      and ($codex_present or $cursor_present or ((.claude.totals.total // 0) == 0))
+      and ($codex_present or $cursor_present)
     ' "$TOKEN_JSON" >/dev/null 2>&1; then
         TOKEN_REPORT_CORRUPT_ZERO=true
         larch_err "$TOKEN_REPORT_CORRUPT_ZERO_WARNING"
