@@ -132,10 +132,33 @@ validate_failure_detail_log() {
     return 0
 }
 
+validate_tmpdir_local_file() {
+    local tmpdir=$1 path=$2 flag_name=$3 dir base real_dir real_path tmp_real
+    [ -n "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name is required"; return 1; }
+    case "$path" in
+        /*) ;;
+        *) larch_err "stall-recovery-report.sh: $flag_name must be absolute"; return 1 ;;
+    esac
+    [ -e "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name missing"; return 1; }
+    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be regular"; return 1; }
+    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
+    [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+    dir=$(dirname "$path")
+    base=$(basename "$path")
+    real_dir=$(canonical_dir "$dir") || { larch_err "stall-recovery-report.sh: $flag_name directory not canonical"; return 1; }
+    tmp_real=$(canonical_dir "$tmpdir") || { larch_err "stall-recovery-report.sh: --implement-tmpdir directory not canonical"; return 1; }
+    real_path="$real_dir/$base"
+    case "$real_path" in
+        "$tmp_real"/*) ;;
+        *) larch_err "stall-recovery-report.sh: $flag_name outside implement tmpdir"; return 1 ;;
+    esac
+    return 0
+}
+
 resume_hint_for() {
     local class=$1 step=$2 phase=$3
     case "$class" in
-        contract-failure|unrecoverable) printf 'none\n'; return 0 ;;
+        contract-failure|same-cause-repeat|unrecoverable) printf 'none\n'; return 0 ;;
     esac
     case "$step" in
         3|6) printf 'none\n'; return 0 ;;
@@ -163,10 +186,6 @@ classify_from_evidence() {
     case "$bail" in
         adopted-issue-closed|tracking-init-failed) printf 'unrecoverable\n'; return 0 ;;
     esac
-    if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network/auth issue|timed? out|connection reset|temporary failure|tls handshake|github unavailable|http 5[0-9][0-9]'; then
-        printf 'transient-infra\n'
-        return 0
-    fi
     if printf '%s\n' "$lowered" | grep -Eq 'pytest|jest|vitest|rspec|go test|test failed|failing test|tests failed'; then
         printf 'test-failure\n'
         return 0
@@ -179,7 +198,22 @@ classify_from_evidence() {
         printf 'dispatch-failure\n'
         return 0
     fi
+    if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network(/auth)? issue|network (error|failure|unavailable)|timed? out|timeout|connection (reset|refused)|temporary failure|tls handshake|dns failure|name resolution|github unavailable|github api unavailable|service unavailable|http 5[0-9][0-9]|auth(entication)? (error|failure|failed)'; then
+        printf 'transient-infra\n'
+        return 0
+    fi
     printf 'unrecoverable\n'
+}
+
+safe_bail_reason_value() {
+    case "${1:-}" in
+        "") printf '\n' ;;
+    esac
+    if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[a-z0-9][a-z0-9._-]{0,63}$'; then
+        printf '%s\n' "$1"
+    else
+        printf 'redacted\n'
+    fi
 }
 
 latest_attempt_signature() {
@@ -195,7 +229,7 @@ latest_attempt_signature() {
 
 cmd_classify() {
     local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file=""
-    local state_file session_env state_present=false session_present=false evidence=""
+    local state_file session_env evidence=""
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
     local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
     local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig
@@ -216,7 +250,6 @@ cmd_classify() {
     state_file="$tmpdir/ship-pr-state.sh"
     session_env="$tmpdir/session-env.sh"
     if [ -f "$state_file" ]; then
-        state_present=true
         validate_ship_pr_state "$state_file"
         state_stall_step=$(kv_get "$state_file" STALL_STEP "")
         state_phase=$(kv_get "$state_file" PHASE "")
@@ -226,7 +259,6 @@ cmd_classify() {
     fi
 
     if [ -r "$session_env" ]; then
-        session_present=true
         session_stall_step=$(kv_get "$session_env" STALL_STEP "")
         session_phase=$(kv_get "$session_env" PHASE "")
         session_stall_tracking=$(kv_get "$session_env" STALL_TRACKING "false")
@@ -261,9 +293,7 @@ $(cat "$state_file")"
 $(cat "$session_env")"
     fi
 
-    if [ "$state_present" = false ] && [ "$session_present" = false ]; then
-        failure_class="unrecoverable"
-    elif ! truthy "$stall_tracking"; then
+    if ! truthy "$stall_tracking"; then
         failure_class="unrecoverable"
     else
         failure_class=$(classify_from_evidence "$stall_step" "$phase" "$bail_reason" "$evidence")
@@ -286,10 +316,10 @@ $(cat "$session_env")"
     emit_kv FAILURE_CLASS "$failure_class"
     emit_kv FAILURE_SIGNATURE "$signature"
     emit_kv RESUME_HINT "$resume_hint"
-    emit_kv STALL_STEP "$stall_step"
-    emit_kv PHASE "$phase"
+    emit_kv STALL_STEP "$(safe_step_value "$stall_step")"
+    emit_kv PHASE "$(safe_phase_value "$phase")"
     emit_kv STALL_TRACKING "$stall_tracking"
-    emit_kv BAIL_REASON "$bail_reason"
+    emit_kv BAIL_REASON "$(safe_bail_reason_value "$bail_reason")"
     emit_kv EXIT_CODE "$exit_code"
 }
 
@@ -565,7 +595,7 @@ cmd_issue_input_file() {
     [ -n "$class_file" ] || die_missing "--classification-file is required"
     [ -r "$class_file" ] || die_missing "--classification-file must be readable"
     [ -n "$body_file" ] || die_missing "--body-file is required"
-    [ -r "$body_file" ] || die_missing "--body-file must be readable"
+    validate_tmpdir_local_file "$tmpdir" "$body_file" "--body-file" || exit 1
     [ -n "$out_file" ] || out_file="$tmpdir/stall-recovery-issue-input.md"
     failure_class=$(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")")
     step=$(safe_step_value "$(kv_get "$class_file" STALL_STEP "unknown")")

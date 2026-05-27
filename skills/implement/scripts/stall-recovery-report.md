@@ -7,6 +7,7 @@
 - `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
   - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress a session-env stall.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
+  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only; non-allowlisted bail reasons are redacted.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; symbolic/terminal `STALL_STEP` values also fail closed to `none` unless they are explicitly mapped.
 - `init-attempts --attempts-file <path>`
@@ -22,6 +23,7 @@
   - Writes the sanitized terminal-failure comment, including the allowlisted retry-attempt table.
 - `issue-input-file --implement-tmpdir <path> --classification-file <path> --body-file <path> [--output-file <path>]`
   - Writes a batch-mode `/larch:issue` input file. The first line is `### [Bug] /implement stall: <class> at <step>`.
+  - `--body-file` must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
 - `lint`
   - Asserts allowlist parity: TSV surface keys == helper code surface keys == this document's surface keys.
 
@@ -63,13 +65,13 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 
 ## Classifier Evidence
 
-- `transient-infra`: rate-limit, `network/auth issue`, timeout, connection reset, TLS handshake, temporary GitHub/API outage, or HTTP 5xx evidence in the validated failure-detail log or state/session state.
+- `transient-infra`: rate-limit, `network/auth issue`, broader `network error` / `network failure` / auth-failure wording, timeout, connection reset/refused, DNS/name-resolution failures, TLS handshake, temporary GitHub/API outage, service unavailable, or HTTP 5xx evidence in the validated failure-detail log or state/session state.
 - `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
 - `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
 - `contract-failure`: `STALL_STEP=3` or `STALL_STEP=6`; these are checks contracts where prompt-side recovery edits are intentionally forbidden.
-- `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature.
-- `unrecoverable`: no recoverable classifier matched, the ship state is missing, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`).
+- `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step.
+- `unrecoverable`: no recoverable classifier matched, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`).
 
 ## Retry Caps
 

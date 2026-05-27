@@ -15,22 +15,22 @@ Step 18a loads this file only when `STALL_TRACKING` is true in any layer. It is 
 5. **Dispatch on `RESUME_HINT`.** Branch exhaustively:
    - `step2-impl`: main Claude reads `$IMPLEMENT_TMPDIR/plan.txt`, performs the implementation edits inline, runs the relevant-checks helper, commits as Step 4 does, then continues into `step5-review` and `step8-shippr`.
    - `step5-review`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round <next>` using the Family B background+monitor pair with the six `LARCH_*` breadcrumb paths under `$IMPLEMENT_TMPDIR/breadcrumbs/`. On success, continue into `step8-shippr`.
-   - `step8-shippr`: re-invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh` with the same Step 8+ background+monitor envelope. Exit 6 maps to a `transient-infra` retry. Exit 4 maps to `same-cause-repeat` once when the signature matches; otherwise terminal failure.
+   - `step8-shippr`: re-invoke `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh` with the same Step 8+ background+monitor envelope. Exit 6 maps to a `transient-infra` retry. Exit 4 maps to `same-cause-repeat` once when the signature matches; the follow-up classification emits `RESUME_HINT=none`, so do not redispatch the same step automatically.
    - `none`: do not dispatch; continue directly to terminal-failure handling.
 
-6. **Retry loop.** Record every attempt with `record-attempt`, re-classify after failures to detect `same-cause-repeat`, and enforce the per-class caps from `skills/implement/scripts/stall-recovery-report.md`. Use `scripts/sleep-seconds.sh 5` only for `transient-infra` retry delays. Continue to success or terminal failure.
+6. **Retry loop.** Record every attempt with `record-attempt`, re-classify after failures to detect `same-cause-repeat`, and enforce the per-class caps from `skills/implement/scripts/stall-recovery-report.md`. Use `scripts/sleep-seconds.sh 5` only for `transient-infra` retry delays. For `same-cause-repeat`, take the documented alternate strategy once: reread `larch:plan`, restart the failed step from scratch, and persist that attempt outcome before deciding terminal failure. Continue to success or terminal failure.
 
 7. **Success path.** Clear disk before memory:
    1. Compose new `ship-pr-state.sh` content with `STALL_TRACKING=false` and `STALL_STEP=` cleared.
    2. Write to `ship-pr-state.sh.tmp.<rand>` in the same directory.
-   3. Re-read the temp with `read-session-env-key.sh --key STALL_TRACKING`; assert `false`.
+   3. Re-read the temp with `read-session-env-key.sh --file "$tmp" --key STALL_TRACKING`; assert `false`.
    4. `mv -f` the temp over `ship-pr-state.sh`.
-   5. Re-read the destination with `read-session-env-key.sh --key STALL_TRACKING`; assert `false`.
+   5. Re-read the destination with `read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING`; assert `false`.
    6. Only then clear the in-memory orchestrator variable.
    7. If the temp read, `mv -f`, or destination read fails, leave both layers true and route to terminal failure.
    Continue to Step 18b teardown.
 
-8. **Terminal-failure path.** Run `bug-comment --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`, evaluate `DRY_RUN_DECISION`, then either post `gh issue comment` in the larch dev clone path or print the comment in chat for consumer repos. Before any GitHub comment call, load `ISSUE_NUMBER` from `$IMPLEMENT_TMPDIR/stall-recovery-issue.env` when that file exists so the exhaustion comment targets the recovery-created issue instead of any unrelated in-memory issue number. Leave `STALL_TRACKING=true`. Continue to Step 18b teardown.
+8. **Terminal-failure path.** Before comment generation, ensure `STALL_TRACKING=true` is durable on disk, not memory-only: if `$IMPLEMENT_TMPDIR/ship-pr-state.sh` exists, rewrite it with a key-based update that keeps `STALL_TRACKING=true` and refreshes the current `STALL_STEP` / `PHASE`; otherwise seed the canonical minimal Step-8-shape `ship-pr-state.sh` used by the pre-Step-8 stall paths so Step 18b's on-disk `[STALLED]` rename gate can observe the stall. Then run `bug-comment --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`, evaluate `DRY_RUN_DECISION`, then either post `gh issue comment` in the larch dev clone path or print the comment in chat for consumer repos. Before any GitHub comment call, load `ISSUE_NUMBER` from `$IMPLEMENT_TMPDIR/stall-recovery-issue.env` when that file exists so the exhaustion comment targets the recovery-created issue instead of any unrelated in-memory issue number. Leave `STALL_TRACKING=true`. Continue to **Step 18b — Teardown** for the title-prefix terminal transition.
 
 9. **Continue to teardown.** Regardless of success or terminal failure, continue to the existing Step 18b teardown body: token/timing refresh, `restore-finalize-state.sh`, then `implement-finalize.sh teardown`. Teardown branches on the on-disk `STALL_TRACKING` value unchanged.
 
