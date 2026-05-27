@@ -42,6 +42,7 @@ validate_ledger_override() {
 resolve_workflow_fallback() {
     local ledger="$1"
     local candidate=""
+    local workflow=""
     if [[ -n "${DESIGN_TMPDIR:-}" && -f "${DESIGN_TMPDIR}/run-params.json" ]]; then
         candidate="${DESIGN_TMPDIR}/run-params.json"
     else
@@ -49,7 +50,39 @@ resolve_workflow_fallback() {
         [[ -f "$candidate" ]] || candidate=""
     fi
     [[ -n "$candidate" ]] || return 0
-    "$SCRIPT_DIR/read-design-classification.sh" "$candidate" 2>/dev/null
+    if command -v python3 >/dev/null 2>&1; then
+        workflow=$(python3 - "$candidate" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    raise SystemExit(1)
+for key in ("workflow_path", "design_classification"):
+    value = data.get(key)
+    if value in ("SIMPLE", "HARD"):
+        print(value)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+)
+        case "$workflow" in SIMPLE|HARD) printf '%s\n' "$workflow"; return 0 ;; esac
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        workflow=$(jq -r '(.workflow_path // .design_classification // empty)' "$candidate" 2>/dev/null || true)
+        case "$workflow" in SIMPLE|HARD) printf '%s\n' "$workflow"; return 0 ;; esac
+    fi
+    if grep -qE '"workflow_path"[[:space:]]*:[[:space:]]*"SIMPLE"' "$candidate" 2>/dev/null || \
+       grep -qE '"design_classification"[[:space:]]*:[[:space:]]*"SIMPLE"' "$candidate" 2>/dev/null; then
+        printf '%s\n' SIMPLE
+        return 0
+    fi
+    if grep -qE '"workflow_path"[[:space:]]*:[[:space:]]*"HARD"' "$candidate" 2>/dev/null || \
+       grep -qE '"design_classification"[[:space:]]*:[[:space:]]*"HARD"' "$candidate" 2>/dev/null; then
+        printf '%s\n' HARD
+        return 0
+    fi
+    "$SCRIPT_DIR/read-design-classification.sh" "$candidate"
 }
 
 ledger_from_dump() {
@@ -97,7 +130,7 @@ render_report() {
     local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
     local workflow_override=""
     [[ -f "$ledger" ]] || unavailable "ledger not found"
-    if workflow_override=$(resolve_workflow_fallback "$ledger" 2>/dev/null); then
+    if workflow_override=$(resolve_workflow_fallback "$ledger"); then
         case "$workflow_override" in SIMPLE|HARD) ;; *) workflow_override="" ;; esac
     else
         workflow_override=""

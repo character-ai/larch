@@ -80,7 +80,7 @@ Writer contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env
 Before invoking `/design`, the orchestrator should internalize these questions. They bias every subsequent choice — sketch synthesis, plan drafting, review-finding acceptance — and are the thinking pattern this skill transfers along with its mechanical procedures.
 
 - **What is the smallest change that achieves the goal?** Resist adding abstractions, flags, or layers the feature description did not ask for. Every additional moving part is a new failure mode.
-- **Where is anchoring risk highest?** The first plausible approach locks architectural direction unless the sketch phase forces alternatives. Do NOT skip Step 2a (anti-pattern rule #1).
+- **Where is anchoring risk highest?** The first plausible approach locks architectural direction unless the sketch phase forces alternatives. Do NOT skip Step 2a (anti-pattern rule #1) unless `design_classification == SIMPLE`, where the user-confirmed no-sketch carve-out applies.
 - **What hidden constraints must this preserve?** Canonical sources, CI invariants, downstream parsers, contract tokens, byte-preserved reference files. Identify them before edits, not during plan review.
 - **Which tradeoffs should surface to the user versus be quietly chosen?** Scope and hard-constraint decisions surface via Round 1 discussion; architectural preferences belong to the sketch phase — not to the user.
 - **Which anti-patterns in the NEVER list below apply to this specific feature?** Re-read the Anti-patterns section for every non-trivial feature; muscle memory for the six rules is the expert delta this skill aims to transfer.
@@ -709,7 +709,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 **Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
 
-**Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). Persist the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` so later Bash fences in this step rehydrate the same `STEP3_REVIEW_CAP_REACHED` / `STEP3_REVIEW_ROUND_NUM` state instead of relying on a prior fence's shell locals. If the cap is reached, print `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**`, skip `plan-review-loop.sh` entirely, and jump to Step 3b/4/4b with existing artifacts.
+**Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). Persist the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` so later Bash fences in this step rehydrate the same `STEP3_REVIEW_CAP_REACHED` / `STEP3_REVIEW_ROUND_NUM` state instead of relying on a prior fence's shell locals. The guard computes the pending round number, but `review-round-count.txt` is updated only after the panel launch path returns without `LOOP_STATUS=panel-failed`, so failed panel attempts do not consume cap budget. If the cap is reached, print `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**`, skip `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -737,7 +737,6 @@ STEP3_REVIEW_ROUND_NUM=
 EOF
 else
   _next_round=$((_round_count + 1))
-  printf '%s\n' "$_next_round" >"$_round_count_file"
   cat >"$_step3_cap_env" <<EOF
 STEP3_REVIEW_CAP_REACHED=false
 STEP3_REVIEW_ROUND_NUM=$_next_round
@@ -814,6 +813,11 @@ else
     printf '%s\n' "**⚠ plan-review-loop.sh exited with rc=$_plan_review_rc and unexpected LOOP_STATUS=$LOOP_STATUS**"
   fi
 fi
+if [[ "${STEP3_REVIEW_CAP_REACHED:-false}" != true && "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
+  if [[ "$LOOP_STATUS" != "panel-failed" ]]; then
+    printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$DESIGN_TMPDIR/review-round-count.txt"
+  fi
+fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
@@ -836,6 +840,8 @@ The driver runs `check-mid-run-dirty-tree.sh --mode checkpoint` after reviewer c
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`; tally is not executed) — proceed to Step 3.5.
 
+If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then Step 4, then Gate C with the existing plan + artifacts.
+
 > **Continue to Step 3.5 IMMEDIATELY.** The plan-review result is not terminal — proceed to the post-review chooser.
 
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->
@@ -850,6 +856,8 @@ Print: `> **🔶 /design 3.5: gate B**`
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
 
 Execute the Gate B body in `approval-gates.md` (which requires **Step 2b.5** immediately after each settled `ACTION=EMIT_PLAN` re-emit — see that reference for the exact Apply-all / Go-through-each wording). Gate B replaces the previous "Design Discussion Round 2" auto-flow: it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation. When Gate B resolves `manual_gate_b=false`, it prints the compact findings list and then revises the plan by applying every accepted finding (the user retains `Discuss further` access via Gate C). When Gate B resolves `manual_gate_b=true`, revision only happens when the user explicitly picks Apply all or per-finding Apply. See `approval-gates.md` §Gate B for the normative branch. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles (auto-apply, Apply all, or full one-by-one without abort) **and Step 2b.5 returns**, proceed to Step 3b.
+
+When Step 3 set `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, Gate B is skipped entirely and control proceeds straight to Step 3b. Gate B never reads stale `accepted-plan-findings.md` from an earlier review round.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the user reaches them via Gate B's **Switch to discussion mode** → Gate A loop. Round 2 is no longer a forced auto-step; users opt in through Gate B.
 

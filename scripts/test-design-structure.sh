@@ -33,6 +33,7 @@ absent() {
 contains "$SKILL_MD" '[--simple|--hard]' 'SKILL argument hint must expose only SIMPLE/HARD tiers'
 contains "$SKILL_MD" '--trivial flag removed; tier consolidation in #2956. Use --simple or --hard.' 'SKILL missing removed --trivial hard-error prose'
 contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
+contains "$SKILL_MD" "unless \`design_classification == SIMPLE\`, where the user-confirmed no-sketch carve-out applies" 'SKILL missing SIMPLE Design Mindset carve-out'
 contains "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_SIMPLE' 'SKILL missing SIMPLE sketch sentinel'
 contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`' 'SKILL missing Anti-pattern #1 SIMPLE carve-out prose'
 contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
@@ -44,7 +45,10 @@ contains "$SKILL_MD" 'read-design-classification.sh' 'SKILL missing classificati
 contains "$SKILL_MD" '.step3-review-cap.env' 'SKILL missing persisted Step 3 cap state file'
 contains "$SKILL_MD" 'STEP3_REVIEW_CAP_REACHED=false' 'SKILL missing persisted cap-false state'
 contains "$SKILL_MD" 'STEP3_REVIEW_ROUND_NUM=' 'SKILL missing persisted Step 3 round number state'
+contains "$SKILL_MD" "review-round-count.txt is updated only after the panel launch path returns without \`LOOP_STATUS=panel-failed\`" 'SKILL missing delayed review-round counter persist contract'
 contains "$SKILL_MD" 'review-round cap (' 'SKILL missing Step 3 cap breadcrumb prose'
+contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
+contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
 contains "$SKILL_MD" 'the three primary options are **Approve final design** / **Discuss further** / **Re-run review panel**' 'SKILL missing Gate C three-option prose'
 contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **Discuss further**' 'SKILL missing Gate C cap-omission prose'
 contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL missing full-panel Step 3 contract'
@@ -67,6 +71,8 @@ contains "$PLAN_REVIEW_MD" "Step 3 always runs the full panel via \`plan-review-
 contains "$PLAN_REVIEW_MD" 'injects the SIMPLE-emphasis or HARD-emphasis text immediately after the role line' 'plan-review.md missing tier-emphasis injection contract'
 contains "$PLAN_REVIEW_MD" 'When in doubt between YES and EXONERATE, prefer EXONERATE.' 'plan-review.md missing voter-bias proportionality pin'
 contains "$PLAN_REVIEW_MD" 'Treat any suggested remedy in the item body as *informational only*' 'plan-review.md missing OOS remedy informational-only pin'
+contains "$PLAN_REVIEW_MD" 'Security-tagged findings are held locally and NEVER written to this public OOS issue artifact' 'plan-review.md missing SECURITY.md OOS exclusion pin'
+contains "$PLAN_REVIEW_MD" "Security-tagged accepted OOS findings are held locally per SECURITY.md and are NOT included in \`oos.md\`." 'plan-review.md missing SECURITY.md oos.md exclusion pin'
 contains "$DISCUSSION_MD" 'invoke-plan-validator.sh' 'discussion-rounds.md missing renamed validator helper'
 
 if grep -Eq 'grep .*review-round-count\.txt|review-round-count\.txt.*grep' "$PLAN_LOOP_SH"; then

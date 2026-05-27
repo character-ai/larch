@@ -75,6 +75,22 @@ V2_JSON="$TMP_BASE/v2.json"
 LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V2_LEDGER" --full --format json --output "$V2_JSON"
 jq -e '.workflow_path == "SIMPLE"' "$V2_JSON" >/dev/null
 
+V1_PATH_DIR="$TMP_BASE/design-v1-path"
+mkdir -p "$V1_PATH_DIR"
+V1_PATH_LEDGER="$V1_PATH_DIR/timing.tsv"
+cat > "$V1_PATH_LEDGER" <<'EOF'
+v1	mark	10	design	Step 0	-	-	-	-	-	-	-	-
+v1	mark	70	design	Step 2a	-	-	-	-	-	-	-	-
+EOF
+cat > "$V1_PATH_DIR/run-params.json" <<'EOF'
+{"schema_version":1,"design_classification":"TRIVIAL_DOC_ONLY","workflow_path":"SIMPLE","partition_requested":false}
+EOF
+LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --markdown > "$TMP_BASE/v1-path.out"
+grep -Fq '**Workflow path**: SIMPLE' "$TMP_BASE/v1-path.out"
+V1_PATH_JSON="$TMP_BASE/v1-path.json"
+LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --format json --output "$V1_PATH_JSON"
+jq -e '.workflow_path == "SIMPLE"' "$V1_PATH_JSON" >/dev/null
+
 TERSE=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --since-last-mark --terse)
 # Review FINDING_5: terse mode now counts vendor rows whose --end-s ($9) is
 # >= the latest mark timestamp, instead of the row's wall-clock log timestamp.
