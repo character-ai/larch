@@ -84,7 +84,7 @@ emit_plan_body() {
 # shellcheck disable=SC2016
 _large_note_step3='**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — say "show full plan" to see the body in chat before voting begins.**'
 # shellcheck disable=SC2016
-_large_note_gatec='**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — pick "Other" on the prompt below and ask for the full plan if you want it printed in chat before deciding.**'
+_large_note_gatec='**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — pick "See full plan" on the prompt below if you want it printed in chat before deciding.**'
 
 case "$variant" in
     step3)

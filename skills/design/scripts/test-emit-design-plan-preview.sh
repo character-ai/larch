@@ -77,7 +77,7 @@ mkdir -p "$d6"
 out6=$("$SUBJECT" --design-tmpdir "$d6" --variant gatec)
 printf '%s\n' "$out6" | grep -Fq '## Final Design Plan' || fail "gatec large missing header"
 printf '%s\n' "$out6" | grep -Fq 'gcline 28' || fail "gatec large empty-outline fallback"
-printf '%s\n' "$out6" | grep -Fq 'pick "Other"' || fail "gatec large missing Other-path note"
+printf '%s\n' "$out6" | grep -Fq 'pick "See full plan" on the prompt below if you want it printed in chat before deciding' || fail "gatec large missing See-full-plan-path note"
 
 # Invalid / zero threshold normalization (falls back to 120; 125-line plan still summarizes)
 d7="$TMPROOT/d7"

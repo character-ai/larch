@@ -1,0 +1,10 @@
+## This invocation's parameters
+
+- Plan to implement: <TMPDIR>/plan.txt
+- Original feature description: <TMPDIR>/feature-description.txt
+- Write manifest.json (atomically) at: <TMPDIR>/manifest.json
+- Write qa-pending.json (atomically, only if status=needs_qa) at: <TMPDIR>/qa-pending.json
+- Working directory: /Users/zhupanov/larch9 (this is the repo root for git operations)
+
+
+Begin by inspecting the current branch state, then proceed per the system prompt above.
