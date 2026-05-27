@@ -84,6 +84,7 @@ build_sandbox() {
     mkdir -p "$SANDBOX/bin" "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX_TMP"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
+    cp "$REPO_ROOT/scripts/lib-larch-cache-touch.sh" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
     cp "$REPO_ROOT/scripts/write-session-env.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$SANDBOX/scripts/"
