@@ -201,15 +201,27 @@ export LARCH_PAIRED_PID_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-age
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}" &
+COLLECTOR_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$COLLECTOR_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$COLLECTOR_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call. The paired `breadcrumb-monitor.sh` invocation in the same message provides the synchronization point and surfaces live breadcrumbs while the collector runs.

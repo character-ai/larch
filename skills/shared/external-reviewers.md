@@ -56,15 +56,27 @@ export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent
 touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
 # Tool JSON: run_in_background: true
 # Background pair required: see BASH_AUTHORING.md §4
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> <output-file> [<output-file> ...]
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> <output-file> [<output-file> ...] &
+COLLECTOR_PID=$!
 
+monitor_rc=0
 "${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
   --stream "$LARCH_BREADCRUMB_STREAM" \
   --done-sentinel "$LARCH_DONE_SENTINEL" \
   --status-file "$LARCH_STATUS_FILE" \
   --quiet-log "$LARCH_QUIET_LOG_FILE" \
   --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE"
+  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
+  || monitor_rc=$?
+
+if [ "$monitor_rc" -eq 0 ]; then
+  writer_rc=0
+  wait "$COLLECTOR_PID" || writer_rc=$?
+  exit "$writer_rc"
+else
+  wait "$COLLECTOR_PID" 2>/dev/null || true
+  exit "$monitor_rc"
+fi
 ```
 
 Only include output file paths for reviewers that were actually launched. For the Bash tool call, use `timeout: <seconds>000` (milliseconds) and set `run_in_background: true` on the collector launch, paired with foreground `breadcrumb-monitor.sh` in the same Bash message. The script internally calls `wait-for-reviewers.sh` to poll for `.done` sentinel files, validates each output, and retries once on empty output (using `.meta` files written by `run-external-agent.sh`). Wait records are correlated by 1-based argv index, so callers should pass output files in the same order they want result blocks interpreted.

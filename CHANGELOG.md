@@ -28,10 +28,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [44.0.1] - 2026-05-27
 ## [44.0.0] - 2026-05-27
 
 ### Changed
 
+- Enforce the top-level Family B writer contract in lint-foreground-markers: shell ampersand, PID capture, same-fence monitor, and post-monitor wait with identifier matching.
+- Sweep Family B Markdown fences to the canonical monitor_rc/writer_rc wrapper so writer exits propagate and monitor failures stay visible.
+- Fix collect-agent-results.sh EXIT trap composition so the quiet done sentinel is written on normal exit.
+- Add the background-monitor wait regression harness and route it through Makefile, relevant-checks, docs, and agent-lint allowlists.
 - Closed: #2995
 
 ## [43.0.0] - 2026-05-27

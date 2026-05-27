@@ -85,6 +85,30 @@ tmpdir):
   reused; the 1800-second timeout and same-UID operator model keep this a known
   limitation rather than a process-identity guarantee.
 
+## Caller Contract
+
+Callers paired with a top-level Family B writer must keep the wrapper shell
+alive until the writer process exits. The canonical same-fence pattern is:
+launch the writer with shell `&`, capture `$!`, run this monitor in the
+foreground, then `wait` on the captured PID after the monitor returns.
+
+Callers must preserve both exit-code channels. Capture `monitor_rc` with
+`monitor_rc=0` plus `breadcrumb-monitor.sh ... || monitor_rc=$?`. When
+`monitor_rc=0`, wait for the writer and exit with `writer_rc`; orchestrators
+then read the writer's `EXIT_CODE` from `LARCH_STATUS_FILE` for routing.
+**Monitor exit 0 does not mean writer success** — it only means the done
+sentinel was detected. Writer success is determined by `writer_rc` (the `wait`
+exit code) and `EXIT_CODE` from `LARCH_STATUS_FILE`. When
+`monitor_rc` is non-zero, perform the bounded reap and exit with `monitor_rc`
+so infrastructure failures remain visible.
+
+The monitor's timeout path is the bounded hang-stop: after 1800 seconds it calls
+`larch_bm_signal_paired_pid`, which sends SIGTERM, waits briefly, then sends
+SIGKILL. The caller's post-monitor `wait` reaps that process and does not extend
+the hang window beyond the monitor timeout discipline.
+
+See `BASH_AUTHORING.md` §4 for the copyable canonical wrapper.
+
 ## Exit codes
 
 - `0` — done sentinel became non-empty within timeout; or the surfaced

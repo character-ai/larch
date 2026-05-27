@@ -134,13 +134,15 @@ list_shell_files() {
         git -C "$ROOT" ls-files -z -- \
             'scripts/*.sh' \
             'skills/*/scripts/*.sh' \
-            'skills/shared/scripts/*.sh' 2>/dev/null || true
+            'skills/shared/scripts/*.sh' \
+            'hooks/*.sh' 2>/dev/null || true
     else
         (
             cd "$ROOT"
             find scripts -maxdepth 1 -type f -name '*.sh' 2>/dev/null || true
             find skills -path 'skills/*/scripts/*.sh' -type f 2>/dev/null || true
             find skills/shared/scripts -type f -name '*.sh' 2>/dev/null || true
+            find hooks -maxdepth 1 -type f -name '*.sh' 2>/dev/null || true
         ) | LC_ALL=C sort -u | while IFS= read -r path; do
             [[ -n "$path" ]] || continue
             printf '%s\0' "$path"
@@ -289,6 +291,127 @@ is_anchor_for_basename() {
 line_has_lint_suppression() {
     local line="$1"
     [[ "$line" == *'# lint-foreground-markers: ok '* ]]
+}
+
+line_ends_with_backslash_continuation() {
+    local line="$1"
+    printf '%s\n' "$line" | LC_ALL=C grep -Eq '\\[[:space:]]*$'
+}
+
+line_has_shell_ampersand_at_end() {
+    local line="$1"
+    printf '%s\n' "$line" | LC_ALL=C grep -Eq '(^|[[:space:]])&[[:space:]]*(#.*)?$'
+}
+
+extract_pid_capture_ident() {
+    local line="$1"
+    [[ "$line" =~ ^[[:space:]]*# ]] && return 1
+    printf '%s\n' "$line" | LC_ALL=C sed -n 's/^[[:space:]]*\(local[[:space:]]\{1,\}\)\{0,1\}\([A-Za-z_][A-Za-z0-9_]*\)=\$![[:space:]]*\(#.*\)\{0,1\}$/\2/p'
+}
+
+extract_wait_ident() {
+    local line="$1"
+    local ident
+    [[ "$line" =~ ^[[:space:]]*# ]] && return 1
+    ident=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/^[[:space:]]*wait[[:space:]]\{1,\}"\${\([A-Za-z_][A-Za-z0-9_]*\)}".*/\1/p')
+    if [[ -n "$ident" ]]; then
+        printf '%s' "$ident"
+        return 0
+    fi
+    ident=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/^[[:space:]]*wait[[:space:]]\{1,\}"\$\([A-Za-z_][A-Za-z0-9_]*\)".*/\1/p')
+    if [[ -n "$ident" ]]; then
+        printf '%s' "$ident"
+        return 0
+    fi
+    ident=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/^[[:space:]]*wait[[:space:]]\{1,\}\$\([A-Za-z_][A-Za-z0-9_]*\).*/\1/p')
+    if [[ -n "$ident" ]]; then
+        printf '%s' "$ident"
+        return 0
+    fi
+    return 1
+}
+
+fence_has_family_b_pid_capture_and_wait() {
+    local rel="$1" open_fence_line="$2" anchor_idx="$3" bn="$4"
+    shift 4
+    local -a lines=("$@")
+    local n=${#lines[@]}
+    local end_idx=$((anchor_idx - 1))
+    local abs_anchor=$((open_fence_line + anchor_idx))
+    local line ident capture_idx=-1 nonblank_seen=0 i monitor_idx=-1
+    local wait_ident wait_before_monitor=0
+
+    line_has_lint_suppression "${lines[$((anchor_idx - 1))]}" && return 0
+
+    while ((end_idx + 1 < n)) && line_ends_with_backslash_continuation "${lines[$end_idx]}"; do
+        end_idx=$((end_idx + 1))
+    done
+
+    if ! line_has_shell_ampersand_at_end "${lines[$end_idx]}"; then
+        printf '%s:%s: missing shell ampersand on top-level Family B writer %s; tool-level run_in_background alone is insufficient — see BASH_AUTHORING.md §4\n' "$rel" "$abs_anchor" "$bn" >&2
+        VIOLATIONS=$((VIOLATIONS + 1))
+        return 0
+    fi
+
+    i=$((end_idx + 1))
+    while ((i < n)); do
+        line="${lines[$i]}"
+        if [[ "$line" =~ ^[[:space:]]*$ ]]; then
+            i=$((i + 1))
+            continue
+        fi
+        nonblank_seen=$((nonblank_seen + 1))
+        ident="$(extract_pid_capture_ident "$line" || true)"
+        if [[ -n "$ident" ]]; then
+            capture_idx="$i"
+            break
+        fi
+        if ((nonblank_seen >= 3)); then
+            break
+        fi
+        i=$((i + 1))
+    done
+    if [[ "$capture_idx" -lt 0 ]]; then
+        printf '%s:%s: missing PID capture after top-level Family B writer %s\n' "$rel" "$abs_anchor" "$bn" >&2
+        VIOLATIONS=$((VIOLATIONS + 1))
+        return 0
+    fi
+
+    for ((i = capture_idx + 1; i < n; i++)); do
+        line="${lines[$i]}"
+        if [[ "$line" == *"breadcrumb-monitor.sh"* ]]; then
+            monitor_idx="$i"
+            break
+        fi
+        wait_ident="$(extract_wait_ident "$line" || true)"
+        if [[ -n "$wait_ident" ]]; then
+            wait_before_monitor=1
+        fi
+    done
+    if [[ "$monitor_idx" -lt 0 ]]; then
+        printf '%s:%s: missing breadcrumb-monitor.sh after top-level Family B writer %s\n' "$rel" "$abs_anchor" "$bn" >&2
+        VIOLATIONS=$((VIOLATIONS + 1))
+        return 0
+    fi
+
+    for ((i = monitor_idx + 1; i < n; i++)); do
+        line="${lines[$i]}"
+        wait_ident="$(extract_wait_ident "$line" || true)"
+        [[ -n "$wait_ident" ]] || continue
+        if [[ "$wait_ident" != "$ident" ]]; then
+            printf '%s:%s: wait identifier %s does not match captured PID variable %s\n' "$rel" "$((open_fence_line + i + 1))" "$wait_ident" "$ident" >&2
+            VIOLATIONS=$((VIOLATIONS + 1))
+            return 0
+        fi
+        return 0
+    done
+
+    if ((wait_before_monitor == 1)); then
+        printf '%s:%s: wait must follow breadcrumb-monitor.sh for captured PID variable %s\n' "$rel" "$abs_anchor" "$ident" >&2
+    else
+        printf '%s:%s: missing wait for captured PID variable %s after breadcrumb-monitor.sh for %s\n' "$rel" "$abs_anchor" "$ident" "$bn" >&2
+    fi
+    VIOLATIONS=$((VIOLATIONS + 1))
 }
 
 line_mentions_diagnostic_tool_string() {
@@ -613,7 +736,45 @@ scan_fence_buffer_for_anchors() {
                         printf '%s:%s: missing --paired-pid-file monitor argument for %s\n' "$rel" "$abs_anchor" "$bn" >&2
                         VIOLATIONS=$((VIOLATIONS + 1))
                     fi
+                    fence_has_family_b_pid_capture_and_wait "$rel" "$open_fence_line" "$merge_start_phy" "$bn" "${FG_FENCE_LINES[@]}"
                 fi
+            fi
+        done <<<"$DENYLIST"
+    done
+}
+
+scan_shell_file_for_family_b_wait() {
+    local rel="$1"
+    should_skip_shell_file "$rel" && return 0
+    local path="$ROOT/$rel"
+    [[ -f "$path" ]] || return 0
+    LC_ALL=C grep -Fq 'breadcrumb-monitor.sh' "$path" || return 0
+
+    local -a lines=()
+    local line bn i n mline merge_start
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        lines+=("$line")
+    done <"$path"
+
+    n=${#lines[@]}
+    i=0
+    while ((i < n)); do
+        line="${lines[$i]}"
+        merge_start=$((i + 1))
+        i=$((i + 1))
+        mline="$line"
+        while line_ends_with_backslash_continuation "$mline" && ((i < n)); do
+            mline="${mline%\\}${lines[$i]}"
+            i=$((i + 1))
+        done
+        [[ "$mline" == *'.sh'* ]] || continue
+        line_has_lint_suppression "$mline" && continue
+        while IFS= read -r bn; do
+            [[ -n "$bn" ]] || continue
+            family_b_pid_writer_required "$bn" || continue
+            [[ "$mline" == *"$bn"* ]] || continue
+            if is_anchor_for_basename "$mline" "$bn"; then
+                fence_has_family_b_pid_capture_and_wait "$rel" 0 "$merge_start" "$bn" "${lines[@]}"
             fi
         done <<<"$DENYLIST"
     done
@@ -702,6 +863,7 @@ done <"$TMP_LIST"
 list_shell_files >"$TMP_LIST"
 while IFS= read -r -d '' rel; do
     scan_shell_file_for_unset_before_nested_child "$rel"
+    scan_shell_file_for_family_b_wait "$rel"
 done <"$TMP_LIST"
 
 if [[ "$VIOLATIONS" -gt 0 ]]; then

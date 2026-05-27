@@ -182,7 +182,6 @@ if [[ "${BASH_SOURCE[0]}" != "$0" && "${1:-}" == "--source-only" ]]; then
 fi
 
 larch_quiet_init
-larch_quiet_append_done_trap
 
 TIMEOUT=""
 SUBSTANTIVE_VALIDATION="false"
@@ -308,6 +307,7 @@ WAIT_STDERR=$(mktemp "${TMPDIR:-/tmp}/collect-wait-stderr.XXXXXX") || {
     exit 1
 }
 trap 'rm -f -- "$WAIT_STDERR"' EXIT
+larch_quiet_append_done_trap
 WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
 WAIT_RC=$?
 if [[ "$WAIT_RC" -ne 0 ]]; then
