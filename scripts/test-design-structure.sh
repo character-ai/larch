@@ -52,8 +52,8 @@ contains "$SKILL_MD" 'review-round cap (' 'SKILL missing Step 3 cap breadcrumb p
 contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
 contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
 contains "$SKILL_MD" 'The Step 3.5 continuation block below is bypassed on this path.' 'SKILL missing explicit Step 3.5 bypass prose'
-contains "$SKILL_MD" 'the three primary options are **Approve final design** / **Discuss further** / **Re-run review panel**' 'SKILL missing Gate C three-option prose'
-contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **Discuss further**' 'SKILL missing Gate C cap-omission prose'
+contains "$SKILL_MD" 'the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**' 'SKILL missing Gate C four-option prose'
+contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**' 'SKILL missing Gate C cap-omission prose with See full plan'
 contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL missing full-panel Step 3 contract'
 
 absent "$SKILL_MD" 'sketch_budget=0' 'SKILL must not pin v1 sketch_budget=0'
@@ -68,7 +68,12 @@ contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
-contains "$APPROVAL_MD" "any Gate C re-prompt after \`Other\` must preserve that omission" 'approval-gates.md missing Gate C cap re-prompt omission contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'Any Gate C re-prompt after `Other` must preserve those three at-cap options' 'approval-gates.md missing Gate C cap re-prompt omission contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" '- **See full plan** — Print the current `$DESIGN_TMPDIR/plan.txt` into chat under a `## Final Design Plan` header' 'approval-gates.md missing Gate C See-full-plan bullet'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'the `Other` re-prompt preserves the **same option set unchanged**' 'approval-gates.md missing Gate C Other-path unchanged-option-set contract'
 contains "$APPROVAL_MD" 'offer this option only when the current review-round count is still below the tier cap' 'approval-gates.md missing Gate C cap-aware rerun contract'
 contains "$PLAN_REVIEW_MD" "Step 3 always runs the full panel via \`plan-review-loop.sh\`" 'plan-review.md missing full-panel consumer line'
 contains "$PLAN_REVIEW_MD" 'injects the SIMPLE-emphasis or HARD-emphasis text immediately after the role line' 'plan-review.md missing tier-emphasis injection contract'
