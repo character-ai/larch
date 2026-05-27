@@ -1,0 +1,79 @@
+# Approach Synthesis — Plan-quality assessor (issue #2953)
+
+## Where the 4 sketches agree (the majority direction)
+
+1. **Sibling architecture, not a fork of voters**: all four sketches reject extending `scripts/dispatch-plan-voters.sh` with an assessor mode. The voter scripts are tightly coupled to the `FINDING_N` / `OOS_N` ballot grammar; the assessor's whole-plan binary verdict is structurally different. Build a sibling driver that reuses lower-level primitives (`scripts/launch-claude-review.sh`, `scripts/dispatch-with-waterfall.sh`, the lib-quiet breadcrumb/pair-PID contract) without touching the voter dispatcher.
+
+2. **HARD-only, file-only state**: every sketch confirms re-reading `workflow_path` from `run-params.json` per invocation and skipping silently when not HARD. State lives entirely under `$DESIGN_TMPDIR` (no in-memory cursors), so re-entry semantics are clean and tier drift is recoverable.
+
+3. **Skip round 1**: no previous plan to compare against. Round-1 entry into the assessor stage emits a skip breadcrumb and does not write a verdict file. The snapshot of round 1's `plan-after` is taken (so it's available when round 2's assessor fires later).
+
+4. **Default-open on missing infrastructure**: missing `plan.txt-original` snapshot, dispatcher non-zero exit, dirty-tree mid-flow, run-params read failure — all coerce to NOT_WORSE with a Warnings entry to `execution-issues.md`. The assessor is a circuit breaker, not a hard gate. This aligns with the user's Round 1 D1 unanimous-degraded rule: WORSE requires unanimous WORSE among 1-or-2 successful voters; 0 voters → NOT_WORSE.
+
+5. **Cross-model panel (Claude + Cursor + Codex)**: same composition as dialectic judges. Slot 1 via `launch-claude-review.sh`; slots 2-3 via `dispatch-with-waterfall.sh` (Codex + Cursor with Claude replacement-fallback). Per-slot timing-task kinds (`claude-plan-quality-assessor`, `codex-plan-quality-assessor`, `cursor-plan-quality-assessor`) must land in `scripts/lib-timing-kinds.sh` in the same change.
+
+6. **Distinct output grammar from FINDING_N / OOS_N**: the assessor produces a whole-plan binary verdict, not per-finding YES/NO/EXONERATE. Parser tolerance for `**ASSESSMENT: WORSE**` (Cursor markdown wrapping) is required, mirroring `lib-vote-tally.sh`'s tolerance pattern.
+
+7. **Step 3 must stop hardcoding `--round-num 1`**: `plan-review-loop.sh` already accepts dynamic `--round-num N`; SKILL.md Step 3 must read a round cursor (default 1 when absent) so Gate C(c) re-entries naturally advance the round and the assessor sees the right round number.
+
+8. **Continue / Stop UX (binding from Round 1 1c.1)**: no rollback machinery, no automated snapshot restoration, no Abort-finalize-previous. WORSE → 2-option AskUserQuestion (Continue / Stop). Stop = exit /design with $DESIGN_TMPDIR preserved, no [DESIGNED] rename, no log publish.
+
+## Where the sketches diverge — contested decisions
+
+These are the top decisions where the sketches disagreed enough that the orchestrator must pick a direction. They are listed separately in `contested-decisions.md` for the dialectic phase.
+
+D1 — **Verdict file location** (top-level vs subdirectory under $DESIGN_TMPDIR). Sketches split: Claude-Arch says top-level (auto-included by `design-log-publish.sh`'s `find -maxdepth 1` sweep); Claude-Edge says subdirectory (mirrors `plan-review/round-N/` shape but may need a publish-side change). Resolving this affects whether the verdict is durably persisted in the design log without modifying `design-log-publish.sh`.
+
+D2 — **Combine assess + dispatch into one driver vs split**. Pragmatic argues for minimum complexity (combine into one script). Innovation/Arch implicitly split (two scripts: a dispatcher and an entry orchestrator). Affects new-script count (3 vs 4 in the new-scripts family).
+
+D3 — **Best-so-far comparison vs prev-vs-current only**. Innovation introduced a "best-so-far guard" idea (compare current against BOTH previous round AND best-known round so far). The user's original problem statement specifies prev-vs-current only ("previous round's plan"). Resolving this picks whether the assessor is a strict 2-input (original + previous + current) or 3-input (original + previous + best + current) comparator.
+
+D4 — **Verdict file format strictness**. Two variants: (a) user-specified compact body (`NOT_WORSE` or `WORSE: <brief justification>` — line 1 carries semantics), (b) strict KV header (`ASSESSMENT=NOT_WORSE`, `JUSTIFICATION=...`) for robust parsing. The first matches the user's Round 1 D2 choice byte-for-byte; the second is more parse-robust.
+
+D5 — **Render: extend `render-voter-prompt.sh` with a new id-grammar mode vs a new `render-assessor-prompt.sh`**. Claude-Arch suggests extending for consistency. Claude-Edge / Pragmatic implicitly create a new script. Affects coupling between assessor and voter machinery.
+
+## Personality highlights to address in the plan
+
+### Architecture/Standards (Claude-Arch fallback)
+- **Defense-in-depth on `workflow_path` gating**: gate in SKILL.md AND assert in the new driver script (read run-params.json on entry, exit 0 with skip breadcrumb when not HARD).
+- **Reuse pattern**: `dispatch-plan-voters.sh` precedent for `effective_assessors` count, parse-rate guard, paired-PID hygiene, waterfall fallback.
+- **Single-responsibility line**: don't smuggle the assessor tally into `tally-plan-review.sh` — the unit of measurement is different (whole-plan delta vs. per-finding correctness).
+
+### Pragmatism/Safety (Codex-Pragmatic)
+- **Minimize scope**: ~3-4 new scripts, not 6. No rollback subsystem, no `rollback-in-progress` sentinel.
+- **High-risk paths**: SKILL.md and approval-gates.md (live orchestration).
+- **Regressions to prevent**: state drift across Gate C(c) re-runs; accidental impact on SIMPLE/TRIVIAL paths; parser brittleness on `**bold**` wrapping.
+- **Defer to #2871**: committed run-log staging, forensic snapshot retention, elaborate sentinels, multi-round automation.
+
+### Edge-cases/Failure-modes (Claude-Edge fallback)
+- **Mid-launch interruption**: `.in-progress` sentinel created before any assessor launch, cleared after `.done`. On next-session re-entry, refuse to consume any verdict file in a round whose `.in-progress` sentinel exists but `.done` is missing.
+- **Tier drift mid-session**: persist `workflow_path` value into the round directory at first invocation; if a later invocation reads a different `workflow_path`, emit a drift warning and honor the snapshot value.
+- **Markdown-wrapped verdict drift**: case-insensitive prefix-tolerant regex that normalizes `**ASSESSMENT: WORSE**`, `ASSESSMENT=WORSE`, `assessment: worse`. Optional 1-cap parse-rate retry per assessor.
+- **Dirty-tree checkpoint**: `check-mid-run-dirty-tree.sh --mode checkpoint` after collection and before tally; dirty → NOT_WORSE + Warnings.
+- **0-voter degenerate**: emit `EFFECTIVE_ASSESSORS=N` alongside the verdict; orchestrator silently skips the Continue/Stop prompt and prints a `**⚠ assessor: 0/3 effective assessors; proceeding without quality gate**` banner.
+- **Breadcrumb pair contract**: the new driver is synchronous from the orchestrator's view (single shell call returning a verdict KV); does NOT need its own breadcrumb-monitor pair. It MUST `unset LARCH_PAIRED_PID_FILE` before invoking the waterfall (mirroring `dispatch-plan-voters.sh`).
+- **Redaction**: justification text is untrusted assessor output; must flow through `redact-tmpdir-paths.sh | redact-secrets.sh` before any worktree publish (already automatic in `design-log-publish.sh` for files committed via its pipeline).
+
+### Innovation/Exploration (Codex-Innovation)
+- **Best-so-far guard alternative**: instead of comparing only round N vs round N-1, compare against both N-1 AND the best-known round. Catches the subtle case where each step is a tiny improvement but the cumulative trajectory drifts. (Surfaces in D3 — preserve as a noted alternative even if not chosen.)
+- **Regression-scout pre-pass**: a single low-cost Claude assessor that decides whether to fire the 3-panel at all. Could be a future optimization; not in scope today.
+- **"Plan diff ledger" idea**: treat accepted findings as reversible patch transactions, judge cumulative patches before commit. Architecturally bigger than this feature; deferred to #2871 ecosystem if desired.
+
+## Files the plan must touch (preliminary, will be refined in Step 2b after dialectic)
+
+New (4-5 files plus their `.md` siblings and offline harnesses):
+- `skills/design/scripts/assess-plan-round.sh` (entry orchestrator)
+- `skills/design/scripts/dispatch-plan-assessors.sh` (cross-model panel launcher) — or merged into the above per D2
+- `skills/shared/scripts/render-assessor-prompt.sh` (prompt rendering) — or `render-voter-prompt.sh` extension per D5
+- `skills/design/scripts/tally-plan-assessor.sh` (binary verdict tally with strict 3/2/1/0 voter rule)
+- `skills/design/scripts/snapshot-plan-round.sh` (write-once original + per-round plan-after snapshot, + round-cursor I/O)
+- `skills/design/references/assessor.md` (normative reference)
+
+Updates:
+- `skills/design/SKILL.md` (Step 2b post-emit snapshot HARD-gated; Step 3 dynamic `--round-num`; new Step 3.6 between Gate B and Step 3b; Gate C(c) cursor increment HARD-gated)
+- `skills/design/references/approval-gates.md` (Gate C(c) cursor-increment note; Gate B forward-reference to Step 3.6)
+- `scripts/lib-timing-kinds.sh` (three new timing kinds)
+- `scripts/test-design-structure.sh` (structural pins for SKILL.md Step 2b snapshot, Step 3 round-cursor read, Step 3.6 invocation, timing kinds, new test-* harness targets)
+- `Makefile` (new `test-*` targets, registered under the `lint` aggregate)
+
+Decision count to feed into dialectic: 5 contested decisions (D1-D5 above).

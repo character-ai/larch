@@ -1,0 +1,46 @@
+Reviewing the implementation plan and validating it against the codebase (read-only).
+Validating the plan against integration points in the codebase.
+Compiling findings from plan-vs-codebase validation.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/render-final-summary.sh:43-48	Plan claims render-final-summary needs no script change for cancelled-assessor-worse	Stop branch exports SUMMARY_OUTCOME=cancelled-assessor-worse; render-final-summary.sh rejects unknown outcomes with exit 2; Final summary block never prints	Add cancelled-assessor-worse to the case allow-list; extend test-render-final-summary.sh outcome matrix (skills/design/scripts/test-render-final-summary.sh:381-410); drop the erroneous no-script-change note in the plan
+2	in_scope	important	correctness	skills/design/SKILL.md:266-267;plan.txt:149	Step 3 reads plan-review-round-cursor in all tiers but only Gate C(c) increments it on HARD	Cursor left at 2 after HARD Gate C re-run; workflow_path later SIMPLE/TRIVIAL; Step 3 passes --round-num 2 into plan-review-loop; round-scoped artifacts and panel semantics desync	Gate --round-num on workflow_path=HARD (read cursor via snapshot-plan-round.sh); otherwise pass 1; mirror in approval-gates.md and test-design-structure.sh
+3	in_scope	important	correctness	plan.txt:203	Tally edge-case row 0-0-3 labeled WORSE contradicts the strict tally rule	Three TIE assessors yield successful=3 with worse_count=0 and better_count=0; rule requires worse_count > better_count for WORSE-majority; harness may encode wrong expectation	Replace with 3-0-0 (three WORSE) → WORSE-majority; keep 0-0-3 (three TIE) → NOT_WORSE; pin both in test-tally-plan-assessor.sh
+4	in_scope	important	architecture	skills/design/references/approval-gates.md:86-87;104;114	Gate B settled paths still normatively say proceed to Step 3b	Orchestrator following approval-gates.md can jump Gate B → 3b and never run HARD-only Step 3.6	Change Apply-all / Go-through-each / zero-findings short-circuit text to Step 3.6 (HARD) then Step 3b; add forward-link to assessor.md per plan intent
+5	in_scope	important	architecture	skills/design/SKILL.md:30	Anti-halt continuation list omits Step 3.6 between 3.5 and 3b	Agent may treat Gate B output as permission to halt before assessor on multi-round HARD runs	Extend sub-step enumeration to …→3→3.5→3.6→3b→4…; add Gate C(c)→3 re-entry note; pin in test-design-structure.sh if other step chains are pinned
+6	in_scope	important	correctness	skills/design/SKILL.md:266	Final summary block SUMMARY_OUTCOME enumeration omits cancelled-assessor-worse	Drift between Step 3.6 Stop prose and the normative Final summary contract	Add cancelled-assessor-worse beside cancelled-plan-size-hard and cancelled-decompose in the orchestrator contract list (line 266)
+7	in_scope	latent	risk-integration	plan.txt:21;109;skills/design/SKILL.md:722	Plan mandates background+breadcrumb for dispatch-plan-assessors but Step 3.6 invokes assess-plan-round.sh; voters run synchronously inside plan-review-loop.sh	Model plan-review-loop foreground + sync dispatch-plan-voters; mis-implementing assessors as a new denylisted top-level launch risks lint-foreground-markers failures or double monitors	Specify Step 3.6 as Foreground assess-plan-round.sh (mirror plan-review-loop); keep sync dispatch inside assess-plan-round unless assess-plan-round itself is denylisted; only then add SKILL background+breadcrumb fences
+8	in_scope	latent	architecture	plan.txt:85-89;203	Strict WORSE > BETTER with TIE in the successful=3 denominator	One WORSE + two TIE votes triggers WORSE-majority and Continue/Stop even with no BETTER votes	Document as intentional in assessor.md with a worked example; or require worse_count >= 2 when successful==3; add harness case for 1W+2T
+9	in_scope	nit	correctness	skills/design/references/assessor.md:121;skills/design/scripts/plan-review-loop.sh:61-64	assessor.md names feature-description.txt only	Assessor dispatch may pass wrong/missing feature path when IMPLEMENT_TMPDIR is set	Use "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" in assess-plan-round.sh / dispatch argv; align assessor.md
+10	in_scope	nit	risk-integration	plan.txt:129;141	skills/design/scripts/plan-review-loop.sh:9-13	No LARCH_*_SH override env vars named for assessor dispatch/tally	Offline harness cannot stub dispatch/tally without ad-hoc PATH hacks	Add LARCH_DISPATCH_PLAN_ASSESSORS_SH and LARCH_TALLY_PLAN_ASSESSOR_SH (or one LARCH_ASSESS_PLAN_ROUND_SH) with defaults; document in *.md siblings and test-assess-plan-round.sh
+11	in_scope	nit	correctness	scripts/lib-timing-kinds.sh;scripts/lib-timing-kinds.md	Plan updates allow-list only in .sh	Allow-list rule expects .md sibling kept in sync	Append claude-plan-assessor codex-plan-assessor cursor-plan-assessor to lib-timing-kinds.md in the same PR
+12	in_scope	latent	security	SECURITY.md:53-59	New cross-model assessor panel delegates three full plans to Codex/Cursor/Claude	Security doc documents plan-voter delegation but not assessor lane with same read-only posture	Extend External tool delegation / launch-claude-review paragraph to cover dispatch-plan-assessors.sh and timing kinds; per AGENTS.md security policy
+
+1. **[OUT_OF_SCOPE]** `plan.txt` / `render-assessor-prompt.sh` — Triple inlined plan bodies with no size cap (unlike `emit-design-plan-preview.sh` threshold). Round-2+ HARD runs with 800+ line plans may hit token ceilings or silently degrade assessor quality; consider summary-mode or prev-vs-current-only prompt variant under #2871.
+
+2. **[OUT_OF_SCOPE]** `plan.txt` Out of scope — Best-so-far comparison deferred. Multi-round degradation that only reverses one step (round N worse than N-1 but both worse than original) never surfaces; operator must rely on manual plan reading.
+
+**Numbered summary (same findings):**
+
+1. **correctness** — `render-final-summary.sh:43-48`: Plan wrongly says no script change; `cancelled-assessor-worse` will exit 2.
+
+2. **correctness** — `SKILL.md:266-267` / plan:149: Round cursor read is not HARD-gated while increment is.
+
+3. **correctness** — plan:203: `0-0-3 → WORSE` contradicts tally math (3 TIE → NOT_WORSE).
+
+4. **architecture** — `approval-gates.md:86-104`: Gate B still routes to 3b, skipping 3.6.
+
+5. **architecture** — `SKILL.md:30`: Anti-halt chain missing `3.6`.
+
+6. **correctness** — `SKILL.md:266`: `SUMMARY_OUTCOME` enum missing new token (pairs with #1).
+
+7. **risk-integration** — plan:21,109 vs `SKILL.md:722`: Background+breadcrumb vs foreground assess-plan-round ambiguity.
+
+8. **architecture** — plan:85-89: 1 WORSE + 2 TIE may over-trigger Stop UX.
+
+9. **correctness** — assessor.md vs `plan-review-loop.sh:61-64`: Feature file path.
+
+10. **risk-integration** — Missing `LARCH_*_SH` test hooks.
+
+11. **correctness** — `lib-timing-kinds.md` not in plan.
+
+12. **security** — `SECURITY.md` assessor delegation undocumented.

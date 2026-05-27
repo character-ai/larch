@@ -1,0 +1,56 @@
+Reviewing the plan against stated requirements and validating proposed changes against the codebase.
+Exploring codebase files referenced in the plan to validate contracts and integration points.
+Identifying gaps between the plan, acceptance criteria, and integration points in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/render-final-summary.sh:43-48	Plan claims no render-final-summary.sh change for cancelled-assessor-worse but script rejects unknown outcomes	Operator picks Stop on WORSE verdict; Final summary block calls render-final-summary.sh with SUMMARY_OUTCOME=cancelled-assessor-worse and exits 2 with outcome not in enumeration	Add cancelled-assessor-worse to the case enumeration in render-final-summary.sh; extend skills/design/scripts/test-render-final-summary.sh matrix loop; list both files in plan UPDATED section and acceptance
+1	in_scope	important	integration	skills/design/scripts/assess-plan-round.sh:104-110	assess-plan-round argv omits --feature-file yet dispatch-plan-assessors.sh requires it	assess-plan-round cannot invoke dispatch without inventing feature path at implement time; silent wrong default breaks assessor framing from feature-description.txt	Derive feature path like plan-review-loop.sh (default ${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt; exit 0 fail-open with Warnings if missing); pass --feature-file through to dispatch-plan-assessors.sh
+1	in_scope	important	architecture	skills/design/SKILL.md:30,644,786	Plan inserts Step 3.6 but leaves multiple routing anchors pointing Gate B settled paths directly to Step 3b	Anti-halt chain 3.5→3b, Step 2b.5 callable-from prose, and Gate B body still say proceed to Step 3b; orchestrator can skip assessor on common paths including zero-findings short-circuit	Update every Gate-B-settled successor in SKILL.md and approval-gates.md (incl. zero-findings at approval-gates.md:104 and Gate C flow at :114) to Step 3.6 on HARD; extend anti-halt list to 3→3.5→3.6→3b; pin 3.5→3.6→3b ordering in test-design-structure.sh Check 6
+1	in_scope	important	architecture	skills/design/SKILL.md:728-734	Step 3 round-cursor read lacks mechanical Bash contract	read-cursor emits ROUND_CURSOR=N KV but plan only says replace --round-num 1 with read-cursor; no parse loop like plan-review-loop KV consumer	Step 3 passes empty/wrong --round-num; round 2+ review mislabels artifacts and assessor compares wrong N	Add fenced Bash in Step 3 (and Step 3.6) showing snapshot-plan-round.sh read-cursor/write-cursor calls plus KV parse into _round_num for --round-num; mirror plan-review-loop.sh stdout parsing style
+1	in_scope	important	architecture	plan.txt:149-155	Step 3.6 specified in prose only—no fenced Bash block with assess-plan-round invocation and KV parse	Unlike Step 3/3.5 peers, Step 3.6 has no timing mark, no source current-design-env, no KV consumer loop, no explicit assessor-verdict path wiring	Implementers improvise invocation; ASSESSOR_VERDICT / EFFECTIVE_ASSESSORS parsing drifts; WORSE Continue/Stop branch unreliable	Add Step 3.6 fenced Bash block (source env, optional timing mark, write-after, assess-plan-round.sh call, KV parse, verdict-file cat, 0/3 banner from edge-case :204) matching other step contracts
+1	in_scope	important	correctness	scripts/test-design-structure.sh:196-217	Plan adds new pins but does not revise Check 6 which only enforces 3.5 before 3b	Check 6 passes if 3.6 marker is absent or placed after 3b; routing regression undetected	Extend Check 6 awk pin to require <!-- step:3.5 before <!-- step:3.6 before <!-- step:3b; grep for assess-plan-round.sh and snapshot-plan-round.sh write-after in Step 3.6 window
+1	in_scope	important	correctness	plan.txt:204-205 vs plan.txt:149-155	Edge case mandates 0/3 effective-assessor banner in Step 3.6 but UPDATED SKILL.md section omits it	Panel-wide parse failure silently proceeds; operator loses audit signal promised in edge cases and feature warning intent	Add explicit Step 3.6 prose: when ASSESSOR_VERDICT=not-worse and EFFECTIVE_ASSESSORS=0 print **⚠ 3.6: 0/3 effective assessors; proceeding without quality gate**; cover in test-assess-plan-round.sh
+1	in_scope	latent	correctness	plan.txt:94,154	Verdict file synthesizes WORSE justification from REASONING only; feature asks warning include assessor qualifications	Operator WORSE prompt may omit QUALIFICATIONS blocks assessors were instructed to emit	Include QUALIFICATIONS excerpts in tally WORSE synthesis or print per-assessor QUALIFICATIONS under the WORSE header before AskUserQuestion
+1	in_scope	nit	risk-integration	plan.txt:55,210	Plan cites lib-waterfall-slot.sh and Step 3.6 cursor/write-after ordering that conflicts with Gate C increment site	lib-waterfall-slot.sh does not exist; failure-mode mitigation references cursor increment in Step 3.6 though increment lives in Gate C(c) before Step 3	Say manifest follows dispatch-plan-voters.sh inline ndjson pattern; fix failure-mode text to Gate C(c) increment-before-Step-3 vs Step 3.6 write-after ordering
+
+**1. [correctness] `render-final-summary.sh` must accept `cancelled-assessor-worse`**
+
+The plan (line 158) states `render-final-summary.sh` needs no change because it "accepts any token," but the script explicitly whitelists outcomes and exits 2 on unknown tokens:
+
+```43:48:skills/design/scripts/render-final-summary.sh
+case "$OUTCOME" in
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
+    *)
+        larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
+        exit 2
+```
+
+The Stop branch exports `SUMMARY_OUTCOME=cancelled-assessor-worse` and runs the Final summary block — that path will fail unless the script and `test-render-final-summary.sh` are updated. Acceptance mentions SKILL.md enumeration only (line 248); it should also require the script change.
+
+**2. [integration] `assess-plan-round.sh` must wire `--feature-file`**
+
+`dispatch-plan-assessors.sh` requires `--feature-file PATH` (plan line 50). `assess-plan-round.sh` argv (lines 104–110) does not include it and does not specify derivation. `plan-review-loop.sh` defaults to `${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt` — the orchestrator should mirror that.
+
+**3. [architecture] Routing prose still bypasses Step 3.6**
+
+The plan inserts Step 3.6 but does not update existing "next step" anchors that still name Step 3b directly: anti-halt chain at `SKILL.md:30`, Step 2b.5 callable-from at `:644`, Gate B at `:786`, and `approval-gates.md:104` (zero-findings) / `:114` (Gate C flow). On HARD runs, Gate B settled paths must forward to Step 3.6, not Step 3b.
+
+**4. [architecture] Step 3 / 3.6 lack mechanical Bash contracts**
+
+Step 3's plan edit replaces `--round-num 1` with `read-cursor` but does not show KV parsing (`ROUND_CURSOR=N` → integer for `--round-num`). Step 3.6 is prose-only — no fenced Bash for `write-after`, `assess-plan-round.sh`, KV consumption, verdict display, or the 0/3 banner from edge case line 204.
+
+**5. [correctness] `test-design-structure.sh` Check 6 insufficient**
+
+Check 6 only enforces `<!-- step:3.5` before `<!-- step:3b`. The plan adds new pins but does not extend Check 6 to require `3.6` between them, so a routing skip could pass CI.
+
+**6. [correctness] 0/3 assessor banner missing from SKILL.md update**
+
+Edge cases (line 204) require `**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate**` when all assessors fail to parse. The UPDATED SKILL.md Step 3.6 section (lines 149–155) does not include this branch.
+
+**7. [latent] QUALIFICATIONS may not reach operator on WORSE**
+
+The feature description asks for a warning including assessor qualifications. The tally synthesizes WORSE text from `REASONING` only (plan line 94); `QUALIFICATIONS:` from the prompt grammar may never appear in the operator-facing WORSE header or verdict file.
+
+**8. [nit] Minor plan inconsistencies**
+
+- References `lib-waterfall-slot.sh` (line 55) which does not exist; `dispatch-plan-voters.sh` builds NDJSON inline.
+- Failure modes (line 210) conflate Step 3.6 `write-after` with cursor increment, which actually happens in Gate C(c) before Step 3 re-entry.

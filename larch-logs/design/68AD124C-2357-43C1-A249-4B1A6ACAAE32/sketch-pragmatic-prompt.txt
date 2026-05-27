@@ -1,0 +1,239 @@
+You are a Pragmatism/Safety engineer. Propose a high-level implementation approach for this feature: # Add plan-quality assessor stage to /design review loop to prevent "death by…
+
+Currently, the /design skill runs a loop of plan review turns. In each turn, it spawns reviewers, aggregates/deduplicates feedback, and has 3 judges vote on which plan-modification suggestions to accept. This results in a large number (both absolute and percentage) of accepted suggestions. In itself this is not alarming, but there is no mechanism to prevent "death by 1000 cuts" where each suggestion looks good in isolation but the cumulative effect across multiple rounds takes the plan further from optimal.
+
+Proposed: Add a post-round assessor stage that receives the original pre-review plan draft, the previous round's plan, and the current round's plan (plus the refined problem statement), then assesses whether the latest plan is better or worse than the previous round's plan. If better, the process continues. If worse, the process is interrupted with a warning that includes the assessor's qualifications, allowing the user to decide how to proceed. Use 3 assessors (same panel size as judges) with majority-vote determining the outcome.
+
+<!-- larch:plan:start -->
+## Plan
+
+## Approach
+
+Add a holistic plan-quality assessor stage that fires between each `/design` review round and surfaces "is the plan as a whole better or worse than the previous round?" to the operator, with concrete recovery options (continue / rollback / abort). The stage runs only when `workflow_path=HARD` in `run-params.json` (per the brainstorm working-direction constraint) and skips silently on round 1 (no previous plan exists, per Round-1 Decision 2). #2871 (multi-round loop integration) is blocked on this issue per Decision 7 and consumes the assessor verdict file as its handoff surface.
+
+The dialectic-resolved direction (DECISION_1, unanimous 3-0) is to NOT extend `scripts/dispatch-plan-voters.sh` with a `--role assessor` mode. Instead, add a **sibling dispatcher** `skills/design/scripts/dispatch-plan-assessors.sh` plus a new `skills/shared/scripts/render-assessor-prompt.sh` peer and a design-local `skills/design/scripts/tally-plan-assessor.sh`. The sibling reuses lower-level primitives (`scripts/launch-claude-review.sh`, `scripts/dispatch-with-waterfall.sh`, the lib-quiet breadcrumb/done-sentinel/paired-PID protocol, `scripts/append-tool-failure.sh`) without polluting `dispatch-plan-voters.sh`'s per-finding ballot grammar (`LARCH_VPR_ID_GRAMMAR=finding-oos`, per-ID parse-rate retry, the `FINDING_N:` / `OOS_N:` `YES|NO|EXONERATE` prompt-renderer contract). The infrastructure-reuse concern raised by the losing thesis is addressed by reusing those lower-level primitives directly.
+
+State is file-only (no in-memory cursor object). Three artifact families live under `$DESIGN_TMPDIR/plan-review/round-<N>/`:
+- `plan.txt-original` (write-once-per-session anchor; never overwritten).
+- `plan-review/round-<N>/plan-after.txt` (write-once-per-round, after Gate B settles).
+- `plan-review/round-<N>/assessor-verdict.{md,env}` (write-once-per-round, after the assessor tally; round 1 emits no verdict — the skip is logged via a breadcrumb instead).
+- `plan-review/round-cursor.txt` (integer round number; cursor-write-last in mutating operations; defaults to 1 when absent).
+
+Rollback is `cp -p` of the previous round's snapshot to a `.tmp` sibling then `mv -f` over `plan.txt`, with `plan-review/rollback-in-progress` sentinel file created BEFORE the snapshot copy and deleted AFTER both the copy AND the cursor decrement succeed. If a future `/design` re-entry finds the sentinel, it refuses to proceed past it and surfaces the inconsistency to the operator instead of silently continuing with a desynced cursor.
+
+The assessor is invoked from the SKILL.md orchestrator (new Step 3.6 between Step 3.5 Gate B settled-paths and Step 3b), NOT from inside `skills/design/scripts/plan-review-loop.sh`. This preserves the loop's per-round single-responsibility and gives #2871 a stable seam to extend later.
+
+The hardcoded `--round-num 1` argument that SKILL.md Step 3 passes to `plan-review-loop.sh` becomes a read of `plan-review/round-cursor.txt` (default 1 when absent), so the Step 3 panel and the assessor agree on `N` on every entry — including Gate C(c) "Re-run review panel" re-entries.
+
+The 3-assessor panel (Claude + Cursor + Codex) uses the same cross-model composition as judges. Tally semantics: a single shared classifier defines WORSE strictly when `WORSE > BETTER` votes; 1-1-1, 1-2-0 (BETTER-TIE-WORSE), and any other distribution count as "not worse" and proceed silently. With zero substantive voter outputs the stage defaults open (treats verdict as "not worse" and logs a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md`) — the assessor is a circuit breaker, not a hard gate.
+
+The worse-verdict UX is a single `AskUserQuestion` (Continue / Rollback / Abort) fired in-prompt from SKILL.md Step 3.6, immediately before Step 3b would normally fire. Continue proceeds to Step 3b with `plan.txt` unchanged. Rollback invokes `rollback-plan-round.sh` and re-enters Step 3 with the previous plan (cursor decremented). Abort invokes a small "discard current worse plan" path: the orchestrator copies `plan-review/round-(N-1)/plan-after.txt` over `plan.txt`, jumps to Step 3b, then Step 4, then Step 4b Gate C (which the operator can Approve to finalize the previous round's plan).
+
+## Files to modify/create
+
+### NEW: `skills/design/scripts/dispatch-plan-assessors.sh`
+
+Sibling dispatcher for the assessor panel. Argv: `--design-tmpdir DIR --round-num N --plan-original PATH --plan-prev PATH --plan-current PATH --feature-file PATH --codex-present true|false --cursor-present true|false [--timeout SECS]`. Internally renders the assessor prompt via `render-assessor-prompt.sh`, writes it once to `$DESIGN_TMPDIR/plan-review/round-<N>/assessor-prompt.txt`, then launches three slots in parallel: Claude via `scripts/launch-claude-review.sh` (slot 1), and Codex + Cursor via `scripts/dispatch-with-waterfall.sh` with an `assessor-slots.ndjson` manifest assembled from the same primitives `dispatch-plan-voters.sh` uses. Outputs to deterministic paths `plan-review/round-<N>/claude-plan-assessor-output.txt`, `cursor-plan-assessor-output.txt`, `codex-plan-assessor-output.txt`. Emits `emit_kv` KV lines (`DISPATCH_OK`, `ASSESSOR_*_PATH`, `ASSESSOR_*_STATUS`, `DEGRADED_PANEL_WARNING`) per the `dispatch-plan-voters.sh` family-B background+monitor pattern (see BASH_AUTHORING.md §4). Does NOT call `tally-plan-review.sh`, does NOT import `lib-vote-tally.sh`, and does NOT use the finding-grammar tokens.
+
+### NEW: `skills/design/scripts/dispatch-plan-assessors.md`
+
+Sibling doc per the `script-md-siblings` rule. Documents argv, machine output KV contract, exit codes, and the file-output basenames. Cross-links to `dispatch-plan-voters.md` for the lower-level primitive reuse pattern and notes the deliberate separation (per dialectic resolution).
+
+### NEW: `skills/shared/scripts/render-assessor-prompt.sh`
+
+Peer of `render-voter-prompt.sh` but for the assessor grammar. Argv: `--plan-original PATH --plan-prev PATH --plan-current PATH --feature-file PATH --output PATH`. Renders a single prompt body that includes (a) the senior-pragmatic-software-engineer persona prompt with explicit bias against unnecessary complexity (Decision 3), (b) all three plan files inlined (catted, not referenced by path — assessors do not resolve paths reliably), (c) the refined problem statement from `feature-file`, and (d) the required structured output grammar: a single line `ASSESSMENT: BETTER|WORSE|TIE` plus a free-form `REASONING:` block and a `QUALIFICATIONS:` line summarizing the assessor's basis for the verdict. Output grammar is independent of `FINDING_N:` / `OOS_N:` so callers cannot mistake assessor output for voter output.
+
+### NEW: `skills/shared/scripts/render-assessor-prompt.md`
+
+Sibling doc per the `script-md-siblings` rule.
+
+### NEW: `skills/design/scripts/tally-plan-assessor.sh`
+
+Design-local tally script for the holistic verdict. Argv: `--design-tmpdir DIR --round-num N --claude-output PATH --cursor-output PATH --codex-output PATH --output PATH`. Parses each output for the `ASSESSMENT: <VERDICT>` line (case-insensitive, leading whitespace tolerated, paired `**...**` wrappers stripped per the same parser tolerance rule used by `lib-vote-tally.sh`). Classifier: `WORSE_majority = (worse_votes > better_votes)`; all other distributions (1-1-1, 1-2-0, ties, etc.) are "not worse". Emits `$DESIGN_TMPDIR/plan-review/round-<N>/assessor-verdict.md` with human-readable verdict + per-assessor reasoning (the "qualifications" exposed to the operator on the WORSE-verdict AskUserQuestion) and `assessor-verdict.env` with KV lines (`ASSESSOR_VERDICT=worse-majority|not-worse`, `BETTER_VOTES=N`, `WORSE_VOTES=N`, `TIE_VOTES=N`, `ELIGIBLE_VOTERS=N`, `DEGRADED_DEFAULT_OPEN=true|false`) consumable by SKILL.md. Does NOT import `lib-vote-tally.sh` (the per-ID accumulator is the wrong abstraction for one holistic verdict).
+
+### NEW: `skills/design/scripts/tally-plan-assessor.md`
+
+Sibling doc per the `script-md-siblings` rule. Documents the strict `WORSE > BETTER` classifier explicitly to prevent re-implementation drift.
+
+### NEW: `skills/design/scripts/assess-plan-round.sh`
+
+Entry orchestrator script invoked from SKILL.md Step 3.6. Argv: `--design-tmpdir DIR --codex-present true|false --cursor-present true|false [--timeout SECS]`. Behavior:
+
+1. Re-reads `workflow_path` from `$DESIGN_TMPDIR/run-params.json` at every invocation. Exits 0 with a `⏩ assessor: workflow_path=<value>; skipped` breadcrumb when not `HARD`. Does NOT mutate `run-params.json` or any other state on the skip path — no snapshot directories, no dispatch, no UI.
+2. Reads `plan-review/round-cursor.txt` (default 1 when absent). When `cursor < 2`, exits 0 with a `⏩ assessor: round <N>; no previous plan; skipped` breadcrumb. Does NOT create round directories on the skip path.
+3. Checks `plan-review/rollback-in-progress` sentinel; if present, exits non-zero with a `**⚠ assessor: rollback-in-progress sentinel detected at <path>; refusing to proceed**` breadcrumb (defensive against crash-recovery).
+4. Locates the three plan files: `$DESIGN_TMPDIR/plan.txt-original` (anchor; if missing, exits 0 with a `**⚠ assessor: original-plan snapshot unavailable; skipped (HARD-only state corruption)**` warning so a partial cache cannot fail the round), `plan-review/round-<N-1>/plan-after.txt` (previous), `plan-review/round-<N>/plan-after.txt` (current). When current is missing the script exits non-zero (caller invariant violation).
+5. Invokes `dispatch-plan-assessors.sh` with `run_in_background: true` paired with `breadcrumb-monitor.sh` per BASH_AUTHORING.md §4.
+6. After collection returns, invokes `tally-plan-assessor.sh`. Reads the resulting `assessor-verdict.env`.
+7. Emits the final KV block: `ASSESSOR_STATUS=ok|skipped|degraded-default-open|sentinel-blocked`, `ASSESSOR_VERDICT=worse-majority|not-worse|skipped`, `ASSESSOR_VERDICT_FILE=<path>`, `ROUND_NUM=N`. The SKILL.md call site reads these to decide whether to fire the worse-verdict AskUserQuestion.
+
+### NEW: `skills/design/scripts/assess-plan-round.md`
+
+Sibling doc per the `script-md-siblings` rule. Documents argv, exit codes (0 on all skip paths and on success; non-zero only on caller-invariant violation), and the KV machine contract.
+
+### NEW: `skills/design/scripts/snapshot-plan-round.sh`
+
+Write-once snapshot helper. Subcommand `write-original`: copies `$DESIGN_TMPDIR/plan.txt` to `$DESIGN_TMPDIR/plan.txt-original` via `cp -p` to a `.tmp` sibling then `mv -f`. Refuses to overwrite an existing `plan.txt-original` (returns 0 with a `⏩ snapshot-plan-round: original already exists; preserved` breadcrumb — write-once-per-session invariant). Subcommand `write-after --round N`: same atomic copy pattern, writes to `plan-review/round-<N>/plan-after.txt`. Creates `plan-review/round-<N>/` with `mkdir -p` first. Subcommand `read-cursor` and `write-cursor --value N`: maintains `plan-review/round-cursor.txt`. Argv: `--design-tmpdir DIR`. Emits `emit_kv` KV lines.
+
+### NEW: `skills/design/scripts/snapshot-plan-round.md`
+
+Sibling doc per the `script-md-siblings` rule.
+
+### NEW: `skills/design/scripts/rollback-plan-round.sh`
+
+Rollback helper. Argv: `--design-tmpdir DIR --target-round N`. Order of operations (cursor-write-last):
+1. Verify `plan-review/round-<N>/plan-after.txt` exists and is readable. Exit non-zero if not.
+2. Create `plan-review/rollback-in-progress` sentinel (touch).
+3. Copy `plan-review/round-<N>/plan-after.txt` to a `.tmp` sibling of `plan.txt` via `cp -p`.
+4. `mv -f .tmp plan.txt`.
+5. Write `plan-review/round-cursor.txt` to `N` via the same temp-and-rename pattern (cursor-write-last).
+6. Delete `plan-review/rollback-in-progress` sentinel.
+7. Emit `ROLLBACK_OK=true ROLLBACK_TARGET_ROUND=N`.
+
+Any failure between step 2 and step 6 leaves the sentinel in place for next-session recovery diagnosis. The script never deletes `plan-review/round-<M>/plan-after.txt` files for `M > N` — those snapshots remain readable for forensic inspection even after rollback.
+
+### NEW: `skills/design/scripts/rollback-plan-round.md`
+
+Sibling doc per the `script-md-siblings` rule.
+
+### NEW: `skills/design/references/assessor.md`
+
+Normative reference for the assessor stage: when it fires (HARD-only, round ≥ 2, between Gate B and Gate C), input artifacts (`plan.txt-original`, `plan-review/round-<N-1>/plan-after.txt`, `plan-review/round-<N>/plan-after.txt`, feature-description.txt), output schema (`assessor-verdict.{md,env}`), the AskUserQuestion contract (Continue / Rollback / Abort, with question text and option descriptions), the rollback mechanics + `rollback-in-progress` sentinel semantics, the strict `WORSE > BETTER` classifier definition and rationale, the degraded-panel default-open contract, the HARD-only re-read-per-invocation rule, and the relationship to #2871 (assessor exists today as a no-op for round 1 and as a real call for round ≥ 2; #2871 generalizes the multi-round loop that drives the assessor).
+
+### NEW: `skills/design/scripts/test-dispatch-plan-assessors.sh`
+
+Offline harness for `dispatch-plan-assessors.sh`. Covers: argv parsing, all-3-tools-available happy path with stubbed externals, degraded panel with one external unavailable (Claude-only replacement), all-externals-unavailable (Claude + 2 replacements), `DISPATCH_OK=false` on launcher failure, breadcrumb stream emission, KV contract.
+
+### NEW: `skills/design/scripts/test-dispatch-plan-assessors.md`
+
+Sibling doc.
+
+### NEW: `skills/shared/scripts/test-render-assessor-prompt.sh`
+
+Offline harness for `render-assessor-prompt.sh`. Covers: argv parsing, prompt content includes all three plans inlined, output grammar tokens (`ASSESSMENT:`, `REASONING:`, `QUALIFICATIONS:`) present, missing input file argv produces non-zero exit and clear diagnostic.
+
+### NEW: `skills/shared/scripts/test-render-assessor-prompt.md`
+
+Sibling doc.
+
+### NEW: `skills/design/scripts/test-tally-plan-assessor.sh`
+
+Offline harness for `tally-plan-assessor.sh`. Covers: all-better-vote case, all-worse-vote case, all-tie case, 2-better-1-worse, 2-worse-1-better, 1-1-1 mix, `**ASSESSMENT: WORSE**` markdown-wrapped form, case-insensitive parsing, missing file inputs (degraded default-open), the strict `WORSE > BETTER` boundary at every tie boundary, KV contract.
+
+### NEW: `skills/design/scripts/test-tally-plan-assessor.md`
+
+Sibling doc.
+
+### NEW: `skills/design/scripts/test-assess-plan-round.sh`
+
+Offline harness for `assess-plan-round.sh`. Covers: `workflow_path=SIMPLE` skip, `workflow_path=TRIVIAL` skip, `workflow_path=HARD` + round 1 skip, `workflow_path=HARD` + round 2 with full pipeline (mock dispatch + tally), missing `plan.txt-original` skip path, `rollback-in-progress` sentinel block path, KV emission shape per status.
+
+### NEW: `skills/design/scripts/test-assess-plan-round.md`
+
+Sibling doc.
+
+### NEW: `skills/design/scripts/test-snapshot-plan-round.sh`
+
+Offline harness for `snapshot-plan-round.sh`. Covers: `write-original` first time, `write-original` second time preserved, `write-after --round N` creates `plan-review/round-<N>/`, atomic temp-and-rename pattern, cursor read/write idempotence, argv validation.
+
+### NEW: `skills/design/scripts/test-snapshot-plan-round.md`
+
+Sibling doc.
+
+### NEW: `skills/design/scripts/test-rollback-plan-round.sh`
+
+Offline harness for `rollback-plan-round.sh`. Covers: happy-path rollback, sentinel-creation-before-copy ordering, sentinel-cleanup-after-cursor-write ordering, crash-mid-copy recovery (sentinel persists), `--target-round N` reads correct snapshot, snapshots for rounds > N preserved (not deleted), missing-target-round exit-non-zero path.
+
+### NEW: `skills/design/scripts/test-rollback-plan-round.md`
+
+Sibling doc.
+
+### UPDATED: `skills/design/SKILL.md`
+
+Three edits:
+1. Step 2b end: after the existing `ACTION=EMIT_PLAN` driver call and the Step 2b.5 plan-size check, invoke `snapshot-plan-round.sh write-original --design-tmpdir "$DESIGN_TMPDIR"` (HARD-only — gated by reading `workflow_path` from `run-params.json` in the same Bash block). On SIMPLE/TRIVIAL, no snapshot is written. This is idempotent across Gate C(c) re-entries because `write-original` is write-once-per-session.
+2. Step 3: replace the hardcoded `--round-num 1` argument to `plan-review-loop.sh` with a read of `plan-review/round-cursor.txt` (default 1 when absent), so Step 3 entry on Gate C(c) re-runs uses the incremented round number.
+3. New Step 3.6 "Plan-Quality Assessor (HARD-only)" inserted between Step 3.5 (Gate B) settled-paths and Step 3b (arch diagram). The step body:
+   - Prints `> **🔶 /design 3.6: assessor**`.
+   - Invokes `snapshot-plan-round.sh write-after --round <N> --design-tmpdir "$DESIGN_TMPDIR"` to capture the current round's `plan-after.txt` (HARD-only).
+   - Invokes `assess-plan-round.sh` (HARD-only) and parses `ASSESSOR_STATUS` / `ASSESSOR_VERDICT` from its KV output.
+   - On `ASSESSOR_VERDICT=worse-majority`: fires the 3-option AskUserQuestion (Continue / Rollback / Abort) defined in `references/assessor.md`. Continue proceeds to Step 3b unchanged. Rollback invokes `rollback-plan-round.sh --target-round <N-1>` and re-enters Step 3 with the restored plan. Abort copies `plan-review/round-<N-1>/plan-after.txt` over `plan.txt`, breadcrumb-logs the discard, and proceeds to Step 3b with the previous plan.
+   - On any other status (`not-worse` / `skipped` / `degraded-default-open` / `sentinel-blocked`): proceed to Step 3b.
+   - Gate C(c) "Re-run review panel" path: increment `plan-review/round-cursor.txt` (HARD-only) before re-entering Step 3.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+Two edits:
+1. Add a note in the Gate C section that on `Re-run review panel` re-entry, the cursor is incremented (HARD-only) and the next round will fire the assessor (HARD-only, round ≥ 2).
+2. Add a forward-reference from the Gate B settled-paths to the new Step 3.6 assessor stage, so a reader of approval-gates.md understands that Step 3b is not the immediate next step on HARD runs.
+
+### UPDATED: `scripts/lib-timing-kinds.sh`
+
+Add three new entries to `TIMING_TASK_KINDS_ALLOWED`: `claude-plan-assessor`, `codex-plan-assessor`, `cursor-plan-assessor`. Per the timing-task-kind-allowlist rule, these slugs MUST land in the same change as the launcher invocations that reference them.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+Add structural pins:
+- `snapshot-plan-round.sh write-original` invocation present in SKILL.md Step 2b (HARD-gated).
+- `assess-plan-round.sh` invocation present in SKILL.md Step 3.6 (HARD-gated, between Gate B and Step 3b).
+- `plan-review/round-cursor.txt` read replaces the literal `--round-num 1` in SKILL.md Step 3.
+- Three timing kinds present in `lib-timing-kinds.sh`.
+- Six new test-*.sh entries present in `Makefile`.
+
+### UPDATED: `Makefile`
+
+Add six new test targets: `test-dispatch-plan-assessors`, `test-render-assessor-prompt`, `test-tally-plan-assessor`, `test-assess-plan-round`, `test-snapshot-plan-round`, `test-rollback-plan-round`. Each invokes the corresponding `skills/.../test-*.sh` script. Add them to the `lint`-aggregating target so `bash scripts/relevant-checks.sh` exercises them.
+
+## Edge cases
+
+- **Round 1 entry**: assessor skipped per Decision 2. No snapshot of `plan-review/round-1/plan-after.txt` is required before assessor runs — only after Gate B settles in round 1. (Snapshot is for use BY a future round's assessor, not by round 1 itself.)
+- **`plan.txt-original` missing**: a corrupted session cache or partial restore leaves the anchor file absent. `assess-plan-round.sh` short-circuits to skipped with a `Warnings` entry rather than failing the round — the assessor is a circuit breaker, not a hard gate.
+- **Gate C(c) re-entry**: the cursor increment must happen before Step 3 re-enters so `plan-review-loop.sh --round-num <N+1>` matches. The HARD-only gating means SIMPLE/TRIVIAL re-entries do not touch the cursor.
+- **Mid-flow tier drift**: if `run-params.json` is manually edited between rounds (unlikely but possible via session rehydration), the assessor re-reads on every invocation and skips cleanly when not HARD. No half-written `round-<N>/` directories.
+- **Markdown-wrapped vote lines**: assessors may emit `**ASSESSMENT: WORSE**` (bold-wrapped) or other markdown styling. `tally-plan-assessor.sh` strips paired wrappers and parses case-insensitively, mirroring the parser tolerance rule used by `lib-vote-tally.sh`.
+- **Tie distributions**: 1-1-1, 1-2-0 (BETTER-TIE-WORSE), 0-3-0 (all TIE), 2-1-0 (BETTER-TIE-WORSE) — all "not worse". Only `WORSE > BETTER` (strict inequality) is "worse-majority".
+- **Zero substantive voter outputs**: when all three assessors fail to produce a parseable verdict, `tally-plan-assessor.sh` emits `ASSESSOR_VERDICT=not-worse` with `DEGRADED_DEFAULT_OPEN=true`, and `assess-plan-round.sh` logs a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md`.
+- **Rollback ↔ snapshot interaction**: a successful rollback to round N-1 leaves `plan-review/round-<N>/plan-after.txt` on disk for forensics. The next Gate C(c) re-run will write `plan-review/round-<N>/plan-after.txt` again (overwriting the forensic copy) — this is intentional: forensics are best-effort, not authoritative.
+- **`rollback-in-progress` sentinel after crash**: next `/design` invocation that hits Step 3.6 finds the sentinel and refuses to proceed. Operator manually inspects `plan-review/` state and either deletes the sentinel (acknowledging known-state) or runs a manual recovery.
+
+## Failure modes
+
+- **Sentinel-write race vs. external rename**: if the rollback's `mv -f .tmp plan.txt` succeeds but the cursor-write step fails (full disk, permission flip), the `rollback-in-progress` sentinel persists. Earliest signal: next `/design` re-entry breadcrumb `**⚠ assessor: rollback-in-progress sentinel detected**`. Mitigation: cursor-write-last ordering plus operator-visible sentinel.
+- **Voter prompt-renderer drift breaking assessor**: someone edits `render-voter-prompt.sh` and the assessor stage breaks because of an implicit dependency. Earliest signal: `test-render-assessor-prompt.sh` and `test-dispatch-plan-assessors.sh` fail in CI; structural pin in `test-design-structure.sh` also catches some cross-link cases. Mitigation: explicit non-import of `render-voter-prompt.sh` from any assessor file; structural pins.
+- **Half-applied tier change**: an operator manually rewrites `run-params.json` from HARD to SIMPLE mid-session after some `plan-review/round-<N>/` directories already exist. Earliest signal: subsequent assessor entries skip cleanly (`⏩` breadcrumb), but the existing round directories are orphaned and clutter `$DESIGN_TMPDIR`. Mitigation: `assess-plan-round.sh` re-reads tier per-invocation; orphaned dirs are cleaned up by Step 6 cleanup at session end.
+
+## Testing strategy
+
+Six new offline test harnesses (`test-dispatch-plan-assessors.sh`, `test-render-assessor-prompt.sh`, `test-tally-plan-assessor.sh`, `test-assess-plan-round.sh`, `test-snapshot-plan-round.sh`, `test-rollback-plan-round.sh`) covering argv parsing, exit codes, KV contracts, error paths, and the critical invariants (strict `WORSE > BETTER` classifier, write-once snapshots, rollback ordering, HARD-only gating, round-1 skip, sentinel semantics). Each harness mocks `dispatch-plan-assessors.sh`'s downstream launches via `LARCH_*_SH` env overrides matching the existing `test-plan-review-loop.sh` pattern.
+
+`scripts/test-design-structure.sh` gains structural pins so SKILL.md, approval-gates.md, lib-timing-kinds.sh, and Makefile stay aligned with the new scripts. Each `test-*.sh` is registered in `Makefile` and exercised by `bash scripts/relevant-checks.sh` via the `lint` aggregate target.
+
+End-to-end manual verification: a /design --hard run with a deliberately worse round 2 plan (manually edited) should trigger the worse-verdict AskUserQuestion with all three options reachable; the Rollback path should restore round 1's plan and re-enter Step 3; the Abort path should finalize the previous plan via Gate C Approve.
+
+## Out of scope (deferred to #2871)
+
+- Automatic multi-round loop (the user-driven Gate C(c) re-entry remains the only call site that fires the assessor today).
+- Recursive log staging of `plan-review/round-<N>/` artifacts under `larch-logs/design/<RUN_ID>/`.
+- Convergence gates / max-round caps.
+- Cumulative applied findings tracking across rounds.
+
+
+## Acceptance
+
+- All six new scripts exist with `.md` siblings per the `script-md-siblings` rule: `dispatch-plan-assessors.sh`, `render-assessor-prompt.sh`, `tally-plan-assessor.sh`, `assess-plan-round.sh`, `snapshot-plan-round.sh`, `rollback-plan-round.sh`.
+- `skills/design/references/assessor.md` exists and documents the AskUserQuestion (Continue/Rollback/Abort) contract, the strict `WORSE > BETTER` classifier, the rollback-in-progress sentinel semantics, and the HARD-only / round ≥ 2 invariants.
+- SKILL.md Step 2b invokes `snapshot-plan-round.sh write-original` after `ACTION=EMIT_PLAN` (HARD-only).
+- SKILL.md Step 3 replaces the hardcoded `--round-num 1` argument with a read of `plan-review/round-cursor.txt` (default 1 when absent).
+- SKILL.md gains a new Step 3.6 between Gate B settled-paths and Step 3b that invokes `snapshot-plan-round.sh write-after` then `assess-plan-round.sh` (HARD-only), and fires the worse-verdict AskUserQuestion on `ASSESSOR_VERDICT=worse-majority`.
+- SKILL.md Gate C(c) increments `plan-review/round-cursor.txt` before re-entering Step 3 (HARD-only).
+- `skills/design/references/approval-gates.md` documents the new Step 3.6 forward-reference and the Gate C(c) cursor increment.
+- `scripts/lib-timing-kinds.sh` adds `claude-plan-assessor`, `codex-plan-assessor`, `cursor-plan-assessor` to `TIMING_TASK_KINDS_ALLOWED`.
+- `scripts/test-design-structure.sh` adds structural pins for the SKILL.md Step 2b snapshot, Step 3 round-cursor read, Step 3.6 assessor invocation, the three new timing kinds, and the six new `Makefile` test targets.
+- `Makefile` registers the six new `test-*` targets and links them into the lint-aggregating target.
+- Six offline harnesses (`test-dispatch-plan-assessors.sh`, `test-render-assessor-prompt.sh`, `test-tally-plan-assessor.sh`, `test-assess-plan-round.sh`, `test-snapshot-plan-round.sh`, `test-rollback-plan-round.sh`) exist, each with a `.md` sibling, and exit 0 when run from a clean working tree.
+- `bash scripts/relevant-checks.sh` passes.
+- `bash scripts/test-design-structure.sh` passes with the new structural pins.
+- Manual verification: a `/design --hard` run with a deliberately worse round 2 plan triggers the worse-verdict AskUserQuestion with Continue/Rollback/Abort reachable; Rollback restores round 1's `plan-after.txt` and re-enters Step 3; Abort finalizes the previous round's plan via Gate C Approve. A `/design --simple` or `/design --trivial` run never invokes the assessor (no snapshots, no dispatch, no UI).
+
+diff_lines: 2400
+<!-- larch:plan:end -->. Your role is to minimize the scope of changes, avoid unnecessary complexity, and ensure existing features are not broken. Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions — emphasize the smallest possible change set that achieves the goal, (2) Which files/modules to modify and why — flag any changes that touch high-risk or widely-used code paths, (3) Main risks to existing functionality and how to mitigate regressions. Do NOT modify files.

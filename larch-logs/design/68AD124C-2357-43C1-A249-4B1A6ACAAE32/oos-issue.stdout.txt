@@ -1,0 +1,12 @@
+ISSUES_CREATED=3
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=2999
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/2999
+ISSUE_1_TITLE=[OOS] SECURITY.md update for plan-quality assessor panel read-only/sandbox posture
+ISSUE_2_NUMBER=3000
+ISSUE_2_URL=https://github.com/character-ai/larch/issues/3000
+ISSUE_2_TITLE=[OOS] Design topology TSV missing new Step 3.6 plan-quality assessor
+ISSUE_3_NUMBER=3001
+ISSUE_3_URL=https://github.com/character-ai/larch/issues/3001
+ISSUE_3_TITLE=[OOS] Run-log docs missing new assessor/snapshot top-level basenames

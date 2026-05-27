@@ -1,0 +1,5 @@
+Exploring the design skill and related voter/dispatch patterns to validate the proposed assessor architecture against existing code.
+
+Checking whether `plan-review-loop` already writes per-round artifacts and how `workflow_path` is consumed elsewhere.
+Creating the architectural review plan from codebase alignment with existing voter/dispatch patterns.
+

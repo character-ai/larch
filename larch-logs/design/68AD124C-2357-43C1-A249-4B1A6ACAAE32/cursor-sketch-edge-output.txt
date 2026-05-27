@@ -1,0 +1,5 @@
+Exploring the `/design` review loop and related voter/dispatch patterns to ground the edge-case analysis.
+Verifying a few fragile integration points against the codebase.
+Checking one more integration point: Gate B's path to Step 3b and whether quick-mode bypasses the assessor.
+Drafting the edge-case analysis from the codebase review.
+
