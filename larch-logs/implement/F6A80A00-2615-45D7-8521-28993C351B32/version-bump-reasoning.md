@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `6370eef7` (chore(larch-logs): flush design run 3BD388D6-061C-4E1D-B218-0B7E00FF3CA6 [skip ci] (#3062))
-- **Current version**: `45.1.10`
+- **Base commit**: `c990683f` (Fixes #2828: Add /design readability preamble enforcement (#3051))
+- **Current version**: `45.1.12`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.1.11`
+- **New version**: `45.1.13`
 
 ### PATCH rationale
 
