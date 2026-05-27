@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-structure.sh:129-130	`### Larch-log Batches and Summary Comments` positive pin not listed among drops	Deleting the section without dropping L129 makes `make test-implement-structure` fail after SKILL collapse	Add L129-130 to the harness drop list (or repoint batch semantics to `scripts/implement-bootstrap.md` if the heading moves)

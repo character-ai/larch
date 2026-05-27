@@ -1,0 +1,104 @@
++ tmrc=0
++ set -e
++ '[' 0 -ne 0 ']'
++ '[' '!' -s <TMPDIR>/timing-report-final.json ']'
++ DURATION=
++ '[' -f <TMPDIR>/timing-report-final.json ']'
++ command -v jq
+++ jq -r 'if .total_hms then .total_hms elif .total_seconds then (.total_seconds | tostring + "s") else empty end' <TMPDIR>/timing-report-final.json
++ DURATION=00:45:32
++ CLAUDE_T=0
++ CODEX_T=0
++ CURSOR_T=0
++ C_IN=0
++ C_CR=0
++ C_CW5=0
++ C_CW1=0
++ C_OUT=0
++ D_IN=0
++ D_CACHED=0
++ D_OUT=0
++ U_IN=0
++ U_CR=0
++ U_OUT=0
++ COST_ARGS=()
++ _cost_unavailable=false
++ tok_json=<TMPDIR>/token-report-final.json
++ stderr_nonempty=false
++ '[' -s <TMPDIR>/token-report-final.stderr.log ']'
++ jq_ok=false
++ command -v jq
++ '[' -f <TMPDIR>/token-report-final.json ']'
++ jq -e .claude.totals <TMPDIR>/token-report-final.json
++ jq_ok=true
++ '[' true = true ']'
++ read -r CLAUDE_T CODEX_T CURSOR_T
+++ jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0)] | @tsv' <TMPDIR>/token-report-final.json
++ jq -e .BUCKETS_claude <TMPDIR>/token-report-final.json
++ read -r C_IN C_CR C_CW5 C_CW1 C_OUT
+++ jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' <TMPDIR>/token-report-final.json
++ read -r D_IN D_CACHED D_OUT
+++ jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' <TMPDIR>/token-report-final.json
++ read -r U_IN U_CR U_OUT
+++ jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' <TMPDIR>/token-report-final.json
++ sum_b=53215054
++ total_t=53215054
++ '[' 53215054 -eq 0 ']'
++ '[' 53215054 -eq 0 ']'
++ COST_ARGS=(--claude-tokens "$CLAUDE_T" --codex-tokens "$CODEX_T" --cursor-tokens "$CURSOR_T" --claude-input-tokens "$C_IN" --claude-cache-read-tokens "$C_CR" --claude-cache-write-5m-tokens "$C_CW5" --claude-cache-write-1h-tokens "$C_CW1" --claude-output-tokens "$C_OUT" --codex-input-tokens "$D_IN" --codex-cached-input-tokens "$D_CACHED" --codex-output-tokens "$D_OUT" --cursor-input-tokens "$U_IN" --cursor-cache-read-tokens "$U_CR" --cursor-output-tokens "$U_OUT")
++ '[' -z 00:45:32 ']'
++ EXEC_ISSUES=0
++ WARNINGS=0
++ refresh_issue_counts
++ EXEC_ISSUES=0
++ WARNINGS=0
++ ex_file=<TMPDIR>/execution-issues.md
++ '[' -f <TMPDIR>/execution-issues.md ']'
++ PLAN_LINE='0 findings'
++ '[' '!' -f <TMPDIR>/voting-tally.md ']'
++ apf=<TMPDIR>/accepted-plan-findings.md
++ oaf=<TMPDIR>/oos-accepted-design.md
++ '[' '!' -f <TMPDIR>/accepted-plan-findings.md ']'
++ '[' '!' -s <TMPDIR>/accepted-plan-findings.md ']'
++ read -r acnt xc yc zc wc
+++ awk '
+          function bump(fa,   a) {
+            a = tolower(fa)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", a)
+            if (a == "security") { cx++; return }
+            if (a == "correctness" || a == "risk-integration") { hy++; return }
+            if (a == "architecture" || a == "code-quality") { md++; return }
+            lw++
+          }
+          BEGIN { cx=0; hy=0; md=0; lw=0; inf=0 }
+          FNR == 1 { inf=0 }
+          /^### (FINDING_|OOS_)/ { inf=1; next }
+          inf && /^- focus-area[[:space:]]*=[[:space:]]*/ {
+            sub(/^- focus-area[[:space:]]*=[[:space:]]*/, "")
+            bump($0)
+            inf=0
+            next
+          }
+          /^### / { inf=0 }
+          END {
+            n = cx+hy+md+lw
+            print n, cx+0, hy+0, md+0, lw+0
+          }
+        ' <TMPDIR>/accepted-plan-findings.md <TMPDIR>/oos-accepted-design.md
++ '[' 0 -eq 0 ']'
++ PLAN_LINE='0 findings'
++ OOS_COUNT=0
++ OOS_URLS=
++ '[' -f <TMPDIR>/oos-issues-created.md ']'
++ RUN_LOGS_PATH=N/A
++ '[' -n 9727E99F-67D4-4E42-8D9F-350231BDD4AE ']'
++ '[' 9727E99F-67D4-4E42-8D9F-350231BDD4AE '!=' unknown ']'
++ RUN_LOGS_PATH=larch-logs/design/9727E99F-67D4-4E42-8D9F-350231BDD4AE/
++ '[' pre = pre ']'
++ render_or_fallback
++ local err_file=<TMPDIR>/render-final-summary.stderr.log
++ local summary_file=<TMPDIR>/final-summary.md
++ local preserved_cost_line=
++ '[' pre = post ']'
++ set +e
++ invoke_render

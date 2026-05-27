@@ -1,0 +1,19 @@
+<steelman>
+The issue body explicitly specifies a Cursor → Codex → Claude waterfall and gives the warning `Cursor unavailable — falling back to Codex implementer`, which only makes sense if Cursor is tried first. If Phase 4 moves coder selection into `implement-bootstrap.sh`, aligning SECURITY.md and routing pins in the same PR prevents split-brain docs and tests.
+</steelman>
+<claim>
+Preserve Codex → Cursor → Claude because the current repository consistently treats Codex as the omitted-`--coder` default, and changing that default is a separate operator-visible trust decision, not necessary to implement `phase_coder_select`.
+</claim>
+<evidence>
+`skills/implement/SKILL.md:756-760` says the default waterfall prefers Codex → Cursor → Claude and that `codex_available=true` makes Codex the default when `--coder` is omitted. `SECURITY.md:106` documents the same omitted-`--coder` routing, and `scripts/test-implement-step2-routing.sh:31-32` pins both the waterfall heading and the Codex → Cursor → Claude order.
+</evidence>
+<strongest_concession>
+The opposing side has the cleanest reading of the new issue text: the requested warning and stated phase contents are internally coherent only under Cursor-first routing.
+</strongest_concession>
+<counter_to_opposition>
+That coherence is weaker than the committed contract because the feature goal is to relocate existing Step 0 selection into bootstrap, while Cursor-first silently changes the default implementer and the security posture operators rely on.
+</counter_to_opposition>
+<risk_if_wrong>
+If the issue intentionally authorizes a product-level default change, preserving Codex-first will require a follow-up PR to flip behavior, warnings, SECURITY.md, and tests together.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

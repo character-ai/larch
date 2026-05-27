@@ -1,0 +1,69 @@
+## Dialectic Ballot
+
+You are a judge on a 3-panel adjudicating contested design decisions. For each `DECISION_N` below, read both Defense A and Defense B, then cast exactly one binary vote: `THESIS` or `ANTI_THESIS`. THESIS means the side labeled as defending CHOSEN on that decision wins; ANTI_THESIS means the side defending ALTERNATIVE wins. Judge on argument quality — not on which defense "sounds more confident." Vote on every decision. Do not modify files.
+
+The tool that produced each defense is hidden (Defense A / Defense B labels are anonymous). Which side defends CHOSEN vs. ALTERNATIVE is disclosed on each decision's header because that information is semantic, not tool-attributive.
+
+### DECISION_1: Implicit waterfall order (Cursor → Codex → Claude vs Codex → Cursor → Claude)
+
+Defense A (defends CHOSEN — adopt issue body's Cursor → Codex → Claude order; update SECURITY.md and step2-routing test in same PR):
+<defense_content>
+Preserving [tool] → [tool] → [tool] honors an explicit, recently landed product default: `CHANGELOG.md` documents restoring [tool]-first for `/implement` Step 2 (#2756), `SECURITY.md` L106 states omitted-`--coder` routing follows that order, and `scripts/test-implement-step2-routing.sh` L31–32 structurally pins `skills/implement/SKILL.md` to the same prose—so flipping order is a deliberate default-implementer change, not a mechanical Phase 4 refactor.
+
+Phase 4 should ship [tool] → [tool] → [tool] in `phase_coder_select`, with the same PR updating `SECURITY.md` L104–106 and `scripts/test-implement-step2-routing.sh` L31–32, because the approved Phase 4 contract, its fallback warning text, and bootstrap ownership of coder selection require one canonical order—not a script that contradicts security docs and structural pins.
+
+`scripts/implement-bootstrap.sh` L911–914 still stubs `phase_coder_select` with `IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4`, while the debate prompt’s approved sketch mandates implicit `[tool] → [tool] → [tool]` and the verbatim `**⚠ [tool] unavailable — falling back to [tool] implementer.**` string—which is logically paired with `cursor_available=false` then `codex_available=true`, not with today’s `skills/implement/SKILL.md` L756–759 [tool]-first bullets that print `**⚠ [tool] unavailable — falling back to [tool] implementer.**` when `codex_available=false` and `cursor_available=true`.
+
+The antithesis is right that today’s repo truth is [tool]-first end-to-end: `SECURITY.md` L106, `skills/implement/SKILL.md` L756–758 (“default implementer when `--coder` is omitted”), and `scripts/test-implement-step2-routing.sh` L31–32 (`assert_contains … '[tool] → [tool] → [tool]'`) will all lie if bootstrap alone changes order without bundled doc/test updates.
+
+That triple alignment is exactly why the thesis bundles cross-file updates in one PR: Phase 4 deletes the SKILL.md waterfall section and moves selection into bootstrap, so the old pins become anchors on deleted prose—preserving [tool]-first only recreates split-brain where the issue-specified [tool]→[tool] warning cannot be emitted coherently from the new mechanical owner.
+
+If [tool]-first is wrong, operators on omitted `--coder` silently get [tool] instead of [tool] despite months of #2756-documented default, `coder_fallback=true` semantics and SECURITY’s “[tool] without explicit `--coder=[tool]`” paragraph misdescribe live behavior, and harnesses green-light a product regression until someone notices implementer flips in run manifests.
+</defense_content>
+
+Defense B (defends ALTERNATIVE — preserve current repo order Codex → Cursor → Claude; treat issue body's order as inaccurate / example only):
+<defense_content>
+The issue body explicitly specifies a [tool] → [tool] → [tool] waterfall and gives the warning `[tool] unavailable — falling back to [tool] implementer`, which only makes sense if [tool] is tried first. If Phase 4 moves coder selection into `implement-bootstrap.sh`, aligning SECURITY.md and routing pins in the same PR prevents split-brain docs and tests.
+
+Preserve [tool] → [tool] → [tool] because the current repository consistently treats [tool] as the omitted-`--coder` default, and changing that default is a separate operator-visible trust decision, not necessary to implement `phase_coder_select`.
+
+`skills/implement/SKILL.md:756-760` says the default waterfall prefers [tool] → [tool] → [tool] and that `codex_available=true` makes [tool] the default when `--coder` is omitted. `SECURITY.md:106` documents the same omitted-`--coder` routing, and `scripts/test-implement-step2-routing.sh:31-32` pins both the waterfall heading and the [tool] → [tool] → [tool] order.
+
+The opposing side has the cleanest reading of the new issue text: the requested warning and stated phase contents are internally coherent only under [tool]-first routing.
+
+That coherence is weaker than the committed contract because the feature goal is to relocate existing Step 0 selection into bootstrap, while [tool]-first silently changes the default implementer and the security posture operators rely on.
+
+If the issue intentionally authorizes a product-level default change, preserving [tool]-first will require a follow-up PR to flip behavior, warnings, SECURITY.md, and tests together.
+</defense_content>
+
+### DECISION_2: DEFERRED phase guard for `phase_coder_select`
+
+Defense A (defends ALTERNATIVE — keep existing strict guard that skips coder phase on DEFERRED=true):
+<defense_content>
+Widening `should_run_post_tracking_phase` so `phase_coder_select` runs whenever plan materialization would run fixes a real regression: after the SKILL.md waterfall is deleted, `DEFERRED=true` paths that still materialize `plan.txt` (POSTED=false metadata defer, forked-target with plan) would otherwise emit empty `coder=` while `run-step2-dispatch.sh` requires `--coder`, matching the Phase 3 rationale that deferred tracking must not block Step 2 inputs.
+
+Keep `should_run_post_tracking_phase` strict (DEFERRED still skips `phase_coder_select`) and resolve implementer choice in the collapsed Step 0 KV routing table from keys bootstrap already emits, instead of reclassifying DEFERRED as a coder-phase trigger.
+
+`scripts/implement-bootstrap.md` documents an intentional Phase 3 vs Phase 4 split: permissive `should_run_phase_plan_materialize` allows `DEFERRED=true` so Step 2 gets plan files, while stricter `should_run_post_tracking_phase` also skips when `DEFERRED=true` (`scripts/implement-bootstrap.md:97`). `should_run_post_tracking_phase` is only consumed by `phase_coder_select` (`scripts/implement-bootstrap.sh:184-188`, `1085-1098`), and `B4-all` locks the contract that DEFERRED runs skip Phase 4 without stub bail overwrite (`skills/implement/scripts/test-implement-bootstrap.sh:801-803`).
+
+[tool]-Edge is correct that deleting the prompt-side waterfall without any replacement leaves `coder=` empty on DEFERRED-but-implementing runs while Step 2 still calls `run-step2-dispatch.sh` with `--coder "$coder"` (`skills/implement/SKILL.md:885-887`, `skills/implement/scripts/run-step2-dispatch.sh:58`).
+
+That gap does not require widening the guard: `emit_final_tail` already ships `codex_available` / `cursor_available` on every path (`scripts/implement-bootstrap.sh:935-936`), so collapsed Step 0 can add one routing row—if `coder=` is empty and `IMPLEMENT_BAIL_REASON` is empty, map from those KV lines (or forward `--coder` argv into bootstrap only when `should_run_post_tracking_phase` is true)—without changing phase-skip semantics, rewriting the Phase-skip section, or extending `B4-all` to assert coder population inside bootstrap on DEFERRED.
+
+If DEFERRED paths reach Step 2 with neither bootstrap `coder=` nor a routing-table fallback, dispatch fails at `--coder is required` and fork/POSTED=false implement runs stall despite valid `plan.txt`.
+</defense_content>
+
+Defense B (defends CHOSEN — widen `should_run_post_tracking_phase` to permissive predicate matching plan-materialize; DEFERRED no longer skips coder):
+<defense_content>
+Keeping the strict guard is the lowest-change path because `DEFERRED=true` currently means post-tracking phases should not run, and changing that meaning could make metadata-deferred runs perform more work than operators expect. The orchestrator could instead treat `DEFERRED=true` as a Step 2 short-circuit and preserve existing phase-guard semantics.
+
+`should_run_post_tracking_phase` should be widened to match `should_run_phase_plan_materialize` so every deferred-but-implementing path that materializes a plan also resolves a non-empty `coder` before Step 2 dispatch.
+
+The current guard skips on `DEFERRED=true` at `scripts/implement-bootstrap.sh:184-188`, while plan materialization explicitly ignores `DEFERRED` and only checks bail, stall, and repo availability at `scripts/implement-bootstrap.sh:190-194`; the `coder` and `all` phase paths then call `phase_coder_select` only through the stricter guard at `scripts/implement-bootstrap.sh:1082-1098`. The contract documents the mismatch: Phase 3 allows forked targets and `POSTED=false` defers so Step 2 receives plan files, but Phase 4 still skips on `DEFERRED=true` at `scripts/implement-bootstrap.md:95-97`. Step 2 then unconditionally invokes `run-step2-dispatch.sh --coder "$coder"` at `skills/implement/SKILL.md:885-887`, and the B4-all deferred test currently asserts plan materialization without asserting any populated coder at `skills/implement/scripts/test-implement-bootstrap.sh:794-820`.
+
+The opposition is right that widening the guard changes runtime semantics for `DEFERRED=true`, and that is not a purely mechanical stub replacement.
+
+That semantic change is exactly where the ownership should move: once Step 0 owns coder selection end-to-end, leaving `DEFERRED=true` as a coder-skip trigger creates a split-brain contract where bootstrap prepares Step 2 inputs except the one required dispatcher argument.
+
+If this position loses, deferred-but-implementing paths can leave `coder` empty after successful plan materialization, pushing a preventable Step 2 dispatch failure into prompt-side handling and tests that do not pin the required invariant.
+</defense_content>

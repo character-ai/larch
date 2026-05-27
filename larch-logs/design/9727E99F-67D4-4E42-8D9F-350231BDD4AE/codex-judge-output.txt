@@ -1,0 +1,2 @@
+DECISION_1: THESIS — Defense A better reconciles the issue-specified Phase 4 contract with the necessary bundled doc/test updates, while Defense B mostly relies on preserving current state despite conceding the new text’s coherent reading.
+DECISION_2: THESIS — Defense B gives the stronger invariant-based argument that any path materializing a Step 2 plan must also produce the required `coder`, whereas Defense A’s fallback routing proposal leaves ownership split outside the phase contract.

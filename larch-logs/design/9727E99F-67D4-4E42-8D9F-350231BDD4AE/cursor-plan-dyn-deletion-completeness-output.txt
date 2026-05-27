@@ -1,0 +1,64 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-structure.sh:129-130	`### Larch-log Batches and Summary Comments` positive pin not listed among drops	Deleting the section without dropping L129 makes `make test-implement-structure` fail after SKILL collapse	Add L129-130 to the harness drop list (or repoint batch semantics to `scripts/implement-bootstrap.md` if the heading moves)
+2	in_scope	important	architecture	scripts/test-implement-structure.sh:466-488; skills/implement/SKILL.md:287-526	Existing Step 0 awk pins require exactly one `--up-to-phase plan` call and one `--resume-plan-tail` call inside Step 0 fences; new pins require ≤1 fence, one total `implement-bootstrap.sh`, and `--up-to-phase coder`	Implementer lands both pin sets → structural harness fails on first `make lint`, or implementer drops legacy pins without replacing dirty-tree/resume coverage	Update/remove the L466-488 awk block in the same PR: retarget literals to `coder`, reconcile “one invocation in file” vs dirty-tree resume (second call after `AskUserQuestion`), and document the chosen pattern in `scripts/test-implement-structure.md`
+3	in_scope	important	architecture	skills/implement/SKILL.md:281-801	“≤1 Step 0 fenced bash block” conflicts with current multi-fence Step 0 (fork-env ~288, main bootstrap ~318, dirty-tree ~480, ledger rehydrate ~538, execution-issues ~595, rebase 1.r ~786) plus pins at 455-464	Blind collapse fails the new pin or breaks fork bootstrap, dirty-tree recovery, ledger rehydrate, or 1.r rebase	Spell out collapse mechanics: which fences merge vs stay prose-only, how dirty-tree `--resume-plan-tail` runs after `AskUserQuestion`, and whether 1.r stays inside `<!-- step:0`…`<!-- step:2`
+4	in_scope	important	correctness	docs/linting.md:263	Cross-doc table still cites `### Implementer waterfall` in SKILL.md and Codex → Cursor → Claude	`make lint` passes routing tests but operator docs stay wrong after collapse	Update `docs/linting.md` in the cross-file bundle (authority: `scripts/implement-bootstrap.md` / `phase_coder_select`, Cursor → Codex → Claude)
+5	in_scope	important	correctness	skills/shared/subskill-invocation.md:77,199	Two normative pointers use deleted anchor `skills/implement/SKILL.md § Plan materialization from issue body`	Shared orchestration doc contradicts post-PR SKILL; downstream skills cite a dead section	Retarget to Step 0 `implement-bootstrap.sh --up-to-phase coder` (and `scripts/implement-bootstrap.md` Outputs) in the same PR
+6	in_scope	important	security	SECURITY.md:90	“External tool delegation” paragraph still names `### Implementer waterfall` in SKILL.md and Codex-first Step 0 routing; plan only updates L106	Security readers see stale Step 0 location and Codex-first contract beside the new L106 sentence	Rewrite the implementer-routing clause in SECURITY.md:90 (or add a forward pointer) to `phase_coder_select` / bootstrap.md and Cursor → Codex → Claude
+7	in_scope	important	correctness	plan.txt:111-131; scripts/test-implement-step2-routing.sh:40	Proposed `_phase_coder_implicit` stderr uses `**⚠ Codex unavailable — falling back to Claude implementer.**`; harness pins substring `Cursor and Codex both unavailable` (today at skills/implement/SKILL.md:760)	Retargeting L40 to `implement-bootstrap.sh` without preserving the long both-down operator text fails `make test-implement-step2-routing`	Emit the existing long both-down warning (or equivalent containing `Cursor and Codex both unavailable`) via `larch_err` in `_phase_coder_implicit`; keep execution-issues line as planned
+8	in_scope	important	correctness	scripts/test-implement-step2-routing.sh:41; skills/implement/SKILL.md:756	`they do not select the implementer.` lives only in deleted `### Implementer waterfall`; plan retargets L31-40 but not L41	Harness fails after section deletion	Retarget L41 to `skills/design/SKILL.md` and/or `scripts/implement-bootstrap.md` (or a one-line SKILL bail-routing note) in the same PR
+9	in_scope	important	code-quality	plan.txt:158-163	`emit_coder_breadcrumb_if_enabled` uses `[ -n "${LARCH_QUIET_BREADCRUMBS:-}" ] || return 0`; bootstrap uses `larch_quiet_truthy` (scripts/implement-bootstrap.sh:160-179)	Non-canonical values like `false` emit breadcrumbs in the plan shape but not elsewhere; tests with `=1` can mask the bug	Match existing helpers: `larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"` before `emit_breadcrumb`
+10	in_scope	important	code-quality	plan.txt:50-57	`phase_coder_select` snippet derives availability via undefined `codex_available_from_infra` / `cursor_available_from_infra`; live globals are `codex_available` / `cursor_available` from `phase_infra` (scripts/implement-bootstrap.sh:479-488)	Copy-paste implement leaves dead re-read logic or wrong availability on explicit-coder paths	Reuse `codex_available` / `cursor_available` module globals; drop or wire the four-key re-read to real predicates
+11	in_scope	important	correctness	skills/implement/SKILL.md:12-14	Protocol directive and anti-halt still say `--up-to-phase plan` and “continue to the implementer waterfall”; plan only loosely mentions L14	Models re-run wrong bootstrap phase or hunt deleted waterfall prose after collapse	Update L12–L14 to `--up-to-phase coder`, parsed `coder`/`coder_fallback` KVs, and Step 1.r → Step 2 (no “implementer waterfall” section)
+12	in_scope	latent	correctness	plan.txt:333-334; skills/implement/scripts/test-implement-bootstrap.sh	Edge case 4 asks for REPO_UNAVAILABLE + `phase_coder_select` coverage; B6 list has no `B-coder-repo-unavailable`	Widened guard runs coder selection on repo-unavailable paths without a named regression		Add a B-family case asserting `coder=` populated (or explicit bail) when `REPO_UNAVAILABLE=true` and plan materialization skipped
+13	in_scope	important	architecture	plan.txt:227-228;349; skills/implement/SKILL.md:480-526	Failure mode 3 says keep one `CLAUDE_PLUGIN_ROOT` recovery line at the top of the collapsed fence; SKILL update removes all Step 0 rehydration snippets while dirty-tree recovery is a separate fence with full rehydrate today	Resume after degraded session loses plugin root if only the main bootstrap fence is collapsed and recovery prose still implies a second fenced block	Specify one canonical awk recovery line at the top of the single Step 0 fence, shared by initial and `--resume-plan-tail` paths; update dirty-tree prose and harness pins (455-464) to match
+14	in_scope	nit	architecture	plan.txt:300-302; BASH_AUTHORING.md:64-65; scripts/lint-foreground-markers.sh:29-40	Plan pins `# Foreground required: see BASH_AUTHORING.md §4` (correct for Family A); §4’s per-anchor Background comment applies only to denylisted Family B scripts — `implement-bootstrap.sh` is out of scope for the linter	Reviewer may think `make lint-foreground-markers` will reject the fence or requires Background pair	No change required for lint; optionally also pin the prose `**⚠ Foreground required — do NOT set \`run_in_background: true\`.**` banner above the fence (skills/implement/SKILL.md:316-317 pattern)
+
+[OUT_OF_SCOPE] **CHANGELOG.md:24** still documents #2756 Codex-first / `### Implementer waterfall`; acceptable as historical changelog unless this PR adds a new entry—no implementer action required for harness green.
+
+**Numbered findings (detail)**
+
+1. **correctness — `scripts/test-implement-structure.sh:129-130`**  
+   Plan drops heading pins at 390–419 but not the **Larch-log Batches** positive assertion at 129.
+
+2. **correctness / architecture — `scripts/test-implement-structure.sh:466-488` vs new pins (plan ~278-321)**  
+   Legacy awk **requires** one `--up-to-phase plan` and one `--resume-plan-tail` inside Step 0 fences. New pins require **≤1 fence**, **one** `implement-bootstrap.sh` match, and **`--up-to-phase coder`**. Those cannot all hold with today’s two-call dirty-tree layout without an explicit redesign of pins and SKILL fences.
+
+3. **architecture — `skills/implement/SKILL.md:281-801`**  
+   Step 0 currently has **six+** ` ```bash ` blocks before `<!-- step:2` (287, 318, 480, 538, 595, 672, 764, 786). Plan targets ~80 lines and ≤1 fence but does not say how fork-env, dirty-tree, post-bootstrap ledger export, execution-issues helpers, and 1.r rebase coexist with that pin.
+
+4. **correctness — `docs/linting.md:263`**  
+   Not in **Files to modify**; still references deleted heading and Codex-first order.
+
+5. **correctness — `skills/shared/subskill-invocation.md:77,199`**  
+   Stale § references after **Plan materialization from issue body** deletion.
+
+6. **security — `SECURITY.md:90`**  
+   Long delegation paragraph still cites **`### Implementer waterfall`** and Codex-first Step 0; plan only updates **L106**.
+
+7. **correctness — plan `_phase_coder_implicit` vs `scripts/test-implement-step2-routing.sh:40`**  
+   Proposed both-down `larch_err` text does not contain **`Cursor and Codex both unavailable`**; retarget alone breaks the harness.
+
+8. **correctness — `scripts/test-implement-step2-routing.sh:41`**  
+   **`they do not select the implementer.`** only at `skills/implement/SKILL.md:756` (deleted section); no retarget in plan.
+
+9. **code-quality — plan `emit_coder_breadcrumb_if_enabled`**  
+   Inverted vs `larch_quiet_truthy` used everywhere else in `implement-bootstrap.sh`.
+
+10. **code-quality — plan `phase_coder_select` pseudocode**  
+    **`codex_available_from_infra`** names do not exist; live state is **`codex_available` / `cursor_available`** after `phase_infra`.
+
+11. **correctness — `skills/implement/SKILL.md:12-14`**  
+    Top-of-skill directives still say **`--up-to-phase plan`** and **implementer waterfall**; plan does not list L12.
+
+12. **latent — REPO_UNAVAILABLE test**  
+    Edge case 4 without a named B6 case.
+
+13. **architecture — CLAUDE_PLUGIN_ROOT / dirty-tree**  
+    Mitigation in failure mode 3 is under-specified relative to separate dirty-tree fence (480–526) and structure pins (455–464).
+
+14. **nit — foreground lint**  
+    `# Foreground required:` is the right Family A marker; **`lint-foreground-markers.sh` does not scan `implement-bootstrap.sh`** (denylist at `scripts/lint-foreground-markers.sh:29-40`, Family A carve-out `BASH_AUTHORING.md:64`). The plan will **not** be rejected for using Foreground instead of Background on that call. Optional: also require the markdown banner at `skills/implement/SKILL.md:316-317`.
+
+**Lint / §4 (direct answer)**  
+`implement-bootstrap.sh` is **Family A** (ordinary foreground). The proposed **`# Foreground required: see BASH_AUTHORING.md §4`** matches `FOREGROUND_COMMENT` in `scripts/lint-foreground-markers.sh:19` and is appropriate; **`# Background pair required:`** is for denylisted Family B anchors only (`BASH_AUTHORING.md:70-72`). The linter will not require either comment for bootstrap; the new structural grep enforces the Foreground comment in SKILL.

@@ -1,0 +1,25 @@
+Reading the debate task prompt and gathering the context it requires.
+
+
+Gathering codebase evidence for the thesis position.
+
+
+<steelman>
+Preserving Codex → Cursor → Claude honors an explicit, recently landed product default: `CHANGELOG.md` documents restoring Codex-first for `/implement` Step 2 (#2756), `SECURITY.md` L106 states omitted-`--coder` routing follows that order, and `scripts/test-implement-step2-routing.sh` L31–32 structurally pins `skills/implement/SKILL.md` to the same prose—so flipping order is a deliberate default-implementer change, not a mechanical Phase 4 refactor.
+</steelman>
+<claim>
+Phase 4 should ship Cursor → Codex → Claude in `phase_coder_select`, with the same PR updating `SECURITY.md` L104–106 and `scripts/test-implement-step2-routing.sh` L31–32, because the approved Phase 4 contract, its fallback warning text, and bootstrap ownership of coder selection require one canonical order—not a script that contradicts security docs and structural pins.
+</claim>
+<evidence>
+`scripts/implement-bootstrap.sh` L911–914 still stubs `phase_coder_select` with `IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4`, while the debate prompt’s approved sketch mandates implicit `Cursor → Codex → Claude` and the verbatim `**⚠ Cursor unavailable — falling back to Codex implementer.**` string—which is logically paired with `cursor_available=false` then `codex_available=true`, not with today’s `skills/implement/SKILL.md` L756–759 Codex-first bullets that print `**⚠ Codex unavailable — falling back to Cursor implementer.**` when `codex_available=false` and `cursor_available=true`.
+</evidence>
+<strongest_concession>
+The antithesis is right that today’s repo truth is Codex-first end-to-end: `SECURITY.md` L106, `skills/implement/SKILL.md` L756–758 (“default implementer when `--coder` is omitted”), and `scripts/test-implement-step2-routing.sh` L31–32 (`assert_contains … 'Codex → Cursor → Claude'`) will all lie if bootstrap alone changes order without bundled doc/test updates.
+</strongest_concession>
+<counter_to_opposition>
+That triple alignment is exactly why the thesis bundles cross-file updates in one PR: Phase 4 deletes the SKILL.md waterfall section and moves selection into bootstrap, so the old pins become anchors on deleted prose—preserving Codex-first only recreates split-brain where the issue-specified Cursor→Codex warning cannot be emitted coherently from the new mechanical owner.
+</counter_to_opposition>
+<risk_if_wrong>
+If Cursor-first is wrong, operators on omitted `--coder` silently get Cursor instead of Codex despite months of #2756-documented default, `coder_fallback=true` semantics and SECURITY’s “Cursor without explicit `--coder=cursor`” paragraph misdescribe live behavior, and harnesses green-light a product regression until someone notices implementer flips in run manifests.
+</risk_if_wrong>
+RECOMMEND: THESIS

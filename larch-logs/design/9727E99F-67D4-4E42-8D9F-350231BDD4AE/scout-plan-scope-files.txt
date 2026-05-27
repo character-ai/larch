@@ -1,0 +1,7 @@
+scripts/implement-bootstrap.sh
+scripts/implement-bootstrap.md
+skills/implement/SKILL.md
+SECURITY.md
+scripts/test-implement-step2-routing.sh
+skills/implement/scripts/test-implement-bootstrap.sh
+scripts/test-implement-structure.sh

@@ -1,0 +1,64 @@
+# [DESIGNING] Phase 4/4: phase_coder_select + final SKILL.md collapse + structural pin (umbrella #2732)
+
+## Context
+
+Phase 4 of 4. Blocked by Phase 3. See umbrella #2732 and prior phases.
+
+This phase extends `implement-bootstrap.sh` with the `phase_coder_select` function, finalizes the aggressive SKILL.md Step 0 collapse, and adds the `test-implement-structure.sh` pin.
+
+## phase_coder_select contents
+
+Absorbs the entire implementer waterfall section (`skills/implement/SKILL.md` L913–L949):
+
+- Reads `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND` from `session-env.sh` via `read-session-env-key.sh`.
+- With explicit `--coder` argv: verify availability matches; on unavailable explicit coder emit `STALL_TRACKING=true` + `IMPLEMENT_BAIL_REASON=coder-unavailable` with the specific bullet's warning text.
+- Without explicit `--coder`: Cursor → Codex → Claude waterfall. Emit `**⚠ Cursor unavailable — falling back to Codex implementer.**` etc. via `emit`.
+- On `coder=claude` fallback path: call `larch-log.sh manifest --field coder_fallback=true` (best-effort).
+
+Emits final breadcrumb: `→ step0: coder=$coder`.
+
+## SKILL.md aggressive collapse
+
+Per umbrella #2732 acceptance: Step 0 prose collapses from ~656 lines to ~80 lines:
+
+- Single fenced bash block invoking `implement-bootstrap.sh` (foreground banner + per-anchor comment).
+- Output KV parsing rules table.
+- Bail routing table (`IMPLEMENT_BAIL_REASON` → orchestrator action).
+- Fork carve-out note.
+
+Delete: rehydration boilerplate inside every Step 0 fence (~240 lines), `Step 0 — tracking issue adoption`, `Larch-log Batches and Summary Comments` (move to script `.md`), `Session untracked baseline`, `Plan materialization from issue body`, `Branch prefix`, `Copy plan + feature description + persist implement run flags`, `Dirty-tree checkpoint (post-persist)`, `Create feature branch`, `Capture branch name`, `Larch-log batches — plan-goals-test + plan-review-tally`, and `Implementer waterfall` sub-sections.
+
+Cross-Skill Presence Propagation, Phantom Untracked Probe, Execution Issues Tracking sections (currently sitting between former Step 0 sub-sections and Step 1) stay in place under their existing headers — they apply across all steps.
+
+Anti-halt continuation reminder (`skills/implement/SKILL.md` L14) gets a 1-line update reflecting "after `implement-bootstrap.sh` exits, continue to Step 1.r".
+
+## Files to modify
+
+#### UPDATED: `scripts/implement-bootstrap.sh`
+
+Replace `phase_coder_select` stub with full implementation. Emit `coder`, `coder_fallback`, full final KV tail.
+
+#### UPDATED: `scripts/implement-bootstrap.md`
+
+Final pass: remove all `not-yet-implemented-phase-N` transitional values from bail-reason enum, add `coder-unavailable`.
+
+#### UPDATED: `skills/implement/scripts/test-implement-bootstrap.sh`
+
+Add case B4 (explicit `--coder=cursor` + cursor unavailable). Add Edge-breadcrumb-count assertion: with `LARCH_QUIET_BREADCRUMBS=1`, exactly 5 `→ step0:` lines surface.
+
+#### UPDATED: `skills/implement/SKILL.md`
+
+Aggressive collapse as described above. Net delta ≈ -576 lines in Step 0.
+
+#### NEW or UPDATED: `scripts/test-implement-structure.sh`
+
+Add structural pin: Step 0 fenced bash blocks ≤ 1, `implement-bootstrap.sh` appears exactly once inside a Step 0 fence, foreground banner + per-anchor comment present.
+
+## Acceptance
+
+- `/implement <issue>` transcript on a clean main branch shows exactly 1 Bash call for Step 0 (excluding the post-Step-0 Rebase Macro 1.r) and 5 operator-visible `→ step0:` breadcrumbs.
+- SKILL.md Step 0 prose is ~80 lines (target +/- 20%).
+- `make lint` passes (including `test-implement-structure`).
+- No regression in existing `make test-implement-*` harnesses.
+- All four phase functions are fully implemented; no `not-yet-implemented` strings remain in the script.
+- `SECURITY.md` reviewed and confirmed unchanged (or updated if anything security-relevant emerged during the phases).
