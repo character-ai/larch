@@ -13,7 +13,7 @@
 - Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv`
   for normal tally runs and writes a header-only TSV on empty-artifact exits
   that bypass tally.
-- Gate C owns cap enforcement; SKILL.md Step 3 owns counter incrementing and writes `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` is stateless and consumes the supplied `--round-num <int>` only for emitted KVs and round-N artifact paths.
+- SKILL.md Step 3 owns cap enforcement, counter persistence, and writes `$DESIGN_TMPDIR/review-round-count.txt`; Gate C only reads that counter for UI-cap-aware prompting. `plan-review-loop.sh` is stateless and consumes the supplied `--round-num <int>` only for emitted KVs and round-N artifact paths.
 
 ## Argv
 

@@ -12,7 +12,7 @@
 
 ## Per-tier review-round cap
 
-Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-numeric as 0; log Warning if non-numeric) and `design_classification` via `read-design-classification.sh`. Cap: SIMPLE = 3, HARD = 5. When counter >= cap, the "Re-run review panel" option is omitted from the Gate C `AskUserQuestion`; only Approve / Discuss further remain, and any Gate C re-prompt after `Other` must preserve that omission. Step 3 also enforces the cap at every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits to Gate C with a `**⚠ Step 3: review-round cap reached**` breadcrumb when counter >= cap. SKILL.md Step 3 is the sole writer of the counter; `plan-review-loop.sh` is stateless w.r.t. the file. Gate A "Discuss more" loops remain uncapped.
+Gate C reads `$DESIGN_TMPDIR/review-round-count.txt` (treat missing/empty/non-numeric as 0; log Warning if non-numeric) and `design_classification` via `read-design-classification.sh`. Cap: SIMPLE = 3, HARD = 5. When counter >= cap, the "Re-run review panel" option is omitted from the Gate C `AskUserQuestion`; only Approve / Discuss further remain, and any Gate C re-prompt after `Other` must preserve that omission. Step 3 also enforces the cap at every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits to Gate C with the breadcrumb `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.**` when counter >= cap. SKILL.md Step 3 is the sole writer of the counter; `plan-review-loop.sh` is stateless w.r.t. the file. Gate A "Discuss more" loops remain uncapped.
 
 ---
 
