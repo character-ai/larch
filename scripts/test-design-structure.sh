@@ -69,11 +69,19 @@ contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing t
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 're-fires the same Gate A `AskUserQuestion` minus the `See full plan` option, leaving exactly two options (`Ready for review` / `Discuss more`)' 'approval-gates.md missing Gate A See-full-plan re-prompt contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'If `$DESIGN_TMPDIR/plan.txt` is missing or empty on re-entry (should not happen — re-entry is post-plan by definition), print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt with the two-option shape anyway.' 'approval-gates.md missing Gate A missing-plan recovery contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'Any Gate C re-prompt after `Other` must preserve those three at-cap options' 'approval-gates.md missing Gate C cap re-prompt omission contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" '- **See full plan** — Print the current `$DESIGN_TMPDIR/plan.txt` into chat under a `## Final Design Plan` header' 'approval-gates.md missing Gate C See-full-plan bullet'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'If `$DESIGN_TMPDIR/plan.txt` is missing or empty when the user picks the structured `See full plan` option (for example after the warning-only presentation path), print `**⚠ plan.txt missing or empty; nothing to show.**` and still re-fire the same Gate C `AskUserQuestion` minus the `See full plan` option.' 'approval-gates.md missing Gate C structured missing-plan recovery contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'the `Other` re-prompt preserves the **same option set unchanged**' 'approval-gates.md missing Gate C Other-path unchanged-option-set contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'when `plan.txt` is missing or empty, print `**⚠ plan.txt missing or empty; nothing to show.**` instead and still re-fire the same prompt' 'approval-gates.md missing Gate C Other missing-plan recovery contract'
 contains "$APPROVAL_MD" 'offer this option only when the current review-round count is still below the tier cap' 'approval-gates.md missing Gate C cap-aware rerun contract'
 contains "$PLAN_REVIEW_MD" "Step 3 always runs the full panel via \`plan-review-loop.sh\`" 'plan-review.md missing full-panel consumer line'
 contains "$PLAN_REVIEW_MD" 'injects the SIMPLE-emphasis or HARD-emphasis text immediately after the role line' 'plan-review.md missing tier-emphasis injection contract'
