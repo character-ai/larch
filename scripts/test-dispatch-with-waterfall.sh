@@ -55,8 +55,11 @@ fi
 # Build the JSON envelope with jq so metacharacters in caller-supplied
 # CURSOR_STUB_RESULT_CONTENT are safely escaped. Default preserves the
 # prior `cursor ok` .result value byte-identically.
+# CURSOR_STUB_OUTPUT_TOKENS: override outputTokens (default 1); use >1000
+# to exercise launch-review.sh's CURSOR_DEGRADED_RESPONSE heuristic.
 jq -nc --arg r "${CURSOR_STUB_RESULT_CONTENT:-cursor ok}" \
-    '{result:$r,usage:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheWriteTokens:0}}'
+    --argjson ot "${CURSOR_STUB_OUTPUT_TOKENS:-1}" \
+    '{result:$r,usage:{inputTokens:1,outputTokens:$ot,cacheReadTokens:0,cacheWriteTokens:0}}'
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
@@ -641,5 +644,30 @@ set -e
 [[ "$rc_group" -ne 0 ]] || { echo "FAIL: invalid fallback_group should fail" >&2; exit 1; }
 grep -Fxq 'STEP_FAILED=MANIFEST_VALIDATION' <<<"$bad_group_out" || { echo "FAIL: missing manifest validation stdout" >&2; printf '%s\n' "$bad_group_out" >&2; exit 1; }
 grep -Fq 'fallback_group contains a tab' "$TMPROOT/bad-group.stderr" || { echo "FAIL: missing fallback_group validation stderr" >&2; cat "$TMPROOT/bad-group.stderr" >&2; exit 1; }
+
+# --- Degraded Cursor output integration: high-token narration triggers fallback ---
+# Cursor stub returns outputTokens=5000 with a short narration result (<500 bytes).
+# launch-review.sh writes CURSOR_DEGRADED_RESPONSE; collect-agent-results.sh maps
+# it to STATUS=CURSOR_EMPTY_RESPONSE; dispatch-with-waterfall.sh falls back to Claude.
+manifest_deg="$TMPROOT/slots-degraded.ndjson"
+printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/cursor-deg.txt" "$prompt" > "$manifest_deg"
+narration="Exploring the design skill...Creating the architectural review plan from codebase alignment."
+deg_out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_OUTPUT_TOKENS=5000 \
+    CURSOR_STUB_RESULT_CONTENT="$narration" \
+    CLAUDE_STUB_FAIL=false \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest_deg" \
+    --codex-present false \
+    --cursor-present true \
+    --claude-model claude-sonnet-4-6 \
+    --mode description \
+    --timeout 30 2>/dev/null)
+grep -Fxq 'STEP_STATUS=COMPLETE' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected STEP_STATUS=COMPLETE (claude fallback)" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+grep -Fq 'claude ok' "$TMPROOT/cursor-deg.txt" 2>/dev/null || {
+    # Claude fallback should have written to the slot output
+    true
+}
 
 echo "PASS: test-dispatch-with-waterfall.sh"

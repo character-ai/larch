@@ -1389,7 +1389,11 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 else
                                     larch_err "collect-agent-results.sh: structured NS retry: failed to publish structured sidecar to $_ns_new_sidecar; keeping retry sidecar path"
                                 fi
-                                RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
+                                if _classify_sentinel_status "$ORIG_OUTPUT"; then
+                                    RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (structured ns-retry)"
+                                else
+                                    RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
+                                fi
                             fi
                         else
                             "$SCRIPT_DIR/validate-research-output.sh" \
@@ -1399,7 +1403,11 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 if ! preserve_and_publish_ns_retry "$ORIG_OUTPUT" "$NS_RETRY_OUTPUT" "substantive NS retry"; then
                                     continue
                                 fi
-                                RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                                if _classify_sentinel_status "$ORIG_OUTPUT"; then
+                                    RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (substantive ns-retry)"
+                                else
+                                    RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                                fi
                             fi
                         fi
                     fi

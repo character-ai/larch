@@ -1026,7 +1026,7 @@ if [[ -s "$OUTPUT" ]]; then
             _is_legit_short=false
             if [[ "$_first_nonblank" == "NO_ISSUES_FOUND" ]] || \
                [[ "$_first_nonblank" == "schema_version"* ]] || \
-               [[ "$_first_nonblank" == *'"no_issues_found"'*':'*'true'* ]]; then
+               jq -e '(type == "object") and (.no_issues_found == true)' "$EXTRACT_TMP" >/dev/null 2>&1; then
                 _is_legit_short=true
             fi
             if [[ "$_is_legit_short" != "true" \

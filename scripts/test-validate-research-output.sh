@@ -297,6 +297,15 @@ run_case "case 19g: --validation-mode inline TSV fence passes" 0 --validation-mo
 F19H="$TMPROOT/case19h-cursor-degraded-response.txt"
 printf 'CURSOR_DEGRADED_RESPONSE\n' > "$F19H"
 run_case "case 19h: --validation-mode CURSOR_DEGRADED_RESPONSE marker" 5 --validation-mode "$F19H"
+_19h_stdout=$("$HELPER" --validation-mode "$F19H" 2>/dev/null || true)
+if printf '%s\n' "$_19h_stdout" | grep -q '^STATUS=CURSOR_EMPTY_RESPONSE$'; then
+    PASS=$((PASS + 1))
+    echo "  ok: case 19h status line: STATUS=CURSOR_EMPTY_RESPONSE emitted"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("case 19h status line: expected STATUS=CURSOR_EMPTY_RESPONSE in stdout, got: ${_19h_stdout:0:100}")
+    echo "  FAIL: case 19h status line: STATUS=CURSOR_EMPTY_RESPONSE not found" >&2
+fi
 
 # --- Case 20: --validation-mode short cited finding (50 words + file:line) passes (30-word floor) ---
 F20="$TMPROOT/case20-validation-finding.txt"
