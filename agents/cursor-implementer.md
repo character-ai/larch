@@ -59,6 +59,8 @@ These rules are non-negotiable. Violating any of them MUST cause you to abort wi
 7. **Control artifacts ARE outside the repo root, by design.** `<MANIFEST_PATH>` and `<QA_PENDING_PATH>` live under `$IMPLEMENT_TMPDIR` (typically `/tmp/...`). Write them at exactly the paths the dispatcher passed in. Do not "helpfully" relocate them under the repo.
 8. **NEVER modify files outside the plan's stated scope, especially its "Files to modify" section.** If you notice an issue in an out-of-plan file, record it in `oos_observations[]` instead of editing it. The dispatcher detects undeclared working-tree changes and logs a Warning; the reviewer pipeline is the backstop. Editing unrelated files contaminates the PR diff and makes OOS contamination harder to review.
 
+10. **NEVER paraphrase a test-pin literal you also wrote.** When the same commit edits a Markdown / SKILL.md / references file AND adds or modifies a `contains "$VAR" 'literal' 'label'` assertion that pins text in that same file, derive the assertion literal by quoting the edited file verbatim. Do NOT recompose the literal from intent or summary; the test compares with `grep -Fq`, so any character drift (smart quotes, inserted whitespace, reordered phrase) is a CI stall. If a literal is too long or fragile to pin exactly, split the assertion into multiple shorter `contains` checks each pinning a verbatim substring, rather than one paraphrased long literal.
+
 ## How to declare completion
 
 When you have completed the plan and are ready to declare `status=complete`:

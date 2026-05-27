@@ -59,6 +59,11 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/SKILL.md|skills/design/references/*.md)
+                append_target_once test-design-structure
+                ;;
+        esac
+        case "$f" in
             scripts/collect-agent-results.sh|scripts/test-collect-agent-results.sh) # lint-foreground-markers: ok relevant-checks case pattern
                 append_target_once test-collect-agent-results
                 ;;
@@ -172,6 +177,26 @@ run_direct_relevant_targets
 DIRECT_EXIT=$?
 if [ "$DIRECT_EXIT" -ne 0 ]; then
     exit "$DIRECT_EXIT"
+fi
+
+# ---------------------------------------------------------------------------
+# Verify contains-style test pins against their target files before the final
+# structural sweep. Guard on file existence, not executable bit, so a missing
+# chmod cannot silently disable the backstop.
+# ---------------------------------------------------------------------------
+PINS_SCRIPT="$REPO_ROOT/scripts/check-contains-pins.sh"
+if [ -f "$PINS_SCRIPT" ]; then
+    _tmp_changed="$(mktemp)"
+    printf '%s\n' "$MODIFIED_FILES" > "$_tmp_changed"
+    bash "$PINS_SCRIPT" --changed-files "$_tmp_changed"
+    PINS_EXIT=$?
+    rm -f "$_tmp_changed"
+    PHASES_RUN=$((PHASES_RUN + 1))
+    if [ "$PINS_EXIT" -ne 0 ]; then
+        exit "$PINS_EXIT"
+    fi
+else
+    echo "WARNING: scripts/check-contains-pins.sh not found — pin verification skipped"
 fi
 
 # ---------------------------------------------------------------------------

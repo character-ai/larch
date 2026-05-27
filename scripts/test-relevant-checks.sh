@@ -113,6 +113,22 @@ setup_changed_file_repo() {
     )
 }
 
+setup_design_reference_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        mkdir -p skills/design/references
+        printf '%s\n' "approval gates baseline" > skills/design/references/approval-gates.md
+        git add skills/design/references/approval-gates.md
+        git commit -q -m "add design reference"
+        git checkout -q -b design-reference-change
+        printf '%s\n' "approval gates changed" > skills/design/references/approval-gates.md
+        git add skills/design/references/approval-gates.md
+        git commit -q -m "change design reference"
+    )
+}
+
 make_stub_dir() {
     local dir="$1" pre_commit="$2" agent_rc="${3:-absent}"
     mkdir -p "$dir"
@@ -158,6 +174,13 @@ exit "$agent_rc"
 EOF
         chmod +x "$dir/agent-lint"
     fi
+
+    cat > "$dir/make" <<'EOF'
+#!/usr/bin/env bash
+echo "make stub: $*"
+exit 0
+EOF
+    chmod +x "$dir/make"
 }
 
 controlled_path() {
@@ -269,6 +292,34 @@ run_checks "$REPO_3D" "$(controlled_path "$STUB_3D")"
 assert_exit_eq "3d: changed file + pre-commit ok + agent-lint rc=7" "$RUN_EXIT" 7
 assert_stdout_contains "3d: pre-commit stub invoked" "$RUN_OUT" "pre-commit stub:"
 assert_stdout_contains "3d: agent-lint stub invoked" "$RUN_OUT" "agent-lint stub:"
+
+echo "=== Section 3e: direct targets and pin verification ==="
+
+REPO_3E="$TMPROOT/repo-design-reference-no-pins"
+STUB_3E="$TMPROOT/stub-design-reference-no-pins"
+setup_design_reference_repo "$REPO_3E"
+make_stub_dir "$STUB_3E" present absent
+run_checks "$REPO_3E" "$(controlled_path "$STUB_3E")"
+assert_exit_eq "3e: design reference routes direct target with missing pin verifier" "$RUN_EXIT" 0
+assert_stdout_contains "3e: design reference routes test-design-structure" "$RUN_OUT" "=== Running direct relevant make target(s): test-lint-foreground-markers test-design-structure ==="
+assert_stdout_contains "3e: direct targets invoked through make" "$RUN_OUT" "make stub: test-lint-foreground-markers test-design-structure"
+assert_stdout_contains "3e: missing pin verifier warning" "$RUN_OUT" "WARNING: scripts/check-contains-pins.sh not found"
+
+REPO_3F="$TMPROOT/repo-design-reference-with-pins"
+STUB_3F="$TMPROOT/stub-design-reference-with-pins"
+setup_design_reference_repo "$REPO_3F"
+mkdir -p "$REPO_3F/scripts"
+cat > "$REPO_3F/scripts/check-contains-pins.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "pin verifier stub: $*"
+exit 0
+EOF
+chmod +x "$REPO_3F/scripts/check-contains-pins.sh"
+make_stub_dir "$STUB_3F" present absent
+run_checks "$REPO_3F" "$(controlled_path "$STUB_3F")"
+assert_exit_eq "3f: present pin verifier runs and exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3f: pin verifier invoked" "$RUN_OUT" "pin verifier stub: --changed-files"
+assert_stdout_contains "3f: agent-lint absence after pin phase is non-fatal" "$RUN_OUT" "WARNING: agent-lint not found on PATH — skipping"
 
 echo "=== Section 4: preflight failure ==="
 

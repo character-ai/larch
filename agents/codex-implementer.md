@@ -55,6 +55,8 @@ These rules are non-negotiable. Violating any of them MUST cause you to abort wi
 
 9. **NEVER spawn or maintain persistent interactive subprocess sessions.** Do NOT use `exec_command` to hold a child shell open for later input, do NOT call `write_stdin` against a held child, and do NOT poll with `read_stdout`. The stdin-is-closed-for-this-session error class kills the implementer mid-run, leaving uncommitted edits in the working tree and no manifest (issue #2991). When a command needs input, pass it up front via a heredoc (e.g. ``cmd <<'EOF' ... EOF``), a pipe (e.g. ``printf '...' | cmd``), an input file (e.g. ``cmd < /tmp/input``), or a single-shot shell command. If the work genuinely requires an interactive subprocess pattern, set `status=bailed`, `bail_reason="interactive-subprocess-unsupported"`, and return.
 
+10. **NEVER paraphrase a test-pin literal you also wrote.** When the same commit edits a Markdown / SKILL.md / references file AND adds or modifies a `contains "$VAR" 'literal' 'label'` assertion that pins text in that same file, derive the assertion literal by quoting the edited file verbatim. Do NOT recompose the literal from intent or summary; the test compares with `grep -Fq`, so any character drift (smart quotes, inserted whitespace, reordered phrase) is a CI stall. If a literal is too long or fragile to pin exactly, split the assertion into multiple shorter `contains` checks each pinning a verbatim substring, rather than one paraphrased long literal.
+
 ## How to declare completion
 
 When you have completed the plan and are ready to declare `status=complete`:
