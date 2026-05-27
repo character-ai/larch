@@ -1,0 +1,1 @@
+Usage: plan-block-read.sh --issue <N> --output <path> [--repo OWNER/REPO]
