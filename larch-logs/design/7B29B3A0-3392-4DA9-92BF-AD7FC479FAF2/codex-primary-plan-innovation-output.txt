@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:1130-1137	New Makefile-only root harness is not added to agent-lint excludes	`make lint` runs `lint-only`, and agent-lint's dead-script rule does not follow Makefile-only harness references; the proposed `scripts/test-render-final-summary-bash32.sh` can be reported as dead even though it is wired into Makefile	Add `scripts/test-render-final-summary-bash32.sh` to the existing Makefile-only harness exclude block near `scripts/test-collect-agent-bash32.sh`; include the sibling `.md` there too if agent-lint flags the contract stub
+
+1. **[risk-integration] `agent-lint.toml:1130-1137`**  
+Concern: the plan adds a new root-level `scripts/test-render-final-summary-bash32.sh` that is only reachable from `Makefile`, but it does not update `agent-lint.toml`. Existing precedent documents this exact pattern for `scripts/test-collect-agent-bash32.sh`: Makefile-only test harnesses need explicit dead-script excludes because agent-lint does not follow Makefile target chains.
+
+Suggested revision: add the new bash32 harness to `agent-lint.toml` near the `test-collect-agent-bash32` entry, with the same Makefile-only rationale.
