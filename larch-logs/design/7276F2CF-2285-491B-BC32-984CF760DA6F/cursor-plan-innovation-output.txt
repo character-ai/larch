@@ -1,0 +1,49 @@
+Reviewing the plan and validating it against the codebase.
+
+Checking how many bail paths reach Step 17 versus jumping straight to Step 18:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:421-430	skills/implement/references/stall-recovery.md:27-37	Step 17.5 sits only after Step 17 but most STALL_TRACKING bail paths say skip to Step 18 and never run Step 17	Early Step 0 coder/bootstrap stalls and preflight bails jump straight to Step 18 cleanup with no recovery attempt; the gate never runs despite the single-intercept design	Move the gate to Step 18 entry (before token refresh/teardown) or retarget every STALL_TRACKING skip-to-18 directive to skip-to-17.5; add test-implement-structure pins for the chosen routing
+2	in_scope	important	correctness	skills/implement/references/stall-recovery.md:29-37	skills/implement/references/stall-recovery.md:35-36	Success path says continue to Step 18 and imply Branch B DONE but dispatch says return to Step 3/6/8	After a successful step2-impl or step5-review recovery the orchestrator tears down instead of resuming the workflow; partial work is abandoned and tracking issue rename logic is wrong	Define two outcomes: RESUME_HINT success jumps to the named step and only after the run truly finishes may STALL_TRACKING clear; terminal recovery exhaustion alone falls through to Step 18 teardown
+3	in_scope	important	correctness	skills/implement/SKILL.md:1549	skills/implement/references/stall-recovery.md:32-33	Proposed step6-checks recovery uses main-agent Edit/Write after ship-pr STALL_STEP=6	Contradicts existing Exit 4 contract forbidding orchestrator code edits when STALL_STEP=6; recovery would fight ship-pr internal lint-fix exhaustion	Map STALL_STEP=6 and PHASE=checks to unrecoverable or ship-pr-only retry (re-invoke ship-pr.sh only); exclude main-agent lint-fix-loop from stall-recovery for that class
+4	in_scope	important	architecture	skills/implement/references/stall-recovery.md:76-81	scripts/implement-finalize.sh:1242-1266	Success path claims Branch B DONE after clearing STALL_TRACKING	Branch B requires PR_NUMBER or DESIGN_ONLY_DONE; mid-run recovery that clears stall but has no PR gets Branch C while prose promises DONE	Align success prose with implement-finalize Branch B predicates; only document DONE when PR exists or design-only completion is true
+5	in_scope	important	security	skills/implement/scripts/stall-recovery-report.sh:11	skills/issue/SKILL.md:15-17	classify reads execution-issues.md which can contain consumer paths and tool output	Classifier or FAILURE_SIGNATURE could incorporate unsanitized lines into hashed evidence or later bug bodies even with bug-body allowlist	Restrict classify inputs to allowlisted KV fields and script names only; never hash raw execution-issues lines; add harness case that fixtures path-like tokens in execution-issues.md
+6	in_scope	important	security	skills/implement/scripts/stall-recovery-report.sh:16	skills/issue/SKILL.md:119-174	larch-stall:signature HTML comment is not wired into /larch:issue dedup	Duplicate stall bugs filed on every run; signature comment is inert for Phase 1/2 dedup	Extend /issue or a thin pre-pass to match open issues on the signature marker before Skill invoke or document operator-only dedup and drop the false plus claim
+7	in_scope	important	risk-integration	skills/implement/SKILL.md:1219	skills/implement/references/stall-recovery.md:35-36	No mechanical helper for ship-pr-state.sh key-based STALL_TRACKING rewrite	Prompt-side sed heredocs risk NEVER #13 adjacent mistakes and are hard to regression-test	Add write-ship-pr-state-key.sh (or extend an existing state helper) with harness cases; reference it from stall-recovery.md and Step 17.5
+8	in_scope	latent	correctness	skills/implement/references/stall-recovery.md:83	skills/implement/scripts/stall-recovery-report.sh:9-16	Approach mentions --caps subcommand but NEW script subcommand list omits it	Orchestrator may improvise cap reads from prose tables with drift	Add caps subcommand emitting KV caps or inline the table only in references/stall-recovery.md and delete the --caps mention
+9	in_scope	latent	correctness	plan.txt:103-104	plan.txt:105-110	Failure mode 3 cites integration test for STALL_TRACKING=false after recovery success	Regression called out in plan is not in Files to modify or Makefile targets	Ship test-stall-recovery-gate.sh or extend test-implement-structure.sh with fixture-driven Step 18 routing assertions
+10	in_scope	latent	risk-integration	Makefile:72-186	agent-lint.toml:381-416	New test-stall-recovery-report harness lacks agent-lint.toml Makefile-only exclusions	make lint agent-lint may flag the new script as dead code	Add agent-lint.toml entries for skills/implement/scripts/test-stall-recovery-report.sh and sibling .md mirroring test-step2-dispatch pattern
+11	in_scope	latent	risk-integration	scripts/test-implement-structure.sh:416-419	skills/implement/SKILL.md:1766-1770	test-implement-structure not listed for Step 17.5 ordering or skip-to-18 convergence	Future edits can re-break stall routing without CI signal	Add pins: Step 17.5 exists; STALL_TRACKING true at Step 18 entry runs recovery before teardown; bail paths reach the gate
+12	in_scope	nit	code-quality	skills/implement/scripts/stall-recovery-report.sh:12	scripts/check-stale-plugin.sh:70-74	is-larch-dev-clone reimplements dev-clone marker inline	Divergence from check-stale-plugin.sh if marker rules change	Source scripts/lib-dev-clone.sh or call check-stale-plugin.sh and map STALE_PLUGIN_CHECK=not-a-dev-clone to LARCH_DEV_CLONE=false
+13	in_scope	latent	architecture	plan.txt:109	skills/implement/scripts/stall-recovery-report.md:9-16	LARCH_STALL_RECOVERY_DRY_RUN only in testing strategy not NEW script contract	Implementers may ship /larch:issue filing in manual dry-run without a mechanical knob	Add --dry-run or env handling to issue-input-file and bug-body paths; document in stall-recovery-report.md
+14	out_of_scope	latent	architecture	skills/implement/references/stall-recovery.md:76-77	AGENTS.md:34-35	Pure orchestrator prose for full recovery loop is halt-prone and token-heavy	Long recovery turns end mid-loop despite anti-halt prose; caps burn context in one turn	Consider a bounded Family B script (classify file issue retry in bash) leaving only Edit/Write inline; keeps breadcrumb-monitor pairing
+15	out_of_scope	latent	security	skills/implement/references/stall-recovery.md:28-29	SECURITY.md:79-85	New public larch bug filing from implement stalls not reflected in security policy	Policy drift on what may enter public issues from automated filing	Add SECURITY.md subsection for stall-recovery allowlist redact-secrets backstop and consumer-repo chat-only path
+
+**Findings**
+
+1. **correctness** — [`skills/implement/SKILL.md`](skills/implement/SKILL.md) bail routing vs [`skills/implement/references/stall-recovery.md`](skills/implement/references/stall-recovery.md): placing Step 17.5 only after Step 17 misses every path that says “skip to Step 18” (Step 0 guard, coder waterfall, tracking-init-failed, rebase bails, Step 3/6 lint stall, etc.). Recovery will not run for the majority of stalls unless the gate is hoisted to Step 18 entry.
+
+2. **correctness** — [`skills/implement/references/stall-recovery.md`](skills/implement/references/stall-recovery.md): §3 (resume to Step 3/6/8) conflicts with §5 (immediate Step 18 + `[DONE]`). Successful mid-run recovery must resume the workflow, not teardown.
+
+3. **correctness** — [`skills/implement/SKILL.md:1549`](skills/implement/SKILL.md) vs proposed `step6-checks` recovery: ship-pr `STALL_STEP=6` explicitly forbids orchestrator main-agent edits; the plan’s lint-fix-loop + Edit/Write path violates that contract.
+
+4. **architecture** — [`scripts/implement-finalize.sh:1256-1262`](scripts/implement-finalize.sh): Branch B `[DONE]` needs `PR_NUMBER` or `DESIGN_ONLY_DONE`; clearing `STALL_TRACKING` alone does not justify “run effectively completed.”
+
+5. **security** — `classify` must not treat [`execution-issues.md`](skills/implement/SKILL.md) as a free-text evidence source; only allowlisted, sanitized fields.
+
+6. **security** — `<!-- larch-stall:signature=... -->` is not consumed by [`skills/issue/SKILL.md`](skills/issue/SKILL.md) dedup; “semantic dedup plus byte-exact match” is not implementable without `/issue` changes.
+
+7. **risk-integration** — Plan references “key-based rewrite” like `restore-finalize-state.sh` but that script rebuilds `finalize-state.sh`, not `ship-pr-state.sh`; a dedicated key writer is needed to avoid prompt-side `sed` drift.
+
+8. **correctness (latent)** — `--caps` subcommand mentioned in approach but absent from the proposed script API.
+
+9. **correctness (latent)** — Failure mode 3 integration test is promised but not in the file/Makefile plan.
+
+10. **risk-integration (latent)** — Missing `agent-lint.toml` exclusions and `test-implement-structure.sh` pins for the new step/routing.
+
+11. **code-quality (nit)** — Duplicate dev-clone detection vs [`scripts/check-stale-plugin.sh`](scripts/check-stale-plugin.sh).
+
+12. **architecture (latent)** — `LARCH_STALL_RECOVERY_DRY_RUN` belongs in the script contract, not only manual testing prose.
+
+13. **[OUT_OF_SCOPE] architecture** — A bounded bash recovery driver (classify/issue/retry caps) would be more reliable than a large inline prose loop under NEVER #9/#16.
+
+14. **[OUT_OF_SCOPE] security** — Update [`SECURITY.md`](SECURITY.md) for the new public-issue filing surface.

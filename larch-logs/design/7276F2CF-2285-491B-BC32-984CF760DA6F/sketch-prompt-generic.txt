@@ -1,0 +1,36 @@
+Propose a high-level implementation approach for this feature: ## Feature
+`/implement`, when it detects a stall, should root-cause, file an issue, and then take over and manually complete the process.
+
+## Resolved scope (from Round 1 discussion)
+
+1. **Manual takeover actor**: Main Claude finishes inline — the orchestrator session uses Edit/Write tools directly, commits, and resumes the existing `/implement` state machine. No new Agent-tool subagent dispatch for the takeover work.
+
+2. **Bug-issue filing — environment-conditional**:
+   - **In a larch clone** (detection via `scripts/check-stale-plugin.sh` marker: working-tree contains `skills/implement/SKILL.md`): file a GitHub issue automatically in the larch repo (`character-ai/larch`).
+   - **In a non-larch consumer repo**: print a chat message to the user asking them to manually file an issue in the larch repo, with a pre-formatted concise generic description that contains no IP-sensitive material from the consumer repo (no consumer file paths, no consumer code excerpts, no internal naming — just a generic description of the failure circumstances and the failing larch script/step).
+
+3. **Stall scope**: All stall paths uniformly. Any `STALL_TRACKING=true` exit point in `/implement` triggers the takeover flow regardless of which step stalled (bootstrap, dispatch, review, checks, bump, ship-pr).
+
+4. **Takeover timing**: BEFORE the existing Step 18 `[STALLED]` title-prefix rename. Takeover intercepts the bail path between stall detection and Step 18. If takeover succeeds → run continues normally → issue eventually transitions to `[DONE]`. If takeover also fails → existing Step 18 `[STALLED]` rename + cleanup proceeds unchanged. `[STALLED]` thus only appears on issues where recovery itself failed.
+
+5. **Recovery scope**: Resume the exact step that stalled and continue forward end-to-end. If Step 2 stalled, main Claude writes the impl and proceeds through Steps 3–17. If Step 5 stalled, it picks up at review-and-fix. If `ship-pr.sh` stalled, it resumes the shipping phase. Goal: complete the same logical run to merge no matter where it broke.
+
+6. **Retry policy is failure-class-dependent** (NOT a single attempt cap):
+   - **Same-cause repeated failure**: try a different strategy (e.g., re-read `larch:plan` and restart the stalled step from scratch instead of resuming partial state). One same-cause retry, then fall through to `[STALLED]`.
+   - **Transient infrastructure** (GitHub API unreachable, network errors, `gh` CLI hiccups): retry ~4 times with 5-second delays between attempts.
+   - **Test failures / lint failures**: many retries are acceptable (tests typically need iterative fixes); per-class cap is higher.
+   - The classifier taxonomy and exact per-class caps are open design points for the sketch phase to propose.
+
+7. **Bug-issue filing timing**: File on first detection AND update on terminal failure. First detection → file a larch issue (or print operator message in consumer-repo case) with the initial root-cause analysis. Terminal failure (after retries exhausted) → post a comment on the same issue with retry outcomes and final state. No issue filing on the takeover-succeeded path.
+
+8. **Tracking-issue title transition**: Leave at `[IMPLEMENTING]` throughout the takeover; transition to `[DONE]` only when ship-pr completes (same as a normal successful merge). Do NOT introduce a `[STALLED]` intermediate state on the success path; do NOT introduce a new `[DONE-RECOVERED]` marker. The existing title-prefix lifecycle is unchanged for both success and terminal-failure paths.
+
+## Context anchors (codebase entry points)
+
+- Current stall semantics: `skills/implement/SKILL.md` (search `STALL_TRACKING`); many bail paths set `STALL_TRACKING=true` and skip to Step 18 cleanup.
+- Step 18 teardown: `skills/implement/scripts/implement-finalize.sh` (`teardown` subcommand); renames issue to `[STALLED]`, stashes leftover work in `.git/larch-stalled-run.txt`.
+- State persistence: `$IMPLEMENT_TMPDIR/ship-pr-state.sh` (`PHASE`, `STALL_STEP`, `STALL_TRACKING`, etc.); read on resume by `restore-finalize-state.sh`.
+- Execution issues paper trail: `$IMPLEMENT_TMPDIR/execution-issues.md` (categorized: Coder Issues, External Reviewer Issues, Tool Failures, Warnings).
+- Larch-clone detection: `scripts/check-stale-plugin.sh` — emits `STALE_PLUGIN_CHECK=not-a-dev-clone` when working-tree root lacks `skills/implement/SKILL.md`.
+- Existing issue-creation skill: `skills/issue/SKILL.md` (`/larch:issue`); supports `--dry-run`, `--no-dedup`, `--input-file`, etc.
+- Sanitization: `scripts/redact-secrets.sh` for secret scrubbing.. Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
