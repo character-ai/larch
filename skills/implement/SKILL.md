@@ -630,7 +630,7 @@ Steps 0 (plan batches), 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads
 
 **Tally envelopes**: `plan-review-tally.json` / `code-review-tally.json` use `schema_version: 2` with `accepted_count`, `rejected_count`, and `exonerated_count` (informational sub-count; must be `≤ rejected_count`). `review-and-fix-summary.json` uses `schema_version: 3` with the same three public counters at the top level.
 
-**Summary comments** are slim projections only. Use `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:<name> v1 runid=$RUN_ID -->" --content-file <file>` for the four markers defined in `summary-comment-template.md`. Do not assemble a monolithic comment, do not fetch summary comments back into local state, and do not publish bulky reviewer or token payloads to GitHub comments.
+**Summary comments** are slim projections only. Use `scripts/tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:<name> v1 runid=$RUN_ID -->" --content-file <file>` for run-scoped metadata, plan, and final-summary markers defined in `summary-comment-template.md`. `larch:diagrams` is the stable issue-scoped exception (`<!-- larch:diagrams v1 -->`) and is written through `scripts/upsert-diagrams-comment.sh` so `/design` Architecture and `/implement` Code Flow sections can preserve each other. Do not assemble a monolithic comment, do not fetch summary comments back into local state except inside the shared diagrams helper, and do not publish bulky reviewer or token payloads to GitHub comments.
 
 **Compose-time sanitization**: every larch-log input file and every summary comment content file composed from session-derived content MUST apply prompt-level sanitization (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`). `larch-log.sh` and `tracking-issue-summary.sh` provide shell-layer secrets redaction, but prompt-level sanitization is still the first-line defense for internal URLs and PII.
 
@@ -1394,8 +1394,8 @@ Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 **MANDATORY — READ ENTIRE FILE** before writing `larch:diagrams` summary comments: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`.
 
-`skills/implement/scripts/step-7a.sh` consolidates the small/non-runtime classifier, `generate-code-flow-diagram.sh`, summary composition, `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-bump log flush into one foreground Bash call. Do NOT write a `diagrams` larch-log batch.
-The helper invokes `${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-summary.sh upsert-summary` internally for the `larch:diagrams` comment. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
+`skills/implement/scripts/step-7a.sh` consolidates the small/non-runtime classifier, `generate-code-flow-diagram.sh`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-bump log flush into one foreground Bash call. Do NOT write a `diagrams` larch-log batch.
+The helper invokes `${CLAUDE_PLUGIN_ROOT}/scripts/upsert-diagrams-comment.sh` for the stable issue-scoped `<!-- larch:diagrams v1 -->` comment, and only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 

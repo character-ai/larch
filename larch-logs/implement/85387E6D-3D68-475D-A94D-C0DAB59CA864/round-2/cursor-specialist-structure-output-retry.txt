@@ -1,0 +1,42 @@
+Reviewing branch changes against the plan: reading the precomputed diff and commit history.
+Diff is large (likely larch-logs). Focusing on implementation files from the plan.
+Reviewed branch commits `91ff1f2a`…`5b32f4d2` (feature core: `03920fdd` + round-1 fixes). Runtime diff is ~34 files / ~1.1k lines excluding `larch-logs`. The shared-helper split, stable marker, FINDING_3 preserve semantics, and harness coverage largely match the plan.
+
+### In-Scope Findings
+
+- **code-quality** `scripts/upsert-diagrams-comment.sh:205-228,278-282` — Every upsert performs a paginated `gh api …/issues/$ISSUE/comments` list (and often a per-id body fetch), then delegates to `tracking-issue-summary.sh`, which lists the same comments again before PATCH/CREATE. On issues with long comment histories this doubles network work and widens the read-merge-write race window the plan already accepts. **Suggested fix:** Extend `tracking-issue-summary.sh upsert-summary` with an optional `--comment-id` (or have the helper call the PATCH/CREATE path directly after merge) so the merged body is written without a second marker scan.
+
+- **correctness** `scripts/upsert-diagrams-comment.sh:103-110` — The fence state machine only treats ` ```mermaid` blocks as opaque; a generic ` ``` ` fence containing a literal `## Code Flow Diagram` or `## Architecture Diagram` line is still interpreted as a section boundary. A diagram or note block using a non-mermaid fence could cause the next upsert to drop half the comment silently. **Suggested fix:** Track any open triple-backtick fence (same pattern as `scripts/write-tally.sh`), or document that section bodies must use mermaid fences only and add a harness case with a plain code fence containing a heading-like line.
+
+- **code-quality** `skills/implement/scripts/step-7a.sh:103-110` — `compose_summary_diagrams` now only builds Code Flow output (copying `code-flow-diagram.md` → `code-flow-section.md` when `DIAGRAM_STATUS=ok`), but the function name still implies a full summary merge. That mismatch makes the Step 7a call graph harder to follow after the architecture path moved to `/design`. **Suggested fix:** Rename to `prepare_code_flow_section` (and update `step-7a.md` / harness comments) in a follow-up or this PR if you want zero drift.
+
+- **code-quality** `skills/implement/scripts/test-step-7a.sh:141-180` — Preserve/merge behavior for `larch:diagrams` is exercised through a stub `upsert-diagrams-comment.sh` with simplified awk, not the production helper. Regressions in the real two-step fetch or fence parser would not fail `test-step-7a` even though `test-upsert-diagrams-comment.sh` covers the helper in isolation. **Suggested fix:** Optional thin integration case that invokes the real helper from `$REPO_ROOT/scripts` with the existing gh stub (same pattern as `test-upsert-diagrams-comment.sh`) for at least `preserve-architecture`.
+
+### Out-of-Scope Observations
+
+- **risk-integration** — Branch history mixes #2840 with #2878 (`5ed07901`), a design `larch-logs` flush (`91ff1f2a`), and two round-1 fix commits. Unrelated deltas (e.g. `scripts/get-issue-context.sh` comment-only hardening from #2878) increase review/merge noise; consider splitting or noting in the PR body.
+
+- **code-quality** `scripts/lint-mermaid-fences.sh:117-127` — Excluding `larch-logs/**` from changed-file Mermaid lint is reasonable for this PR’s log flush but is not required by the diagrams contract; it is a drive-by hardening bundled in `03920fdd`.
+
+### Plan fidelity (structure lens)
+
+| Plan obligation | Status |
+|-----------------|--------|
+| Shared `upsert-diagrams-comment.sh` + contract + harness | Present; delegates to `tracking-issue-summary.sh`; FINDING_1/2/3/8 cases covered in `test-upsert-diagrams-comment.sh` |
+| `/design` 5c.5 + sentinel + anti-halt pins | `skills/design/SKILL.md` + `scripts/test-design-structure.sh` |
+| `/implement` code-flow-only upsert; no `ARCHITECTURE_DIAGRAM_FILE` | `step-7a.sh` (round-1 fixed STATUS=ok gate + REPO threading) |
+| Dead `compose-architecture-sketch` removal | Deleted; `agent-lint.toml` / `Makefile` updated |
+| Stable marker + legacy filter | `tracking-issue-read.sh`; prose updated |
+| Pre-merge grep | Clean outside allowed legacy/doc references |
+
+Round-1 fixes correctly addressed FINDING_3 (no placeholder upsert on skip/fail) and gh stderr redaction in the helper.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/upsert-diagrams-comment.sh:205-228,278-282	Helper lists issue comments then tracking-issue-summary.sh lists again before write	Every diagrams upsert on busy issues pays for two paginated comment scans and a slightly wider stale-read window	Teach tracking-issue-summary.sh to accept an existing comment id or fold PATCH into the helper after merge
+1	in_scope	latent	correctness	scripts/upsert-diagrams-comment.sh:103-110	Section splitter ignores ## only inside mermaid fences not generic code fences	A non-mermaid fenced block containing ## Code Flow Diagram could be parsed as a new section boundary and drop content on the next merge	Track any open ``` fence or add a regression body with a plain code fence plus heading-like line
+1	in_scope	nit	code-quality	skills/implement/scripts/step-7a.sh:103-110	compose_summary_diagrams name no longer matches behavior	Readers expect full summary composition including architecture after the /design move	Rename to prepare_code_flow_section and update step-7a.md
+1	in_scope	nit	code-quality	skills/implement/scripts/test-step-7a.sh:141-180	Step 7a harness stubs upsert-diagrams-comment.sh instead of calling production helper	Real helper regressions could pass test-step-7a while failing only in the separate harness	Add one preserve-architecture case using REPO_ROOT/scripts/upsert-diagrams-comment.sh with the gh stub
+1	out_of_scope	nit	risk-integration	(branch)	Mixed commits (#2840 #2878 larch-logs round-1) in one branch	Reviewers must separate unrelated security/log changes from the diagrams feature	Note in PR or split commits before merge
+1	out_of_scope	nit	code-quality	scripts/lint-mermaid-fences.sh:117-127	larch-logs excluded from changed-file mermaid lint	Unrelated to diagrams contract; bundled drive-by in main feature commit	Keep if intentional for log-heavy PRs; otherwise isolate
+```

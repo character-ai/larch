@@ -426,6 +426,7 @@ ISSUE_BODY=$(snap_truncate "$ISSUE_BODY" "$MAX_BODY_CHARS" "issue-body")
             # Summary-marker filter (new format + legacy anchor for migration window).
             case "$first_line" in
                 '<!-- larch:metadata v1 runid='*' -->'|\
+                '<!-- larch:diagrams v1 -->'|\
                 '<!-- larch:diagrams v1 runid='*' -->'|\
                 '<!-- larch:plan v1 runid='*' -->'|\
                 '<!-- larch:token-report v1 runid='*' -->'|\

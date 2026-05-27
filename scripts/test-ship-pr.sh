@@ -190,6 +190,16 @@ SH
 set -euo pipefail
 case "$(basename "$0")" in
   create-pr.sh)
+    body_file=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --body-file) body_file="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    if [[ -n "${body_file:-}" && -f "$body_file" && -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+      cp "$body_file" "${IMPLEMENT_TMPDIR}/create-pr-body-capture.md"
+    fi
     echo "PR_NUMBER=123"; echo "PR_URL=https://example.invalid/pr/123"; echo "PR_TITLE=Title"; echo "PR_STATUS=created" ;;
   sanitize-mermaid-fragment.sh)
     echo "STATUS=ok" ;;
@@ -1602,6 +1612,26 @@ else
     ok "pr-create log commit failure redacts stderr"
 fi
 rm -rf "$sentinel_dir"
+
+root=$(make_repo pr_create_body_code_flow_only)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" pr-create
+# Pre-create pr-body.md as run_pr_prep_phase would have — PHASE=pr-create skips that step
+printf '## Summary\n- Implemented changes.\n\n<details><summary>Code Flow Diagram</summary>\n\nCode flow diagram not available.\n\n</details>\n\n<details><summary>Test plan</summary>\n\n- [x] Ran relevant checks.\n\n</details>\n\nCloses #7\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n' > "$tmp/pr-body.md"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "pr-create body code-flow-only exits 0"
+if grep -Fq '<summary>Code Flow Diagram</summary>' "$tmp/create-pr-body-capture.md" && grep -Fq 'Code flow diagram not available.' "$tmp/create-pr-body-capture.md"; then
+    ok "pr-create body code-flow-only keeps code flow details"
+else
+    fail "pr-create body code-flow-only keeps code flow details"
+    sed 's/^/    pr-body: /' "$tmp/create-pr-body-capture.md" 2>/dev/null || true
+fi
+if grep -Fq 'Architecture Diagram' "$tmp/create-pr-body-capture.md"; then
+    fail "pr-create body code-flow-only omits architecture section"
+    sed 's/^/    pr-body: /' "$tmp/create-pr-body-capture.md" 2>/dev/null || true
+else
+    ok "pr-create body code-flow-only omits architecture section"
+fi
 
 # PR title: oldest commit (tail -1) with issue number prefix.
 root=$(make_repo pr_title_oldest_with_issue_num)

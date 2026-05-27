@@ -581,13 +581,30 @@ val5=$(awk -v s="$step5c_line" 'NR>s && /invoke-plan-validator-if-not-quick\.sh/
 needle='preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup'
 grep -Fq "$needle" "$SKILL_MD" \
   || fail "(14b12) Step 5c validator cancel must preserve tmpdir and skip cleanup"
-grep -Fq '5c.8→6' "$SKILL_MD" \
-  || fail "(15b) anti-halt reminder must mention 5c.8→6 step boundary (intra-Step-5 through rename)"
+grep -Fq '5c.5→5c.7→5c.8→6' "$SKILL_MD" \
+  || fail "(15b) anti-halt reminder must mention 5c.5→5c.7→5c.8→6 step boundary (intra-Step-5 through rename)"
+
+upsert_line=$(awk -v s="$step5c_line" 'NR>s && /scripts\/upsert-diagrams-comment\.sh/ {print NR; exit}' "$SKILL_MD" || true)
+plan_write_line=$(awk -v s="$step5c_line" 'NR>s && /plan-block-write\.sh/ {print NR; exit}' "$SKILL_MD" || true)
+publish_line=$(awk -v s="${upsert_line:-0}" 'NR>s && /design-log-publish\.sh/ {print NR; exit}' "$SKILL_MD" || true)
+[[ -n "$plan_write_line" && -n "$upsert_line" && -n "$publish_line" && "$plan_write_line" -lt "$upsert_line" && "$upsert_line" -lt "$publish_line" ]] \
+  || fail "(15b) Step 5c.5 upsert-diagrams-comment.sh must appear after plan-block-write.sh and before design-log-publish.sh"
+step3b_line=$(grep -nF '<!-- step:3b' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+step4_line=$(grep -nF '<!-- step:4 ' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step3b_line" && -n "$step4_line" ]] || fail "(15b) missing Step 3b or Step 4 marker"
+step3b_between=$(sed -n "$((step3b_line + 1)),$((step4_line - 1))p" "$SKILL_MD")
+grep -Fq 'architecture-diagram.skipped' <<<"$step3b_between" \
+  || fail "(15b) Step 3b must document architecture-diagram.skipped sentinel creation"
+step5c_between=$(sed -n "$((step5c_line + 1)),$((step5c_line + 90))p" "$SKILL_MD")
+grep -Fq 'architecture-diagram.skipped' <<<"$step5c_between" \
+  || fail "(15b) Step 5c.5 must document architecture-diagram.skipped sentinel handling"
+grep -Fq -- '--clear-architecture' <<<"$step5c_between" \
+  || fail "(15b) Step 5c.5 must invoke --clear-architecture when the skipped sentinel is present"
 
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 [[ -f "$ORCHESTRATOR_NEVER_MD" ]] || fail "(17) orchestrator-never.md missing: $ORCHESTRATOR_NEVER_MD"
-grep -Fq '5→5a→5b→5c.1→5c.7→5c.8→6' "$SKILL_MD" \
+grep -Fq '5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(17) anti-halt reminder missing intra-Step-5 sub-step enumeration"
 grep -Fq "NEVER treat a sub-skill's terminal output as the parent skill's terminal output" "$ORCHESTRATOR_NEVER_MD" \
   || fail "(17) orchestrator-never.md missing sub-skill vs parent-skill terminal-output NEVER literal"

@@ -44,15 +44,26 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 
 ## Invariants
 
-- Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, diagram generation, comment composition/upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
+- Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, Code Flow generation, shared diagrams-comment upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
 - The classifier, diagram generator, and 7a.r rebase probe use module-level `base_remote` / `base_ref`, defaulting to `origin/main` and switching to `upstream/main` when `--forked-target true` is on argv or when `LARCH_FORKED_TARGET=true` is rehydrated from `$IMPLEMENT_TMPDIR/session-env.sh` during session-key lookup.
 - `LARCH_FORKED_TARGET` has no direct shell-environment fallback; only argv and the session-env file are honored.
-- `summary-diagrams.md` preserves the existing `larch:diagrams` content shape: Architecture Diagram content or placeholder, blank line, then Code Flow content or placeholder.
+- When `REPO` or `UPSTREAM_REPO` is present in `$IMPLEMENT_TMPDIR/session-env.sh`, Step 7a threads the resolved owner/repo to `scripts/upsert-diagrams-comment.sh` via `--repo`.
+- Step 7a writes `$IMPLEMENT_TMPDIR/code-flow-section.md` only when `generate-code-flow-diagram.sh` reports `STATUS=ok`. The file contains the `## Code Flow Diagram` section passed to `scripts/upsert-diagrams-comment.sh`.
+- When generation is skipped or failed, Step 7a removes any stale local `code-flow-diagram.md` / `code-flow-section.md`, omits the upsert, and preserves any prior valid Code Flow section on the issue instead of replacing it with a placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- Step 7a upserts the `larch:diagrams` comment with the generator-emitted `SKIP_REASON` value (e.g. `pipe-in-node-label fence=mermaid line=7`) when `generate-code-flow-diagram.sh` reports `STATUS=skipped` or `STATUS=failed` and a non-empty `SKIP_REASON` KV; falls back to the literal `Code flow diagram not available.` when `SKIP_REASON` is empty (e.g. generator crash, unknown `STATUS`). Only empty `ISSUE_NUMBER` gates the upsert.
+- `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `tracking-issue-summary.sh` directly and does not use a `runid=` marker for diagrams.
 - `LARCH_QUIET_BREADCRUMBS=1` is exported for the 7a.r rebase checkpoint probe.
 - Only `REBASE_OUTCOME=ok|skipped` reaches the pre-bump flush phase.
 - The helper does not write a `diagrams` larch-log batch.
+
+## Regression checklist
+
+- Green generation writes `code-flow-section.md` and invokes `scripts/upsert-diagrams-comment.sh`.
+- Prior Architecture content is preserved by the shared helper while Code Flow is replaced.
+- No prior diagrams comment produces a Code Flow-only body.
+- `STATUS=skipped` and `STATUS=failed` omit `code-flow-section.md` and skip the upsert.
+- Legacy `<!-- larch:diagrams v1 runid=... -->` comments do not collide with the stable marker.
+- `ARCHITECTURE_DIAGRAM_FILE` has no effect on Step 7a.
 
 ## Edit-in-sync
 

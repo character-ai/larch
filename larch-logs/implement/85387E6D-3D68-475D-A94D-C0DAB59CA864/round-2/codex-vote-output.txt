@@ -1,0 +1,20 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- current helper passes --comment-id to tracking-issue-summary.sh, so the second list scan is avoided.
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the name is stale, but a rename-only nit is not worth blocking this change.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the harness now includes a preserve-architecture-production-helper case using the real helper and gh stub.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- #2878 is on the branch base and the remaining run-log churn is not worth filing as a separate issue.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the larch-logs lint exclusion is real but appears intentional and not worth a separate issue.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- diagram-rejected and diagram-generation-failure now seed existing bodies and assert the upsert is skipped and body remains unchanged.
+FINDING_8: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- this is only an extra no-op list fetch on a fresh issue and not worth the added branching.
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- diagram-generation-failure now asserts upsert-diagrams-comment.sh is not called.
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- preserved sections are now re-sanitized; the remaining author/provenance concern is documented and not worth trusted-comment complexity here.
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- input files are now restricted to temp directories unless --allow-external-paths is supplied.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SECURITY.md now documents the preserve/trust model and public-comment residual risk.
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- upsert-diagrams-comment.sh now normalizes BOM and trailing CR before marker comparison.
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Step 5c.5 now documents that --clear-architecture only targets the stable marker and leaves legacy runid comments orphaned.
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- clear-without-comment now reports ARCHITECTURE_SOURCE=absent with UPSERT_STATUS=no-op.
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- tracking-issue-summary.sh now normalizes BOM and trailing CR before marker comparison.
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the diagram-generation-failure case now includes the documented upsert-skip assertion.
+FINDING_20: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- #2878 is branch base context, and the run-log/commit organization concern is not worth a separate OOS issue.

@@ -1,0 +1,3 @@
+Merging the supplied reviewer findings into a normalized list. Verifying key overlaps in the source files (read-only).
+Confirming overlaps in source; producing the normalized aggregated finding list.
+

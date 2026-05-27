@@ -18,13 +18,19 @@ Anchor comments and PR bodies embed Mermaid diagrams that GitHub renders publicl
 
 ## Enforcement Layers
 
-- Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `scripts/sanitize-mermaid-fragment.sh`. Rejected diagrams are dropped and replaced with placeholders.
-- larch-log sanitizer: `scripts/larch-log.sh` validates the `diagrams` batch as defense in depth and fails closed on sanitizer tooling errors.
+- Write-time sanitizer: `/design` Step 3b, `/implement` Step 7a, and `/implement` Step 9a validate diagram candidates with `scripts/sanitize-mermaid-fragment.sh`. Rejected diagrams are dropped; callers either omit the publish section so prior issue content is preserved or fall back to an explicit placeholder when that surface requires one.
+- Tracking-issue redaction: `/design` Step 5c.5 and `/implement` Step 7a publish through `scripts/upsert-diagrams-comment.sh`, which redacts secrets and tmpdir paths before delegating to `tracking-issue-summary.sh`. `tracking-issue-summary.sh` repeats the redaction chain as defense in depth.
 - CI Mermaid lint: `scripts/lint-mermaid-fences.sh` runs Mermaid CLI over changed Markdown fences and catches syntax outside the narrow sanitizer policy.
 
 ## For Tool Authors
 
 Any new Mermaid emitter must write a candidate file, run `scripts/sanitize-mermaid-fragment.sh --from-md` when the candidate includes fence delimiters, and only promote the candidate to the public artifact on `STATUS=ok`. On `STATUS=rejected` or exit 2, drop the candidate, log a public-safe `REASON_TOKEN`, and proceed with a placeholder.
+
+The authoritative tracking-issue surface for diagrams is the issue-scoped
+`larch:diagrams` comment managed by `scripts/upsert-diagrams-comment.sh`.
+`/design` owns the Architecture section at Step 5c.5; `/implement` owns the
+Code Flow section at Step 7a. The PR body still embeds the Code Flow diagram
+only, after Step 9a validation.
 
 ## Node Toolchain Maintenance
 

@@ -29,9 +29,10 @@ fail_usage() {
 }
 
 read_session_key() {
-    local key=$1 default_value=$2
-    if [ -n "${SESSION_ENV_FILE:-}" ] && [ -f "$SESSION_ENV_FILE" ] && [ -x "$PLUGIN_ROOT/scripts/read-session-env-key.sh" ]; then
-        "$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+    local key=$1 default_value=$2 script
+    script="$PLUGIN_ROOT/scripts/read-session-env-key.sh"
+    if [ -n "${SESSION_ENV_FILE:-}" ] && [ -f "$SESSION_ENV_FILE" ] && [ -f "$script" ]; then
+        bash "$script" --file "$SESSION_ENV_FILE" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
     else
         printf '%s\n' "$default_value"
     fi
@@ -101,19 +102,12 @@ EOF
 }
 
 compose_summary_diagrams() {
-    {
-        if [ -n "${ARCHITECTURE_DIAGRAM_FILE:-}" ] && [ -f "${ARCHITECTURE_DIAGRAM_FILE:-}" ]; then
-            cat "$ARCHITECTURE_DIAGRAM_FILE"
-        else
-            printf 'Architecture diagram not available.'
-        fi
-        printf '\n\n'
-        if [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
-            cat "$IMPLEMENT_TMPDIR/code-flow-diagram.md"
-        else
-            printf '%s' "$CODE_FLOW_SKIP_REASON"
-        fi
-    } > "$IMPLEMENT_TMPDIR/summary-diagrams.md"
+    rm -f "$IMPLEMENT_TMPDIR/code-flow-section.md" 2>/dev/null || true
+    if [ "${DIAGRAM_STATUS:-}" = "ok" ] && [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
+        cat "$IMPLEMENT_TMPDIR/code-flow-diagram.md" > "$IMPLEMENT_TMPDIR/code-flow-section.md"
+    else
+        rm -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" 2>/dev/null || true
+    fi
 }
 
 run_larch_log_write() {
@@ -246,7 +240,6 @@ DIAGRAM_PATH=""
 COMMENT_URL=""
 LOG_FLUSH_STATUS=""
 STEP_7A_BAIL_REASON=""
-CODE_FLOW_SKIP_REASON=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -331,6 +324,20 @@ if [ "$FORKED_TARGET_SET" != "true" ]; then
 fi
 export ISSUE_NUMBER RUN_ID
 
+REPO=""
+if [ -f "${SESSION_ENV_FILE:-/dev/null}" ]; then
+    if [ "${forked_target:-false}" = "true" ]; then
+        REPO=$(awk -F= '/^UPSTREAM_REPO=/{print substr($0, index($0,"=")+1); exit}' "$SESSION_ENV_FILE" 2>/dev/null || true)
+    fi
+    if [ -z "$REPO" ]; then
+        REPO=$(awk -F= '/^REPO=/{print substr($0, index($0,"=")+1); exit}' "$SESSION_ENV_FILE" 2>/dev/null || true)
+    fi
+    if [ -z "$REPO" ]; then
+        REPO=$(awk -F= '/^UPSTREAM_REPO=/{print substr($0, index($0,"=")+1); exit}' "$SESSION_ENV_FILE" 2>/dev/null || true)
+    fi
+fi
+export REPO
+
 base_remote=origin
 base_ref=main
 if [ "${forked_target:-false}" = "true" ]; then
@@ -343,7 +350,6 @@ fi
 if is_small_non_runtime_change; then
     DIAGRAM_STATUS=skip
     DIAGRAM_PATH=""
-    CODE_FLOW_SKIP_REASON="(Code Flow Diagram skipped — small/non-runtime change)"
     emit "⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s"
 else
     gen_out="$IMPLEMENT_TMPDIR/code-flow-diagram.stdout"
@@ -360,33 +366,19 @@ else
         ok)
             DIAGRAM_STATUS=ok
             DIAGRAM_PATH="$IMPLEMENT_TMPDIR/code-flow-diagram.md"
-            CODE_FLOW_SKIP_REASON=""
             ;;
         skipped)
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
-            _skip_reason=$(kv_value SKIP_REASON "$gen_out")
-            if [ -n "$_skip_reason" ]; then
-                CODE_FLOW_SKIP_REASON="$_skip_reason"
-            else
-                CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            fi
             ;;
         failed)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
-            _skip_reason=$(kv_value SKIP_REASON "$gen_out")
-            if [ -n "$_skip_reason" ]; then
-                CODE_FLOW_SKIP_REASON="$_skip_reason"
-            else
-                CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            fi
             append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
         *)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
-            CODE_FLOW_SKIP_REASON="Code flow diagram not available."
             append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
     esac
@@ -394,17 +386,20 @@ fi
 
 compose_summary_diagrams
 
-if [ -n "$ISSUE_NUMBER" ]; then
-    upsert_out="$IMPLEMENT_TMPDIR/summary-diagrams-upsert.stdout"
-    upsert_err="$IMPLEMENT_TMPDIR/summary-diagrams-upsert.stderr"
+if [ -n "$ISSUE_NUMBER" ] && [ -s "$IMPLEMENT_TMPDIR/code-flow-section.md" ]; then
+    upsert_out="$IMPLEMENT_TMPDIR/code-flow-section-upsert.stdout"
+    upsert_err="$IMPLEMENT_TMPDIR/code-flow-section-upsert.stderr"
+    upsert_args=(--issue "$ISSUE_NUMBER")
+    if [ -n "$REPO" ]; then
+        upsert_args+=(--repo "$REPO")
+    fi
+    upsert_args+=(--code-flow-file "$IMPLEMENT_TMPDIR/code-flow-section.md")
     set +e
-    "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" upsert-summary \
-        --issue "$ISSUE_NUMBER" \
-        --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->" \
-        --content-file "$IMPLEMENT_TMPDIR/summary-diagrams.md" >"$upsert_out" 2>"$upsert_err"
+    "$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${upsert_args[@]}" >"$upsert_out" 2>"$upsert_err"
     upsert_rc=$?
     set +e
-    if [ "$upsert_rc" -eq 0 ]; then
+    upsert_status=$(kv_value UPSERT_STATUS "$upsert_out")
+    if [ "$upsert_rc" -eq 0 ] && [ "$upsert_status" != "failed" ]; then
         COMMENT_URL=$(kv_value COMMENT_URL "$upsert_out")
     else
         COMMENT_URL=""

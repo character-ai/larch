@@ -1,0 +1,19 @@
+Implemented and wrote the manifest at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.
+
+Key changes:
+- Added `scripts/upsert-diagrams-comment.sh` plus contract and harness.
+- Moved Architecture diagram publication into `/design` Step 5c.5.
+- Refactored `/implement` Step 7a to publish only Code Flow via the shared helper.
+- Removed Architecture diagram PR-body composition and deleted the obsolete `compose-architecture-sketch` scripts/tests.
+- Updated marker/docs/security references for stable `<!-- larch:diagrams v1 -->`.
+- Kept legacy runid marker filtering in `tracking-issue-read.sh`.
+
+Verification passed:
+- `bash scripts/test-upsert-diagrams-comment.sh`
+- `bash skills/implement/scripts/test-step-7a.sh`
+- `bash scripts/test-design-structure.sh`
+- `bash scripts/test-ship-pr.sh`
+- `bash scripts/test-tracking-issue-summary.sh`
+- `bash scripts/test-tracking-issue-read-sentinel.sh`
+- `git diff --check`
+- `bash scripts/relevant-checks.sh`

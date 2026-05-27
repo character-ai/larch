@@ -7,8 +7,10 @@
 # validation. Coverage includes allowed values, absence semantics (empty
 # == unusable, NEVER false), parser behavior (column-0 keys only, first
 # match wins, BOM stripping, trailing \r stripping, other trailing
-# whitespace preserved), and exact three-line success / failure stdout
-# envelopes on all paths.
+# whitespace preserved), exact three-line success / failure stdout
+# envelopes on sentinel paths, and one stubbed issue-read case that
+# proves stable `<!-- larch:diagrams v1 -->` comments are filtered from
+# TASK_FILE.
 #
 # Structure mirrors the shared-helpers pattern of
 # scripts/test-tracking-issue-write.sh (set -euo pipefail, REPO_ROOT,
@@ -132,6 +134,42 @@ run_read_args() {
     LAST_STDERR=""
     LAST_EXIT=0
     LAST_STDOUT=$(bash "$READ_SCRIPT" "$@" 2>"$stderr_file") || LAST_EXIT=$?
+    LAST_EXIT="${LAST_EXIT:-0}"
+    LAST_STDERR=$(cat "$stderr_file")
+    rm -f "$stderr_file"
+}
+
+run_issue_read_with_stub() {
+    local stub_dir="$1" out_dir="$2" mode="${3:-stable}" stderr_file body_json
+    mkdir -p "$stub_dir" "$out_dir"
+    if [[ "$mode" == "legacy" ]]; then
+        # shellcheck disable=SC2016  # \n is JSON-literal backslash-n, not shell escape
+        body_json='{"id":101,"body":"<!-- larch:diagrams v1 runid=old -->\n## Code Flow Diagram\n\n```mermaid\ngraph TD\n  A --> B\n```"}'
+    else
+        # shellcheck disable=SC2016  # \n is JSON-literal backslash-n, not shell escape
+        body_json='{"id":101,"body":"<!-- larch:diagrams v1 -->\n## Code Flow Diagram\n\n```mermaid\ngraph TD\n  A --> B\n```"}'
+    fi
+    local escaped_body_json="$body_json"
+    cat > "$stub_dir/gh" <<GHSTUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "api" && "\${2:-}" == "/repos/owner/repo/issues/7" ]]; then
+    printf 'Issue body\n'
+    exit 0
+fi
+if [[ "\${1:-}" == "api" && "\${2:-}" == "/repos/owner/repo/issues/7/comments" ]]; then
+    printf '%s\n' '$escaped_body_json'
+    printf '%s\n' '{"id":102,"body":"operator comment"}'
+    exit 0
+fi
+exit 1
+GHSTUB
+    chmod +x "$stub_dir/gh"
+    LAST_STDOUT=""
+    LAST_STDERR=""
+    LAST_EXIT=0
+    stderr_file=$(mktemp "${TMPROOT}/stderr-XXXXXX")
+    LAST_STDOUT=$(PATH="$stub_dir:$PATH" bash "$READ_SCRIPT" --issue 7 --out-dir "$out_dir" --repo owner/repo 2>"$stderr_file") || LAST_EXIT=$?
     LAST_EXIT="${LAST_EXIT:-0}"
     LAST_STDERR=$(cat "$stderr_file")
     rm -f "$stderr_file"
@@ -382,6 +420,28 @@ echo "(aa) argv --issue=abc — usage reject"
 run_read_args --issue abc --out-dir "$TMPROOT/no-such-dir"
 assert_equal_exit "$LAST_EXIT" "1" "(aa) exit 1"
 assert_equal_stdout "$LAST_STDOUT" "$(printf 'FAILED=true\nERROR=usage: --issue must be numeric')" "(aa) stdout"
+
+# (ab) Stable larch:diagrams summary comment is filtered from issue reads
+echo "(ab) stable larch:diagrams comments are skipped from TASK_FILE"
+run_issue_read_with_stub "$TMPROOT/stub-ab" "$TMPROOT/out-ab"
+assert_equal_exit "$LAST_EXIT" "0" "(ab) exit 0"
+assert_contains "$LAST_STDOUT" "TASK_SOURCE=issue-only" "(ab) stdout task source"
+task_file=$(printf '%s\n' "$LAST_STDOUT" | awk -F= '$1=="TASK_FILE"{print substr($0, index($0, "=") + 1); exit}')
+task_body=$(cat "$task_file" 2>/dev/null || true)
+assert_contains "$task_body" '<external_issue_comment id="102">' "(ab) task file keeps normal comment"
+assert_not_contains "$task_body" '<external_issue_comment id="101">' "(ab) task file skips stable diagrams comment"
+assert_not_contains "$task_body" '<!-- larch:diagrams v1 -->' "(ab) task file omits stable marker payload"
+
+# (ac) Legacy runid-bearing larch:diagrams summary comment is also filtered
+echo "(ac) legacy larch:diagrams comments are skipped from TASK_FILE"
+run_issue_read_with_stub "$TMPROOT/stub-ac" "$TMPROOT/out-ac" legacy
+assert_equal_exit "$LAST_EXIT" "0" "(ac) exit 0"
+assert_contains "$LAST_STDOUT" "TASK_SOURCE=issue-only" "(ac) stdout task source"
+task_file=$(printf '%s\n' "$LAST_STDOUT" | awk -F= '$1=="TASK_FILE"{print substr($0, index($0, "=") + 1); exit}')
+task_body=$(cat "$task_file" 2>/dev/null || true)
+assert_contains "$task_body" '<external_issue_comment id="102">' "(ac) task file keeps normal comment"
+assert_not_contains "$task_body" '<external_issue_comment id="101">' "(ac) task file skips legacy diagrams comment"
+assert_not_contains "$task_body" 'runid=old' "(ac) task file omits legacy marker payload"
 
 # ---------------------------------------------------------------------------
 # Summary

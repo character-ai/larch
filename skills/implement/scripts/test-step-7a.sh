@@ -47,6 +47,11 @@ assert_file_contains() {
     assert_contains "$needle" "$(cat "$path" 2>/dev/null || true)" "$label"
 }
 
+assert_file_not_contains() {
+    local needle=$1 path=$2 label=$3
+    assert_not_contains "$needle" "$(cat "$path" 2>/dev/null || true)" "$label"
+}
+
 assert_file_equals() {
     local expected=$1 path=$2 label=$3 actual
     actual=$(cat "$path" 2>/dev/null || true)
@@ -79,23 +84,12 @@ assert_call_order() {
 
 green_expected_summary() {
     cat <<'EOF'
-Architecture diagram not available.
-
 ## Code Flow Diagram
 
 ```mermaid
 graph TD
   A --> B
 ```
-EOF
-}
-
-placeholder_expected_summary() {
-    local placeholder=$1
-    cat <<EOF
-Architecture diagram not available.
-
-$placeholder
 EOF
 }
 
@@ -144,24 +138,46 @@ case "${STEP7A_GEN_MODE:-ok}" in
 esac
 STUB
 
-    cat > "$root/scripts/tracking-issue-summary.sh" <<'STUB'
+    cat > "$root/scripts/upsert-diagrams-comment.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-content=""
+code_file=""
+repo=""
 args="$*"
 while [ $# -gt 0 ]; do
     case "$1" in
-        --content-file) content=$2; shift 2 ;;
+        --repo) repo=$2; shift 2 ;;
+        --code-flow-file) code_file=$2; shift 2 ;;
         *) shift ;;
     esac
 done
-[ -n "$content" ] && [ -f "$content" ] && printf 'compose-summary-diagrams %s\n' "$content" >> "$STEP7A_CALLS_LOG"
-printf 'tracking-issue-summary.sh %s\n' "$args" >> "$STEP7A_CALLS_LOG"
+[ -n "$code_file" ] && [ -f "$code_file" ] && printf 'upsert-diagrams-content %s\n' "$code_file" >> "$STEP7A_CALLS_LOG"
+printf 'upsert-diagrams-comment.sh %s\n' "$args" >> "$STEP7A_CALLS_LOG"
 if [ "${STEP7A_UPSERT_FAIL:-0}" = "1" ]; then
     printf 'upsert failed\n' >&2
     exit 1
 fi
+[ -n "${STEP7A_UPSERT_BODY_CAPTURE:-}" ] && {
+    : > "$STEP7A_UPSERT_BODY_CAPTURE"
+    if [ -n "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" ] && [ -f "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" ]; then
+        first_line=$(head -n 1 "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" 2>/dev/null || true)
+        if [ "$first_line" = '<!-- larch:diagrams v1 -->' ]; then
+            awk '
+                BEGIN { capture = 0 }
+                /^## Code Flow Diagram$/ { capture = 0 }
+                /^## Architecture Diagram$/ { capture = 1 }
+                capture { print }
+            ' "${STEP7A_UPSERT_EXISTING_BODY_FILE:-}" >> "$STEP7A_UPSERT_BODY_CAPTURE"
+        fi
+    fi
+    if [ -s "$STEP7A_UPSERT_BODY_CAPTURE" ] && [ -n "$code_file" ] && [ -f "$code_file" ]; then
+        printf '\n\n' >> "$STEP7A_UPSERT_BODY_CAPTURE"
+    fi
+    [ -n "$code_file" ] && [ -f "$code_file" ] && cat "$code_file" >> "$STEP7A_UPSERT_BODY_CAPTURE"
+}
+printf 'UPSERT_STATUS=ok\n'
 printf 'COMMENT_URL=https://example.test/comment/1\n'
+printf 'UPDATED=true\n'
 STUB
 
     cat > "$root/scripts/rebase-checkpoint-probe.sh" <<'STUB'
@@ -279,6 +295,54 @@ STUB
     chmod +x "$root/scripts/"*.sh "$root/skills/implement/scripts/"*.sh
 }
 
+install_real_diagrams_helper() {
+    local root=$1
+    cp "$REPO_ROOT/scripts/upsert-diagrams-comment.sh" "$root/scripts/upsert-diagrams-comment.sh"
+    cp "$REPO_ROOT/scripts/tracking-issue-summary.sh" "$root/scripts/tracking-issue-summary.sh"
+    cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
+    cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$root/scripts/redact-tmpdir-paths.sh"
+    cp "$REPO_ROOT/scripts/sanitize-mermaid-fragment.sh" "$root/scripts/sanitize-mermaid-fragment.sh"
+    chmod +x \
+        "$root/scripts/upsert-diagrams-comment.sh" \
+        "$root/scripts/tracking-issue-summary.sh" \
+        "$root/scripts/redact-secrets.sh" \
+        "$root/scripts/redact-tmpdir-paths.sh" \
+        "$root/scripts/sanitize-mermaid-fragment.sh"
+}
+
+install_diagrams_gh_stub() {
+    local dir=$1
+    mkdir -p "$dir"
+    cat > "$dir/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'gh %s\n' "$*" >> "$STEP7A_CALLS_LOG"
+if [ "$1" = "api" ]; then
+    endpoint=$2
+    if [[ "$endpoint" == "/repos/owner/repo/issues/42/comments" ]]; then
+        printf '101\t<!-- larch:diagrams v1 -->\n'
+        exit 0
+    fi
+    if [[ "$endpoint" == "/repos/owner/repo/issues/comments/101" ]]; then
+        if printf '%s\n' "$@" | grep -qx -- "PATCH"; then
+            for ((i=1; i<=$#; i++)); do
+                if [ "${!i}" = "--input" ]; then
+                    next=$((i + 1))
+                    jq -r '.body' < "${!next}" > "$STEP7A_UPSERT_BODY_CAPTURE"
+                fi
+            done
+            printf 'https://example.test/comment/1\n'
+            exit 0
+        fi
+        cat "$STEP7A_UPSERT_EXISTING_BODY_FILE"
+        exit 0
+    fi
+fi
+exit 1
+STUB
+    chmod +x "$dir/gh"
+}
+
 new_case() {
     local name=$1
     CASE_DIR="$TMP_ROOT/$name"
@@ -286,7 +350,7 @@ new_case() {
     : > "$CASE_DIR/calls.log"
     : > "$CASE_DIR/flush-count"
     touch "$CASE_DIR/tmp/execution-issues.md"
-    printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s/plugin\nLARCH_TOKEN_SESSION_ID=test-session\nLARCH_CLAUDE_SOURCE_FILE=%s/source.jsonl\nLARCH_TIMING_LEDGER=%s/timing.log\nLARCH_ISSUE_NUMBER=42\nLARCH_RUN_ID=run-001\nLARCH_NO_LOGS_COMMIT=false\nLARCH_FORKED_TARGET=false\n' \
+    printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s/plugin\nLARCH_TOKEN_SESSION_ID=test-session\nLARCH_CLAUDE_SOURCE_FILE=%s/source.jsonl\nLARCH_TIMING_LEDGER=%s/timing.log\nLARCH_ISSUE_NUMBER=42\nLARCH_RUN_ID=run-001\nLARCH_NO_LOGS_COMMIT=false\nLARCH_FORKED_TARGET=false\nREPO=owner/repo\nUPSTREAM_REPO=upstream/repo\n' \
         "$TMP_ROOT" "$CASE_DIR" "$CASE_DIR" > "$CASE_DIR/tmp/session-env.sh"
 }
 
@@ -398,11 +462,23 @@ assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE
 assert_contains "--base-remote origin --base-ref main" "$(cat "$CASE_DIR/calls.log")" "green passes origin base args to generator"
 assert_call_order "$CASE_DIR/calls.log" "token-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "timing-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
-assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "compose-summary-diagrams" "green generate before compose"
-assert_call_order "$CASE_DIR/calls.log" "compose-summary-diagrams" "tracking-issue-summary.sh" "green compose before upsert"
-assert_call_order "$CASE_DIR/calls.log" "tracking-issue-summary.sh" "rebase-checkpoint-probe.sh" "green upsert before rebase"
+assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "upsert-diagrams-content" "green generate before compose"
+assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-content" "upsert-diagrams-comment.sh" "green compose before upsert"
+assert_call_order "$CASE_DIR/calls.log" "upsert-diagrams-comment.sh" "rebase-checkpoint-probe.sh" "green upsert before rebase"
 assert_call_order "$CASE_DIR/calls.log" "rebase-checkpoint-probe.sh" "flush-execution-issues.sh" "green rebase before flush"
-assert_file_equals "$(green_expected_summary)" "$CASE_DIR/tmp/summary-diagrams.md" "green writes expected summary diagrams"
+assert_file_equals "$(green_expected_summary)" "$CASE_DIR/tmp/code-flow-section.md" "green writes expected code flow section"
+assert_contains "upsert-diagrams-comment.sh --issue 42 --repo owner/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "green invokes shared stable diagrams helper"
+assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "green does not call tracking summary directly"
+
+new_case architecture-env-ignored
+printf '## Architecture Diagram\n\nstale\n' > "$CASE_DIR/architecture.md"
+set +e
+out=$(ARCHITECTURE_DIAGRAM_FILE="$CASE_DIR/architecture.md" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "architecture-env-ignored exits 0"
+assert_file_equals "$(green_expected_summary)" "$CASE_DIR/tmp/code-flow-section.md" "architecture-env-ignored writes code flow only"
+assert_file_not_contains "Architecture Diagram" "$CASE_DIR/tmp/code-flow-section.md" "architecture-env-ignored ignores architecture env"
 
 new_case diagram-skip
 make_skip_repo "$CASE_DIR/repo"
@@ -414,8 +490,8 @@ assert_equals 0 "$rc" "diagram-skip exits 0"
 assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip emits skip"
 assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip prints skip line"
 assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip does not invoke generator"
-assert_file_contains "(Code Flow Diagram skipped — small/non-runtime change)" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-skip writes placeholder"
-assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip still posts comment"
+if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip omits code flow section"; else fail "diagram-skip omits code flow section"; fi
+assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip skips diagrams upsert"
 
 new_case diagram-skip-forked
 make_forked_skip_repo "$CASE_DIR/repo"
@@ -427,8 +503,8 @@ assert_equals 0 "$rc" "diagram-skip-forked exits 0"
 assert_contains "DIAGRAM_STATUS=skip" "$out" "diagram-skip-forked emits skip"
 assert_contains "diagrams status=skip reason=small-non-runtime-change" "$out" "diagram-skip-forked prints skip line"
 assert_not_contains "generate-code-flow-diagram.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked does not invoke generator"
-assert_file_contains "(Code Flow Diagram skipped — small/non-runtime change)" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-skip-forked writes placeholder"
-assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked still posts comment"
+if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-skip-forked omits code flow section"; else fail "diagram-skip-forked omits code flow section"; fi
+assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skip-forked skips diagrams upsert"
 
 new_case diagram-generate-forked
 make_forked_generate_repo "$CASE_DIR/repo"
@@ -440,19 +516,108 @@ assert_equals 0 "$rc" "diagram-generate-forked exits 0"
 assert_contains "DIAGRAM_STATUS=ok" "$out" "diagram-generate-forked emits diagram ok"
 assert_contains "generate-code-flow-diagram.sh --implement-tmpdir" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes tmpdir to generator"
 assert_contains "--base-remote upstream --base-ref main" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked passes upstream base args to generator"
+assert_contains "upsert-diagrams-comment.sh --issue 42 --repo upstream/repo --code-flow-file $CASE_DIR/tmp/code-flow-section.md" "$(cat "$CASE_DIR/calls.log")" "diagram-generate-forked threads repo to upsert"
+
+new_case preserve-architecture
+cat > "$CASE_DIR/existing-diagrams.md" <<'EOF'
+<!-- larch:diagrams v1 -->
+
+## Architecture Diagram
+
+```mermaid
+graph TD
+  A["Existing architecture"] --> B["Runtime"]
+```
+EOF
+set +e
+out=$(STEP7A_UPSERT_EXISTING_BODY_FILE="$CASE_DIR/existing-diagrams.md" STEP7A_UPSERT_BODY_CAPTURE="$CASE_DIR/body.md" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "preserve-architecture exits 0"
+assert_file_contains "Existing architecture" "$CASE_DIR/body.md" "preserve-architecture keeps architecture content"
+assert_file_contains "## Code Flow Diagram" "$CASE_DIR/body.md" "preserve-architecture writes code flow content"
+
+new_case preserve-architecture-production-helper
+install_real_diagrams_helper "$TMP_ROOT/plugin"
+install_diagrams_gh_stub "$CASE_DIR/stub"
+cat > "$CASE_DIR/existing-diagrams.md" <<'EOF'
+<!-- larch:diagrams v1 -->
+
+## Architecture Diagram
+
+```mermaid
+graph TD
+  A["Existing architecture"] --> B["Runtime"]
+```
+EOF
+set +e
+old_path=$PATH
+PATH="$CASE_DIR/stub:$PATH"
+out=$(STEP7A_UPSERT_EXISTING_BODY_FILE="$CASE_DIR/existing-diagrams.md" STEP7A_UPSERT_BODY_CAPTURE="$CASE_DIR/body.md" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+PATH=$old_path
+set -e
+assert_equals 0 "$rc" "preserve-architecture-production-helper exits 0"
+assert_file_contains "Existing architecture" "$CASE_DIR/body.md" "preserve-architecture-production-helper keeps architecture content"
+assert_file_contains "## Code Flow Diagram" "$CASE_DIR/body.md" "preserve-architecture-production-helper writes code flow content"
+assert_contains "gh api /repos/owner/repo/issues/comments/101 -X PATCH" "$(cat "$CASE_DIR/calls.log")" "preserve-architecture-production-helper patches existing stable comment"
+assert_equals 1 "$(grep -Fc '/repos/owner/repo/issues/42/comments' "$CASE_DIR/calls.log" 2>/dev/null || true)" "preserve-architecture-production-helper lists comments once"
+setup_plugin "$TMP_ROOT/plugin"
+
+new_case no-prior-diagrams-comment
+set +e
+out=$(STEP7A_UPSERT_BODY_CAPTURE="$CASE_DIR/body.md" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "no-prior-diagrams-comment exits 0"
+assert_file_contains "## Code Flow Diagram" "$CASE_DIR/body.md" "no-prior-diagrams-comment creates code flow body"
+assert_file_not_contains "Architecture Diagram" "$CASE_DIR/body.md" "no-prior-diagrams-comment omits architecture content"
+
+new_case legacy-diagrams-orphan
+cat > "$CASE_DIR/existing-diagrams.md" <<'EOF'
+<!-- larch:diagrams v1 runid=legacy -->
+
+## Architecture Diagram
+
+```mermaid
+graph TD
+  A["Legacy architecture"] --> B["Runtime"]
+```
+EOF
+set +e
+out=$(STEP7A_UPSERT_EXISTING_BODY_FILE="$CASE_DIR/existing-diagrams.md" STEP7A_UPSERT_BODY_CAPTURE="$CASE_DIR/body.md" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "legacy-diagrams-orphan exits 0"
+assert_file_contains "## Code Flow Diagram" "$CASE_DIR/body.md" "legacy-diagrams-orphan creates stable code flow body"
+assert_file_not_contains "Legacy architecture" "$CASE_DIR/body.md" "legacy-diagrams-orphan ignores legacy comment body"
 
 new_case diagram-rejected
+printf 'stale\n' > "$CASE_DIR/tmp/code-flow-diagram.md"
+cat > "$CASE_DIR/existing-diagrams.md" <<'EOF'
+<!-- larch:diagrams v1 -->
+
+## Code Flow Diagram
+
+```mermaid
+graph TD
+  Existing --> Preserved
+```
+EOF
+cp "$CASE_DIR/existing-diagrams.md" "$CASE_DIR/body.md"
 set +e
-out=$(STEP7A_GEN_MODE=rejected run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+out=$(STEP7A_GEN_MODE=rejected STEP7A_UPSERT_EXISTING_BODY_FILE="$CASE_DIR/existing-diagrams.md" STEP7A_UPSERT_BODY_CAPTURE="$CASE_DIR/body.md" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
 rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-rejected exits 0"
 assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected emits skipped"
-assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected still posts comment"
-assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-rejected emits comment URL"
+assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected skips diagrams upsert"
+assert_contains "COMMENT_URL=" "$out" "diagram-rejected emits empty comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
 assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
-assert_file_equals "$(placeholder_expected_summary "pipe-in-node-label fence=mermaid line=7")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected writes expected summary diagrams with generator SKIP_REASON"
+assert_file_contains "Existing --> Preserved" "$CASE_DIR/body.md" "diagram-rejected leaves prior issue body unchanged"
+if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-rejected omits code flow section"; else fail "diagram-rejected omits code flow section"; fi
+if [ ! -e "$CASE_DIR/tmp/code-flow-diagram.md" ]; then pass "diagram-rejected clears stale code flow diagram"; else fail "diagram-rejected clears stale code flow diagram"; fi
 
 for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclosed-frontmatter; do
     new_case "diagram-rejected-$sanitizer_token"
@@ -462,21 +627,36 @@ for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclo
     set -e
     assert_equals 0 "$rc" "diagram-rejected-$sanitizer_token exits 0"
     assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected-$sanitizer_token emits skipped"
-    assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token still posts comment"
-    assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-rejected-$sanitizer_token emits comment URL"
-    assert_file_equals "$(placeholder_expected_summary "${sanitizer_token} fence=mermaid line=7")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected-$sanitizer_token writes expected summary diagrams with token SKIP_REASON"
+    assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token skips diagrams upsert"
+    assert_contains "COMMENT_URL=" "$out" "diagram-rejected-$sanitizer_token emits empty comment URL"
+    if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-rejected-$sanitizer_token omits code flow section"; else fail "diagram-rejected-$sanitizer_token omits code flow section"; fi
 done
 
 new_case diagram-failure
+printf 'stale\n' > "$CASE_DIR/tmp/code-flow-diagram.md"
+cat > "$CASE_DIR/existing-diagrams.md" <<'EOF'
+<!-- larch:diagrams v1 -->
+
+## Code Flow Diagram
+
+```mermaid
+graph TD
+  Existing --> Preserved
+```
+EOF
+cp "$CASE_DIR/existing-diagrams.md" "$CASE_DIR/body.md"
 set +e
-out=$(STEP7A_GEN_MODE=failed run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+out=$(STEP7A_GEN_MODE=failed STEP7A_UPSERT_EXISTING_BODY_FILE="$CASE_DIR/existing-diagrams.md" STEP7A_UPSERT_BODY_CAPTURE="$CASE_DIR/body.md" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
 rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-generation-failure exits 0"
-assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-failure emits failed"
-assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-failure still posts comment"
-assert_file_contains "helper-error" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-failure writes generator SKIP_REASON helper-error"
-assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-failure appends warning"
+assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-generation-failure emits failed"
+assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-generation-failure skips diagrams upsert"
+assert_contains "COMMENT_URL=" "$out" "diagram-generation-failure skips comment"
+assert_file_contains "Existing --> Preserved" "$CASE_DIR/body.md" "diagram-generation-failure leaves prior issue body unchanged"
+if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-generation-failure omits code flow section"; else fail "diagram-generation-failure omits code flow section"; fi
+if [ ! -e "$CASE_DIR/tmp/code-flow-diagram.md" ]; then pass "diagram-generation-failure clears stale code flow diagram"; else fail "diagram-generation-failure clears stale code flow diagram"; fi
+assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-generation-failure appends warning"
 
 new_case diagram-failure-sanitizer
 set +e
@@ -485,9 +665,9 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-failure-sanitizer exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-failure-sanitizer emits failed"
-assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer still posts comment"
-assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-failure-sanitizer emits comment URL"
-assert_file_equals "$(placeholder_expected_summary "pipe-in-node-label fence=mermaid line=7")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-failure-sanitizer writes expected summary diagrams with fixture SKIP_REASON"
+assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer skips diagrams upsert"
+assert_contains "COMMENT_URL=" "$out" "diagram-failure-sanitizer emits empty comment URL"
+if [ ! -e "$CASE_DIR/tmp/code-flow-section.md" ]; then pass "diagram-failure-sanitizer omits code flow section"; else fail "diagram-failure-sanitizer omits code flow section"; fi
 
 new_case upsert-failure
 set +e
@@ -543,7 +723,7 @@ out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number "
 rc=$?
 set -e
 assert_equals 0 "$rc" "ISSUE_NUMBER empty exits 0"
-assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty skips upsert"
+assert_not_contains "upsert-diagrams-comment.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty skips upsert"
 assert_contains "COMMENT_URL=" "$out" "ISSUE_NUMBER empty emits empty URL"
 assert_contains "rebase-checkpoint-probe.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty still runs rebase"
 
@@ -554,8 +734,7 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "generator-crash exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "generator-crash emits failed"
-assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "generator-crash still posts comment"
-assert_file_contains "Code flow diagram not available." "$CASE_DIR/tmp/summary-diagrams.md" "generator-crash writes unavailable placeholder"
+assert_contains "COMMENT_URL=" "$out" "generator-crash skips comment"
 assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "generator-crash appends warning"
 
 new_case rebase-conflict

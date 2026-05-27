@@ -1408,7 +1408,7 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path
+    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path
     emit_breadcrumb --category=progress "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
@@ -1420,11 +1420,6 @@ run_pr_prep_phase() {
     [ -n "$summary" ] || summary="- Implemented the requested changes."
     tests=$(manifest_tests)
     [ -n "$tests" ] || tests="- [x] Ran relevant checks."
-    architecture_file="${ARCHITECTURE_DIAGRAM_FILE:-}"
-    if [ -z "$architecture_file" ] || [ ! -f "$architecture_file" ]; then
-        "$SCRIPT_DIR/compose-architecture-sketch.sh" --output "$IMPLEMENT_TMPDIR/architecture-sketch.md" 2>/dev/null || true
-        [ -s "$IMPLEMENT_TMPDIR/architecture-sketch.md" ] && architecture_file="$IMPLEMENT_TMPDIR/architecture-sketch.md"
-    fi
     code_flow_file="$IMPLEMENT_TMPDIR/code-flow-diagram.md"
     if [ "$(read_state FORKED_TARGET)" = "true" ]; then
         closes="_Fork CI dry-run — upstream auto-close intentionally omitted._"
@@ -1435,9 +1430,6 @@ run_pr_prep_phase() {
     fi
     {
         printf '## Summary\n%s\n\n' "$summary"
-        printf '<details><summary>Architecture Diagram</summary>\n\n'
-        sanitize_diagram_or_placeholder "$architecture_file" "Architecture diagram not available." architecture
-        printf '\n</details>\n\n'
         printf '<details><summary>Code Flow Diagram</summary>\n\n'
         sanitize_diagram_or_placeholder "$code_flow_file" "Code flow diagram not available." code-flow
         printf '\n</details>\n\n'

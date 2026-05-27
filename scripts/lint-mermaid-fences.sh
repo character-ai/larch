@@ -114,6 +114,17 @@ if [ "$changed_only" = true ]; then
     done <<<"$cf_out"
 fi
 
+filtered_files=()
+if [ "${#files[@]}" -gt 0 ]; then
+    for f in "${files[@]}"; do
+        case "$f" in
+            larch-logs/*) ;;
+            *) filtered_files+=("$f") ;;
+        esac
+    done
+fi
+files=("${filtered_files[@]+"${filtered_files[@]}"}")
+
 [ "${#files[@]}" -gt 0 ] || {
     emit "INFO: no Markdown files to lint"
     exit 0
