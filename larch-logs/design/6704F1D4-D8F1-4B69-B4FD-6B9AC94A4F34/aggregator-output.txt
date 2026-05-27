@@ -1,0 +1,35 @@
+### FINDING_1: Pre-seeded stale-ledger regression is erased before reuse
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Cursor-dyn-ledger-state, Codex-dyn-ledger-state, Cursor-Edge, Codex-Edge, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements, Cursor-dyn-shell-semantics, Codex-dyn-shell-semantics
+- **Severity**: important
+- **Concern**: The planned regression seeds `waterfall-group-results.tsv` before invoking `dispatch-with-waterfall.sh`, but grouped dispatcher startup truncates that ledger. The stale row disappears before grouped phase-2 reuse, so the test can pass through normal launch/reuse behavior without exercising the cp-failure fallback.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Cursor-dyn-ledger-state, Codex-dyn-ledger-state: Add the stale ledger row after startup truncation, for example via the phase-1 Cursor stub appending the stale codex ok row before returning narration, and assert the stale-row path relaunches codex for the grouped slots rather than reusing or aborting
+  - From Cursor-Edge: Build the regression in-run: let slot A append a real ok row, then force the peer reuse cp to fail (e.g. PATH cp wrapper that exits non-zero once — only cp in this script is reuse_slot_result:320), or rm the donor output after slot A settles and before slot B reuses. Assert slot B relaunched (e.g. counter >= 2) and did not get a .dedup sidecar from a false reuse.
+  - From Codex-Edge: Revise the regression so the stale ok row exists after ledger initialization and before grouped phase-2 reuse, or otherwise assert that the cp-failure branch was actually attempted rather than only that Codex launched fresh
+  - From Cursor-Pragmatic: Seed a stale ok row after startup truncation (background waiter that appends once the ledger file exists, before phase-2 grouped reuse), or delete the first slot's phase-2 output after its ledger ok row is written and before the second slot reuses; drop the before-invoke pre-seed step
+  - From Cursor-Requirements, Codex-Requirements: Revise the regression so the cp failure occurs after ledger initialization, for example by using a PATH cp wrapper that deletes or fails the source on the first reuse after an in-run ok ledger row exists, then assert the grouped slot relaunches
+  - From Cursor-dyn-shell-semantics, Codex-dyn-shell-semantics: Create the stale ok row after dispatcher ledger initialization, or delete a freshly appended ok output before the peer reuse attempt. Assert the affected grouped slot relaunches rather than reuses the stale row, with a counter strong enough to prove the cp-failure path ran.
+
+### FINDING_2: `if reuse_slot_result` suppresses `errexit` inside the function
+- **Reviewer(s)**: Cursor-Edge, Codex-Edge, Cursor-dyn-shell-semantics, Codex-dyn-shell-semantics, Cursor-dyn-ledger-state, Codex-dyn-ledger-state
+- **Severity**: important
+- **Concern**: Calling `reuse_slot_result` as an `if` test disables `errexit` throughout the function body. Guarding only `cp` can let later sidecar, ledger, `emit_kv`, or reused-index write failures be ignored while the caller treats reuse as successful.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Add explicit || return 1 (or a single if ! …; then rm -f "$target"; return 1; fi gate) on each post-cp bookkeeping step, or keep only a small cp probe inside the if and leave the existing bookkeeping outside that conditional context.
+  - From Codex-Edge: When moving reuse_slot_result into an if condition, explicitly guard every critical command in the function with || return 1 or keep the conditional limited to a smaller helper that only performs the copy
+  - From Cursor-dyn-shell-semantics, Codex-dyn-shell-semantics: Do not rely on set -e inside reuse_slot_result once it is called from if. Explicitly guard required post-copy side effects with || return 1, or split the cp probe into a smaller helper used in if and keep existing bookkeeping outside that conditional context.
+  - From Cursor-dyn-ledger-state, Codex-dyn-ledger-state: Explicitly guard the post-copy bookkeeping commands that must succeed, or refactor reuse_slot_result so it returns success only after all required reuse bookkeeping has completed successfully
+
+### FINDING_3: cp-failure cleanup can exit before fallback relaunch
+- **Reviewer(s)**: Cursor-Requirements, Codex-Requirements
+- **Severity**: latent
+- **Concern**: The proposed cp-failure branch also needs to guard cleanup. If `cp` fails and `rm -f "$target"` returns non-zero under `set -e`, Bash exits before `return 1`, preventing the caller from falling through to relaunch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements, Codex-Requirements: Specify the handler as cp -p ... || { rm -f "$target" || true; return 1; } or an equivalent if ! cp block with rm guarded as best-effort
+
+### FINDING_4: Stale ok rows keep winning after a relaunch
+- **Reviewer(s)**: Cursor-dyn-ledger-state, Codex-dyn-ledger-state
+- **Severity**: important
+- **Concern**: After a stale-row reuse fails and relaunch appends a fresh ok row, `find_group_ok_for_tool` still exits on the first matching ok row. Later grouped slots can keep selecting the stale row and relaunch repeatedly. The cited `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD` signal only checks phase-3 fallback count, so it will not surface phase-2 codex or cursor relaunch cost.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-ledger-state, Codex-dyn-ledger-state: Keep the minimum change by making find_group_ok_for_tool prefer the most recent matching ok row, then update the new test to expect one fresh codex launch followed by reuse; remove the claim that the Claude fallback threshold covers this phase-2 cost condition

@@ -1,0 +1,14 @@
+# [DESIGNING] dispatch-with-waterfall.sh: reuse_slot_result cp abort under set -e when stale ledger row points at deleted source file
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-edge-cases-output.txt
+**Phase**: implement (round 1)
+**Vote tally**: 2 YES, 0 NO, 1 EXONERATE — accepted
+
+## Description
+
+`scripts/dispatch-with-waterfall.sh` function `reuse_slot_result` (around line 308) calls `cp "$source" "$dest"` under `set -e`. When a stale ledger row exists pointing at a source file that no longer exists (e.g., a prior run's output cleaned up between invocations), `cp` fails and `set -e` aborts the entire dispatcher. The correct behavior is to fall back to relaunching the external tool for that slot. This is a pre-existing latent bug; the ledger-truncation fix in PR #2962 (Bug A) mitigates the most common path that creates stale rows (same-TMPROOT retry), but the condition can still occur if source files are deleted by other means.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
