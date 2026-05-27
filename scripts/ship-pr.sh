@@ -159,6 +159,36 @@ _rcc_handle_fix_status() {
     esac
 }
 
+normalize_rcc_max_iter() {
+    local raw=${1:-}
+    awk -v raw="$raw" '
+        BEGIN {
+            if (raw !~ /^[0-9]+$/) {
+                print 3
+                exit
+            }
+            gsub(/^0+/, "", raw)
+            if (raw == "") {
+                print 3
+                exit
+            }
+            if (length(raw) > 1) {
+                print 6
+                exit
+            }
+            if (raw < 1) {
+                print 3
+                exit
+            }
+            if (raw > 6) {
+                print 6
+                exit
+            }
+            print raw
+        }
+    '
+}
+
 run_captured_cmd_then_fix_loop() {
     local attempt max_iter fail_file redacted_log fix_out fix_rc
     local empty_failures=0
@@ -171,8 +201,7 @@ run_captured_cmd_then_fix_loop() {
     _RCC_LAST_FIX_RC=0
     _RCC_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/rcc-delta-paths-$$-$RANDOM.txt"
     : > "$_RCC_DELTA_PATHS_FILE"
-    max_iter=${_RCC_MAX_ITER:-3}
-    case "$max_iter" in ''|*[!0-9]*|0) max_iter=3 ;; esac
+    max_iter=$(normalize_rcc_max_iter "${_RCC_MAX_ITER:-3}")
 
     if [ "$dispatch_first" = "1" ]; then
         redacted_log_for_dispatch="${_RCC_INITIAL_REDACTED_LOG:-}"
