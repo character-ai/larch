@@ -1,0 +1,3 @@
+Move tracking mark into implement bootstrap
+
+Detect corrupt all-zero token reports and render Cost: N/A with a visible final-summary warning. Refresh the related harness and documentation contracts.
