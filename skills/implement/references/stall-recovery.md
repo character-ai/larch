@@ -10,7 +10,7 @@ Step 18a loads this file only when `STALL_TRACKING` is true in any layer. It is 
 
 3. **Classify.** Run `stall-recovery-report.sh classify --implement-tmpdir "$IMPLEMENT_TMPDIR" --in-memory-stall-tracking "${STALL_TRACKING:-false}" --bail-reason "${IMPLEMENT_BAIL_REASON:-}" --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`. Pass `--failure-detail-log` only after validating the candidate with `realpath`/physical directory resolution, a non-symlink check, a regular-file check, a tmpdir-prefix check, and the 64 KiB cap. Persist stdout to `$IMPLEMENT_TMPDIR/stall-recovery-classification.env`. Continue to first-detection issue filing.
 
-4. **First-detection issue filing.** Only when `attempt_count==0`, call `stall-recovery-report.sh is-larch-dev-clone`, then `bug-body`, then evaluate `DRY_RUN_DECISION`. If dry-run is true, keep `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md` and skip GitHub. If this is a larch dev clone, call `/larch:issue --input-file <generated>` and capture stdout only; persist `ISSUE_URL` and `ISSUE_NUMBER` to `$IMPLEMENT_TMPDIR/stall-recovery-issue.env`. In a consumer repo, print the body verbatim under `## Action required — file larch bug`. Continue to dispatch.
+4. **First-detection issue filing.** Only when `attempt_count==0`, call `stall-recovery-report.sh is-larch-dev-clone --implement-tmpdir "$IMPLEMENT_TMPDIR"`, then `bug-body`, then evaluate `DRY_RUN_DECISION`. If dry-run is true, keep `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md` and skip GitHub. If this is a non-forked larch dev clone, call `/larch:issue --input-file <generated>` and capture stdout only; persist `ISSUE_URL` and `ISSUE_NUMBER` to `$IMPLEMENT_TMPDIR/stall-recovery-issue.env`. In a consumer repo, including `--forked` runs from a larch checkout, print the body verbatim under `## Action required — file larch bug`. Continue to dispatch.
 
 5. **Dispatch on `RESUME_HINT`.** Branch exhaustively:
    - `step2-impl`: main Claude reads `$IMPLEMENT_TMPDIR/plan.txt`, performs the implementation edits inline, runs the relevant-checks helper, commits as Step 4 does, then continues into `step5-review` and `step8-shippr`.
@@ -30,7 +30,7 @@ Step 18a loads this file only when `STALL_TRACKING` is true in any layer. It is 
    7. If the temp read, `mv -f`, or destination read fails, leave both layers true and route to terminal failure.
    Continue to Step 18b teardown.
 
-8. **Terminal-failure path.** Run `bug-comment --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`, evaluate `DRY_RUN_DECISION`, then either post `gh issue comment` in the larch dev clone path or print the comment in chat for consumer repos. Leave `STALL_TRACKING=true`. Continue to Step 18b teardown.
+8. **Terminal-failure path.** Run `bug-comment --attempts-file "$IMPLEMENT_TMPDIR/stall-recovery-attempts.env"`, evaluate `DRY_RUN_DECISION`, then either post `gh issue comment` in the larch dev clone path or print the comment in chat for consumer repos. Before any GitHub comment call, load `ISSUE_NUMBER` from `$IMPLEMENT_TMPDIR/stall-recovery-issue.env` when that file exists so the exhaustion comment targets the recovery-created issue instead of any unrelated in-memory issue number. Leave `STALL_TRACKING=true`. Continue to Step 18b teardown.
 
 9. **Continue to teardown.** Regardless of success or terminal failure, continue to the existing Step 18b teardown body: token/timing refresh, `restore-finalize-state.sh`, then `implement-finalize.sh teardown`. Teardown branches on the on-disk `STALL_TRACKING` value unchanged.
 

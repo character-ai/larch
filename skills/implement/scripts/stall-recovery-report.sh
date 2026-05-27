@@ -77,6 +77,17 @@ truthy() {
     esac
 }
 
+first_nonempty() {
+    local value
+    for value in "$@"; do
+        if [ -n "${value:-}" ]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done
+    printf '\n'
+}
+
 validate_ship_pr_state() {
     local file=$1 line
     while IFS= read -r line || [ -n "$line" ]; do
@@ -127,9 +138,12 @@ resume_hint_for() {
         contract-failure|unrecoverable) printf 'none\n'; return 0 ;;
     esac
     case "$step" in
+        3|6) printf 'none\n'; return 0 ;;
         2) printf 'step2-impl\n'; return 0 ;;
         5) printf 'step5-review\n'; return 0 ;;
         8|9|10|11|12|13|14|15) printf 'step8-shippr\n'; return 0 ;;
+        "") ;;
+        *) printf 'none\n'; return 0 ;;
     esac
     case "$phase" in
         review*) printf 'step5-review\n' ;;
@@ -149,7 +163,7 @@ classify_from_evidence() {
     case "$bail" in
         adopted-issue-closed|tracking-init-failed) printf 'unrecoverable\n'; return 0 ;;
     esac
-    if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network|timed? out|connection reset|temporary failure|github unavailable|http 5[0-9][0-9]'; then
+    if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network/auth issue|timed? out|connection reset|temporary failure|tls handshake|github unavailable|http 5[0-9][0-9]'; then
         printf 'transient-infra\n'
         return 0
     fi
@@ -181,7 +195,9 @@ latest_attempt_signature() {
 
 cmd_classify() {
     local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file=""
-    local state_file session_env source state_present=false evidence=""
+    local state_file session_env state_present=false session_present=false evidence=""
+    local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
+    local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
     local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig
 
     while [ $# -gt 0 ]; do
@@ -202,32 +218,50 @@ cmd_classify() {
     if [ -f "$state_file" ]; then
         state_present=true
         validate_ship_pr_state "$state_file"
-        source=$state_file
-        stall_step=$(kv_get "$source" STALL_STEP "")
-        phase=$(kv_get "$source" PHASE "")
-        stall_tracking=$(kv_get "$source" STALL_TRACKING "false")
-        bail_reason=$(kv_get "$source" BAIL_REASON "")
-        exit_code=$(kv_get "$source" EXIT_CODE "")
-    else
-        source=$session_env
-        stall_step=$(kv_get "$source" STALL_STEP "")
-        phase=$(kv_get "$source" PHASE "")
-        stall_tracking=${in_memory:-$(kv_get "$source" STALL_TRACKING "false")}
-        bail_reason=${bail_arg:-$(kv_get "$source" IMPLEMENT_BAIL_REASON "$(kv_get "$source" BAIL_REASON "")")}
-        exit_code=$(kv_get "$source" EXIT_CODE "")
+        state_stall_step=$(kv_get "$state_file" STALL_STEP "")
+        state_phase=$(kv_get "$state_file" PHASE "")
+        state_stall_tracking=$(kv_get "$state_file" STALL_TRACKING "false")
+        state_bail_reason=$(kv_get "$state_file" BAIL_REASON "")
+        state_exit_code=$(kv_get "$state_file" EXIT_CODE "")
     fi
-    [ -n "$bail_arg" ] && bail_reason=$bail_arg
+
+    if [ -r "$session_env" ]; then
+        session_present=true
+        session_stall_step=$(kv_get "$session_env" STALL_STEP "")
+        session_phase=$(kv_get "$session_env" PHASE "")
+        session_stall_tracking=$(kv_get "$session_env" STALL_TRACKING "false")
+        session_bail_reason=$(kv_get "$session_env" IMPLEMENT_BAIL_REASON "$(kv_get "$session_env" BAIL_REASON "")")
+        session_exit_code=$(kv_get "$session_env" EXIT_CODE "")
+    fi
+
+    stall_step=$(first_nonempty "$state_stall_step" "$session_stall_step")
+    phase=$(first_nonempty "$state_phase" "$session_phase")
+    bail_reason=$(first_nonempty "$bail_arg" "$state_bail_reason" "$session_bail_reason")
+    exit_code=$(first_nonempty "$state_exit_code" "$session_exit_code")
+    stall_tracking=false
+    if truthy "$in_memory"; then
+        stall_tracking=true
+    elif truthy "$state_stall_tracking"; then
+        stall_tracking=true
+    elif truthy "$session_stall_tracking"; then
+        stall_tracking=true
+    fi
 
     if [ -n "$detail_log" ]; then
-        validate_failure_detail_log "$tmpdir" "$detail_log" || exit 1
-        evidence=$(cat "$detail_log")
+        if validate_failure_detail_log "$tmpdir" "$detail_log"; then
+            evidence=$(cat "$detail_log")
+        fi
     fi
     if [ -r "$state_file" ]; then
         evidence="$evidence
 $(cat "$state_file")"
     fi
+    if [ -r "$session_env" ]; then
+        evidence="$evidence
+$(cat "$session_env")"
+    fi
 
-    if [ "$state_present" = false ]; then
+    if [ "$state_present" = false ] && [ "$session_present" = false ]; then
         failure_class="unrecoverable"
     elif ! truthy "$stall_tracking"; then
         failure_class="unrecoverable"
@@ -307,13 +341,23 @@ cmd_record_attempt() {
 }
 
 cmd_is_larch_dev_clone() {
-    local root=""
+    local root="" tmpdir="" forked_target=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --working-tree-root) [ $# -ge 2 ] || die_argv "--working-tree-root requires a value"; root=$2; shift 2 ;;
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             *) die_argv "unknown is-larch-dev-clone option: $1" ;;
         esac
     done
+    if [ -n "$tmpdir" ]; then
+        forked_target=$(first_nonempty \
+            "$(kv_get "$tmpdir/ship-pr-state.sh" FORKED_TARGET "")" \
+            "$(kv_get "$tmpdir/session-env.sh" FORKED_TARGET "")")
+        if truthy "$forked_target"; then
+            emit_kv LARCH_DEV_CLONE false
+            return 0
+        fi
+    fi
     if is_larch_dev_clone "$root"; then
         emit_kv LARCH_DEV_CLONE true
     else

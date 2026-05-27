@@ -5,16 +5,17 @@
 ## Subcommands
 
 - `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
-  - Reads `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present; otherwise falls back to the in-memory flags plus `$IMPLEMENT_TMPDIR/session-env.sh`.
+  - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress a session-env stall.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
-  - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; `STALL_STEP=3` and `STALL_STEP=6` classify as `contract-failure`.
+  - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; symbolic/terminal `STALL_STEP` values also fail closed to `none` unless they are explicitly mapped.
 - `init-attempts --attempts-file <path>`
   - Atomically initializes the attempts file with `version=1`, `created_utc=<ISO8601>`, and `attempt_count=0`. Existing files are left unchanged.
 - `record-attempt --attempts-file <path> --class <class> --signature <hash> --resume-hint <hint> --outcome <token>`
   - Atomically appends `attempt.<N>.{class,signature,resume_hint,outcome,utc}` and increments `attempt_count`.
-- `is-larch-dev-clone [--working-tree-root <path>]`
+- `is-larch-dev-clone [--working-tree-root <path>] [--implement-tmpdir <path>]`
   - Emits `LARCH_DEV_CLONE=true|false` using the canonical `skills/implement/SKILL.md` marker.
+  - When `--implement-tmpdir` shows `FORKED_TARGET=true`, emits `false` so forked runs keep the consumer-facing action-required path instead of auto-filing a larch-dev issue.
 - `bug-body --implement-tmpdir <path> --classification-file <path> [--output-file <path>]`
   - Writes a sanitized bug body and emits `BODY_FILE` and `DRY_RUN_DECISION`.
 - `bug-comment --implement-tmpdir <path> --classification-file <path> --attempts-file <path> [--output-file <path>]`
@@ -62,7 +63,7 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 
 ## Classifier Evidence
 
-- `transient-infra`: rate-limit, network, timeout, connection reset, temporary GitHub/API outage, or HTTP 5xx evidence in the validated failure-detail log or state file.
+- `transient-infra`: rate-limit, `network/auth issue`, timeout, connection reset, TLS handshake, temporary GitHub/API outage, or HTTP 5xx evidence in the validated failure-detail log or state/session state.
 - `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
 - `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
@@ -97,7 +98,7 @@ Missing `ship-pr-state.sh` is never exit 3. It is classified as a bounded `unrec
 
 ## `--failure-detail-log` Validation
 
-The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Invalid logs are rejected before any content is read.
+The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Invalid logs are ignored and classification continues from the remaining persisted evidence.
 
 ## Dry Run
 

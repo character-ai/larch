@@ -20,6 +20,9 @@ trap 'rm -rf "$SANDBOX"' EXIT
 pass() { PASS=$((PASS + 1)); echo "PASS: $1"; }
 fail() { FAIL=$((FAIL + 1)); echo "FAIL: $1"; shift || true; [ "$#" -gt 0 ] && printf '%s\n' "$*" | sed 's/^/    /'; }
 
+GHP_TOKEN_CASE13='ghp_''123456789012345678901234567890123456'
+GHP_TOKEN_CASE16='ghp_''abcdef123456789012345678901234567890'
+
 assert_eq() {
     local expected=$1 actual=$2 label=$3
     if [ "$expected" = "$actual" ]; then pass "$label"; else fail "$label" "expected=$expected actual=$actual"; fi
@@ -124,24 +127,30 @@ run_capture "$dir/second.env" "$SCRIPT" classify --implement-tmpdir "$dir" --att
 assert_eq same-cause-repeat "$(kv FAILURE_CLASS "$dir/second.env")" "7: same-cause-repeat"
 
 dir=$(make_tmp case8)
-printf 'STALL_TRACKING=true\n' >"$dir/session-env.sh"
-run_capture "$SANDBOX/case8.out" "$SCRIPT" classify --implement-tmpdir "$dir" --in-memory-stall-tracking true --bail-reason any
+cat >"$dir/session-env.sh" <<'EOF'
+STALL_TRACKING=true
+STALL_STEP=8
+PHASE=ci-initial
+IMPLEMENT_BAIL_REASON=api rate limit
+EOF
+run_capture "$SANDBOX/case8.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "8: missing ship state exits 0"
-assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case8.out")" "8: missing ship state unrecoverable"
+assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case8.out")" "8: session env stall still classifies"
+assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case8.out")" "8: session env stall tracking wins when state missing"
 
 dir=$(make_tmp case9)
 write_state "$dir" 8 ci-initial
 printf 'x\n' >"$dir/ok.log"
 ln -s "$dir/ok.log" "$dir/link.log"
 run_capture "$SANDBOX/case9-rel.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log rel.log
-assert_eq 1 "$RC" "9: relative log rejected"
+assert_eq 0 "$RC" "9: relative log ignored"
 run_capture "$SANDBOX/case9-outside.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "/tmp/larch-outside-$$.log"
 rm -f "/tmp/larch-outside-$$.log"
-assert_eq 1 "$RC" "9: missing outside log rejected"
+assert_eq 0 "$RC" "9: missing outside log ignored"
 run_capture "$SANDBOX/case9-symlink.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/link.log"
-assert_eq 1 "$RC" "9: symlink log rejected"
+assert_eq 0 "$RC" "9: symlink log ignored"
 run_capture "$SANDBOX/case9-dir.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir"
-assert_eq 1 "$RC" "9: non-regular log rejected"
+assert_eq 0 "$RC" "9: non-regular log ignored"
 
 dir=$(make_tmp case10)
 "$SCRIPT" init-attempts --attempts-file "$dir/attempts.env" >/dev/null
@@ -162,6 +171,14 @@ assert_eq true "$(kv LARCH_DEV_CLONE "$SANDBOX/case12-yes.out")" "12: dev clone 
 dir=$(make_tmp case12-no)
 run_capture "$SANDBOX/case12-no.out" "$SCRIPT" is-larch-dev-clone --working-tree-root "$dir"
 assert_eq false "$(kv LARCH_DEV_CLONE "$SANDBOX/case12-no.out")" "12: dev clone false"
+dir=$(make_tmp case12-forked)
+mkdir -p "$dir/skills/implement"
+touch "$dir/skills/implement/SKILL.md"
+cat >"$dir/session-env.sh" <<'EOF'
+FORKED_TARGET=true
+EOF
+run_capture "$SANDBOX/case12-forked.out" "$SCRIPT" is-larch-dev-clone --working-tree-root "$dir" --implement-tmpdir "$dir"
+assert_eq false "$(kv LARCH_DEV_CLONE "$SANDBOX/case12-forked.out")" "12: forked target suppresses dev clone issue filing"
 
 dir=$(make_tmp case13)
 cat >"$dir/class.env" <<'EOF'
@@ -177,6 +194,21 @@ EOF
 "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/class.env" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
 "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$(kv BODY_FILE "$dir/body.out")" >"$dir/input.out"
 assert_not_contains "SENTINEL_SECRET_13" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")" "$(kv INPUT_FILE "$dir/input.out")")" "13: public outputs omit raw sentinels"
+
+dir=$(make_tmp case13b)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=ship state sentinel SENTINEL_SECRET_13B
+EOF
+printf 'failure detail %s and SENTINEL_SECRET_13B\n' "$GHP_TOKEN_CASE13" >"$dir/failure.log"
+run_capture "$dir/classify.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
+"$SCRIPT" init-attempts --attempts-file "$dir/attempts.env" >/dev/null
+"$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/classify.out" >"$dir/body.out"
+"$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/classify.out" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
+assert_not_contains "SENTINEL_SECRET_13B" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")")" "13: evidence sentinels stay out of public outputs"
+assert_not_contains "$GHP_TOKEN_CASE13" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")")" "13: evidence ghp token stays out of public outputs"
 
 run_capture "$SANDBOX/case14.out" "$SCRIPT" lint
 assert_eq 0 "$RC" "14: allowlist parity lint"
@@ -197,7 +229,10 @@ cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$copyroot/scripts/"
 cat >"$copyroot/scripts/redact-secrets.sh" <<'SH'
 #!/usr/bin/env bash
 cat >"$STALL_REDACTOR_MARKER"
-sed 's/ghp_[A-Za-z0-9_][A-Za-z0-9_]*/<REDACTED-TOKEN>/g' "$STALL_REDACTOR_MARKER"
+{
+    cat "$STALL_REDACTOR_MARKER"
+    printf '\nInjected %s\n' 'ghp_''abcdef123456789012345678901234567890'
+} | sed 's/ghp_[A-Za-z0-9_][A-Za-z0-9_]*/<REDACTED-TOKEN>/g'
 SH
 chmod +x "$copyroot/skills/implement/scripts/stall-recovery-report.sh" "$copyroot/scripts/redact-secrets.sh"
 dir=$(make_tmp case16)
@@ -215,6 +250,8 @@ if [ -s "$dir/redactor.in" ]; then
 else
     fail "16: redactor marker missing"
 fi
+assert_not_contains "$GHP_TOKEN_CASE16" "$(cat "$(kv BODY_FILE "$dir/out")")" "16: redactor output omits injected ghp token"
+assert_contains '<REDACTED-TOKEN>' "$(cat "$(kv BODY_FILE "$dir/out")")" "16: redactor output shows ghp placeholder"
 
 dir=$(make_tmp case17)
 "$SCRIPT" init-attempts --attempts-file "$dir/attempts.env" >/dev/null
@@ -243,9 +280,36 @@ STALL_STEP=8
 EOF
 tmp="$dir/ship-pr-state.sh.tmp.$$"
 awk 'BEGIN{done=0} /^STALL_TRACKING=/{print "STALL_TRACKING=false"; done=1; next} /^STALL_STEP=/{print "STALL_STEP="; next} {print} END{if(!done) print "STALL_TRACKING=false"}' "$dir/ship-pr-state.sh" >"$tmp"
-assert_contains "STALL_TRACKING=true" "$(cat "$dir/ship-pr-state.sh")" "19: disk remains true before mv"
+assert_eq false "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "")" "19: temp read-back sees false before mv"
+assert_eq true "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: disk remains true before mv"
 mv -f "$tmp" "$dir/ship-pr-state.sh"
-assert_contains "STALL_TRACKING=false" "$(cat "$dir/ship-pr-state.sh")" "19: disk flips before in-memory clear point"
+assert_eq false "$("$REPO_ROOT/scripts/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "19: destination read-back sees false after mv"
+
+dir=$(make_tmp case19b)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=false
+STALL_STEP=8
+BAIL_REASON=api rate limit
+EOF
+run_capture "$SANDBOX/case19b.out" "$SCRIPT" classify --implement-tmpdir "$dir" --in-memory-stall-tracking true
+assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case19b.out")" "19: in-memory true overrides disk false"
+assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case19b.out")" "19: emitted stall tracking preserves in-memory true"
+
+dir=$(make_tmp case20a)
+write_state "$dir" 12d ci-merge "" "NOTE=network/auth issue"
+run_capture "$SANDBOX/case20a.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case20a.out")" "20: 12d still classifies from evidence"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case20a.out")" "20: 12d does not redispatch ship-pr"
+
+dir=$(make_tmp case20b)
+write_state "$dir" 6 checks "" "NOTE=network/auth issue"
+"$SCRIPT" init-attempts --attempts-file "$dir/attempts.env" >/dev/null
+run_capture "$dir/first.env" "$SCRIPT" classify --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env"
+"$SCRIPT" record-attempt --attempts-file "$dir/attempts.env" --class "$(kv FAILURE_CLASS "$dir/first.env")" --signature "$(kv FAILURE_SIGNATURE "$dir/first.env")" --resume-hint "$(kv RESUME_HINT "$dir/first.env")" --outcome failed >/dev/null
+run_capture "$dir/second.env" "$SCRIPT" classify --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env"
+assert_eq same-cause-repeat "$(kv FAILURE_CLASS "$dir/second.env")" "20: same-cause-repeat still detected for step6"
+assert_eq none "$(kv RESUME_HINT "$dir/second.env")" "20: same-cause-repeat at step6 keeps none hint"
 
 dir=$(make_tmp case20)
 cp "$SANDBOX/case1.out" "$dir/class.env"
@@ -253,6 +317,12 @@ cp "$SANDBOX/case1.out" "$dir/class.env"
 "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/class.env" --body-file "$(kv BODY_FILE "$dir/body.out")" >"$dir/input.out"
 first_line=$(sed -n '1p' "$(kv INPUT_FILE "$dir/input.out")")
 assert_eq "### [Bug] /implement stall: transient-infra at 8" "$first_line" "20: issue input title shape"
+
+dir=$(make_tmp case20c)
+write_state "$dir" 8 ci-initial
+run_capture "$SANDBOX/case20c.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/missing.log"
+assert_eq 0 "$RC" "20: invalid failure-detail-log no longer exits"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20c.out")" "20: invalid failure-detail-log falls back to remaining evidence"
 
 run_capture "$SANDBOX/case21-badargv.out" "$SCRIPT" unknown-subcommand
 assert_eq 1 "$RC" "21: bad argv exits 1"
