@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.6.4] - 2026-05-27
+
+### Changed
+
+- Changed /design and /implement final-summary orchestrator contracts from cost-line-only emission to verbatim full-body emission gated on a non-empty persisted summary file.
+- Updated /implement Step 17/18 sentinel mechanics to use summary body presence and a Step 18 pre-render body snapshot compared with cmp -s.
+- Aligned sibling docs, lint catalog, regression harness pins, and CHANGELOG for the full-block top-chat visibility contract.
+
 ## [42.6.3] - 2026-05-27
 
 ### Changed
