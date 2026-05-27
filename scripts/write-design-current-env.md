@@ -2,7 +2,7 @@
 
 Writes a sourceable bash file that re-establishes the `/design` session
 context (`$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`,
-`$CLAUDE_PLUGIN_ROOT`, reviewer presence/availability booleans,
+`$MANUAL_REQUESTED`, `$CLAUDE_PLUGIN_ROOT`, reviewer presence/availability booleans,
 `$ISSUE_NUMBER`) after each `Bash` tool call returns to a fresh subshell.
 The Claude Code Bash tool does NOT preserve shell state between calls;
 this writer plus the canonical conditional prelude in
@@ -26,7 +26,7 @@ restores it on every block from Step 1c onward.
 ## Keys
 
 Always writes `DESIGN_TMPDIR`, `SESSION_TMPDIR`, and `SESSION_ID`.
-Optionally writes `ISSUE_NUMBER`, `CODEX_PRESENT`, `CURSOR_PRESENT`,
+Optionally writes `MANUAL_REQUESTED`, `ISSUE_NUMBER`, `CODEX_PRESENT`, `CURSOR_PRESENT`,
 `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`. Writes `CLAUDE_PLUGIN_ROOT`
 whenever it is set in the writer's environment, mirroring
 `scripts/write-session-env.sh`'s `LARCH_CLAUDE_PLUGIN_ROOT` shape but as
@@ -89,6 +89,7 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 - `--design-tmpdir` and `--output` must be absolute paths.
 - `--issue-number` matches `^[0-9]+$` when present.
 - `CLAUDE_PLUGIN_ROOT`, when set, must be an absolute path of 512 characters or fewer using `[A-Za-z0-9_./~+-]`.
+- `--manual-requested`, when present, must be `true` or `false`.
 - When `--claude-pid` is passed, its value must be non-empty and match `^[1-9][0-9]{0,6}$`. Omitting the flag entirely selects the legacy shim (stderr warning).
 - Presence/availability booleans must be `true` or `false`.
 

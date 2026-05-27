@@ -723,12 +723,18 @@ done
 # Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.
 grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \
   || fail "(2930) SKILL.md argument-hint missing [--manual|-m] between brainstorm and no-dedup"
+# shellcheck disable=SC2016 # Markdown literal contains backticks and "$manual" text intentionally.
+grep -Fq 'Parse public flags (`--trivial|--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`)' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md Step 0b public-flag parse list missing --manual|-m"
 # shellcheck disable=SC2016 # Markdown table cell literal
 grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
   || fail "(2930) SKILL.md compact flag table missing --manual/-m row"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq -- '--manual-gate-b "$manual_requested"' "$SKILL_MD" \
   || fail "(2930) SKILL.md write-run-params invocation missing --manual-gate-b"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
+grep -Fq -- '--manual-requested "$manual_requested"' "$SKILL_MD" \
+  || fail "(FINDING_2) SKILL.md follow-up session-env refresh missing --manual-requested"
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- 'manual_gate_b = (.manual_gate_b == true or $merge_m)' "$SKILL_MD" \
   || fail "(2930) SKILL.md jq merge missing manual_gate_b arm"
@@ -749,16 +755,27 @@ grep -Fq 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD" \
 apply_all_reference_count=$(grep -Fc 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD")
 [[ "$apply_all_reference_count" -ge 2 ]] \
   || fail "(2930) approval-gates.md must reference Apply-all body from both auto-apply and manual Apply all paths"
-grep -Fq 'manual_gate_b=false' "$APPROVAL_MD" \
-  || fail "(2930) approval-gates.md missing auto-apply mode branch"
-grep -Fq 'manual_gate_b=true' "$APPROVAL_MD" \
-  || fail "(2930) approval-gates.md missing manual mode branch"
+grep -Fq 'Determine Gate B mode before printing any mode-specific findings presentation.' "$APPROVAL_MD" \
+  || fail "(FINDING_1) approval-gates.md must resolve Gate B mode before presentation"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_gate_b=true` immediately' "$APPROVAL_MD" \
+  || fail "(FINDING_2) approval-gates.md missing MANUAL_REQUESTED session-env fallback"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'When `manual_gate_b=false`, execute the auto-apply path:' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing unique auto-apply mode branch anchor"
+# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
+grep -Fq 'When `manual_gate_b=true`, print a table under the header `## Plan Review Findings — Review`' "$APPROVAL_MD" \
+  || fail "(2930) approval-gates.md missing manual mode presentation branch"
+grep -Fq '> **🔶 /design 3.5: gate B (auto-apply N findings)**' "$APPROVAL_MD" \
+  || fail "(FINDING_7) approval-gates.md missing Gate B auto-apply breadcrumb pin"
+grep -Fq '## Plan Review Findings — Auto-applying' "$APPROVAL_MD" \
+  || fail "(FINDING_7) approval-gates.md missing Gate B auto-apply header pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
 grep -Fq 'let `manual_requested=true` force `manual_gate_b=true`' "$APPROVAL_MD" \
   || fail "(FINDING_13) approval-gates.md missing defensive in-memory manual_requested pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'use `manual_gate_b=true` when `manual_requested=true`; otherwise use `manual_gate_b=false`' "$APPROVAL_MD" \
-  || fail "(FINDING_13) approval-gates.md missing fail-closed manual Gate B fallback pin"
+grep -Fq 'fail closed to `manual_gate_b=true`' "$APPROVAL_MD" \
+  || fail "(FINDING_2) approval-gates.md missing fail-closed manual Gate B fallback pin"
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned across 4 prose locations.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

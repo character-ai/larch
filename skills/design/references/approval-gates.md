@@ -46,7 +46,7 @@ When the user picks **Discuss more**, the orchestrator either (a) asks the user 
 
 ### Re-entry from Gate B(c) or Gate C(b)
 
-When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") or Gate C option (b) ("discuss further"), the orchestrator is now post-plan. Write any new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` rather than `discussion-round1.md` (Round 1 is closed once Step 2a begins). On a Gate B(c) / Gate C(b) re-entry to Gate A, the plan-modification authority depends on Gate B mode. In manual mode (`--manual`), `plan.txt` is revised only when the user picks Apply all or per-finding Apply on the next Gate B entry. In default auto-apply mode, `plan.txt` was already revised when Gate B last fired; Gate A re-entries do NOT silently revise `plan.txt` themselves in either mode. If the user agrees during discussion that a specific Gate B finding should now be applied (manual mode) or rolled back (auto-apply mode), record the agreement in `discussion-round2.md` and adjust during the subsequent Gate B iteration.
+When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") or Gate C option (b) ("discuss further"), the orchestrator is now post-plan. Write any new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` rather than `discussion-round1.md` (Round 1 is closed once Step 2a begins). On a Gate B(c) / Gate C(b) re-entry to Gate A, the plan-modification authority depends on Gate B mode. In manual mode (`manual_gate_b=true`), `plan.txt` is revised only when the user picks Apply all or per-finding Apply on the next Gate B entry. In auto-apply mode (`manual_gate_b=false`), `plan.txt` was already revised when Gate B last fired; Gate A re-entries do NOT silently revise `plan.txt` themselves in either mode. If the user agrees during discussion that a specific Gate B finding should now be applied (manual mode) or rolled back (auto-apply mode), record the agreement in `discussion-round2.md` and adjust during the subsequent Gate B iteration. Rollback procedure for prior auto-apply text: on the next Gate B entry, treat `discussion-round2.md` as the operator-approved delta over the previously auto-applied plan, remove or amend the specific plan text introduced by any finding the discussion overruled, then run the normal `ACTION=EMIT_PLAN` + Step 2b.5 path. If the discussion materially changes which findings should remain accepted, use Gate C(c) to re-run Step 3 afterward so `accepted-plan-findings.md` is regenerated against the reconciled plan.
 
 **Show latest design proposal branch (re-entry only)**: when the user picks Show latest design proposal on Shape 2, the orchestrator reads `$DESIGN_TMPDIR/plan.txt` and prints its content under a `## Latest Design Plan` header, then immediately re-fires the same 3-option Gate A `AskUserQuestion` until the user picks Ready for review or Discuss more. The Show-plan branch performs no state mutation and writes nothing to `discussion-round2.md`. If `$DESIGN_TMPDIR/plan.txt` is missing or empty on re-entry (should not happen — re-entry is post-plan by definition), print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt anyway.
 
@@ -73,17 +73,17 @@ For each accepted in-scope finding in `$DESIGN_TMPDIR/accepted-plan-findings.md`
 
 When the concern text is ambiguous, prefer the lower bucket and surface the ambiguity in the displayed description. Never invent severity for findings not present in the file.
 
-### Presentation
-
-When Gate B is in manual mode, print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
-
-In default auto-apply mode, do **not** print the full review table above. The compact findings list in the auto-apply path below is the visibility surface for accepted findings on that branch; print rejected/OOS sections there once.
-
-### Prompt
-
 #### Gate B mode (auto-apply vs manual)
 
-Determine Gate B mode defensively. If the in-memory boolean `manual_requested` from Step 0b is still bound, let `manual_requested=true` force `manual_gate_b=true` without consulting `run-params.json`; otherwise read `manual_gate_b` from `$DESIGN_TMPDIR/run-params.json` using `jq -r '.manual_gate_b // false'` so missing/null coerces to `false`. If `run-params.json` cannot be read, or `jq` is unavailable, print `**⚠ 3.5: Gate B — could not read manual_gate_b from run-params.json (<reason>).**`, append that warning under `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `append-tool-failure.sh` when possible, and use `manual_gate_b=true` when `manual_requested=true`; otherwise use `manual_gate_b=false`.
+Determine Gate B mode before printing any mode-specific findings presentation. Resolve it defensively in this order: first, if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_gate_b=true` immediately; second, if the in-memory boolean `manual_requested` from Step 0b is still bound, let `manual_requested=true` force `manual_gate_b=true` without consulting `run-params.json`; otherwise read `manual_gate_b` from `$DESIGN_TMPDIR/run-params.json` using `jq -r '.manual_gate_b // false'` so missing/null coerces to `false`. If `run-params.json` cannot be read, `jq` is unavailable, or the mode cannot otherwise be proven `false`, print `**⚠ 3.5: Gate B — could not confirm manual_gate_b from persisted state (<reason>).**`, append that warning under `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `append-tool-failure.sh` when possible, and fail closed to `manual_gate_b=true`.
+
+### Presentation
+
+When `manual_gate_b=true`, print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
+
+When `manual_gate_b=false`, do **not** print the full review table above. The compact findings list in the auto-apply path below is the visibility surface for accepted findings on that branch; print rejected/OOS sections there once.
+
+### Prompt
 
 When `manual_gate_b=false`, execute the auto-apply path:
 

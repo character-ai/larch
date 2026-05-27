@@ -38,6 +38,7 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --output "$out_file" \
     --design-tmpdir "$design_tmpdir" \
     --session-id "ABC-123" \
+    --manual-requested true \
     --claude-pid "$TEST_CLAUDE_PID" \
     --codex-present true \
     --cursor-present false \
@@ -54,12 +55,13 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$DESIGN_TMPDIR" = "$design_tmpdir" ] || exit 11
     [ "$SESSION_TMPDIR" = "$design_tmpdir" ] || exit 12
     [ "$SESSION_ID" = "ABC-123" ] || exit 13
-    [ "$ISSUE_NUMBER" = "2588" ] || exit 14
-    [ "$CODEX_PRESENT" = "true" ] || exit 15
-    [ "$CURSOR_PRESENT" = "false" ] || exit 16
-    [ "$CODEX_AVAILABLE" = "true" ] || exit 17
-    [ "$CURSOR_AVAILABLE" = "false" ] || exit 18
-    [ "$CLAUDE_PLUGIN_ROOT" = "$REPO_ROOT" ] || exit 19
+    [ "$MANUAL_REQUESTED" = "true" ] || exit 14
+    [ "$ISSUE_NUMBER" = "2588" ] || exit 15
+    [ "$CODEX_PRESENT" = "true" ] || exit 16
+    [ "$CURSOR_PRESENT" = "false" ] || exit 17
+    [ "$CODEX_AVAILABLE" = "true" ] || exit 18
+    [ "$CURSOR_AVAILABLE" = "false" ] || exit 19
+    [ "$CLAUDE_PLUGIN_ROOT" = "$REPO_ROOT" ] || exit 20
 ) || fail "case1: sourcing did not set expected vars (subshell exit $?)"
 
 # Stable symlink should point at the output
