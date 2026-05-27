@@ -355,6 +355,13 @@ QA_PENDING_WRITTEN=false
 [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
 [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
 
+# Preserve a parseable JSONL file even when the wrapper emitted no stdout
+# (for example, stderr-only auth failures). That keeps usage parsing in the
+# "no usage events" fail-closed branch instead of "events file missing".
+if [[ ! -s "$CODEX_EVENTS" ]]; then
+    printf '{}\n' > "$CODEX_EVENTS"
+fi
+
 codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "codex_implement"
 emit_timing_record "$LAUNCHER_EXIT"
 
