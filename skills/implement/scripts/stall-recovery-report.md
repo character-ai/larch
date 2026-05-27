@@ -1,6 +1,6 @@
 # stall-recovery-report.sh
 
-`stall-recovery-report.sh` is the deterministic helper for `/implement` Step 18a stall recovery. It classifies a persisted stall, tracks retry attempts, detects larch dev clones, and composes sanitized public issue/report surfaces from fixed allowlists.
+`stall-recovery-report.sh` is the deterministic helper for `/implement` Step 18a stall recovery. It classifies a persisted stall, tracks retry attempts, exposes the normative retry-cap table, detects larch dev clones, and composes sanitized public issue/report surfaces from fixed allowlists.
 
 ## Subcommands
 
@@ -10,10 +10,13 @@
   - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only; non-allowlisted bail reasons are redacted.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; symbolic/terminal `STALL_STEP` values also fail closed to `none` unless they are explicitly mapped.
-- `init-attempts --attempts-file <path>`
+- `init-attempts --implement-tmpdir <path> --attempts-file <path>`
   - Atomically initializes the attempts file with `version=1`, `created_utc=<ISO8601>`, and `attempt_count=0`. Existing files are left unchanged.
-- `record-attempt --attempts-file <path> --class <class> --signature <hash> --resume-hint <hint> --outcome <token>`
+- `record-attempt --implement-tmpdir <path> --attempts-file <path> --class <class> --signature <hash> --resume-hint <hint> --outcome <token>`
   - Atomically appends `attempt.<N>.{class,signature,resume_hint,outcome,utc}` and increments `attempt_count`.
+  - `--attempts-file` must be an absolute path inside `--implement-tmpdir`; the helper rejects symlinks, non-regular files, and cross-tmpdir writes before any write occurs.
+- `retry-policy --class <class>`
+  - Emits `FAILURE_CLASS`, `MAX_ATTEMPTS`, and `RETRY_DELAY` for the requested classifier. This is the helper's mechanical projection of the retry-cap table below.
 - `is-larch-dev-clone [--working-tree-root <path>] [--implement-tmpdir <path>]`
   - Emits `LARCH_DEV_CLONE=true|false` using the canonical `skills/implement/SKILL.md` marker.
   - When `--implement-tmpdir` shows `FORKED_TARGET=true`, emits `false` so forked runs keep the consumer-facing action-required path instead of auto-filing a larch-dev issue.
@@ -65,7 +68,7 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 
 ## Classifier Evidence
 
-- `transient-infra`: rate-limit, `network/auth issue`, broader `network error` / `network failure` / auth-failure wording, timeout, connection reset/refused, DNS/name-resolution failures, TLS handshake, temporary GitHub/API outage, service unavailable, or HTTP 5xx evidence in the validated failure-detail log or state/session state.
+- `transient-infra`: rate-limit, `network/auth issue`, broader `network error` / `network failure` wording, timeout, connection reset/refused, DNS/name-resolution failures, TLS handshake, temporary GitHub/API outage, service unavailable, or HTTP 5xx evidence in the validated failure-detail log or, when no validated detail log is available, the persisted state/session evidence. Standalone auth-failure wording is not treated as transient.
 - `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
 - `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
@@ -96,15 +99,15 @@ This table is the single normative retry-cap source. `skills/implement/reference
 | 2 | missing required input |
 | 3 | malformed/unparseable present `ship-pr-state.sh` only |
 
-Missing `ship-pr-state.sh` is never exit 3. It is classified as a bounded `unrecoverable` outcome.
+Missing `ship-pr-state.sh` is never exit 3. Without other recoverable evidence it is classified as a bounded `unrecoverable` outcome; `session-env.sh` plus a recoverable bail/detail signal can still produce a recoverable class.
 
 ## `--failure-detail-log` Validation
 
-The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Invalid logs are ignored and classification continues from the remaining persisted evidence.
+The optional failure-detail log must be absolute, canonical after physical directory resolution, regular, non-symlink, inside `--implement-tmpdir`, and no larger than 64 KiB. Invalid logs are ignored and classification continues from the remaining persisted evidence. The offline harness covers the oversize rejection path in addition to relative/outside/symlink/non-regular validation.
 
 ## Dry Run
 
-`LARCH_STALL_RECOVERY_DRY_RUN=1` makes `bug-body`, `bug-comment`, and `issue-input-file` emit `DRY_RUN_DECISION=true`. `bug-body` also writes `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md`. The caller must skip `/larch:issue` and `gh issue comment` when this value is true.
+`LARCH_STALL_RECOVERY_DRY_RUN=1` makes `bug-body`, `bug-comment`, and `issue-input-file` emit `DRY_RUN_DECISION=true`. `bug-body` also writes `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md`. The caller must skip `/larch:issue` and `gh issue comment` when this value is true, and the harness covers all three helper surfaces.
 
 ## Security
 

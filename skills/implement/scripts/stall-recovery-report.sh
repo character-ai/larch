@@ -16,7 +16,7 @@ source "$SCRIPTS_DIR/lib-larch-dev-clone.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "stall-recovery-report.sh: usage: $0 <classify|init-attempts|record-attempt|is-larch-dev-clone|bug-body|bug-comment|issue-input-file|lint> ..."
+    larch_err "stall-recovery-report.sh: usage: $0 <classify|init-attempts|record-attempt|retry-policy|is-larch-dev-clone|bug-body|bug-comment|issue-input-file|lint> ..."
 }
 
 die_argv() {
@@ -155,6 +155,40 @@ validate_tmpdir_local_file() {
     return 0
 }
 
+validate_tmpdir_write_file() {
+    local tmpdir=$1 path=$2 flag_name=$3 must_exist=$4 dir base real_dir real_path tmp_real
+    [ -n "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name is required"; return 1; }
+    case "$path" in
+        /*) ;;
+        *) larch_err "stall-recovery-report.sh: $flag_name must be absolute"; return 1 ;;
+    esac
+    dir=$(dirname "$path")
+    base=$(basename "$path")
+    [ -d "$dir" ] || { larch_err "stall-recovery-report.sh: $flag_name parent directory missing"; return 1; }
+    real_dir=$(canonical_dir "$dir") || { larch_err "stall-recovery-report.sh: $flag_name parent directory not canonical"; return 1; }
+    tmp_real=$(canonical_dir "$tmpdir") || { larch_err "stall-recovery-report.sh: --implement-tmpdir directory not canonical"; return 1; }
+    real_path="$real_dir/$base"
+    case "$real_path" in
+        "$tmp_real"/*) ;;
+        *) larch_err "stall-recovery-report.sh: $flag_name outside implement tmpdir"; return 1 ;;
+    esac
+    if [ "$must_exist" = true ]; then
+        [ -e "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name missing"; return 1; }
+        [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be regular"; return 1; }
+        [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
+        [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+        [ -w "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be writable"; return 1; }
+    elif [ -e "$path" ]; then
+        [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be regular"; return 1; }
+        [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must not be a symlink"; return 1; }
+        [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be readable"; return 1; }
+        [ -w "$path" ] || { larch_err "stall-recovery-report.sh: $flag_name must be writable"; return 1; }
+    else
+        [ -w "$dir" ] || { larch_err "stall-recovery-report.sh: $flag_name parent directory must be writable"; return 1; }
+    fi
+    return 0
+}
+
 resume_hint_for() {
     local class=$1 step=$2 phase=$3
     case "$class" in
@@ -198,7 +232,7 @@ classify_from_evidence() {
         printf 'dispatch-failure\n'
         return 0
     fi
-    if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network(/auth)? issue|network (error|failure|unavailable)|timed? out|timeout|connection (reset|refused)|temporary failure|tls handshake|dns failure|name resolution|github unavailable|github api unavailable|service unavailable|http 5[0-9][0-9]|auth(entication)? (error|failure|failed)'; then
+    if printf '%s\n' "$lowered" | grep -Eq 'rate limit|api rate|network/auth issue|network (error|failure|unavailable)|timed? out|timeout|connection (reset|refused)|temporary failure|tls handshake|dns failure|name resolution|github unavailable|github api unavailable|service unavailable|http 5[0-9][0-9]'; then
         printf 'transient-infra\n'
         return 0
     fi
@@ -207,13 +241,31 @@ classify_from_evidence() {
 
 safe_bail_reason_value() {
     case "${1:-}" in
-        "") printf '\n' ;;
+        "") printf '\n'; return 0 ;;
     esac
     if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[a-z0-9][a-z0-9._-]{0,63}$'; then
         printf '%s\n' "$1"
     else
         printf 'redacted\n'
     fi
+}
+
+retry_cap_for() {
+    case "${1:-}" in
+        transient-infra) printf '4\n' ;;
+        test-failure|lint-failure) printf '8\n' ;;
+        dispatch-failure) printf '3\n' ;;
+        same-cause-repeat) printf '1\n' ;;
+        contract-failure|unrecoverable) printf '0\n' ;;
+        *) printf '0\n' ;;
+    esac
+}
+
+retry_delay_for() {
+    case "${1:-}" in
+        transient-infra) printf 'sleep-seconds.sh 5\n' ;;
+        *) printf 'none\n' ;;
+    esac
 }
 
 latest_attempt_signature() {
@@ -283,12 +335,11 @@ cmd_classify() {
         if validate_failure_detail_log "$tmpdir" "$detail_log"; then
             evidence=$(cat "$detail_log")
         fi
-    fi
-    if [ -r "$state_file" ]; then
+    elif [ -r "$state_file" ]; then
         evidence="$evidence
 $(cat "$state_file")"
     fi
-    if [ -r "$session_env" ]; then
+    if [ -z "$evidence" ] && [ -r "$session_env" ]; then
         evidence="$evidence
 $(cat "$session_env")"
     fi
@@ -324,14 +375,18 @@ $(cat "$session_env")"
 }
 
 cmd_init_attempts() {
-    local attempts_file="" content
+    local tmpdir="" attempts_file="" content
     while [ $# -gt 0 ]; do
         case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --attempts-file) [ $# -ge 2 ] || die_argv "--attempts-file requires a value"; attempts_file=$2; shift 2 ;;
             *) die_argv "unknown init-attempts option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$attempts_file" ] || die_missing "--attempts-file is required"
+    validate_tmpdir_write_file "$tmpdir" "$attempts_file" "--attempts-file" false || exit 1
     if [ -f "$attempts_file" ]; then
         emit_kv ATTEMPTS_FILE "$attempts_file"
         emit_kv ATTEMPT_COUNT "$(kv_get "$attempts_file" attempt_count "0")"
@@ -344,9 +399,10 @@ cmd_init_attempts() {
 }
 
 cmd_record_attempt() {
-    local attempts_file="" class="" signature="" resume_hint="" outcome="" count next content
+    local tmpdir="" attempts_file="" class="" signature="" resume_hint="" outcome="" count next content
     while [ $# -gt 0 ]; do
         case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
             --attempts-file) [ $# -ge 2 ] || die_argv "--attempts-file requires a value"; attempts_file=$2; shift 2 ;;
             --class) [ $# -ge 2 ] || die_argv "--class requires a value"; class=$2; shift 2 ;;
             --signature) [ $# -ge 2 ] || die_argv "--signature requires a value"; signature=$2; shift 2 ;;
@@ -355,8 +411,10 @@ cmd_record_attempt() {
             *) die_argv "unknown record-attempt option: $1" ;;
         esac
     done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
     [ -n "$attempts_file" ] || die_missing "--attempts-file is required"
-    [ -f "$attempts_file" ] || die_missing "--attempts-file must exist"
+    validate_tmpdir_write_file "$tmpdir" "$attempts_file" "--attempts-file" true || exit 1
     count=$(kv_get "$attempts_file" attempt_count "0")
     case "$count" in ""|*[!0-9]*) die_argv "attempt_count is malformed" ;; esac
     next=$((count + 1))
@@ -368,6 +426,21 @@ cmd_record_attempt() {
         "$content" "$next" "$class" "$next" "$signature" "$next" "$resume_hint" "$next" "$outcome" "$next" "$(now_utc)")
     atomic_write_text "$attempts_file" "$content"
     emit_kv ATTEMPT_COUNT "$next"
+}
+
+cmd_retry_policy() {
+    local class=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --class) [ $# -ge 2 ] || die_argv "--class requires a value"; class=$2; shift 2 ;;
+            *) die_argv "unknown retry-policy option: $1" ;;
+        esac
+    done
+    [ -n "$class" ] || die_missing "--class is required"
+    class=$(safe_class_value "$class")
+    emit_kv FAILURE_CLASS "$class"
+    emit_kv MAX_ATTEMPTS "$(retry_cap_for "$class")"
+    emit_kv RETRY_DELAY "$(retry_delay_for "$class")"
 }
 
 cmd_is_larch_dev_clone() {
@@ -687,6 +760,7 @@ main() {
         classify) cmd_classify "$@" ;;
         init-attempts) cmd_init_attempts "$@" ;;
         record-attempt) cmd_record_attempt "$@" ;;
+        retry-policy) cmd_retry_policy "$@" ;;
         is-larch-dev-clone) cmd_is_larch_dev_clone "$@" ;;
         bug-body) cmd_bug_body_like bug-body "$@" ;;
         bug-comment) cmd_bug_body_like bug-comment "$@" ;;
