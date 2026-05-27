@@ -49,6 +49,63 @@ grep -Fq 'then run **post-dispatch branch assertion** (external-implementer path
   || fail "SKILL.md must retain post-dispatch branch assertion contract (git-current-branch.sh + CURRENT_BRANCH_POST_DISPATCH)"
 grep -Fq 'FINAL_BAIL_REASON=main-branch-post-dispatch' "$SKILL_MD" \
   || fail "SKILL.md must document FINAL_BAIL_REASON=main-branch-post-dispatch (post-dispatch mismatch bail)"
+grep -Fq '### Step 18a — Stall recovery gate' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 18a stall recovery heading"
+grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 18b teardown heading"
+grep -Fq '⏩ 18a: stall recovery — no stall detected' "$SKILL_MD" \
+  || fail "SKILL.md must retain the Step 18a no-stall fast-path line"
+STALL_RECOVERY_MD="$REPO_ROOT/skills/implement/references/stall-recovery.md"
+STALL_RECOVERY_HELPER_SH="$REPO_ROOT/skills/implement/scripts/stall-recovery-report.sh"
+grep -Fq 'BAIL_FAILURE_DETAIL_LOG' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must route BAIL_FAILURE_DETAIL_LOG into Step 18a classification"
+# shellcheck disable=SC2016
+grep -Fq '[--failure-detail-log "$VALIDATED_BAIL_FAILURE_DETAIL_LOG"]' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must document validated --failure-detail-log handoff for classify"
+# shellcheck disable=SC2016
+grep -Fq 'retry-policy --class "$FAILURE_CLASS"' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must mechanically gate dispatch with retry-policy"
+# shellcheck disable=SC2016
+grep -Fq 'If `attempt_count >= MAX_ATTEMPTS`, do not dispatch; continue directly to terminal-failure handling.' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must fail closed when retry caps are exhausted before dispatch"
+grep -Fq 'PHASE=ci-initial' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md terminal-failure path must seed canonical Step-8-shaped state"
+grep -Fq 'BAIL_FAILURE_DETAIL_LOG=' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md terminal-failure path must preserve or seed BAIL_FAILURE_DETAIL_LOG"
+grep -Fq '### Step 18a — Stall recovery gate' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 18a heading"
+grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 18b heading"
+# shellcheck disable=SC2016
+grep -Fq 'If in-memory `STALL_TRACKING=false`, `STALL_TRACKING_DISK` is false or empty, and `STALL_TRACKING_SESSION` is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b.' "$SKILL_MD" \
+  || fail "SKILL.md must require all three stall-tracking layers false before the Step 18a no-stall fast path"
+
+stall_step18a_tmp=$(mktemp -d "${TMPDIR:-/tmp}/larch-step18a-structure.XXXXXX")
+cat >"$stall_step18a_tmp/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=
+EXIT_CODE=4
+NOTE=network timeout
+EOF
+mkdir -p "$stall_step18a_tmp/bin"
+printf '#!/usr/bin/env bash\necho "$@" >>"%s/gh.calls"\n' "$stall_step18a_tmp" >"$stall_step18a_tmp/bin/gh"
+chmod +x "$stall_step18a_tmp/bin/gh"
+LARCH_QUIET_DISABLE=1 "$STALL_RECOVERY_HELPER_SH" init-attempts --implement-tmpdir "$stall_step18a_tmp" --attempts-file "$stall_step18a_tmp/attempts.env" >/dev/null
+LARCH_QUIET_DISABLE=1 "$STALL_RECOVERY_HELPER_SH" classify --implement-tmpdir "$stall_step18a_tmp" --attempts-file "$stall_step18a_tmp/attempts.env" >"$stall_step18a_tmp/class.env"
+PATH="$stall_step18a_tmp/bin:$PATH" LARCH_QUIET_DISABLE=1 LARCH_STALL_RECOVERY_DRY_RUN=1 "$STALL_RECOVERY_HELPER_SH" bug-body --implement-tmpdir "$stall_step18a_tmp" --classification-file "$stall_step18a_tmp/class.env" >"$stall_step18a_tmp/body.out"
+PATH="$stall_step18a_tmp/bin:$PATH" LARCH_QUIET_DISABLE=1 LARCH_STALL_RECOVERY_DRY_RUN=1 "$STALL_RECOVERY_HELPER_SH" issue-input-file --implement-tmpdir "$stall_step18a_tmp" --classification-file "$stall_step18a_tmp/class.env" --body-file "$stall_step18a_tmp/stall-recovery-bug-body.md" >"$stall_step18a_tmp/input.out"
+grep -Fq '## Action required — file larch bug' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must retain the consumer Action-required print path"
+grep -Fq '### [Bug] /implement stall: transient-infra at 8' "$stall_step18a_tmp/stall-recovery-issue-input.md" \
+  || fail "Step 18a dry-run integration must generate the expected /larch:issue title"
+grep -Fq '## Sanitized stall report' "$stall_step18a_tmp/stall-recovery-bug-body.md" \
+  || fail "Step 18a dry-run integration must generate the consumer chat body"
+if [ -f "$stall_step18a_tmp/gh.calls" ]; then
+  fail "Step 18a dry-run integration must not invoke gh"
+fi
+rm -rf "$stall_step18a_tmp"
 
 if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' \
     "$SKILL_MD" \

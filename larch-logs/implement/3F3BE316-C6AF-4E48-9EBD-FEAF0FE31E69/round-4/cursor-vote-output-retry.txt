@@ -1,0 +1,27 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- validators already unified via validate_tmpdir_path wrappers
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- harness loops all retry-policy classes against the doc table
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- kv_get delegates to read-session-env-key.sh
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=important QUALITY=no-fix UNCERTAIN=false -- classify skips same-cause override for contract-failure and unrecoverable
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- symbolic steps intentionally fail closed to RESUME_HINT=none per harness
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- reference skips first-detection filing for terminal classes
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- truthiness is normative in stall-recovery-report.md and reference
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- denylist harness already covers NOTE= and failure-detail paths
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- single-append atomic_write is low-risk without concurrency stress test
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- no chat-print subcommand; bug-body denylist test is the practical proxy
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- bug-comment validates --attempts-file under IMPLEMENT_TMPDIR
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- read_validated_failure_detail_log uses O_NOFOLLOW single open/read
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- --output-file is confined via validate_tmpdir_write_file
+FINDING_20: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- retry caps are intentionally orchestrator-enforced via retry-policy
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- first-detection filing is gated on attempt_count==0 and non-terminal class
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- cksum fallback is rare and signature stability is low impact
+FINDING_26: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_27: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false

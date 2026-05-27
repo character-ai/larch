@@ -1,0 +1,25 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- SKILL.md line 1726 explicitly names all three layers; Bash fence reads `_stall_disk` (ship-pr-state) and `_stall_session` (session-env); line 1748 "both disk fallback signals" covers both; session-env IS included
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit-level structural concern; extracting to a shared lib for one helper adds cross-file dependency complexity that outweighs the benefit
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- splitting the helper adds navigation and dependency complexity; concern is real but cost of fix exceeds the nit-level problem
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- SKILL.md prose pins are fragile and difficult to test reliably; complexity of adding structural SKILL.md tests outweighs nit-level concern
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true
+FINDING_16: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- stall-recovery.md Step 7 explicitly clears disk before memory (step 6 "only then"); the prose procedure is carefully specified with disk-first ordering; adding a mechanical helper requires significant new infrastructure for a design-by-choice prose path
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- single-runner invariant (AGENTS.md) makes concurrent callers impossible by design; adding flock/locking adds complexity for a theoretically-only risk under the documented constraint
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_24: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- trivially true meta-observation about static review limitations; no implementer action possible; not a concrete problem worth filing as a GitHub issue
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=true -- code uses `### [Bug]` prefix consistent with both plan description and acceptance criteria; no actual conflict between plan sections

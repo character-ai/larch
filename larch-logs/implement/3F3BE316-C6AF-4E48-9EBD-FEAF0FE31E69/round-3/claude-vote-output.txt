@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=no-fix UNCERTAIN=true -- implementation not visible in diff; SECURITY.md states non-allowlisted bail reasons are redacted, suggesting empty case is handled; specific function behavior unverifiable
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- reference step 7 explicitly covers atomic clear; 9-step sequential structure implies step 7 follows dispatch success; concern is readability not missing functionality
+FINDING_4: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- returning RESUME_HINT=none for unlisted steps is intentional conservative design per plan; recoverable steps are explicitly enumerated
+FINDING_5: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan explicitly designates manual integration verification as the integration test mechanism; automated E2E is out of scope
+FINDING_8: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan cases 5 and 6 explicitly include RESUME_HINT=none assertions for contract-failure and unrecoverable classes respectively
+FINDING_10: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_11: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- indirect coverage via case 12 is adequate for ~15-line library; separate dedicated test would be redundant
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- allowlist model handles output sanitization; same-UID tmpdir tampering is within the plan's trust model
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- SECURITY.md explicitly prohibits session tmpdir path publication; concern is speculative about future template changes
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cksum fallback acceptable for retry-dedup; not a cryptographic integrity boundary
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=true -- plan step 7 explicitly writes ship-pr-state.sh to clear STALL_TRACKING; restore-finalize-state runs in step 9 teardown
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- retry loop re-classifies fresh each iteration; same-cause-repeat is detected before recording attempt
+FINDING_21: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- classify takes specific flags not full session-env dumps; stale fields in session-env do not feed classifier evidence directly
+FINDING_22: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_23: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_24: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true

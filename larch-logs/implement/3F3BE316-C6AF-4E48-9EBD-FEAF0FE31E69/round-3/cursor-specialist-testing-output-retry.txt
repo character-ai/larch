@@ -1,0 +1,39 @@
+Reviewing branch changes vs main with a tests/CI/regression lens. Reading the diff, commit history, and key test artifacts.
+Diff is large; focusing on stall-recovery changes and test infrastructure.
+Reviewed branch commits `3276b068`…`26d5da69` (feature work in `04cd7969` plus two review-fix rounds). Below is a **Tests / CI / Regression Risk** review focused on the stall-recovery gate; `larch-logs/**` is out of scope per instructions.
+
+### In-Scope Findings
+
+1. **Important** `risk-integration` `skills/implement/references/stall-recovery.md:21` — Per-class retry caps (4/8/8/3/1/0/0) live only in markdown and orchestrator prose; `stall-recovery-report.sh` records attempts but does not enforce caps, and the harness never simulates cap exhaustion. **Suggested fix:** Add a small harness loop (or helper subcommand) that reads caps from `stall-recovery-report.md` and asserts `record-attempt` + re-classify stops at the documented limits; optionally emit `CAP_EXHAUSTED=true` from the helper so Step 18a cannot over-retry silently.
+
+2. **Important** `risk-integration` `skills/implement/SKILL.md:1748-1752` — Acceptance criterion 10 (synthetic stall → Step 18a → dry-run consumer print / larch issue filing) has no automated integration test; CI only runs the offline helper harness. **Suggested fix:** Add a focused harness (similar to `test-implement-bootstrap.sh`) that stubs `$IMPLEMENT_TMPDIR` artifacts, sets `LARCH_STALL_RECOVERY_DRY_RUN=1`, and asserts the expected helper invocations and absence of `gh` / `/larch:issue` calls for the consumer vs dev-clone branches.
+
+3. **Latent** `risk-integration` `skills/implement/scripts/stall-recovery-report.sh:131` — The 64 KiB `--failure-detail-log` cap is implemented but not covered by `test-stall-recovery-report.sh` (case 9 covers path shape, not size). **Suggested fix:** Add a fixture log >65536 bytes under tmpdir and assert classify ignores it with the documented stderr while continuing classification.
+
+4. **Latent** `risk-integration` `skills/implement/scripts/test-stall-recovery-report.sh:112-122` — Plan cases 5 and 6 require `RESUME_HINT=none` for contract-failure (steps 3/6) and unrecoverable bail reasons; the harness asserts `FAILURE_CLASS` only for case 5b and both case 6 branches. **Suggested fix:** Add `assert_eq none "$(kv RESUME_HINT …)"` for case 5a, 5b, 6a, and 6b.
+
+5. **Latent** `risk-integration` `skills/implement/scripts/test-stall-recovery-report.sh:299-309` — Plan case 19 targets “in-memory clear only after disk verify”; the harness validates temp → read-back → `mv` → read-back on disk only (the pattern Step 18a prose requires), not a failure if in-memory were cleared early. **Suggested fix:** Document in `test-stall-recovery-report.md` that case 19 is a disk-ordering surrogate only, or add an orchestrator-level contract test that fails if `STALL_TRACKING` is cleared in-memory before step 7.5 in `stall-recovery.md`.
+
+6. **Nit** `risk-integration` `skills/implement/scripts/test-stall-recovery-report.sh:286-297` — Dry-run / no-`gh` coverage exercises `bug-body` only; `bug-comment` and `issue-input-file` also emit `DRY_RUN_DECISION` per contract. **Suggested fix:** Extend case 18 to call those subcommands under `LARCH_STALL_RECOVERY_DRY_RUN=1` with the same `gh` stub.
+
+7. **Nit** `risk-integration` `SECURITY.md:45` — SECURITY.md states the harness covers log validation including the 64 KiB rule, but no test asserts oversize rejection. **Suggested fix:** Align SECURITY.md with harness cases after adding the 64 KiB test (finding 3).
+
+### Out-of-Scope Observations
+
+1. **Latent** `scripts/test-check-stale-plugin.sh` — `check-stale-plugin.sh` now sources `lib-larch-dev-clone.sh`, but there is no test that sources the library directly; regression relies on duplicate `make_larch_clone` fixtures in two harnesses. **Why out of scope:** `test-check-stale-plugin.sh` was not modified in this branch; stall-recovery case 12 covers the shared predicate.
+
+### Summary
+
+Makefile wiring looks correct: `test-stall-recovery-report` is in `.PHONY`, on exactly `test-harnesses-5`, and uses `scripts/harness-timer.sh`. The offline harness is strong on classification, sanitization, allowlist parity, and exit codes, with useful extras (case 13b/c, 19b, 20a–f). The main CI gap is **orchestrator-level recovery** (retry caps, dispatch, issue filing, teardown branching) — helper tests alone will not catch SKILL.md regressions.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/implement/references/stall-recovery.md:21	Per-class retry caps are documented and orchestrator-enforced in prose only; the helper records attempts but does not enforce limits and the harness never tests cap exhaustion.	An orchestrator edit that retries transient-infra eight times instead of four would pass `make test-stall-recovery-report` and waste CI/API quota before terminal failure.	Add harness or helper logic that reads caps from stall-recovery-report.md and asserts attempt_count stops at the documented maximum per FAILURE_CLASS.
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:1748-1752	No automated integration test covers Step 18a end-to-end (classify → issue/print → dispatch → atomic clear → teardown branch).	Acceptance criterion 10 is manual-only; regressions in Step 18a prose (wrong dispatch, skipped dry-run, wrong teardown branch) will not fail CI.	Add a focused implement-bootstrap-style harness with stubbed tmpdir state and gh/larch:issue stubs for dry-run consumer and dev-clone paths.
+1	in_scope	latent	risk-integration	skills/implement/scripts/stall-recovery-report.sh:131	64 KiB failure-detail-log validation is implemented but untested.	A >64 KiB log could be mishandled (accepted, crash, or silent truncate) without CI signal despite SECURITY.md claiming coverage.	Add a harness case with a tmpdir log >65536 bytes; assert distinct stderr and continued classify without exit 3.
+1	in_scope	latent	risk-integration	skills/implement/scripts/test-stall-recovery-report.sh:112-122	Plan-required RESUME_HINT=none assertions missing for contract-failure step 6 and unrecoverable bail cases.	A resume-hint regression that redispatches step 3/6 checks or adopted-issue stalls would still pass FAILURE_CLASS assertions.	Add assert_eq none on RESUME_HINT for cases 5a, 5b, 6a, and 6b.
+1	in_scope	latent	risk-integration	skills/implement/scripts/test-stall-recovery-report.sh:299-309	Case 19 tests disk temp/mv read-back ordering only, not in-memory-vs-disk ordering from the plan.	Orchestrator could clear in-memory STALL_TRACKING before disk write; harness case 19 would still pass.	Document surrogate scope in test-stall-recovery-report.md or add orchestrator contract coverage for disk-before-memory clearing.
+1	in_scope	nit	risk-integration	skills/implement/scripts/test-stall-recovery-report.sh:286-297	Dry-run no-gh test covers bug-body only, not bug-comment or issue-input-file.	A bug that calls gh from bug-comment under LARCH_STALL_RECOVERY_DRY_RUN=1 would not be caught by case 18.	Extend case 18 to invoke bug-comment and issue-input-file under dry-run with the gh stub.
+1	in_scope	nit	risk-integration	SECURITY.md:45	SECURITY.md claims harness covers 64 KiB log validation; no test does.	Docs overstate coverage; reviewers may skip adding the size test.	Update SECURITY.md after adding the 64 KiB harness case.
+1	out_of_scope	latent	risk-integration	scripts/test-check-stale-plugin.sh	Shared lib-larch-dev-clone.sh has no direct regression test beyond indirect stale-plugin and stall-recovery cases.	Divergence between is_larch_dev_clone implementations would only surface in unrelated harnesses.	Optional: add a one-line test that sources lib-larch-dev-clone.sh and mirrors case 12 expectations.
+```

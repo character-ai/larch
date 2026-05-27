@@ -1,0 +1,18 @@
+Implemented the stall recovery reporting gate work.
+
+Key changes:
+- Added `stall-recovery-report.sh` with classifier, attempts tracking, sanitized report generation, issue-input generation, dev-clone detection, and allowlist parity lint.
+- Added Step 18a recovery docs/prompt wiring and kept Step 18b teardown behavior intact.
+- Added shared `scripts/lib-larch-dev-clone.sh` and refactored `check-stale-plugin.sh` to use it.
+- Added SECURITY.md coverage for stall recovery sanitization.
+- Added `test-stall-recovery-report` and wired it into `Makefile` shard 5.
+
+Verification run:
+- `make test-stall-recovery-report` passed: 37 assertions.
+- `bash scripts/test-check-stale-plugin.sh` passed: 22 assertions.
+- `bash scripts/relevant-checks.sh` passed.
+- `git diff --check` passed.
+
+I wrote the implementer manifest atomically to `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.
+
+One acceptance item was not live-executed: real `/larch:issue` creation with GitHub. The dry-run/no-`gh` path is covered by the offline harness; live issue filing was not run in this restricted environment.

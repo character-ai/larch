@@ -1,0 +1,32 @@
+Reviewing branch changes with a security lens: reading the precomputed diff, commit history, and key security-sensitive files.
+Diff is large; narrowing to security-relevant changed files and reading them directly.
+Reviewed the feature diff (~1.5k lines across 12 files; the precomputed diff is mostly `larch-logs/`). Security focus: public-boundary sanitization, path containment, and secret leakage into larch issues.
+
+### In-Scope Findings
+
+- **security** `skills/implement/scripts/stall-recovery-report.sh:617-656` — **Latent:** `bug-body` / `bug-comment` accept `--classification-file` with only a readability check—no tmpdir prefix, symlink rejection, or regular-file guard—unlike `--body-file` and `--attempts-file` writes. A same-UID writer could point the orchestrator at a symlinked sensitive KV file; public output is mostly sanitized via `safe_*`, but this weakens defense-in-depth versus the documented four-surface allowlist model. **Suggested fix:** Reuse `validate_tmpdir_local_file` (or a read-only variant) for `--classification-file` when it lives under `$IMPLEMENT_TMPDIR`, and reject symlinks/non-regular files before `kv_get`.
+
+- **security** `skills/implement/scripts/stall-recovery-report.sh:582-604` — **Latent:** `bug-comment` reads `--attempts-file` without the tmpdir/symlink containment enforced by `init-attempts` / `record-attempt` (`validate_tmpdir_write_file`). A mis-pointed path could pull another session’s attempt metadata into the terminal comment (signatures/classes only, but still cross-session bleed under shared `/tmp`). **Suggested fix:** Apply the same `validate_tmpdir_local_file` check to `--attempts-file` on read paths in `bug-comment` (and optionally `classify --attempts-file`).
+
+- **security** `skills/implement/scripts/stall-recovery-report.sh:334-337` — **Latent:** `--failure-detail-log` is validated then `cat`’d without an open-time re-check; a same-UID TOCTOU could swap a validated regular file for a symlink between checks and read, pulling up to 64 KiB of out-of-tmpdir content into classifier evidence (evidence is not published directly, but could influence mis-routing). **Suggested fix:** Open the log with `O_NOFOLLOW` semantics (e.g., `python -c` / `read` builtin on a verified fd) or re-validate inode/device immediately before read, matching patterns used elsewhere in the repo.
+
+- **security** `skills/implement/scripts/stall-recovery-report.sh:636-650` — **Nit:** Optional `--output-file` (and the transient `"$out_file.raw.$$"` sibling) can target any user-writable absolute path, not only `$IMPLEMENT_TMPDIR`. Within larch’s operator-trust model this is orchestrator-controlled, but it is an avoidable footgun if prompt-side args are ever wrong. **Suggested fix:** When `--implement-tmpdir` is set, require `--output-file` to pass the same tmpdir prefix/symlink checks as `--body-file`, or default exclusively under tmpdir.
+
+### Out-of-Scope Observations
+
+- **security** `skills/implement/references/stall-recovery.md:34` — Terminal `gh issue comment` targeting relies on orchestrator-side validation of `stall-recovery-issue.env` `ISSUE_NUMBER` (digits-only, no unrelated tracking-issue fallback). That is appropriate, but enforcement is prose-only in the reference, not mechanical in the helper—pre-existing orchestrator-boundary pattern, not introduced by the helper itself.
+
+- **security** `scripts/redact-secrets.sh` (consumer) — Stall recovery correctly pipes all public bodies through `redact-secrets.sh`; residual risk remains for token families or PII outside the redactor’s tables (already documented in `SECURITY.md`). Harness case 16 uses a stub redactor; production depends on the real script.
+
+### Summary
+
+No **Important** or **blocking** in-scope security defects found. The branch delivers meaningful controls: four-surface allowlists with `lint` parity, enum/`safe_*` sanitization on classifier and public fields, tmpdir-confined writes for attempts/body-file, strict `--failure-detail-log` validation, `redact-secrets.sh` backstop, deny-list harness coverage (cases 13–13e, 16, 18, 21), forked-target suppression for auto-filing, and `SECURITY.md` documentation aligned with behavior.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	skills/implement/scripts/stall-recovery-report.sh:617-656	bug-body/bug-comment --classification-file lacks tmpdir/symlink containment	Same-UID symlink or out-of-tmpdir KV source could be read before sanitization; weakens allowlist boundary	Apply validate_tmpdir_local_file (read-only) for classification-file under IMPLEMENT_TMPDIR; reject symlinks
+1	in_scope	latent	security	skills/implement/scripts/stall-recovery-report.sh:582-604	bug-comment reads --attempts-file without tmpdir containment	Mis-pointed attempts file could merge another session's attempt metadata into a public terminal comment	Validate attempts-file with the same tmpdir prefix/symlink rules as init/record-attempt
+1	in_scope	latent	security	skills/implement/scripts/stall-recovery-report.sh:334-337	failure-detail-log validate-then-cat TOCTOU	Between validation and cat, a symlink swap could feed out-of-tmpdir bytes into classifier evidence	Re-validate inode or read via no-follow open immediately before consuming content
+1	in_scope	nit	security	skills/implement/scripts/stall-recovery-report.sh:636-650	--output-file not confined to implement tmpdir	Orchestrator typo could write redacted stall reports outside the session tmpdir	Require output-file to pass the same tmpdir containment checks as body-file when tmpdir is known
+1	out_of_scope	latent	security	skills/implement/references/stall-recovery.md:34	ISSUE_NUMBER for gh issue comment is orchestrator-validated only, not helper-enforced	Wrong issue number in prose-driven recovery could post terminal failure to an unrelated public issue if orchestrator drifts	Optionally add a helper subcommand that validates ISSUE_NUMBER from stall-recovery-issue.env before comment composition
+```

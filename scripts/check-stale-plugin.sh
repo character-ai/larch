@@ -28,6 +28,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-larch-dev-clone.sh
+source "$SCRIPT_DIR/lib-larch-dev-clone.sh"
+
 INSTALLED_PLUGIN_JSON=""
 WORKING_TREE_ROOT=""
 
@@ -68,7 +72,7 @@ if [ -z "$WORKING_TREE_ROOT" ] || [ ! -d "$WORKING_TREE_ROOT" ]; then
 fi
 
 # --- Dev-clone detection ---
-if [ ! -f "$WORKING_TREE_ROOT/skills/implement/SKILL.md" ]; then
+if ! is_larch_dev_clone "$WORKING_TREE_ROOT"; then
     emit_kv STALE_PLUGIN_CHECK not-a-dev-clone
     exit 0
 fi
