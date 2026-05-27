@@ -21,7 +21,8 @@ writer command with shell `&`, capture `$!` in the next three non-blank lines,
 and `wait` on that same identifier after the monitor invocation. Missing tokens
 emit `missing LARCH_PAIRED_PID_FILE allocation for <basename>`, `missing
 --paired-pid-file monitor argument for <basename>`, `missing shell ampersand`,
-`missing PID capture`, `missing wait`, or an identifier-mismatch diagnostic. The foreground-only
+`missing PID capture`, `missing breadcrumb-monitor.sh`, `missing wait`, or an
+identifier-mismatch diagnostic. The foreground-only
 `step-7a.sh` carve-out and nested-only children (`ci-wait.sh`,
 `review-and-fix.sh`, `step2-implement.sh`, `dispatch-with-waterfall.sh`) do not
 need the paired-PID or writer-wait tokens.

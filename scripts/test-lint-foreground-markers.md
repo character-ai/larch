@@ -35,12 +35,13 @@ Black-box regression harness for `scripts/lint-foreground-markers.sh`. It builds
 29. **Missing paired PID allocation** — top-level Family B monitor flag present but no `mktemp` allocation → `missing LARCH_PAIRED_PID_FILE allocation`.
 30. **Bare paired PID export** — `export LARCH_PAIRED_PID_FILE` without same-fence `mktemp` allocation → same allocation error.
 31. **Missing monitor flag** — allocation/export present but no `--paired-pid-file` → `missing --paired-pid-file monitor argument`.
+31b. **Missing breadcrumb monitor** — top-level writer has `&` plus PID capture but no same-fence `breadcrumb-monitor.sh` → `missing breadcrumb-monitor.sh`.
 32. **Paired PID happy path** — top-level Family B allocation/export, monitor flag, and PID capture/wait → passes.
 33. **Nested-only carve-outs** — `ci-wait.sh`, `review-and-fix.sh`, `step2-implement.sh`, and `dispatch-with-waterfall.sh` still require the background pair when directly fenced, but do not require paired-PID tokens.
 45. **Multiline writer wait** — backslash-continued `ship-pr.sh` invocation ending in `&`, PID capture, monitor, and two-branch wait shape → passes.
 46. **Shell-file local capture** — `local SHIP_PR_PID=$!` inside a shell function is accepted.
 47. **Wait forms** — `wait "$IDENT"`, `wait $IDENT`, and `wait "${IDENT}"` are all accepted.
-48. **Missing wait** — top-level writer with PID capture but no post-monitor wait → `missing wait`.
+48. **Missing wait** — top-level writer with PID capture and `breadcrumb-monitor.sh` but no post-monitor wait → `missing wait`.
 49. **Missing PID capture** — top-level writer with `&` but no `$!` capture → `missing PID capture`.
 50. **Wait before monitor** — `wait` appears before `breadcrumb-monitor.sh` → `wait must follow breadcrumb-monitor.sh`.
 51. **Missing ampersand** — top-level writer without shell `&` → `missing shell ampersand`.

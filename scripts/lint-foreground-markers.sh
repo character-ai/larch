@@ -389,7 +389,7 @@ fence_has_family_b_pid_capture_and_wait() {
         fi
     done
     if [[ "$monitor_idx" -lt 0 ]]; then
-        printf '%s:%s: missing wait for captured PID variable %s after breadcrumb-monitor.sh for %s\n' "$rel" "$abs_anchor" "$ident" "$bn" >&2
+        printf '%s:%s: missing breadcrumb-monitor.sh after top-level Family B writer %s\n' "$rel" "$abs_anchor" "$bn" >&2
         VIOLATIONS=$((VIOLATIONS + 1))
         return 0
     fi

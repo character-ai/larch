@@ -750,6 +750,26 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_err "missing paired PID monitor flag" "$stderr_file" "$rc" 'missing --paired-pid-file monitor argument for collect-agent-results.sh'
 
+# 31b — missing breadcrumb monitor fails before the missing-wait check.
+reset_tree
+write_md skills/missing-monitor/SKILL.md <<'EOF'
+# Case 31b
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt &
+COLLECTOR_PID=$!
+wait "$COLLECTOR_PID"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "missing breadcrumb monitor" "$stderr_file" "$rc" 'missing breadcrumb-monitor.sh after top-level Family B writer collect-agent-results.sh'
+
 # 32 — top-level Family B happy path with allocation and monitor flag
 reset_tree
 write_md skills/pid-happy/SKILL.md <<'EOF'
