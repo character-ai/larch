@@ -198,8 +198,7 @@ var_is_in_scope() {
 
 scan_test_script() {
     local script="$1"
-    local script_dir script_parent line line_no rel var literal
-    local repo_assign_re script_assign_re single_re double_re contains_prefix_re
+    local script_dir script_parent kind line_no var payload rel literal
 
     script_dir="${script%/*}"
     if [ "$script_dir" = "$script" ]; then
@@ -212,60 +211,100 @@ scan_test_script() {
 
     VAR_NAMES=()
     VAR_RELS=()
-    line_no=0
-    repo_assign_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)="\$REPO_ROOT/([^"]*)"[[:space:]]*$'
-    script_assign_re='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)="\$SCRIPT_DIR/\.\./([^"]*)"[[:space:]]*$'
-    single_re='^[[:space:]]*contains[[:space:]]+"\$([A-Za-z_][A-Za-z0-9_]*)"[[:space:]]+('\''([^'\'']*)'\'')[[:space:]]+.*$'
-    double_re='^[[:space:]]*contains[[:space:]]+"\$([A-Za-z_][A-Za-z0-9_]*)"[[:space:]]+"([^"]*)"[[:space:]]+.*$'
-    contains_prefix_re='^[[:space:]]*contains[[:space:]]+"\$([A-Za-z_][A-Za-z0-9_]*)"[[:space:]]+'
-
-    while IFS= read -r line || [ -n "$line" ]; do
-        line_no=$((line_no + 1))
-
-        if [[ "$line" =~ $repo_assign_re ]]; then
-            set_var_rel "${BASH_REMATCH[1]}" "$(normalize_rel "${BASH_REMATCH[2]}")"
-            continue
-        fi
-        if [[ "$line" =~ $script_assign_re ]]; then
-            if [ -n "$script_parent" ]; then
-                rel="$script_parent/${BASH_REMATCH[2]}"
-            else
-                rel="${BASH_REMATCH[2]}"
-            fi
-            set_var_rel "${BASH_REMATCH[1]}" "$(normalize_rel "$rel")"
-            continue
-        fi
-
-        if [[ "$line" =~ $single_re ]]; then
-            var="${BASH_REMATCH[1]}"
-            literal="${BASH_REMATCH[3]}"
-            check_literal "$script" "$line_no" "$var" "$literal"
-            continue
-        fi
-
-        if [[ "$line" =~ $double_re ]]; then
-            var="${BASH_REMATCH[1]}"
-            literal="${BASH_REMATCH[2]}"
-            case "$literal" in
-                *'$'*|*'`'*)
-                    if var_is_in_scope "$script" "$var"; then
-                        warn_skipped "$script" "$line_no"
-                    fi
-                    ;;
-                *)
-                    check_literal "$script" "$line_no" "$var" "$literal"
-                    ;;
-            esac
-            continue
-        fi
-
-        if [[ "$line" =~ $contains_prefix_re ]]; then
-            var="${BASH_REMATCH[1]}"
-            if var_is_in_scope "$script" "$var"; then
-                warn_skipped "$script" "$line_no"
-            fi
-        fi
-    done < "$script"
+    while IFS="$(printf '\t')" read -r kind line_no var payload; do
+        [ -n "$kind" ] || continue
+        case "$kind" in
+            REPO_ASSIGN)
+                set_var_rel "$var" "$(normalize_rel "$payload")"
+                ;;
+            SCRIPT_ASSIGN)
+                if [ -n "$script_parent" ]; then
+                    rel="$script_parent/$payload"
+                else
+                    rel="$payload"
+                fi
+                set_var_rel "$var" "$(normalize_rel "$rel")"
+                ;;
+            CHECK)
+                check_literal "$script" "$line_no" "$var" "$payload"
+                ;;
+            SKIP)
+                if var_is_in_scope "$script" "$var"; then
+                    warn_skipped "$script" "$line_no"
+                fi
+                ;;
+        esac
+    done < <(
+        awk '
+function emit(kind, line_no, var, payload) {
+    printf "%s\t%s\t%s\t%s\n", kind, line_no, var, payload
+}
+function trim_leading_ws(text) {
+    sub(/^[[:space:]]+/, "", text)
+    return text
+}
+function parse_contains(text, line_no,    rest, var_end, var, quote, literal_end, literal) {
+    rest = trim_leading_ws(substr(text, 9))
+    if (substr(rest, 1, 2) != "\"$") {
+        return
+    }
+    rest = substr(rest, 3)
+    var_end = index(rest, "\"")
+    if (var_end == 0) {
+        return
+    }
+    var = substr(rest, 1, var_end - 1)
+    if (var !~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+        return
+    }
+    rest = trim_leading_ws(substr(rest, var_end + 1))
+    quote = substr(rest, 1, 1)
+    if (quote != "'"'"'" && quote != "\"") {
+        return
+    }
+    rest = substr(rest, 2)
+    literal_end = index(rest, quote)
+    if (literal_end == 0) {
+        emit("SKIP", line_no, var, "")
+        return
+    }
+    literal = substr(rest, 1, literal_end - 1)
+    rest = substr(rest, literal_end + 1)
+    if (rest !~ /^[[:space:]]+/) {
+        emit("SKIP", line_no, var, "")
+        return
+    }
+    if (quote == "\"" && (index(literal, "$") > 0 || index(literal, "`") > 0)) {
+        emit("SKIP", line_no, var, "")
+        return
+    }
+    emit("CHECK", line_no, var, literal)
+}
+{
+    if (match($0, /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*="\$REPO_ROOT\/[^"]*"[[:space:]]*$/)) {
+        split(substr($0, RSTART, RLENGTH), pieces, "=")
+        name = pieces[1]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+        value = substr(pieces[2], 13)
+        value = substr(value, 1, length(value) - 1)
+        emit("REPO_ASSIGN", NR, name, value)
+        next
+    }
+    if (match($0, /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*="\$SCRIPT_DIR\/\.\.\/[^"]*"[[:space:]]*$/)) {
+        split(substr($0, RSTART, RLENGTH), pieces, "=")
+        name = pieces[1]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+        value = substr(pieces[2], 17)
+        value = substr(value, 1, length(value) - 1)
+        emit("SCRIPT_ASSIGN", NR, name, value)
+        next
+    }
+    if ($0 ~ /^[[:space:]]*contains[[:space:]]+"\$[A-Za-z_][A-Za-z0-9_]*"[[:space:]]+/) {
+        parse_contains($0, NR)
+    }
+}
+        ' "$script"
+    )
 }
 
 TEST_LIST="$(mktemp "${TMPDIR:-/tmp}/check-contains-pins.XXXXXX")"
