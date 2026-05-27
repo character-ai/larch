@@ -91,6 +91,10 @@ classify_fixture case2 2 implementation "pytest reports a failing test"
 out=$CLASSIFY_OUT
 assert_eq test-failure "$(kv FAILURE_CLASS "$out")" "2: test-failure"
 assert_eq step2-impl "$(kv RESUME_HINT "$out")" "2: test-failure resume hint"
+classify_fixture case2b 2 implementation "Jest suite failed with 3 failing tests"
+out=$CLASSIFY_OUT
+assert_eq test-failure "$(kv FAILURE_CLASS "$out")" "2: jest-only test-failure"
+assert_eq step2-impl "$(kv RESUME_HINT "$out")" "2: jest-only resume hint"
 
 classify_fixture case3 5 review "lint-fix-loop exhausted after shellcheck failure"
 out=$CLASSIFY_OUT
@@ -134,11 +138,16 @@ assert_eq same-cause-repeat "$(kv FAILURE_CLASS "$dir/second.env")" "7: same-cau
 assert_eq none "$(kv RESUME_HINT "$dir/second.env")" "7: same-cause-repeat suppresses redispatch hint"
 run_capture "$SANDBOX/case7-policy.out" "$SCRIPT" retry-policy --class same-cause-repeat
 assert_eq same-cause-repeat "$(kv FAILURE_CLASS "$SANDBOX/case7-policy.out")" "7: retry-policy echoes class"
-assert_eq 1 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy.out")" "7: retry-policy same-cause cap"
+assert_eq 2 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy.out")" "7: retry-policy same-cause cap"
 assert_eq none "$(kv RETRY_DELAY "$SANDBOX/case7-policy.out")" "7: retry-policy same-cause delay"
 run_capture "$SANDBOX/case7-policy-transient.out" "$SCRIPT" retry-policy --class transient-infra
 assert_eq 4 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy-transient.out")" "7: retry-policy transient cap"
 assert_eq "sleep-seconds.sh 5" "$(kv RETRY_DELAY "$SANDBOX/case7-policy-transient.out")" "7: retry-policy transient delay"
+assert_eq 1 "$(kv attempt_count "$dir/attempts.env")" "7: same-cause repeat starts after first failed attempt"
+"$SCRIPT" record-attempt --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" --class same-cause-repeat --signature "$(kv FAILURE_SIGNATURE "$dir/second.env")" --resume-hint none --outcome alternate >/dev/null
+assert_eq 2 "$(kv attempt_count "$dir/attempts.env")" "7: alternate strategy attempt increments durable count"
+run_capture "$SANDBOX/case7-policy-post-alt.out" "$SCRIPT" retry-policy --class same-cause-repeat
+assert_eq 2 "$(kv MAX_ATTEMPTS "$SANDBOX/case7-policy-post-alt.out")" "7: same-cause policy still reports alternate-inclusive cap"
 dir=$(make_tmp case7b)
 write_state "$dir" 8 ci-initial
 run_capture "$SANDBOX/case7b.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason "network timeout while posting issue"
@@ -153,7 +162,7 @@ transient-infra|4|sleep-seconds.sh 5
 test-failure|8|none
 lint-failure|8|none
 dispatch-failure|3|none
-same-cause-repeat|1|none
+same-cause-repeat|2|none
 contract-failure|0|none
 unrecoverable|0|none
 EOF
@@ -282,6 +291,19 @@ assert_eq unknown "$(kv STALL_STEP "$dir/classify.out")" "13: classification sta
 assert_eq unknown "$(kv PHASE "$dir/classify.out")" "13: classification phase is sanitized"
 assert_eq redacted "$(kv BAIL_REASON "$dir/classify.out")" "13: classification raw bail metadata is redacted"
 
+dir=$(make_tmp case13g)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=10-detached-head
+BAIL_REASON=first-fixer-non-health
+NOTE=network/auth issue
+EOF
+run_capture "$dir/classify.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq step8-shippr "$(kv RESUME_HINT "$dir/classify.out")" "13: suffixed ship-pr step resumes through ship-pr"
+assert_eq 10-detached-head "$(kv STALL_STEP "$dir/classify.out")" "13: suffixed ship-pr step is preserved"
+assert_eq first-fixer-non-health "$(kv BAIL_REASON "$dir/classify.out")" "13: allowlisted bail token survives classification"
+
 dir=$(make_tmp case13d)
 outside_attempts=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-attempts-outside.XXXXXX")
 run_capture "$SANDBOX/case13d-init.out" "$SCRIPT" init-attempts --implement-tmpdir "$dir" --attempts-file "$outside_attempts"
@@ -381,6 +403,35 @@ if [ ! -f "$dir/gh.calls" ]; then
     pass "18: gh stub not invoked"
 else
     fail "18: gh stub should not be invoked" "$(cat "$dir/gh.calls")"
+fi
+assert_contains "### [Bug] /implement stall: transient-infra at 8" "$(cat "$(kv INPUT_FILE "$dir/input.out")")" "18: dry-run issue input still renders consumer-facing heading"
+
+dir=$(make_tmp case18b)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=first-fixer-non-health
+EXIT_CODE=4
+EOF
+printf 'network error talking to GitHub API\n' >"$dir/failure.log"
+mkdir -p "$dir/bin"
+printf '#!/usr/bin/env bash\necho \"$@\" >>\"%s/gh.calls\"\n' "$dir" >"$dir/bin/gh"
+chmod +x "$dir/bin/gh"
+"$SCRIPT" init-attempts --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" >/dev/null
+run_capture "$dir/classify.capture" env "PATH=$dir/bin:$PATH" "LARCH_STALL_RECOVERY_DRY_RUN=1" "$SCRIPT" classify --implement-tmpdir "$dir" --attempts-file "$dir/attempts.env" --failure-detail-log "$dir/failure.log"
+env "PATH=$dir/bin:$PATH" "LARCH_STALL_RECOVERY_DRY_RUN=1" "$SCRIPT" bug-body --implement-tmpdir "$dir" --classification-file "$dir/classify.capture" >"$dir/body.out"
+env "PATH=$dir/bin:$PATH" "LARCH_STALL_RECOVERY_DRY_RUN=1" "$SCRIPT" issue-input-file --implement-tmpdir "$dir" --classification-file "$dir/classify.capture" --body-file "$(kv BODY_FILE "$dir/body.out")" >"$dir/input.out"
+env "PATH=$dir/bin:$PATH" "LARCH_STALL_RECOVERY_DRY_RUN=1" "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/classify.capture" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
+assert_eq transient-infra "$(kv FAILURE_CLASS "$dir/classify.capture")" "18: dry-run sequence classifies recoverable stall"
+assert_eq true "$(kv DRY_RUN_DECISION "$dir/body.out")" "18: dry-run sequence body decision true"
+assert_eq true "$(kv DRY_RUN_DECISION "$dir/comment.out")" "18: dry-run sequence comment decision true"
+assert_contains "## Sanitized stall report" "$(cat "$(kv BODY_FILE "$dir/body.out")")" "18: dry-run sequence renders bug body"
+assert_contains "## Retry attempts" "$(cat "$(kv BODY_FILE "$dir/comment.out")")" "18: dry-run sequence renders terminal comment"
+if [ ! -e "$dir/gh.calls" ]; then
+    pass "18: dry-run step18a sequence makes no gh calls"
+else
+    fail "18: dry-run step18a sequence should not call gh" "$(cat "$dir/gh.calls")"
 fi
 
 dir=$(make_tmp case19)

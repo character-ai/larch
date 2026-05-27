@@ -1745,7 +1745,7 @@ printf 'STALL_TRACKING_DISK=%s\n' "$_stall_disk"
 printf 'STALL_TRACKING_SESSION=%s\n' "$_stall_session"
 ```
 
-If in-memory `STALL_TRACKING=false` and both disk fallback signals are false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b.
+If in-memory `STALL_TRACKING=false` and both disk fallback signals are false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b. Treat the three layers as an any-of-three gate: skip recovery only when all three layers are false or empty.
 
 If any layer is true: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step procedure. That procedure owns attempt initialization, classification, canonical `BAIL_FAILURE_DETAIL_LOG` handoff from `ship-pr-state.sh`, first-detection issue filing or consumer print, dispatch/retry, atomic success clearing, terminal-failure comment/print, and the final continuation into Step 18b.
 

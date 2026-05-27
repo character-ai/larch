@@ -10,11 +10,12 @@ When `/implement` stalls (`STALL_TRACKING=true`), a new **recovery gate** runs a
 
 #### NEW: `skills/implement/scripts/stall-recovery-report.sh`
 
-Single helper with seven subcommands (closed enum):
+Single helper with nine subcommands (closed enum):
 
 - `classify` — flags: `--implement-tmpdir <path>` (required), `--in-memory-stall-tracking <true|false>` (when `ship-pr-state.sh` is absent), `--bail-reason <token>` (in-memory path), `--failure-detail-log <path>` (rejects non-absolute, non-canonical, non-regular, symlink, or outside-tmpdir paths), `--attempts-file <path>`. Reads `ship-pr-state.sh` when present, else falls back to in-memory + `session-env.sh`. Emits via `lib-quiet.sh` `emit_kv`: `FAILURE_CLASS` (closed enum: `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, `unrecoverable`), `FAILURE_SIGNATURE`, `RESUME_HINT` (closed enum: `step2-impl`, `step5-review`, `step8-shippr`, `none`; `step3-checks` and `step6-checks` are NOT resume hints — they classify as `contract-failure`), `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`. Sets `FAILURE_CLASS=same-cause-repeat` (override) when the current signature matches the most recent `attempt.<N>.signature` in `--attempts-file`.
 - `init-attempts` — atomically (mktemp + mv -f) creates the attempts file with `version=1`, `created_utc=<ISO8601>`, `attempt_count=0`. Idempotent.
 - `record-attempt` — atomic append of `attempt.<N>.{class,signature,resume_hint,outcome,utc}` keys; increments `attempt_count`.
+- `retry-policy` — emits `FAILURE_CLASS`, `MAX_ATTEMPTS`, and `RETRY_DELAY` from the normative markdown retry-cap table.
 - `is-larch-dev-clone` — emits `LARCH_DEV_CLONE=true|false` from the canonical marker (working-tree root contains `skills/implement/SKILL.md`); shares predicate with `scripts/check-stale-plugin.sh` via a new `scripts/lib-larch-dev-clone.sh`.
 - `bug-body` — composes public bug-report markdown from the `bug-body` surface allowlist (committed at `skills/implement/scripts/stall-recovery-report-allowlists.tsv`). Runs `scripts/redact-secrets.sh` as a mechanical backstop. Includes `<!-- larch-stall:signature=<hash> -->` for byte-exact dedup. Emits `BODY_FILE` + `DRY_RUN_DECISION`.
 - `bug-comment` — composes the terminal-failure comment from a SEPARATE `bug-comment` surface allowlist (includes retry-attempt table from `--attempts-file`).
@@ -181,7 +182,7 @@ Recovery gate is orchestrator-side prose (Step 18a in `SKILL.md` + `references/s
 The implementation is complete when ALL of the following are demonstrably true:
 
 1. **Step 18 restructure** — `skills/implement/SKILL.md` contains Step 18a (recovery gate) and Step 18b (existing teardown body) under a single Step 18 umbrella. Step 18a unconditionally runs at Step 18 entry, with the existing `STALL_TRACKING=true` bail-path bullets unchanged. `make lint` passes.
-2. **`stall-recovery-report.sh`** ships with all 8 subcommands (`classify`, `init-attempts`, `record-attempt`, `is-larch-dev-clone`, `bug-body`, `bug-comment`, `issue-input-file`, `lint`), each emitting the documented KV contract, with the closed-enum behavior described above.
+2. **`stall-recovery-report.sh`** ships with all 9 subcommands (`classify`, `init-attempts`, `record-attempt`, `retry-policy`, `is-larch-dev-clone`, `bug-body`, `bug-comment`, `issue-input-file`, `lint`), each emitting the documented KV contract, with the closed-enum behavior described above.
 3. **`stall-recovery-report.md`** ships as the single normative source for per-class retry caps (exact values listed above), with the four surface allowlists documented verbatim from the TSV.
 4. **`stall-recovery-report-allowlists.tsv`** ships with the four-surface schema; `lint` subcommand asserts code/doc/TSV parity.
 5. **`references/stall-recovery.md`** ships with the 9-sub-step procedure (resolve → init-attempts → classify → first-detection issue filing → dispatch → retry loop → atomic success path → terminal failure → continue to teardown) and the enumerated safety constraints.

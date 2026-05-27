@@ -49,6 +49,12 @@ grep -Fq 'then run **post-dispatch branch assertion** (external-implementer path
   || fail "SKILL.md must retain post-dispatch branch assertion contract (git-current-branch.sh + CURRENT_BRANCH_POST_DISPATCH)"
 grep -Fq 'FINAL_BAIL_REASON=main-branch-post-dispatch' "$SKILL_MD" \
   || fail "SKILL.md must document FINAL_BAIL_REASON=main-branch-post-dispatch (post-dispatch mismatch bail)"
+grep -Fq '### Step 18a — Stall recovery gate' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 18a stall recovery heading"
+grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
+  || fail "SKILL.md must retain Step 18b teardown heading"
+grep -Fq '⏩ 18a: stall recovery — no stall detected' "$SKILL_MD" \
+  || fail "SKILL.md must retain the Step 18a no-stall fast-path line"
 STALL_RECOVERY_MD="$REPO_ROOT/skills/implement/references/stall-recovery.md"
 grep -Fq 'BAIL_FAILURE_DETAIL_LOG' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md must route BAIL_FAILURE_DETAIL_LOG into Step 18a classification"

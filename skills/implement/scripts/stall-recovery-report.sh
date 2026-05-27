@@ -196,9 +196,13 @@ resume_hint_for() {
     esac
     case "$step" in
         3|6) printf 'none\n'; return 0 ;;
+        12d) printf 'none\n'; return 0 ;;
         2) printf 'step2-impl\n'; return 0 ;;
         5) printf 'step5-review\n'; return 0 ;;
-        8|9|10|11|12|13|14|15) printf 'step8-shippr\n'; return 0 ;;
+        8|8[[:alnum:]-]*|9|9[[:alnum:]-]*|10|10[[:alnum:]-]*|11|11[[:alnum:]-]*|12|12[[:alnum:]-]*|13|13[[:alnum:]-]*|14|14[[:alnum:]-]*|15|15[[:alnum:]-]*)
+            printf 'step8-shippr\n'
+            return 0
+            ;;
         "") ;;
         *) printf 'none\n'; return 0 ;;
     esac
@@ -243,11 +247,14 @@ safe_bail_reason_value() {
     case "${1:-}" in
         "") printf '\n'; return 0 ;;
     esac
-    if printf '%s\n' "$1" | LC_ALL=C grep -Eq '^[a-z0-9][a-z0-9._-]{0,63}$'; then
-        printf '%s\n' "$1"
-    else
-        printf 'redacted\n'
-    fi
+    case "$1" in
+        adopted-issue-closed|adopted-issue-is-pr|branch-create-failed|dirty-tree|first-fixer-non-health|orchestrator-envelope-invalid|qa-loop-exceeded|run-flags-persist-failed|tracking-init-failed|wrapper-validation-failure)
+            printf '%s\n' "$1"
+            ;;
+        *)
+            printf 'redacted\n'
+            ;;
+    esac
 }
 
 retry_cap_for() {
@@ -255,7 +262,7 @@ retry_cap_for() {
         transient-infra) printf '4\n' ;;
         test-failure|lint-failure) printf '8\n' ;;
         dispatch-failure) printf '3\n' ;;
-        same-cause-repeat) printf '1\n' ;;
+        same-cause-repeat) printf '2\n' ;;
         contract-failure|unrecoverable) printf '0\n' ;;
         *) printf '0\n' ;;
     esac
@@ -486,8 +493,10 @@ root_cause_template() {
 
 safe_step_value() {
     case "${1:-}" in
-        ""|*[!0-9]*) printf 'unknown\n' ;;
-        *) printf '%s\n' "$1" ;;
+        2|3|5|6|8|8[[:alnum:]-]*|9|9[[:alnum:]-]*|10|10[[:alnum:]-]*|11|11[[:alnum:]-]*|12|12[[:alnum:]-]*|13|13[[:alnum:]-]*|14|14[[:alnum:]-]*|15|15[[:alnum:]-]*)
+            printf '%s\n' "$1"
+            ;;
+        *) printf 'unknown\n' ;;
     esac
 }
 
@@ -734,18 +743,45 @@ doc_allowlist_lines() {
     ' "$CONTRACT_MD"
 }
 
+doc_retry_policy_lines() {
+    awk '
+        /^\| failure_class \| attempts \| delay \|$/ { in_table = 1; next }
+        in_table && /^\|---/ { next }
+        in_table && /^\| / {
+            gsub(/^[[:space:]]*\|[[:space:]]*/, "")
+            gsub(/[[:space:]]*\|[[:space:]]*$/, "")
+            n = split($0, f, /[[:space:]]*\|[[:space:]]*/)
+            if (n >= 3) {
+                gsub(/`/, "", f[3])
+                print f[1] "\t" f[2] "\t" f[3]
+            }
+            next
+        }
+        in_table { exit }
+    ' "$CONTRACT_MD"
+}
+
+code_retry_policy_lines() {
+    local class
+    for class in transient-infra test-failure lint-failure dispatch-failure same-cause-repeat contract-failure unrecoverable; do
+        printf '%s\t%s\t%s\n' "$class" "$(retry_cap_for "$class")" "$(retry_delay_for "$class")"
+    done
+}
+
 tsv_allowlist_lines() {
     awk 'NR > 1 { print $1 "\t" $2 }' "$ALLOWLIST_TSV"
 }
 
 cmd_lint() {
-    local tmpdir tsv code doc
+    local tmpdir tsv code doc retry_doc retry_code
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/larch-stall-recovery-lint.XXXXXX")
     LARCH_STALL_LINT_TMPDIR=$tmpdir
     trap 'rm -rf "${LARCH_STALL_LINT_TMPDIR:-}"' EXIT
     tsv="$tmpdir/tsv"
     code="$tmpdir/code"
     doc="$tmpdir/doc"
+    retry_doc="$tmpdir/retry-doc"
+    retry_code="$tmpdir/retry-code"
     tsv_allowlist_lines | sort >"$tsv"
     code_allowlist_lines | sort >"$code"
     doc_allowlist_lines | sort >"$doc"
@@ -757,6 +793,13 @@ cmd_lint() {
     if ! cmp -s "$tsv" "$doc"; then
         larch_err "stall-recovery-report.sh: allowlist drift between TSV and doc"
         diff -u "$tsv" "$doc" >&2 || true
+        exit 1
+    fi
+    doc_retry_policy_lines | sort >"$retry_doc"
+    code_retry_policy_lines | sort >"$retry_code"
+    if ! cmp -s "$retry_doc" "$retry_code"; then
+        larch_err "stall-recovery-report.sh: retry-policy drift between code and doc"
+        diff -u "$retry_doc" "$retry_code" >&2 || true
         exit 1
     fi
     emit_kv LINT_OK true

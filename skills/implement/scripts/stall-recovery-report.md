@@ -6,11 +6,12 @@
 
 - `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
   - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress a session-env stall.
+  - Precondition: callers that resolved "no stall detected" must skip `classify` entirely and continue to teardown; this helper is only for persisted or confirmed stalls.
   - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
-  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only; non-allowlisted bail reasons are redacted.
+  - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only; `BAIL_REASON` is limited to a closed allowlist of public tokens and every other value is redacted.
   - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
-  - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; symbolic/terminal `STALL_STEP` values also fail closed to `none` unless they are explicitly mapped.
+  - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; ship-pr stall steps map by the `8`-through-`15` prefix family, including suffixed tokens such as `10-detached-head` and `12d`.
   - `--attempts-file`, when provided, must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
 - `init-attempts --implement-tmpdir <path> --attempts-file <path>`
   - Atomically initializes the attempts file with `version=1`, `created_utc=<ISO8601>`, and `attempt_count=0`. Existing files are left unchanged.
@@ -82,17 +83,20 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 
 ## Retry Caps
 
-This table is the single normative retry-cap source. `skills/implement/references/stall-recovery.md` points here and does not duplicate values. The offline harness checks every class against `retry-policy`.
+This table is the single normative retry-cap source. `skills/implement/references/stall-recovery.md` points here and does not duplicate values. `stall-recovery-report.sh lint` fails closed if the table drifts from helper output, and the offline harness checks every class against `retry-policy`.
 
 | failure_class | attempts | delay |
 |---|---:|---|
-| transient-infra | 4 | `sleep-seconds.sh 5` between attempts |
+| transient-infra | 4 | `sleep-seconds.sh 5` |
 | test-failure | 8 | none |
 | lint-failure | 8 | none |
 | dispatch-failure | 3 | none |
-| same-cause-repeat | 1 | alternate strategy: reread `larch:plan`, restart failed step from scratch |
+| same-cause-repeat | 2 | none |
 | contract-failure | 0 | none |
 | unrecoverable | 0 | none |
+
+For `same-cause-repeat`, the absence of a delay is intentional: the orchestrator uses the one-time alternate strategy immediately instead of sleeping before redispatch.
+For `transient-infra`, the emitted retry delay means "sleep this command between attempts."
 
 ## Exit Codes
 
