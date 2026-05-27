@@ -2010,7 +2010,7 @@ _verify_failed_jobs_locally() {
         _RCC_RERUN_FN=_run_per_job_command_capture
         _RCC_SITE=ship-pr-ci-per-job
         _RCC_TARGET_CMD_ARGS_FILE="$args_file"
-        _RCC_MAX_ITER=${LARCH_CI_LOCAL_FIX_ITER:-6}
+        _RCC_MAX_ITER=$(normalize_rcc_max_iter "${LARCH_CI_LOCAL_FIX_ITER:-6}")
         verify_log="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-verify.log"
         if _run_per_job_command_once "$verify_log"; then
             phase_a_ok_jobs+=("$job_name")
@@ -2115,7 +2115,7 @@ run_per_job_local_fix_loop() {
         _RCC_RERUN_FN=_run_per_job_command_capture
         _RCC_SITE=ship-pr-ci-per-job
         _RCC_TARGET_CMD_ARGS_FILE="$args_file"
-        _RCC_MAX_ITER=${LARCH_CI_LOCAL_FIX_ITER:-6}
+        _RCC_MAX_ITER=$(normalize_rcc_max_iter "${LARCH_CI_LOCAL_FIX_ITER:-6}")
         run_captured_cmd_then_fix_loop
         case "$_RCC_STATUS" in
             ok)

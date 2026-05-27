@@ -37,6 +37,8 @@
 #   Case 5 — CURSOR_EMPTY_RESPONSE mapping: validator exit 5 under
 #     --validation-mode becomes STATUS=CURSOR_EMPTY_RESPONSE rather than the
 #     generic STATUS=NOT_SUBSTANTIVE.
+#   Case 5b — CURSOR_EMPTY_RESPONSE and CURSOR_DEGRADED_RESPONSE are classified
+#     before every STATUS=OK assignment, even without validation mode.
 #
 # Wired into Makefile via the test-collect-agent-bash32 target and the
 # test-harnesses aggregator; runs on every `make lint`.
@@ -211,6 +213,54 @@ if grep -A 4 -F "REVIEWER_FILE=$F5" "$TMPROOT/case5.stdout" | grep -q '^STATUS=C
     ok "case 5: validator exit 5 maps to STATUS=CURSOR_EMPTY_RESPONSE"
 else
     fail "case 5: validator exit 5 did not map to STATUS=CURSOR_EMPTY_RESPONSE"
+fi
+
+# --- Case 5b: always-on Cursor response-marker classification ---------------
+F5B_DEGRADED="$TMPROOT/cursor-degraded-first-pass-output.txt"
+printf 'CURSOR_DEGRADED_RESPONSE\n' > "$F5B_DEGRADED"
+printf '0\n' > "$F5B_DEGRADED.done"
+"$COLLECTOR" --timeout 30 "$F5B_DEGRADED" >"$TMPROOT/case5b-degraded.stdout" 2>"$TMPROOT/case5b-degraded.stderr"
+if grep -A 4 -F "REVIEWER_FILE=$F5B_DEGRADED" "$TMPROOT/case5b-degraded.stdout" | grep -q '^STATUS=CURSOR_EMPTY_RESPONSE$'; then
+    ok "case 5b first-pass degraded: sentinel maps without validation mode"
+else
+    fail "case 5b first-pass degraded: sentinel did not map without validation mode"
+fi
+
+F5B_EMPTY="$TMPROOT/cursor-empty-first-pass-output.txt"
+printf 'CURSOR_EMPTY_RESPONSE\n' > "$F5B_EMPTY"
+printf '0\n' > "$F5B_EMPTY.done"
+"$COLLECTOR" --timeout 30 "$F5B_EMPTY" >"$TMPROOT/case5b-empty.stdout" 2>"$TMPROOT/case5b-empty.stderr"
+if grep -A 4 -F "REVIEWER_FILE=$F5B_EMPTY" "$TMPROOT/case5b-empty.stdout" | grep -q '^STATUS=CURSOR_EMPTY_RESPONSE$'; then
+    ok "case 5b first-pass empty: sentinel maps without validation mode"
+else
+    fail "case 5b first-pass empty: sentinel did not map without validation mode"
+fi
+
+F5B_RETRY="$TMPROOT/cursor-retry-source-output.txt"
+: > "$F5B_RETRY"
+printf '0\n' > "$F5B_RETRY.done"
+F5B_BIN="$TMPROOT/case5b-bin"
+mkdir -p "$F5B_BIN"
+cat > "$F5B_BIN/cursor" <<'STUB'
+#!/usr/bin/env bash
+printf 'CURSOR_DEGRADED_RESPONSE\n'
+STUB
+chmod +x "$F5B_BIN/cursor"
+jq -cn --arg cursor "$F5B_BIN/cursor" --arg workspace "$REPO_ROOT" \
+    '[$cursor,"agent","--workspace",$workspace,"retry prompt"]' > "$TMPROOT/case5b-cmd.json"
+{
+    printf 'TOOL=cursor\n'
+    printf 'TIMEOUT=1\n'
+    printf 'CAPTURE_STDOUT_ONLY=true\n'
+    printf 'OUTPUT_FILE=%s\n' "$F5B_RETRY"
+    printf 'CMD_JSON=%s\n' "$(cat "$TMPROOT/case5b-cmd.json")"
+} > "$F5B_RETRY.meta"
+PATH="$F5B_BIN:$PATH" "$COLLECTOR" --timeout 30 "$F5B_RETRY" >"$TMPROOT/case5b-retry.stdout" 2>"$TMPROOT/case5b-retry.stderr"
+F5B_RETRY_OUTPUT="${F5B_RETRY%.txt}-retry.txt"
+if grep -A 4 -F "REVIEWER_FILE=$F5B_RETRY_OUTPUT" "$TMPROOT/case5b-retry.stdout" | grep -q '^STATUS=CURSOR_EMPTY_RESPONSE$'; then
+    ok "case 5b retry-success degraded: retry sentinel maps without validation mode"
+else
+    fail "case 5b retry-success degraded: retry sentinel did not map without validation mode"
 fi
 
 # --- Case 6: empty .diag falls back to status-derived failure reason --------

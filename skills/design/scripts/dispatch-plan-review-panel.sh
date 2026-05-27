@@ -148,6 +148,7 @@ _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
     --cursor-present "$CURSOR_PRESENT" \
     --mode description \
     --plan-file "$PLAN_FILE" \
+    --require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)' \
     --timeout "$TIMEOUT" \
     "${waterfall_extra[@]+"${waterfall_extra[@]}"}")
 

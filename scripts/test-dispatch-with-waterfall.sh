@@ -55,8 +55,11 @@ fi
 # Build the JSON envelope with jq so metacharacters in caller-supplied
 # CURSOR_STUB_RESULT_CONTENT are safely escaped. Default preserves the
 # prior `cursor ok` .result value byte-identically.
+# CURSOR_STUB_OUTPUT_TOKENS: override outputTokens (default 1); use >1000
+# to exercise launch-review.sh's CURSOR_DEGRADED_RESPONSE heuristic.
 jq -nc --arg r "${CURSOR_STUB_RESULT_CONTENT:-cursor ok}" \
-    '{result:$r,usage:{inputTokens:1,outputTokens:1,cacheReadTokens:0,cacheWriteTokens:0}}'
+    --argjson ot "${CURSOR_STUB_OUTPUT_TOKENS:-1}" \
+    '{result:$r,usage:{inputTokens:1,outputTokens:$ot,cacheReadTokens:0,cacheWriteTokens:0}}'
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
@@ -385,6 +388,74 @@ grep -Fq 'is not a valid ERE' "$TMPROOT/pattern-invalid.stderr" \
 [[ ! -s "$codex_invalid_log" ]] || { echo "FAIL: invalid ERE must not launch codex" >&2; exit 1; }
 [[ ! -s "$cursor_invalid_log" ]] || { echo "FAIL: invalid ERE must not launch cursor" >&2; exit 1; }
 
+# --- --require-first-line-pattern tests ---
+
+# Case D: first non-blank line match settles on the primary tool.
+manifest="$TMPROOT/slots-first-line-match.ndjson"
+printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/first-line-match-slot.txt" "$prompt" > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT=$'schema_version\tscope\tseverity\n1\tplan\timportant' \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-first-line-pattern '^[[:space:]]*schema_version' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "ALL_OUTPUT_TOOLS=cursor" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+
+# Case E: first-line miss falls through even when a matching TSV header appears later.
+manifest="$TMPROOT/slots-first-line-fallback.ndjson"
+printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/first-line-fallback-slot.txt" "$prompt" > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT=$'operational narration first\nschema_version\tscope\tseverity\n1\tplan\timportant' \
+    CODEX_STUB_RESULT_CONTENT=$'schema_version\tscope\tseverity\n1\tplan\timportant' \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-first-line-pattern '^[[:space:]]*schema_version' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "ALL_OUTPUT_TOOLS=codex" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+grep -Fxq 'operational narration first' "$TMPROOT/first-line-fallback-slot.txt" \
+    || { echo "FAIL: phase1 first-line miss fixture missing" >&2; exit 1; }
+grep -Fq 'schema_version' "$TMPROOT/first-line-fallback-slot-phase2.txt" \
+    || { echo "FAIL: phase2 first-line fallback did not produce schema header" >&2; exit 1; }
+
+# Case F: invalid first-line ERE exits 2 before any slot launches.
+manifest="$TMPROOT/slots-first-line-invalid.ndjson"
+printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/first-line-invalid-slot.txt" "$prompt" > "$manifest"
+codex_first_line_invalid_log="$TMPROOT/codex-first-line-invalid.log"
+cursor_first_line_invalid_log="$TMPROOT/cursor-first-line-invalid.log"
+: >"$codex_first_line_invalid_log"
+: >"$cursor_first_line_invalid_log"
+set +e
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_LOG="$codex_first_line_invalid_log" \
+    CURSOR_STUB_LOG="$cursor_first_line_invalid_log" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-first-line-pattern '[' \
+    --timeout 5 >/dev/null 2>"$TMPROOT/first-line-invalid.stderr"
+rc_first_line_pat=$?
+set -e
+[[ "$rc_first_line_pat" -eq 2 ]] || { echo "FAIL: invalid first-line ERE pattern exit=$rc_first_line_pat" >&2; exit 1; }
+grep -Fq -- '--require-first-line-pattern is not a valid ERE' "$TMPROOT/first-line-invalid.stderr" \
+    || { echo "FAIL: invalid first-line ERE stderr message" >&2; cat "$TMPROOT/first-line-invalid.stderr" >&2; exit 1; }
+[[ ! -s "$codex_first_line_invalid_log" ]] || { echo "FAIL: invalid first-line ERE must not launch codex" >&2; exit 1; }
+[[ ! -s "$cursor_first_line_invalid_log" ]] || { echo "FAIL: invalid first-line ERE must not launch cursor" >&2; exit 1; }
+
 # --- fallback_group dedup tests ---
 
 counter_value() {
@@ -573,5 +644,29 @@ set -e
 [[ "$rc_group" -ne 0 ]] || { echo "FAIL: invalid fallback_group should fail" >&2; exit 1; }
 grep -Fxq 'STEP_FAILED=MANIFEST_VALIDATION' <<<"$bad_group_out" || { echo "FAIL: missing manifest validation stdout" >&2; printf '%s\n' "$bad_group_out" >&2; exit 1; }
 grep -Fq 'fallback_group contains a tab' "$TMPROOT/bad-group.stderr" || { echo "FAIL: missing fallback_group validation stderr" >&2; cat "$TMPROOT/bad-group.stderr" >&2; exit 1; }
+
+# --- Degraded Cursor output integration: high-token narration triggers fallback ---
+# Cursor stub returns outputTokens=5000 with a short narration result (<500 bytes).
+# launch-review.sh writes CURSOR_DEGRADED_RESPONSE; collect-agent-results.sh maps
+# it to STATUS=CURSOR_EMPTY_RESPONSE; dispatch-with-waterfall.sh falls back to Claude.
+manifest_deg="$TMPROOT/slots-degraded.ndjson"
+printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/cursor-deg.txt" "$prompt" > "$manifest_deg"
+narration="Exploring the design skill...Creating the architectural review plan from codebase alignment."
+deg_out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_OUTPUT_TOKENS=5000 \
+    CURSOR_STUB_RESULT_CONTENT="$narration" \
+    CLAUDE_STUB_FAIL=false \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest_deg" \
+    --codex-present false \
+    --cursor-present true \
+    --mode description \
+    --timeout 30 2>/dev/null)
+grep -Fxq 'DISPATCH_OK=true' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected DISPATCH_OK=true after claude fallback" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+grep -Fxq 'ALL_OUTPUT_TOOLS=claude' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected claude final tool after fallback" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+grep -Fxq 'FALLBACK_COUNT=1' <<<"$deg_out" || { echo "FAIL: degraded-cursor: expected one Claude fallback" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
+grep -Fq 'claude ok' "$TMPROOT/cursor-deg-phase3.txt" \
+    || { echo "FAIL: degraded-cursor: Claude fallback output missing" >&2; printf '%s\n' "$deg_out" >&2; exit 1; }
 
 echo "PASS: test-dispatch-with-waterfall.sh"

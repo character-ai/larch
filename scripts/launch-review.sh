@@ -827,8 +827,8 @@ fi
 
 # Issue #1529: prepend a HARD-CONSTRAINTS read-only preamble to every Cursor
 # review prompt (specialist or generic, --prompt or --prompt-file or
-# --agent-file). The cursor argv below passes `--mode plan`
-# so the CLI itself disables the agent's write tools; the preamble is the
+# --agent-file). The cursor argv below passes `--mode ask`; both `plan` and
+# `ask` modes are read-only per Cursor docs, so the CLI itself disables the agent's write tools; the preamble is the
 # prompt-level reinforcement so the model also reasons about its read-only
 # role. The launcher's existing dirty-tree-sidecar machinery
 # (snapshot-untracked.sh untracked-files baseline + _write_dirty_tree_sidecar
@@ -840,7 +840,7 @@ fi
 # (the user/specialist-rendered body BEFORE prepending the preamble) so that
 # on retry the launcher reads the body, prepends the preamble exactly once,
 # and produces an identical outgoing PROMPT — no preamble stacking.
-CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode plan to the cursor CLI. Any post-run mutation will be detected by the dirty-tree sidecar."
+CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode ask to the cursor CLI. Any post-run mutation will be detected by the dirty-tree sidecar."
 CURSOR_REVIEW_HARDENING_PREAMBLE=$(cat <<EOF
 HARD CONSTRAINTS — your role is read-only review. Do not create, edit, delete, or overwrite files, and do not run mutating shell or git commands.
 ${CURSOR_SANDBOX_ENFORCEMENT_LINE}
@@ -921,7 +921,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             --timeout "$TIMEOUT" \
             --capture-stdout-only \
             -- \
-            cursor agent -p --trust --mode plan \
+            cursor agent -p --trust --mode ask \
             --output-format json \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
@@ -1020,7 +1020,24 @@ if [[ -s "$OUTPUT" ]]; then
     elif command -v jq >/dev/null 2>&1 && [[ -s "${OUTPUT}.json" ]]; then
         EXTRACT_TMP="${OUTPUT}.extract.$$"
         if jq -re '.result // ""' "${OUTPUT}.json" > "$EXTRACT_TMP" 2>/dev/null && [[ -s "$EXTRACT_TMP" ]]; then
-            mv "$EXTRACT_TMP" "$OUTPUT"
+            RESULT_BYTES=$(wc -c < "$EXTRACT_TMP" 2>/dev/null | tr -d ' ')
+            OUT_TOKENS=$(jq -r '.usage.outputTokens // 0' "${OUTPUT}.json" 2>/dev/null || echo 0)
+            if [[ "$OUT_TOKENS" =~ ^[0-9]+$ && "$RESULT_BYTES" =~ ^[0-9]+$ \
+                  && "$OUT_TOKENS" -gt 1000 && "$RESULT_BYTES" -lt 500 ]]; then
+                _is_legit_short=false
+                if [[ -x "$SCRIPT_DIR/validate-research-output.sh" ]] \
+                    && "$SCRIPT_DIR/validate-research-output.sh" --validation-mode "$EXTRACT_TMP" >/dev/null 2>&1; then
+                    _is_legit_short=true
+                fi
+                if [[ "$_is_legit_short" == "true" ]]; then
+                    mv -f "$EXTRACT_TMP" "$OUTPUT"
+                else
+                    printf 'CURSOR_DEGRADED_RESPONSE\n' > "$OUTPUT"
+                    rm -f "$EXTRACT_TMP"
+                fi
+            else
+                mv -f "$EXTRACT_TMP" "$OUTPUT"
+            fi
         else
             rm -f "$EXTRACT_TMP"
             # jq missing, JSON malformed, or empty .result — leave $OUTPUT as

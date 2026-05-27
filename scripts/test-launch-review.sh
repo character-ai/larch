@@ -1418,7 +1418,10 @@ if [[ "${CURSOR_STUB_RESULT+x}" == "x" ]]; then
 else
     result="POST-PROCESSED OK"
 fi
-printf '{"result":"%s","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}\n' "$result"
+out_tokens="${CURSOR_STUB_OUTPUT_TOKENS:-2}"
+case "$out_tokens" in ''|*[!0-9]*) out_tokens=2 ;; esac
+jq -nc --arg r "$result" --argjson out "$out_tokens" \
+    '{result:$r,usage:{inputTokens:1,outputTokens:$out,cacheReadTokens:3,cacheWriteTokens:4}}'
 STUB_CURSOR
 chmod +x "$STUB_BIN/cursor"
 
@@ -1471,6 +1474,54 @@ OUT_B2="$TMPDIR/cursor-b2.txt"
 PATH="$STUB_BIN:$PATH" CURSOR_STUB_RESULT="" \
     "$LAUNCHER" --output "$OUT_B2" --timeout 5 --prompt "empty result" >/dev/null 2>"$TMPDIR/case-b2.stderr"
 assert_equals "case B2 empty Cursor result marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_B2")"
+
+# Case B3: Cursor JSON envelopes with high outputTokens but tiny prose .result
+# are treated as degraded unless they match legitimate short sentinels.
+OUT_B3="$TMPDIR/cursor-b3.txt"
+B3_PROSE_300="$(awk 'BEGIN { for (i = 0; i < 300; i++) printf "a" }')"
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_PROSE_300" \
+    "$LAUNCHER" --output "$OUT_B3" --timeout 5 --prompt "degraded result" >/dev/null 2>"$TMPDIR/case-b3.stderr"
+assert_equals "case B3 degraded Cursor result marker" "CURSOR_DEGRADED_RESPONSE" "$(cat "$OUT_B3")"
+
+OUT_B3_BYTES="$TMPDIR/cursor-b3-bytes.txt"
+B3_PROSE_600="$(awk 'BEGIN { for (i = 0; i < 600; i++) printf "b" }')"
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_PROSE_600" \
+    "$LAUNCHER" --output "$OUT_B3_BYTES" --timeout 5 --prompt "large result" >/dev/null 2>"$TMPDIR/case-b3-bytes.stderr"
+assert_equals "case B3 above-bytes control preserves result" "$B3_PROSE_600" "$(cat "$OUT_B3_BYTES")"
+
+OUT_B3_TOKENS="$TMPDIR/cursor-b3-tokens.txt"
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=500 CURSOR_STUB_RESULT="$B3_PROSE_300" \
+    "$LAUNCHER" --output "$OUT_B3_TOKENS" --timeout 5 --prompt "low tokens" >/dev/null 2>"$TMPDIR/case-b3-tokens.stderr"
+assert_equals "case B3 low-tokens control preserves result" "$B3_PROSE_300" "$(cat "$OUT_B3_TOKENS")"
+
+OUT_B3_NO_ISSUES="$TMPDIR/cursor-b3-no-issues.txt"
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="NO_ISSUES_FOUND" \
+    "$LAUNCHER" --output "$OUT_B3_NO_ISSUES" --timeout 5 --prompt "no issues" >/dev/null 2>"$TMPDIR/case-b3-no-issues.stderr"
+assert_equals "case B3 NO_ISSUES_FOUND whitelist preserves result" "NO_ISSUES_FOUND" "$(cat "$OUT_B3_NO_ISSUES")"
+
+OUT_B3_JSON="$TMPDIR/cursor-b3-json.txt"
+B3_JSON='{"no_issues_found": true}'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_JSON" \
+    "$LAUNCHER" --output "$OUT_B3_JSON" --timeout 5 --prompt "json sentinel" >/dev/null 2>"$TMPDIR/case-b3-json.stderr"
+assert_equals "case B3 JSON sentinel whitelist preserves result" "$B3_JSON" "$(cat "$OUT_B3_JSON")"
+
+OUT_B3_JSON_TRAILING="$TMPDIR/cursor-b3-json-trailing.txt"
+B3_JSON_TRAILING=$'{\n  "no_issues_found": true\n}\noperator note'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_JSON_TRAILING" \
+    "$LAUNCHER" --output "$OUT_B3_JSON_TRAILING" --timeout 5 --prompt "json sentinel trailing note" >/dev/null 2>"$TMPDIR/case-b3-json-trailing.stderr"
+assert_equals "case B3 pretty JSON sentinel with trailing note preserves result" "$B3_JSON_TRAILING" "$(cat "$OUT_B3_JSON_TRAILING")"
+
+OUT_B3_TSV="$TMPDIR/cursor-b3-tsv.txt"
+B3_TSV=$'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tin_scope\timportant\tarchitecture\tfile.sh:1\tshort\tbreak\tfix'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_TSV" \
+    "$LAUNCHER" --output "$OUT_B3_TSV" --timeout 5 --prompt "tsv sentinel" >/dev/null 2>"$TMPDIR/case-b3-tsv.stderr"
+assert_equals "case B3 TSV header whitelist preserves result" "$B3_TSV" "$(cat "$OUT_B3_TSV")"
+
+OUT_B3_FALSE_JSON="$TMPDIR/cursor-b3-false-json.txt"
+B3_FALSE_JSON='narration only mentioning "no_issues_found": true inline'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_FALSE_JSON" \
+    "$LAUNCHER" --output "$OUT_B3_FALSE_JSON" --timeout 5 --prompt "false json mention" >/dev/null 2>"$TMPDIR/case-b3-false-json.stderr"
+assert_equals "case B3 prose mentioning no_issues_found still degrades" "CURSOR_DEGRADED_RESPONSE" "$(cat "$OUT_B3_FALSE_JSON")"
 
 # Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
 # Issue #1529: the wrapper output (last argv to cursor) has the form
@@ -1824,18 +1875,18 @@ else
     fail "case AK1 CMD_JSON in .meta must contain the literal key (no redaction)"
 fi
 
-# Issue #1529: Cursor review argv carries the read-only flag set --mode plan,
+# Issue #1529: Cursor review argv carries the read-only flag set --mode ask,
 # --trust is preserved, --force and --sandbox enabled are gone (#1583).
-if grep -Fxq -- '--mode' "$ARGV_LOG_AK1" && grep -Fxq -- 'plan' "$ARGV_LOG_AK1"; then
+if grep -Fxq -- '--mode' "$ARGV_LOG_AK1" && grep -Fxq -- 'ask' "$ARGV_LOG_AK1"; then
     AK1_MODE_LINE=$(grep -Fxn -- '--mode' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
-    AK1_PLAN_LINE=$(grep -Fxn -- 'plan' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
-    if [[ -n "$AK1_MODE_LINE" && -n "$AK1_PLAN_LINE" ]] && (( AK1_PLAN_LINE == AK1_MODE_LINE + 1 )); then
+    AK1_ASK_LINE=$(grep -Fxn -- 'ask' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
+    if [[ -n "$AK1_MODE_LINE" && -n "$AK1_ASK_LINE" ]] && (( AK1_ASK_LINE == AK1_MODE_LINE + 1 )); then
         pass
     else
-        fail "issue #1529 --mode and plan must be adjacent argv tokens; mode_line=$AK1_MODE_LINE plan_line=$AK1_PLAN_LINE"
+        fail "issue #1529 --mode and ask must be adjacent argv tokens; mode_line=$AK1_MODE_LINE ask_line=$AK1_ASK_LINE"
     fi
 else
-    fail "issue #1529 Cursor argv must include --mode plan (read-only)"
+    fail "issue #1529 Cursor argv must include --mode ask (read-only)"
 fi
 if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1"; then
     fail "issue #1583 Cursor argv must NOT include --sandbox (sandbox never passed by default)"
@@ -1884,10 +1935,10 @@ if grep -Fq -- 'Do not create, edit, delete, or overwrite files, and do not run 
 else
     fail "cursor argv preamble must carry compact explicit mutation prohibition"
 fi
-if grep -Fq -- 'The launcher passes --mode plan to the cursor CLI' "$ARGV_LOG_AK1"; then
+if grep -Fq -- 'The launcher passes --mode ask to the cursor CLI' "$ARGV_LOG_AK1"; then
     pass
 else
-    fail "issue #1583 preamble in argv must reference --mode plan enforcement"
+    fail "issue #1583 preamble in argv must reference --mode ask enforcement"
 fi
 if grep -Fq -- 'HARD CONSTRAINTS' "${OUT_AK1}.prompt"; then
     fail "issue #1529 OUTPUT.prompt sidecar must NOT contain the preamble (retry-replay safety)"
@@ -1954,10 +2005,10 @@ PATH="$STUB_BIN:$PATH" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$LAUNCHER" --output "$OUT_AK1B" --timeout 5 --prompt "case ak1b" >/dev/null 2>"$TMPDIR/case-ak1b.stderr"
 
-if grep -Fxq -- '--mode' "$ARGV_LOG_AK1B" && grep -Fxq -- 'plan' "$ARGV_LOG_AK1B"; then
+if grep -Fxq -- '--mode' "$ARGV_LOG_AK1B" && grep -Fxq -- 'ask' "$ARGV_LOG_AK1B"; then
     pass
 else
-    fail "issue #1583 Cursor argv must still include --mode plan even when LARCH_CURSOR_SANDBOX=disabled"
+    fail "issue #1583 Cursor argv must still include --mode ask even when LARCH_CURSOR_SANDBOX=disabled"
 fi
 if grep -Fxq -- '--sandbox' "$ARGV_LOG_AK1B"; then
     fail "issue #1583 Cursor argv must NOT include --sandbox even when LARCH_CURSOR_SANDBOX=disabled"

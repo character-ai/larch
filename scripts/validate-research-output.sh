@@ -6,8 +6,9 @@
 # one-line diagnostic on stdout. The intended consumer is
 # `scripts/collect-agent-results.sh --substantive-validation` and/or
 # `--structured-reviewer-validation`, which translates most non-zero exits into
-# a `STATUS=NOT_SUBSTANTIVE` entry; validation-mode exit 5
-# maps to `STATUS=CURSOR_EMPTY_RESPONSE`.
+# a `STATUS=NOT_SUBSTANTIVE` entry; validation-mode exit 5 maps
+# `CURSOR_EMPTY_RESPONSE` and `CURSOR_DEGRADED_RESPONSE` literals to
+# `STATUS=CURSOR_EMPTY_RESPONSE`.
 # Phase 3 of umbrella issue #413 (closes #416, #447, #473).
 #
 # Substantive = ALL of:
@@ -70,8 +71,8 @@
 #     decoded so pretty-printed sentinels with trailing operational notes still match;
 #     trailing content after a recognized sentinel is accepted and preserved,
 #   - maps a file whose entire trimmed content equals `CURSOR_EMPTY_RESPONSE`
-#     to exit 5 with a diagnostic so the collector can surface
-#     STATUS=CURSOR_EMPTY_RESPONSE,
+#     or `CURSOR_DEGRADED_RESPONSE` to exit 5 with a diagnostic so the
+#     collector can surface STATUS=CURSOR_EMPTY_RESPONSE,
 #   - lowers the default --min-words floor to 30 (a single concise finding
 #     comfortably exceeds this, but a junk one-liner does not),
 #   - keeps the citation requirement unchanged (validation findings must
@@ -118,15 +119,16 @@
 #   2 — body too thin (word count below --min-words after stripping fenced code)
 #   3 — no provenance marker found (only when --require-citations is on)
 #   4 — file missing or not readable
-#   5 — validation mode: CURSOR_EMPTY_RESPONSE marker; structured mode:
-#       structured records not found after repair
+#   5 — validation mode: CURSOR_EMPTY_RESPONSE or CURSOR_DEGRADED_RESPONSE
+#       marker; structured mode: structured records not found after repair
 #
 # Diagnostic format:
 #   Exit 2: `body too thin: <count>/<min> words after stripping fenced code`
 #   Exit 3: `no provenance marker found`
 #   Exit 4: `file missing or not readable: <path>`
 #   Exit 5: validation mode emits `STATUS=CURSOR_EMPTY_RESPONSE` plus
-#           `FAILURE_REASON=...`; structured mode emits
+#           `FAILURE_REASON=...` for either Cursor response marker;
+#           structured mode emits
 #           `structured records not found after repair`
 #
 # Portability: uses `awk` (POSIX) and `grep -E` (BSD + GNU). No `\d`, no
@@ -408,9 +410,9 @@ fi
 # --- 0. Validation-mode short-circuits: accept no-findings sentinels as
 # substantive without applying word-count or citation checks, and distinguish
 # Cursor's empty .result response marker from generic thin content.
-#   - CURSOR_EMPTY_RESPONSE: entire trimmed body (whitespace-only lines removed
-#     top/bottom; tabs and trailing whitespace stripped per trimmed_nonblank_content)
-#     must equal the marker exactly.
+#   - CURSOR_EMPTY_RESPONSE / CURSOR_DEGRADED_RESPONSE: entire trimmed body
+#     (whitespace-only lines removed top/bottom; tabs and trailing whitespace
+#     stripped per trimmed_nonblank_content) must equal one marker exactly.
 #   - NO_ISSUES_FOUND and the canonical JSON no-findings object: the first
 #     non-empty line must be the legacy literal or begin JSON that decodes (via
 #     `jq` on the first line, then `jq` on the full trimmed body, then first-value
@@ -420,9 +422,9 @@ fi
 #     short-circuit and falls through to normal validation.
 if [[ "$VALIDATION_MODE" == "true" ]]; then
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
-    if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" ]]; then
+    if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" || "$TRIMMED" == "CURSOR_DEGRADED_RESPONSE" ]]; then
         emit "STATUS=CURSOR_EMPTY_RESPONSE"
-        emit "FAILURE_REASON=Cursor returned a JSON envelope with empty .result field — likely transient backend issue. Fallback engaged."
+        emit "FAILURE_REASON=Cursor returned an empty or degraded JSON .result field — likely transient backend issue. Fallback engaged."
         exit 5
     fi
     FIRST_LINE=$(printf '%s\n' "$TRIMMED" | awk 'NF { print; exit }')
@@ -432,10 +434,10 @@ if [[ "$VALIDATION_MODE" == "true" ]]; then
     if json_no_issues_found_short_circuit "$TRIMMED" "$FIRST_LINE"; then
         exit 0
     fi
-    # Inline-TSV short-circuit: when cursor runs in --mode plan it cannot write
-    # the TSV sidecar and inlines TSV records in its text response instead. Accept
-    # a response containing valid inline TSV (even inside a code fence) as
-    # substantive without applying the word-count or citation gates.
+    # Inline-TSV short-circuit: Cursor may be unable to write the TSV sidecar
+    # and inline TSV records in its text response instead. Accept a response
+    # containing valid inline TSV (even inside a code fence) as substantive
+    # without applying the word-count or citation gates.
     _tsv_tmp=$(mktemp "${TMPDIR:-/tmp}/validate-tsv-tmp.XXXXXX") || exit 1
     if validate_structured_tsv "$INPUT" "$_tsv_tmp" 2>/dev/null; then
         rm -f "$_tsv_tmp"
