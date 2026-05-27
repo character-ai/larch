@@ -331,9 +331,16 @@ extract_wait_ident() {
     return 1
 }
 
-line_mentions_monitor_rc_word() {
+line_mentions_monitor_rc_runtime() {
     local line="$1"
-    printf '%s\n' "$line" | LC_ALL=C grep -Eq '(^|[^A-Za-z0-9_])monitor_rc([^A-Za-z0-9_]|$)'
+    # shellcheck disable=SC2016 # Regex matches literal shell variable syntax.
+    if printf '%s\n' "$line" | LC_ALL=C grep -Eq '\$\{monitor_rc([}:][^}]*)?\}|\$monitor_rc([^A-Za-z0-9_]|$)'; then
+        return 0
+    fi
+    if [[ "$line" == *"(("* ]] && printf '%s\n' "$line" | LC_ALL=C grep -Eq '(^|[^A-Za-z0-9_])monitor_rc([^A-Za-z0-9_]|$)'; then
+        return 0
+    fi
+    return 1
 }
 
 strip_line_trailing_shell_comment() {
@@ -344,7 +351,7 @@ strip_line_trailing_shell_comment() {
 line_starts_monitor_rc_conditional() {
     local line="$1"
     line="$(strip_line_trailing_shell_comment "$line")"
-    [[ "$line" =~ ^[[:space:]]*(if|case)([[:space:]]|$) ]]
+    [[ "$line" =~ ^[[:space:]]*(if|elif|while|until|case)([[:space:]]|$) ]]
 }
 
 conditional_opener_mentions_monitor_rc() {
@@ -352,51 +359,36 @@ conditional_opener_mentions_monitor_rc() {
     shift
     local -a lines=("$@")
     local n=${#lines[@]}
-    local start_line opener line i
+    local start_line opener line i terminator
 
     start_line="$(strip_line_trailing_shell_comment "${lines[$start_idx]}")"
-    if [[ "$start_line" =~ ^[[:space:]]*if([[:space:]]|$) ]]; then
-        opener="$start_line"
-        if printf '%s\n' "$opener" | LC_ALL=C grep -Eq '(^|[^A-Za-z0-9_])then([^A-Za-z0-9_]|$)'; then
-            line_mentions_monitor_rc_word "$opener"
-            return $?
-        fi
-        for ((i = start_idx + 1; i < n; i++)); do
-            if line_is_heredoc_body_idx "$i" "${lines[@]}"; then
-                continue
-            fi
-            line="$(strip_line_trailing_shell_comment "${lines[$i]}")"
-            [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-            opener="${opener} ${line}"
-            if printf '%s\n' "$line" | LC_ALL=C grep -Eq '(^|[^A-Za-z0-9_])then([^A-Za-z0-9_]|$)'; then
-                line_mentions_monitor_rc_word "$opener"
-                return $?
-            fi
-        done
+    if [[ "$start_line" =~ ^[[:space:]]*(if|elif)([[:space:]]|$) ]]; then
+        terminator='(^|[^A-Za-z0-9_])then([^A-Za-z0-9_]|$)'
+    elif [[ "$start_line" =~ ^[[:space:]]*(while|until)([[:space:]]|$) ]]; then
+        terminator='(^|[^A-Za-z0-9_])do([^A-Za-z0-9_]|$)'
+    elif [[ "$start_line" =~ ^[[:space:]]*case([[:space:]]|$) ]]; then
+        terminator='(^|[^A-Za-z0-9_])in([^A-Za-z0-9_]|$)'
+    else
         return 1
     fi
 
-    if [[ "$start_line" =~ ^[[:space:]]*case([[:space:]]|$) ]]; then
-        opener="$start_line"
-        if printf '%s\n' "$opener" | LC_ALL=C grep -Eq '(^|[^A-Za-z0-9_])in([^A-Za-z0-9_]|$)'; then
-            line_mentions_monitor_rc_word "$opener"
+    opener="$start_line"
+    if printf '%s\n' "$opener" | LC_ALL=C grep -Eq "$terminator"; then
+        line_mentions_monitor_rc_runtime "$opener"
+        return $?
+    fi
+    for ((i = start_idx + 1; i < n; i++)); do
+        if line_is_heredoc_body_idx "$i" "${lines[@]}"; then
+            continue
+        fi
+        line="$(strip_line_trailing_shell_comment "${lines[$i]}")"
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        opener="${opener} ${line}"
+        if printf '%s\n' "$line" | LC_ALL=C grep -Eq "$terminator"; then
+            line_mentions_monitor_rc_runtime "$opener"
             return $?
         fi
-        for ((i = start_idx + 1; i < n; i++)); do
-            if line_is_heredoc_body_idx "$i" "${lines[@]}"; then
-                continue
-            fi
-            line="$(strip_line_trailing_shell_comment "${lines[$i]}")"
-            [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-            opener="${opener} ${line}"
-            if printf '%s\n' "$line" | LC_ALL=C grep -Eq '(^|[^A-Za-z0-9_])in([^A-Za-z0-9_]|$)'; then
-                line_mentions_monitor_rc_word "$opener"
-                return $?
-            fi
-        done
-        return 1
-    fi
-
+    done
     return 1
 }
 
@@ -466,14 +458,10 @@ fence_has_monitor_rc_conditional_after() {
         line="${lines[$i]}"
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        if extract_wait_ident "$line" >/dev/null 2>&1; then
-            return 1
-        fi
         if ! line_starts_monitor_rc_conditional "$line"; then
             continue
         fi
         conditional_opener_mentions_monitor_rc "$i" "${lines[@]}" && return 0
-        return 1
     done
     return 1
 }

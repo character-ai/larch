@@ -1582,6 +1582,89 @@ assert_stderr_lacks "monitor_rc init too far above monitor" "$stderr_file" \
     'missing "|| monitor_rc=$?"' \
     'missing conditional branching on monitor_rc'
 
+# 64 — later valid elif monitor_rc branch is accepted after an unrelated if.
+reset_tree
+write_md skills/monitor-rc-elif-later/SKILL.md <<'EOF'
+# Case 64
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if true; then
+    :
+elif [ "$monitor_rc" -eq 0 ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "later elif monitor_rc branch" "$stderr_file" "$rc"
+
+# 65 — case "$monitor_rc" in is accepted.
+reset_tree
+write_md skills/monitor-rc-case/SKILL.md <<'EOF'
+# Case 65
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+case "$monitor_rc" in
+    (0)
+        wait "$SHIP_PR_PID"
+        ;;
+    (*)
+        wait "$SHIP_PR_PID" 2>/dev/null || true
+        ;;
+esac
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "case monitor_rc branch" "$stderr_file" "$rc"
+
+# 66 — quoted literal monitor_rc text does not satisfy the branch check.
+reset_tree
+write_md skills/monitor-rc-literal-text/SKILL.md <<'EOF'
+# Case 66
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=0
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "monitor_rc" = "monitor_rc" ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "quoted literal monitor_rc rejected" "$stderr_file" "$rc" 'missing conditional branching on monitor_rc'
+
 # 16 — Family A: minimum run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {
     local path="$1" expected="$2" label="$3"
