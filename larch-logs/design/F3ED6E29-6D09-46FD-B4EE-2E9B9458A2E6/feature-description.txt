@@ -1,0 +1,3 @@
+Brainstorm how to add a step to /design to simplify design plan via Strunk & White approach, and make it readable to a mild dyslexic
+
+

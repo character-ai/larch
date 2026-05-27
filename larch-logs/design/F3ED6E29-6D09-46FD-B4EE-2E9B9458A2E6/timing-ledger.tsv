@@ -1,0 +1,32 @@
+v1	mark	1779901626	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1779902041	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779902436	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	vendor	1779902487	implement	-	cursor	cursor-brainstorm	1779902436	1779902487	51	cursor-brainstorm-output.txt	0	complete
+v1	vendor	1779902510	implement	-	codex	codex-brainstorm	1779902439	1779902510	71	codex-brainstorm-output.txt	0	complete
+v1	mark	1779903222	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1779903231	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779903403	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779903741	implement	-	codex	codex-phase1-codex-plan-edge	1779903630	1779903741	111	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779903766	implement	-	codex	codex-phase1-dyn-codex-plan-token-render-pipeline	1779903630	1779903765	135	codex-primary-plan-dyn-token-render-pipeline-output.txt	0	complete
+v1	vendor	1779903772	implement	-	codex	codex-phase1-codex-plan-innovation	1779903630	1779903772	142	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779903772	implement	-	codex	codex-phase1-codex-plan-arch	1779903630	1779903772	142	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779903773	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779903630	1779903773	143	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779903793	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779903630	1779903793	163	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779903795	implement	-	codex	codex-phase1-codex-plan-requirements	1779903630	1779903795	165	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779903805	implement	-	cursor	cursor-phase1-dyn-cursor-plan-amendment-coverage	1779903630	1779903805	175	cursor-plan-dyn-amendment-coverage-output.txt	0	complete
+v1	vendor	1779903806	implement	-	codex	codex-phase1-dyn-codex-plan-amendment-coverage	1779903630	1779903806	176	codex-primary-plan-dyn-amendment-coverage-output.txt	0	complete
+v1	vendor	1779903811	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779903630	1779903811	181	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779903814	implement	-	codex	codex-phase1-dyn-codex-plan-lint-manifest-soundness	1779903630	1779903814	184	codex-primary-plan-dyn-lint-manifest-soundness-output.txt	0	complete
+v1	vendor	1779903827	implement	-	cursor	cursor-phase1-dyn-cursor-plan-token-render-pipeline	1779903630	1779903827	197	cursor-plan-dyn-token-render-pipeline-output.txt	0	complete
+v1	vendor	1779903832	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779903630	1779903832	202	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779903834	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779903630	1779903834	204	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779903843	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779903630	1779903843	213	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779903846	implement	-	cursor	cursor-phase1-dyn-cursor-plan-lint-manifest-soundness	1779903630	1779903846	216	cursor-plan-dyn-lint-manifest-soundness-output.txt	0	complete
+v1	vendor	1779903943	implement	-	codex	codex-phase1-aggregator	1779903852	1779903943	91	aggregator-output.txt	0	complete
+v1	vendor	1779904191	implement	-	cursor	cursor-phase1-voter-3	1779904110	1779904191	81	cursor-vote-output.txt	0	complete
+v1	vendor	1779904201	implement	-	codex	codex-phase1-voter-2	1779904110	1779904200	90	codex-vote-output.txt	0	complete
+v1	mark	1779904266	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779904481	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779904523	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779904540	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779904762	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
