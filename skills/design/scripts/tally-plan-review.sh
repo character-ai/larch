@@ -23,6 +23,24 @@ VOTER_FILES=()
 VOTER_SPECS=()
 SEEN_VOTER=false
 SEEN_VOTER_FILES=false
+_tally_status_emitted=false
+WORKDIR=""
+
+cleanup() {
+    local rc=$?
+    set +e
+    if [[ -n "${WORKDIR:-}" ]]; then
+        rm -rf "$WORKDIR" || true
+    fi
+    if [[ "$_tally_status_emitted" == false && "$rc" -ne 0 ]]; then
+        if [[ -n "${tally_file:-}" && -s "${tally_file:-}" ]]; then
+            emit_kv VOTING_TALLY_FILE "$tally_file"
+        fi
+        emit_kv TALLY_PLAN_REVIEW_STATUS tally-error
+    fi
+    return "$rc"
+}
+trap cleanup EXIT
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -76,11 +94,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ "$SEEN_VOTER" == true && "$SEEN_VOTER_FILES" == true ]]; then
-    larch_err "error: --voter and --voter-files are mutually exclusive"
-    exit 2
-fi
-
 if [[ -z "$DESIGN_TMPDIR" || -z "$BALLOT_FILE" ]]; then
     larch_err "tally-plan-review.sh: --design-tmpdir and --ballot-file are required"
     usage
@@ -105,11 +118,32 @@ write_findings_classification_stub() {
     emit_findings_classification_header > "$FINDINGS_CLASSIFICATION_OUT"
 }
 
-if [[ ! -r "$BALLOT_FILE" ]]; then
-    larch_err "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE"
-    write_tally_stub "**⚠ Tally aborted: ballot file unreadable: $BALLOT_FILE; no votes tallied.**"
-    write_findings_classification_stub
+tally_error_exit() {
+    local stderr_message="$1" stub_message="${2:-}" write_classification_stub="${3:-true}"
+    larch_err "$stderr_message"
+    if [[ -n "$stub_message" ]]; then
+        write_tally_stub "$stub_message"
+    fi
+    if [[ "$write_classification_stub" == true ]]; then
+        write_findings_classification_stub
+    fi
+    _tally_status_emitted=true
+    [[ -s "$tally_file" ]] && emit_kv VOTING_TALLY_FILE "$tally_file"
+    emit_kv TALLY_PLAN_REVIEW_STATUS tally-error
     exit 2
+}
+
+if [[ "$SEEN_VOTER" == true && "$SEEN_VOTER_FILES" == true ]]; then
+    tally_error_exit \
+        "error: --voter and --voter-files are mutually exclusive" \
+        "**⚠ Tally aborted: --voter and --voter-files are mutually exclusive; no votes tallied.**" \
+        false
+fi
+
+if [[ ! -r "$BALLOT_FILE" ]]; then
+    tally_error_exit \
+        "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE" \
+        "**⚠ Tally aborted: ballot file unreadable: $BALLOT_FILE; no votes tallied.**"
 fi
 
 declare -a SLOT_FILE SLOT_TOOL
@@ -194,14 +228,14 @@ assign_voter() {
         pos=$(position_for_voter "$tool" "$path")
     fi
     if [[ "$pos" == "0" ]]; then
-        larch_err "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters"
-        write_findings_classification_stub
-        exit 2
+        tally_error_exit \
+            "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters" \
+            "**⚠ Tally aborted: too many voters; at most three non-MainAgent voters allowed.**"
     fi
     if [[ -n "${SLOT_FILE[$pos]}" ]]; then
-        larch_err "error: duplicate voter position $pos"
-        write_findings_classification_stub
-        exit 2
+        tally_error_exit \
+            "error: duplicate voter position $pos" \
+            "**⚠ Tally aborted: duplicate voter position $pos.**"
     fi
     SLOT_FILE[pos]="$path"
     SLOT_TOOL[pos]="$tool"
@@ -240,8 +274,10 @@ tally_votes_for_id() {
 if [[ "$SEEN_VOTER" == true ]]; then
     for spec in "${VOTER_SPECS[@]}"; do
         if [[ "$spec" != *:* ]]; then
-            larch_err "error: invalid voter slot: $spec (must be 1|2|3|Claude|Codex|Cursor|MainAgent)"
-            exit 2
+            tally_error_exit \
+                "error: invalid voter slot: $spec (must be 1|2|3|Claude|Codex|Cursor|MainAgent)" \
+                "**⚠ Tally aborted: invalid voter slot: $spec; no votes tallied.**" \
+                false
         fi
         slot=""
         tool=""
@@ -256,8 +292,10 @@ if [[ "$SEEN_VOTER" == true ]]; then
             tool="$(canonical_tool_for_slot "$slot")"
         fi
         if ! valid_voter_slot "$slot"; then
-            larch_err "error: invalid voter slot: $slot (must be 1|2|3|Claude|Codex|Cursor|MainAgent)"
-            exit 2
+            tally_error_exit \
+                "error: invalid voter slot: $slot (must be 1|2|3|Claude|Codex|Cursor|MainAgent)" \
+                "**⚠ Tally aborted: invalid voter slot: $slot; no votes tallied.**" \
+                false
         fi
         VOTER_FILES+=("$path")
         if [[ "$slot" == "MainAgent" ]]; then
@@ -283,9 +321,9 @@ if [[ -n "$MAIN_AGENT_VOTER" ]]; then
         [[ -n "${SLOT_FILE[$_p]}" ]] && non_main=$((non_main + 1))
     done
     if (( non_main > 0 || ${#VOTER_SPECS[@]} > 1 )); then
-        larch_err "error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)"
-        write_findings_classification_stub
-        exit 2
+        tally_error_exit \
+            "error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)" \
+            "**⚠ Tally aborted: --voter MainAgent is only valid as the sole voter; no votes tallied.**"
     fi
 fi
 
@@ -300,25 +338,19 @@ fi
 
 for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
     if [[ ! -r "$voter_file" ]]; then
-        larch_err "tally-plan-review.sh: voter file is missing or unreadable: $voter_file"
-        write_tally_stub "**⚠ Tally aborted: voter file unreadable: $voter_file; no votes tallied.**"
-        write_findings_classification_stub
-        exit 2
+        tally_error_exit \
+            "tally-plan-review.sh: voter file is missing or unreadable: $voter_file" \
+            "**⚠ Tally aborted: voter file unreadable: $voter_file; no votes tallied.**"
     fi
 done
 
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-tally-plan-review.XXXXXX")
-cleanup() {
-    rm -rf "$WORKDIR"
-}
-trap cleanup EXIT
 
 BLOCK_DIR="$WORKDIR/blocks"
 if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
-    larch_err "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot"
-    write_tally_stub "**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**"
-    write_findings_classification_stub
-    exit 2
+    tally_error_exit \
+        "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot" \
+        "**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**"
 fi
 
 shopt -s nullglob
@@ -417,6 +449,7 @@ if (( TALLY_ELIGIBLE_COUNT == 0 )); then
     printf '# Plan Review Voting Tally\n\n' > "$tally_file"
     printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-required.**\n\n' >> "$tally_file"
     write_findings_classification
+    _tally_status_emitted=true
     emit_kv TALLY_PLAN_REVIEW_STATUS main-agent-vote-required
     emit_kv VOTING_TALLY_FILE "$tally_file"
     exit 0
@@ -513,5 +546,6 @@ fi
 
 write_findings_classification
 
+_tally_status_emitted=true
 emit_kv TALLY_PLAN_REVIEW_STATUS ok
 emit_kv VOTING_TALLY_FILE "$tally_file"

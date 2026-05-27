@@ -2,6 +2,8 @@
 
 `scripts/dispatch-plan-voters.sh` launches `/design` Step 3 **plan-review** voter slots: **Voter 1 (Claude)** via `scripts/launch-claude-review.sh`, and **Voters 2–3** (Codex, Cursor) through `scripts/dispatch-with-waterfall.sh`.
 
+- Sources `scripts/lib-voter-coverage.sh`; effective-judge coverage and the per-slot status KV block are emitted by that library.
+
 ## Voter 1 (Claude)
 
 - Prompt from `skills/shared/scripts/render-voter-prompt.sh` (`--id-grammar finding-oos`, `--verification-context plan`), same renderer family as Voters 2–3.
@@ -16,7 +18,7 @@ Each slot is dispatched through the same three-phase waterfall used elsewhere:
 - Phase 2: alternate external tool when Phase 1 is absent or fails
 - Phase 3: Claude replacement when both external phases are absent or fail
 
-The script writes per-slot prompt files, builds a two-slot NDJSON manifest (Voters 2–3 only), and calls `dispatch-with-waterfall.sh` with `--mode description`. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each external slot.
+The script writes per-slot prompt files, builds a two-slot NDJSON manifest (Voters 2–3 only), and calls `dispatch-with-waterfall.sh` with `--mode description` and `--timeout 1860`. The 1860s per-voter waterfall cap follows the `skills/design/SKILL.md` anti-pattern #5 timeout family for plan-review/dialectic phases; Voter 1 remains on its separate `launch-claude-review.sh --timeout 1200` path. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each external slot.
 
 `dispatch-plan-voters.sh` is a top-level Family B writer for
 `LARCH_PAIRED_PID_FILE`; it writes its own PID after quiet/done-trap setup and
@@ -33,6 +35,10 @@ Sources `scripts/lib-voter-parse-rate.sh` with `LARCH_VPR_*` set for plan ballot
 ## Inputs
 
 `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-available`, optional `--session-env-path`. The ballot is referenced by path in the generated voter prompts.
+
+## Per-round `--design-tmpdir` Routing
+
+Callers may pass a per-round subdirectory, for example `$DESIGN_TMPDIR/plan-review/round-N`, as `--design-tmpdir`. The dispatcher writes all per-slot outputs inside that directory: `claude-vote-output.txt`, `codex-vote-output.txt`, `cursor-vote-output.txt`, `plan-voter-paths.txt`, and `plan-voter-slots.ndjson`. Existing single-round callers continue to pass the top-level `$DESIGN_TMPDIR`; no new argv flag is required.
 
 ## Stdout KV
 

@@ -527,6 +527,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "main-agent required expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=main-agent-vote-required' <<< "$out" || fail "main-agent required status"
+[[ $(grep -c '^REVIEW_AND_FIX_STATUS=main-agent-vote-required$' <<< "$out" || true) -eq 1 ]] || fail "main-agent required status should be emitted exactly once"
 grep -Fq "FINDINGS_FILE=$implement_tmp/round-1/findings.md" <<< "$out" || fail "main-agent required findings file"
 jq -e '.schema_version == 3 and .status == "main-agent-vote-required" and .accepted_count == 0 and .rejected_count == 0' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "main-agent required summary"

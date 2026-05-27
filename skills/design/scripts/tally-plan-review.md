@@ -32,6 +32,8 @@
   `$DESIGN_TMPDIR/plan-review/round-1/findings-classification.tsv`; the tally
   creates the parent directory before writing.
 - The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks. Voter files use anchored `ID: VOTE` lines (e.g. `FINDING_1: YES`); substring matching is rejected to prevent `FINDING_10` matching inside `FINDING_100`.
+- `TALLY_PLAN_REVIEW_STATUS` is emitted on every exit path except `-h|--help`. Success paths emit `ok` or `main-agent-vote-required`. Every non-zero exit, including argv, ballot, and voter-validation paths, emits `tally-error`. Callers must parse `TALLY_PLAN_REVIEW_STATUS` from stdout to disambiguate; the script's exit code remains the primary signal.
+- Whenever a validated `--design-tmpdir` path allows the tally to materialize `voting-tally.md` before a non-zero exit, stdout also emits `VOTING_TALLY_FILE=<path>` so callers do not have to guess whether a stub tally artifact exists.
 - Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
 - The quorum basis is the panel-level available voter count, not the per-finding non-`JUDGE_ERROR` response count. Per-judge `JUDGE_ERROR` fallbacks do not reduce the tier.
 - Accepted in-scope findings are written to `accepted-plan-findings.md`.
@@ -70,10 +72,19 @@ finding_id \t finding_reviewers \t voting_result \t v1_vote \t v1_correctness \t
 - Every voter-sourced cell and `finding_reviewers` is normalized with
   `tr '\t\n' '  '` before TSV write; tabs/newlines become spaces rather than
   being deleted.
+- Severity is parsed from voter output by
+  `scripts/parse-judge-vote-and-rating.sh` and written verbatim to the v1/v2/v3
+  severity columns of the 21-field forensic TSV. No transform other than the
+  documented `tr '\t\n' '  '` whitespace normalization is permitted between
+  parser and TSV.
 - `scripts/parse-judge-vote-and-rating.sh` parses the extended rating axes for
   each voter and ballot id. `vN_vote` is sourced from
   `scripts/lib-vote-tally.sh::vote_for_id` so the forensic TSV and
   `voting_result` share one vote parser.
+
+## Per-round `--design-tmpdir` Routing
+
+Callers may pass a per-round subdirectory as `--design-tmpdir`. The tally writes `voting-tally.md`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, and the forensic TSV selected by `--findings-classification-out` inside that directory. When `--findings-classification-out` is omitted, the backward-compatible default still suffixes `plan-review/round-1/findings-classification.tsv` to the design tmpdir; multi-round callers must pass `--findings-classification-out` explicitly per round. `skills/design/scripts/plan-review-loop.sh` already does so.
 
 ## Makefile Wiring
 
@@ -82,7 +93,7 @@ The regression harnesses are `make test-tally-plan-review` and
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, explicit `--voter` slot preservation, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, sole-MainAgent adjudication reruns, explicit `--voter` slot preservation, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stubs, missing-ballot abort tally stubs, and exactly-once `tally-error` emission across ballot/voter/argv validation failures after `--design-tmpdir` is known.
 
 `test-findings-classification.sh` covers complete ratings, canonical-position
 `--voter` slot filling, legacy `--voter-files` basename fallback, missing

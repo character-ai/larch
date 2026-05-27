@@ -1,0 +1,17 @@
+Reviewing branch changes with focus on EXIT trap semantics in `tally-plan-review.sh`.
+Verifying EXIT-trap `return` behavior on the system Bash:
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/tally-plan-review.sh:29-37` — The EXIT trap runs while the script still has `set -euo pipefail` (line 4), but `cleanup` does not disable errexit after capturing `$?`. On macOS `/bin/bash` 3.2.57, a failing command inside the trap can replace the exit status the script was about to use: with `set -e`, `exit 2` plus a `false` in the trap handler yields exit **1**, not 2, even though `local rc=$?` recorded `trap_rc=2`. Today `rm` is guarded with `|| true` and `emit_kv` is normally a `printf`, so the happy path is fine, but any future trap edit or rare `emit_kv`/FD-3 failure can silently change the exit code callers rely on (the test only checks the no-failure early-exit path). **Suggested fix:** Immediately after `local rc=$?`, add `set +e` (and optionally `set +u` if needed) for the rest of `cleanup`; keep `rm ... || true`; terminate with `exit "$rc"` rather than `return "$rc"` so the saved status is explicit regardless of trap return semantics.
+
+- **correctness** `skills/design/scripts/tally-plan-review.md:35` / `skills/design/scripts/tally-plan-review.sh:81-83` — The new invariant says `` `TALLY_PLAN_REVIEW_STATUS` is emitted on every exit path ``, but `-h|--help` still does `usage` then `exit 0` with no `emit_kv TALLY_PLAN_REVIEW_STATUS`. That is a contract mismatch for any caller that parses stdout unconditionally (help is exit 0, so the trap correctly skips `tally-error`, but nothing documents an intentional “no status KV” help path). **Suggested fix:** Either narrow the doc to “every exit path except `--help`” or emit a dedicated status (e.g. `TALLY_PLAN_REVIEW_STATUS=help`) before `exit 0` on the help branch.
+
+### Out-of-Scope Observations
+
+- **`return "$rc"` vs original `exit`:** On bash 3.2.57, `return` from an EXIT-trap function does not override an explicit `exit 2` (a `return 42` still yields outer exit 2). That matches this script’s goal of preserving the pending exit code while adding stdout KVs; the fragile part is errexit inside the trap, not `return` being ignored on success paths.
+
+- **Guard ordering on success paths** (`skills/design/scripts/tally-plan-review.sh:430-432`, `527-529`): `_tally_status_emitted=true` is set immediately before each success `emit_kv`, which prevents a trap fallback `tally-error` if a later emit fails after the guard flips — acceptable tradeoff, but callers could see a success guard with a partial KV stream if the second emit fails under `set -e`.
+
+- **Harness coverage:** `skills/design/scripts/test-tally-plan-review.sh:87-95` exercises only one pre-validation `exit 2` (missing `--design-tmpdir`); ballot-unreadable and post-`WORKDIR` `exit 2` paths are not regression-tested for status emission (plan required “at least one”, so not a defect).
+
+- **`scripts/lib-voter-coverage.sh` / dispatcher extraction:** KV order, `expected_judges=3`, and `--timeout 1860` match the plan; no additional trap-semantics issues found there relative to this review focus.

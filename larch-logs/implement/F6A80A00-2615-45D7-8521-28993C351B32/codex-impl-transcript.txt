@@ -1,0 +1,17 @@
+Implemented the plan-voter coverage/tally hardening work.
+
+Changed:
+- Added [scripts/lib-voter-coverage.sh](<OPERATOR_REPO_PATH>/scripts/lib-voter-coverage.sh) and [scripts/lib-voter-coverage.md](<OPERATOR_REPO_PATH>/scripts/lib-voter-coverage.md).
+- Updated [scripts/dispatch-plan-voters.sh](<OPERATOR_REPO_PATH>/scripts/dispatch-plan-voters.sh) to use the helper and pass `--timeout 1860` for Voters 2-3.
+- Hardened [skills/design/scripts/tally-plan-review.sh](<OPERATOR_REPO_PATH>/skills/design/scripts/tally-plan-review.sh) so non-zero exits emit `TALLY_PLAN_REVIEW_STATUS=tally-error`.
+- Updated docs and extended both dispatcher/tally harnesses for KV order, conditional `VOTER_PATHS_FILE`, degraded warnings, timeout, paired PID behavior, and no duplicate tally status emits.
+
+Verification:
+- `bash -n ...` passed.
+- `make test-dispatch-plan-voters test-tally-plan-review` passed.
+- `bash scripts/relevant-checks.sh` passed.
+- `find . -name voting-tally.env -print` returned no files.
+
+Full `make lint` did not pass because of an unrelated existing failure in `test-dispatch-panel-core`. Re-running that target shows it fails at the breadcrumb assertion expecting `→ review: launching 6 reviewers...` in `dispatch-panel.sh` stdout; this is outside the files changed here.
+
+Wrote `<TMPDIR>/manifest.json` atomically. No `qa-pending.json` was written.
