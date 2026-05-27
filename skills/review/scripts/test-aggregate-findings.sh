@@ -726,6 +726,26 @@ grep -Fq 'AGGREGATED=false' "$TMP/out-nonconf-attest.env" || fail "nonconforming
 grep -Fq 'REASON=validation-exhausted' "$TMP/out-nonconf-attest.env" || fail "nonconforming+attest REASON"
 grep -Fq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' "$TMP/aggregator-validate.stderr" || fail "expected nonconforming_heading_with_attestation token"
 cmp -s "$TMP/in3.md" "$TMP/in3-nonconf-attest.md" || fail "findings unchanged on nonconforming+attest validator rejection"
+EX="$TMP/exec-issues-nonconf-attest"
+mkdir -p "$EX"
+cp "$TMP/in3.md" "$EX/in.md"
+: >"$EX/execution-issues.md"
+write_stub_dispatch
+LARCH_EXECUTION_ISSUES_LOG="$EX/execution-issues.md" \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_nonconforming_with_attestation \
+"$AGG" \
+    --findings-file "$EX/in.md" \
+    --review-tmpdir "$EX" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-nonconf-attest-exec.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-nonconf-attest-exec.env" || fail "nonconforming+attest exec-isolation AGGREGATED"
+grep -Fq 'REASON=validation-exhausted' "$TMP/out-nonconf-attest-exec.env" || fail "nonconforming+attest exec-isolation REASON"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' "$TMP/aggregator-validate.stderr" || fail "nonconforming+attest exec-isolation missing token"
+grep -Fq 'validation exhausted (narrow-trigger nonconforming pseudo-heading combined with attestation)' "$EX/execution-issues.md" || fail "nonconforming+attest rejection must log validation-exhausted warning to execution-issues.md"
+cmp -s "$TMP/in3.md" "$EX/in.md" || fail "findings unchanged on nonconforming+attest exec-isolation validator rejection"
 
 echo "=== zero_findings_nospace_pseudo_heading: validation-failed ==="
 cp "$TMP/in3.md" "$TMP/in3-nospace-pseudo.md"
