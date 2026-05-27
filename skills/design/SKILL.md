@@ -213,6 +213,19 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+_wdce_step0b_args=(
+  "${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh"
+  --output "$DESIGN_TMPDIR/source-env.sh"
+  --design-tmpdir "$DESIGN_TMPDIR"
+  --session-id "$SESSION_ID"
+  --issue-number "$ISSUE_NUMBER"
+  --claude-pid "$PPID"
+)
+if [[ "$manual_requested" == true ]]; then
+  _wdce_step0b_args+=(--manual-requested true)
+fi
+"${_wdce_step0b_args[@]}"
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --classification "$design_classification" \
   --reason "$design_classification_reason" \
