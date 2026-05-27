@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=important QUALITY=weak UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- extracting a shared helper for a small awk one-liner adds cross-script sourcing complexity that exceeds the maintenance risk
+FINDING_3: YES CORRECTNESS=true SEVERITY=important QUALITY=weak UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicating two short identical blocks is lower complexity than a shared check_file helper; concern noted but not worth the abstraction
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- inline constants with adjacent comments are standard for single-use thresholds; named constants add indirection without improving clarity here
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- whitelist covers known sentinels; false-positive misclassification routes through fallback (not silent failure), so impact is an extra slot cost, not a lost review
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- degraded-response heuristic is covered by launch-review.sh unit test Case B3; dispatcher integration tests testing routing logic orthogonally is standard codebase pattern
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- existing rcc_max_iter_honored / rcc_max_iter_invalid_env_clamp cases cover the clamping behavior; per-callsite coverage is overly granular for a one-liner wrapper
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Cursor CLI is a trusted local tool; no practical alternative measurement exists for token usage without a separate call; the threat model does not justify added complexity
+OOS_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

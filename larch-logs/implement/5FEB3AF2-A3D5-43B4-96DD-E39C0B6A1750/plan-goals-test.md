@@ -1,0 +1,323 @@
+## Goal
+Implement issue #2995: [IMPLEMENTING] [BUG] (URGENT) Cursor narration-only outputs degrade sketch phase — #2865 fix incomplete (root cause: --mode plan)\n\n## Relationship to #2865 (prior partial fix).
+
+## Implementation Plan
+## Plan
+
+# Implementation Plan — Cursor narration-only fix (#2995)
+
+## Approach
+
+Two orthogonal tasks merged into a single PR. **Task 1** addresses the root cause of the Cursor narration-only failure (`--mode plan` mis-routes prose-shaped prompts) with a three-layer fix: (a) flip `--mode plan` → `--mode ask` at the single production callsite in `scripts/launch-review.sh:924` (both modes are documented read-only, so the sandbox guarantee is preserved); (b) add a length-vs-tokens defense-in-depth backstop at the `.result` extraction site with sentinel-whitelist guarding; (c) extend pattern-gating to the plan-review panel dispatcher via a new `--require-first-line-pattern` flag (sketch dispatchers stay opt-out). **Task 2** mechanically wraps the three remaining `_RCC_MAX_ITER=${LARCH_CI_LOCAL_FIX_ITER:-6}` callsites in `normalize_rcc_max_iter` and rewrites `vendor_verify_sweep_regression` to invoke `ship-pr.sh` directly instead of through the `vendor-verify-sweep.sh` helper-stub.
+
+Non-obvious design points (revised after plan review):
+
+1. **Always-on sentinel detection in `collect-agent-results.sh`** is factored into a helper function `_classify_sentinel_status` and called at **every** `STATUS=OK` assignment site — both the initial-pass result classification AND the retry-success path (around line 1141). The existing `--validation-mode` path through `validate-research-output.sh` continues to work for callers that use it; the helper covers callers that don't.
+
+2. **Degraded-response heuristic must whitelist legitimate terse responses** before writing `CURSOR_DEGRADED_RESPONSE`. The launcher checks the trimmed `.result` body against the same sentinels `validate-research-output.sh` already short-circuits: `NO_ISSUES_FOUND` literal, `{"no_issues_found": true}` JSON sentinel (and JSON variants with extra keys), and TSV first-line `schema_version` header. Only when none of these match does the byte/token comparison fire.
+
+3. **Pattern-gate semantics must enforce first-non-blank-line**, not whole-file `grep`. `--require-result-pattern` (existing flag) keeps its any-line semantics so the established `decompose-aggregator.sh` / `decompose-panel-dispatch.sh` callers don't change behavior. A new `--require-first-line-pattern` flag enforces first-non-blank-line matching; the plan-review dispatcher uses this new flag.
+
+4. **Heuristic ordering in `launch-review.sh`**: the degraded check runs on `$EXTRACT_TMP` **before** the `mv` to `$OUTPUT`. Pattern: extract `.result` to `$EXTRACT_TMP` → if degraded (whitelist-checked) write `CURSOR_DEGRADED_RESPONSE\n` to `$OUTPUT` and delete `$EXTRACT_TMP` → else mv `$EXTRACT_TMP` to `$OUTPUT`. No redundant `rm -f` after a successful `mv`.
+
+`CURSOR_DEGRADED_RESPONSE` is aliased to `STATUS=CURSOR_EMPTY_RESPONSE` per Round 1 Decision 7 (telemetry-only via existing collector path; no new STATUS code).
+
+## Files to modify/create
+
+### UPDATED: `scripts/launch-review.sh`
+Three changes near lines 828-1040:
+- Line 924: change `cursor agent -p --trust --mode plan \` → `cursor agent -p --trust --mode ask \`.
+- Lines 828-846: update the Issue #1529 / #1583 comment block — every prose mention of `--mode plan` becomes `--mode ask`, preserving the read-only-enforcement rationale ("both `plan` and `ask` modes are read-only per Cursor docs").
+- Line 843: update `CURSOR_SANDBOX_ENFORCEMENT_LINE="The launcher passes --mode plan to the cursor CLI. Any post-run mutation will be detected by the dirty-tree sidecar."` → substitute `--mode ask` in the body string.
+- Lines 1022-1040: restructure the existing successful-`jq` branch into a degraded-vs-promote split. After `jq` writes `.result` to `$EXTRACT_TMP` and `[[ -s "$EXTRACT_TMP" ]]` confirms non-empty, run the whitelist check + heuristic on `$EXTRACT_TMP` BEFORE the `mv` to `$OUTPUT`. Pseudocode (Bash 3.2-compatible):
+
+  ```bash
+  # Existing jq extraction stays. After jq && [[ -s "$EXTRACT_TMP" ]]:
+  RESULT_BYTES=$(wc -c < "$EXTRACT_TMP" 2>/dev/null | tr -d ' ')
+  OUT_TOKENS=$(jq -r '.usage.outputTokens // 0' "${OUTPUT}.json" 2>/dev/null || echo 0)
+  # Whitelist: skip the degraded heuristic when the trimmed body matches a
+  # recognized no-findings sentinel or a structured TSV header — these are
+  # legitimately short and must not be rewritten.
+  _trimmed=$(awk 'NR==1 || prev_blank { sub(/^[[:space:]]+/,""); sub(/[[:space:]]+$/,""); print; exit } /^[[:space:]]*$/ { prev_blank=1; next } { print; exit }' "$EXTRACT_TMP" 2>/dev/null)
+  _is_legit_short=false
+  if [[ "$_trimmed" == "NO_ISSUES_FOUND" ]] || \
+     [[ "$_trimmed" == "schema_version"* ]] || \
+     [[ "$_trimmed" == *'"no_issues_found"'*':'*'true'* ]]; then
+      _is_legit_short=true
+  fi
+  if [[ "$_is_legit_short" != "true" \
+        && "$OUT_TOKENS" =~ ^[0-9]+$ && "$RESULT_BYTES" =~ ^[0-9]+$ \
+        && "$OUT_TOKENS" -gt 1000 && "$RESULT_BYTES" -lt 500 ]]; then
+      printf 'CURSOR_DEGRADED_RESPONSE\n' > "$OUTPUT"
+      rm -f "$EXTRACT_TMP"
+  else
+      mv -f "$EXTRACT_TMP" "$OUTPUT"
+  fi
+  ```
+  The existing `CURSOR_EMPTY_RESPONSE` write at the empty-result branch (line 1040 area) stays unchanged — it only fires when `.result == ""`.
+
+### UPDATED: `scripts/test-launch-review.sh`
+- Lines 1827, 1838, 1887, 1890, 1960: change every literal `--mode plan` assertion to `--mode ask`. The `CURSOR_SANDBOX_ENFORCEMENT_LINE` literal at line 1887 also matches the updated launcher string.
+- Add a new case (next to the existing `case B2 empty Cursor result marker` at line 1473): `case B3 degraded Cursor result marker`. Sub-cases:
+  - **B3-positive**: JSON envelope with `usage.outputTokens=5000` and a 300-byte `.result` of prose → output file contains exactly `CURSOR_DEGRADED_RESPONSE\n`.
+  - **B3-control-above-bytes**: same outputTokens with a 600-byte `.result` → sentinel NOT written; `$OUTPUT` contains the prose body.
+  - **B3-control-low-tokens**: `outputTokens=500` and 300-byte `.result` → sentinel NOT written.
+  - **B3-whitelist-no-issues-found**: `outputTokens=5000` and `.result` = `NO_ISSUES_FOUND` (15 bytes) → sentinel NOT written; `$OUTPUT` contains `NO_ISSUES_FOUND`.
+  - **B3-whitelist-json-sentinel**: `outputTokens=5000` and `.result` = `{"no_issues_found": true}` (25 bytes) → sentinel NOT written; `$OUTPUT` contains the JSON sentinel verbatim.
+  - **B3-whitelist-tsv-header**: `outputTokens=5000` and `.result` starts with `schema_version\tscope\tseverity\t...` (single TSV record, <500 bytes total) → sentinel NOT written; `$OUTPUT` contains the TSV verbatim.
+
+### UPDATED: `scripts/validate-research-output.sh`
+Extend the literal-body short-circuit at lines 411-424 so `CURSOR_DEGRADED_RESPONSE` is treated identically to `CURSOR_EMPTY_RESPONSE`:
+
+```bash
+if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" || "$TRIMMED" == "CURSOR_DEGRADED_RESPONSE" ]]; then
+    emit "STATUS=CURSOR_EMPTY_RESPONSE"
+    exit 5
+fi
+```
+The emitted STATUS remains `CURSOR_EMPTY_RESPONSE` per Round 1 Decision 7. Update the script header comment block (lines 10, 72-74, 121, 128, 411) to mention both literals map to exit 5.
+
+### UPDATED: `scripts/collect-agent-results.sh`
+Add a sentinel-classification helper called before **every** `STATUS=OK` assignment, covering both first-pass and retry-success paths.
+
+Helper definition (insert near the top of the script after existing helpers, ~around the `derive_tool` / `build_failure_reason` definitions):
+
+```bash
+# Returns 0 if FILE's first non-blank line equals a known degraded sentinel
+# literal (CURSOR_EMPTY_RESPONSE or CURSOR_DEGRADED_RESPONSE). Returns 1
+# otherwise. Always-on; not gated by --validation-mode.
+_classify_sentinel_status() {
+    local _file="$1"
+    [[ -f "$_file" && -s "$_file" ]] || return 1
+    local _first
+    _first=$(awk '/[^[:space:]]/ {sub(/^[[:space:]]+/,""); sub(/[[:space:]]+$/,""); print; exit}' "$_file" 2>/dev/null)
+    [[ "$_first" == "CURSOR_EMPTY_RESPONSE" || "$_first" == "CURSOR_DEGRADED_RESPONSE" ]]
+}
+```
+
+Call sites — wrap each existing `STATUS=OK` finalization. Use `$OUTPUT` and `$TOOL` in the first-pass loop (NOT `REVIEWER_FILE`/`ENTRY_TOOL`/`j` — those names belong to a later loop and are unbound here):
+
+1. **First-pass STATUS=OK assignment** (initial result loop, where the file passes the non-empty check and is about to be marked OK): immediately before appending OK to `RESULTS`, call `_classify_sentinel_status "$OUTPUT"` — if it returns 0, append `RESULTS+=("REVIEWER_FILE=$OUTPUT|TOOL=$TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response")` and continue; else append the existing STATUS=OK row.
+
+2. **Retry-success STATUS=OK assignment** (around line 1141 in the `if [[ "$RETRY_EXIT" == "0" && -s "$RETRY_OUTPUT" ]]` branch): immediately before `RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="`, call `_classify_sentinel_status "$RETRY_OUTPUT"` — if it returns 0, set `RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (retry)"`; else assign the existing STATUS=OK row.
+
+The existing `--substantive-validation --validation-mode` path through `validate-research-output.sh` (mapping at line 1208) is left unchanged so callers that opt in get the same result via two compatible code paths.
+
+### UPDATED: `scripts/dispatch-with-waterfall.sh`
+Add a new `--require-first-line-pattern <regex>` argv flag, parallel to the existing `--require-result-pattern` flag (defined around line 50). Argv parsing pattern mirrors the existing flag. Pre-validation of the ERE pattern around line 63 also mirrors the existing flag.
+
+In the result-check block around lines 380-394, when STATUS=OK and `REQUIRE_FIRST_LINE_PATTERN` is set, read only the first non-blank line of the result file and `grep -Eq` against the pattern there. Pseudocode:
+
+```bash
+if [[ "$status" == "OK" && -n "$REQUIRE_FIRST_LINE_PATTERN" ]]; then
+    check_file="${rf:-$output}"
+    if [[ ! -r "$check_file" ]]; then
+        larch_err "dispatch-with-waterfall.sh: result file not readable for --require-first-line-pattern check: $check_file"
+        failed+=("$idx")
+        continue
+    fi
+    _first_nonblank=$(awk '/[^[:space:]]/ {sub(/^[[:space:]]+/,""); sub(/[[:space:]]+$/,""); print; exit}' "$check_file")
+    if ! printf '%s\n' "$_first_nonblank" | grep -Eq -- "$REQUIRE_FIRST_LINE_PATTERN"; then
+        failed+=("$idx")
+        continue
+    fi
+fi
+```
+The existing `--require-result-pattern` whole-file `grep -Eq` semantics is preserved unchanged so `decompose-aggregator.sh` / `decompose-panel-dispatch.sh` callers don't regress.
+
+### UPDATED: `skills/design/scripts/dispatch-plan-review-panel.sh`
+Around line 145 where `DISPATCH_WATERFALL_SH` is invoked, add the new flag with the plan-review pattern: `--require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)'`. Sketch dispatchers in `skills/design/references/sketch-launch.md` remain unchanged.
+
+### UPDATED: `skills/design/scripts/test-dispatch-plan-review-panel.sh`
+Extend the existing dispatcher harness so the `dispatch-with-waterfall.sh` stub captures the `--require-first-line-pattern` argv and asserts the exact plan-review pattern (`^[[:space:]]*(schema_version|\{"no_issues_found)`) is forwarded.
+
+### UPDATED: `scripts/test-dispatch-with-waterfall.sh`
+Add a `--require-first-line-pattern` test block parallel to the existing `--require-result-pattern` block at lines 312+. Cases:
+- First-line pattern match → success (file starts with `schema_version`).
+- First-line pattern miss → waterfall fallback fires (file starts with prose, even though TSV header appears later — the failure mode FINDING_4 raised).
+- Invalid ERE → error exit with diagnostic.
+
+### UPDATED: `scripts/test-collect-agent-bash32.sh`
+Add `Case 5b CURSOR_DEGRADED_RESPONSE always-on classification` parallel to existing Case 5 (`CURSOR_EMPTY_RESPONSE mapping from validator exit 5`). Sub-cases:
+- **5b-first-pass-degraded**: fixture file with first non-blank line `CURSOR_DEGRADED_RESPONSE`, collector called WITHOUT `--substantive-validation --validation-mode`, asserts `STATUS=CURSOR_EMPTY_RESPONSE`.
+- **5b-first-pass-empty**: same fixture but with `CURSOR_EMPTY_RESPONSE` literal, same assertion (regression coverage for the latent gap fixed by this PR).
+- **5b-retry-success-degraded**: simulate retry success where the retry output file contains `CURSOR_DEGRADED_RESPONSE`, assert the retry STATUS is rewritten to `CURSOR_EMPTY_RESPONSE` (covers FINDING_2 retry-path).
+
+### UPDATED: `scripts/test-validate-research-output.sh`
+Add **`Case 19h: --validation-mode + CURSOR_DEGRADED_RESPONSE marker exits 5`** (Case 19g is taken by the inline-TSV-fence test). Mirrors the existing Case 19f structure: write the literal to a fixture, run validator with `--validation-mode`, assert exit 5 with `STATUS=CURSOR_EMPTY_RESPONSE`.
+
+### UPDATED: `scripts/validate-research-output.md` (sibling contract doc)
+Extend the description of validator exit 5 to mention both `CURSOR_EMPTY_RESPONSE` and `CURSOR_DEGRADED_RESPONSE` as the literal-body short-circuit triggers; document that both map to the same emitted STATUS.
+
+### UPDATED: `scripts/collect-agent-results.md` (sibling contract doc)
+Add a section describing the always-on `_classify_sentinel_status` helper, the sentinel literals it recognizes, and the fact that it fires at every STATUS=OK assignment site regardless of `--validation-mode`.
+
+### UPDATED: `scripts/launch-review.md` (sibling contract doc)
+Replace any remaining `--mode plan` references with `--mode ask`. Add a paragraph describing the new degraded-response heuristic (whitelist + threshold + emitted sentinel).
+
+### UPDATED: `scripts/dispatch-with-waterfall.md` (sibling contract doc)
+Document the new `--require-first-line-pattern` flag adjacent to the existing `--require-result-pattern` flag description. Explain the semantic difference (first non-blank line vs any line).
+
+### UPDATED: `scripts/ship-pr.sh`
+Two callsites:
+- Line 2013 (`_verify_failed_jobs_locally`): `_RCC_MAX_ITER=${LARCH_CI_LOCAL_FIX_ITER:-6}` → `_RCC_MAX_ITER=$(normalize_rcc_max_iter "${LARCH_CI_LOCAL_FIX_ITER:-6}")`.
+- Line 2118 (`run_per_job_local_fix_loop`): same wrapper.
+
+The `normalize_rcc_max_iter()` function already exists at line 162; no helper definition needed.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+- Lines 3786, 3830, 3876: three inline `_RCC_MAX_ITER=${LARCH_CI_LOCAL_FIX_ITER:-6}` stub bodies inside `rcc_max_iter_*` test cases each get the `normalize_rcc_max_iter` wrapper.
+- Lines 3647-3658: remove the `cat > "$tmp/vendor-verify-sweep.sh" <<'STUB' ... STUB; chmod +x "$tmp/vendor-verify-sweep.sh"` helper block.
+- Line 3661 (the `bash "$tmp/vendor-verify-sweep.sh" "$root" "$tmp"` invocation): replace with the direct `ship-pr.sh` integration call:
+  ```bash
+  (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+    STUB_LINT_FIX_STATUS=main-agent-required \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+  ```
+- The existing assertions at lines 3664-3671 (`assert_rc "$tmp/rc" 4 "vendor_verify_sweep_regression exits 4"`, `assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" ...`, push-count check) MUST still pass after the rewrite — this is the explicit acceptance criterion from Round 1 Decision 9.
+
+## Edge cases
+
+- **`--mode ask` read-only property**: documented read-only per `cursor agent --help`; the unchanged hardening preamble + dirty-tree sidecar still backstop any future Cursor CLI regression that would silently allow writes.
+- **Heuristic whitelist coverage**: the launcher-side whitelist covers the same sentinels `validate-research-output.sh` already short-circuits (`NO_ISSUES_FOUND`, JSON `{"no_issues_found": true}` with optional extra keys, TSV `schema_version` header). Any future no-findings sentinel added to the validator must be reflected in the launcher whitelist in the same change.
+- **Bash 3.2 portability**: every new shell construct uses Bash 3.2-compatible syntax (no `declare -A`, no `mapfile`, no `${var^^}`, no `&>>`). Run `make lint-bash32` after edits.
+- **`_classify_sentinel_status` always-on detection**: fires for ALL output files, not just Cursor ones. Codex/Claude organically writing `CURSOR_DEGRADED_RESPONSE` is treated as failure — the correct safe default since neither tool emits this literal.
+- **Vendor-verify-sweep environment**: the direct `ship-pr.sh` invocation must reproduce the helper-stub's environment (`STATE_FILE=$tmp/ship-pr-state.sh`, `IMPLEMENT_TMPDIR=$tmp`, and the implicit `run_per_job_local_fix_loop` stubbing achieved via the upstream state `TRANSIENT_RETRIES=1` + `FAILED_RUN_ID=run123` already in place at the test's setup). The `STUB_LINT_FIX_STATUS=main-agent-required` env is the per-test override that makes ship-pr.sh exit 4 instead of attempting real lint-fix work.
+- **First-line-pattern vs any-line `--require-result-pattern`**: existing decompose callers' `^[[:space:]]*## Recommendation` patterns match any line (the header may appear after intro prose); plan-review needs first-line semantics so prose-then-TSV doesn't bypass the gate. Two separate flags keep the semantics explicit and avoid silently changing decompose behavior.
+
+## Failure modes
+
+1. **`--mode ask` deviates from `--mode plan`'s read-only enforcement** — if a future Cursor CLI release changes `--mode ask` to allow writes (despite current docs), models could mutate files during review. **Earliest warning signal**: dirty-tree sidecar reports `STATUS=dirty` after a Cursor invocation. **Mitigation**: dirty-tree sidecar continues to backstop unchanged; hardening preamble stays.
+
+2. **Whitelist gap — new no-findings sentinel added to validator without updating launcher** — if `validate-research-output.sh` learns a new sentinel literal but `launch-review.sh`'s whitelist isn't updated, the new sentinel could be rewritten to `CURSOR_DEGRADED_RESPONSE` and trigger spurious waterfall fallbacks for valid responses. **Earliest warning signal**: a previously-OK reviewer slot suddenly waterfall-falls-back to Codex; CI fails on the new validator case if added without the launcher update. **Mitigation**: edit-in-sync rule documented in both `validate-research-output.md` and `launch-review.md`; test harness coverage in `test-launch-review.sh` Case B3 includes the existing whitelist literals.
+
+3. **`_classify_sentinel_status` performance impact** — the helper reads each output file's first non-blank line at every STATUS=OK assignment. For large outputs this is cheap (`awk` exits after the first match), but a regression would slow the collector's per-slot processing. **Earliest warning signal**: `test-collect-agent-bash32.sh` timing exceeds prior baseline; collector wall-clock latency in CI runs of `/design` grows beyond noise floor. **Mitigation**: `awk '/[^[:space:]]/ {... exit}'` is single-pass with early exit; benchmark against the existing `--substantive-validation` path (which already does single-file work).
+
+4. **Vendor-verify-sweep integration test fails to reproduce contract** — the direct `ship-pr.sh` invocation may not match the helper-stub's exit shape, breaking `vendor_verify_sweep_regression`. **Earliest warning signal**: `bash scripts/test-ship-pr.sh` fails at `assert_rc "$tmp/rc" 4` or `assert_state_line ... STALL_STEP=10-max-retries`. **Mitigation**: documented fallback is to retreat to the Cursor-via-Claude sketch's safer-path variant — preserve the helper file shape but route its body through the real `run_evaluate_failure ci-initial` entry rather than rewriting from scratch.
+
+## Testing strategy
+
+- New launcher unit test `case B3 degraded Cursor result marker` in `scripts/test-launch-review.sh` (6 sub-cases: positive, above-bytes control, low-tokens control, NO_ISSUES_FOUND whitelist, JSON-sentinel whitelist, TSV-header whitelist).
+- New `scripts/test-collect-agent-bash32.sh` `Case 5b CURSOR_DEGRADED_RESPONSE always-on classification` (3 sub-cases: first-pass degraded, first-pass empty regression, retry-success degraded).
+- New `scripts/test-validate-research-output.sh` `Case 19h --validation-mode CURSOR_DEGRADED_RESPONSE marker exits 5` (mirrors Case 19f).
+- New `scripts/test-dispatch-with-waterfall.sh` `--require-first-line-pattern` block (3 sub-cases: first-line match → success, first-line miss with prose-then-TSV → fallback, invalid ERE → error).
+- Extended `skills/design/scripts/test-dispatch-plan-review-panel.sh`: stub captures `--require-first-line-pattern` and asserts the exact plan-review pattern is forwarded.
+- Existing `vendor_verify_sweep_regression` assertions in `scripts/test-ship-pr.sh` continue to pass (exit 4 + `STALL_STEP=10-max-retries` + zero pushes) after the helper-stub rewrite.
+- Existing `rcc_max_iter_honored` and `rcc_max_iter_invalid_env_clamp` test cases in `scripts/test-ship-pr.sh` continue to pass after the `normalize_rcc_max_iter` wrapper is inserted in the stub bodies.
+- `bash scripts/relevant-checks.sh` and `make lint` pass after the change.
+- `make lint-bash32` passes (no Bash 4 constructs introduced).
+- Optional manual end-to-end on a non-trivial issue: a `/design --hard` run produces Cursor sketches with >500 bytes of substantive content (not 350-byte narration files). Mock test: deliberately inject a `usage.outputTokens=5000` + 300-byte `.result` envelope and confirm waterfall fallback fires without orchestrator intervention.
+
+## Acceptance criteria
+
+1. `scripts/launch-review.sh:924` invokes Cursor with `--mode ask` (not `--mode plan`).
+2. `scripts/launch-review.sh:828-846` comment block and `CURSOR_SANDBOX_ENFORCEMENT_LINE` at line 843 reference `--mode ask` rather than `--mode plan`.
+3. The launcher's degraded-response logic at `scripts/launch-review.sh:1022-1040` is structured as: extract `.result` to `$EXTRACT_TMP` → whitelist-check the first non-blank line → if not whitelisted AND `usage.outputTokens > 1000` AND `wc -c < $EXTRACT_TMP < 500`, write `CURSOR_DEGRADED_RESPONSE\n` to `$OUTPUT` and remove `$EXTRACT_TMP`; else `mv $EXTRACT_TMP $OUTPUT`. The whitelist recognizes `NO_ISSUES_FOUND`, `{"no_issues_found": true}` (with optional extra keys), and lines starting with `schema_version`.
+4. `scripts/collect-agent-results.sh` defines a `_classify_sentinel_status` helper that returns 0 when a file's first non-blank line equals `CURSOR_EMPTY_RESPONSE` OR `CURSOR_DEGRADED_RESPONSE`. The helper is called before BOTH the first-pass STATUS=OK assignment AND the retry-success STATUS=OK assignment (around line 1141). When it returns 0, the corresponding `RESULTS` entry uses `STATUS=CURSOR_EMPTY_RESPONSE` with a descriptive `FAILURE_REASON`. The helper is NOT gated on `--validation-mode`. Variable names used at each insertion point match the surrounding loop's scope (`$OUTPUT`/`$TOOL` in the first-pass loop; `$RETRY_OUTPUT`/`$TOOL` in the retry loop).
+5. `scripts/validate-research-output.sh` literal-body short-circuit accepts both `CURSOR_EMPTY_RESPONSE` and `CURSOR_DEGRADED_RESPONSE`, both mapping to validator exit 5 with emitted `STATUS=CURSOR_EMPTY_RESPONSE`. Script header comment block reflects the dual literal.
+6. `scripts/dispatch-with-waterfall.sh` defines a new `--require-first-line-pattern <regex>` flag that validates only the first non-blank line of each result file. The existing `--require-result-pattern` flag retains its any-line semantics. Both flags ERE-prevalidate.
+7. `skills/design/scripts/dispatch-plan-review-panel.sh` passes `--require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)'` to `dispatch-with-waterfall.sh`. Sketch panel dispatchers in `skills/design/references/sketch-launch.md` remain unchanged.
+8. New regression test in `scripts/test-launch-review.sh` (`case B3`) covers 6 sub-cases: positive (degraded sentinel written), above-bytes control (no sentinel), low-tokens control (no sentinel), `NO_ISSUES_FOUND` whitelist (no sentinel), JSON-sentinel whitelist (no sentinel), TSV-header whitelist (no sentinel).
+9. New regression test in `scripts/test-collect-agent-bash32.sh` (`Case 5b`) asserts: `STATUS=CURSOR_EMPTY_RESPONSE` is reported for fixtures whose first non-blank line is `CURSOR_EMPTY_RESPONSE` OR `CURSOR_DEGRADED_RESPONSE`, even when `--substantive-validation --validation-mode` is NOT passed. Three sub-cases: first-pass degraded, first-pass empty regression, retry-success degraded.
+10. New regression test in `scripts/test-validate-research-output.sh` (`Case 19h`): `CURSOR_DEGRADED_RESPONSE` body under `--validation-mode` exits 5 with `STATUS=CURSOR_EMPTY_RESPONSE`.
+11. New regression test in `scripts/test-dispatch-with-waterfall.sh`: `--require-first-line-pattern` block with 3 sub-cases (first-line match → success, first-line miss with prose-then-TSV → fallback, invalid ERE → error).
+12. `skills/design/scripts/test-dispatch-plan-review-panel.sh` captures the `--require-first-line-pattern` argv passed to the `dispatch-with-waterfall.sh` stub and asserts the exact plan-review pattern (`^[[:space:]]*(schema_version|\{"no_issues_found)`) is forwarded.
+13. Sibling contract docs updated to match script behavior: `scripts/validate-research-output.md` mentions both sentinel literals; `scripts/collect-agent-results.md` describes the `_classify_sentinel_status` helper and its always-on behavior; `scripts/launch-review.md` uses `--mode ask` everywhere and describes the degraded-response heuristic with the whitelist; `scripts/dispatch-with-waterfall.md` documents the new `--require-first-line-pattern` flag.
+14. `scripts/ship-pr.sh:2013` and `:2118` use `_RCC_MAX_ITER=$(normalize_rcc_max_iter "${LARCH_CI_LOCAL_FIX_ITER:-6}")`.
+15. `scripts/test-ship-pr.sh` stub bodies at lines 3786, 3830, 3876 use the same wrapper.
+16. `scripts/test-ship-pr.sh` removes the `vendor-verify-sweep.sh` helper-stub block (lines 3647-3658) and replaces its invocation with a direct `ship-pr.sh` integration call gated by `STUB_LINT_FIX_STATUS=main-agent-required`.
+17. `vendor_verify_sweep_regression` in `scripts/test-ship-pr.sh` continues to assert exit 4, `STALL_STEP=10-max-retries`, and zero pushes after the rewrite — this is non-negotiable per Round 1 Decision 9.
+18. `bash scripts/relevant-checks.sh`, `make lint`, and `make lint-bash32` all pass after the change.
+
+diff_lines: 180
+
+
+## Acceptance
+
+### FINDING_1: Degraded-response heuristic reads or publishes the extracted file in the wrong order
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Innovation, Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned degraded-response check is coupled ambiguously to the existing `jq` success path: `$EXTRACT_TMP` may already have been moved to `$OUTPUT`, or a degraded branch may conflict with the later `mv`. This can make the heuristic never fire, fire incorrectly, or break the extraction flow.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: After successful jq mv, use RESULT_BYTES=$(wc -c < "$OUTPUT") (or run the check before mv); drop the erroneous rm -f "$EXTRACT_TMP" on the post-mv path
+  - From Codex-Arch: Restructure the successful jq extraction branch so bytes are measured before publishing, then either write CURSOR_DEGRADED_RESPONSE and skip mv, or mv the extracted result in an explicit else branch
+  - From Cursor-Innovation, Cursor-Pragmatic: Insert the block inside the `jq … > "$EXTRACT_TMP" && [[ -s "$EXTRACT_TMP" ]]` branch **before** `mv`, or measure `"$OUTPUT"` only after `mv` (not both)
+  - From Codex-Innovation: Compute RESULT_BYTES before mv, or compute it from $OUTPUT after mv; pin the B3 test to the exact success-path placement
+  - From Cursor-Requirements: Run the byte-count/threshold check on $OUTPUT (or on $EXTRACT_TMP before mv): only promote to $OUTPUT when not degraded; document this ordering explicitly in the plan snippet
+  - From Codex-Requirements: Revise the plan to replace the jq extraction branch with an explicit if degraded write sentinel else mv EXTRACT_TMP to OUTPUT structure, and keep the B3 positive and negative assertions tied to that branch
+
+
+### FINDING_2: Retry-success outputs can still promote sentinel literals to OK
+- **Reviewer(s)**: Codex-Arch, Codex-Edge
+- **Severity**: important
+- **Concern**: Always-on sentinel detection is planned only around the initial OK result path, so retry outputs containing `CURSOR_EMPTY_RESPONSE` or `CURSOR_DEGRADED_RESPONSE` can still be marked `STATUS=OK`, especially for callers that do not enable validation mode.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add a post-retry normalization pass over every STATUS=OK result, or factor a helper and call it both before the initial RESULTS append and before assigning retry STATUS=OK; add a retry-output fixture to Case 5b
+  - From Codex-Edge: Revise the plan to factor sentinel-literal classification into a helper and call it before every STATUS=OK assignment, including the empty-output retry success path at lines 1138-1140; add a retry fixture without --validation-mode to the collector tests
+
+
+### FINDING_3: Degraded-response heuristic can overwrite valid terse reviewer results
+- **Reviewer(s)**: Codex-Arch, Cursor-Edge, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The byte-count versus token heuristic runs in the launcher before downstream validation can accept legitimate short outputs, so valid sentinels or compact structured results can be rewritten to `CURSOR_DEGRADED_RESPONSE`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Whitelist recognized no-findings sentinels in the launcher before applying the degraded heuristic, or narrow the heuristic to known narration-only shapes; add a high-outputTokens no-issues control test
+  - From Cursor-Edge: Before writing CURSOR_DEGRADED_RESPONSE, skip when trimmed EXTRACT_TMP matches json_no_issues_found (reuse validate-research-output.sh logic), NO_ISSUES_FOUND, or a schema_version TSV header prefix; add a B3 negative control with high outputTokens plus the JSON sentinel
+  - From Codex-Pragmatic: Before emitting CURSOR_DEGRADED_RESPONSE, exempt recognized valid short outputs such as JSON no-issues, NO_ISSUES_FOUND, and first-line TSV/header forms, or make the heuristic conditional on failing a caller-provided result contract
+  - From Codex-Requirements: Revise the heuristic acceptance criterion to exempt recognized valid sentinel/structured starts before applying the byte/token rule, and add a high-outputTokens short-sentinel control test
+
+
+### FINDING_4: Anchored require-result pattern still scans the whole file
+- **Reviewer(s)**: Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned `--require-result-pattern` check uses `grep -Eq`, so anchors apply per line rather than to the first meaningful content. Reviewer output with prose first and a valid TSV or JSON sentinel later can still pass the gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Revise the plan to change dispatch-with-waterfall.sh's --require-result-pattern check to validate only the first non-blank line, or add a stricter helper there; then pass the plan-review pattern to that helper
+  - From Codex-Innovation: Change dispatch-with-waterfall to match only the first nonblank line, or add a --require-first-line-pattern gate; add a regression where leading prose plus a valid TSV header must fail the gate
+  - From Codex-Pragmatic: Check only the first nonblank line or prefix before accepting the pattern, and add a regression where narration precedes an otherwise valid TSV header
+  - From Codex-Requirements: Revise dispatch-with-waterfall.sh to check the first nonblank line or first non-whitespace content explicitly, then add a regression where preamble plus TSV header falls back
+
+
+### FINDING_5: Degraded-response contract docs are incomplete
+- **Reviewer(s)**: Codex-Innovation, Codex-Pragmatic
+- **Severity**: nit
+- **Concern**: The plan changes launcher and validator behavior around `CURSOR_DEGRADED_RESPONSE`, but sibling script and operator-facing docs may still document only the older `CURSOR_EMPTY_RESPONSE` behavior or old Cursor mode.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Update the validator contract docs and external reviewer validation docs alongside the script header and tests
+  - From Codex-Pragmatic: Update the sibling contract docs alongside the script/test changes so the shipped plugin docs match the new --mode ask and degraded-response behavior
+
+
+### FINDING_6: Dispatch-plan-review test does not assert require-result-pattern forwarding
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: latent
+- **Concern**: The plan adds `--require-result-pattern` to the plan-review dispatcher, but the existing harness may not prove that the flag and exact pattern are passed through to `dispatch-with-waterfall.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Extend test-dispatch-plan-review-panel.sh so the stub captures --require-result-pattern and asserts the exact plan-review pattern is present
+
+
+### FINDING_7: Collector sentinel pseudocode uses variables unavailable at the proposed insertion point
+- **Reviewer(s)**: Cursor-dyn-collector-sentinel-vars, Codex-dyn-collector-sentinel-vars
+- **Severity**: important
+- **Concern**: The collector plan snippet appears intended for the first-pass result loop but references variables and indexes from later result-iteration code. Under `set -u`, this can abort the collector, target the wrong file, skip appending the current reviewer, or overwrite the wrong result entry.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-collector-sentinel-vars: Insert a new always-on pass after §3 retry (before §3.5 at ~1160) that parses each RESULTS[j] entry into REVIEWER_FILE/ENTRY_TOOL like §3.5, or rewrite the snippet to use $OUTPUT/$TOOL inside the i-loop
+  - From Codex-dyn-collector-sentinel-vars: Rewrite the insertion to use $OUTPUT and $TOOL in the first-pass loop, or move the logic into a later RESULTS iteration where REVIEWER_FILE and ENTRY_TOOL are actually extracted from each entry.
+  - From Codex-dyn-collector-sentinel-vars: Do not use RESULTS[j]= or continue in the first-pass insertion. Set STATUS=CURSOR_EMPTY_RESPONSE and FAILURE_REASON, then fall through to the existing RESULTS+= line, or append explicitly with RESULTS+=("REVIEWER_FILE=$OUTPUT|TOOL=$TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=...").
+
+
+### FINDING_8: Required test harness files are missing from the plan scope
+- **Reviewer(s)**: Cursor-dyn-test-scope-completeness, Codex-dyn-test-scope-completeness
+- **Severity**: important
+- **Concern**: The acceptance criteria require collector and validator regression tests, but the corresponding harness files are missing from the files-to-modify scope. Implementers following the scoped list can miss required tests, duplicate an existing case ID, or overwrite an unrelated validation case.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-test-scope-completeness: Add both test harness files to Files to modify/create, scout-plan-scope-files.txt, and explicit implementation bullets mirroring AC 8-9
+  - From Codex-dyn-test-scope-completeness: Add an UPDATED subsection for scripts/test-collect-agent-bash32.sh describing Case 5b fixtures for CURSOR_EMPTY_RESPONSE and CURSOR_DEGRADED_RESPONSE without --substantive-validation --validation-mode.
+  - From Codex-dyn-test-scope-completeness: Add an UPDATED subsection for scripts/test-validate-research-output.sh and use a non-conflicting case id, such as 19h, updating the top-of-file case catalog accordingly.
+
+
+
+diff_lines: 180
+
+## Test plan
+(no test plan section in plan-file)
