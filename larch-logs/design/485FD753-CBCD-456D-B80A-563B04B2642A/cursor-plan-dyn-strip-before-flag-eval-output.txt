@@ -1,0 +1,33 @@
+Reviewing the plan against the codebase, focusing on the padded-attestation / `has_attest_line` interaction.
+Checking how validation failures map to REASON values and reviewing related tests.
+Verifying the duplicate `zero_findings` test and whether the plan addresses removing post-success assertions.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:51,71	skills/review/scripts/test-aggregate-findings.sh:147-153	skills/review/scripts/aggregate-findings.sh:266-269,502-531	Edge Cases claim whitespace-padded attestation loses has_attest_line after drop_impure; Files section mandates flipping padded-attest (~726) to REASON=ok. Fixture is only leading/trailing spaces around the token; line_has_impure_empty_merge_attestation uses line.strip() so padding is not impure, drop does not remove the line, and has_attest_line stays True — same narrow-trigger path as exact attestation, not no-attestation (550-558).	Implementer following Edge Cases (b) may skip the padded flip or expect validation-failed/validation-exhausted; CI fails if flip is omitted, or wrong REASON if assertions follow (b). Files-section flip to REASON=ok with AGGREGATED=true, MERGED_COUNT=0, and empty/stripped FINDINGS_FILE is correct. Align Edge Cases with code: whitespace-only padding → ok after return-0; reserve (b) for suffix/junk impure lines (zero_findings_impure_attest → validation-failed).
+2	in_scope	important	correctness	plan.txt:48-55	skills/review/scripts/test-aggregate-findings.sh:578-593	Plan lists flips for zero_findings_input_nonempty (#2782), pattern-attest, and padded-attest but omits the earlier zero_findings stub case at 578-593 (#2536), which uses the same AGGREGATE_STUB_MERGE_KIND=zero_findings and asserts REASON=validation-exhausted.	After validator return-0, this test still expects validation-exhausted and unchanged findings; relevant-checks fails even if the three named tests are updated. Add explicit flip for 578-593 (or dedupe with #2939 test and document why one case is removed).
+3	in_scope	important	testing	plan.txt:42-46	skills/review/scripts/test-aggregate-findings.sh:705-711,725-727	#2939 flip section specifies REASON=ok / AGGREGATED=true / empty FINDINGS_FILE for zero_findings_input_nonempty but does not require removing AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input grep (707-708) or cmp unchanged / block-count guards (709-711); padded-attest only says same flip without listing inverted assertions.	Post-fix run leaves validation-exhausted stderr absent and overwrites findings.md; grep/cmp failures on an otherwise-correct implementation. Document for both zfn and padded: drop narrow-trigger stderr grep, replace cmp unchanged with empty-ballot checks, assert no attestation token in FINDINGS_FILE.
+4	in_scope	nit	correctness	plan.txt:51,71	skills/review/scripts/aggregate-findings.sh:272-285	Files section says padded line is stripped to exact attestation before accept; drop_impure only deletes impure lines (suffix drift), it does not normalize whitespace-padded lines into a separate exact line.	Misleading implementer narrative only; behavior is still ok via strip()-based has_attest_line. Reword to: whitespace padding is tolerated by strip(); only suffix/junk lines are dropped as impure.
+
+**1. [correctness]** `plan.txt` Edge Cases vs Files on padded-attest — **Files flip is correct; Edge Cases branch (b) is wrong for this fixture**
+
+The fixture at ```147:153:skills/review/scripts/test-aggregate-findings.sh``` is exclusively a whitespace-padded attestation line (`  LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED  `). Impurity is defined with `line.strip()` first:
+
+```266:269:skills/review/scripts/aggregate-findings.sh
+def line_has_impure_empty_merge_attestation(line):
+    """True when trimmed line begins with the attestation token but is not exactly it."""
+    st = line.strip()
+    return st.startswith(EMPTY_MERGE_ATTESTATION) and st != EMPTY_MERGE_ATTESTATION
+```
+
+After `drop_impure_empty_merge_attestation_lines` at line 502, that line remains. `has_attest_line` at 529–531 uses the same strip rule and is **True**. The plan’s new `return 0` branch is therefore reachable for padded-attest; flipping to `REASON=ok` (Files § ~726) is correct. Edge Cases § “has_attest_line is false → no-attestation rejection” applies to **suffix** impurity (`zero_findings_impure_attest`, ```161:167:skills/review/scripts/test-aggregate-findings.sh```), not this fixture — conflating the two is the contradiction.
+
+**2. [correctness]** Missing test flip at ```578:593:skills/review/scripts/test-aggregate-findings.sh```
+
+Same `zero_findings` stub and `validation-exhausted` assertion as the #2782 block; not listed in the plan’s flip inventory.
+
+**3. [testing]** Incomplete assertion rewrite for success paths
+
+#2782 block must drop ```707:708:skills/review/scripts/test-aggregate-findings.sh``` and invert ```709:711:skills/review/scripts/test-aggregate-findings.sh```; padded block ```725:727``` needs the same treatment, not only `REASON=`.
+
+**4. [nit]** “Stripped to exact attestation” misstates `drop_impure` — padding is accepted via `strip()`, not line normalization.
+
+[OUT_OF_SCOPE] `skills/review/scripts/aggregate-findings.sh:636-637` — `grep` for `empty_merge_from_nonempty_input` becomes unreachable once that stderr token is removed; optional follow-up cleanup only.
