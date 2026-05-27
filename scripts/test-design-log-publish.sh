@@ -381,6 +381,29 @@ printf 'done\n' >"$TMPPAUSE_REC/design/.completed/step-1c"
     [[ "$out_pause_rec" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREC1"* ]] || fail "pause recovery no-op missing recovery branch: $out_pause_rec"
 )
 
+echo "=== pause publish reuses existing remote branch with force-with-lease ==="
+TMPPAUSE_REUSE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-reuse.XXXXXX")
+clone_pause_reuse=$(setup_clone_with_origin_head "$TMPPAUSE_REUSE")
+stub_pause_reuse="$TMPPAUSE_REUSE/stub"
+make_gh_stub "$stub_pause_reuse"
+export PATH="$stub_pause_reuse:$PATH"
+export TEST_CLONE_ROOT="$clone_pause_reuse"
+export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSEREUSE1"
+unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPPAUSE_REUSE/design/.completed"
+printf 'first\n' >"$TMPPAUSE_REUSE/design/plan.txt"
+printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
+(
+    cd "$clone_pause_reuse" || exit 1
+    seed_reuse=$(GH_STUB_MERGE_RC=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
+    [[ "$seed_reuse" == *"PUBLISH_OK=false"* && "$seed_reuse" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREUSE1"* ]] || fail "pause branch reuse seed should leave remote branch: $seed_reuse"
+    printf 'second\n' >"$TMPPAUSE_REUSE/design/plan.txt"
+    reuse_out=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
+    [[ "$reuse_out" == *"PUBLISH_OK=true"* ]] || fail "pause branch reuse publish should succeed: $reuse_out"
+)
+git -C "$clone_pause_reuse" pull -q origin main
+grep -Fxq 'second' "$clone_pause_reuse/larch-logs/design/RUNPAUSEREUSE1/plan.txt" || fail "pause branch reuse should publish updated snapshot"
+
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")
 clone_cr=$(setup_clone_with_origin_head "$TMPCR")
@@ -517,6 +540,7 @@ out_pf=$(
     (cd "$clone_pf" && bash "$PUBLISH" --design-tmpdir "$TMP_PUSH/design" --run-id "RUNPUSHFAIL1" --issue 5 --repo owner/repo) 2>/dev/null || true
 )
 [[ "$out_pf" == *"PUBLISH_OK=false"* ]] || fail "push fail PUBLISH_OK: $out_pf"
+[[ "$out_pf" == *"RECOVERY_BRANCH=larch-log-design-recovery-RUNPUSHFAIL1"* ]] || fail "push fail should surface local recovery branch: $out_pf"
 git -C "$clone_pf" show-ref --verify --quiet "refs/heads/larch-log-design-recovery-RUNPUSHFAIL1" || fail "recovery branch missing"
 ! grep -q 'pr merge' "$GH_STUB_LOG_PF" || fail "gh pr merge should not run when push fails"
 unset GIT_STUB_FAIL_PUSH

@@ -73,6 +73,11 @@ chmod +x "$PLUGIN3/scripts/resolve-repo.sh"
 cat >"$PLUGIN3/scripts/design-pause-save.sh" <<'EOF_SAVE3'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ -f "${DESIGN_TMPDIR:?}/.pause-requested" ]] || {
+  printf 'PAUSE_OK=false\nERROR=sentinel-not-armed\n'
+  exit 0
+}
+rm -f "$DESIGN_TMPDIR/.pause-requested"
 printf 'PAUSE_OK=true\nSTEP=2b\nRUN_ID=RUNPAUSE3\n'
 EOF_SAVE3
 chmod +x "$PLUGIN3/scripts/design-pause-save.sh"
@@ -87,7 +92,7 @@ out_live=$(run_block "$HOME3" "$ENV3")
 [[ "$out_live" == *"✅ /larch:pause: state saved (STEP=2b, RUN_ID=RUNPAUSE3) — re-invoke /design 9 to resume"* ]] \
   || fail "live success output mismatch: $out_live"
 [[ -f "$DESIGN3/pause-save.out" ]] || fail "pause-save.out missing on success"
-! [[ -f "$DESIGN3/.pause-requested" ]] || fail ".pause-requested should not be created by /larch:pause"
+! [[ -f "$DESIGN3/.pause-requested" ]] || fail ".pause-requested should be cleared after a successful save"
 
 echo "=== live session save failure surfaces parsed error ==="
 HOME4="$TMP/home-fail"
@@ -103,6 +108,10 @@ chmod +x "$PLUGIN4/scripts/resolve-repo.sh"
 cat >"$PLUGIN4/scripts/design-pause-save.sh" <<'EOF_SAVE4'
 #!/usr/bin/env bash
 set -euo pipefail
+[[ -f "${DESIGN_TMPDIR:?}/.pause-requested" ]] || {
+  printf 'PAUSE_OK=false\nERROR=sentinel-not-armed\n'
+  exit 0
+}
 printf 'PAUSE_OK=false\nERROR=publish-and-recovery-failed\n'
 EOF_SAVE4
 chmod +x "$PLUGIN4/scripts/design-pause-save.sh"
@@ -119,5 +128,6 @@ set -e
 [[ "$rc_fail" == "1" ]] || fail "expected failing exit from live save failure, got $rc_fail"
 [[ "$out_fail" == *"**⚠ /larch:pause: save failed — publish-and-recovery-failed; see $DESIGN4/execution-issues.md**"* ]] \
   || fail "live failure output mismatch: $out_fail"
+[[ -f "$DESIGN4/.pause-requested" ]] || fail ".pause-requested should remain armed after a failed save"
 
 echo "PASS: /larch:pause skill block"

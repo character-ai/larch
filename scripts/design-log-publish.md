@@ -93,7 +93,7 @@ On stdout (parseable `KEY=value` lines):
 | `PUBLISH_OK` | `true` when the publish + merge tail succeeded; `false` on validation failure, init/copy/redact failure, git/gh errors, or merge refusal (`policy_denied`, etc.). |
 | `PR_NUMBER` | GitHub PR number when known (may be set when `PUBLISH_OK=false` if create succeeded but merge failed). |
 | `PR_URL` | PR URL when known. |
-| `RECOVERY_BRANCH` | Disposable branch name (`larch-log-design-<RUN_ID>`) when `PUBLISH_OK=false` after `git push` succeeded (remote may need operator cleanup). |
+| `RECOVERY_BRANCH` | Recovery ref name when `PUBLISH_OK=false`: `larch-log-design-<RUN_ID>` after a successful push that still needs cleanup, or `larch-log-design-recovery-<RUN_ID>` when push failed and the local commit was preserved only in the consumer clone. |
 
 `--dry-run` validates arguments, confirms `--design-tmpdir` exists, requires
 `git` and `gh` on `PATH`, resolves `git rev-parse --show-toplevel` and

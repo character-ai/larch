@@ -577,8 +577,12 @@ fi
 if ! git -C "$WT_DIR" push "${push_args[@]}" >/dev/null 2>&1; then
     larch_err "design-log-publish: git push failed"
     if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
-        git -C "$REPO_ROOT" branch -f "larch-log-design-recovery-${RUN_ID}" "$commit_sha" >/dev/null 2>&1 || true
-        larch_err "design-log-publish: local commit preserved on ref larch-log-design-recovery-${RUN_ID} ($commit_sha)"
+        local_recovery_branch="larch-log-design-recovery-${RUN_ID}"
+        git -C "$REPO_ROOT" branch -f "$local_recovery_branch" "$commit_sha" >/dev/null 2>&1 || true
+        larch_err "design-log-publish: local commit preserved on ref ${local_recovery_branch} ($commit_sha)"
+        emit_publish_result false
+        emit_kv RECOVERY_BRANCH "$local_recovery_branch"
+        exit 0
     fi
     emit_publish_result false
     exit 0

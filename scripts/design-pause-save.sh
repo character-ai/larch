@@ -169,7 +169,12 @@ fi
 if [[ "$PUBLISH_OK" != "true" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
     if [[ -n "$RECOVERY_BRANCH" ]]; then
-        printf 'LOG_RECOVERY_BRANCH=%s\n' "$RECOVERY_BRANCH" >> "$state_tmp"
+        if [[ "$RECOVERY_BRANCH" == "larch-log-design-$RUN_ID" ]]; then
+            printf 'LOG_RECOVERY_BRANCH=%s\n' "$RECOVERY_BRANCH" >> "$state_tmp"
+        else
+            emit_kv LOG_RECOVERY_BRANCH "$RECOVERY_BRANCH"
+            emit_fail "publish-local-recovery-only"
+        fi
     else
         emit_fail "publish-and-recovery-failed"
     fi
@@ -200,6 +205,10 @@ fi
 
 rm -f "$DESIGN_TMPDIR/.pause-requested"
 
+if [[ -n "$RECOVERY_BRANCH" ]]; then
+    emit_kv WARN recovery-branch-only
+    emit_kv LOG_RECOVERY_BRANCH "$RECOVERY_BRANCH"
+fi
 emit_kv PAUSE_OK true
 emit_kv STEP "$STEP"
 emit_kv RUN_ID "$RUN_ID"

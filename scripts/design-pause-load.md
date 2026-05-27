@@ -22,30 +22,26 @@ git-sensitive values before any fetch:
 - `RUN_ID` must pass `larch_log_slug_is_valid`.
 - `STEP` must appear in `skills/design/scripts/step-name-registry.tsv`.
 - `LOG_RECOVERY_BRANCH`, when present, must pass `git check-ref-format --branch`
-  and start with `larch-log-design-`.
+  and exactly match `larch-log-design-<RUN_ID>`.
 
 `BODY_HASH` is compared against the issue body with the pause marker stripped.
 Mismatch emits `WARN=body-drift` and continues; the marker remains the authority.
 
 Snapshot fetch uses `git fetch origin <ref>` followed by local
 `git archive <ref> larch-logs/design/<RUN_ID>/ | tar -x --strip-components=3 -C
-<staging-tmpdir>`. `LOG_RECOVERY_BRANCH` is fetched first when present, and the
-loader archives the resolved fetched commit rather than the mutable
-`FETCH_HEAD` ref. Otherwise the origin default branch is used.
+<staging-tmpdir>`. `LOG_RECOVERY_BRANCH` is fetched first when present;
+otherwise the origin default branch is used.
 
-After extraction, `plan.txt`, `run-params.json`, and `pause-state.txt` must
-exist at the staging root. Missing artifacts emit `LOAD_OK=false`
-`ERROR=missing-restored-artifact`. The loader rejects staged symlinks, rejects a
-staged `.git` path, verifies enumerated restored files stay under the staging
-root, deletes the marker, and only then installs the staged restore into the
-caller tmpdir.
+After extraction, `manifest.json`, `plan.txt`, `run-params.json`, and
+`pause-state.txt` must exist at the staging root. Missing artifacts emit
+`LOAD_OK=false` `ERROR=missing-restored-artifact`. The loader deletes the pause
+marker before copying the staged restore into the caller tmpdir, so a failed
+marker delete leaves the caller tmpdir untouched instead of installing a hybrid
+restore while the issue still advertises the old pause marker.
 
-For unrecoverable snapshot failures (`snapshot-not-found`,
-`snapshot-extract-failed`, `snapshot-contains-symlink`,
-`snapshot-path-escape`, `restore-forbidden-path`, or
-`missing-restored-artifact`), the loader best-effort clears the pause marker
-before returning `LOAD_OK=false` so later `/design` runs do not keep retrying
-the same broken snapshot.
+`jq` is required for `manifest.json` validation. When it is unavailable, the
+loader fails closed with `LOAD_OK=false` `ERROR=jq-missing` instead of a shell
+error.
 
 ## Output Contract
 
@@ -54,5 +50,4 @@ the same broken snapshot.
   exit 0.
 - Expected failure: `LOAD_OK=false`, `ERROR=<token>`, exit 0.
 
-The marker is deleted only after validation and artifact assertions pass and
-before the staged restore is installed into the caller tmpdir.
+The marker is deleted only after validation and artifact assertions pass.

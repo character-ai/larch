@@ -29,10 +29,14 @@ Failures` when enough tmpdir context exists.
 
 If `design-log-publish.sh --reason pause` emits `PUBLISH_OK=false` with a
 non-empty `RECOVERY_BRANCH`, that branch is recorded as `LOG_RECOVERY_BRANCH`
-inside `pause-state.txt` before the marker is written. If publish fails without
-a recovery branch, no marker is written. A pause publish that produces no new
-committed snapshot delta now fails closed the same way, so `/larch:pause` does
-not leave behind a marker that points at a non-materialized run snapshot.
+inside `pause-state.txt`, written into the marker payload, and surfaced on
+stdout as `WARN=recovery-branch-only` plus `LOG_RECOVERY_BRANCH=<branch>`
+before the marker is written. If publish fails without a recovery branch, no
+marker is written. A pause publish that produces no new committed snapshot
+delta now fails closed the same way, so `/larch:pause` does not leave behind a
+marker that points at a non-materialized run snapshot.
 
-Normal invocation is synchronous from `/larch:pause`. The `/design` Bash prelude
-may also invoke it defensively when `.pause-requested` exists.
+Normal invocation is synchronous from `/larch:pause`. The `/design` Bash
+prelude may also invoke it defensively when `.pause-requested` exists, and
+`/larch:pause` itself now arms that sentinel before invoking the helper so the
+next Bash boundary can honor a deferred pause request.
