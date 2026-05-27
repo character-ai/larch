@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/implement-bootstrap.sh:734-739	Plan omits bootstrap and tells the orchestrator to call persist-implement-run-flags after Step 0	SKILL.md forbids prompt-side persist during Step 0 (line 738); the real writer is implement-bootstrap.sh; a literal follow would either skip EMERGENCY_REQUESTED or add a banned Step 0 Bash call (test-implement-structure.sh:475)	Add scripts/implement-bootstrap.sh (and .md) to the file list; thread --emergency-requested from argv into bootstrap and pass it to persist-implement-run-flags.sh; drop the post-bootstrap orchestrator persist step
+2	in_scope	important	correctness	skills/implement/scripts/post-tracking-issue.sh:81-88	Bootstrap posts larch:metadata before run-flags.sh gets EMERGENCY_REQUESTED	phase_tracking calls post-tracking-issue.sh (664-668) before phase_plan_materialize persists flags (734-739), so an Emergency: true metadata line cannot be sourced from run-flags.sh as planned	Either pass --emergency-requested into bootstrap/post-tracking-issue.sh, reorder phases, or upsert metadata again after persist; update post-tracking-issue.sh (and refresh-execution-issues.sh if it rebuilds metadata) — not template/SKILL prose alone
+3	in_scope	important	correctness	skills/implement/SKILL.md:254-267	Emergency audit bypass jumps to item 6 but item 6 is labeled On AUDIT=pass only	Under --emergency with AUDIT=refuse, implementers following item numbering skip semantic materiality (item 6) even though the plan requires it to still fire	Reword item 6 entry condition to include the emergency bypass path (e.g., AUDIT=pass OR emergency skipped item 5); keep stale-notice exit 2 behavior unchanged
+4	in_scope	important	risk-integration	plan.txt:16-17	Plan maps AUDIT=refuse bypass to Preflight item 4; SKILL refuse/clarify path is item 5	In SKILL.md, item 4 is the adequacy audit; item 5 is On AUDIT=refuse (clarify-state, exit 3). Mis-numbering risks editing the audit rubric instead of the refuse branch	Align plan steps with SKILL items 3 (block), 4 (audit), 5 (refuse + clarify), and 6 (semantic materiality); modify item 5 for emergency, not item 4
+5	in_scope	important	architecture	skills/implement/scripts/write-final-report.sh:150-160	Plan documents Emergency in larch:metadata and larch:final-summary but lists no composing scripts	final-summary is built by write-final-report.sh/render-run-summary.sh, not orchestrator prose; metadata is built in post-tracking-issue.sh — template/SKILL-only edits will not emit Emergency: true	Add write-final-report.sh (read EMERGENCY_REQUESTED from run-flags.sh for final-summary) to the file list; pair with the metadata ordering fix in finding 2
+
+**1. Bootstrap owns persist, not post–Step 0 orchestrator** (`architecture`)  
+`implement-bootstrap.sh` is the sanctioned `persist-implement-run-flags.sh` callsite during plan materialization. The plan’s “after Step 0 bootstrap, invoke persist…” step conflicts with `skills/implement/SKILL.md` (~738), which forbids prompt-side persist in Step 0.
+
+**2. Metadata posted before `EMERGENCY_REQUESTED` exists** (`correctness`)  
+`phase_tracking` runs `post-tracking-issue.sh` before `phase_plan_materialize` writes `run-flags.sh`. A metadata `Emergency: true` line cannot come from persisted flags without reordering, a bootstrap flag, or a follow-up upsert.
+
+**3. Item 6 gate vs emergency audit bypass** (`correctness`)  
+The plan says to continue to item 6 after skipping refuse under `--emergency`, but item 6 is currently “On `AUDIT=pass`” only, so semantic materiality may be skipped.
+
+**4. Preflight item numbering mismatch** (`risk-integration`)  
+Plan “item 4” for `AUDIT=refuse` maps to SKILL item 5; item 4 in SKILL is the audit itself. High risk of editing the wrong block.
+
+**5. Missing script targets for Emergency emission** (`architecture`)  
+`larch:final-summary` and `larch:metadata` bodies are composed in shell helpers, not by SKILL “emission contract” prose alone; those scripts are absent from the file list.
