@@ -1,0 +1,13 @@
+Reviewing the branch diff and the per-status branch coverage tests in `scripts/test-dispatch-plan-voters.sh`.
+Verifying whether the all-failed and per-status tests behave as expected.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+The per-status branch loop at `scripts/test-dispatch-plan-voters.sh:342-356` is **correct for the cases it exercises**. With Voter 1 always succeeding in that loop (real `launch-claude-review.sh` → `launch-claude-subprocess.sh` → PATH `claude` stub, narrative-then-retry), `effective_judges` is `1 + (status2 != failed) + (status3 != failed)`. The `degraded_count -eq 0` branch for non-`failed` pairs covers four combinations (`launched`/`fallback` × `launched`/`fallback`), and all four yield three effective judges because `fallback` still writes substantive output and is not `failed`. The scout concern that only `launched`/`launched` reaches three judges is incorrect.
+
+The all-failed case at `scripts/test-dispatch-plan-voters.sh:331-340` also works: `CLAUDE_STUB_MODE=fail` reaches Voter 1 through the real launcher chain (`scripts/dispatch-plan-voters.sh:73` uses `$SCRIPT_DIR/launch-claude-review.sh`, not the harness stub at `$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh`). The stub’s `LAUNCH_CLAUDE_REVIEW_STUB_MODE=fail` path is unused for Voter 1 today; failure is driven by the `$STUB_BIN/claude` stub via PATH. That is fragile if Voter 1 ever switches to the plugin-root launcher stub, but it is not a current defect — the harness passes and correctly asserts `VOTER_1_STATUS=failed` and `DEGRADED_PANEL_WARNING` with `0/3` effective judges.
+
+**Coverage gap (pre-existing test design, not a failing assertion):** the loop proxies `effective_judges < 3` with `status2 == failed || status3 == failed`, which is equivalent only while Voter 1 always contributes one judge. It does not cover Voter 1 failure with Voters 2–3 succeeding (`effective_judges=2`, degraded expected, but the loop would expect `degraded_count=0`). The separate all-failed test covers the all-fail path; the `retry-fails-substantive` case at `scripts/test-dispatch-plan-voters.sh:377-380` covers parse-rate-driven degradation elsewhere.

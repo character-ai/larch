@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- tiny duplicated predicate is a real maintenance smell but not worth extra churn here
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the test is somewhat brittle, but only for future optional warning placement and not worth blocking this change
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- fixture bulk is real but vague and not concrete enough for a follow-up issue
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- current coverage matches normalized failed-status behavior; the remaining gap is low-value future-proofing
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- a read-only reviewer not running commands is not a code defect, and implementation evidence already records relevant test runs
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- caller-supplied tmpdir is a pre-existing trust-boundary concern and a jail would add more policy than this warrants
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- longer worst-case wall clock is intentional timeout alignment and round-budget enforcement belongs elsewhere
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the missing exactly-once assertion is real but too minor and pre-existing to file separately
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_18: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- true shell-semantics nuance, but it is not a separate actionable problem beyond FINDING_17
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- partial stdout failure is a rare edge case and changing guard semantics risks more complexity than value
