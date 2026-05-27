@@ -1022,18 +1022,19 @@ if [[ -s "$OUTPUT" ]]; then
         if jq -re '.result // ""' "${OUTPUT}.json" > "$EXTRACT_TMP" 2>/dev/null && [[ -s "$EXTRACT_TMP" ]]; then
             RESULT_BYTES=$(wc -c < "$EXTRACT_TMP" 2>/dev/null | tr -d ' ')
             OUT_TOKENS=$(jq -r '.usage.outputTokens // 0' "${OUTPUT}.json" 2>/dev/null || echo 0)
-            _first_nonblank=$(awk '/[^[:space:]]/ { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$EXTRACT_TMP" 2>/dev/null)
-            _is_legit_short=false
-            if [[ "$_first_nonblank" == "NO_ISSUES_FOUND" ]] || \
-               [[ "$_first_nonblank" == "schema_version"* ]] || \
-               jq -e '(type == "object") and (.no_issues_found == true)' "$EXTRACT_TMP" >/dev/null 2>&1; then
-                _is_legit_short=true
-            fi
-            if [[ "$_is_legit_short" != "true" \
-                  && "$OUT_TOKENS" =~ ^[0-9]+$ && "$RESULT_BYTES" =~ ^[0-9]+$ \
+            if [[ "$OUT_TOKENS" =~ ^[0-9]+$ && "$RESULT_BYTES" =~ ^[0-9]+$ \
                   && "$OUT_TOKENS" -gt 1000 && "$RESULT_BYTES" -lt 500 ]]; then
-                printf 'CURSOR_DEGRADED_RESPONSE\n' > "$OUTPUT"
-                rm -f "$EXTRACT_TMP"
+                _is_legit_short=false
+                if [[ -x "$SCRIPT_DIR/validate-research-output.sh" ]] \
+                    && "$SCRIPT_DIR/validate-research-output.sh" --validation-mode "$EXTRACT_TMP" >/dev/null 2>&1; then
+                    _is_legit_short=true
+                fi
+                if [[ "$_is_legit_short" == "true" ]]; then
+                    mv -f "$EXTRACT_TMP" "$OUTPUT"
+                else
+                    printf 'CURSOR_DEGRADED_RESPONSE\n' > "$OUTPUT"
+                    rm -f "$EXTRACT_TMP"
+                fi
             else
                 mv -f "$EXTRACT_TMP" "$OUTPUT"
             fi
