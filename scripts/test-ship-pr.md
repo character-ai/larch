@@ -20,6 +20,13 @@ It copies the state-machine script into disposable git repositories with stubbed
 - design-plan forwarding from `session-env.sh` to CI-fix and rebase-conflict vendor launchers
 - `--no-logs-commit` is exported as `LARCH_NO_LOGS_COMMIT` for child lifecycle helpers invoked by `ship-pr.sh`
 - inner local fix loop: exit `0` when first 2 vendor attempts fail but the 3rd succeeds; exit `4` (stall) when all 5 vendor attempts fail
+- CI vendor verification after per-job fallback:
+  `vendor_verify_local_pass`, `vendor_verify_local_exhausts`,
+  `vendor_verify_head_changed`, `vendor_verify_sweep_regression`,
+  `vendor_verify_empty_tsv`, and
+  `vendor_verify_rc2_on_gh_logs_failed_branch`
+- `_RCC_MAX_ITER` budget behavior:
+  `rcc_max_iter_honored` and `rcc_max_iter_invalid_env_clamp`
 - transient-network routing through `scripts/lib-net.sh`: matching create-PR, merge, CI-bail, and rebase signatures exit `6`, while non-network errors stall normally
 - OID-mismatch `MERGE_RESULT=error` ("local HEAD does not match PR head OID") routes to `run_rebase_rebump` and exits `0` with `PHASE=done`, rather than stalling at `STALL_STEP=12d`
 - argv-init cold start writes the seven per-key state fields plus `BAIL_FAILURE_DETAIL_LOG`, `NO_LOGS_COMMIT`, and `IMPLEMENT_TMPDIR` when no state file exists (`BRANCH_NAME` matches the disposable-repo checkout so bump-branch-guard stays green; `ISSUE_NUMBER` carries an `=` to exercise `cut -d= -f2-` extraction)

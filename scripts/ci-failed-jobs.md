@@ -34,7 +34,9 @@ JOB_NAME<TAB>SHARD<TAB>CLASS
 ```
 
 There is intentionally no local command column. `ship-pr.sh` owns the fixed
-case-statement argv dispatcher.
+case-statement argv dispatcher. The TSV is consumed by both
+`run_per_job_local_fix_loop` and the vendor-path `_verify_failed_jobs_locally`
+gate in `ship-pr.sh`.
 
 ## Exit Codes
 
