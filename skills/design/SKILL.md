@@ -702,7 +702,7 @@ If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, tre
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt")
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt")
 VALIDATE_STATUS=ok
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
@@ -721,7 +721,7 @@ while IFS= read -r _vl || [[ -n "$_vl" ]]; do
 done <<< "$_validate_out"
 ```
 
-Mechanical dispatch: `ACTION=VALIDATE_PLAN_COMMANDS` is issued from `invoke-plan-validator-if-not-quick.sh` into `design-driver.sh` when `review_budget` is not `quick` (see `read-design-review-budget.sh` for JSON fallbacks when `python3` is unavailable).
+Mechanical dispatch: `ACTION=VALIDATE_PLAN_COMMANDS` is issued from `invoke-plan-validator.sh` into `design-driver.sh`.
 
 When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`).
 
@@ -1033,11 +1033,11 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt:
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
-2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator-if-not-quick.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
+2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/composed-plan.md")
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md")
 VALIDATE_STATUS=ok
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
@@ -1149,14 +1149,14 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.awk` — awk implementation loaded by `parse-plan-commands.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh` — gates `ACTION=VALIDATE_PLAN_COMMANDS` on `review_budget` (quick skips validator dispatch). When `$DESIGN_TMPDIR/run-params.json` is readable, invokes `read-design-review-budget.sh`; when it is missing or unreadable, skips validator dispatch (same as quick tier).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-review-budget.sh` — resolves `review_budget` (`quick`|`full`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. The SKILL.md prose guards invocation on `review_budget != quick`. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`. Shared TSV header helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-findings-classification.sh`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`. Shared TSV header helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-findings-classification.sh`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR. Sibling: `design-log-publish.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
+- `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure. Sibling: `read-design-classification.md`.
