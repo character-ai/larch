@@ -10,8 +10,8 @@
 - **Plan review**: N/A
 - **Code review**: 25/41 accepted
 - **OOS filed**: 0
-- **Exec issues**: 0
-- **Warnings**: 1
+- **Exec issues**: 1
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/512A7739-7E73-4202-A63B-863A7B8CDD03/`
 
 <!-- larch:run-summary v=1 -->
