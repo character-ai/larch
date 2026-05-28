@@ -1,0 +1,7 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-dyn-sync-pin-fidelity, Codex-dyn-sync-pin-fidelity	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Cursor-Edge, Codex-Edge, Codex-Innovation, Cursor-dyn-sync-pin-fidelity, Codex-dyn-sync-pin-fidelity	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	EXONERATE	partially-true	minor	good	false	Cursor
+FINDING_3	Cursor-Requirements, Codex-Requirements	accepted	YES	true	major	good	false	Claude	YES	true	major	adequate	false	Codex	EXONERATE	true	minor	adequate	false	Cursor
+FINDING_4	Cursor-dyn-sync-pin-fidelity, Codex-dyn-sync-pin-fidelity	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
+FINDING_5	Codex-Requirements	accepted	YES	true	nit	adequate	false	Claude	YES	true	nit	excellent	false	Codex	YES	true	nit	excellent	false	Cursor
+FINDING_6	Cursor-dyn-lint-scope-coverage, Codex-dyn-lint-scope-coverage	accepted	YES	true	minor	good	false	Claude	YES	partially-true	minor	good	false	Codex	YES	true	minor	good	false	Cursor

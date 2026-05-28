@@ -1,0 +1,4 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	scripts/test-step0b-router-flag-recovery.sh (planned); scripts/test-design-structure.sh:395-406,505-507	Planned jq filter literals contain $merge_* inside single quotes without SC2016 waivers	ShellCheck reports SC2016, so make lint fails on the new harness and likely on the new full-filter grep pin	Add # shellcheck disable=SC2016 # jq filter literal immediately before the planned jq -c command and before the new full-filter grep, matching the existing literal jq pins
+
+1. [code-quality] The proposed jq literals need ShellCheck waivers. Existing `scripts/test-design-structure.sh` already disables SC2016 before similar jq/grep literal pins; the new harness and full-filter pin should follow that pattern so the minimum-change PR still passes `make lint`.

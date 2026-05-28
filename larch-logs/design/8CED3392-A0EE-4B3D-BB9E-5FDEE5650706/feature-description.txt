@@ -1,0 +1,16 @@
+[DESIGNING] [OOS] Gate B degraded-mode policy inconsistency and missing test coverage for --manual/-m
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Code review panel (rounds 3-5)
+**Phase**: implement
+**Vote tally**: FINDING_1 YES=3; FINDING_8 YES=2; FINDING_9 YES=2
+
+## Description
+
+Three related gaps in the --manual/-m implementation:
+  (1) `skills/design/references/approval-gates.md`, `SECURITY.md`, `scripts/write-run-params.sh`, and the plan contract disagree on what Gate B should do when `jq`/`run-params.json` fails — some surfaces say fail-closed to manual prompting, others say default to auto-apply; (2) A repo-wide stale-prose grep for old "no auto-apply" / "user is always prompted" Gate B contract strings is not part of CI so doc drift can regress silently; (3) No harness case covers `write-run-params.sh` failure with `--manual-only` argv followed by the four-arm jq-merge recovery, so degraded-path Gate B mode resolution lacks automated coverage.
+  Suggested fix: (1) Align all surfaces on a single degraded-mode coercion rule (prefer auto-apply with a warning breadcrumb when manual intent cannot be confirmed); (2) Add a `grep -ri` CI step or `test-design-structure.sh` pin for the stale Gate B prose patterns; (3) Extend `scripts/test-write-run-params.sh` with failure + jq-recovery test cases for the manual-gate-b flag path.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
