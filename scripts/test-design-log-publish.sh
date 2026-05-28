@@ -263,7 +263,7 @@ grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/vote
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh pr create --body-file in log"
-! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh pr create should not use inline --body"
+! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh pr create should not use inline --body" # lint-gh-body-inline: ok gh-stub assertion fixture
 unset GH_STUB_EXPECT_PR_BODY_FILE
 # Verify suffix deny-list dropped each denied basename at both top-level and render-cache:
 for denied in \

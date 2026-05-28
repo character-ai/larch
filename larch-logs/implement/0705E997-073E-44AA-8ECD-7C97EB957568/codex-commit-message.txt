@@ -1,0 +1,3 @@
+lint: reject inline gh body payloads
+
+Add a repo-wide pre-commit lint for inline gh --body and --notes usage, document the contract, and cover shell/Python argv-list cases plus larch-logs exclusion in the regression harness.

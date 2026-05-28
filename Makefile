@@ -10,7 +10,7 @@
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-design-reentry-guard
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-report-tokens-recompute
-.PHONY: lint-bash32 test-lint-bash32 lint-foreground lint-foreground-markers test-lint-foreground-markers lint-mermaid agent-sync test-ci-failed-jobs
+.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-foreground lint-foreground-markers test-lint-foreground-markers lint-mermaid agent-sync test-ci-failed-jobs
 .PHONY: test-step-7a
 .PHONY: test-breadcrumb-monitor-bash32
 .PHONY: test-background-monitor-wait
@@ -86,7 +86,7 @@ test-harnesses-14: test-anti-improvised-wakeup test-check-main-sync test-collect
 
 test-harnesses-15: test-append-tool-failure test-check-mid-run-dirty-tree test-collect-agent-results test-dispatch-code-voters-regressions-r1-r2 test-false-positive-keywords test-github-remote-repo test-implement-timing-rehydration test-lib-vote-tally test-rebase-push-fork-mode test-run-research-planner test-ship-pr-postmerge test-token-report test-check-contains-pins
 
-test-harnesses-16: test-apply-bump test-check-phantom-dirty test-phantom-probe-with-warn test-collect-agent-retry test-dispatch-code-voters-regressions-r3-codex test-finalize-plan test-harness-timer test-intra-batch-deps test-lint-bash32 test-lint-foreground-markers test-parse-input test-rebase-push-keep-on-conflict test-research-angle-prompts test-run-step1-plan-log test-ship-pr-rebase-phase14 test-ship-pr-state test-token-tally test-validate-research-output
+test-harnesses-16: test-apply-bump test-check-phantom-dirty test-phantom-probe-with-warn test-collect-agent-retry test-dispatch-code-voters-regressions-r3-codex test-finalize-plan test-harness-timer test-intra-batch-deps test-lint-bash32 test-lint-foreground-markers test-lint-gh-body-inline test-parse-input test-rebase-push-keep-on-conflict test-research-angle-prompts test-run-step1-plan-log test-ship-pr-rebase-phase14 test-ship-pr-state test-token-tally test-validate-research-output
 
 test-harnesses-17: test-audit-edit-write test-check-review-changes test-collect-findings test-dispatch-code-voters-retry-claude test-finalize-sanity-check test-hook-anti-read-poll test-lint-fix-loop test-parse-prose-blockers test-redact test-research-banner test-run-step2-dispatch test-ship-pr-transient test-parse-codex-usage test-token-vendor-scrapers test-verify-run-log-completeness
 
@@ -367,6 +367,9 @@ test-lint-no-raw-stderr-after-quiet-init:
 
 test-lint-bash32:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-bash32.sh
+
+test-lint-gh-body-inline:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-gh-body-inline.sh
 
 test-lint-foreground-markers:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-foreground-markers.sh
@@ -1035,6 +1038,9 @@ shellcheck:
 
 lint-bash32:
 	bash scripts/lint-bash32.sh
+
+lint-gh-body-inline:
+	bash scripts/lint-gh-body-inline.sh
 
 lint-foreground: lint-foreground-markers
 
