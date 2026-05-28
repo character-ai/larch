@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `9647c6815` (Fixes #2871: Integrate multi-round design plan-review loop (INT-2871 piece 5) (#3142))
-- **Current version**: `45.3.10`
+- **Base commit**: `4f789b6d1` (Bump version to 45.3.11 (#3154))
+- **Current version**: `45.3.11`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.3.11`
+- **New version**: `45.3.12`
 
 ### PATCH rationale
 
