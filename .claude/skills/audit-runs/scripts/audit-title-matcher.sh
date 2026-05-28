@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# audit-title-matcher.sh — Centralized audit-report title shape matcher.
+# audit-title-matcher.sh — Centralized audit-report + design-log title matchers.
 #
 # Usage (function):
 #   source audit-title-matcher.sh
@@ -24,6 +24,20 @@ _match_audit_report_title_impl() {
             return 1
             ;;
     esac
+}
+
+match_design_run_log_pr_title() {
+    local title="${1:-}"
+    [ -n "$title" ] || return 1
+    printf '%s' "$title" \
+        | grep -qE '^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'
+}
+
+extract_design_run_log_pr_id() {
+    local title="${1:-}"
+    match_design_run_log_pr_title "$title" || return 1
+    printf '%s' "$title" \
+        | sed -n 's/^chore(larch-logs): design run \([0-9A-F-]*\)$/\1/p'
 }
 
 match_audit_report_title() {

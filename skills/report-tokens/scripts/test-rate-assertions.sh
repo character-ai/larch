@@ -76,7 +76,7 @@ rm -rf "$DESIGN_RUN"
 mkdir -p "$DESIGN_RUN"
 cp "$SCRIPT_DIR/fixtures/recompute-run/manifest.json" "$DESIGN_RUN/manifest.json"
 cp "$SCRIPT_DIR/fixtures/recompute-run/token-report.json" "$DESIGN_RUN/token-report-final.json"
-cp "$SCRIPT_DIR/fixtures/recompute-run/token-report.json" "$DESIGN_RUN/timing-report-final.json"
+printf '%s\n' '{"workflow_path":"HARD"}' > "$DESIGN_RUN/timing-report-final.json"
 design_out=$(LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$REPO" LARCH_REPORT_TOKENS_REPO=fixture/local \
     LARCH_REPORT_TOKENS_NO_ISSUE=1 LARCH_REPORT_TOKENS_NO_PLOT=1 \
     "$SCRIPT" --skill design)

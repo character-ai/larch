@@ -82,18 +82,23 @@ emit_ok() {
     exit 0
 }
 
+emit_merged_pr_processing_error() {
+    local scope="$1" detail="$2"
+    emit_error "merged PR listing/filter failed during ${scope}: ${detail}"
+}
+
 # Filter merged PR JSON array to skill-appropriate rows (jq filter on .title)
 filter_prs_for_skill() {
     local json="$1"
     case "$SKILL" in
         design)
             printf '%s' "$json" | jq '
-                [.[] | select((.title // "") | test("^chore\\(larch-logs\\): design run [0-9A-Fa-f-]+$"))]
+                [.[] | select((.title // "") | test("^chore\\(larch-logs\\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$"))]
             '
             ;;
         implement)
             printf '%s' "$json" | jq '
-                [.[] | select(((.title // "") | test("^chore\\(larch-logs\\): design run [0-9A-Fa-f-]+$")) | not)]
+                [.[] | select(((.title // "") | test("^chore\\(larch-logs\\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")) | not)]
             '
             ;;
     esac
@@ -103,10 +108,10 @@ pr_matches_skill() {
     local title="$1"
     case "$SKILL" in
         design)
-            printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'
+            match_design_run_log_pr_title "$title"
             ;;
         implement)
-            ! printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'
+            ! match_design_run_log_pr_title "$title"
             ;;
     esac
 }
@@ -152,13 +157,16 @@ fetch_merged_main_prs_json() {
 # ---- "since last audit" helper ----
 resolve_since_last_audit() {
     local implicit="$1"
+    local prior_list_json row t
 
-    # Read audit-report issues; pick most recent whose title matches this skill
-    PRIOR_BODY=$(gh issue list --state all --limit 100000 --label audit-report --repo "$REPO" \
-        --json number,title,body,createdAt \
-        --jq '[.[] | select(.title != null)] | sort_by(.createdAt) | reverse' 2>/dev/null || true)
+    # List titles first, then fetch the matched issue body only.
+    if ! prior_list_json=$(gh issue list --state all --limit 100000 --label audit-report --repo "$REPO" \
+        --json number,title,createdAt \
+        --jq '[.[] | select(.title != null)] | sort_by(.createdAt) | reverse' 2>/dev/null); then
+        emit_error "failed listing prior audit-report issues for --skill=${SKILL}"
+    fi
 
-    if [ -z "$PRIOR_BODY" ] || [ "$PRIOR_BODY" = "null" ] || [ "$PRIOR_BODY" = "[]" ]; then
+    if [ -z "$prior_list_json" ] || [ "$prior_list_json" = "null" ] || [ "$prior_list_json" = "[]" ]; then
         emit_error "no prior audit-report issue found for --skill=${SKILL}"
     fi
 
@@ -169,13 +177,16 @@ resolve_since_last_audit() {
         t=$(printf '%s' "$row" | jq -r '.title // empty' 2>/dev/null || true)
         if match_audit_report_title --skill "$SKILL" --title "$t"; then
             PRIOR_NUM=$(printf '%s' "$row" | jq -r '.number // empty' 2>/dev/null || true)
-            PRIOR_ISSUE_BODY=$(printf '%s' "$row" | jq -r '.body // empty' 2>/dev/null || true)
             break
         fi
-    done < <(printf '%s' "$PRIOR_BODY" | jq -c '.[]' 2>/dev/null || true)
+    done < <(printf '%s' "$prior_list_json" | jq -c '.[]' 2>/dev/null || true)
 
     if [ -z "$PRIOR_NUM" ]; then
         emit_error "no prior audit-report issue found for --skill=${SKILL}"
+    fi
+
+    if ! PRIOR_ISSUE_BODY=$(gh issue view "$PRIOR_NUM" --repo "$REPO" --json body --jq '.body // empty' 2>/dev/null); then
+        emit_error "failed reading prior audit-report #${PRIOR_NUM} body for --skill=${SKILL}"
     fi
 
     # Parse audited_pr_range.last from YAML frontmatter (between --- markers)
@@ -195,13 +206,19 @@ resolve_since_last_audit() {
 
     # List PRs merged after MERGED_AT
     if ! ALL_MERGED=$(fetch_merged_main_prs_json); then
-        emit_error "gh api failed listing merged PRs (network or auth)"
+        emit_merged_pr_processing_error "since last audit" "gh api failed or returned invalid merged PR data"
     fi
 
-    if ! PR_JSON=$(jq -n \
-        --argjson prs "$(filter_prs_for_skill "$(printf '%s' "$ALL_MERGED" | jq --arg m "$MERGED_AT" '[.[] | select(.mergedAt > $m)] | sort_by(.mergedAt)')")" \
-        '$prs | [.[].number]' 2>/dev/null); then
-        emit_error "gh api failed listing merged PRs (network or auth)"
+    FILTERED_AFTER_MERGED_AT=$(printf '%s' "$ALL_MERGED" | jq --arg m "$MERGED_AT" '[.[] | select(.mergedAt > $m)] | sort_by(.mergedAt)' 2>/dev/null || true)
+    if [ -z "$FILTERED_AFTER_MERGED_AT" ]; then
+        emit_merged_pr_processing_error "since last audit" "jq failed while filtering mergedAt > ${MERGED_AT}"
+    fi
+    FILTERED_FOR_SKILL=$(filter_prs_for_skill "$FILTERED_AFTER_MERGED_AT" 2>/dev/null || true)
+    if [ -z "$FILTERED_FOR_SKILL" ]; then
+        emit_merged_pr_processing_error "since last audit" "jq failed while applying --skill=${SKILL} title filter"
+    fi
+    if ! PR_JSON=$(jq -n --argjson prs "$FILTERED_FOR_SKILL" '$prs | [.[].number]' 2>/dev/null); then
+        emit_merged_pr_processing_error "since last audit" "jq failed while projecting PR numbers"
     fi
 
     if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "[]" ]; then
@@ -237,13 +254,18 @@ fi
 if printf '%s' "$VERBAL" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; then
     N=$(printf '%s' "$VERBAL" | grep -oE '[0-9]+')
     if ! ALL_MERGED=$(fetch_merged_main_prs_json); then
-        emit_error "gh api failed listing merged PRs (network or auth)"
+        emit_merged_pr_processing_error "last ${N} PRs" "gh api failed or returned invalid merged PR data"
     fi
-    FILTERED_MERGED=$(filter_prs_for_skill "$ALL_MERGED")
-    if ! PR_JSON=$(jq -n \
-        --argjson prs "$(printf '%s' "$FILTERED_MERGED" | jq --argjson n "$N" 'sort_by(.mergedAt) | if ($n <= 0) then [] else .[-($n):] end')" \
-        '$prs | [.[].number]' 2>/dev/null); then
-        emit_error "gh api failed listing merged PRs (network or auth)"
+    FILTERED_MERGED=$(filter_prs_for_skill "$ALL_MERGED" 2>/dev/null || true)
+    if [ -z "$FILTERED_MERGED" ]; then
+        emit_merged_pr_processing_error "last ${N} PRs" "jq failed while applying --skill=${SKILL} title filter"
+    fi
+    LAST_N_JSON=$(printf '%s' "$FILTERED_MERGED" | jq --argjson n "$N" 'sort_by(.mergedAt) | if ($n <= 0) then [] else .[-($n):] end' 2>/dev/null || true)
+    if [ -z "$LAST_N_JSON" ]; then
+        emit_merged_pr_processing_error "last ${N} PRs" "jq failed while slicing the most recent merged PRs"
+    fi
+    if ! PR_JSON=$(jq -n --argjson prs "$LAST_N_JSON" '$prs | [.[].number]' 2>/dev/null); then
+        emit_merged_pr_processing_error "last ${N} PRs" "jq failed while projecting PR numbers"
     fi
     if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "[]" ]; then
         emit_error "empty PR list after merge-time sort (last ${N} PRs, skill=${SKILL})"
@@ -264,12 +286,18 @@ if printf '%s' "$VERBAL" | grep -qE '^since[[:space:]]+'; then
         emit_error "since <ISO> must be a full instant (YYYY-MM-DDThh:mm[:ss][.frac][Z|±hh:mm]); got: $TS"
     fi
     if ! ALL_MERGED=$(fetch_merged_main_prs_json); then
-        emit_error "gh api failed listing merged PRs (network or auth)"
+        emit_merged_pr_processing_error "since ${TS}" "gh api failed or returned invalid merged PR data"
     fi
-    if ! PR_JSON=$(jq -n \
-        --argjson prs "$(filter_prs_for_skill "$(printf '%s' "$ALL_MERGED" | jq --arg t "$TS" '[.[] | select(.mergedAt > $t)] | sort_by(.mergedAt)')")" \
-        '$prs | [.[].number]' 2>/dev/null); then
-        emit_error "gh api failed listing merged PRs (network or auth)"
+    FILTERED_AFTER_TS=$(printf '%s' "$ALL_MERGED" | jq --arg t "$TS" '[.[] | select(.mergedAt > $t)] | sort_by(.mergedAt)' 2>/dev/null || true)
+    if [ -z "$FILTERED_AFTER_TS" ]; then
+        emit_merged_pr_processing_error "since ${TS}" "jq failed while filtering mergedAt > ${TS}"
+    fi
+    FILTERED_FOR_SKILL=$(filter_prs_for_skill "$FILTERED_AFTER_TS" 2>/dev/null || true)
+    if [ -z "$FILTERED_FOR_SKILL" ]; then
+        emit_merged_pr_processing_error "since ${TS}" "jq failed while applying --skill=${SKILL} title filter"
+    fi
+    if ! PR_JSON=$(jq -n --argjson prs "$FILTERED_FOR_SKILL" '$prs | [.[].number]' 2>/dev/null); then
+        emit_merged_pr_processing_error "since ${TS}" "jq failed while projecting PR numbers"
     fi
     if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "[]" ]; then
         emit_error "no PRs merged after $TS (or empty gh result, skill=${SKILL})"

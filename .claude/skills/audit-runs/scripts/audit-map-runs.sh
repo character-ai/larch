@@ -13,6 +13,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=.claude/skills/audit-runs/scripts/audit-title-matcher.sh
+. "$SCRIPT_DIR/audit-title-matcher.sh"
+
 PR_LIST=""
 REPO="character-ai/larch"
 LOG_ROOT=""
@@ -103,11 +107,7 @@ extract_closing_issue_from_pr_body() {
 
 parse_design_run_id_from_pr_title() {
     local title="$1"
-    if printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'; then
-        printf '%s' "$title" | sed -n 's/^chore(larch-logs): design run \([0-9A-Fa-f-]*\)$/\1/p' | tr '[:lower:]' '[:upper:]'
-        return 0
-    fi
-    return 1
+    extract_design_run_log_pr_id "$title"
 }
 
 manifest_started_epoch() {

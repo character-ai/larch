@@ -6,7 +6,7 @@ allowed-tools: Bash, Read
 
 # audit-runs
 
-Audit recently-merged larch run logs for the selected skill (`--skill=design|implement`) for anomalies (EXON regression, OOS mangling, missing files, NS-retry sidecars, self-deploying gap, etc.); always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
+Audit recently-merged larch run logs for the selected skill (`--skill=design|implement`) for anomalies. The current implement registry covers EXON/OOS/missing-file/NS-retry/self-deploying checks; the current design registry is intentionally narrower and only ships cache-freshness. Always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
 
 This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped with the plugin.
 
@@ -62,6 +62,8 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans-$SKILL.tsv"
 
 ### Scans (baseline — see `scans-implement.tsv` / `scans-design.tsv` for the machine-readable registry)
 
+Implement currently uses the full table below. Design currently uses only `cache-freshness` unless/until `scans-design.tsv` grows additional rows.
+
 | Scan | What | Where |
 |---|---|---|
 | Required-file presence | Compare against `docs/run-logs-required-files.tsv` (NDJSON `result` is `pass` / `fail` / `skip` / `error`) | run-log root |
@@ -108,7 +110,7 @@ Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line)
 
 At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise: titles matching `^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]` (all three audit-report families; same shapes as `audit-title-matcher.sh`). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise by reusing the title shapes from `audit-title-matcher.sh` (all three audit-report families). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
 - **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IMPLEMENTING]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
 
 For each finding, classify it into one of these two lists using GitHub + repo history; do not file or comment until after the post-report user prompt below.

@@ -5,6 +5,7 @@ REPO="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 FIX_SRC="$REPO/skills/report-tokens/scripts/fixtures/recompute-run"
 RUN_DIR="$REPO/larch-logs/implement/AAAA-report-tokens-recompute-fixture"
 DESIGN_RUN="$REPO/larch-logs/design/BBBB-report-tokens-design-fixture"
+DESIGN_MISSING_RUN="$REPO/larch-logs/design/CCCC-report-tokens-design-missing-fixture"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
@@ -16,7 +17,13 @@ unset LARCH_BREADCRUMB_STREAM LARCH_BREADCRUMBS_SURFACED_FILE 2>/dev/null || tru
 
 export LARCH_REPORT_TOKENS_REPO="${LARCH_REPORT_TOKENS_REPO:-fixture/local}"
 
-cleanup() { rm -rf "$RUN_DIR" "$DESIGN_RUN" "${GH_STUB_DIR:-}" "${GH_DESIGN_STUB:-}"; }
+PLOT_FROM_ERR=""
+MISSING_SKILL_ERR=""
+BAD_SKILL_ERR=""
+cleanup() {
+    rm -rf "$RUN_DIR" "$DESIGN_RUN" "$DESIGN_MISSING_RUN" "${GH_STUB_DIR:-}" "${GH_DESIGN_STUB:-}"
+    rm -f "${PLOT_FROM_ERR:-}" "${MISSING_SKILL_ERR:-}" "${BAD_SKILL_ERR:-}"
+}
 trap cleanup EXIT
 rm -rf "$RUN_DIR"
 mkdir -p "$RUN_DIR"
@@ -95,12 +102,22 @@ rm -rf "$DESIGN_RUN"
 mkdir -p "$DESIGN_RUN"
 cp "$FIX_SRC/manifest.json" "$DESIGN_RUN/"
 cp "$FIX_SRC/token-report.json" "$DESIGN_RUN/token-report-final.json"
-cp "$FIX_SRC/token-report.json" "$DESIGN_RUN/timing-report-final.json"
+printf '%s\n' '{"workflow_path":"HARD"}' > "$DESIGN_RUN/timing-report-final.json"
 design_out=$(LARCH_REPORT_TOKENS_NO_ISSUE=1 LARCH_REPORT_TOKENS_NO_PLOT=1 \
     "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill design)
 case "$design_out" in
     *'#999001'*) pass 'design --skill reads -final suffixed token report' ;;
     *) fail "design scan missing fixture issue #999001";;
+esac
+
+rm -rf "$DESIGN_MISSING_RUN"
+mkdir -p "$DESIGN_MISSING_RUN"
+cp "$FIX_SRC/manifest.json" "$DESIGN_MISSING_RUN/"
+design_skip_out=$(LARCH_REPORT_TOKENS_NO_ISSUE=1 LARCH_REPORT_TOKENS_NO_PLOT=1 \
+    "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill design)
+case "$design_skip_out" in
+    *'#999001'*) pass 'design run with manifest but no token-report-final.json skips cleanly' ;;
+    *) fail "design scan should still succeed when another design run is missing token-report-final.json";;
 esac
 
 GH_DESIGN_STUB=$(mktemp -d "${TMPDIR:-/tmp}/test-report-tokens-design-gh.XXXXXX")
@@ -206,37 +223,38 @@ else
 fi
 rm -rf "$GH_PLOT_IMPL_MISMATCH"
 
+PLOT_FROM_ERR=$(mktemp "${TMPDIR:-/tmp}/report-tokens-bad-plot-from.XXXXXX")
+MISSING_SKILL_ERR=$(mktemp "${TMPDIR:-/tmp}/report-tokens-missing-skill.XXXXXX")
+BAD_SKILL_ERR=$(mktemp "${TMPDIR:-/tmp}/report-tokens-bad-skill.XXXXXX")
+
 set +e
-"$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement --plot-from nope >/dev/null 2>"$REPO/.tmp-report-tokens-bad-plot-from.err"
+"$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement --plot-from nope >/dev/null 2>"$PLOT_FROM_ERR"
 bad_plot_from_rc=$?
 set -e
-if [ "$bad_plot_from_rc" -ne 0 ] && grep -q -- '--plot-from must be a decimal issue number' "$REPO/.tmp-report-tokens-bad-plot-from.err"; then
+if [ "$bad_plot_from_rc" -ne 0 ] && grep -q -- '--plot-from must be a decimal issue number' "$PLOT_FROM_ERR"; then
     pass 'non-numeric --plot-from rejected'
 else
     fail "expected non-numeric --plot-from rejection (rc=$bad_plot_from_rc)"
 fi
-rm -f "$REPO/.tmp-report-tokens-bad-plot-from.err"
 
 set +e
-"$REPO/skills/report-tokens/scripts/run-analysis.sh" >/dev/null 2>"$REPO/.tmp-report-tokens-missing-skill.err"
+"$REPO/skills/report-tokens/scripts/run-analysis.sh" >/dev/null 2>"$MISSING_SKILL_ERR"
 missing_skill_rc=$?
 set -e
-if [ "$missing_skill_rc" -ne 0 ] && grep -q -- '--skill is required' "$REPO/.tmp-report-tokens-missing-skill.err"; then
+if [ "$missing_skill_rc" -ne 0 ] && grep -q -- '--skill is required' "$MISSING_SKILL_ERR"; then
     pass 'missing --skill rejected'
 else
     fail "expected missing --skill rejection (rc=$missing_skill_rc)"
 fi
-rm -f "$REPO/.tmp-report-tokens-missing-skill.err"
 
 set +e
-"$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill bogus >/dev/null 2>"$REPO/.tmp-report-tokens-bad-skill.err"
+"$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill bogus >/dev/null 2>"$BAD_SKILL_ERR"
 bad_skill_rc=$?
 set -e
-if [ "$bad_skill_rc" -ne 0 ] && grep -q -- '--skill must be design or implement' "$REPO/.tmp-report-tokens-bad-skill.err"; then
+if [ "$bad_skill_rc" -ne 0 ] && grep -q -- '--skill must be design or implement' "$BAD_SKILL_ERR"; then
     pass 'invalid --skill rejected'
 else
     fail "expected invalid --skill rejection (rc=$bad_skill_rc)"
 fi
-rm -f "$REPO/.tmp-report-tokens-bad-skill.err"
 
 printf 'PASS: test-report-tokens-recompute.sh\n'

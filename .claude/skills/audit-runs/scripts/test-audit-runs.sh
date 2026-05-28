@@ -600,6 +600,10 @@ if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
     cat "$DIR/prior.json"
     exit 0
 fi
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+    jq -r '.[0].body // empty' "$DIR/prior.json"
+    exit 0
+fi
 if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
     printf '%s\n' '2025-01-01T00:00:00Z'
     exit 0
@@ -682,6 +686,11 @@ if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
     cat "$DIR/prior.json"
     exit 0
 fi
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+    issue_num="${3:-}"
+    jq -r --argjson n "$issue_num" '.[] | select(.number == $n) | .body // empty' "$DIR/prior.json"
+    exit 0
+fi
 if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
     if [[ "${3:-}" == "10" ]]; then
         printf '%s\n' '2025-01-01T00:00:00Z'
@@ -759,7 +768,7 @@ EOSH19C
     r19_jq=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
     er19jq=$(printf '%s' "$r19_jq" | sed -n 's/^ERROR=//p')
     case "$er19jq" in
-        *gh\ api\ failed\ listing\ merged\ PRs*)
+        *merged\ PR\ listing/filter\ failed*)
             PASS=$((PASS + 1))
             echo "  ok: [19n] invalid gh api JSON fails loudly"
             ;;
@@ -2768,13 +2777,13 @@ EOSGH69
         echo "  ok: [69e] flush commit-subject shape does not match design PR title regex"
     fi
     lower_title='chore(larch-logs): design run 90628862-9a18-4a56-8420-63de723f9d81'
-    if printf '%s' "$lower_title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'; then
-        PASS=$((PASS + 1))
-        echo "  ok: [69g] lowercase design run title matches regex"
-    else
+    if printf '%s' "$lower_title" | grep -qE '^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$'; then
         FAIL=$((FAIL + 1))
-        FAILED_TESTS+=("[69g] lowercase design run title should match regex")
-        echo "  FAIL: [69g] lowercase design run title should match regex" >&2
+        FAILED_TESTS+=("[69g] lowercase design run title should not match regex")
+        echo "  FAIL: [69g] lowercase design run title should not match regex" >&2
+    else
+        PASS=$((PASS + 1))
+        echo "  ok: [69g] lowercase design run title rejected"
     fi
     rm -rf "$GH69" "$MAP69"
 
@@ -2795,7 +2804,7 @@ EOSGH69L
     printf '%s\n' '{"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$MAP69L/90628862-9A18-4A56-8420-63DE723F9D81/manifest.json"
     row69l=$(PATH="$GH69L:$PATH" bash "$MAP_SCRIPT" --skill design --pr-list "9002" --log-root "$MAP69L")
     rid69l=$(printf '%s' "$row69l" | cut -f2)
-    assert_equal "$rid69l" "90628862-9A18-4A56-8420-63DE723F9D81" "[69g1] design map normalizes lowercase run id to uppercase"
+    assert_equal "$rid69l" "" "[69g1] design map rejects lowercase run id titles"
     rm -rf "$GH69L" "$MAP69L"
 fi
 
@@ -2910,11 +2919,11 @@ fi
 
 if [ -x "$SCAN_SCRIPT" ]; then
     ROOT69H=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-root-XXXXXX")
-    mkdir -p "$ROOT69H/design"
+    mkdir -p "$ROOT69H/larch-logs/design"
     printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$ROOT69H/scans.tsv"
     printf '%s\n' 'cache-freshness	manifest-field	manifest.json::larch_version < latest	run plugin matches or lags current (informational when behind)	low' >> "$ROOT69H/scans.tsv"
     set +e
-    out69h=$(bash "$SCAN_SCRIPT" --skill design --run-dir "$ROOT69H/design" --pr 7001 --scans-tsv "$ROOT69H/scans.tsv" --required-files-tsv "$ROOT69H/req.tsv" --current-version "1.0.0")
+    out69h=$(cd "$ROOT69H" && bash "$SCAN_SCRIPT" --skill design --run-dir "$ROOT69H/larch-logs/design" --pr 7001 --scans-tsv "$ROOT69H/scans.tsv" --required-files-tsv "$ROOT69H/req.tsv" --current-version "1.0.0")
     rc69h=$?
     set -e
     detail69h=$(printf '%s\n' "$out69h" | jq -r 'select(.scan=="run-dir-invalid") | .detail // empty' | head -1)
@@ -2931,6 +2940,33 @@ if [ -x "$SCAN_SCRIPT" ]; then
             ;;
     esac
     rm -rf "$ROOT69H"
+fi
+
+if [ -x "$SCAN_SCRIPT" ]; then
+    ROOT69J=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-cross-skill-XXXXXX")
+    mkdir -p "$ROOT69J/larch-logs/design/RUN-DESIGN" "$ROOT69J/larch-logs/implement/RUN-IMPLEMENT"
+    printf '%s\n' '{"larch_version":"1.0.0"}' > "$ROOT69J/larch-logs/design/RUN-DESIGN/manifest.json"
+    printf '%s\n' '{"larch_version":"1.0.0"}' > "$ROOT69J/larch-logs/implement/RUN-IMPLEMENT/manifest.json"
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$ROOT69J/scans.tsv"
+    printf '%s\n' 'cache-freshness	manifest-field	manifest.json::larch_version < latest	run plugin matches or lags current (informational when behind)	low' >> "$ROOT69J/scans.tsv"
+    set +e
+    out69j=$(cd "$ROOT69J" && bash "$SCAN_SCRIPT" --skill design --run-dir "$ROOT69J/larch-logs/implement/RUN-IMPLEMENT" --pr 7002 --scans-tsv "$ROOT69J/scans.tsv" --required-files-tsv "$ROOT69J/req.tsv" --current-version "1.0.0")
+    rc69j=$?
+    set -e
+    detail69j=$(printf '%s\n' "$out69j" | jq -r 'select(.scan=="run-dir-invalid") | .detail // empty' | head -1)
+    assert_equal "$rc69j" "1" "[69j] cross-skill run-dir exits non-zero"
+    case "$detail69j" in
+        *selected\ skill\ log\ root*)
+            PASS=$((PASS + 1))
+            echo "  ok: [69j2] cross-skill run-dir detail names selected skill log root"
+            ;;
+        *)
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[69j2] expected cross-skill run-dir detail, got: $detail69j")
+            echo "  FAIL: [69j2] expected cross-skill run-dir detail, got: $detail69j" >&2
+            ;;
+    esac
+    rm -rf "$ROOT69J"
 fi
 
 TITLE_MATCHER_TEST="$SCRIPT_DIR/test-audit-title-matcher.sh"

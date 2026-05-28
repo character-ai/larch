@@ -97,10 +97,27 @@ if [ ! -d "$RUN_DIR" ]; then
     exit 1
 fi
 
-if [ "$(basename "$RUN_DIR")" = "$SKILL" ]; then
-    jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" \
-        '{scan:"run-dir-invalid",pr:$pr,"incomplete":true,result:"error",detail:("run-dir resolves to skill log root instead of a specific run: "+$rd)}'
-    exit 1
+RUN_DIR_CANON="$(cd "$RUN_DIR" && pwd -P)"
+SKILL_LOG_ROOT_CANON=""
+if cd "$_audit_repo_root/larch-logs/$SKILL" 2>/dev/null; then
+    SKILL_LOG_ROOT_CANON="$(pwd -P)"
+fi
+if printf '%s/' "$RUN_DIR_CANON" | grep -q '/larch-logs/'; then
+    if [ -n "$SKILL_LOG_ROOT_CANON" ] && [ "$RUN_DIR_CANON" = "$SKILL_LOG_ROOT_CANON" ]; then
+        jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" \
+            '{scan:"run-dir-invalid",pr:$pr,"incomplete":true,result:"error",detail:("run-dir resolves to skill log root instead of a specific run: "+$rd)}'
+        exit 1
+    fi
+    if [ -n "$SKILL_LOG_ROOT_CANON" ]; then
+        case "$RUN_DIR_CANON/" in
+            "$SKILL_LOG_ROOT_CANON"/*) ;;
+            *)
+                jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" --arg root "$SKILL_LOG_ROOT_CANON" \
+                    '{scan:"run-dir-invalid",pr:$pr,"incomplete":true,result:"error",detail:("run-dir must live under the selected skill log root ("+$root+"): "+$rd)}'
+                exit 1
+                ;;
+        esac
+    fi
 fi
 
 if [ ! -f "$SCANS_TSV" ]; then
@@ -714,7 +731,11 @@ if [ -f "$JSONL" ]; then
         emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":false,\"canonical\":${canonical_count:-0},\"blank\":${blank_count:-0},\"mangled\":${mangled_count:-0},\"oos_blank\":${oos_blank:-0},\"rej_blank\":${rej_blank:-0}}"
     fi
 else
-    emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":true,\"partial_reason\":\"missing_review_findings_jsonl\",\"detail\":\"review-findings-full.jsonl not found\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
+    if [ "$SKILL" = "design" ]; then
+        emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":false,\"skip_reason\":\"design_run_has_no_review_findings_jsonl\",\"detail\":\"design runs intentionally omit review-findings-full.jsonl\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
+    else
+        emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":true,\"partial_reason\":\"missing_review_findings_jsonl\",\"detail\":\"review-findings-full.jsonl not found\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
+    fi
 fi
 
 # ---- Cross-cutting metadata ----
