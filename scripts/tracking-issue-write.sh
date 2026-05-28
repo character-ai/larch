@@ -318,7 +318,7 @@ case "$cmd" in
             emit_kv ISSUE_URL "$URL_LINE"
             exit 0
         else
-            ERR_CONTENT=$(cat "$net_fail_file" 2>/dev/null || true)
+            ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
             emit_gh_failure "$ERR_CONTENT"
         fi
         ;;
@@ -395,18 +395,16 @@ case "$cmd" in
                 trap 'rm -f "$BODY_TMP" "$ERR_TMP"' EXIT
         printf '%s' "$BODY_CONTENT" > "$BODY_TMP"
         net_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-write-comment.XXXXXX")
-        if with_transient_retry transient_envelope_predicate_none "$net_fail_file" \
-            gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP"; then
+        if COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP" 2>"$net_fail_file"); then
             comment_rc=0
         else
-            comment_rc=$_WTR_RC
+            comment_rc=$?
         fi
-        COMMENT_URL=$_WTR_OUT
+        ERR_CONTENT=$(cat "$net_fail_file" 2>/dev/null || true)
         rm -f "$net_fail_file"
         if [[ "$comment_rc" -eq 0 ]]; then
             URL_LINE=$(echo "$COMMENT_URL" | grep -oE 'https?://[^[:space:]]+#issuecomment-[0-9]+' | tail -1 || true)
             if [[ -z "$URL_LINE" ]]; then
-                ERR_CONTENT=$(cat "$ERR_TMP")
                 emit_gh_failure "gh issue comment did not emit a URL (stderr: $ERR_CONTENT)"
             fi
             CID=$(echo "$URL_LINE" | grep -oE '[0-9]+$')
@@ -414,7 +412,6 @@ case "$cmd" in
             emit_kv COMMENT_URL "$URL_LINE"
             exit 0
         else
-            ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "$ERR_CONTENT"
         fi
         ;;
@@ -500,9 +497,9 @@ case "$cmd" in
         else
             rename_rc=$_WTR_RC
         fi
+        ERR_CONTENT=$(cat "$rename_fail_file" 2>/dev/null || true)
         rm -f "$rename_fail_file"
         if [[ "$rename_rc" -ne 0 ]]; then
-            ERR_CONTENT=$(cat "$rename_fail_file" 2>/dev/null || true)
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
         emit_kv RENAMED "true"
@@ -561,9 +558,9 @@ case "$cmd" in
         else
             mark_rc=$_WTR_RC
         fi
+        ERR_CONTENT=$(cat "$mark_fail_file" 2>/dev/null || true)
         rm -f "$mark_fail_file"
         if [[ "$mark_rc" -ne 0 ]]; then
-            ERR_CONTENT=$(cat "$mark_fail_file" 2>/dev/null || true)
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
         emit_kv MARKED "true"

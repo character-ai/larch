@@ -29,6 +29,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh"
+REDACT_HELPER="$SCRIPT_DIR/redact-secrets.sh"
 
 usage() { larch_err "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]"; }
 
@@ -71,6 +72,20 @@ emit_output() {
 }
 trap 'emit_output' EXIT
 
+redact_text() {
+    local text="$1"
+    local redacted
+    if [[ ! -x "$REDACT_HELPER" ]]; then
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
+    fi
+    if ! redacted=$(printf '%s' "$text" | "$REDACT_HELPER" 2>/dev/null); then
+        printf '%s' 'gh failure: redaction failed'
+        return 0
+    fi
+    printf '%s' "$redacted"
+}
+
 if [[ ! -f "$BODY_FILE" ]]; then
     ERROR="body file not found: $BODY_FILE"
     exit 2
@@ -92,6 +107,7 @@ if [[ $EXIT_CODE -eq 0 ]]; then
     exit 0
 else
     UPDATED="false"
+    OUTPUT=$(redact_text "$OUTPUT")
     OUTPUT="${OUTPUT//$'\n'/ }"
     ERROR="gh pr edit failed (exit $EXIT_CODE): $OUTPUT"
     exit 2

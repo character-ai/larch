@@ -356,6 +356,7 @@ if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
         MERGE_EXIT=$_WTR_RC
     fi
     MERGE_OUTPUT=$_WTR_OUT
+    MERGE_FAIL_OUTPUT=$(cat "$merge_fail_file" 2>/dev/null || true)
     rm -f "$merge_fail_file"
 
     if [[ $MERGE_EXIT -eq 0 ]]; then
@@ -365,7 +366,8 @@ if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
     fi
 
     MERGE_RESULT="policy_denied"
-    ERROR="branch protection denied merge; --no-admin-fallback set"
+    MERGE_OUTPUT_ONE_LINE=$(printf '%s' "$MERGE_FAIL_OUTPUT" | tr '\n' ' ')
+    ERROR="branch protection denied merge; --no-admin-fallback set: $MERGE_OUTPUT_ONE_LINE"
     exit 0
 fi
 
@@ -378,6 +380,7 @@ else
     ADMIN_EXIT=$_WTR_RC
 fi
 ADMIN_OUTPUT=$_WTR_OUT
+ADMIN_FAIL_OUTPUT=$(cat "$admin_fail_file" 2>/dev/null || true)
 rm -f "$admin_fail_file"
 
 if [[ $ADMIN_EXIT -eq 0 ]]; then
@@ -386,7 +389,7 @@ if [[ $ADMIN_EXIT -eq 0 ]]; then
     exit 0
 fi
 
-larch_err "ℹ Admin merge attempt failed: $ADMIN_OUTPUT"
+larch_err "ℹ Admin merge attempt failed: ${ADMIN_FAIL_OUTPUT:-$ADMIN_OUTPUT}"
 larch_err "ℹ Retrying merge without --admin..."
 merge_fallback_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-merge-fallback.XXXXXX")
 if with_transient_retry transient_envelope_predicate_none "$merge_fallback_fail_file" \
@@ -396,6 +399,7 @@ else
     MERGE_EXIT=$_WTR_RC
 fi
 MERGE_OUTPUT=$_WTR_OUT
+MERGE_FAIL_OUTPUT=$(cat "$merge_fallback_fail_file" 2>/dev/null || true)
 rm -f "$merge_fallback_fail_file"
 
 if [[ $MERGE_EXIT -eq 0 ]]; then
@@ -407,8 +411,8 @@ fi
 # Collapse newlines in tool output so ERROR stays a single key=value line —
 # emit_output() prints `ERROR=$ERROR` with `echo`, and an embedded newline
 # would split it across multiple lines and break key-based parsers downstream.
-ADMIN_OUTPUT_ONE_LINE=$(printf '%s' "$ADMIN_OUTPUT" | tr '\n' ' ')
-MERGE_OUTPUT_ONE_LINE=$(printf '%s' "$MERGE_OUTPUT" | tr '\n' ' ')
+ADMIN_OUTPUT_ONE_LINE=$(printf '%s' "${ADMIN_FAIL_OUTPUT:-$ADMIN_OUTPUT}" | tr '\n' ' ')
+MERGE_OUTPUT_ONE_LINE=$(printf '%s' "${MERGE_FAIL_OUTPUT:-$MERGE_OUTPUT}" | tr '\n' ' ')
 MERGE_RESULT="admin_failed"
 ERROR="Admin merge failed: $ADMIN_OUTPUT_ONE_LINE; fallback merge failed: $MERGE_OUTPUT_ONE_LINE"
 exit 0

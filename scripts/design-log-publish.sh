@@ -621,8 +621,9 @@ if with_transient_retry transient_envelope_predicate_none "$push_fail_file" \
 else
     push_rc=$_WTR_RC
 fi
+push_out=$_WTR_OUT
 if [[ "$push_rc" -ne 0 ]]; then
-    larch_err "design-log-publish: git push failed"
+    larch_err "design-log-publish: git push failed: ${push_out:-unknown}"
     if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
         local_recovery_branch="larch-log-design-recovery-${RUN_ID}"
         git -C "$REPO_ROOT" branch -f "$local_recovery_branch" "$commit_sha" >/dev/null 2>&1 || true
@@ -681,7 +682,11 @@ if [[ -z "$PR_NUM" ]]; then
         recovery_probe_ok=false
     fi
     if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
-        larch_err "design-log-publish: gh pr create failed: ${create_out:-unknown}"
+        if [[ "$create_rc" -eq 0 ]]; then
+            larch_err "design-log-publish: gh pr create returned success but PR recovery found no open PR: ${create_out:-unknown}"
+        else
+            larch_err "design-log-publish: gh pr create failed: ${create_out:-unknown}"
+        fi
         if [[ "$create_rc" -ne 0 && "$recovery_probe_ok" == true ]]; then
             git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
         fi
@@ -721,6 +726,7 @@ git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
 rm -rf "${WT_PARENT:-}" 2>/dev/null || true
 WT_DIR=""
 WT_PARENT=""
+rm -f "${push_fail_file:-}" "${create_fail_file:-}" "${merge_fail_file:-}" 2>/dev/null || true
 trap - EXIT
 
 git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1 || true

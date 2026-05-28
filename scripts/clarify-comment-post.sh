@@ -153,9 +153,8 @@ fi
 
 OUT_URL=""
 comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/clarify-comment-post.XXXXXX")
-if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
-    gh issue comment "$ISSUE" --repo "$REPO" --body-file "$REDACTED"; then
-    OUT_URL=$_WTR_OUT
+if OUT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$REDACTED" 2>"$comment_fail_file"); then
+    :
 else
     ERR_CONTENT=$(cat "$comment_fail_file" 2>/dev/null || true)
     rm -f "$comment_fail_file"

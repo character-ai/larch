@@ -108,13 +108,11 @@ case "$cmd" in
         printf '%s' "$body" > "$tmp"
         if [ "$count" -eq 0 ]; then
             comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-summary-comment.XXXXXX")
-            if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
-                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp"; then
+            if out=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp" 2>"$comment_fail_file"); then
                 comment_rc=0
             else
-                comment_rc=$_WTR_RC
+                comment_rc=$?
             fi
-            out=$_WTR_OUT
             comment_err=$(cat "$comment_fail_file" 2>/dev/null || true)
             rm -f "$comment_fail_file"
             [ "$comment_rc" -eq 0 ] || fail 2 "gh issue comment failed: $(redact_text "$comment_err" | tr '\n' ' ' | head -c 500)"
