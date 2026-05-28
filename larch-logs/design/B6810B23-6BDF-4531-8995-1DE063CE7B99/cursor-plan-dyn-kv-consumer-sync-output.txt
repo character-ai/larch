@@ -1,0 +1,12 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	correctness	skills/review/scripts/dispatch-panel.md:17	WARN bullet still says Phase 3 fallback count drives threshold	After the plan lands, /review can emit WARN=cost-fallback-exceeded-threshold when combined phase-2 fall-through plus phase-3 exceeds the threshold while FALLBACK_COUNT stays phase-3-only; readers of dispatch-panel.md will mis-tune LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD or mis-debug logs	One-line sync: WARN emits when combined phase-2 fall-through plus phase-3 count exceeds LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD (mirror scripts/dispatch-with-waterfall.md)
+
+1. [OUT_OF_SCOPE] **correctness** `skills/review/scripts/dispatch-panel.md:17` — The `WARN=cost-fallback-exceeded-threshold` bullet still describes a Phase 3-only threshold trigger. The plan updates `scripts/dispatch-with-waterfall.md` but not this sibling contract doc. **Suggested revision:** Align the bullet with the combined phase-2 fall-through + phase-3 semantics (same wording as the planned `dispatch-with-waterfall.md` WARN bullet).
+
+**Consumer / semantic-split verification (no additional in-scope defects):**
+
+- **`skills/design/scripts/dispatch-plan-review-panel.sh:166-188`** — Parses `FALLBACK_COUNT` only; `DEGRADED_ROUND` uses `FALLBACK_COUNT > floor(slot_count/2)` (phase-3 Claude fallbacks). Forwards `WARN` unchanged. Keeping `FALLBACK_COUNT` phase-3-only matches existing degradation semantics; phase-2 relaunches affect cost via `WARN` only. Consistent with the plan.
+- **`skills/design/scripts/decompose-panel-dispatch.sh:194-211`** — Same pattern for `DEGRADED_PANEL`; grouped `fallback_group` slots are where phase-2 fall-through relaunches occur; threshold `WARN` will include them via `combined_fallback` while degradation stays phase-3-based. Consistent.
+- **`skills/design/scripts/plan-review-loop.sh:221-222,685-689`** — Inherits `DEGRADED_ROUND` and `FALLBACK_COUNT` from the panel dispatcher; the late `DEGRADED_PANEL` floor-half check uses the same phase-3 `FALLBACK_COUNT`. Consistent.
+- **`skills/design/scripts/dispatch-plan-review-panel.md:9`** — Documents `DEGRADED_ROUND` from `FALLBACK_COUNT`; no stale Phase-3 WARN language; still accurate post-change.
+- **`skills/review/scripts/dispatch-panel.sh`** — Only forwards waterfall `WARN` lines; no `FALLBACK_COUNT` interpretation.

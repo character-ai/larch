@@ -1,0 +1,14 @@
+[DESIGNING] [OOS] dispatch-with-waterfall.sh: phase-2 relaunches not counted in fallback cost metering
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-security-output.txt
+**Phase**: implement
+**Vote tally**: YES=2, NO=0, EXON=0 — accepted
+
+## Description
+
+`scripts/dispatch-with-waterfall.sh` lines 517-524: phase-2 Cursor/Codex relaunches triggered by the `reuse_slot_result` fall-through path (added in PR for issue #2971) are not counted in `FALLBACK_COUNT` or surfaced through `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD`. External-tool spend can rise without any `WARN=cost-fallback-exceeded-threshold` breadcrumb being emitted. The issue #2971 plan explicitly noted this as out-of-scope and deferred to OOS filing. Suggested fix: increment a phase-2 relaunch counter and wire it to the existing threshold warning; update tests.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
