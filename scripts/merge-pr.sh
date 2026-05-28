@@ -43,6 +43,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 
 usage() { larch_err "Usage: merge-pr.sh --pr NUMBER --repo OWNER/REPO [--no-admin-fallback]"; }
 
@@ -278,7 +280,15 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
     fi
 fi
 
-if ! git fetch origin main --quiet 2>/dev/null; then
+fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-fetch.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fetch_fail_file" \
+    git fetch origin main --quiet; then
+  FETCH_EXIT=0
+else
+  FETCH_EXIT=$_WTR_RC
+fi
+rm -f "$fetch_fail_file"
+if [[ "$FETCH_EXIT" -ne 0 ]]; then
     MERGE_RESULT="error"
     ERROR="git fetch origin main failed; cannot verify same-version race"
     exit 0
@@ -315,7 +325,15 @@ fi
 # land the same version on main. A second fetch immediately before the merge shrinks
 # the race window to the network latency of the merge API call itself.
 if [[ -n "$BUMP_SUBJECT" ]]; then
-    if ! git fetch origin main --quiet 2>/dev/null; then
+    premerge_fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-premerge-fetch.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$premerge_fetch_fail_file" \
+        git fetch origin main --quiet; then
+        PREMERGE_FETCH_EXIT=0
+    else
+        PREMERGE_FETCH_EXIT=$_WTR_RC
+    fi
+    rm -f "$premerge_fetch_fail_file"
+    if [[ "$PREMERGE_FETCH_EXIT" -ne 0 ]]; then
         MERGE_RESULT="error"
         ERROR="git fetch origin main failed (pre-merge re-fetch)"
         exit 0
@@ -330,8 +348,15 @@ fi
 
 # --- All checks passed — merge with selected privilege path ---
 if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
-    MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash 2>&1)
-    MERGE_EXIT=$?
+    merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-merge.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
+        gh pr merge "$PR_NUMBER" --repo "$REPO" --squash; then
+        MERGE_EXIT=0
+    else
+        MERGE_EXIT=$_WTR_RC
+    fi
+    MERGE_OUTPUT=$_WTR_OUT
+    rm -f "$merge_fail_file"
 
     if [[ $MERGE_EXIT -eq 0 ]]; then
         MERGE_RESULT="merged"
@@ -345,8 +370,15 @@ if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
 fi
 
 larch_err "ℹ CI is green and branch is fresh. Trying merge with --admin..."
-ADMIN_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --admin 2>&1)
-ADMIN_EXIT=$?
+admin_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-admin.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$admin_fail_file" \
+    gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --admin; then
+    ADMIN_EXIT=0
+else
+    ADMIN_EXIT=$_WTR_RC
+fi
+ADMIN_OUTPUT=$_WTR_OUT
+rm -f "$admin_fail_file"
 
 if [[ $ADMIN_EXIT -eq 0 ]]; then
     MERGE_RESULT="admin_merged"
@@ -356,8 +388,15 @@ fi
 
 larch_err "ℹ Admin merge attempt failed: $ADMIN_OUTPUT"
 larch_err "ℹ Retrying merge without --admin..."
-MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash 2>&1)
-MERGE_EXIT=$?
+merge_fallback_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-merge-fallback.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$merge_fallback_fail_file" \
+    gh pr merge "$PR_NUMBER" --repo "$REPO" --squash; then
+    MERGE_EXIT=0
+else
+    MERGE_EXIT=$_WTR_RC
+fi
+MERGE_OUTPUT=$_WTR_OUT
+rm -f "$merge_fallback_fail_file"
 
 if [[ $MERGE_EXIT -eq 0 ]]; then
     MERGE_RESULT="merged"

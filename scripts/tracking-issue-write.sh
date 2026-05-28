@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # tracking-issue-write.sh — outbound helper for the tracking-issue lifecycle.
 #
+# Network retry carve-out: `gh issue create` is intentionally not wrapped in
+# `with_transient_retry` — create is not idempotent under server-side success
+# with a lost response.
+#
 # Phase 1 (umbrella #348) foundation layer. Ships narrow subcommands —
 # create-issue, append-comment, rename, and mark-false-positive — that each
 # perform exactly one GitHub write while sharing the same KEY=value stdout envelope and
@@ -85,6 +89,8 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 larch_quiet_init
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
@@ -388,7 +394,16 @@ case "$cmd" in
         ERR_TMP=$(mktemp)
                 trap 'rm -f "$BODY_TMP" "$ERR_TMP"' EXIT
         printf '%s' "$BODY_CONTENT" > "$BODY_TMP"
-        if COMMENT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP" 2>"$ERR_TMP"); then
+        net_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-write-comment.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$net_fail_file" \
+            gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP"; then
+            comment_rc=0
+        else
+            comment_rc=$_WTR_RC
+        fi
+        COMMENT_URL=$_WTR_OUT
+        rm -f "$net_fail_file"
+        if [[ "$comment_rc" -eq 0 ]]; then
             URL_LINE=$(echo "$COMMENT_URL" | grep -oE 'https?://[^[:space:]]+#issuecomment-[0-9]+' | tail -1 || true)
             if [[ -z "$URL_LINE" ]]; then
                 ERR_CONTENT=$(cat "$ERR_TMP")
@@ -478,7 +493,15 @@ case "$cmd" in
             emit_kv NEW_TITLE "$NEW_TITLE"
             exit 0
         fi
-        if ! gh issue edit "$ISSUE" --repo "$REPO" --title "$NEW_TITLE" >/dev/null 2>"$ERR_TMP"; then
+        rename_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-write-rename.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$rename_fail_file" \
+            gh issue edit "$ISSUE" --repo "$REPO" --title "$NEW_TITLE"; then
+            rename_rc=0
+        else
+            rename_rc=$_WTR_RC
+        fi
+        rm -f "$rename_fail_file"
+        if [[ "$rename_rc" -ne 0 ]]; then
             ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
@@ -531,7 +554,15 @@ case "$cmd" in
             exit 0
         fi
         NEW_TITLE=$(truncate_title_to_256 "$NEW_TITLE")
-        if ! gh issue edit "$ISSUE" --repo "$REPO" --title "$NEW_TITLE" >/dev/null 2>"$ERR_TMP"; then
+        mark_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-write-mark.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$mark_fail_file" \
+            gh issue edit "$ISSUE" --repo "$REPO" --title "$NEW_TITLE"; then
+            mark_rc=0
+        else
+            mark_rc=$_WTR_RC
+        fi
+        rm -f "$mark_fail_file"
+        if [[ "$mark_rc" -ne 0 ]]; then
             ERR_CONTENT=$(cat "$ERR_TMP")
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi

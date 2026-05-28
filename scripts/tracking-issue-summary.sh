@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 REDACT="$SCRIPT_DIR/redact-secrets.sh"
 REDACT_PATHS="$SCRIPT_DIR/redact-tmpdir-paths.sh"
 
@@ -107,8 +109,16 @@ case "$cmd" in
         if [ "$count" -eq 0 ]; then
             err_tmp="$(mktemp)"
             trap 'rm -f "$tmp" "${json_tmp:-}" "${err_tmp:-}"' EXIT
-            out="$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp" 2>"$err_tmp")" \
-                || fail 2 "gh issue comment failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
+            comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-summary-comment.XXXXXX")
+            if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp"; then
+                comment_rc=0
+            else
+                comment_rc=$_WTR_RC
+            fi
+            out=$_WTR_OUT
+            rm -f "$comment_fail_file"
+            [ "$comment_rc" -eq 0 ] || fail 2 "gh issue comment failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
             url="$(printf '%s\n' "$out" | grep -oE 'https?://[^[:space:]]+' | tail -1 || true)"
             emit_kv COMMENT_ID ""
             emit_kv COMMENT_URL "$url"
@@ -119,8 +129,16 @@ case "$cmd" in
             err_tmp="$(mktemp)"
             trap 'rm -f "$tmp" "${json_tmp:-}" "${err_tmp:-}"' EXIT
             jq -n --arg body "$body" '{body:$body}' > "$json_tmp"
-            out="$(gh api "/repos/${REPO}/issues/comments/${id}" -X PATCH --input "$json_tmp" --jq '.html_url // ""' 2>"$err_tmp")" \
-                || fail 2 "gh api comment patch failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
+            patch_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-summary-patch.XXXXXX")
+            if with_transient_retry transient_envelope_predicate_none "$patch_fail_file" \
+                gh api "/repos/${REPO}/issues/comments/${id}" -X PATCH --input "$json_tmp" --jq '.html_url // ""'; then
+                patch_rc=0
+            else
+                patch_rc=$_WTR_RC
+            fi
+            out=$_WTR_OUT
+            rm -f "$patch_fail_file"
+            [ "$patch_rc" -eq 0 ] || fail 2 "gh api comment patch failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
             emit_kv COMMENT_ID "$id"
             emit_kv COMMENT_URL "$out"
             emit_kv UPDATED true

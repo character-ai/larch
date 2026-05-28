@@ -20,6 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 SKIP_BRANCH_CHECK=false
 SKIP_CLEAN_CHECK=false
 while [[ $# -gt 0 ]]; do
@@ -69,7 +71,15 @@ if [[ "$SKIP_CLEAN_CHECK" == "false" ]]; then
 fi
 
 # Always fetch to ensure origin/main is current. Rebase requires being on main.
-if ! git fetch origin main --quiet 2>/dev/null; then
+prefetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/preflight-fetch.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$prefetch_fail_file" \
+    git fetch origin main --quiet; then
+    prefetch_rc=0
+else
+    prefetch_rc=$_WTR_RC
+fi
+rm -f "$prefetch_fail_file"
+if [[ "$prefetch_rc" -ne 0 ]]; then
     emit_kv PREFLIGHT fail
     emit_kv PREFLIGHT_ERROR "git fetch origin main failed."
     exit 3

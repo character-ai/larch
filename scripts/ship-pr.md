@@ -101,7 +101,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
   invocations so callers can inspect the captured details without stdout
   replay. Logging failures are best-effort and do not change phase outcomes.
 
-Transient network classification uses `is_transient_net_signature` from `scripts/lib-net.sh`, sourced fail-closed through the `LARCH_LIB_NET_LOADED` sentinel before any phase logic runs. Matching create-PR, rebase, merge, or CI-bail text exits `6` through `exit_transient_net`; non-matching failures continue through the normal stall or user-input paths.
+Transient network classification uses `is_transient_net_signature` and `with_transient_retry` from `scripts/lib-net.sh`, sourced fail-closed through the `LARCH_LIB_NET_LOADED` sentinel before any phase logic runs. `ship_pr_with_transient_retry` re-runs the supplied envelope predicate against the final `fail_file` after the lifted helper returns so exhausted envelope-error responses still call `exit_transient_net` regardless of rc; matching create-PR, rebase, merge, or CI-bail text exits `6` through `exit_transient_net`; non-matching failures continue through the normal stall or user-input paths.
 
 ## Recovery waterfall (`run_recovery_waterfall`)
 

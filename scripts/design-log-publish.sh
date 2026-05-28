@@ -34,6 +34,8 @@ source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 # shellcheck source=scripts/lib-design-round-artifacts.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-design-round-artifacts.sh"
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh" || { larch_err "design-log-publish: failed to source lib-net.sh"; exit 1; }
 
 DESIGN_TMPDIR=""
 RUN_ID=""
@@ -160,7 +162,8 @@ ENUM_PR_TMP=""
 PR_BODY_TMP=""
 # shellcheck disable=SC2317
 wt_cleanup() {
-    rm -f "${ENUM_TOP_TMP:-}" "${ENUM_RC_TMP:-}" "${ENUM_PR_TMP:-}" 2>/dev/null || true
+    rm -f "${ENUM_TOP_TMP:-}" "${ENUM_RC_TMP:-}" "${ENUM_PR_TMP:-}" \
+        "${push_fail_file:-}" "${create_fail_file:-}" "${merge_fail_file:-}" 2>/dev/null || true
     if [ -n "${PR_BODY_TMP:-}" ]; then
         rm -f "$PR_BODY_TMP" 2>/dev/null || true
     fi
@@ -607,7 +610,19 @@ push_args=(-u origin "$WT_BRANCH")
 if [[ "$REASON" == "pause" ]]; then
     push_args=(--force-with-lease -u origin "$WT_BRANCH")
 fi
-if ! git -C "$WT_DIR" push "${push_args[@]}" >/dev/null 2>&1; then
+push_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-push.XXXXXX") || {
+    larch_err "design-log-publish: mktemp failed for push capture"
+    emit_publish_result false
+    exit 0
+}
+if with_transient_retry transient_envelope_predicate_none "$push_fail_file" \
+    git -C "$WT_DIR" push "${push_args[@]}"; then
+    push_rc=0
+else
+    push_rc=$_WTR_RC
+fi
+_push_out=$_WTR_OUT
+if [[ "$push_rc" -ne 0 ]]; then
     larch_err "design-log-publish: git push failed"
     if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
         local_recovery_branch="larch-log-design-recovery-${RUN_ID}"
@@ -622,13 +637,20 @@ if ! git -C "$WT_DIR" push "${push_args[@]}" >/dev/null 2>&1; then
 fi
 PUSH_DONE=true
 
-create_rc=0
-create_out=""
-create_out=$(
+create_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-create.XXXXXX") || {
+    larch_err "design-log-publish: mktemp failed for pr-create capture"
+    emit_publish_result false
+    exit 0
+}
+if with_transient_retry transient_envelope_predicate_none "$create_fail_file" \
     gh pr create "${gh_repo_args[@]}" --head "$WT_BRANCH" --base "$ORIGIN_DEFAULT" \
         --title "chore(larch-logs): design run ${RUN_ID}" \
-        --body-file "$PR_BODY_TMP" 2>&1
-) || create_rc=$?
+        --body-file "$PR_BODY_TMP"; then
+    create_rc=0
+else
+    create_rc=$_WTR_RC
+fi
+create_out=$_WTR_OUT
 rm -f "$PR_BODY_TMP" 2>/dev/null || true
 PR_BODY_TMP=""
 
@@ -645,7 +667,9 @@ if [[ -z "$PR_NUM" ]]; then
     PR_NUM=$(gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
     if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
         larch_err "design-log-publish: gh pr create failed: ${create_out:-unknown}"
-        larch_err "design-log-publish: remote branch may need manual cleanup: $WT_BRANCH"
+        if [[ "$create_rc" -ne 0 ]]; then
+            git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
+        fi
         emit_publish_result false
         [[ "$PUSH_DONE" == true ]] && emit_kv RECOVERY_BRANCH "$WT_BRANCH"
         exit 1
@@ -653,8 +677,18 @@ if [[ -z "$PR_NUM" ]]; then
     PR_URL=$(gh pr view "${gh_repo_args[@]}" "$PR_NUM" --json url --jq '.url' 2>/dev/null || true)
 fi
 
-merge_rc=0
-gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch >/dev/null || merge_rc=$?
+merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
+    larch_err "design-log-publish: mktemp failed for merge capture"
+    emit_publish_result false
+    exit 0
+}
+if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
+    gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch; then
+    merge_rc=0
+else
+    merge_rc=$_WTR_RC
+fi
+_merge_out=$_WTR_OUT
 
 git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
 rm -rf "${WT_PARENT:-}" 2>/dev/null || true

@@ -11,6 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
@@ -136,10 +138,16 @@ case "$ACTION" in
                     fi
                 fi
             fi
-            if ! gh issue edit "$ISSUE" --repo "$REPO" --add-label "$LABEL_NAME" 2>"$ERR_TMP"; then
+            addlabel_fail_file=$(mktemp "${TMPDIR:-/tmp}/clarify-label-add.XXXXXX")
+            if with_transient_retry transient_envelope_predicate_none "$addlabel_fail_file" \
+                gh issue edit "$ISSUE" --repo "$REPO" --add-label "$LABEL_NAME"; then
+                :
+            else
                 ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+                rm -f "$addlabel_fail_file"
                 emit_gh_failure "$ERR_CONTENT"
             fi
+            rm -f "$addlabel_fail_file"
             CHANGED=true
         fi
         ;;
@@ -147,10 +155,16 @@ case "$ACTION" in
         if [ "$HAS" = "false" ]; then
             CHANGED=false
         else
-            if ! gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$LABEL_NAME" 2>"$ERR_TMP"; then
+            removelabel_fail_file=$(mktemp "${TMPDIR:-/tmp}/clarify-label-remove.XXXXXX")
+            if with_transient_retry transient_envelope_predicate_none "$removelabel_fail_file" \
+                gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$LABEL_NAME"; then
+                :
+            else
                 ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+                rm -f "$removelabel_fail_file"
                 emit_gh_failure "$ERR_CONTENT"
             fi
+            rm -f "$removelabel_fail_file"
             CHANGED=true
         fi
         ;;

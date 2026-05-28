@@ -27,6 +27,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 
 usage() { larch_err "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]"; }
 
@@ -74,8 +76,15 @@ if [[ ! -f "$BODY_FILE" ]]; then
     exit 2
 fi
 
-OUTPUT=$(gh pr edit "$PR" "${GH_REPO_ARGS[@]}" --body-file "$BODY_FILE" 2>&1)
-EXIT_CODE=$?
+fail_file=$(mktemp "${TMPDIR:-/tmp}/gh-pr-body-update.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fail_file" \
+    gh pr edit "$PR" "${GH_REPO_ARGS[@]}" --body-file "$BODY_FILE"; then
+    EXIT_CODE=0
+else
+    EXIT_CODE=$_WTR_RC
+fi
+OUTPUT=$_WTR_OUT
+rm -f "$fail_file"
 
 if [[ $EXIT_CODE -eq 0 ]]; then
     UPDATED="true"

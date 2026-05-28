@@ -79,6 +79,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 
 # --- Parse flags ---
 CONTINUE_MODE=false
@@ -152,7 +154,16 @@ if [[ "$SKIP_IF_PUSHED" == "true" ]]; then
         # semantics, which would misbehave for branches containing [, ?, *.
         # If ls-remote fails (network/auth), we fall through to the normal
         # rebase path; the subsequent fetch will surface the real error.
-        if REMOTE_REFS=$(git ls-remote --heads origin "refs/heads/$CURRENT_BRANCH" 2>/dev/null) && [[ -n "$REMOTE_REFS" ]]; then
+        lsremote_fail_file=$(mktemp "${TMPDIR:-/tmp}/rebase-push-lsremote.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$lsremote_fail_file" \
+            git ls-remote --heads origin "refs/heads/$CURRENT_BRANCH"; then
+            lsremote_rc=0
+        else
+            lsremote_rc=$_WTR_RC
+        fi
+        REMOTE_REFS=$_WTR_OUT
+        rm -f "$lsremote_fail_file"
+        if [[ "$lsremote_rc" -eq 0 ]] && [[ -n "$REMOTE_REFS" ]]; then
             emit_kv SKIPPED_ALREADY_PUSHED "true"
             exit 0
         fi
@@ -271,8 +282,15 @@ for _push_attempt in 1 2 3; do
         emit_kv PUSH_ERROR "Not on a branch (detached HEAD) before push attempt $_push_attempt"
         exit 2
     fi
-    PUSH_OUTPUT=$(git push "$LEASE_ARG" 2>&1)
-    PUSH_EXIT=$?
+    push_fail_file=$(mktemp "${TMPDIR:-/tmp}/rebase-push-push.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$push_fail_file" \
+        git push "$LEASE_ARG"; then
+        PUSH_EXIT=0
+    else
+        PUSH_EXIT=$_WTR_RC
+    fi
+    PUSH_OUTPUT=$_WTR_OUT
+    rm -f "$push_fail_file"
     if [[ $PUSH_EXIT -eq 0 ]]; then
         exit 0
     fi

@@ -1230,6 +1230,10 @@ exclude = [
   # only from Makefile (test-collect-agent-results target) and its sibling
   # contract, matching the Makefile-only harness pattern above.
   "scripts/test-collect-agent-results.sh",
+  # scripts/test-lib-net.sh is the offline regression harness for
+  # scripts/lib-net.sh with_transient_retry / transient_envelope_predicate_none.
+  # Referenced only from Makefile (test-lib-net target) and scripts/test-lib-net.md.
+  "scripts/test-lib-net.sh",
   # scripts/test-merge-pr.sh is the offline regression harness for
   # scripts/merge-pr.sh's admin-first / plain-fallback ordering, safety gates,
   # same-version bump race gate, and --no-admin-fallback opt-out. It stubs `gh`
@@ -1350,6 +1354,7 @@ exclude = [
   "scripts/test-run-external-agent-args.md",
   "scripts/test-collect-agent-retry.md",
   "scripts/test-collect-agent-results.md",
+  "scripts/test-lib-net.md",
   "scripts/lib-net.md",
   "scripts/lib-finalize-state-keys.md",
   "scripts/restore-finalize-state.md",

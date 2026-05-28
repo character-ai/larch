@@ -94,7 +94,7 @@ test-harnesses-13: test-anti-halt test-check-generators test-codex-implementer t
 
 test-harnesses-14: test-anti-improvised-wakeup test-check-main-sync test-collect-agent-bash32 test-render-final-summary-bash32 test-design-structure test-design-reentry-guard test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-external-tool-registry test-git-push test-implement-structure test-implement-step8-exit3-first-fixer test-lib-submodule-prohibition test-orchestrator-scope-sync test-rebase-push-force-lease test-render-specialist-prompt test-run-negotiation-round test-ship-pr-fix-loop test-token-ledger test-validate-citations-budget test-git-commit-only
 
-test-harnesses-15: test-append-tool-failure test-check-mid-run-dirty-tree test-collect-agent-results test-dispatch-code-voters-regressions-r1-r2 test-false-positive-keywords test-github-remote-repo test-implement-timing-rehydration test-lib-vote-tally test-rebase-push-fork-mode test-run-research-planner test-ship-pr-postmerge test-token-report test-check-contains-pins test-lint-bare-grep-probe
+test-harnesses-15: test-append-tool-failure test-check-mid-run-dirty-tree test-collect-agent-results test-dispatch-code-voters-regressions-r1-r2 test-false-positive-keywords test-github-remote-repo test-implement-timing-rehydration test-lib-net test-lib-vote-tally test-rebase-push-fork-mode test-run-research-planner test-ship-pr-postmerge test-token-report test-check-contains-pins test-lint-bare-grep-probe
 
 test-harnesses-16: test-apply-bump test-check-phantom-dirty test-phantom-probe-with-warn test-collect-agent-retry test-dispatch-code-voters-regressions-r3-codex test-finalize-plan test-harness-timer test-intra-batch-deps test-lint-bash32 test-lint-foreground-markers test-lint-gh-body-inline test-parse-input test-rebase-push-keep-on-conflict test-research-angle-prompts test-run-step1-plan-log test-ship-pr-rebase-phase14 test-ship-pr-state test-token-tally test-validate-research-output
 
@@ -146,6 +146,9 @@ test-collect-agent-retry:
 
 test-collect-agent-results:
 	bash scripts/harness-timer.sh $@ bash scripts/test-collect-agent-results.sh
+
+test-lib-net:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-net.sh
 
 test-parse-input:
 	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-parse-input.sh

@@ -11,6 +11,11 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# shellcheck source=scripts/lib-net.sh
+source "$PLUGIN_ROOT/scripts/lib-net.sh"
+
 REPO=""
 ALLOW_CONCURRENT=false
 SKILL=""
@@ -51,7 +56,15 @@ if [ -z "$REPO" ]; then
 fi
 
 # Step 1: git fetch + fast-forward main when applicable
-if ! git fetch origin main 2>/dev/null; then
+fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/audit-preflight-fetch.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fetch_fail_file" \
+    git fetch origin main; then
+    fetch_rc=0
+else
+    fetch_rc=$_WTR_RC
+fi
+rm -f "$fetch_fail_file"
+if [[ "$fetch_rc" -ne 0 ]]; then
     printf 'PREFLIGHT_OK=false\nREASON=git fetch origin main failed\n'
     exit 0
 fi

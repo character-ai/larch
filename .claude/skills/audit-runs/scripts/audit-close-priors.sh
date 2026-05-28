@@ -15,6 +15,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+# shellcheck source=scripts/lib-net.sh
+source "$PLUGIN_ROOT/scripts/lib-net.sh"
 # shellcheck source=.claude/skills/audit-runs/scripts/audit-title-matcher.sh
 . "$SCRIPT_DIR/audit-title-matcher.sh"
 
@@ -96,13 +99,21 @@ while IFS= read -r issue_num; do
         continue
     fi
 
-    if gh issue comment "$issue_num" --repo "$REPO" --body-file "$SUPERSEDE_BODY" 2>/dev/null; then
-        if gh issue close "$issue_num" --repo "$REPO" 2>/dev/null; then
+    comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/audit-close-comment.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+        gh issue comment "$issue_num" --repo "$REPO" --body-file "$SUPERSEDE_BODY"; then
+        rm -f "$comment_fail_file"
+        close_fail_file=$(mktemp "${TMPDIR:-/tmp}/audit-close-close.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$close_fail_file" \
+            gh issue close "$issue_num" --repo "$REPO"; then
+            rm -f "$close_fail_file"
             printf 'CLOSED_NUMBER=%s\n' "$issue_num"
         else
+            rm -f "$close_fail_file"
             printf 'CLOSE_FAILED=%s\tREASON=gh issue close failed\n' "$issue_num"
         fi
     else
+        rm -f "$comment_fail_file"
         printf 'CLOSE_FAILED=%s\tREASON=gh issue comment failed\n' "$issue_num"
     fi
 done <<EOF
