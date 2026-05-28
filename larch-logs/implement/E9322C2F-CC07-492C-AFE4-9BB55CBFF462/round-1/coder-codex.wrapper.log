@@ -1,0 +1,10 @@
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+2026-05-28T04:42:25.857382Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+2026-05-28T04:46:11.796465Z ERROR codex_core::session: failed to record rollout items: thread 019e6ce1-e3ed-7ca3-89ce-f9f9c8c94eb9 not found
+✓ codex agent: completed (exit code 0, 380s elapsed, output 56 bytes)

@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- parameterizing a one-KV difference adds complexity disproportionate to the nit maintenance risk
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- design explicitly chose FALLBACK_COUNT as the fallback; PHASE2 present without COMBINED is practically impossible with the new waterfall build
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- hypothetical misconfiguration of the stub; changing 0-means-disable semantics would be surprising
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- intentional plan-driven duplication with grep-sweep mitigation already called out; filing a nit issue adds noise
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
