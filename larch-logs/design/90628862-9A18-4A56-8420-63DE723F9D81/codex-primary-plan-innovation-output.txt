@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/design-log-publish.sh:600-602	Design audit regex targets the wrong PR-title shape	The plan filters and maps design runs using ^chore(larch-logs): flush design run..., but design-log-publish creates PRs titled chore(larch-logs): design run <RUN_ID>; --skill=design audits can resolve zero PRs or fail to map them	Use the existing PR title shape for audit-resolve-prs.sh and audit-map-runs.sh, or explicitly change design-log-publish.sh title generation and cover both old and new title shapes
+1	in_scope	important	correctness	skills/report-tokens/scripts/run-analysis.sh:117-120	Design token reports use final-suffixed filenames	The plan only changes LOG_BASE to larch-logs/$SKILL, but committed design logs contain token-report-final.json and timing-report-final.json, so --skill=design will skip real runs while tests using token-report.json give false confidence	For --skill=design read token-report-final.json and timing-report-final.json, with run-params.json fallback as planned; update design fixtures to mirror the committed final-suffixed file names
+1	in_scope	important	risk-integration	skills/report-tokens/scripts/run-analysis.sh:1134-1138	--plot-from cannot enforce skill-specific report titles	The plan says design rejects legacy [Analysis Report] issues, but the current fetch path reads only .body; without fetching .title the analyzer cannot distinguish legacy implement reports from [Design Analysis Report] bodies	Fetch title alongside body in --plot-from mode and validate title prefix before plotting, allowing legacy [Analysis Report] only for --skill=implement
+
+1. **correctness** `scripts/design-log-publish.sh:600-602`  
+The planned design PR filter/parser uses `flush design run`, but the publisher’s PR title is `chore(larch-logs): design run <RUN_ID>`. Keep the minimum change by matching the existing PR-title shape, or deliberately migrate the publisher title and support both shapes.
+
+2. **correctness** `skills/report-tokens/scripts/run-analysis.sh:117-120`  
+Design logs do not use the implement filenames. They publish `token-report-final.json` and `timing-report-final.json`, so only changing `LOG_BASE` makes `/report-tokens --skill=design` miss real data. Add the design filename branch and make the fixtures use the real names.
+
+3. **risk-integration** `skills/report-tokens/scripts/run-analysis.sh:1134-1138`  
+The `--plot-from` rejection for cross-skill reports needs the issue title, but the script currently fetches only the body. Fetch `title,body` and validate the prefix before passing the body to the analyzer.

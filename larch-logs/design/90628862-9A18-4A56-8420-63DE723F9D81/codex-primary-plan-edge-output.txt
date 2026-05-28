@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/design-log-publish.sh:597-602	Plan keys design audit PR discovery to the wrong PR title shape	`design-log-publish.sh` creates PRs titled `chore(larch-logs): design run <RUN_ID>`, but the plan filters and maps `--skill=design` with `^chore\(larch-logs\): flush design run ...$`; design audits will find zero PRs or emit empty run mappings.	Use the existing PR title regex `^chore\(larch-logs\): design run ([A-Za-z0-9._-]+)$`, or explicitly change the publisher title in the same PR if that is intended.
+1	in_scope	important	correctness	skills/report-tokens/scripts/run-analysis.sh:117-122	Design token scans would look for implement-style filenames	Committed design logs use `token-report-final.json` and `timing-report-final.json`, while the plan only swaps `LOG_BASE` and keeps `token-report.json` / `timing-report.json`; `--skill=design` would silently skip all current design runs.	For `--skill=design`, read `token-report-final.json` and `timing-report-final.json`, or probe the final names first and fall back to legacy names; make the design fixtures use the real final filenames.
+1	in_scope	important	correctness	skills/report-tokens/scripts/run-analysis.sh:1134-1138	`--plot-from` cannot enforce skill-specific report titles if it only fetches the body	The plan promises `--skill=design --plot-from <legacy implement report>` is rejected, but the current fetch path writes only `.body` to the analyzer; a body parser cannot tell `[Analysis Report]` from `[Design Analysis Report]`.	Fetch `title,body` for `--plot-from`, validate the title against the selected skill before parsing the raw data block, then pass only the body to the existing loader.
+1	in_scope	latent	risk-integration	.claude/skills/audit-runs/SKILL.md:107-115	New prefixed audit reports are not excluded from bug-issue dedupe searches	The plan changes audit report titles to `[Implement Run Logs Audit ...]` and `[Design Run Logs Audit ...]`, but the proposed bug-issue action rules still exclude only `^\[Run Logs Audit .* Report\]`; future audit-report issues can match finding keyword searches and be mistaken for open/closed bug issues.	Update the audit-report noise exclusion to cover legacy, implement-prefixed, and design-prefixed audit titles wherever finding dedupe filters issue search results.
+
+1. **[correctness] `scripts/design-log-publish.sh:597-602`**  
+Concern: the plan’s design PR regex targets `flush design run`, but the actual PR title is `chore(larch-logs): design run <RUN_ID>`.  
+Suggested revision: match the existing PR title shape, or intentionally update the publisher title in the same PR.
+
+2. **[correctness] `skills/report-tokens/scripts/run-analysis.sh:117-122`**  
+Concern: design logs use `token-report-final.json` / `timing-report-final.json`; the plan keeps implement filenames.  
+Suggested revision: make the design path read the final filenames, with fallback only if needed.
+
+3. **[correctness] `skills/report-tokens/scripts/run-analysis.sh:1134-1138`**  
+Concern: the planned title gate for `--plot-from` cannot work while only fetching the issue body.  
+Suggested revision: fetch `title,body`, validate title by skill, then parse the body.
+
+4. **[risk-integration] `.claude/skills/audit-runs/SKILL.md:107-115`**  
+Concern: new prefixed audit report titles are not excluded from finding dedupe searches.  
+Suggested revision: extend the audit-report exclusion regex to legacy, implement, and design audit report titles.
