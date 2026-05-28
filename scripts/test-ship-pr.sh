@@ -903,6 +903,7 @@ write_state "$tmp/ship-pr-state.sh" checks
 STUB_CHECKS_OK=false run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "checks failure exits 4"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "checks failure marks stall"
+assert_state_line "$tmp/ship-pr-state.sh" "EXIT_CODE=4" "checks failure records EXIT_CODE=4 in state (#3096)"
 
 root=$(make_repo checks_skip)
 tmp=$(make_tmpdir)

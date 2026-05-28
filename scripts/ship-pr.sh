@@ -1014,6 +1014,7 @@ clear_stall_keys_for_postmerge() {
 
 exit_stall() {
     mark_stall "$1"
+    state_set EXIT_CODE 4
     exit 4
 }
 
@@ -1022,7 +1023,7 @@ exit_transient_net() {
     # Truncate to first line to keep BAIL_REASON a single KEY=value line in state.
     local reason
     reason=$(printf '%s' "$1" | head -1 | cut -c1-200)
-    state_set_many BAIL_REASON "$reason" STALL_TRACKING false
+    state_set_many BAIL_REASON "$reason" STALL_TRACKING false EXIT_CODE 6
     exit 6
 }
 
@@ -3108,7 +3109,7 @@ EOF
                         return 0
                     fi
                     [ "$rc" -ne 0 ] || record_failure ci-merge "merge-pr.sh envelope" 1 "$fail_file" "CI Issues"
-                    state_set_many BAIL_REASON "$error_text" STALL_TRACKING true STALL_STEP 12d
+                    state_set_many BAIL_REASON "$error_text" STALL_TRACKING true STALL_STEP 12d EXIT_CODE 4
                     printf '\n--- ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) ---\nDO NOT improvise recovery. Do NOT patch state files, do NOT force-push, do NOT re-invoke ship-pr.sh manually.\nCorrect action: read STALL_TRACKING and STALL_STEP from state, then continue to Step 16 per skills/implement/SKILL.md.\n' >> "$fail_file"
                     exit 4
                     ;;
