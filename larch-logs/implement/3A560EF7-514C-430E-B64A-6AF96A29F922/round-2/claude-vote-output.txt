@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- canonical shape always has monitor_rc on keyword line; fix adds complexity for unlikely multiline header patterns
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- O(N^2) over small fences is negligible; refactor adds complexity with no correctness benefit
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- absence assertions are good hygiene but case 54 already pins the three expected needles; marginal value
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly chose minimal-presence approach with no structural ordering verification; wait-before-conditional is part of the deliberately deferred structural check
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- while/until bypass is purely theoretical; no production code uses a loop as the two-branch shape
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- make lint-foreground-markers already covers live repo fences; coupling harness to repo state reduces portability
+FINDING_9: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- ERE `[0-9]+` already rejects `monitor_rc=$?`; test gap has negligible practical risk
+OOS_11: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan says to run test, not modify it; CI covers pass/fail; not worth a separate GitHub issue
+OOS_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- plan explicitly deferred exit-propagation structural verification
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- lint fixtures show minimum passing shape by design; conflating with production exit behavior adds noise
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

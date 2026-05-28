@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the regex `[0-9]+([[:space:]]|$)` accepts `monitor_rc=0 # comment` because the space before `#` satisfies `[[:space:]]`; only the pathological no-space form `monitor_rc=0#comment` (invalid shell) would fail
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly says "No structural two-branch verification"; docs say "does not attempt a full shell control-flow proof"; fix requires nesting analysis
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deliberate design choice; docs/linting.md update (part of this diff) documents `if`/`case` only; `elif` without a preceding `if` is invalid shell; `while`/`until` are not part of any canonical Family B pattern
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the two hooks are independent pre-commit entries; inclusion in the same `make lint` target is standard aggregation, not lint-surface coupling
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docs say no full semantic proof; fixing requires distinguishing `$monitor_rc` from quoted literals; purely theoretical attack vector
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly says "No structural two-branch verification"; docs say no full control-flow proof; exit-code propagation check requires analysis beyond presence checks
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly states per-anchor suppression covers all new checks; suppression mechanism is by design for legitimate exceptions; concern is theoretical
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly states "reject `monitor_rc=$something`"; any integer literal is intentional per plan; non-zero init is unusual but not harmful since `|| monitor_rc=$?` still captures the actual exit code
