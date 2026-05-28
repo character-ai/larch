@@ -7,9 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT="$REPO_ROOT"
 VIOLATIONS=0
+FILES=()
 
 usage() {
-    printf 'Usage: %s [--root PATH]\n' "$(basename "$0")" >&2
+    printf 'Usage: %s [--root PATH] [FILE ...]\n' "$(basename "$0")" >&2
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -26,9 +27,13 @@ while [[ "$#" -gt 0 ]]; do
             usage
             exit 0
             ;;
-        *)
+        -*)
             usage
             exit 2
+            ;;
+        *)
+            FILES+=("$1")
+            shift
             ;;
     esac
 done
@@ -38,7 +43,7 @@ if [[ ! -d "$ROOT" ]]; then
     exit 2
 fi
 
-ROOT="$(cd "$ROOT" && pwd)"
+ROOT="$(cd "$ROOT" && pwd -P)"
 TMP_FILES="$(mktemp "${TMPDIR:-/tmp}/lint-bash32-files.XXXXXX")"
 trap 'rm -f "$TMP_FILES"' EXIT
 
@@ -56,6 +61,23 @@ list_shell_files() {
                 done
         )
     fi
+}
+
+resolve_positional_path() {
+    local candidate="$1"
+    local dir
+    local base
+    local abs_dir
+
+    if [[ "$candidate" = /* ]]; then
+        dir="$(dirname -- "$candidate")"
+    else
+        dir="$ROOT/$(dirname -- "$candidate")"
+    fi
+    base="$(basename -- "$candidate")"
+
+    abs_dir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
+    printf '%s/%s\n' "$abs_dir" "$base"
 }
 
 scan_file() {
@@ -93,10 +115,57 @@ scan_file() {
     fi
 }
 
-list_shell_files > "$TMP_FILES"
-while IFS= read -r -d '' rel; do
-    scan_file "$rel"
-done < "$TMP_FILES"
+if [[ "${#FILES[@]}" -eq 0 ]]; then
+    list_shell_files > "$TMP_FILES"
+    while IFS= read -r -d '' rel; do
+        scan_file "$rel"
+    done < "$TMP_FILES"
+else
+    for file in "${FILES[@]}"; do
+        case "$file" in
+            *.sh|*.inc.bash)
+                ;;
+            *)
+                printf 'lint-bash32: skipping non-shell path: %s\n' "$file" >&2
+                continue
+                ;;
+        esac
+
+        case "$file" in
+            /*)
+                resolved="$(resolve_positional_path "$file")" || {
+                    printf 'lint-bash32: skipping unresolved path: %s\n' "$file" >&2
+                    continue
+                }
+                case "$resolved" in
+                    "$ROOT"/*)
+                        file="${resolved#"$ROOT"/}"
+                        ;;
+                    *)
+                        printf 'lint-bash32: skipping path outside lint root: %s\n' "$file" >&2
+                        continue
+                        ;;
+                esac
+                ;;
+            *)
+                resolved="$(resolve_positional_path "$file")" || {
+                    printf 'lint-bash32: skipping unresolved path: %s\n' "$file" >&2
+                    continue
+                }
+                case "$resolved" in
+                    "$ROOT"/*)
+                        file="${resolved#"$ROOT"/}"
+                        ;;
+                    *)
+                        printf 'lint-bash32: skipping path outside lint root: %s\n' "$file" >&2
+                        continue
+                        ;;
+                esac
+        esac
+
+        scan_file "$file"
+    done
+fi
 
 if [[ "$VIOLATIONS" -gt 0 ]]; then
     exit 1

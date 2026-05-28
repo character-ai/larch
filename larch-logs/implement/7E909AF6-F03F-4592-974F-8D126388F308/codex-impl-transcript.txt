@@ -1,0 +1,18 @@
+Implemented the Bash 3.2 pre-commit wiring.
+
+Changed:
+- [scripts/lint-bash32.sh](<OPERATOR_REPO_PATH>/scripts/lint-bash32.sh:10): added positional file args, non-shell/outside-root skips, and preserved whole-repo default/`--root` mode.
+- [.pre-commit-config.yaml](<OPERATOR_REPO_PATH>/.pre-commit-config.yaml:118): added `lint-bash32` local hook with `files: \.(sh|inc\.bash)$`.
+- [scripts/test-lint-bash32.sh](<OPERATOR_REPO_PATH>/scripts/test-lint-bash32.sh:30): added positional-mode regression cases.
+- [scripts/lint-bash32.md](<OPERATOR_REPO_PATH>/scripts/lint-bash32.md:6) and [docs/linting.md](<OPERATOR_REPO_PATH>/docs/linting.md:16): documented the new pre-commit caller and positional mode.
+
+Verified:
+- `make test-lint-bash32` passed.
+- `make lint-bash32` passed.
+- `pre-commit run lint-bash32 --files scripts/lint-bash32.sh scripts/test-lint-bash32.sh` passed.
+- Temporary `.inc.bash` violation fixture correctly failed `lint-bash32`.
+- `bash scripts/relevant-checks.sh` passed.
+- `SKIP=lint-mermaid-fences pre-commit run --all-files` passed.
+- Unskipped `pre-commit run --all-files` still fails only on existing `lint-mermaid-fences`: `docs/agents.md fence 1`.
+
+Wrote the requested manifest atomically at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.

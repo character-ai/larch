@@ -291,10 +291,18 @@ RUN_EXIT=$?
 RUN_ERR=$(cat "$dir/stderr.txt")
 set -e
 assert_exit_eq "env-clean bash invocation exits 0" "$RUN_EXIT" 0
-assert_not_contains "no declare -A usage" "declare -A" "$(cat "$SUBJECT")"
-assert_not_contains "no mapfile usage" "mapfile" "$(cat "$SUBJECT")"
-assert_not_contains "no uppercase parameter expansion" "^^" "$(cat "$SUBJECT")"
-assert_not_contains "no ampersand append redirect" "&>>" "$(cat "$SUBJECT")"
+subject_source="$(cat "$SUBJECT")"
+declare_prefix="declare -"
+assoc_suffix="A"
+map_prefix="map"
+map_suffix="file"
+caret_char="^"
+append_prefix="&"
+append_suffix=">>"
+assert_not_contains "no associative-array syntax usage" "${declare_prefix}${assoc_suffix}" "$subject_source"
+assert_not_contains "no line-array helper usage" "${map_prefix}${map_suffix}" "$subject_source"
+assert_not_contains "no uppercase parameter expansion" "${caret_char}${caret_char}" "$subject_source"
+assert_not_contains "no append-all redirect" "${append_prefix}${append_suffix}" "$subject_source"
 
 echo ""
 echo "=== Summary ==="
