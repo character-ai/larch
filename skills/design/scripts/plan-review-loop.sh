@@ -382,27 +382,36 @@ _run_post_apply_pipeline() {
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
-    local removed=0
-    if [[ -f "$plan_path" ]]; then
-        removed=$(awk 'NF { if (seen[$0]++) dup++; else keep[++n]=$0 } END { print dup+0 }' "$plan_path" 2>/dev/null || printf '0')
-        awk '!seen[$0]++' "$plan_path" >"${plan_path}.dedup.tmp" && mv -f "${plan_path}.dedup.tmp" "$plan_path"
-    fi
-    printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "$removed"
-    local emit_out
+    local emit_out emit_rc
+    set +e
     emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")
+    emit_rc=$?
+    set -e
+    if (( emit_rc != 0 )); then
+        LOOP_STATUS=emit-plan-failed
+        LOOP_REASON=emit-plan-driver-failed
+        return 1
+    fi
     local emit_st
     emit_st=$(printf '%s\n' "$emit_out" | awk -F= '$1 == "EMIT_PLAN_STATUS" { print $2; found=1 } END { if (!found) print "" }')
     if [[ "$emit_st" == "missing-diff-lines" ]]; then
-        LOOP_STATUS=plan-size-trigger
+        LOOP_STATUS=emit-plan-failed
         LOOP_REASON=emit-plan-failed
         return 1
     fi
-    local val_out val_st
+    local val_out val_rc val_st
+    set +e
     val_out=$("$INVOKE_PLAN_VALIDATOR_SH" "$plan_path")
+    val_rc=$?
+    set -e
     val_st=$(printf '%s\n' "$val_out" | awk -F= '$1 == "VALIDATE_STATUS" { print $2; found=1 } END { if (!found) print "" }')
-    if [[ "$val_st" == "defects-found" ]]; then
+    if (( val_rc != 0 )) || [[ "$val_st" == "defects-found" ]]; then
         LOOP_STATUS=plan-validator-defects
-        LOOP_REASON=validator-defects
+        if [[ "$val_st" == "defects-found" ]]; then
+            LOOP_REASON=validator-defects
+        else
+            LOOP_REASON=validator-driver-failed
+        fi
         return 1
     fi
     local size_out hard
@@ -1086,6 +1095,7 @@ fi
 
 while (( round_num <= ROUND_CAP )); do
     _clear_session_root_review_artifacts
+    _last_collect_out=""
     set +e
     _run_plan_review_round "$round_num"
     _round_rc=$?
@@ -1095,17 +1105,20 @@ while (( round_num <= ROUND_CAP )); do
         LOOP_STATUS=main-agent-vote-required
         IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
         _count_collector_evidence
+        _snapshot_round_dir "$round_num"
         _write_round_summary "$round_num" main-agent-vote-required "" skipped
         _terminal_exit 0 "$round_num"
     fi
 
     if (( _round_rc != 0 )); then
         LOOP_STATUS=panel-failed
+        LOOP_REASON=panel-failed
+        revise_status=skipped
         IMPORTANT_ACCEPTED_COUNT=0
         _count_collector_evidence
-        write_step3_result_env "$round_num"
-        emit_loop_kvs panel-failed 0 1 skipped panel-failed "" SKIPPED "$round_num"
-        exit 1
+        _snapshot_round_dir "$round_num"
+        _write_round_summary "$round_num" panel-failed panel-failed skipped
+        _terminal_exit 1 "$round_num"
     fi
 
     if [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]]; then
@@ -1138,11 +1151,16 @@ while (( round_num <= ROUND_CAP )); do
             _write_round_summary "$round_num" degraded-empty-collector degraded-empty-collector skipped
             _terminal_exit 0 "$round_num"
         fi
-        LOOP_STATUS=converged
-        LOOP_REASON=zero-findings
+        if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
+            LOOP_STATUS=complete
+            LOOP_REASON=zero-findings-degraded-panel
+        else
+            LOOP_STATUS=converged
+            LOOP_REASON=zero-findings
+        fi
         revise_status=skipped
         _snapshot_round_dir "$round_num"
-        _write_round_summary "$round_num" converged zero-findings skipped
+        _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" skipped
         _terminal_exit 0 "$round_num"
     fi
 
@@ -1169,7 +1187,7 @@ while (( round_num <= ROUND_CAP )); do
 
     if ! _run_post_apply_pipeline "$round_num"; then
         _snapshot_round_dir "$round_num"
-        _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" skipped
+        _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "${revise_status:-ok}"
         _terminal_exit 0 "$round_num"
     fi
 
@@ -1177,6 +1195,7 @@ while (( round_num <= ROUND_CAP )); do
 
     if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
         convergence_streak=0
+        CONVERGENCE_STREAK=0
     elif [[ "$ACCEPTED_COUNT" -le "$CONVERGENCE_THRESHOLD" && "$IMPORTANT_ACCEPTED_COUNT" -eq 0 ]]; then
         convergence_streak=$((convergence_streak + 1))
         CONVERGENCE_STREAK=$convergence_streak

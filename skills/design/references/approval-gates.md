@@ -58,7 +58,7 @@ When the user picks **Ready for review**:
 
 ## Gate B — Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes — `accepted-plan-findings.md` (and `rejected-findings.md`, `oos.md`) have been written by the tally script. **The plan has NOT been revised yet** (Gate B is the only path that revises `plan.txt` from review findings).
+**When**: after Step 3 review completes — `accepted-plan-findings.md` (and `rejected-findings.md`, `oos.md`) have been written by the tally script. In legacy single-pass/manual branches the plan has **not** been revised yet; in multi-round `LOOP_STATUS=converged|cap-hit` branches the loop already revised `plan.txt` between rounds and Gate B is passive-summary only.
 
 ### Severity classification rubric
 
@@ -83,7 +83,7 @@ Determine Gate B mode only after the zero-findings short-circuit above proves th
 
 - When `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, or `plan-validator-defects`, Gate B is **bypassed** — Step 3 already routed to Step 3b or the Step 2b.5 handler.
 - When `LOOP_STATUS` is `converged` or `cap-hit` and `manual_gate_b=false`, enter **passive-summary mode** (below) instead of the auto-apply path — findings were already applied inside `plan-review-loop.sh`.
-- When `LOOP_STATUS` is `revision-failed`, use the full 3-option `AskUserQuestion` form so the operator can apply un-applied final-round findings manually.
+- When `LOOP_STATUS` is `revision-failed` or `emit-plan-failed`, use the full 3-option `AskUserQuestion` form so the operator can apply or inspect the final-round findings manually.
 - When `manual_gate_b=true`, always use the full 3-option form regardless of `LOOP_STATUS` (the loop exits after one round with `LOOP_STATUS=complete REASON=manual-gate-b` and does not auto-apply).
 
 #### Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)
@@ -100,7 +100,7 @@ When `manual_gate_b=false`, do **not** print the full review table above. The co
 
 ### Prompt
 
-When `manual_gate_b=false`, execute the auto-apply path:
+When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:
 
 1. Print a compact findings list under `## Plan Review Findings — Auto-applying`: one row per finding showing `FINDING_N | Severity | Reviewer(s) | <1-line concern excerpt>`. Use the same severity rubric and the same concern text source as the review table; truncate to the first 1-2 lines or 200 characters, whichever is shorter. Never paraphrase.
 2. Also print the rejected and OOS sections for context (same reads from `rejected-findings.md` / `oos.md` as the presentation table).

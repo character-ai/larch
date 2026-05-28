@@ -64,6 +64,14 @@ Larch is a Claude Code plugin that runs within Claude Code's permission boundary
 
 **`/design` session-env symlink (`current-design-env-<PID>.sh`)**: `/design` Bash steps rehydrate session context by sourcing a stable path under the operator home cache (`~/.cache/larch/sessions/current-design-env-<PID>.sh`, a symlink keyed on the Claude Code parent process id passed as `--claude-pid`). Only `scripts/write-design-current-env.sh` writes the sourceable file and refreshes that symlink; exports use `printf '%q'` so values survive `source`. The same-user trust model applies as for other session tmpdir artifacts — treat the generated file as data produced by larch scripts in the operator's account, not as an integrity boundary against a hostile same-UID writer. Different Claude sessions use different symlink names; a stale or dangling symlink is skipped by the prelude's `[ -f ... ] &&` guard.
 
+**`/design` Step 3 loop-result env and round cleanup**: Step 3 treats
+`.step3-plan-review-result.env` as untrusted data, not executable shell: the
+consumer reads only an allowlisted key set and ignores symlinked result files in
+favor of stdout fallback. The same step also refuses to `rm -rf` symlinked
+`plan-review/round-*` entries during re-entry cleanup, so a malicious or stale
+same-UID symlink cannot redirect cleanup outside the resolved `plan-review`
+root.
+
 **`/design` pause/resume marker binding**: `scripts/design-pause-save.sh` writes
 `ISSUE_NUMBER=` and, when resolvable, `REPO=` into the
 `<!-- larch:design-pause -->` marker payload before a pause snapshot becomes

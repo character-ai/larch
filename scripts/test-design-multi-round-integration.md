@@ -16,8 +16,10 @@ PATH-style overrides via `LARCH_PLAN_REVIEW_*_SH` env vars (see `skills/design/s
 
 - Multi-round loop with `--round-cap 2` reaches `LOOP_STATUS=cap-hit`
 - `round-summary.env` materialized under `plan-review/round-1/`
+- Raw reviewer outputs remain excluded from `round-N/` snapshots
+- `design-log-publish.sh` publishes the same sorted `plan-review/` file list produced by the loop snapshot
 - `design-log-publish.sh` rejects `unknown.bin` under `round-1/` (`PUBLISH_OK=false`)
-- Symlink under `plan-review/` rejected
+- Symlink under `plan-review/` rejected fail-closed
 
 ## Related harnesses
 

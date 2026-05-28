@@ -563,6 +563,19 @@ out_z=$(run_loop "$DZ" 1 --round-cap 3 --convergence-threshold 3)
 printf '%s\n' "$out_z" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged zero-findings"
 printf '%s\n' "$out_z" | grep -q '^REASON=zero-findings$' || fail "expected zero-findings reason"
 
+echo "=== multi-round: zero findings + degraded panel stays non-converged ==="
+DZD="$TMP/mrzd"
+mkdir -p "$DZD"
+printf 'plan\n\ndiff_lines: 1\n' >"$DZD/plan.txt"
+printf 'feat\n' >"$DZD/feature-description.txt"
+write_scout
+write_dispatch_combined_threshold
+write_collect empty
+write_voters_three
+out_zd=$(run_loop "$DZD" 1 --round-cap 3 --convergence-threshold 3)
+printf '%s\n' "$out_zd" | grep -q '^LOOP_STATUS=complete$' || fail "degraded zero-findings should not converge"
+printf '%s\n' "$out_zd" | grep -q '^REASON=zero-findings-degraded-panel$' || fail "expected degraded zero-findings reason"
+
 echo "=== multi-round: zero findings + no collector OK → degraded-empty-collector ==="
 DZ0="$TMP/mrz0"
 mkdir -p "$DZ0"
@@ -613,6 +626,52 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_m=$(run_loop "$DM" 1 --round-cap 5)
 printf '%s\n' "$out_m" | grep -q '^LOOP_STATUS=complete$' || fail "manual mode expected complete"
 printf '%s\n' "$out_m" | grep -q '^REASON=manual-gate-b$' || fail "manual mode expected manual-gate-b reason"
+
+echo "=== multi-round: tally-error exits before revise ==="
+DTM="$TMP/mr-tally"
+mkdir -p "$DTM"
+printf 'plan\n\ndiff_lines: 1\n' >"$DTM/plan.txt"
+printf 'feat\n' >"$DTM/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+write_tally_fail
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "revise should not run on tally-error" >&2
+exit 99
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_tm=$(run_loop "$DTM" 1 --round-cap 2 --convergence-threshold 3)
+unset LARCH_PLAN_REVIEW_TALLY_SH
+printf '%s\n' "$out_tm" | grep -q '^LOOP_STATUS=tally-error$' || fail "multi-round tally-error should surface tally-error loop status"
+printf '%s\n' "$out_tm" | grep -q '^REVISE_STATUS=skipped$' || fail "multi-round tally-error should skip revise"
+[[ -f "$DTM/.step3-plan-review-result.env" ]] || fail "multi-round tally-error missing result env"
+grep -q '^LOOP_STATUS=tally-error$' "$DTM/.step3-plan-review-result.env" || fail "result env missing tally-error loop status"
+
+echo "=== multi-round: revise failure returns revision-failed ==="
+DRV="$TMP/mr-revise-fail"
+mkdir -p "$DRV"
+printf 'plan\n\ndiff_lines: 1\n' >"$DRV/plan.txt"
+printf 'feat\n' >"$DRV/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=failed-no-patch\nREVISE_WINNING_TIER=\n'
+exit 0
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_rv=$(run_loop "$DRV" 1 --round-cap 3 --convergence-threshold 3)
+printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revise failure should surface revision-failed"
+printf '%s\n' "$out_rv" | grep -q '^REVISE_STATUS=failed-no-patch$' || fail "revise failure should preserve revise status"
+grep -q '^REVISE_STATUS=failed-no-patch$' "$DRV/plan-review/round-1/round-summary.env" || fail "round summary should preserve revise failure status"
 
 echo "=== snapshot allowlist: raw reviewer output excluded from round-1 ==="
 DS="$TMP/snap"
