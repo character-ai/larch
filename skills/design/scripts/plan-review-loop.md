@@ -49,7 +49,7 @@ Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Va
 
 ## `round-summary.env` schema
 
-Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `CONVERGENCE_STREAK`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `REVISE_WINNING_TIER`, `PLAN_HASH_BEFORE_REVISE`, `PLAN_HASH_AFTER_REVISE`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`.
+Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `CONVERGENCE_STREAK`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `REVISE_WINNING_TIER`, `PLAN_HASH_BEFORE_REVISE`, `PLAN_HASH_AFTER_REVISE`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`. Successful tier-4 fallback rounds preserve `REVISE_STATUS=ok-fallback` here instead of being normalized to `ok`.
 
 ## Exit codes
 

@@ -1153,6 +1153,28 @@ printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revis
 printf '%s\n' "$out_rv" | grep -q '^REVISE_STATUS=failed-no-patch$' || fail "revise failure should preserve revise status"
 grep -q '^REVISE_STATUS=failed-no-patch$' "$DRV/plan-review/round-1/round-summary.env" || fail "round summary should preserve revise failure status"
 
+echo "=== multi-round: ok-fallback propagates into result env and round summary ==="
+DOF="$TMP/mr-ok-fallback"
+mkdir -p "$DOF"
+printf 'plan\n\ndiff_lines: 1\n' >"$DOF/plan.txt"
+printf 'feat\n' >"$DOF/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok-fallback\nREVISE_WINNING_TIER=codex\n'
+exit 0
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_of=$(run_loop "$DOF" 1 --round-cap 1 --convergence-threshold 3)
+printf '%s\n' "$out_of" | grep -q '^LOOP_STATUS=cap-hit$' || fail "ok-fallback round should still settle normally"
+printf '%s\n' "$out_of" | grep -q '^REVISE_STATUS=ok-fallback$' || fail "ok-fallback should propagate to stdout"
+grep -q '^REVISE_STATUS=ok-fallback$' "$DOF/.step3-plan-review-result.env" || fail "result env should preserve ok-fallback"
+grep -q '^REVISE_STATUS=ok-fallback$' "$DOF/plan-review/round-1/round-summary.env" || fail "round summary should preserve ok-fallback"
+
 echo "=== multi-round: revise rc failure returns revision-failed + failed-apply ==="
 DRC="$TMP/mr-revise-rc-fail"
 mkdir -p "$DRC"

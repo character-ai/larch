@@ -148,57 +148,33 @@ tier3_status=""
 tier4_status=""
 winner=""
 winner_is_fallback=false
+winner_output=""
+
+tier4_rank() {
+    case "$1" in
+        not-attempted) printf '0\n' ;;
+        skipped-not-present) printf '1\n' ;;
+        no-patch) printf '2\n' ;;
+        invalid-patch) printf '3\n' ;;
+        apply-failed) printf '4\n' ;;
+        emit-plan-failed) printf '5\n' ;;
+        ok) printf '6\n' ;;
+        *) printf '%s\n' '-1' ;;
+    esac
+}
 
 merge_tier4_status() {
     local new="$1"
+    local current_rank new_rank
     if [[ -z "$tier4_status" ]]; then
         tier4_status="$new"
         return
     fi
-    if [[ "$tier4_status" == "ok" ]]; then
-        return
+    current_rank=$(tier4_rank "$tier4_status")
+    new_rank=$(tier4_rank "$new")
+    if (( new_rank > current_rank )); then
+        tier4_status="$new"
     fi
-    if [[ "$new" == "ok" ]]; then
-        tier4_status=ok
-        return
-    fi
-    case "$tier4_status:$new" in
-        not-attempted:*|*:not-attempted)
-            case "$new" in
-                ok|emit-plan-failed|apply-failed|invalid-patch|no-patch|skipped-not-present) tier4_status="$new" ;;
-            esac
-            ;;
-        skipped-not-present:*|*:skipped-not-present)
-            case "$new" in
-                ok|emit-plan-failed|apply-failed|invalid-patch|no-patch) tier4_status="$new" ;;
-                skipped-not-present) tier4_status=skipped-not-present ;;
-            esac
-            ;;
-        no-patch:*|*:no-patch)
-            case "$new" in
-                ok|emit-plan-failed|apply-failed|invalid-patch) tier4_status="$new" ;;
-                no-patch|skipped-not-present) tier4_status=no-patch ;;
-            esac
-            ;;
-        invalid-patch:*|*:invalid-patch)
-            case "$new" in
-                ok|emit-plan-failed|apply-failed) tier4_status="$new" ;;
-                invalid-patch|no-patch|skipped-not-present) tier4_status=invalid-patch ;;
-            esac
-            ;;
-        apply-failed:*|*:apply-failed)
-            case "$new" in
-                ok|emit-plan-failed) tier4_status="$new" ;;
-                apply-failed|invalid-patch|no-patch|skipped-not-present) tier4_status=apply-failed ;;
-            esac
-            ;;
-        emit-plan-failed:*|*:emit-plan-failed)
-            case "$new" in
-                ok) tier4_status=ok ;;
-                emit-plan-failed|apply-failed|invalid-patch|no-patch|skipped-not-present) tier4_status=emit-plan-failed ;;
-            esac
-            ;;
-    esac
 }
 
 set_tier_status() {
@@ -238,22 +214,100 @@ last_nonblank_line() {
 
 extract_patch() {
     local output="$1" patch="$2"
-    if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
-        awk '
-            BEGIN { started=0 }
-            !started {
-                if ($0 ~ /^```diff$/) { next }
-                if ($0 ~ /^diff --git / || $0 ~ /^--- / || $0 ~ /^\+\+\+ / || $0 ~ /^@@ /) {
-                    started=1
-                    print
-                }
-                next
-            }
-            $0 != "```" { print }
-        ' "$output" >"$patch"
-    else
-        cp "$output" "$patch"
-    fi
+    python3 - "$PATCH_FORMAT" "$output" "$patch" <<'PY'
+import re
+import sys
+
+patch_format, src, dest = sys.argv[1:4]
+with open(src, encoding="utf-8", errors="replace") as fh:
+    lines = fh.read().splitlines()
+
+
+def write_lines(out_lines):
+    with open(dest, "w", encoding="utf-8") as fh:
+        if out_lines:
+            fh.write("\n".join(out_lines) + "\n")
+
+
+def find_diff_start(block, from_end=False):
+    indexes = range(len(block) - 1, -1, -1) if from_end else range(len(block))
+    for idx in indexes:
+        if block[idx].startswith("diff --git "):
+            return idx
+    pair_indexes = range(len(block) - 2, -1, -1) if from_end else range(len(block) - 1)
+    for idx in pair_indexes:
+        if block[idx] == "--- a/plan.txt" and block[idx + 1] == "+++ b/plan.txt":
+            return idx
+    return None
+
+
+def fenced_blocks(diff_only):
+    blocks = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if diff_only:
+            opening = re.match(r"^```diff\s*$", line)
+        else:
+            opening = re.match(r"^```(?:[A-Za-z0-9_-]+)?\s*$", line)
+        if not opening:
+            i += 1
+            continue
+        j = i + 1
+        while j < len(lines) and lines[j] != "```":
+            j += 1
+        if j >= len(lines):
+            break
+        blocks.append(lines[i + 1 : j])
+        i = j + 1
+    return blocks
+
+
+if patch_format == "unified-diff":
+    for block in fenced_blocks(diff_only=True):
+        start = find_diff_start(block)
+        if start is not None:
+            write_lines(block[start:])
+            raise SystemExit(0)
+    start = find_diff_start(lines, from_end=True)
+    if start is None:
+        write_lines([])
+        raise SystemExit(0)
+    out = []
+    for line in lines[start:]:
+        if line == "```" or re.match(r"^```diff\s*$", line):
+            break
+        out.append(line)
+    write_lines(out)
+    raise SystemExit(0)
+
+for block in fenced_blocks(diff_only=False):
+    starts = [idx for idx, line in enumerate(block) if line == "## Plan"]
+    for start in starts:
+        trailer = None
+        for idx in range(start, len(block)):
+            if re.match(r"^diff_lines:\s*[0-9]+\s*$", block[idx]):
+                trailer = idx
+                break
+        if trailer is not None:
+            write_lines(block[start : trailer + 1])
+            raise SystemExit(0)
+
+starts = [idx for idx, line in enumerate(lines) if line == "## Plan"]
+for start in reversed(starts):
+    trailer = None
+    for idx in range(start, len(lines)):
+        if re.match(r"^diff_lines:\s*[0-9]+\s*$", lines[idx]):
+            trailer = idx
+            break
+        if lines[idx] == "```":
+            break
+    if trailer is not None:
+        write_lines(lines[start : trailer + 1])
+        raise SystemExit(0)
+
+write_lines([])
+PY
 }
 
 validate_unified_headers() {
@@ -346,7 +400,7 @@ launch_tier() {
 }
 
 attempt_tier() {
-    local ordinal="$1" tier="$2" output="$3" patch_file rc post_heading_count
+    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count
 
     if [[ "$tier" == "codex" && "$CODEX_PRESENT" == "false" ]]; then
         set_tier_status "$ordinal" skipped-not-present
@@ -357,6 +411,7 @@ attempt_tier() {
         return 1
     fi
 
+    : >"$output"
     if ! launch_tier "$tier" "$output"; then
         set_tier_status "$ordinal" no-patch
         return 1
@@ -366,7 +421,9 @@ attempt_tier() {
         return 1
     fi
 
-    patch_file="$REVISE_DIR/$tier-candidate.patch"
+    output_name=$(basename "$output")
+    patch_file="$REVISE_DIR/${output_name%.txt}-candidate.patch"
+    rm -f "$patch_file"
     extract_patch "$output" "$patch_file"
     if [[ ! -s "$patch_file" ]]; then
         set_tier_status "$ordinal" no-patch
@@ -411,11 +468,13 @@ attempt_tier() {
 
     set_tier_status "$ordinal" ok
     winner="$tier"
+    winner_output="$output"
     return 0
 }
 
 finalize() {
     local status1 status2 status3 status4 final_status hash_after patch_path all_statuses revise_status
+    local revise_tier
     status1=$(get_tier_status 1)
     status2=$(get_tier_status 2)
     status3=$(get_tier_status 3)
@@ -425,42 +484,44 @@ finalize() {
     [[ -n "$status3" ]] || status3=not-attempted
     [[ -n "$status4" ]] || status4=not-attempted
 
-    emit_kv REVISE_TIER_1_STATUS "$status1"
-    emit_kv REVISE_TIER_2_STATUS "$status2"
-    emit_kv REVISE_TIER_3_STATUS "$status3"
-    emit_kv REVISE_TIER_4_STATUS "$status4"
-
     if [[ -n "$winner" ]]; then
         hash_after=$(sha256_file "$PLAN_FILE")
-        patch_path="$REVISE_DIR/$winner-output.txt"
+        patch_path="$winner_output"
         rm -f "$SNAPSHOT"
         if [[ "$winner_is_fallback" == "true" ]]; then
             revise_status=ok-fallback
         else
             revise_status=ok
         fi
-        emit_kv REVISE_STATUS "$revise_status"
-        emit_kv REVISE_TIER "$winner"
-        emit_kv REVISE_PATCH_PATH "$patch_path"
-        emit_kv REVISE_PLAN_HASH_BEFORE "$HASH_BEFORE"
-        emit_kv REVISE_PLAN_HASH_AFTER "$hash_after"
-        exit 0
-    fi
-
-    all_statuses="$status1 $status2 $status3 $status4"
-    if [[ "$all_statuses" != *"invalid-patch"* && "$all_statuses" != *"apply-failed"* && "$all_statuses" != *"emit-plan-failed"* ]]; then
-        final_status=failed-no-patch
-    elif [[ "$all_statuses" == *"invalid-patch"* ]]; then
-        final_status=failed-validation
+        revise_tier="$winner"
     else
-        final_status=failed-apply
+        all_statuses="$status1 $status2 $status3 $status4"
+        if [[ "$all_statuses" != *"invalid-patch"* && "$all_statuses" != *"apply-failed"* && "$all_statuses" != *"emit-plan-failed"* ]]; then
+            final_status=failed-no-patch
+        elif [[ "$all_statuses" == *"invalid-patch"* ]]; then
+            final_status=failed-validation
+        else
+            final_status=failed-apply
+        fi
+
+        revise_status="$final_status"
+        revise_tier=""
+        patch_path=""
+        hash_after="$HASH_BEFORE"
     fi
 
-    emit_kv REVISE_STATUS "$final_status"
-    emit_kv REVISE_TIER ""
-    emit_kv REVISE_PATCH_PATH ""
-    emit_kv REVISE_PLAN_HASH_BEFORE "$HASH_BEFORE"
-    emit_kv REVISE_PLAN_HASH_AFTER "$HASH_BEFORE"
+    {
+        printf 'REVISE_TIER_1_STATUS=%s\n' "$status1"
+        printf 'REVISE_TIER_2_STATUS=%s\n' "$status2"
+        printf 'REVISE_TIER_3_STATUS=%s\n' "$status3"
+        printf 'REVISE_TIER_4_STATUS=%s\n' "$status4"
+        printf 'REVISE_STATUS=%s\n' "$revise_status"
+        printf 'REVISE_TIER=%s\n' "$revise_tier"
+        printf 'REVISE_WINNING_TIER=%s\n' "$revise_tier"
+        printf 'REVISE_PATCH_PATH=%s\n' "$patch_path"
+        printf 'REVISE_PLAN_HASH_BEFORE=%s\n' "$HASH_BEFORE"
+        printf 'REVISE_PLAN_HASH_AFTER=%s\n' "$hash_after"
+    } | tee "$REVISE_DIR/revise.env"
     exit 0
 }
 
@@ -478,12 +539,12 @@ if [[ "$PATCH_FORMAT" == "unified-diff" && -z "$winner" ]]; then
     PATCH_FORMAT="file-replacement"
     winner_is_fallback=true
     compose_prompt
-    if attempt_tier 4 codex "$REVISE_DIR/codex-output.txt"; then
+    if attempt_tier 4 codex "$REVISE_DIR/codex-fallback-output.txt"; then
         :
-    elif attempt_tier 4 cursor "$REVISE_DIR/cursor-output.txt"; then
+    elif attempt_tier 4 cursor "$REVISE_DIR/cursor-fallback-output.txt"; then
         :
     else
-        attempt_tier 4 claude "$REVISE_DIR/claude-output.txt" || true
+        attempt_tier 4 claude "$REVISE_DIR/claude-fallback-output.txt" || true
     fi
 fi
 

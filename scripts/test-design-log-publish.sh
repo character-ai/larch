@@ -694,7 +694,7 @@ export TEST_MERGE_BRANCH="larch-log-design-RUNBREAD1"
 unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPBC/design/breadcrumbs"
 printf 'body\n' >"$TMPBC/design/plan.txt"
-secret_path="$TMPBC/design/private.txt"
+secret_path="/tmp/larch-design-breadcrumbs123/private.txt"
 pem_begin_part1='-----BEGIN RSA PRIVATE '
 pem_begin_part2='KEY-----'
 pem_body_part1='MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1'

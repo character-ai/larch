@@ -211,6 +211,82 @@ diff_lines: $diff_lines
 PLAN
 }
 
+write_heading_loss_replacement() {
+    local path="$1" text="$2" diff_lines="$3"
+    cat >"$path" <<PLAN
+## Plan
+
+$text
+
+diff_lines: $diff_lines
+PLAN
+}
+
+write_fenced_replacement() {
+    local path="$1" text="$2" diff_lines="$3"
+    {
+        printf '%s\n\n' 'Preamble that should be ignored.'
+        printf '%s\n' '```markdown'
+        printf '%s\n\n' '## Plan'
+        printf '%s\n\n' '### NEW: sample.txt'
+        printf '%s\n\n' "$text"
+        printf 'diff_lines: %s\n' "$diff_lines"
+        printf '%s\n\n' '```'
+        printf '%s\n' 'Trailing prose that should be ignored.'
+    } >"$path"
+}
+
+write_fenced_diff_with_trailing_prose() {
+    local path="$1" text="$2" diff_lines="$3"
+    local tmp
+    tmp=$(mktemp "$TMPROOT/fenced-diff.XXXXXX")
+    write_valid_diff "$tmp" "$text" "$diff_lines"
+    {
+        printf '%s\n\n' 'Intro prose.'
+        printf '%s\n' '```diff'
+        cat "$tmp"
+        printf '%s\n\n' '```'
+        printf '%s\n' 'Trailing prose that should be ignored.'
+    } >"$path"
+    rm -f "$tmp"
+}
+
+write_multi_fence_diff() {
+    local path="$1" text="$2" diff_lines="$3"
+    local tmp_main tmp_extra
+    tmp_main=$(mktemp "$TMPROOT/multi-main.XXXXXX")
+    tmp_extra=$(mktemp "$TMPROOT/multi-extra.XXXXXX")
+    write_valid_diff "$tmp_main" "$text" "$diff_lines"
+    write_valid_diff "$tmp_extra" "Write revised from second fenced diff." 999
+    {
+        printf '%s\n\n' 'Prose.'
+        printf '%s\n' '```diff'
+        cat "$tmp_main"
+        printf '%s\n\n' '```'
+        printf '%s\n' '```diff'
+        cat "$tmp_extra"
+        printf '%s\n' '```'
+    } >"$path"
+    rm -f "$tmp_main" "$tmp_extra"
+}
+
+write_illustrative_then_real_diff() {
+    local path="$1" text="$2" diff_lines="$3"
+    local tmp_example tmp_real
+    tmp_example=$(mktemp "$TMPROOT/example-diff.XXXXXX")
+    tmp_real=$(mktemp "$TMPROOT/real-diff.XXXXXX")
+    write_valid_diff "$tmp_example" "Write revised from illustrative example." 998
+    write_valid_diff "$tmp_real" "$text" "$diff_lines"
+    cat >"$path" <<DIFF
+Example patch, do not apply:
+$(cat "$tmp_example")
+
+Actual patch:
+$(cat "$tmp_real")
+DIFF
+    rm -f "$tmp_example" "$tmp_real"
+}
+
 clear_stubs() {
     unset CODEX_STUB_CONTENT_FILE CURSOR_STUB_CONTENT_FILE CLAUDE_STUB_CONTENT_FILE
     unset CODEX_STUB_RC CURSOR_STUB_RC CLAUDE_STUB_RC
@@ -261,7 +337,7 @@ assert_line "REVISE_TIER=cursor" "$out"
 assert_contains "Write revised by cursor." "$case_dir/plan.txt"
 echo "PASS: case 2"
 
-# 3. Wrong-path unified diffs are rejected; file-replacement Claude fallback wins.
+# 3. Wrong-path unified diffs are ignored; file-replacement Claude fallback wins.
 clear_stubs
 case_dir=$(make_case case3a)
 wrong_patch="$TMPROOT/case3-wrong.diff"
@@ -269,9 +345,9 @@ write_wrong_path_diff "$wrong_patch"
 export CODEX_STUB_CONTENT_FILE="$wrong_patch"
 export CURSOR_STUB_CONTENT_FILE="$wrong_patch"
 out=$(run_subject "$case_dir" true true)
-assert_line "REVISE_TIER_1_STATUS=invalid-patch" "$out"
-assert_line "REVISE_TIER_2_STATUS=invalid-patch" "$out"
-assert_line "REVISE_STATUS=failed-validation" "$out"
+assert_line "REVISE_TIER_1_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_2_STATUS=no-patch" "$out"
+assert_line "REVISE_STATUS=failed-no-patch" "$out"
 assert_contains "Write original text." "$case_dir/plan.txt"
 
 clear_stubs
@@ -284,8 +360,8 @@ export CODEX_STUB_CONTENT_FILE="$bad_replacement"
 export CURSOR_STUB_CONTENT_FILE="$bad_replacement"
 export CLAUDE_STUB_CONTENT_FILE="$claude_replacement"
 out=$(run_subject "$case_dir" true true file-replacement)
-assert_line "REVISE_TIER_1_STATUS=invalid-patch" "$out"
-assert_line "REVISE_TIER_2_STATUS=invalid-patch" "$out"
+assert_line "REVISE_TIER_1_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_2_STATUS=no-patch" "$out"
 assert_line "REVISE_TIER_3_STATUS=ok" "$out"
 assert_line "REVISE_STATUS=ok" "$out"
 assert_line "REVISE_TIER=claude" "$out"
@@ -432,5 +508,74 @@ assert_line "REVISE_TIER_3_STATUS=ok" "$out"
 assert_line "REVISE_TIER=claude" "$out"
 assert_contains "Write revised by claude prompt assertion." "$case_dir/plan.txt"
 echo "PASS: case 11"
+
+# 12. Tier-4 fenced file-replacement fallback succeeds and preserves forensics.
+clear_stubs
+case_dir=$(make_case case12)
+codex_replacement="$TMPROOT/case12-codex.txt"
+write_fenced_replacement "$codex_replacement" "Write revised by fallback codex." 22
+export CODEX_STUB_CONTENT_FILE="$codex_replacement"
+out=$(run_subject "$case_dir" true true)
+assert_line "REVISE_TIER_1_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_2_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_3_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_4_STATUS=ok" "$out"
+assert_line "REVISE_STATUS=ok-fallback" "$out"
+assert_line "REVISE_TIER=codex" "$out"
+assert_line "REVISE_WINNING_TIER=codex" "$out"
+printf '%s\n' "$out" | grep -Eq '^REVISE_PATCH_PATH=.*/plan-review/round-1/revise/codex-fallback-output\.txt$' || fail "fallback patch path should point at codex-fallback-output.txt"
+assert_contains "Write revised by fallback codex." "$case_dir/plan.txt"
+assert_contains "REVISE_STATUS=ok-fallback" "$case_dir/plan-review/round-1/revise/revise.env"
+assert_contains "REVISE_TIER_4_STATUS=ok" "$case_dir/plan-review/round-1/revise/revise.env"
+[[ -f "$case_dir/plan-review/round-1/revise/codex-output.txt" ]] || fail "tier-1 codex output should remain for forensics"
+[[ -f "$case_dir/plan-review/round-1/revise/codex-fallback-output.txt" ]] || fail "tier-4 codex output should be preserved"
+echo "PASS: case 12"
+
+# 13. Tier-4 status keeps the worst non-ok fallback failure.
+clear_stubs
+case_dir=$(make_case case13)
+bad_replacement="$TMPROOT/case13-heading-loss.txt"
+write_heading_loss_replacement "$bad_replacement" "Plan without any file headings." 26
+export CODEX_STUB_CONTENT_FILE="$bad_replacement"
+out=$(run_subject "$case_dir" true true)
+assert_line "REVISE_TIER_1_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_2_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_3_STATUS=no-patch" "$out"
+assert_line "REVISE_TIER_4_STATUS=invalid-patch" "$out"
+assert_line "REVISE_STATUS=failed-validation" "$out"
+echo "PASS: case 13"
+
+# 14. Unified-diff extraction stops at the closing fence.
+clear_stubs
+case_dir=$(make_case case14)
+fenced_diff="$TMPROOT/case14.diff"
+write_fenced_diff_with_trailing_prose "$fenced_diff" "Write revised from fenced diff." 23
+export CODEX_STUB_CONTENT_FILE="$fenced_diff"
+out=$(run_subject "$case_dir" true true)
+assert_line "REVISE_TIER_1_STATUS=ok" "$out"
+assert_contains "Write revised from fenced diff." "$case_dir/plan.txt"
+echo "PASS: case 14"
+
+# 15. Unified-diff extraction ignores later fenced diffs.
+clear_stubs
+case_dir=$(make_case case15)
+multi_fence_diff="$TMPROOT/case15.diff"
+write_multi_fence_diff "$multi_fence_diff" "Write revised from first fenced diff." 24
+export CODEX_STUB_CONTENT_FILE="$multi_fence_diff"
+out=$(run_subject "$case_dir" true true)
+assert_line "REVISE_TIER_1_STATUS=ok" "$out"
+assert_contains "Write revised from first fenced diff." "$case_dir/plan.txt"
+echo "PASS: case 15"
+
+# 16. Unified-diff extraction prefers the last unfenced canonical patch.
+clear_stubs
+case_dir=$(make_case case16)
+illustrative_diff="$TMPROOT/case16.diff"
+write_illustrative_then_real_diff "$illustrative_diff" "Write revised from real diff." 25
+export CODEX_STUB_CONTENT_FILE="$illustrative_diff"
+out=$(run_subject "$case_dir" true true)
+assert_line "REVISE_TIER_1_STATUS=ok" "$out"
+assert_contains "Write revised from real diff." "$case_dir/plan.txt"
+echo "PASS: case 16"
 
 echo "PASS: test-revise-plan-with-waterfall.sh"
