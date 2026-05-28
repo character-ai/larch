@@ -18,6 +18,13 @@ assert_has_key() {
     printf '%s\n' "$haystack" | grep -q "^${key}=" || fail "missing ${key}= line"
 }
 
+assert_lacks_key() {
+    local haystack="$1" key="$2"
+    if printf '%s\n' "$haystack" | grep -q "^${key}="; then
+        fail "unexpected ${key}= line"
+    fi
+}
+
 assert_kv_suffix() {
     local haystack="$1" key="$2" suffix="$3"
     printf '%s\n' "$haystack" | grep -q "^${key}=.*${suffix}\$" || fail "expected ${key} suffix ${suffix}"
@@ -26,6 +33,11 @@ assert_kv_suffix() {
 assert_file_kv() {
     local file="$1" key="$2" expected="$3"
     grep -q "^${key}=${expected}\$" "$file" || fail "expected ${file} to contain ${key}=${expected}"
+}
+
+assert_file_kv_suffix() {
+    local file="$1" key="$2" suffix="$3"
+    grep -q "^${key}=.*${suffix}\$" "$file" || fail "expected ${file} to contain ${key} suffix ${suffix}"
 }
 
 write_plan() {
@@ -142,6 +154,15 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || fail "missing --cursor-present should exit 2"
 
+set +e
+missing_plan_out=$(
+    "$SCRIPT" --design-tmpdir "$TMP" --findings-file "$TMP/findings.md" --feature-file "$TMP/feature.txt" --round-num 1 --codex-present true --cursor-present true 2>/dev/null
+)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "missing --plan-file should exit 2"
+assert_lacks_key "$missing_plan_out" REVISE_STATUS
+
 COMMON="$TMP/common"
 mkdir -p "$COMMON/responses"
 write_launcher_stub "$COMMON/launch-review.sh"
@@ -216,6 +237,8 @@ out0s=$(
 )
 assert_kv "$out0s" REVISE_STATUS ok
 grep -q '^symlink ok$' "$C0S/plan.txt" || fail "symlinked canonical plan path should succeed"
+
+# Legacy acceptance matrix: keep the original scenario spine traceable in cases 1-9.
 
 echo "=== later valid unified diff beats earlier wrong-path diff ==="
 C1="$TMP/case1"
@@ -323,7 +346,153 @@ EOF
 out2b=$(run_case "$C2B")
 assert_kv "$out2b" REVISE_STATUS ok
 assert_kv "$out2b" REVISE_TIER_1_STATUS ok
+assert_kv "$out2b" REVISE_TIER_4_STATUS not-attempted
 grep -q '^delta$' "$C2B/plan.txt" || fail "case2b should apply the diff without trailing prose"
+
+echo "=== leading prose before a valid unfenced diff is ignored ==="
+C2C="$TMP/case2c"
+setup_case "$C2C"
+cp "$COMMON/launch-review.sh" "$C2C/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C2C/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C2C/design-driver.sh"
+mkdir -p "$C2C/responses"
+cat >"$C2C/responses/codex.txt" <<'EOF'
+I revised the plan below.
+
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++leading prose
+ diff_lines: 1
+EOF
+out2c=$(run_case "$C2C")
+assert_kv "$out2c" REVISE_STATUS ok
+assert_kv "$out2c" REVISE_TIER_1_STATUS ok
+assert_kv "$out2c" REVISE_TIER_4_STATUS not-attempted
+grep -q '^leading prose$' "$C2C/plan.txt" || fail "case2c should accept a diff after leading prose"
+
+echo "=== corrupt fenced diff does not suppress a later valid raw diff ==="
+C2D="$TMP/case2d"
+setup_case "$C2D"
+cp "$COMMON/launch-review.sh" "$C2D/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C2D/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C2D/design-driver.sh"
+mkdir -p "$C2D/responses"
+cat >"$C2D/responses/codex.txt" <<'EOF'
+```diff
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1 @@
+-bad
++still bad
+```
+
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++raw fallback
+ diff_lines: 1
+EOF
+out2d=$(run_case "$C2D")
+assert_kv "$out2d" REVISE_STATUS ok
+assert_kv "$out2d" REVISE_TIER_1_STATUS ok
+assert_kv "$out2d" REVISE_TIER_4_STATUS not-attempted
+grep -q '^raw fallback$' "$C2D/plan.txt" || fail "case2d should scan the full response after fenced candidates"
+
+echo "=== trailing markdown bullets are excluded from unified diff extraction ==="
+C2E="$TMP/case2e"
+setup_case "$C2E"
+cp "$COMMON/launch-review.sh" "$C2E/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C2E/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C2E/design-driver.sh"
+mkdir -p "$C2E/responses"
+cat >"$C2E/responses/codex.txt" <<'EOF'
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++bullet safe
+ diff_lines: 1
+
+- Summary bullet outside the diff.
+EOF
+out2e=$(run_case "$C2E")
+assert_kv "$out2e" REVISE_STATUS ok
+assert_kv "$out2e" REVISE_TIER_1_STATUS ok
+assert_kv "$out2e" REVISE_TIER_4_STATUS not-attempted
+grep -q '^bullet safe$' "$C2E/plan.txt" || fail "case2e should stop before trailing markdown bullets"
+
+echo "=== blank lines between hunks do not split a valid patch ==="
+C2F="$TMP/case2f"
+setup_case "$C2F"
+cp "$COMMON/launch-review.sh" "$C2F/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C2F/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C2F/design-driver.sh"
+mkdir -p "$C2F/responses"
+cat >"$C2F/plan.txt" <<'EOF'
+## Plan
+alpha
+bravo
+charlie
+diff_lines: 3
+EOF
+cat >"$C2F/responses/codex.txt" <<'EOF'
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++alpha updated
+ bravo
+
+@@ -3,2 +3,2 @@
+ charlie
+-diff_lines: 3
++diff_lines: 4
+EOF
+out2f=$(run_case "$C2F")
+assert_kv "$out2f" REVISE_STATUS ok
+assert_kv "$out2f" REVISE_TIER_1_STATUS ok
+assert_kv "$out2f" REVISE_TIER_4_STATUS not-attempted
+grep -q '^alpha updated$' "$C2F/plan.txt" || fail "case2f should keep the first hunk"
+grep -q '^diff_lines: 4$' "$C2F/plan.txt" || fail "case2f should keep the second hunk"
+
+echo "=== overlapping embedded headers do not create partial duplicate candidates ==="
+C2G="$TMP/case2g"
+setup_case "$C2G"
+cp "$COMMON/launch-review.sh" "$C2G/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C2G/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C2G/design-driver.sh"
+mkdir -p "$C2G/responses"
+cat >"$C2G/plan.txt" <<'EOF'
+## Plan
+keep this
+--- a/embedded.txt
++++ b/embedded.txt
+diff_lines: 3
+EOF
+cat >"$C2G/responses/codex.txt" <<'EOF'
+diff --git a/plan.txt b/plan.txt
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,4 +1,4 @@
+ ## Plan
+ keep this
+ --- a/embedded.txt
+-+++ b/embedded.txt
+++++ b/embedded.txt
+ diff_lines: 3
+EOF
+out2g=$(run_case "$C2G")
+assert_kv "$out2g" REVISE_STATUS ok
+assert_kv "$out2g" REVISE_TIER_1_STATUS ok
+assert_kv "$out2g" REVISE_TIER_4_STATUS not-attempted
+grep -q '^+++ b/embedded.txt$' "$C2G/plan.txt" || fail "case2g should apply the full diff rather than an overlapping partial candidate"
 
 echo "=== wrong-path invalid tiers 1-3 fall through to tier-4 success ==="
 C3="$TMP/case3"
@@ -568,7 +737,147 @@ out8=$(DESIGN_TMPDIR="$C8" run_case "$C8")
 assert_kv "$out8" REVISE_STATUS ok
 assert_kv "$out8" REVISE_TIER_1_STATUS emit-plan-failed
 assert_kv "$out8" REVISE_TIER_2_STATUS ok
+assert_kv "$out8" REVISE_TIER_4_STATUS not-attempted
 grep -q '^cursor after emit$' "$C8/plan.txt" || fail "case8 should restore the snapshot before the cursor tier"
+
+echo "=== mismatched hunk counts still apply with --recount ==="
+C8B="$TMP/case8b"
+setup_case "$C8B"
+cp "$COMMON/launch-review.sh" "$C8B/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C8B/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C8B/design-driver.sh"
+mkdir -p "$C8B/responses"
+cat >"$C8B/responses/codex.txt" <<'EOF'
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,99 +1,99 @@
+ ## Plan
+-alpha
++recount win
+ diff_lines: 1
+EOF
+out8b=$(run_case "$C8B")
+assert_kv "$out8b" REVISE_STATUS ok
+assert_kv "$out8b" REVISE_TIER_1_STATUS ok
+assert_kv "$out8b" REVISE_TIER_4_STATUS not-attempted
+grep -q '^recount win$' "$C8B/plan.txt" || fail "case8b should accept miscounted hunks via --recount"
+
+echo "=== mismatched context is rejected before later fallback succeeds ==="
+C8C="$TMP/case8c"
+setup_case "$C8C"
+cp "$COMMON/launch-claude-review.sh" "$C8C/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C8C/design-driver.sh"
+mkdir -p "$C8C/responses"
+cat >"$C8C/launch-review.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+tool="${LARCH_TOOL_OVERRIDE:-}"
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --tool) tool="${2:?}"; shift 2 ;;
+        --output) output="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$tool" && -n "$output" ]] || exit 2
+if [[ "$output" == *"/codex-output.txt" && -f "${DESIGN_TMPDIR:?}/.tier4" ]]; then
+    cat >"$output" <<'INNER'
+## Plan
+context fallback
+diff_lines: 1
+INNER
+elif [[ -f "${RESPONSE_DIR:?}/${tool}.txt" ]]; then
+    cp "${RESPONSE_DIR:?}/${tool}.txt" "$output"
+else
+    : >"$output"
+fi
+if [[ "$output" == *"/claude-output.txt" ]]; then
+    : >"${DESIGN_TMPDIR:?}/.tier4"
+fi
+EOF
+chmod +x "$C8C/launch-review.sh"
+cat >"$C8C/responses/codex.txt" <<'EOF'
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-wrong context
++never applies
+ diff_lines: 1
+EOF
+cp "$C8C/responses/codex.txt" "$C8C/responses/cursor.txt"
+cp "$C8C/responses/codex.txt" "$C8C/responses/claude.txt"
+out8c=$(DESIGN_TMPDIR="$C8C" run_case "$C8C")
+assert_kv "$out8c" REVISE_STATUS ok-fallback
+assert_kv "$out8c" REVISE_TIER_1_STATUS invalid-patch
+assert_kv "$out8c" REVISE_TIER_2_STATUS invalid-patch
+assert_kv "$out8c" REVISE_TIER_3_STATUS invalid-patch
+assert_kv "$out8c" REVISE_TIER_4_STATUS ok
+grep -q '^context fallback$' "$C8C/plan.txt" || fail "case8c should reject mismatched diff context"
+
+echo "=== long-line corrupt multi-hunk response falls back to file replacement ==="
+C8D="$TMP/case8d"
+setup_case "$C8D"
+cp "$COMMON/launch-claude-review.sh" "$C8D/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C8D/design-driver.sh"
+mkdir -p "$C8D/responses"
+python3 - <<'PY' >"$C8D/plan.txt"
+print("## Plan")
+print("A" * 5000)
+print("B" * 5000)
+print("diff_lines: 2")
+PY
+cat >"$C8D/launch-review.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+tool="${LARCH_TOOL_OVERRIDE:-}"
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --tool) tool="${2:?}"; shift 2 ;;
+        --output) output="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$tool" && -n "$output" ]] || exit 2
+if [[ "$output" == *"/codex-output.txt" && -f "${DESIGN_TMPDIR:?}/.tier4" ]]; then
+    python3 - <<'PY' >"$output"
+print("## Plan")
+print("replacement after long line")
+print("diff_lines: 1")
+PY
+elif [[ -f "${RESPONSE_DIR:?}/${tool}.txt" ]]; then
+    cp "${RESPONSE_DIR:?}/${tool}.txt" "$output"
+else
+    : >"$output"
+fi
+if [[ "$output" == *"/claude-output.txt" ]]; then
+    : >"${DESIGN_TMPDIR:?}/.tier4"
+fi
+EOF
+chmod +x "$C8D/launch-review.sh"
+python3 - <<'PY' >"$C8D/responses/codex.txt"
+line_a = "A" * 5000
+line_b = "B" * 5000
+print("--- a/plan.txt")
+print("+++ b/plan.txt")
+print("@@ -1,4 +1,4 @@")
+print(" ## Plan")
+print("-" + line_a)
+print("+" + ("A" * 4999) + "!")
+print("")
+print("@@ -2,2 +2,2 @@")
+print("-" + line_b)
+print("+" + ("B" * 4999) + "!")
+print(" diff_lines: 2")
+PY
+cp "$C8D/responses/codex.txt" "$C8D/responses/cursor.txt"
+cp "$C8D/responses/codex.txt" "$C8D/responses/claude.txt"
+out8d=$(DESIGN_TMPDIR="$C8D" run_case "$C8D")
+assert_kv "$out8d" REVISE_STATUS ok-fallback
+assert_kv "$out8d" REVISE_TIER_4_STATUS ok
+grep -q '^replacement after long line$' "$C8D/plan.txt" || fail "case8d should survive the long-line corrupt patch path"
 
 echo "=== codex absence is reported and cursor can still win ==="
 C9="$TMP/case9"
@@ -592,6 +901,7 @@ out9=$(run_case "$C9" --codex-present false)
 assert_kv "$out9" REVISE_TIER_1_STATUS skipped-not-present
 assert_kv "$out9" REVISE_TIER_2_STATUS ok
 assert_kv "$out9" REVISE_STATUS ok
+assert_kv "$out9" REVISE_TIER_4_STATUS not-attempted
 grep -q '^cursor only$' "$C9/plan.txt" || fail "case9 should allow cursor to win when codex is absent"
 
 echo "=== claude tier can win when codex and cursor are unavailable ==="
@@ -617,7 +927,66 @@ assert_kv "$out10" REVISE_TIER_1_STATUS skipped-not-present
 assert_kv "$out10" REVISE_TIER_2_STATUS skipped-not-present
 assert_kv "$out10" REVISE_TIER_3_STATUS ok
 assert_kv "$out10" REVISE_STATUS ok
+assert_kv "$out10" REVISE_TIER_4_STATUS not-attempted
 grep -q '^claude win$' "$C10/plan.txt" || fail "case10 should allow the Claude tier to win"
+
+echo "=== file replacement mode can succeed on codex, cursor, and claude tiers ==="
+C10B="$TMP/case10b"
+setup_case "$C10B"
+cp "$COMMON/launch-review.sh" "$C10B/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C10B/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C10B/design-driver.sh"
+mkdir -p "$C10B/responses"
+cat >"$C10B/responses/codex.txt" <<'EOF'
+## Plan
+file replacement codex
+diff_lines: 1
+EOF
+out10b=$(run_case "$C10B" --patch-format file-replacement)
+assert_kv "$out10b" REVISE_STATUS ok
+assert_kv "$out10b" REVISE_TIER_1_STATUS ok
+assert_kv "$out10b" REVISE_TIER_4_STATUS not-attempted
+grep -q '^file replacement codex$' "$C10B/plan.txt" || fail "case10b should allow codex to win in file-replacement mode"
+
+C10C="$TMP/case10c"
+setup_case "$C10C"
+cp "$COMMON/launch-review.sh" "$C10C/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C10C/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C10C/design-driver.sh"
+mkdir -p "$C10C/responses"
+printf '\n' >"$C10C/responses/codex.txt"
+cat >"$C10C/responses/cursor.txt" <<'EOF'
+## Plan
+file replacement cursor
+diff_lines: 1
+EOF
+out10c=$(run_case "$C10C" --patch-format file-replacement)
+assert_kv "$out10c" REVISE_STATUS ok
+assert_kv "$out10c" REVISE_TIER_1_STATUS no-patch
+assert_kv "$out10c" REVISE_TIER_2_STATUS ok
+assert_kv "$out10c" REVISE_TIER_4_STATUS not-attempted
+grep -q '^file replacement cursor$' "$C10C/plan.txt" || fail "case10c should allow cursor to win in file-replacement mode"
+
+C10D="$TMP/case10d"
+setup_case "$C10D"
+cp "$COMMON/launch-review.sh" "$C10D/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C10D/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C10D/design-driver.sh"
+mkdir -p "$C10D/responses"
+printf '\n' >"$C10D/responses/codex.txt"
+printf '\n' >"$C10D/responses/cursor.txt"
+cat >"$C10D/responses/claude.txt" <<'EOF'
+## Plan
+file replacement claude
+diff_lines: 1
+EOF
+out10d=$(run_case "$C10D" --patch-format file-replacement)
+assert_kv "$out10d" REVISE_STATUS ok
+assert_kv "$out10d" REVISE_TIER_1_STATUS no-patch
+assert_kv "$out10d" REVISE_TIER_2_STATUS no-patch
+assert_kv "$out10d" REVISE_TIER_3_STATUS ok
+assert_kv "$out10d" REVISE_TIER_4_STATUS not-attempted
+grep -q '^file replacement claude$' "$C10D/plan.txt" || fail "case10d should allow claude to win in file-replacement mode"
 
 echo "=== tier-4 status preserves the worst non-ok failure and revise.env matches stdout ==="
 C11="$TMP/case11"
@@ -679,5 +1048,78 @@ assert_kv "$out11" REVISE_TIER_4_STATUS invalid-patch
 assert_file_kv "$C11/plan-review/round-1/revise/revise.env" REVISE_STATUS failed-validation
 assert_file_kv "$C11/plan-review/round-1/revise/revise.env" REVISE_TIER_4_STATUS invalid-patch
 assert_file_kv "$C11/plan-review/round-1/revise/revise.env" REVISE_WINNING_TIER ''
+assert_file_kv "$C11/plan-review/round-1/revise/revise.env" REVISE_PATCH_PATH ''
+
+before_hash=$(grep '^REVISE_PLAN_HASH_BEFORE=' "$C11/plan-review/round-1/revise/revise.env" | cut -d= -f2-)
+after_hash=$(grep '^REVISE_PLAN_HASH_AFTER=' "$C11/plan-review/round-1/revise/revise.env" | cut -d= -f2-)
+[[ "$before_hash" == "$after_hash" ]] || fail "failed revision should preserve the plan hash"
+grep -q '^alpha$' "$C11/plan.txt" || fail "case11 should restore the original plan"
+[[ -f "$C11/plan.txt.before-revise" ]] || fail "case11 should preserve the rollback snapshot"
+
+echo "=== revise.env persists success metadata for ok-fallback winners ==="
+C11B="$TMP/case11b"
+setup_case "$C11B"
+cp "$C3/launch-review.sh" "$C11B/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C11B/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C11B/design-driver.sh"
+mkdir -p "$C11B/responses"
+cat >"$C11B/responses/codex.txt" <<'EOF'
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1 @@
+-bad
++still bad
+EOF
+cp "$C11B/responses/codex.txt" "$C11B/responses/cursor.txt"
+cp "$C11B/responses/codex.txt" "$C11B/responses/claude.txt"
+cat >"$C11B/responses/codex-fallback.txt" <<'EOF'
+## Plan
+persist fallback
+diff_lines: 1
+EOF
+out11b=$(DESIGN_TMPDIR="$C11B" run_case "$C11B")
+assert_kv "$out11b" REVISE_STATUS ok-fallback
+assert_file_kv "$C11B/plan-review/round-1/revise/revise.env" REVISE_STATUS ok-fallback
+assert_file_kv "$C11B/plan-review/round-1/revise/revise.env" REVISE_TIER_4_STATUS ok
+assert_file_kv "$C11B/plan-review/round-1/revise/revise.env" REVISE_WINNING_TIER codex
+assert_file_kv_suffix "$C11B/plan-review/round-1/revise/revise.env" REVISE_PATCH_PATH "/plan-review/round-1/revise/codex-output.txt"
+[[ ! -f "$C11B/plan.txt.before-revise" ]] || fail "successful fallback should remove the rollback snapshot"
+
+echo "=== emit-plan rollback does not leave a false ok status behind ==="
+C11C="$TMP/case11c"
+setup_case "$C11C"
+cp "$COMMON/launch-review.sh" "$C11C/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C11C/launch-claude-review.sh"
+mkdir -p "$C11C/responses"
+cat >"$C11C/design-driver.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' 'EMIT_PLAN_STATUS=fail'
+EOF
+chmod +x "$C11C/design-driver.sh"
+cat >"$C11C/responses/codex.txt" <<'EOF'
+```diff
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++never persists
+ diff_lines: 1
+```
+EOF
+cat >"$C11C/responses/cursor.txt" <<'EOF'
+no diff here
+EOF
+cat >"$C11C/responses/claude.txt" <<'EOF'
+no diff here
+EOF
+out11c=$(run_case "$C11C")
+assert_kv "$out11c" REVISE_STATUS failed-apply
+assert_kv "$out11c" REVISE_TIER_1_STATUS emit-plan-failed
+assert_kv "$out11c" REVISE_TIER_2_STATUS no-patch
+assert_kv "$out11c" REVISE_TIER_3_STATUS no-patch
+assert_kv "$out11c" REVISE_TIER_4_STATUS no-patch
+grep -q '^alpha$' "$C11C/plan.txt" || fail "case11c should roll back the failed winner"
 
 printf '%s\n' 'test-revise-plan-with-waterfall: ok'

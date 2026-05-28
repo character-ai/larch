@@ -37,7 +37,7 @@ Under `$DESIGN_TMPDIR/plan-review/round-<N>/revise/`:
 
 - `prompt.txt`: composed revision prompt.
 - `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`: raw launcher output for attempted tiers.
-- `<tier>-candidate.patch`: extracted candidate used for validation and apply.
+- `<tier>-output-candidate.patch`: extracted candidate used for validation and apply.
 - `revise.env`: durable copy of the full revise KV contract for the round.
 - `<plan-file>.before-revise`: snapshot kept on overall failure, removed on success.
 

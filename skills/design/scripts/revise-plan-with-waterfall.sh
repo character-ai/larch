@@ -243,30 +243,86 @@ extract_unified_diff_candidates_from_source() {
             }
             return 0
         }
-        function is_patch_line(line) {
-            return line ~ /^(diff --git |index |--- |\+\+\+ |@@ |old mode |new mode |deleted file mode |new file mode |similarity index |rename from |rename to |copy from |copy to |Binary files |GIT binary patch|literal |delta |\\ No newline at end of file| |[-+])/
+        function is_metadata_line(line) {
+            return line ~ /^(diff --git |index |old mode |new mode |deleted file mode |new file mode |similarity index |rename from |rename to |copy from |copy to )/
         }
-        function emit_candidate(start,    end, idx, file) {
+        function is_hunk_header(line) {
+            return line ~ /^@@ /
+        }
+        function is_hunk_body(line) {
+            return line ~ /^( |[-+]|\\ No newline at end of file)/
+        }
+        function emit_candidate(start,    end, idx, line, file, saw_old, saw_new, saw_content, in_hunk) {
+            saw_old = 0
+            saw_new = 0
+            saw_content = 0
+            in_hunk = 0
             end = start
-            while (end <= line_count && is_patch_line(lines[end])) {
-                end++
+            while (end <= line_count) {
+                line = lines[end]
+                if (end > start && is_candidate_start(end) && saw_old && saw_new && saw_content) {
+                    break
+                }
+                if (line == "") {
+                    if (saw_old && saw_new && end < line_count && is_hunk_header(lines[end + 1])) {
+                        end++
+                        continue
+                    }
+                    break
+                }
+                if (!saw_old && is_metadata_line(line)) {
+                    end++
+                    continue
+                }
+                if (!saw_old && is_old_header(line)) {
+                    saw_old = 1
+                    end++
+                    continue
+                }
+                if (saw_old && !saw_new && is_new_header(line)) {
+                    saw_new = 1
+                    end++
+                    continue
+                }
+                if (saw_new && is_hunk_header(line)) {
+                    saw_content = 1
+                    in_hunk = 1
+                    end++
+                    continue
+                }
+                if (saw_new && line ~ /^(Binary files |GIT binary patch|literal |delta )/) {
+                    saw_content = 1
+                    end++
+                    continue
+                }
+                if (in_hunk && is_hunk_body(line)) {
+                    end++
+                    continue
+                }
+                break
             }
-            if (end <= start) {
-                return
+            if (!(saw_old && saw_new && saw_content)) {
+                return start + 1
             }
             file = sprintf("%s/candidate-%03d.patch", outdir, ++count)
             for (idx = start; idx < end; idx++) {
-                print lines[idx] > file
+                if (lines[idx] != "") {
+                    print lines[idx] > file
+                }
             }
             close(file)
+            return end
         }
         {
             lines[++line_count] = $0
         }
         END {
-            for (idx = 1; idx <= line_count; idx++) {
+            idx = 1
+            while (idx <= line_count) {
                 if (is_candidate_start(idx)) {
-                    emit_candidate(idx)
+                    idx = emit_candidate(idx)
+                } else {
+                    idx++
                 }
             }
             if (count > 0) {
@@ -310,11 +366,9 @@ extract_unified_diff_candidates() {
         mkdir -p "$candidate_dir"
         extract_unified_diff_candidates_from_source "$block" "$candidate_dir" "$found_file"
     done
-    if [[ ! -f "$found_file" ]]; then
-        candidate_dir="$tmpdir/extract-fallback"
-        mkdir -p "$candidate_dir"
-        extract_unified_diff_candidates_from_source "$output" "$candidate_dir" "$found_file"
-    fi
+    candidate_dir=$(printf '%s/extract-%03d' "$tmpdir" $((count + 1)))
+    mkdir -p "$candidate_dir"
+    extract_unified_diff_candidates_from_source "$output" "$candidate_dir" "$found_file"
     count=0
     for candidate_dir in "$tmpdir"/extract-*; do
         [[ -d "$candidate_dir" ]] || break
@@ -325,7 +379,8 @@ extract_unified_diff_candidates() {
                 first="$candidate_file"
                 cp "$candidate_file" "$patch"
             else
-                cp "$candidate_file" "${patch%.patch}-$count.patch"
+                printf -v candidate_file_suffix '%03d' "$count"
+                cp "$candidate_file" "${patch%.patch}-${candidate_file_suffix}.patch"
             fi
         done
     done
@@ -496,11 +551,7 @@ attempt_tier() {
     output_name=$(basename "$output")
     patch_file="$REVISE_DIR/${output_name%.txt}-candidate.patch"
     rm -f "$patch_file"
-    if ! extract_patch "$output" "$patch_file"; then
-        : >"$patch_file"
-        set_tier_status "$ordinal" no-patch
-        return 1
-    fi
+    extract_patch "$output" "$patch_file"
     if [[ ! -s "$patch_file" ]]; then
         set_tier_status "$ordinal" no-patch
         return 1

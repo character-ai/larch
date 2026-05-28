@@ -1386,7 +1386,7 @@ while [[ $# -gt 0 ]]; do
 done
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-1/revise"
 printf 'prompt\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/prompt.txt"
-printf 'patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-candidate.patch"
+printf 'patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-output-candidate.patch"
 printf 'REVISE_STATUS=failed-no-patch\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
@@ -1395,7 +1395,7 @@ out_sr=$(run_loop "$DSR" 1 --round-cap 2)
 printf '%s\n' "$out_sr" | grep -q '^LOOP_STATUS=revision-failed$' || fail "snapshot failure should preserve revision-failed status"
 printf '%s\n' "$out_sr" | grep -q '^REASON=revision-failed,snapshot-failed$' || fail "snapshot failure should append snapshot-failed reason"
 [[ -f "$DSR/plan-review/round-1/revise/prompt.txt" ]] || fail "snapshot failure must preserve revise prompt forensics"
-[[ -f "$DSR/plan-review/round-1/revise/cursor-candidate.patch" ]] || fail "snapshot failure must preserve revise patch forensics"
+[[ -f "$DSR/plan-review/round-1/revise/cursor-output-candidate.patch" ]] || fail "snapshot failure must preserve revise patch forensics"
 
 echo "=== snapshot failure preserves terminal cap-hit status ==="
 DSC="$TMP/snap-cap-status"
@@ -1548,7 +1548,7 @@ while [[ $# -gt 0 ]]; do
 done
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-1/revise"
 printf 'prompt\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/prompt.txt"
-ln -sf "$DESIGN_TMPDIR/feature-description.txt" "$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-candidate.patch"
+ln -sf "$DESIGN_TMPDIR/feature-description.txt" "$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-output-candidate.patch"
 printf 'REVISE_STATUS=failed-no-patch\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
