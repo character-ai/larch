@@ -205,6 +205,12 @@ larch_quiet_append_done_trap() {
     if [ -z "${LARCH_DONE_SENTINEL:-}" ] || [ -z "${LARCH_STATUS_FILE:-}" ]; then
         return 0
     fi
+    # Idempotent: if a parent process already owns the sentinel, skip to avoid
+    # a nested subprocess (e.g. collect-agent-results.sh called inside ship-pr)
+    # from prematurely signalling the breadcrumb-monitor on its own exit.
+    if [ -n "${LARCH_DONE_OWNER_PID:-}" ] && [ "${LARCH_DONE_OWNER_PID}" != "$$" ]; then
+        return 0
+    fi
     export LARCH_DONE_OWNER_PID=$$
     local _raw _body
     _raw=$(trap -p EXIT 2>/dev/null || true)
