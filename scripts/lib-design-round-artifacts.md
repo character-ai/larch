@@ -28,6 +28,6 @@ Any allowlist change MUST update, in the same commit:
 
 ## `round-N/revise/` allowlist
 
-**Include:** `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`, `revise.env`, `prompt.txt`, and `*-candidate.patch`.
+**Include:** `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`, `prompt.txt`, and `*-candidate.patch`.
 
 Anything else under `revise/` is excluded.

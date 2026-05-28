@@ -1,0 +1,5 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"### OOS_1: Section-aware dedup: unclosed trailing code fence disables later Constraints protection\\n- **Filed URL**: https://github.com/character-ai/larch/issues/3153\\n- **Reviewer**: Cursor (specialist-edge-cases)\\n- **Vote tally**: YES=2 NO=1 EXON=0\\n- **Phase**: implement"}
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Inline-triage: FINDING_6 (unplanned redact-tmpdir changes, inline fix committed)"}
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Inline-triage: FINDING_7 (docs imprecision, fixed inline)"}
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Inline-triage: FINDING_10 (missing test, added inline)"}
+{"phase":"implement","step":"9a.1","category":"OOS","body":"## Rejected\\n### OOS_2: run-logs docs may still mention revise.env\\n- **OOS_rejected**: YES=1 NO=2, not filed\\n- **Reviewer**: cursor-specialist-plan-fidelity\\n- **Phase**: implement"}

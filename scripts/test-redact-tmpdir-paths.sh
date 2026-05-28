@@ -30,6 +30,8 @@ run_redactor() {
 assert_eq "$(run_redactor '/tmp/claude-implement-AbC123')" '<TMPDIR>' "/tmp session path redacted"
 assert_eq "$(run_redactor '/private/tmp/larch-review-xyz_789')" '<TMPDIR>' "/private/tmp session path redacted"
 assert_eq "$(run_redactor '/tmp/claude-implement-larch1-G2GITf')" '<TMPDIR>' "clone-tagged session path redacted"
+assert_eq "$(run_redactor '/tmp/larch-design-breadcrumbs.ABC123/private.txt')" '<TMPDIR>/private.txt' "dotted tmpdir session path redacted"
+assert_eq "$(run_redactor '/tmp/claude-501/larch-design-breadcrumbs.ABC123/private.txt')" '<TMPDIR>/private.txt' "nested tmp root session path redacted"
 assert_eq "$(run_redactor '/Users/example/.cache/larch/sessions/claude-design-cache123')" '<TMPDIR>' "cache session path redacted"
 assert_eq "$(run_redactor '/Users/example/larch3/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path redacted"
 assert_eq "$(run_redactor '/Users/example/my.repo/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path with dotted repo name redacted"
@@ -45,6 +47,7 @@ assert_eq "$(run_redactor 'see /tmp/claude-research-a_b-C/log.txt now')" 'see <T
 assert_eq "$(run_redactor '/tmp/not-larch-session and /var/tmp/claude-implement-abc')" '/tmp/not-larch-session and /var/tmp/claude-implement-abc' "non-matching paths preserved"
 assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-implement-larch5-XyZ')" '<TMPDIR>' "/var/folders macOS session path redacted"
 assert_eq "$(run_redactor '/private/var/folders/kf/abc123/T/larch-fix-issue-XyZ')" '<TMPDIR>' "/private/var/folders canonical macOS session path redacted"
+assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-501/larch-design-breadcrumbs.ABC123/private.txt')" '<TMPDIR>/private.txt' "nested /var/folders session path redacted"
 
 once=$(run_redactor 'see /private/tmp/larch-issue-idempotent')
 twice=$(run_redactor "$once")
@@ -134,6 +137,10 @@ assert_eq \
     "$(run_redactor '\n/private/var/folders/kf/abc/T/larch-fix-issue-XyZ')" \
     '\n<TMPDIR>' \
     "E7: \\n immediately before /var/folders session path redacted, \\n preserved"
+assert_eq \
+    "$(run_redactor '\n/var/folders/kf/abc/T/claude-501/larch-design-breadcrumbs.ABC123/private.txt')" \
+    '\n<TMPDIR>/private.txt' \
+    "E7: \\n immediately before nested /var/folders session path redacted, \\n preserved"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

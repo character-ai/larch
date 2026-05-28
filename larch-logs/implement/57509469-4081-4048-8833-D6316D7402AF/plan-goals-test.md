@@ -1,0 +1,138 @@
+## Goal
+Implement issue #3143: [IMPLEMENTING] [OOS] Multi-round design plan-review loop: follow-up cleanup (docs, dedup hygiene, missing tests)\n\n## Out-of-Scope Observation.
+
+## Implementation Plan
+## Plan
+
+Single-pass SIMPLE-tier cleanup for #3143 (combined #3139/#3140/#3141). Three concerns share one surface:
+
+- **A. Docs cleanup** — clarify legacy single-pass reachability in `references/plan-review.md`; lock in `oos-accepted-design.md` allowlist coverage with an explicit test assertion.
+- **B. Dedup and allowlist hygiene** — make `_run_post_apply_pipeline` deduper section-aware so consecutive identical lines inside `## Constraints` (and similarly-prefixed) sections are preserved; remove the stale `revise.env` allowlist entry across code, docs, the security contract, and the integration test stub; document the loop dedup vs Gate B dedup divergence.
+- **C. Regression tests** — add four focused harness cases that drive the loop via existing `LARCH_PLAN_REVIEW_*_SH` stubs and directly assert convergence streak, important-count, degraded-reset, and section-aware dedup behavior.
+
+No new env flag. No new code path. No `revise.env` emission. The only intentional runtime behavior change is the bounded section-aware dedup; everything else is docs, allowlist/security-doc hygiene, fixture cleanup, and new tests.
+
+## Constraints
+
+- Streak tests MUST use non-important accepted findings (not zero-finding rounds) on every round meant to advance, reset, or rebuild `CONVERGENCE_STREAK`. The loop's zero-findings terminal path (`REASON=zero-findings` / `zero-findings-degraded-panel`) exits BEFORE streak logic runs, so zero-finding rounds cannot exercise streak transitions. Reserve zero-finding rounds for the existing zero-findings harness cases only.
+- Allowlist parity must hold across `scripts/lib-design-round-artifacts.{sh,md}`, `SECURITY.md` (the revise/ public-boundary documentation), and `scripts/test-design-multi-round-integration.sh` (the fixture stub).
+- Section-aware dedup MUST use a heading-level stack rather than a flat prefix flip; nested headings inside `## Constraints` (e.g., `### Hard constraints`) keep duplicate-preservation active; an equal-or-higher level heading whose text does not start with `Constraints` exits protected mode.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+
+Patch the Python deduper embedded in `_run_post_apply_pipeline` so it uses a **heading-level stack** to decide when consecutive-line dedup is suppressed. Treat any line matching `^#{1,6}\s+(.+?)$` as a section boundary: capture `level` (number of `#` characters) and `text` (trimmed, lowercased heading body). Track:
+
+- `inside_constraints: bool` — whether dedup is currently suppressed.
+- `constraints_level: int | None` — the heading level that activated suppression.
+- `in_fence: bool` — toggle on every line that strips to exactly ` ``` ` (allow surrounding whitespace). Heading-shaped lines inside a fenced code block do NOT change section state.
+
+State transitions (outside fenced code only):
+
+- When `text` starts with the literal prefix `constraints` (case-insensitive) and `inside_constraints` is `false`: set `inside_constraints=true`, `constraints_level=level`.
+- When `inside_constraints` is `true` and a new heading appears whose `text` does NOT start with `constraints`: clear protection only when `level <= constraints_level` (sibling or shallower scope exit). Deeper headings (`level > constraints_level`) leave protection active.
+- When `inside_constraints` is `true` and a new heading appears whose `text` DOES start with `constraints` at any level: keep `inside_constraints=true` and update `constraints_level=min(constraints_level, level)` so the outermost Constraints block defines the scope.
+- On EOF, no state cleanup needed.
+
+Outside protected sections the deduper still collapses consecutive whitespace-normalized identical lines. Inside protected sections both `prev_key` and `out.append` paths run normally but the duplicate-skip branch is bypassed; `prev_key` is also reset on every heading boundary so dedup never crosses sections.
+
+Keep the `dedup_removed` integer counter behavior so the `dedup-sweep: removed N duplicate line(s) from plan.txt` breadcrumb stays meaningful. Always emit the breadcrumb after every revision.
+
+### UPDATED: `scripts/lib-design-round-artifacts.sh`
+
+Remove the `revise.env` pattern from the `design_round_revise_artifact_included` case. The remaining included basenames stay: `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`, `prompt.txt`, and the `*-candidate.patch` glob.
+
+### UPDATED: `scripts/lib-design-round-artifacts.md`
+
+Drop `revise.env` from the `round-N/revise/` enumeration. Keep the `Edit-in-sync rule` numbered list intact.
+
+### UPDATED: `SECURITY.md`
+
+Update the `revise/` public-boundary allowlist documentation in the `**/design** design-log publish` paragraph (around line 198). Drop `revise.env` from the enumerated children so the security contract stays in sync with `scripts/lib-design-round-artifacts.{sh,md}`. Remaining children stay: `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`, `prompt.txt`, `*-candidate.patch`.
+
+### UPDATED: `skills/design/references/plan-review.md`
+
+Two surgical additions, both anchored to existing prose:
+
+1. Inside the existing **Dedup divergence** bullet, append one sentence noting that loop dedup is regex/whitespace-key based and may keep semantic duplicates that Gate B's LLM-driven dedup would have removed; this divergence is observable on `LOOP_STATUS=converged` and `LOOP_STATUS=cap-hit` outputs that bypass Gate B.
+2. Inside the existing **Legacy single-pass mode** subsection, prepend or append one sentence stating that the SKILL.md Step 3 caller always passes `--round-cap`, so legacy single-pass mode is reachable only via direct script invocation (offline harness, `skills/design/scripts/test-plan-review-loop.sh`, ad-hoc runs) and not through normal `/design` orchestration.
+
+No structural changes. No new sections.
+
+### UPDATED: `scripts/test-lib-design-round-artifacts.sh`
+
+Two edits:
+
+- Flip `assert_revise_included revise.env` to `assert_revise_excluded revise.env` so the harness pins the new allowlist shape.
+- Keep `assert_included oos-accepted-design.md` as-is and add a one-line code comment immediately above it tagging the assertion as the canonical pin for issue #3143 group A. This satisfies the issue's "Add a small assertion … covering `oos-accepted-design.md` inclusion" suggested fix without duplicating the assertion.
+
+### UPDATED: `scripts/test-design-multi-round-integration.sh`
+
+Remove the stub line that writes `plan-review/round-1/revise/revise.env` (currently around line 185). The stub already prints `REVISE_STATUS` / `REVISE_WINNING_TIER` on stdout; keep `prompt.txt` and `*-candidate.patch` fixture writes intact. No new assertion is required here beyond the allowlist harness flip in `scripts/test-lib-design-round-artifacts.sh`, but the fixture MUST NOT recreate an excluded basename or the harness drifts again.
+
+### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+
+Add **four** dedicated harness cases at the end of the file (before the final summary print), each driving the loop via the existing stub-override pattern (`LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH`, `LARCH_PLAN_REVIEW_COLLECT_SH`, `LARCH_PLAN_REVIEW_TALLY_SH`, `LARCH_PLAN_REVIEW_REVISE_SH`). Asserted output: `LOOP_STATUS`, `REASON`, `CONVERGENCE_STREAK`, `IMPORTANT_ACCEPTED_COUNT` on `$DTM/.step3-plan-review-result.env` and the corresponding `plan-review/round-*/round-summary.env` rows.
+
+**Streak-path invariant**: every round meant to advance, reset, or rebuild `CONVERGENCE_STREAK` MUST emit at least one accepted in-scope finding — `ACCEPTED_COUNT>=1`, still at or under `--convergence-threshold` — with `IMPORTANT_ACCEPTED_COUNT=0` except where the test explicitly drives an important-finding reset. Zero-finding rounds exit the loop through the existing zero-findings terminal path before streak logic runs, so a zero-finding round CANNOT exercise the streak transitions these cases assert.
+
+Add a small `write_collect one_nit` helper (or equivalent inline collect stub) that emits one `in_scope`, `nit`-severity row, mirroring the inline collect-stub pattern used in the existing degraded-reset case. Reuse the helper across cases that need non-important findings.
+
+Cases:
+
+1. **Two-round non-degraded streak → `LOOP_STATUS=converged REASON=streak`** — round 1: non-degraded panel, `write_collect one_nit` (`ACCEPTED_COUNT=1`, `IMPORTANT_ACCEPTED_COUNT=0`, under threshold). Round 2: same. Assert `CONVERGENCE_STREAK=2`, `LOOP_STATUS=converged`, `REASON=streak`, `ROUNDS_COMPLETED=2`. No degraded round.
+2. **Important finding in later round resets `CONVERGENCE_STREAK` to 0** — round 1: non-degraded, `write_collect one_nit` → `CONVERGENCE_STREAK` advances to 1. Round 2: non-degraded, collect stub emits one `important`-severity in-scope finding (`ACCEPTED_COUNT=1`, `IMPORTANT_ACCEPTED_COUNT=1`, still under `ACCEPTED_COUNT` threshold) → assert round-2 `round-summary.env` shows `CONVERGENCE_STREAK=0`. Round 3: non-degraded, `write_collect one_nit` → streak rebuilds to 1. Round 4: non-degraded, `write_collect one_nit` → streak reaches 2. Assert `LOOP_STATUS=converged REASON=streak ROUNDS_COMPLETED=4`.
+3. **Degraded round resets streak (dedicated)** — round 1: non-degraded, `write_collect one_nit` → `CONVERGENCE_STREAK=1`. Round 2: degraded panel (`DEGRADED_PANEL=1`), `write_collect one_nit` → assert round-2 `round-summary.env` shows `CONVERGENCE_STREAK=0` (reset by degraded panel even with findings). Round 3: non-degraded, `write_collect one_nit` → streak rebuilds. Round 4: non-degraded, `write_collect one_nit` → streak reaches 2. Assert `LOOP_STATUS=converged REASON=streak ROUNDS_COMPLETED=4`. Distinct from the existing degraded-then-stable case in the harness because the new case starts non-degraded so the streak reset is directly observable on the round-1 → round-2 transition.
+4. **Section-aware dedup behavior** — write a synthetic `plan.txt` to a temp directory containing four duplicate-line scenarios in fixed order: (a) two consecutive identical lines OUTSIDE any `## Constraints` section (should collapse); (b) two consecutive identical lines DIRECTLY inside a `## Constraints` section (should be preserved); (c) two consecutive identical lines under a nested `### Hard constraints` subheading inside `## Constraints` (should be preserved); (d) two consecutive identical lines INSIDE a triple-backtick fenced code block whose interior text starts with `## Constraints` (the fence makes the heading-lookalike non-load-bearing; the duplicates inside the fence sit OUTSIDE protected mode and should collapse). Drive the deduper by invoking the existing post-apply path via a thin shim test (e.g., source `plan-review-loop.sh` and call `_run_post_apply_pipeline 1`, or shell out to a small extracted helper if the function is not directly callable) and assert the final `plan.txt` shows: scenario (a) collapsed to one line; scenario (b) preserved as two lines; scenario (c) preserved as two lines; scenario (d) collapsed to one line. Also assert the breadcrumb `dedup-sweep: removed 2 duplicate line(s) from plan.txt` matches the count.
+
+Each new case mirrors the existing harness layout: distinct `$TMP/*` subdir, `write_dispatch_*` helper or inline stub for round-N panel outputs (reuse existing helpers where applicable), and grep-based assertions over the result env file and per-round `round-summary.env` files.
+
+## Approach
+
+The dedup tightening is the only behavior change. Section-prefix awareness is computed inside the Python heredoc so the bash wrapper stays unchanged. The heading-level stack handles the nested-subheading edge case; fenced-code tracking handles the markdown-lookalike edge case.
+
+The allowlist edits are mechanical (one line of code, one line of doc, one line in `SECURITY.md`, one test-line flip, one stub-line removal). The docs additions are anchored to existing bullets/subsections and stay short.
+
+The four new harness cases reuse the existing stub-override + grep-assertion pattern. No new infrastructure required; the only new test helper is `write_collect one_nit` for non-important findings.
+
+SIMPLE-tier bias: scope is bounded to the exact items in the issue and the five plan-review findings accepted in this round. No drive-by cleanup of adjacent code, no refactor of the dedup pipeline, no rename of `revise.env` references in unrelated locations beyond the four named files (verified via grep across `scripts/` and `skills/` — no other references exist after these five edits).
+
+## Edge cases
+
+- **Heading with body text continuation**: a `## Constraints` heading followed by a single-line body — the deduper enters `inside_constraints=true` with `constraints_level=2` for one section. Protection persists until the next sibling-or-shallower non-Constraints heading.
+- **Multiple `## Constraints` blocks**: a plan may have two `## Constraints` sections (e.g., global + per-component). Each block is independently protected; the second entry refreshes `constraints_level`.
+- **Subheading inside Constraints (e.g., `### Hard constraints`)**: subheadings nested inside a `## Constraints` section keep `inside_constraints=true` because `level=3 > constraints_level=2` is treated as a deeper-than-anchor heading. Protection only exits on an equal-or-shallower non-Constraints heading.
+- **Higher-level heading that starts with `Constraints` (e.g., `# Constraints`)**: also activates protection at its own level; `constraints_level` records the outermost (smallest) level encountered. Useful for top-level constraint chapters.
+- **"Similarly-prefixed"**: the heuristic matches headings whose text starts with the literal word `Constraints` (case-insensitive). It matches `## Constraints`, `## Constraints (rendered)`, `### Constraints`. It does NOT match `## Hard constraints` or `## Constraints-related notes` if they don't start with the literal word.
+- **Fenced code containing `## Constraints` lookalikes**: triple-backtick fences toggle `in_fence`; while `in_fence=true`, no heading state transitions occur. The duplicates inside the fence are subject to normal (non-protected) dedup.
+- **Pre-existing `revise.env` files in a developer's `$DESIGN_TMPDIR`**: the publish path simply ignores them after the allowlist update. No cleanup migration is needed.
+- **Harness ordering**: appending the four new test cases must not break existing tests. Each case isolates state under its own `$TMP/*` subdir per the existing pattern.
+
+## Failure modes
+
+1. **Section-detection regex misclassifies a heading**: a plan with an unusual heading style (HTML comment markers, indented headings, or code-block-embedded `## Constraints` lines) could trigger or miss the skip flag. Earliest signal: the new section-aware dedup harness fails or an existing plan-review test breaks because dedup behavior changed unexpectedly. Mitigation: limit the regex to top-of-line `^#{1,6}\s+`, track triple-backtick fences with a second state bit, and exercise Constraints inside, outside, nested, and fenced contexts in the new regression case.
+2. **Streak-assertion test flakes from stub-output ordering**: the new tests assert specific `CONVERGENCE_STREAK` values on per-round `round-summary.env` files. If the stub emits round-summary.env keys in a different order than the deduper writes, grep-based assertions over `^KEY=VALUE$` lines stay stable, but a future change to round-summary.env schema could silently break them. Earliest signal: harness fails after an unrelated round-summary.env edit. Mitigation: assert on canonical keys only (`CONVERGENCE_STREAK=`, `DEGRADED_PANEL=`, `ACCEPTED_COUNT=`), not field order; keep assertions narrow.
+3. **Allowlist flip breaks an external workflow that snapshots `revise.env`**: any external tool that read snapshotted `revise.env` files would now find them absent. Earliest signal: CI or operator complaint about missing forensic file. Mitigation: the file is not produced by the real revise script and the only in-tree fixture write is removed in this change; no real consumer exists. Mention the change in the commit message.
+4. **Streak tests accidentally exercise zero-findings terminal behavior**: if a new stub round emits `ACCEPTED_COUNT=0`, the loop may exit with `REASON=zero-findings` before streak assertions are meaningful. Earliest signal: expected `REASON=streak` assertions fail. Mitigation: every streak-building or reset-observation round emits one accepted finding under threshold, with `IMPORTANT_ACCEPTED_COUNT=0` except the explicit important-reset round.
+
+## Testing strategy
+
+- **Existing harnesses must continue to pass**: `bash scripts/test-lib-design-round-artifacts.sh` (with the flipped `revise.env` assertion), `bash scripts/test-design-multi-round-integration.sh` (with the stale fixture write removed), `bash skills/design/scripts/test-plan-review-loop.sh` (with the four new cases appended), and any `bash scripts/relevant-checks.sh` invocation touched by the changed files.
+- **New regression coverage**: the four new harness cases directly assert the three behaviors flagged by issue C as currently un-tested (clean two-round streak, important-finding streak reset, degraded-round streak reset) plus the section-aware dedup behavior added in group B.
+- **Allowlist coverage**: the existing `assert_included oos-accepted-design.md` assertion satisfies the issue's "Add a small assertion … covering `oos-accepted-design.md` inclusion" request; the comment tagging the assertion as the canonical pin makes the coverage discoverable for future maintainers.
+- **Lint**: run `bash scripts/relevant-checks.sh` (or `make lint`) to catch shellcheck and markdownlint regressions on the touched files.
+
+## Acceptance
+
+- `bash scripts/test-lib-design-round-artifacts.sh` passes with the flipped `revise.env` assertion (`assert_revise_excluded revise.env`) and the existing `assert_included oos-accepted-design.md` line tagged as the canonical pin for issue #3143 group A.
+- `bash scripts/test-design-multi-round-integration.sh` passes after the stub line that wrote `plan-review/round-1/revise/revise.env` is removed; the stub still emits `REVISE_STATUS` / `REVISE_WINNING_TIER` on stdout and the surrounding assertions remain green.
+- `bash skills/design/scripts/test-plan-review-loop.sh` passes with the four new harness cases appended (two-round streak, important-finding reset, dedicated degraded-reset, section-aware dedup).
+- `_run_post_apply_pipeline` preserves consecutive identical lines inside `## Constraints` sections (including nested `### Hard constraints` subheadings) and collapses consecutive identical lines elsewhere; triple-backtick fenced code blocks do not change section state.
+- `scripts/lib-design-round-artifacts.sh`, `scripts/lib-design-round-artifacts.md`, and `SECURITY.md` agree on the `round-N/revise/` allowlist (no `revise.env`); `skills/design/references/plan-review.md` documents both the loop-vs-Gate-B dedup divergence and the legacy single-pass reachability constraint.
+- `bash scripts/relevant-checks.sh` (or `make lint`) passes on the touched files.
+
+diff_lines: 240
+
+## Test plan
+(no test plan section in plan-file)
