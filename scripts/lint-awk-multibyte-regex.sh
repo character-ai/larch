@@ -135,7 +135,8 @@ scan_file() {
         }
 
         function regex_callsite(line) {
-            return (line ~ /match\(/ || line ~ /gsub\(/ || line ~ /sub\(/ || line ~ /split\(/ \
+            return (line ~ /(^|[^[:alnum:]_])match\(/ || line ~ /(^|[^[:alnum:]_])gsub\(/ \
+                || line ~ /(^|[^[:alnum:]_])sub\(/ || line ~ /(^|[^[:alnum:]_])split\(/ \
                 || line ~ /[[:space:]]~[[:space:]]/ || line ~ /[[:space:]]!~[[:space:]]/)
         }
 
@@ -318,6 +319,15 @@ scan_file() {
         END {
             if (pending != "") {
                 check_rule1(pending, lineno)
+                if (is_awk_file || in_single_body || in_heredoc) {
+                    check_rule2_line(pending, lineno)
+                } else if (awk_command_word(pending)) {
+                    if (match(pending, /<<[[:space:]]*-?['"'"']?([A-Za-z_][A-Za-z0-9_]*)['"'"']?/)) {
+                        check_rule2_line(pending, lineno)
+                    } else if (open_single_quoted_body(pending)) {
+                        check_rule2_line(pending, lineno)
+                    }
+                }
             }
             exit violations ? 1 : 0
         }

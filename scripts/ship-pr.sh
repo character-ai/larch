@@ -56,6 +56,7 @@ USAGE
 
 LAST_LINT_FIX_DELTA_PATHS_FILE=""
 ALL_LINT_FIX_DELTA_PATHS_FILE=""
+_SAPCF_EFFECTIVE_HEAD=""
 
 capture_dirty_paths() {
     {
@@ -1754,6 +1755,7 @@ _stage_and_push_ci_fixes() {
     local phase=$1 token_record_input=${2:-} checks_site=${3:-}
     local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
     local tracked_dirty_paths_file untracked_dirty_paths_file delta_paths_file
+    _SAPCF_EFFECTIVE_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
     fail_file=$(failure_capture_path "$phase")
     "$SCRIPT_DIR/append-token-record.sh" --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
@@ -1806,6 +1808,7 @@ _stage_and_push_ci_fixes() {
             fi
         fi
     fi
+    _SAPCF_EFFECTIVE_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
     fail_file=$(failure_capture_path "$phase")
     "$SCRIPT_DIR/refresh-run-logs.sh" \
@@ -1828,7 +1831,7 @@ run_ci_fix_vendor() {
     local gh_logs_capture_redacted _failure_log_args=()
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
     local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
-    local detail_log final_head
+    local detail_log effective_head final_head
 
     emit_breadcrumb --category=warn "⚠ ship-pr: CI failed; dispatching fix"
 
@@ -1922,15 +1925,17 @@ run_ci_fix_vendor() {
         *) return 1 ;;
     esac
     if _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"; then
+        effective_head="${_SAPCF_EFFECTIVE_HEAD:-unknown}"
         final_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
         if [[ "$baseline_head" =~ ^[0-9a-f]{40}$ ]] \
-            && [[ "$final_head" =~ ^[0-9a-f]{40}$ ]] \
-            && [ "$baseline_head" = "$final_head" ]; then
+            && [[ "$effective_head" =~ ^[0-9a-f]{40}$ ]] \
+            && [ "$baseline_head" = "$effective_head" ]; then
             detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
             {
                 printf 'vendor=%s\n' "$winning_tier"
                 printf 'launcher_exit=0\n'
                 printf 'baseline_head=%s\n' "$baseline_head"
+                printf 'effective_head=%s\n' "$effective_head"
                 printf 'final_head=%s\n' "$final_head"
                 printf 'reason=vendor exited 0 but produced no commit; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
             } > "$detail_log"

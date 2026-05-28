@@ -49,15 +49,15 @@ assert_case() {
 
     if [[ "$rc" -ne "$expected_exit" ]]; then
         printf 'FAIL [%s]: expected exit %s, got %s\n' "$label" "$expected_exit" "$rc" >&2
-        grep -F . "$stderr_file" 2>/dev/null >&2 || true
+        command grep -F . "$stderr_file" 2>/dev/null >&2 || true
         FAIL=$((FAIL + 1))
         set -e
         return 0
     fi
     for needle in "$@"; do
-        if ! grep -Fq "$needle" "$stderr_file" 2>/dev/null; then
+        if ! command grep -Fq "$needle" "$stderr_file" 2>/dev/null; then
             printf 'FAIL [%s]: stderr missing expected needle: %s\n' "$label" "$needle" >&2
-            grep -F . "$stderr_file" 2>/dev/null >&2 || true
+            command grep -F . "$stderr_file" 2>/dev/null >&2 || true
             FAIL=$((FAIL + 1))
             set -e
             return 0
@@ -78,15 +78,15 @@ assert_negative() {
 
     if [[ "$rc" -ne 0 ]]; then
         printf 'FAIL [%s]: expected clean exit 0, got %s\n' "$label" "$rc" >&2
-        grep -F . "$stderr_file" 2>/dev/null >&2 || true
+        command grep -F . "$stderr_file" 2>/dev/null >&2 || true
         FAIL=$((FAIL + 1))
         set -e
         return 0
     fi
     for needle in "$@"; do
-        if grep -Fq "$needle" "$stderr_file" 2>/dev/null; then
+        if command grep -Fq "$needle" "$stderr_file" 2>/dev/null; then
             printf 'FAIL [%s]: stderr unexpectedly contains: %s\n' "$label" "$needle" >&2
-            grep -F . "$stderr_file" 2>/dev/null >&2 || true
+            command grep -F . "$stderr_file" 2>/dev/null >&2 || true
             FAIL=$((FAIL + 1))
             set -e
             return 0
@@ -236,9 +236,9 @@ assert_case "rule2 heredoc body" 1 "$stderr_file" "$rc" \
 reset_tree
 write_file "$TMPROOT/scripts/rule2-pipeline-close.sh" \
     "awk 'BEGIN {" \
-    "  if (match(\$0, \"—\")) print \"hit\" # lint-awk-multibyte-regex: ok harness fixture" \
+    "  if (match(\$0, \"—\")) print \"hit\"" \
     "}' | cat" \
-    "printf 'ascii only\\n'"
+    "printf 'ascii only\\n'" # lint-awk-multibyte-regex: ok harness fixture
 rc="$(run_lint "$stderr_file")"
 assert_case "rule2 single-quote pipeline close" 1 "$stderr_file" "$rc" \
     "awk-body-nonascii-regex" \
@@ -248,15 +248,30 @@ assert_case "rule2 single-quote pipeline close" 1 "$stderr_file" "$rc" \
 reset_tree
 write_file "$TMPROOT/scripts/rule2-callsite-tokens.sh" \
     "awk 'BEGIN {" \
-    "  if (\$0 !~ \"—\") print \"not match\" # lint-awk-multibyte-regex: ok harness fixture" \
-    "  gsub(\"—\", \"-\", \$0) # lint-awk-multibyte-regex: ok harness fixture" \
-    "  sub(\"—\", \"-\", \$0) # lint-awk-multibyte-regex: ok harness fixture" \
-    "  split(\$0, parts, \"—\") # lint-awk-multibyte-regex: ok harness fixture" \
+    "  if (\$0 !~ \"—\") print \"not match\"" \
+    "  gsub(\"—\", \"-\", \$0)" \
+    "  sub(\"—\", \"-\", \$0)" \
+    "  split(\$0, parts, \"—\")" \
     "}'" # lint-awk-multibyte-regex: ok harness fixture
 rc="$(run_lint "$stderr_file")"
 assert_case "rule2 extra callsite tokens" 1 "$stderr_file" "$rc" \
     "awk-body-nonascii-regex" \
-    "scripts/rule2-callsite-tokens.sh:2:"
+    "scripts/rule2-callsite-tokens.sh:2:" \
+    "scripts/rule2-callsite-tokens.sh:3:" \
+    "scripts/rule2-callsite-tokens.sh:4:" \
+    "scripts/rule2-callsite-tokens.sh:5:"
+
+# 18. Rule 2 ignores substr( but still catches trailing continuation at EOF.
+reset_tree
+write_file "$TMPROOT/scripts/rule2-substr-eof.sh" \
+    "awk 'BEGIN { \\" \
+    "  print substr(\$0, 1, 1); if (\$0 ~ \"—\") print \"hit\"" # lint-awk-multibyte-regex: ok harness fixture
+rc="$(run_lint "$stderr_file")"
+assert_case "rule2 substr false positive and eof continuation" 1 "$stderr_file" "$rc" \
+    "awk-body-nonascii-regex" \
+    "scripts/rule2-substr-eof.sh:2:"
+assert_negative "rule2 substr false positive absent" "$stderr_file" 0 \
+    "scripts/rule2-substr-eof.sh:1:"
 
 rm -f "$stderr_file"
 

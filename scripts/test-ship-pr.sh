@@ -324,8 +324,8 @@ make_repo() {
     git -C "$root" init -q
     git -C "$root" config user.email test@example.invalid
     git -C "$root" config user.name Test
-    touch "$root/README.md"
-    git -C "$root" add README.md
+    touch "$root/README.md" "$root/sentinel-fix.txt"
+    git -C "$root" add README.md sentinel-fix.txt
     git -C "$root" commit -q -m initial
     git -C "$root" checkout -q -b feature/test-issue-7
     printf '%s\n' "$root"
@@ -3385,7 +3385,7 @@ set -euo pipefail
 printf '%s\n' launcher >> "$call_dir/order.txt"
 printf '%s\n' cursor >> "$call_dir/launcher-calls.txt"
 printf 'fixed\n' > "$call_dir/vendor-fixed"
-printf 'X\n' >> README.md
+    printf 'X\n' >> sentinel-fix.txt
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/git-push.sh" <<STUB
@@ -3901,7 +3901,7 @@ STUB
 cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'X\n' >> README.md
+    printf 'X\n' >> sentinel-fix.txt
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/git-push.sh" <<STUB
@@ -4404,7 +4404,7 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
   printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
 fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'X\n' >> README.md
+    printf 'X\n' >> sentinel-fix.txt
 printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
@@ -4670,7 +4670,9 @@ chmod +x "$root/scripts/launch-cursor-ci.sh"
 cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-exit 0
+printf 'log refresh\n' >> ci-fix-log-only.txt
+git add ci-fix-log-only.txt
+git commit -q -m "Refresh run logs"
 STUB
 chmod +x "$root/scripts/refresh-run-logs.sh"
 cat > "$root/scripts/git-push.sh" <<'STUB'
@@ -4709,6 +4711,94 @@ if grep -qF 'vendor exit 0 with no commits; escalating to first-fixer-non-health
     ok "run_ship_pr_3134: warn breadcrumb on stdout"
 else
     fail "run_ship_pr_3134: missing warn breadcrumb on stdout"
+    sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Vendor exit 0 with no commit from the launcher but lint-fix-loop advances HEAD → success, not first-fixer-non-health.
+root=$(make_repo run_ship_pr_3134_vendor_noop_lint_fix_commit)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3134c\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="${IMPLEMENT_TMPDIR:?}/run-checks-count"
+count=$(cat "$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "$((count + 1))" > "$count_file"
+if [ "$count" -eq 0 ]; then
+  log_file="${IMPLEMENT_TMPDIR}/checks-fail.log"
+  printf 'mock lint failure\n' > "$log_file"
+  printf 'STATUS=fail\nREDACTED_LOG_FILE=%s\n' "$log_file"
+  exit 1
+fi
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh"
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+delta_file="${IMPLEMENT_TMPDIR:?}/lint-fix-delta.txt"
+printf 'sentinel-fix.txt\n' > "$delta_file"
+printf 'lint-fix edit\n' >> sentinel-fix.txt
+printf 'LINT_FIX_STATUS=applied\nLINT_FIX_DELTA_PATHS_FILE=%s\n' "$delta_file"
+STUB
+chmod +x "$root/scripts/lint-fix-loop.sh"
+cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+STUB
+chmod +x "$root/scripts/refresh-run-logs.sh"
+cat > "$root/scripts/git-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+STUB
+chmod +x "$root/scripts/git-push.sh"
+cat > "$root/scripts/git-commit.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+git commit -m "Fix CI failure" -a
+STUB
+chmod +x "$root/scripts/git-commit.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3134c"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "run_ship_pr_3134_vendor_noop_lint_fix_commit: ship-pr exits 0"
+if grep -qxF 'BAIL_REASON=' "$tmp/ship-pr-state.sh" \
+    && ! grep -qF 'first-fixer-non-health' "$tmp/out" 2>/dev/null \
+    && git -C "$root" log -1 --pretty=%s 2>/dev/null | grep -qxF 'Fix CI failure'; then
+    ok "run_ship_pr_3134_vendor_noop_lint_fix_commit: lint-fix-only HEAD advance stays on success path"
+else
+    fail "run_ship_pr_3134_vendor_noop_lint_fix_commit: expected lint-fix-only success without first-fixer bail"
+    sed 's/^/    state: /' "$tmp/ship-pr-state.sh" 2>/dev/null || true
     sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
 fi
 rm -rf "$call_dir"
@@ -4791,6 +4881,66 @@ if git -C "$root" log --format=%s -1 2>/dev/null | grep -qxF 'Fix CI failure'; t
 else
     fail "run_ship_pr_3134_vendor_exit0_tracked_dirty: expected Fix CI failure commit"
     git -C "$root" log --format='    %s' -5 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Vendor no-op plus stage/push failure must not be reclassified as first-fixer-non-health.
+root=$(make_repo run_ship_pr_3134_vendor_noop_push_failure)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3134d\nBAIL_REASON=\nITERATION=%s\nELAPSED=1\n' "\$count"
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh"
+cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+STUB
+chmod +x "$root/scripts/refresh-run-logs.sh"
+cat > "$root/scripts/git-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'push\n' >> "$call_dir/push-calls.txt"
+exit 1
+STUB
+chmod +x "$root/scripts/git-push.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3134d"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "run_ship_pr_3134_vendor_noop_push_failure: ship-pr exits 4"
+if grep -qxF 'BAIL_REASON=' "$tmp/ship-pr-state.sh" \
+    && ! grep -qF 'BAIL_REASON=first-fixer-non-health' "$tmp/ship-pr-state.sh" 2>/dev/null \
+    && ! grep -qF 'ci-fix-no-commit-' "$tmp/ship-pr-state.sh" 2>/dev/null; then
+    ok "run_ship_pr_3134_vendor_noop_push_failure: push failure stays a stall, not first-fixer bail"
+else
+    fail "run_ship_pr_3134_vendor_noop_push_failure: unexpected first-fixer classification on push failure"
+    sed 's/^/    state: /' "$tmp/ship-pr-state.sh" 2>/dev/null || true
+    sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
 fi
 rm -rf "$call_dir"
 
