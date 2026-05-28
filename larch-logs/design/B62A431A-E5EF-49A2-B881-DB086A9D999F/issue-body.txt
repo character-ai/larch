@@ -1,0 +1,12 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: Review panel (cursor-specialist-structure, cursor-specialist-correctness, cursor-specialist-testing, cursor-specialist-edge-cases)
+**Phase**: implement
+**Vote tally**: YES=3 NO=0 EXON=0 — accepted
+
+## Description
+
+`scripts/test-step0b-router-flag-recovery.sh`: current cases exercise successful writer runs plus jq-merge recovery, but not the original writer-failure + manual recovery scenario. `skills/design/SKILL.md` Step 0b may require exit 1 on writer failure before the recovery block runs, creating ambiguity about whether the recovery path can be exercised. Suggested fix: add a test case that injects a writer failure (or mocks it) and asserts the recovery guard handles it per SKILL.md Step 0b semantics.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

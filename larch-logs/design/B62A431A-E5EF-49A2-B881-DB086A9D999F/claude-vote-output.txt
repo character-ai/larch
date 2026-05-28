@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=adequate UNCERTAIN=false -- plan already has a third assertion `[[ ! -e "$SPY7" ]]`; the claim "only checks non-zero exit plus no output file" is factually wrong for the plan as written
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- spy is placed before the recovery call and `manual_gate_b:true` is already set by the writer, so Case 7b passes even if the recovery call is omitted; moving spy post-recovery closes the gap

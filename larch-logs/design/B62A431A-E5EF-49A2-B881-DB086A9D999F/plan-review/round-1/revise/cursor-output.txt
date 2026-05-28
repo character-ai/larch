@@ -1,0 +1,156 @@
+Reviewing the test harness and plan context to incorporate the accepted findings into a revised plan diff.
+Checking how `recovery_merge_if_needed` emits output and reviewing case 6 patterns for the revised plan.
+Drafting the revised plan incorporating both findings and computing `diff_lines`.
+--- a/plan.txt
++++ b/plan.txt
+@@ -14,44 +14,56 @@
+ 
+ ### UPDATED: `scripts/test-step0b-router-flag-recovery.sh`
+ 
+ Add a harness-local helper and one new case (with a positive control). Do not touch
+ cases 1-6 or the `merge_run_params()` / `recovery_merge_if_needed()` helpers.
+ 
+-- Add `write_then_recover()` after `recovery_merge_if_needed()`. It models SKILL.md
+-  Step 0b sub-step 6: run `write-run-params.sh`; on non-zero exit `return 1` WITHOUT
+-  calling `recovery_merge_if_needed` (the SKILL.md `exit 1` abort); on success, touch
+-  a spy file then call `recovery_merge_if_needed`. The spy proves whether the recovery
+-  call site was reached.
++- Add `write_then_recover()` after `recovery_merge_if_needed()`. It models SKILL.md
++  Step 0b sub-step 6: run `write-run-params.sh`; on non-zero exit `return 1` WITHOUT
++  calling `recovery_merge_if_needed` (the SKILL.md `exit 1` abort); on success, call
++  `recovery_merge_if_needed` and only then touch the spy (recovery **completion**).
++  Echo recovery stdout so Case 7 can assert the case-6 missing-file warning never
++  fired. Optional 7th arg `writer_manual` defaults to `manual_recovery` so Case 7b can
++  write `manual_gate_b=false` then recovery-overwrite to `true` (case-1 shape).
+ - Add Case 7: inject a writer failure with invalid argv (`--classification BOGUS`) and
+-  `manual=true`. Assert the helper returns non-zero, the spy is absent (recovery
+-  bypassed), and no `run-params.json` was created.
+-- Add Case 7b (positive control): a successful SIMPLE write with `manual=true`. Assert
+-  the helper returns 0, the spy is present (recovery reached), and the merge applied
+-  (`manual_gate_b == true`). Without this control, a helper that always returned 1
+-  would pass Case 7 trivially.
++  `manual=true`. Capture helper stdout; assert non-zero rc, completion spy absent, no
++  output file, and stdout lacks the case-6 missing-file warning (independent proof that
++  recovery's missing-file branch did not run).
++- Add Case 7b (positive control): successful SIMPLE write with `writer_manual=false`
++  and recovery `manual=true`. Assert rc 0, completion spy present, and
++  `manual_gate_b == true` (proves recovery overwrite, not the writer alone). Without
++  this control, a helper that always returned 1 would pass Case 7 trivially.
+ 
+ ```bash
+ # Add after recovery_merge_if_needed():
+ # Models SKILL.md Step 0b sub-step 6 + recovery ordering: a non-zero write-run-params.sh
+ # exit is a contract-drift abort (exit 1) that returns BEFORE recovery; only a successful
+-# write reaches recovery_merge_if_needed. The spy file marks the recovery call site.
++# write reaches recovery_merge_if_needed. Spy is set only after recovery returns; stdout
++# carries recovery_merge_if_needed output for Case 7 warning-absence checks.
+ write_then_recover() {
+-  local out="$1" classification="$2" partition_requested="$3" brainstorm_requested="$4" manual_requested="$5" spy="$6"
++  local out="$1" classification="$2" partition_requested="$3" brainstorm_requested="$4" manual_recovery="$5" spy="$6" writer_manual="${7:-$manual_recovery}"
++  local recover_out
+   if ! "$WRITER" --classification "$classification" \
+       --partition-requested "$partition_requested" \
+       --brainstorm-requested "$brainstorm_requested" \
+-      --manual-gate-b "$manual_requested" \
++      --manual-gate-b "$writer_manual" \
+       --output "$out" >/dev/null 2>&1; then
+     return 1
+   fi
+-  : > "$spy"
+-  recovery_merge_if_needed "$out" "$partition_requested" "$brainstorm_requested" "$manual_requested"
++  recover_out=$(recovery_merge_if_needed "$out" "$partition_requested" "$brainstorm_requested" "$manual_recovery") || return 1
++  : > "$spy"
++  printf '%s' "$recover_out"
+ }
+ 
+-# Case 7: failing writer aborts before recovery (spy absent, no file created) (#3161).
++# Case 7: failing writer aborts before recovery (spy absent, no file, no missing-file warning) (#3161).
+ OUT7="$TMPROOT/case7.json"; SPY7="$TMPROOT/case7-recovery-reached"; rm -f "$SPY7"
+-set +e; write_then_recover "$OUT7" BOGUS false false true "$SPY7"; rc7=$?; set -e
++set +e; case7_out=$(write_then_recover "$OUT7" BOGUS false false true "$SPY7" true 2>&1); rc7=$?; set -e
+ [[ "$rc7" -ne 0 ]] || fail "case7: failing writer must abort before recovery; rc=$rc7"
+ [[ ! -e "$SPY7" ]] || fail "case7: recovery completed after writer failure"
+ [[ ! -e "$OUT7" ]] || fail "case7: failing writer created $OUT7"
++[[ "$case7_out" != *"run-params.json missing after write-run-params.sh"* ]] \
++  || fail "case7: recovery missing-file branch ran; stdout=$case7_out"
+ 
+-# Case 7b (positive control): successful write reaches recovery (spy present) + merge applies.
++# Case 7b (positive control): successful write + recovery completion (spy present); manual overwrite from recovery argv.
+ OUT7B="$TMPROOT/case7b.json"; SPY7B="$TMPROOT/case7b-recovery-reached"; rm -f "$SPY7B"
+-set +e; write_then_recover "$OUT7B" SIMPLE false false true "$SPY7B"; rc7b=$?; set -e
++set +e; write_then_recover "$OUT7B" SIMPLE false false true "$SPY7B" false; rc7b=$?; set -e
+ [[ "$rc7b" -eq 0 ]] || fail "case7b: successful write_then_recover returned $rc7b"
+-[[ -e "$SPY7B" ]] || fail "case7b: recovery not reached after successful write"
++[[ -e "$SPY7B" ]] || fail "case7b: recovery did not complete after successful write"
+ jq -e '.manual_gate_b == true and .partition_requested == false and .brainstorm_requested == false' "$OUT7B" >/dev/null \
+-  || fail "case7b: post-success merge mismatch; got $(cat "$OUT7B")"
++  || fail "case7b: recovery manual overwrite mismatch; got $(cat "$OUT7B")"
+ ```
+ 
+ ### UPDATED: `scripts/test-step0b-router-flag-recovery.md`
+ 
+ - Update Purpose and the case enumeration to include the writer-failure abort case (7)
+   and its success-path positive control (7b).
+ - Add a `**Coverage gap closed**` line for #3161 (writer-failure abort precedes recovery).
+-- Note `write_then_recover()` composes (does not modify) `recovery_merge_if_needed()`, so
+-  the existing edit-in-sync jq-filter pins remain unaffected.
++- Note `write_then_recover()` composes (does not modify) `recovery_merge_if_needed()`; Case 7
++  asserts recovery stdout lacks the case-6 missing-file warning; Case 7b uses
++  `writer_manual=false` so `manual_gate_b=true` proves recovery completion, not the writer.
++  Existing edit-in-sync jq-filter pins remain unaffected.
+ 
+ ## Approach
+ 
+ The OOS framing ("writer failure + recovery") is ambiguous because SKILL.md aborts before
+ recovery. Resolve it by encoding the actual boundary in an executable case: a failing
+ writer must short-circuit recovery. Inject the failure with the real `write-run-params.sh`
+ (invalid `--classification`) rather than a mock, so the case stays faithful to the real
+-writer's failure behavior. A spy sentinel and the no-file assertion give two independent
+-proofs that recovery was not reached; the 7b positive control proves the success path does
+-reach recovery, defeating a trivial always-abort pass.
++writer's failure behavior. Case 7 uses three independent proofs: non-zero rc, no output
++file, and absent case-6 missing-file warning in captured stdout (catches recovery wrongly
++entering the missing-file branch). The completion spy (set only after
++`recovery_merge_if_needed` returns) plus Case 7b's writer/recovery manual split defeat
++trivial always-abort and writer-only false passes.
+ 
+ ## Edge cases
+ 
+ - Invalid `--classification BOGUS` makes `write-run-params.sh` `exit 2` during enum
+   validation, before any output file is created — so the no-file assertion holds.
+-- The failing case passes `manual=true` so that, if recovery were wrongly reached, its
+-  outer guard would enter and emit the case-6 missing-file warning; the spy + no-file
+-  assertions still catch the regression.
++- The failing case passes `manual=true` so that, if recovery were wrongly reached, its
++  outer guard would enter and emit the case-6 missing-file warning into captured stdout;
++  the warning-absence assertion catches that branch even when no file exists.
++- Case 7b passes `writer_manual=false` (7th arg) with recovery `manual=true` so
++  `manual_gate_b == true` requires recovery's overwrite, not the writer output alone.
+ - `set +e` / `set -e` wraps the helper calls so the harness's `set -euo pipefail` does not
+   abort on the intentional non-zero return in Case 7.
+ 
+ ## Failure modes
+ 
+-- False pass (helper always returns 1) → Case 7 passes trivially. Mitigated by the 7b
+-  positive control asserting the success path reaches recovery and merges.
++- False pass (helper always returns 1) → Case 7 passes trivially. Mitigated by Case 7b
++  asserting recovery completion (post-recovery spy) and manual overwrite from recovery argv.
++- False pass (recovery runs on missing file but helper still returns 1) → Case 7 stdout
++  contains the case-6 warning; the warning-absence assertion fails.
++- False pass (writer sets `manual_gate_b=true`, recovery never runs) → Case 7b fails on
++  absent completion spy or would pass jq only if spy-before-recovery; spy-after-recovery
++  prevents that.
+ - Writer behavior drift (invalid argv stops failing, or starts creating partial output)
+   → Case 7 fails loudly on the rc / no-file assertions, signaling the model needs review.
+ - Spy-file staleness across cases → each case uses a unique spy path and `rm -f`s it
+   before the call, so a prior case cannot leak a false "reached" signal.
+ 
+ ## Testing strategy
+ 
+ - Run `bash scripts/test-step0b-router-flag-recovery.sh` (and `make test-step0b-router-flag-recovery`); expect the existing `PASS:` line with cases 1-7b green.
+ - Run `bash scripts/test-design-structure.sh` to confirm the SKILL.md Step 0b pins
+   (jq filter, guard, absent-prose check) still pass unchanged.
+ - Run `bash scripts/relevant-checks.sh` for the touched files.
+ 
+-diff_lines: 38
++diff_lines: 52
