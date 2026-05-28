@@ -1,0 +1,12 @@
+# [DESIGNING] Gate B multi-round presentation + docs reconciliation for /design — Piece 3 of 3 from #2644
+
+## Context
+
+This issue covers **Piece 3 of 3** from the partitioned design work originally tracked in #2644. The original feature ballooned to a ~1850-diff-line monolithic plan over 4 review rounds; the post-mortem (see #2644 comments) partitioned it into 3 independent pieces:
+
+- **Piece 1** (separate issue, designed): Dynamic reviewer profiles, single-round.
+- **Piece 2** (separate issue, needs `/design`): Multi-round plan-review loop + plan revision waterfall.
+- **Piece 3 (this issue)**: Gate B multi-round presentation + cross-document reconciliation + cumulative-artifact prose. **Depends on Piece 2** — the prose only makes sense once multi-round behavior exists.
+
+This piece is mostly documentation reconciliation with a few small mechanical fixes (Gate B control-flow reorder, severity precedence rule, SKILL.md cleanup). Low novelty; the spec was validated through 4 monolithic review rounds.
+
