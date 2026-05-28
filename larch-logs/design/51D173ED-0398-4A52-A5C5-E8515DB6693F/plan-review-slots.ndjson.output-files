@@ -1,0 +1,16 @@
+<TMPDIR>/cursor-plan-arch-output.txt
+<TMPDIR>/codex-primary-plan-arch-output.txt
+<TMPDIR>/cursor-plan-edge-output.txt
+<TMPDIR>/codex-primary-plan-edge-output.txt
+<TMPDIR>/cursor-plan-innovation-output.txt
+<TMPDIR>/codex-primary-plan-innovation-output.txt
+<TMPDIR>/cursor-plan-pragmatic-output.txt
+<TMPDIR>/codex-primary-plan-pragmatic-output.txt
+<TMPDIR>/cursor-plan-requirements-output.txt
+<TMPDIR>/codex-primary-plan-requirements-output.txt
+<TMPDIR>/cursor-plan-dyn-line-ref-fidelity-output.txt
+<TMPDIR>/codex-primary-plan-dyn-line-ref-fidelity-output.txt
+<TMPDIR>/cursor-plan-dyn-drop-on-fail-semantics-output.txt
+<TMPDIR>/codex-primary-plan-dyn-drop-on-fail-semantics-output.txt
+<TMPDIR>/cursor-plan-dyn-linter-coverage-completeness-output.txt
+<TMPDIR>/codex-primary-plan-dyn-linter-coverage-completeness-output.txt

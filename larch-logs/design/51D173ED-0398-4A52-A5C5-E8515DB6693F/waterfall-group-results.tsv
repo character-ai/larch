@@ -1,0 +1,16 @@
+plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-line-ref-fidelity	dyn-codex-plan-line-ref-fidelity	codex	<TMPDIR>/codex-primary-plan-dyn-line-ref-fidelity-output.txt	ok
+plan-dyn-drop-on-fail-semantics	dyn-codex-plan-drop-on-fail-semantics	codex	<TMPDIR>/codex-primary-plan-dyn-drop-on-fail-semantics-output.txt	ok
+plan-dyn-linter-coverage-completeness	dyn-codex-plan-linter-coverage-completeness	codex	<TMPDIR>/codex-primary-plan-dyn-linter-coverage-completeness-output.txt	ok
+plan-edge	cursor-plan-edge	codex	<TMPDIR>/cursor-plan-edge-output.txt	reused	codex-plan-edge
+plan-pragmatic	cursor-plan-pragmatic	codex	<TMPDIR>/cursor-plan-pragmatic-output.txt	reused	codex-plan-pragmatic
+plan-requirements	cursor-plan-requirements	codex	<TMPDIR>/cursor-plan-requirements-output.txt	reused	codex-plan-requirements
+plan-dyn-line-ref-fidelity	dyn-cursor-plan-line-ref-fidelity	codex	<TMPDIR>/cursor-plan-dyn-line-ref-fidelity-output.txt	reused	dyn-codex-plan-line-ref-fidelity
+plan-dyn-drop-on-fail-semantics	dyn-cursor-plan-drop-on-fail-semantics	codex	<TMPDIR>/cursor-plan-dyn-drop-on-fail-semantics-output.txt	reused	dyn-codex-plan-drop-on-fail-semantics
+plan-dyn-linter-coverage-completeness	dyn-cursor-plan-linter-coverage-completeness	codex	<TMPDIR>/cursor-plan-dyn-linter-coverage-completeness-output.txt	reused	dyn-codex-plan-linter-coverage-completeness
