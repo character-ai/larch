@@ -414,11 +414,26 @@ read -r preflight_wire_line <<'EOF'
 EOF
 grep -Fq "$preflight_wire_line" "$SKILL_MD" \
   || fail "SKILL.md must wire PREFLIGHT_TMPDIR through _ib_preflight"
+grep -Fq '_ib_emergency=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain the _ib_emergency argv array"
+read -r emergency_wire_line <<'EOF'
+case "${emergency_requested:-}" in
+  true|false) _ib_emergency+=(--emergency-requested "$emergency_requested") ;;
+esac
+EOF
+grep -Fq "$emergency_wire_line" "$SKILL_MD" \
+  || fail "SKILL.md must conditionally wire emergency_requested through _ib_emergency"
 read -r preflight_expand_line <<'EOF'
 "${_ib_preflight[@]+"${_ib_preflight[@]}"}"
 EOF
 if [ "$(grep -cF "$preflight_expand_line" "$SKILL_MD" || true)" -lt 1 ]; then
   fail "SKILL.md must expand _ib_preflight in the bootstrap invocation"
+fi
+read -r emergency_expand_line <<'EOF'
+"${_ib_emergency[@]+"${_ib_emergency[@]}"}"
+EOF
+if [ "$(grep -cF "$emergency_expand_line" "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must expand _ib_emergency in both bootstrap invocations"
 fi
 grep -Fq -- '--resume-plan-tail' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document --resume-plan-tail"

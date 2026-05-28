@@ -248,7 +248,7 @@ redact_file_best_effort() {
 }
 
 append_emergency_bypass_log_if_present() {
-    local bypass_log append_rc fallback_entry fallback_content kind issue redact_source
+    local bypass_log append_rc fallback_entry fallback_content fallback_rc kind issue redact_source
     local consumed_sentinel
 
     [ "${EMERGENCY_REQUESTED:-false}" = "true" ] || return 0
@@ -339,8 +339,13 @@ append_emergency_bypass_log_if_present() {
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
             --category Warnings \
             --entry-file "$fallback_entry"
+        fallback_rc=$?
         rm -f "$redact_source"
         rm -f "$fallback_entry"
+        if [ "$fallback_rc" -ne 0 ]; then
+            rm -f "${fallback_content:-}"
+            return 1
+        fi
     fi
 
     : >"$consumed_sentinel"
@@ -348,8 +353,8 @@ append_emergency_bypass_log_if_present() {
 }
 
 post_tracking_metadata() {
-    local write_sentinel=$1
-    local post_out post_rc posted
+    local write_sentinel=$1 site=$2
+    local post_out post_rc posted failure_log
     local args
 
     args=(
@@ -370,6 +375,21 @@ post_tracking_metadata() {
     post_rc=$?
     posted=$(kv_value_from_block POSTED "$post_out")
     if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
+        failure_log="$IMPLEMENT_TMPDIR/post-tracking-issue.failure.log"
+        {
+            [ -n "$post_out" ] && printf '%s\n' "$post_out"
+            if [ -s "$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log" ]; then
+                cat "$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log"
+            fi
+        } >"$failure_log"
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "$site" \
+            --tool "post-tracking-issue.sh" \
+            --exit-code "$post_rc" \
+            --category Warnings \
+            --output-file "$failure_log" \
+            --redact || true
         DEFERRED=true
         [ "$write_sentinel" = "true" ] && rm -f "$IMPLEMENT_TMPDIR/parent-issue.md"
         return 1
@@ -814,7 +834,7 @@ phase_tracking() {
                 rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 persist_run_flags HARD || return 0
-                post_tracking_metadata false || true
+                post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
                 emit_tracking_breadcrumb_if_enabled
                 return 0
             fi
@@ -868,7 +888,7 @@ phase_tracking() {
 
     run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 2 adopt" || return 0
     persist_run_flags HARD || return 0
-    post_tracking_metadata true || return 0
+    post_tracking_metadata true "Step 0 tracking adoption — Branch 2 adopt metadata post" || return 0
 
     emit_tracking_breadcrumb_if_enabled
     return 0
@@ -939,7 +959,7 @@ phase_plan_materialize() {
         fi
         persist_run_flags HARD || return 0
         if [ "${BRANCH_SELECTED:-}" = "branch-1-resume" ]; then
-            post_tracking_metadata false || true
+            post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
         fi
     fi
     # Resume-tail idempotency: see implement-bootstrap.md § Resume-tail idempotency
