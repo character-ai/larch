@@ -1,2 +1,6 @@
 larch:bc t=2026-05-28T21:24:24Z d=0 p=97081 s=ship-pr.sh c=progress text=→ ship-pr: checks
 larch:bc t=2026-05-28T21:28:25Z d=0 p=97081 s=ship-pr.sh c=progress text=→ ship-pr: version bump
+larch:bc t=2026-05-28T21:28:40Z d=0 p=64709 s=implement-finalize.sh c=progress text=✅ 8: larch-log status=complete elapsed=3s
+larch:bc t=2026-05-28T21:28:41Z d=0 p=64709 s=implement-finalize.sh c=progress text=✅ 8a: changelog status=complete to=v45.3.12 elapsed=1s
+larch:bc t=2026-05-28T21:28:41Z d=0 p=64709 s=implement-finalize.sh c=progress text=🔃 8b: rebase
+larch:bc t=2026-05-28T21:28:45Z d=0 p=97081 s=ship-pr.sh c=progress text=→ ship-pr: PR prep
