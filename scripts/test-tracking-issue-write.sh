@@ -92,12 +92,17 @@ out="$("$WRITE" append-comment --issue 42 --body-file "$body" --lifecycle-marker
 [[ "$out" == *"COMMENT_ID=7001"* ]] || fail "append COMMENT_ID missing: $out"
 grep -q '^<!-- larch:lifecycle-marker:pr-opened -->$' "$BODY_CAPTURE" || fail "lifecycle marker missing"
 
-echo "=== append-comment retries transient gh failure ==="
-export GH_COMMENT_FAIL_COUNT=2
+echo "=== append-comment does not retry transient gh failure ==="
+export GH_COMMENT_FAIL_COUNT=1
 export GH_COMMENT_COUNT_FILE="$TMP/comment-count"
-out="$("$WRITE" append-comment --issue 42 --body-file "$body" --repo owner/repo)"
-[[ "$out" == *"COMMENT_ID=7001"* ]] || fail "append transient COMMENT_ID missing: $out"
-[[ "$(cat "$GH_COMMENT_COUNT_FILE")" == "3" ]] || fail "append transient retry count mismatch: $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo missing)"
+set +e
+out="$("$WRITE" append-comment --issue 42 --body-file "$body" --repo owner/repo 2>&1)"
+rc=$?
+set -e
+[ "$rc" = "2" ] || fail "append transient exit $rc"
+[[ "$out" == *"FAILED=true"* ]] || fail "append transient FAILED missing: $out"
+[[ "$out" == *"Could not resolve host"* ]] || fail "append transient error missing: $out"
+[[ "$(cat "$GH_COMMENT_COUNT_FILE")" == "1" ]] || fail "append transient comment count mismatch: $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo missing)"
 unset GH_COMMENT_FAIL_COUNT GH_COMMENT_COUNT_FILE
 
 echo "=== lifecycle marker rejects comment terminator ==="

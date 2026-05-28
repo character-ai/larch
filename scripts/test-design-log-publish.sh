@@ -600,7 +600,7 @@ fi
 unset GH_STUB_CREATE_RC GH_STUB_PR_LIST_EMPTY
 rm -rf "$TMPCF"
 
-echo "=== pr create failure keeps remote branch when list recovery probe fails transiently ==="
+echo "=== pr create failure preserves remote branch when list recovery probe fails transiently ==="
 TMPCLF=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail-listfail.XXXXXX")
 clone_clf=$(setup_clone_with_origin_head "$TMPCLF")
 stub_clf="$TMPCLF/stub"
@@ -625,8 +625,8 @@ set -e
 [[ "$out_clf" == *"PUBLISH_OK=false"* ]] || fail "create-fail list-probe failure PUBLISH_OK: $out_clf"
 [[ "$rc_clf" -eq 1 ]] || fail "create-fail list-probe failure should exit 1 (got $rc_clf)"
 [[ "$out_clf" == *"RECOVERY_BRANCH=larch-log-design-RUNCREATEFAIL2"* ]] || fail "create-fail list-probe failure RECOVERY_BRANCH: $out_clf"
-if git -C "$clone_clf" ls-remote --exit-code --heads origin larch-log-design-RUNCREATEFAIL2 >/dev/null 2>&1; then
-    fail "create-fail list-probe failure should delete remote branch after inconclusive recovery"
+if ! git -C "$clone_clf" ls-remote --exit-code --heads origin larch-log-design-RUNCREATEFAIL2 >/dev/null 2>&1; then
+    fail "create-fail list-probe failure should preserve remote branch after inconclusive recovery"
 fi
 unset GH_STUB_CREATE_RC GH_STUB_PR_LIST_RC
 rm -rf "$TMPCLF"

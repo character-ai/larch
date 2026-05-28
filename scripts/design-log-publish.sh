@@ -69,6 +69,21 @@ emit_publish_result() {
     emit_kv PR_URL "${3:-}"
 }
 
+redact_diagnostic() {
+    local text=$1 redacted=""
+    if [ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ] && [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
+        redacted=$(printf '%s' "$text" | "$SCRIPT_DIR/redact-tmpdir-paths.sh" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null || true)
+        case "$redacted" in
+            *'[content truncated'*) redacted="" ;;
+        esac
+    fi
+    if [ -n "$redacted" ]; then
+        printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+    else
+        printf '%s' 'diagnostic redaction unavailable'
+    fi
+}
+
 if [[ -z "$DESIGN_TMPDIR" || -z "$RUN_ID" || -z "$ISSUE" ]]; then
     usage
     exit 1
@@ -623,7 +638,7 @@ else
 fi
 push_out=$_WTR_OUT
 if [[ "$push_rc" -ne 0 ]]; then
-    larch_err "design-log-publish: git push failed: ${push_out:-unknown}"
+    larch_err "design-log-publish: git push failed: $(redact_diagnostic "${push_out:-unknown}")"
     if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
         local_recovery_branch="larch-log-design-recovery-${RUN_ID}"
         git -C "$REPO_ROOT" branch -f "$local_recovery_branch" "$commit_sha" >/dev/null 2>&1 || true
@@ -664,6 +679,7 @@ if [[ "$create_rc" -eq 0 ]]; then
 fi
 
 if [[ -z "$PR_NUM" ]]; then
+    list_rc=1
     list_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-list.XXXXXX") || {
         larch_err "design-log-publish: mktemp failed for pr-list capture"
         emit_publish_result false
@@ -671,16 +687,20 @@ if [[ -z "$PR_NUM" ]]; then
     }
     if with_transient_retry transient_envelope_predicate_none "$list_fail_file" \
         gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
-        :
+        list_rc=0
+    else
+        list_rc=${_WTR_RC:-1}
     fi
     PR_NUM=$_WTR_OUT
     if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
         if [[ "$create_rc" -eq 0 ]]; then
-            larch_err "design-log-publish: gh pr create returned success but PR recovery found no open PR: ${create_out:-unknown}"
+            larch_err "design-log-publish: gh pr create returned success but PR recovery found no open PR: $(redact_diagnostic "${create_out:-unknown}")"
         else
-            larch_err "design-log-publish: gh pr create failed: ${create_out:-unknown}"
+            larch_err "design-log-publish: gh pr create failed: $(redact_diagnostic "${create_out:-unknown}")"
         fi
-        if [[ "$create_rc" -ne 0 ]]; then
+        if [[ "$list_rc" -ne 0 ]]; then
+            larch_err "design-log-publish: gh pr list recovery was inconclusive; preserving pushed branch ${WT_BRANCH}"
+        elif [[ "$create_rc" -ne 0 ]]; then
             git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
         fi
         rm -f "$list_fail_file"

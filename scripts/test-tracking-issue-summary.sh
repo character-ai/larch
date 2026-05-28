@@ -102,12 +102,16 @@ out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:plan v1 runid=ab
 grep -q '^<!-- larch:plan v1 runid=abc123 -->$' "$BODY_CAPTURE"
 grep -q '<REDACTED-TOKEN>' "$BODY_CAPTURE"
 
-echo "=== create path retries transient comment failure ==="
-export GH_COMMENT_FAIL_COUNT=2
+echo "=== create path does not retry transient comment failure ==="
+export GH_COMMENT_FAIL_COUNT=1
 export GH_COMMENT_COUNT_FILE="$TMP/comment-count"
-out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:plan v1 runid=abc123 -->' --content-file "$content" --repo owner/repo)"
-[[ "$out" == *"UPDATED=false"* ]] || { echo "FAIL: transient create did not report UPDATED=false: $out" >&2; exit 1; }
-[[ "$(cat "$GH_COMMENT_COUNT_FILE")" == "3" ]] || { echo "FAIL: transient create retry count mismatch: $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo missing)" >&2; exit 1; }
+set +e
+out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:plan v1 runid=abc123 -->' --content-file "$content" --repo owner/repo 2>&1)"
+rc=$?
+set -e
+[[ "$rc" == "2" ]] || { echo "FAIL: transient create exit $rc" >&2; exit 1; }
+[[ "$(cat "$GH_COMMENT_COUNT_FILE")" == "1" ]] || { echo "FAIL: transient create comment count mismatch: $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo missing)" >&2; exit 1; }
+[[ "$out" == *"gh issue comment failed"* ]] || { echo "FAIL: transient create error missing: $out" >&2; exit 1; }
 unset GH_COMMENT_FAIL_COUNT GH_COMMENT_COUNT_FILE
 
 echo "=== update path ==="
