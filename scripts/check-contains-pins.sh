@@ -255,6 +255,61 @@ function trim_leading_ws(text) {
     sub(/^[[:space:]]+/, "", text)
     return text
 }
+function unescape_double_body(body,    i, c, nxt, out) {
+    out = ""
+    for (i = 1; i <= length(body); i++) {
+        c = substr(body, i, 1)
+        if (c == "\\" && i < length(body)) {
+            nxt = substr(body, i + 1, 1)
+            if (nxt == "$" || nxt == "\"" || nxt == "\\") {
+                out = out nxt
+                i++
+            } else {
+                out = out c nxt
+                i++
+            }
+        } else {
+            out = out c
+        }
+    }
+    return out
+}
+function scan_double_quoted(rest,    i, c, body, bare_dollar, pending_escape) {
+    SCAN_LITERAL = ""
+    SCAN_BARE_DOLLAR = 0
+    SCAN_REST = ""
+    body = ""
+    bare_dollar = 0
+    pending_escape = 0
+    for (i = 1; i <= length(rest); i++) {
+        c = substr(rest, i, 1)
+        if (pending_escape) {
+            body = body "\\" c
+            pending_escape = 0
+            continue
+        }
+        if (c == "\\") {
+            if (i == length(rest)) {
+                return 0
+            }
+            pending_escape = 1
+            continue
+        }
+        if (c == "$") {
+            bare_dollar = 1
+            body = body c
+            continue
+        }
+        if (c == "\"") {
+            SCAN_LITERAL = unescape_double_body(body)
+            SCAN_BARE_DOLLAR = bare_dollar
+            SCAN_REST = substr(rest, i + 1)
+            return 1
+        }
+        body = body c
+    }
+    return 0
+}
 function parse_contains(text, line_no,    rest, var_end, var, quote, literal_end, literal) {
     if (!match(text, /^[[:space:]]*contains[[:space:]]+/)) {
         return
@@ -278,18 +333,27 @@ function parse_contains(text, line_no,    rest, var_end, var, quote, literal_end
         return
     }
     rest = substr(rest, 2)
-    literal_end = index(rest, quote)
-    if (literal_end == 0) {
-        emit("SKIP", line_no, var, "")
-        return
+    if (quote == "\"") {
+        if (!scan_double_quoted(rest)) {
+            emit("SKIP", line_no, var, "")
+            return
+        }
+        literal = SCAN_LITERAL
+        rest = SCAN_REST
+        if (SCAN_BARE_DOLLAR) {
+            emit("SKIP", line_no, var, "")
+            return
+        }
+    } else {
+        literal_end = index(rest, quote)
+        if (literal_end == 0) {
+            emit("SKIP", line_no, var, "")
+            return
+        }
+        literal = substr(rest, 1, literal_end - 1)
+        rest = substr(rest, literal_end + 1)
     }
-    literal = substr(rest, 1, literal_end - 1)
-    rest = substr(rest, literal_end + 1)
     if (rest !~ /^[[:space:]]+/) {
-        emit("SKIP", line_no, var, "")
-        return
-    }
-    if (quote == "\"" && index(literal, "$") > 0) {
         emit("SKIP", line_no, var, "")
         return
     }

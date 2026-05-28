@@ -8,25 +8,25 @@ It proves the lint accepts a fully compliant fixture and rejects each supported 
 
 ## Fixture Shape
 
-The harness builds temporary fixture roots for:
+The harness stages `scripts/lint-readability-preamble.tsv` into each fixture root and derives paths from the same awk-based reader as the lint (see `scripts/lint-readability-preamble.tsv.md`). Helpers:
 
-- compliant: every manifest file contains the required line for its variant.
-- external-prompt non-compliant: one external prompt file omits the `<READABILITY_STYLE>` line.
-- orchestrator-inline non-compliant: one inline composition file has no MANDATORY readability directive.
-- orchestrator-inline partial-count: a multi-directive inline composition file has fewer MANDATORY readability directives than the manifest requires.
-- orchestrator-inline missing-file: a manifest-row file is absent from the fixture root.
+- `stage_manifest <root> [tsv-path]` — copy manifest into `$root/scripts/`
+- `write_skill_md_with_steps <root> <count_per_step>` — SKILL.md with `<!-- step:2b|3b|4|5 -->` markers
 
-Each fixture mirrors only the paths named in the lint manifest.
+Fixture cases:
+
+- compliant: every manifest file satisfies its variant.
+- external-bad / orchestrator-bad / orchestrator-partial / orchestrator-missing-file: baseline regressions.
+- sketch-bare-token-rejected: four bare `<READABILITY_STYLE>` tokens without four sketch exact lines.
+- placement-missing-step: file-level count passes; step `4` body lacks a directive.
+- placement-correct: one directive in each of steps `2b`, `3b`, `4`, `5`.
+- b6-extended / b6-negative: extra TSV row with/without matching fixture file.
+- malformed-tsv: empty `expected_count` → lint exit 2.
 
 ## Assertions
 
-The harness asserts:
-
-- compliant fixture exits 0 with empty stderr.
-- the external-prompt failure exits non-zero and names the offending path.
-- orchestrator-inline count failures exit non-zero and report expected/found counts.
-- the absent orchestrator-inline file exits non-zero with the generic missing-directive message.
+The harness asserts exit codes and stderr substrings for each case above, plus manifest row-count parity (11 rows) with the repo TSV.
 
 ## Edit-in-sync
 
-Update this file with `scripts/test-lint-readability-preamble.sh`, `scripts/lint-readability-preamble.sh`, and `scripts/lint-readability-preamble.md` when the manifest or accepted line patterns change.
+Update this file with `scripts/test-lint-readability-preamble.sh`, `scripts/lint-readability-preamble.sh`, `scripts/lint-readability-preamble.tsv`, and `scripts/lint-readability-preamble.md` when the manifest or accepted line patterns change.

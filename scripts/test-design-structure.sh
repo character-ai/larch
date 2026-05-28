@@ -47,6 +47,8 @@ contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pa
 contains "$SKILL_MD" '--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"' 'SKILL must pass convergence-threshold to plan-review-loop'
 contains "$SKILL_MD" '.step3-plan-review-result.env' 'SKILL must source step3 plan-review result env'
 contains "$SKILL_MD" 'result env is a symlink; ignoring it and using stdout fallback only' 'SKILL missing symlink-safe step3 result env warning'
+# A1 (#3091): double-quoted contains pin above is verified by check-contains-pins escape-aware scanner.
+contains "$SKILL_MD" "--round-num \"\${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}\"" 'SKILL must pass persisted Step 3 round number'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'
 contains "$SKILL_MD" 'read-design-classification.sh' 'SKILL missing classification reader'
 contains "$SKILL_MD" '.step3-review-cap.env' 'SKILL missing persisted Step 3 cap state file'
