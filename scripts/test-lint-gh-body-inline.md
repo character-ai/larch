@@ -4,9 +4,13 @@ Black-box regression harness for `scripts/lint-gh-body-inline.sh`. It invokes
 `bash scripts/lint-gh-body-inline.sh --root "$TMPROOT"` against isolated
 `mktemp -d` fixture roots and verifies clean file-backed callers pass, inline
 `--body` and `--notes` fail, heredoc-substituted bodies fail, full-line comments
-and same-line `# lint-gh-body-inline: ok <reason>` suppressions are ignored,
-`--body-file` / `--notes-file` variants pass, Python argv-list calls are covered,
-and tracked `larch-logs/` files are excluded from the git enumeration branch.
+and trailing `# lint-gh-body-inline: ok <reason>` suppressions are honored,
+non-comment pragma strings do not suppress, `--body-file` / `--notes-file`
+variants pass, Python argv-list calls are covered in both double-quoted and
+single-quoted forms, GNU `--body=...` is rejected, untracked git-worktree
+violations are detected, git-to-find fallback parity is covered by removing
+`.git`, and tracked `larch-logs/` files are excluded from the git enumeration
+branch.
 
 Bad fixtures are assembled at write time so the harness source itself contains
 no command-like `gh` token on the same physical line as inline `--body` or

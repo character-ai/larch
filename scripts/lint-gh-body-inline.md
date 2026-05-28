@@ -17,8 +17,9 @@ The scan is intentionally line-based. It matches shell-command form
 (`gh issue comment ...`), command substitution form (`$(gh ...)`), and Python
 argv-list form (`["gh", ...]` / `['gh', ...]`). It does not match `gh-foo`,
 `*.gh.log`, or `"$gh"` variable references. A same-line
-`# lint-gh-body-inline: ok <reason>` suppresses intentional fixture or static
-pattern lines; use it narrowly and include a reviewable reason.
+trailing `# lint-gh-body-inline: ok <reason>` comment suppresses intentional
+fixture or static pattern lines; strings or other non-comment occurrences of
+that text do not. Use it narrowly and include a reviewable reason.
 
 Known limitation: the linter does not catch multi-line invocations where `gh`
 and `--body` / `--notes` appear on separate source lines, such as a

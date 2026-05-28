@@ -62,6 +62,13 @@ write_python_body_case() {
     printf 'import subprocess\nsubprocess.run(["%s", "issue", "create", "%s", "x"])\n' "gh" "$body_opt" >"$path"
 }
 
+write_python_body_case_single_quotes() {
+    local path="$1"
+    local body_opt='--body'
+    mkdir -p "$(dirname "$path")"
+    printf "import subprocess\nsubprocess.run(['%s', 'issue', 'create', '%s', 'x'])\n" "gh" "$body_opt" >"$path"
+}
+
 run_lint() {
     local stderr_file="$1"
     set +e
@@ -166,6 +173,27 @@ assert_case "non-git fallback" 1 "$stderr_file" "$rc" \
     "scripts/fallback-bad.sh:1:" \
     "inline g""h --body is forbidden"
 
+if command -v git >/dev/null 2>&1; then
+    reset_tree
+    (
+        cd "$TMPROOT"
+        git init -q
+    )
+    write_body_case "$TMPROOT/scripts/parity-bad.sh"
+    rc="$(run_lint "$stderr_file")"
+    assert_case "git branch detects bad file" 1 "$stderr_file" "$rc" \
+        "scripts/parity-bad.sh:1:" \
+        "inline g""h --body is forbidden"
+    rm -rf "$TMPROOT/.git"
+    rc="$(run_lint "$stderr_file")"
+    assert_case "git-to-find fallback parity" 1 "$stderr_file" "$rc" \
+        "scripts/parity-bad.sh:1:" \
+        "inline g""h --body is forbidden"
+else
+    printf 'SKIP [git branch detects bad file]: git not on PATH\n'
+    printf 'SKIP [git-to-find fallback parity]: git not on PATH\n'
+fi
+
 reset_tree
 write_python_body_case "$TMPROOT/scripts/bad-python.py"
 rc="$(run_lint "$stderr_file")"
@@ -174,11 +202,36 @@ assert_case "python argv-list body" 1 "$stderr_file" "$rc" \
     "inline g""h --body is forbidden"
 
 reset_tree
+write_python_body_case_single_quotes "$TMPROOT/scripts/bad-python-single.py"
+rc="$(run_lint "$stderr_file")"
+assert_case "python argv-list body single quotes" 1 "$stderr_file" "$rc" \
+    "scripts/bad-python-single.py:2:" \
+    "inline g""h --body is forbidden"
+
+reset_tree
 write_file "$TMPROOT/scripts/good-python.py" \
     'import subprocess' \
     'subprocess.run(["gh", "issue", "create", "--body-file", "x"])'
 rc="$(run_lint "$stderr_file")"
 assert_case "python argv-list body-file" 0 "$stderr_file" "$rc"
+
+reset_tree
+body_opt='--body'
+write_file "$TMPROOT/scripts/bad-body-equals.sh" \
+    "$(printf '%s issue comment 1 %s=%s\n' "gh" "$body_opt" '"hi"')"
+rc="$(run_lint "$stderr_file")"
+assert_case "inline body equals form" 1 "$stderr_file" "$rc" \
+    "scripts/bad-body-equals.sh:1:" \
+    "inline g""h --body is forbidden"
+
+reset_tree
+body_opt='--body'
+write_file "$TMPROOT/scripts/pragma-string.sh" \
+    "$(printf 'note=%s; %s issue comment 1 %s "hi"\n' '"# lint-gh-body-inline: ok not-a-comment"' "gh" "$body_opt")"
+rc="$(run_lint "$stderr_file")"
+assert_case "pragma string does not suppress" 1 "$stderr_file" "$rc" \
+    "scripts/pragma-string.sh:1:" \
+    "inline g""h --body is forbidden"
 
 if command -v git >/dev/null 2>&1; then
     reset_tree
@@ -193,8 +246,20 @@ if command -v git >/dev/null 2>&1; then
     )
     rc="$(run_lint "$stderr_file")"
     assert_case "tracked larch-logs excluded" 0 "$stderr_file" "$rc"
+
+    reset_tree
+    (
+        cd "$TMPROOT"
+        git init -q
+    )
+    write_body_case "$TMPROOT/scripts/untracked-git-bad.sh"
+    rc="$(run_lint "$stderr_file")"
+    assert_case "untracked git worktree bad file" 1 "$stderr_file" "$rc" \
+        "scripts/untracked-git-bad.sh:1:" \
+        "inline g""h --body is forbidden"
 else
     printf 'SKIP [tracked larch-logs excluded]: git not on PATH\n'
+    printf 'SKIP [untracked git worktree bad file]: git not on PATH\n'
 fi
 
 rm -f "$stderr_file"

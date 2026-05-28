@@ -84,7 +84,7 @@ scan_file() {
         }
         {
             line = $0
-            if (line ~ /lint-gh-body-inline: ok/) next
+            if (line ~ /(^|[[:space:]])#[[:space:]]*lint-gh-body-inline: ok([[:space:]].*)?$/) next
             if (line ~ /^[[:space:]]*#/) next
 
             if (line ~ gh_re && line ~ /--body[^-]/) report("--body", "--body-file") # lint-gh-body-inline: ok linter pattern
