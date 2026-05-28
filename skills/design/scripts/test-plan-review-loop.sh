@@ -1744,4 +1744,131 @@ tagged_fenced_count=$(grep -c '^duplicate tagged fenced$' "$DDED/plan.txt" || tr
 [[ "$fenced_count" == "1" ]] || fail "fenced duplicates should collapse"
 [[ "$tagged_fenced_count" == "1" ]] || fail "language-tagged fenced duplicates should collapse"
 
+echo "=== post-apply: unclosed fence does not disable Constraints protection ==="
+DUNCLOSED="$TMP/unclosed-fence"
+mkdir -p "$DUNCLOSED"
+cat >"$DUNCLOSED/plan.txt" <<'PLAN'
+## Intro
+
+```bash
+body line one
+body line two
+
+## Constraints
+
+duplicate-constraint-line
+duplicate-constraint-line
+
+diff_lines: 1
+PLAN
+export DESIGN_TMPDIR="$DUNCLOSED"
+export CLAUDE_PLUGIN_ROOT="$ROOT"
+export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
+export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
+export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export LARCH_QUIET_DISABLE=1
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+dedup_unclosed_log=$(
+    bash -c '
+        set -euo pipefail
+        # shellcheck disable=SC1091
+        source "$1/scripts/lib-quiet.sh"
+        larch_quiet_init
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT
+        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        _run_post_apply_pipeline 1
+    ' _ "$ROOT" "$PLR" 2>&1
+)
+constraint_dup_count=$(grep -c '^duplicate-constraint-line$' "$DUNCLOSED/plan.txt" || true)
+[[ "$constraint_dup_count" == "2" ]] || fail "unclosed fence must not collapse Constraints duplicates"
+dedup_unclosed_line_count=$(
+    printf '%s\n' "$dedup_unclosed_log" | grep -cFx 'dedup-sweep: removed 0 duplicate line(s) from plan.txt' || true
+)
+[[ "$dedup_unclosed_line_count" == "1" ]] || fail "unclosed-fence dedup should log removed 0 exactly once"
+
+echo "=== post-apply: python failure restores backup and cleans it up ==="
+DPFAIL="$TMP/dedup-python-failure"
+mkdir -p "$DPFAIL"
+printf 'mutated plan\n\ndiff_lines: 2\n' >"$DPFAIL/plan.txt"
+backup_pyfail="$(mktemp "$DPFAIL/.plan-before-revise.XXXXXX")"
+printf 'restored from backup\n\ndiff_lines: 1\n' >"$backup_pyfail"
+cat >"$STUB/python3" <<'EOS'
+#!/usr/bin/env bash
+exit 7
+EOS
+chmod +x "$STUB/python3"
+export DESIGN_TMPDIR="$DPFAIL"
+export CLAUDE_PLUGIN_ROOT="$ROOT"
+export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
+export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
+export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export LARCH_QUIET_DISABLE=1
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+set +e
+dedup_pyfail_log=$(
+    PATH="$STUB:$PATH" bash -c '
+        set -euo pipefail
+        # shellcheck disable=SC1091
+        source "$1/scripts/lib-quiet.sh"
+        larch_quiet_init
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT PATH
+        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        _run_post_apply_pipeline 1 "$3"
+    ' _ "$ROOT" "$PLR" "$backup_pyfail" 2>&1
+)
+pyfail_rc=$?
+set -e
+[[ "$pyfail_rc" == "1" ]] || fail "python failure should return 1"
+printf '%s\n' "$dedup_pyfail_log" | grep -q 'LOOP_REASON=dedup-python-failed' && fail "helper should not print LOOP_REASON directly"
+[[ "$(cat "$DPFAIL/plan.txt")" == "$(cat "$backup_pyfail" 2>/dev/null || printf 'restored from backup\n\ndiff_lines: 1\n')" ]] || fail "python failure should restore plan from backup"
+[[ ! -e "$backup_pyfail" ]] || fail "python failure should remove pre-revise backup"
+compgen -G "$DPFAIL/.plan-dedup.*" >/dev/null && fail "python failure should clean temporary dedup file"
+rm -f "$STUB/python3"
+
+echo "=== post-apply: non-numeric dedup output restores backup and cleans it up ==="
+DPNONNUM="$TMP/dedup-nonnumeric"
+mkdir -p "$DPNONNUM"
+printf 'mutated plan\n\ndiff_lines: 2\n' >"$DPNONNUM/plan.txt"
+backup_nonnumeric="$(mktemp "$DPNONNUM/.plan-before-revise.XXXXXX")"
+printf 'restored nonnumeric backup\n\ndiff_lines: 1\n' >"$backup_nonnumeric"
+cat >"$STUB/python3" <<'EOS'
+#!/usr/bin/env bash
+cat >/dev/null
+printf 'bogus\n'
+EOS
+chmod +x "$STUB/python3"
+export DESIGN_TMPDIR="$DPNONNUM"
+export CLAUDE_PLUGIN_ROOT="$ROOT"
+export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
+export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
+export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export LARCH_QUIET_DISABLE=1
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+set +e
+dedup_nonnumeric_log=$(
+    PATH="$STUB:$PATH" bash -c '
+        set -euo pipefail
+        # shellcheck disable=SC1091
+        source "$1/scripts/lib-quiet.sh"
+        larch_quiet_init
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT PATH
+        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        _run_post_apply_pipeline 1 "$3"
+    ' _ "$ROOT" "$PLR" "$backup_nonnumeric" 2>&1
+)
+nonnumeric_rc=$?
+set -e
+[[ "$nonnumeric_rc" == "1" ]] || fail "non-numeric dedup output should return 1"
+printf '%s\n' "$dedup_nonnumeric_log" | grep -q 'dedup-sweep:' && fail "non-numeric dedup output should fail before dedup success log"
+[[ "$(cat "$DPNONNUM/plan.txt")" == "$(cat "$backup_nonnumeric" 2>/dev/null || printf 'restored nonnumeric backup\n\ndiff_lines: 1\n')" ]] || fail "non-numeric dedup output should restore plan from backup"
+[[ ! -e "$backup_nonnumeric" ]] || fail "non-numeric dedup output should remove pre-revise backup"
+compgen -G "$DPNONNUM/.plan-dedup.*" >/dev/null && fail "non-numeric dedup output should clean temporary dedup file"
+rm -f "$STUB/python3"
+
 printf '%s\n' "test-plan-review-loop: ok"

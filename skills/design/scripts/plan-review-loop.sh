@@ -497,18 +497,17 @@ _run_post_apply_pipeline() {
     local plan_path="$DESIGN_TMPDIR/plan.txt"
     local dedup_tmp dedup_removed
     dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
-    dedup_removed=$(python3 - "$plan_path" "$dedup_tmp" <<'PY'
+    if ! dedup_removed=$(python3 - "$plan_path" "$dedup_tmp" <<'PY'
 import re
 import sys
 
 src, dest = sys.argv[1:3]
 heading_re = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
+fence_re = re.compile(r"^(\x60{3,})(.*)$")
 removed = 0
 prev_key = None
 inside_constraints = False
 constraints_level = None
-in_fence = False
-fence_len = 0
 out = []
 
 
@@ -516,24 +515,12 @@ def norm_key(line: str) -> str:
     return " ".join(line.strip().split())
 
 
-def update_section_state(line: str) -> None:
-    global inside_constraints, constraints_level, in_fence, fence_len
-    stripped = line.strip()
-    m = re.match(r"^(\x60{3,})(.*)$", stripped)
-    if m:
-        ticks = len(m.group(1))
-        suffix = m.group(2)
-        if not in_fence:
-            in_fence = True
-            fence_len = ticks
-            return
-        if ticks >= fence_len and suffix.strip() == "":
-            in_fence = False
-            fence_len = 0
-            return
-        return
-    if in_fence:
-        return
+def is_fence_marker(line: str) -> bool:
+    return fence_re.match(line.strip()) is not None
+
+
+def update_heading_state(line: str) -> None:
+    global inside_constraints, constraints_level
     m = heading_re.match(line)
     if not m:
         return
@@ -551,24 +538,64 @@ def update_section_state(line: str) -> None:
 
 
 with open(src, encoding="utf-8", errors="replace") as fh:
-    for line in fh:
-        update_section_state(line)
-        m = heading_re.match(line)
-        if m and not in_fence:
-            prev_key = None
-        key = norm_key(line)
-        protected = inside_constraints and not in_fence
-        if key and prev_key == key and not protected:
-            removed += 1
-            continue
-        out.append(line)
-        prev_key = key
+    lines = fh.readlines()
+
+# Pass 1: balanced opener/closer pairs only; indices strictly between mark in-fence.
+in_fence_lines: set[int] = set()
+stack: list[tuple[int, int]] = []
+for i, line in enumerate(lines):
+    stripped = line.strip()
+    m = fence_re.match(stripped)
+    if not m:
+        continue
+    ticks = len(m.group(1))
+    suffix = m.group(2)
+    if not stack:
+        stack.append((i, ticks))
+    else:
+        top_i, top_ticks = stack[-1]
+        if ticks >= top_ticks and suffix.strip() == "":
+            stack.pop()
+            for j in range(top_i + 1, i):
+                in_fence_lines.add(j)
+        # failed closer: stack unchanged (plain text semantics)
+
+for i, line in enumerate(lines):
+    in_fence = i in in_fence_lines
+    if not in_fence and not is_fence_marker(line):
+        update_heading_state(line)
+    m = heading_re.match(line)
+    if m and not in_fence:
+        prev_key = None
+    key = norm_key(line)
+    protected = inside_constraints and not in_fence
+    if key and prev_key == key and not protected:
+        removed += 1
+        continue
+    out.append(line)
+    prev_key = key
 
 with open(dest, "w", encoding="utf-8") as fh:
     fh.writelines(out)
 print(removed)
 PY
-)
+    ); then
+        rm -f "$dedup_tmp"
+        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+        rm -f "$plan_backup"
+        LOOP_STATUS=emit-plan-failed
+        LOOP_REASON=dedup-python-failed
+        return 1
+    fi
+    # dedup_removed must be a non-negative integer; empty means the Python pass failed
+    if [[ ! "$dedup_removed" =~ ^[0-9]+$ ]]; then
+        rm -f "$dedup_tmp"
+        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+        rm -f "$plan_backup"
+        LOOP_STATUS=emit-plan-failed
+        LOOP_REASON=dedup-python-failed
+        return 1
+    fi
     mv -f "$dedup_tmp" "$plan_path"
     printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
     local emit_out emit_rc
