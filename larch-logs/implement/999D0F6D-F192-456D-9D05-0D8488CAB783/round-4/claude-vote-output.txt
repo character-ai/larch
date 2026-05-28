@@ -1,0 +1,37 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- module-global _SAPCF_EFFECTIVE_HEAD is self-contained to this pair of functions; an out-param would add complexity exceeding the nit's benefit
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- reviewer's own text defers until a third consumer; abstraction is premature here
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- minor doc example clarity; not worth a separate issue
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- single-pass limitation is by design; plan acknowledges the tradeoff
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_4
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- duplicate of FINDING_3
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- CHANGELOG categorization is too trivial for a standalone GitHub issue
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- root-cause narrative mismatch is addressed by plan non-goals; too trivial for a separate issue
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_4
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- POSIX-class exclusion is an explicit plan non-goal, not a finding
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_11
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- duplicate of FINDING_3
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security attestation stating no injection issue; not a finding
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- path-traversal attestation stating no issue; not a finding
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- secrets attestation stating no issues; not a finding
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- authZ attestation stating no escalation issue; not a finding
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- DoS attestation stating no issue; not a finding
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_4
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_1
+FINDING_29: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_30: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_12
+FINDING_31: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- duplicate of FINDING_3
+FINDING_32: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_6
+FINDING_33: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing naming cosmetic; too minor for an issue
+FINDING_34: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_35: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_8; same root cause
+FINDING_36: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- file command without explicit 4KB cap is acceptable; plan note was descriptive not prescriptive
+FINDING_37: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_2

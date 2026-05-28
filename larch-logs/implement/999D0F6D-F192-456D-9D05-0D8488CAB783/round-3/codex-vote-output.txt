@@ -1,0 +1,20 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- `substr(` does not contain the contiguous `sub(` token the scanner matches.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The maintainability concern is real but too broad to warrant more abstraction in this narrow lint.
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The doc drift is real, but the Claude Bash wrapper risk does not apply to a normal shell harness.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The changelog categorization is debatable and not worth churn for a fix-oriented issue.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Double-quoted awk body support would add parsing complexity beyond the documented single-quoted/heredoc scope.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The default stub behavior could mislead future tests, but current targeted coverage handles the no-commit path.
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The example could distract, but the contract also explicitly says POSIX-class linting is out of scope.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The older feature text is imprecise, but the implemented docs and plan clarify multibyte-only scope.
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The branch is straightforward and the missing negative test is not worth expanding this already large harness.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Worth tightening while fixing the fixture suppressions, but too small as an independent finding.
+FINDING_14: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=no-fix UNCERTAIN=true -- The reviewed plan documents the POSIX-class hypothesis as superseded by the multibyte root cause.
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The current readability-preamble awk regex is already ASCII-only for the new lint’s scanned contexts.
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Source-line echoing is a broad lint-family tradeoff, not a concrete branch-specific issue.
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The path is built from repo-enumerated relative paths, so the stated traversal hardening issue is not concrete.
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Untracked files are intentionally not committed unless allowlisted; fallback escalation is acceptable here.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- A trailing backslash at EOF is too marginal to justify additional scanner complexity.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The filename mismatch only affects traceability, not behavior.

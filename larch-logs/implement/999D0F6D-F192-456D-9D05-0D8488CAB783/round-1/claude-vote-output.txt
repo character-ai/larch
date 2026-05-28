@@ -1,0 +1,26 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- structural duplication concern is legitimate but refactoring for a nit adds more complexity than warranted
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- double-quoted awk bodies are rare in practice; adding that coverage path adds non-trivial parsing complexity
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- end-of-file trailing continuation with awk body is an extremely narrow edge case
+FINDING_4: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- unknown-HEAD returning 0 is explicitly documented as the intentional conservative fallback in the plan's edge cases section
+FINDING_6: EXONERATE CORRECTNESS=uncertain SEVERITY=latent QUALITY=weak UNCERTAIN=true -- cannot verify make_repo README mutation behavior without seeing implementation; latent concern only
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the omission of dac0d00c from the test doc is intentional per the plan (wrong-hypothesis note); not an accidental inconsistency
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the plan explicitly documents that any HEAD advance (including lint-fix-loop) suppresses escalation; this is intentional design
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- follows from FINDING_8 exoneration; refresh-run-logs masking is an accepted consequence of the intentional design
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- pipeline suffix mis-scan is a real edge case but fixing it adds parser complexity beyond the lint's stated scope
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- whitespace-bounded tilde is an explicit plan design choice to reduce false positives on identifiers; unspaced forms are rare for the non-ASCII bug class
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- changelog categorization is subjective; the ship-pr change is legitimately "Fixed"
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the key assertions (exit 3, BAIL_REASON, detail log) are present; STALL_STEP negative assertion is nice-to-have
+FINDING_17: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- cannot verify without seeing implementation; maintainability nit only
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- plan explicitly scopes this out with explanation; POSIX class portability is a distinct concern from multi-byte UTF-8
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-commit-invoked local lint with no remote execution surface; risk is negligible
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- mirrors pre-existing pattern across sibling lints; broader hardening is out of scope
+FINDING_22: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pushing an unchanged tip is harmless; re-architecting the check order adds complexity
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- pre-existing quirk unrelated to this change; OOS filing would be valid but the concern warrants EXONERATE given it is not introduced here
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- functionally equivalent; traceability nit does not warrant a finding

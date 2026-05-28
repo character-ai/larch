@@ -1,0 +1,16 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- refresh-run-logs HEAD advance is an explicit tested success path, not an accidental bypass
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- cross-line Rule 2 gap is real but rare for this line-oriented static lint
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- double-quoted awk bodies are uncommon; fixing adds parser complexity beyond current scope
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- skipping non-awk generic heredocs is intentional (harness case 16)
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- default launcher commits are deliberate for #3134; no demonstrated failing case cited
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- inner-loop count drift is hypothetical; harness still encodes expected behavior
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- POSIX [[:class:]] in dynamic awk regex is a real uncovered regression class worth an OOS issue
+FINDING_8: NO CORRECTNESS=uncertain SEVERITY=nit QUALITY=no-fix UNCERTAIN=true -- CI timeout risk is speculative without measured shard regression
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- breadcrumb says "no commits" even when refresh-run-logs may have advanced HEAD
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- retry accounting can advance on non-vendor CI-fix commits; worth tracking separately
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- contract doc says 18 cases but harness implements 19 including non-awk heredoc guard
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- docs/linting.md test row omits heredoc/continuation cases present in the harness
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- #3134 comment requirement applies to tier-order cases already annotated, not all inner-loop tests
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- open_single_quoted_body advances rest only past the opening quote after quoted -v values
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- four-space indentation in one heredoc stub line is cosmetic only
+FINDING_16: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- literal 0 as assert_negative rc is misleading when the shared lint run exited 1
