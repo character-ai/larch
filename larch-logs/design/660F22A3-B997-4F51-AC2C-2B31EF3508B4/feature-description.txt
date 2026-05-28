@@ -1,0 +1,17 @@
+[OOS] Shared voter/tally infrastructure hardening — library reuse coupling, path validation, and emit_kv newline safety
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Panel (cursor-specialist-structure, dyn-shell-trap-semantics, cursor-specialist-security)
+**Phase**: implement
+**Vote tally**: FINDING_1 YES=3; FINDING_11 YES=2 EXON=1; FINDING_12 YES=3
+
+## Description
+
+Three related infrastructure hardening items surfaced during review of issue #2869 (piece 3 of 5):
+  (1) `scripts/lib-voter-coverage.sh` exposes functions that look generic but embed plan-review-specific KV ordering incompatible with `dispatch-code-voters.sh`; future consolidation of plan- and code-review dispatch would require explicit refactoring of `voter_coverage_emit_status_block` to avoid silently breaking stdout parsers (FINDING_1, cursor-specialist-structure + dyn-shell-trap-semantics).
+  (2) `--design-tmpdir` in `skills/design/scripts/tally-plan-review.sh` (and `scripts/dispatch-plan-voters.sh`) accepts any caller-supplied path without realpath canonicalization or prefix validation; a misconfigured orchestrator could write tally artifacts to unintended locations (FINDING_11, cursor-specialist-security).
+  (3) `emit_kv` in `scripts/lib-quiet.sh` leaves embedded newlines in values unescaped, so a path value containing `\n` could split the FD 3 contract stream for line-oriented parsers (FINDING_12, cursor-specialist-security).
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

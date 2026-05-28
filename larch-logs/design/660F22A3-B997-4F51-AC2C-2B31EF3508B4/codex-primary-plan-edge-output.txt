@@ -1,0 +1,19 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	scripts/lib-design-tmpdir.sh:1	Parent-only canonicalization still allows a final-component symlink	/tmp/design-session can be a symlink to an outside directory; the helper resolves only /tmp plus basename, passes the allowlist, and later callers write outside the approved tmp roots	Reject a symlink final component or canonicalize an existing final directory and re-check that resolved leaf against the allowlist; add a final-symlink regression case
+1	in_scope	latent	integration	skills/design/scripts/emit-design-plan-preview.sh:6	Planned validator call relies on larch_err but this script does not source lib-quiet	When validation fails in emit-design-plan-preview.sh, lib-design-tmpdir.sh calls an undefined larch_err instead of producing the intended diagnostic	Also source scripts/lib-quiet.sh before lib-design-tmpdir.sh in this script, or give lib-design-tmpdir.sh a tiny stderr fallback when larch_err is undefined
+
+1. [security] `scripts/lib-design-tmpdir.sh:1`
+
+Concern: the proposed parent-resolve + basename algorithm misses the final path component when it is already a symlink.
+
+Scenario: `/tmp/design-session` points to `/var/target`. The helper canonicalizes `/tmp`, appends `design-session`, sees an allowed `/tmp/...` path, then callers write through the symlink outside the allowlist.
+
+Suggested revision: reject `-L "$resolved"` before returning success, or canonicalize an existing final directory and re-check that leaf path against the same normalized allowlist. Add a test for a final-component symlink, not only a parent symlink.
+
+2. [integration] `skills/design/scripts/emit-design-plan-preview.sh:6`
+
+Concern: the plan adds `lib-design-tmpdir.sh` to this script, but the script currently does not source `lib-quiet.sh`. The new helper’s diagnostics use `larch_err`.
+
+Scenario: an invalid `--design-tmpdir` path in this script can fail as `larch_err: command not found`, which weakens the hardening path and makes the failure harder to recover from.
+
+Suggested revision: source `scripts/lib-quiet.sh` before the helper in `emit-design-plan-preview.sh`, or make `lib-design-tmpdir.sh` fall back to `printf ... >&2` when `larch_err` is not defined.

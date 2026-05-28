@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/session-setup.sh:241-277; scripts/lib-design-tmpdir.sh:1	Planned default allowlist does not match session root semantics and compares canonical paths to non-canonical prefixes	With XDG_CACHE_HOME set, session-setup creates DESIGN_TMPDIR under $XDG_CACHE_HOME/larch/sessions, but the validator only allows $HOME/.cache/larch/sessions. On macOS, /tmp and /var-style TMPDIR paths may canonicalize to /private/... and fail textual prefix checks.	Build default prefixes from ${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions plus TMPDIR and /tmp, then canonicalize allowed prefixes with the same physical-path logic before comparison.
+1	in_scope	important	security	scripts/lib-design-tmpdir.sh:1	Validator creates the untrusted parent before enforcing the allowlist	A disallowed value like <OPERATOR_REPO_PATH>/session can cause mkdir -p /Users/me/larch-bad before the helper rejects it, so the hardening path still writes outside the allowed roots.	Do not mkdir untrusted parents before validation. Canonicalize the nearest existing ancestor, append unresolved components for comparison, and only create the parent after the resolved path is proven under an allowed prefix.
+
+1. [correctness] `scripts/session-setup.sh:241-277`; planned `scripts/lib-design-tmpdir.sh`
+Concern: The validator’s default allowlist is narrower than the actual session root and likely compares physical paths to textual prefixes.
+Suggested revision: derive the cache sessions prefix from the same expression as `session_cache_root`, and canonicalize all existing allowlist prefixes before matching.
+
+2. [security] planned `scripts/lib-design-tmpdir.sh`
+Concern: `mkdir -p "$parent"` before the allowlist check creates attacker-chosen directories outside approved roots.
+Suggested revision: validate against a resolved path first, then create the parent only after the path is allowed.
