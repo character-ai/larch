@@ -69,7 +69,7 @@ count_sketch_style_lines() {
             count++
             next
         }
-        $0 ~ /\\nStyle requirements: <READABILITY_STYLE>\.\x22`$/ {
+        $0 ~ /\\nStyle requirements: <READABILITY_STYLE>\."`$/ {
             count++
         }
         END {
