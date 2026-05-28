@@ -5,7 +5,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 PLR="$ROOT/skills/design/scripts/plan-review-loop.sh"
-PUBLISH="$ROOT/scripts/design-log-publish.sh"
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
