@@ -1,0 +1,9 @@
+Reviewing the branch diff and Python fence logic in the changed files.
+Checking one subtle behavioral comparison: opener-line `protected` and deferred `in_fence_lines` marking.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **risk-integration** — The branch diff includes `larch-logs/implement/7890C050-…/` run artifacts (manifest, breadcrumbs, `plan-goals-test.md`) alongside the functional fix in `skills/design/scripts/plan-review-loop.sh` and `test-plan-review-loop.sh`. That is implement-session noise rather than plugin surface; consider dropping or separating it before merge if policy is to keep run logs out of feature PRs.
+- **correctness** — `skills/design/scripts/parse-plan-commands.awk` still uses a single-pass `in_fence` toggle (`parse-plan-commands.awk:7-169`). This change deliberately limits scope to post-apply dedup in `_run_post_apply_pipeline`; the same class of unclosed-fence leak could still exist on that path, but it is unchanged by this branch.
+- **code-quality** — The new shell guard for non-numeric `dedup_removed` (`plan-review-loop.sh:589-596`) is not covered by an automated test in the diff; only the happy-path unclosed-fence regression is added. A future test could force Python failure and assert `LOOP_REASON=dedup-python-failed` rollback.

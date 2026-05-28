@@ -1,0 +1,19 @@
+I'll verify the ballot claims against the actual source and test files.
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pass-1 comment already states strictly-between invariant; extra off-by-one note is optional
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- exotic duplicate fence-marker edge case in malformed plans with low practical impact
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- two identical short rollback blocks; extracting a helper adds indirection
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicated bash-c harness matches existing sequential style in this test file
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- pre-patch red verification is plan acceptance, not a typical CI gate in this repo
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly chose reusing prior-case stubs over self-contained setup
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the reported unclosed-fence Constraints regression is covered by the new test
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- redundant fallback after numeric guard is harmless defensive style
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- dedup-before-size ordering and readlines memory concern predate this branch
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repo-controlled eval extraction is a pre-existing test-only pattern
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
