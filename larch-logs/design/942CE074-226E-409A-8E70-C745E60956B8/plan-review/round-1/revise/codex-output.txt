@@ -1,0 +1,26 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -82,6 +82,13 @@
+ - One shared `require_value` helper removes the three-way duplication and aligns the two sibling flags' exit code (1→2) and message with `--manual-gate-b`.
+ - Surgical scope: leave `--reason` / `--source` / `--sketch-budget` / `--review-budget` / `--workflow-path` untouched. They use `take_value` and intentionally accept `""` → null.
+ - Behavior parity with `--manual-gate-b`: missing and empty both yield `exit 2` plus the same `requires a value` message; valid `true`/`false` and the `maybe` → enum-rejection path are unchanged.
++- Caller audit for the rc/message contract change:
++  - `skills/implement/SKILL.md` runtime invocation passes explicit boolean values and treats any nonzero as drift; it does not inspect rc or stderr text.
++  - `scripts/test-step0b-router-flag-recovery.sh` uses only valid explicit values for the affected flags.
++  - `scripts/test-lint-skill-md-flag-signature.sh` only inspects the prompt-side flag signature/text, not parser rc or stderr.
++  - `scripts/test-design-structure.sh` only greps expected structure/signature text, not runtime parser behavior.
++  - `scripts/test-write-run-params.sh` owns the new `rc=2` and `requires a value` stderr assertions for missing/empty boolean values.
+ 
+ ### Edge cases
+ 
+@@ -103,8 +110,8 @@
+ 
+ - `bash scripts/test-write-run-params.sh` — must pass with the four new negative cases and all existing cases (valid writes, enum rejection, nullable fields, triple-flag persistence).
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — Bash 3.2 lint, shellcheck, `.md`-sibling check.
+-- Manual probe: run `scripts/write-run-params.sh --classification SIMPLE --partition-requested --output <abs-path>` and confirm `rc=2` with stderr line `write-run-params.sh: --partition-requested requires a value`.
++- Manual probe: run `scripts/write-run-params.sh --classification SIMPLE --output <abs-path> --partition-requested` and confirm `rc=2` with stderr line `write-run-params.sh: --partition-requested requires a value`.
+ 
+ ### Diff size estimate
+ 
+-diff_lines: 40
++diff_lines: 40
