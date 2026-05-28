@@ -1,0 +1,23 @@
+Reviewing the branch diff and the `--manual-gate-b` parser changes for correctness.
+Checking enum validation after parsing and how `assert_rejected_with` interacts with the parse loop.
+**Branch commits** (since `main`):
+
+- `1b1ba2333` Close #3008 Gate B degraded-mode test gaps  
+- `de2a86137` chore(larch-logs): flush implement run 7972B556-6BDA-4160-8AD8-6117DA0B321B  
+- `7fa029919` Apply relevant-checks fixes (Step 3)
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+**Parser-narrowing verification (read-only):**
+
+- **`scripts/write-run-params.sh:95-101`** — `[[ $# -lt 2 || -z "${2-}" ]]` correctly rejects both cases: (1) `--manual-gate-b ""` hits `-z "${2-}"`; (2) trailing `--manual-gate-b` with no following token hits `$# -lt 2` when the loop sees only that flag (`$# == 1`).
+- **`scripts/test-write-run-params.sh:111-114`** — `manual-gate-b-missing` places `--manual-gate-b` as the final argv token, so the missing-value path is actually exercised.
+- **`scripts/test-write-run-params.sh:99-104`** — `bad-manual-gate-b` with `maybe` still works: non-empty `maybe` passes the new guard; `require_enum` at `scripts/write-run-params.sh:162-164` still rejects with exit 2 before write.
+
+### Out-of-Scope Observations
+
+- **`scripts/test-step0b-router-flag-recovery.sh`** — Case 1 covers successful `write-run-params.sh` plus post-write jq merge, not a non-zero writer exit plus recovery. That matches the plan’s reframing; it does not weaken the `--manual-gate-b` parser tests.
+- **Diff noise** — `larch-logs/implement/7972B556-.../` artifacts are implement-run output, unrelated to parser correctness.
+- **`scripts/write-run-params.sh:95-101`** — Whitespace-only values (e.g. `--manual-gate-b "   "`) skip the new guard and fail later on enum validation with a different stderr message than “requires a value”; same general pattern as other enum flags and outside this PR’s stated empty/missing scope.
