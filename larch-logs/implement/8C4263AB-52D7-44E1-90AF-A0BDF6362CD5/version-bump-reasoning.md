@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `dd75ffed` (chore(larch-logs): flush design run 75B6F5BD-2D39-4CCB-9E34-5751B24DC6D0 [skip ci] (#3073))
-- **Current version**: `45.1.16`
+- **Base commit**: `77c2d807` (Fixes #3025: Enforce monitor_rc propagation in Family B lint (#3086))
+- **Current version**: `45.1.17`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.1.17`
+- **New version**: `45.1.18`
 
 ### PATCH rationale
 
