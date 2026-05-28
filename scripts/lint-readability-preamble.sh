@@ -66,6 +66,22 @@ validate_expected_count() {
     esac
 }
 
+count_sketch_style_lines() {
+    local file="$1"
+    awk '
+        $0 == "Style requirements: <READABILITY_STYLE>." {
+            count++
+            next
+        }
+        $0 ~ /\\nStyle requirements: <READABILITY_STYLE>\."`$/ {
+            count++
+        }
+        END {
+            print count + 0
+        }
+    ' "$file"
+}
+
 check_step_placement() {
     local file="$1"
     local rel_path="$2"
@@ -144,7 +160,7 @@ while IFS= read -r row; do
                         count=$(grep -Fxc "$plan_review_style_line" "$file" || true)
                         ;;
                     sketch)
-                        count=$(grep -Fc "$sketch_style_line" "$file" || true)
+                        count=$(count_sketch_style_lines "$file")
                         ;;
                     *)
                         count=$(grep -Fxc "$external_style_line" "$file" || true)
