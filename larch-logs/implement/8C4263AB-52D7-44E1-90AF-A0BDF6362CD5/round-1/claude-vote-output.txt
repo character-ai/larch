@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- intentional v1 grammar; plan explicitly excludes interpolated double-quoted literals and documents SKIPPED_NON_CANONICAL for them
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- env-i bash execution plus static pattern checks is consistent with the repo's existing portability approach
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- scanning all harnesses is intentional; optimization would require significant additional complexity disproportionate to the overhead
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch bundling is a historical artifact; not actionable as a GitHub issue since the PR has already shipped
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- scoping by resolved target path is explicit plan design; adding changed-test-script tracking would require significant additional complexity
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SCRIPT_DIR/../ resolution is implemented at lines 215-222; missing fixture is a nit, not a functionality gap
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- same concern exonerated in previous round; developer-controlled env var with low operator-threat model
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- forward-only scan is documented in plan as scanning assignments "earlier-in-file"; known intentional limitation
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Bash regex achieves identical portability to POSIX awk for a script that already requires Bash; cosmetic deviation from plan wording

@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- full-tree scan cost is acceptable for v1 local checks
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly keeps deletion-only flows on post-checks only
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- ordering is a perf preference, not a correctness defect
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- brittle ordering assertion is low-impact harness debt
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- warn-only non-canonical handling is documented v1 behavior
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- check-contains-pins.md already documents script-or-target scoping
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- doc already states static double-quoted literals with $ are skipped
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- rows sit under the existing relevant-checks allow-list block comment

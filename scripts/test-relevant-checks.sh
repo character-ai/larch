@@ -67,6 +67,15 @@ assert_stdout_contains() {
     fi
 }
 
+assert_stdout_not_contains() {
+    local label="$1" stdout="$2" needle="$3"
+    if [[ "$stdout" == *"$needle"* ]]; then
+        fail "$label: expected stdout not to contain '$needle'; got: ${stdout:0:400}"
+    else
+        pass
+    fi
+}
+
 assert_exit_eq() {
     local label="$1" got="$2" want="$3"
     if [[ "$got" -eq "$want" ]]; then
@@ -110,6 +119,22 @@ setup_changed_file_repo() {
         printf '%s\n' "changed content" > tracked.txt
         git add tracked.txt
         git commit -q -m "change tracked file"
+    )
+}
+
+setup_design_reference_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        mkdir -p skills/design/references
+        printf '%s\n' "approval gates baseline" > skills/design/references/approval-gates.md
+        git add skills/design/references/approval-gates.md
+        git commit -q -m "add design reference"
+        git checkout -q -b design-reference-change
+        printf '%s\n' "approval gates changed" > skills/design/references/approval-gates.md
+        git add skills/design/references/approval-gates.md
+        git commit -q -m "change design reference"
     )
 }
 
@@ -158,6 +183,13 @@ exit "$agent_rc"
 EOF
         chmod +x "$dir/agent-lint"
     fi
+
+    cat > "$dir/make" <<'EOF'
+#!/usr/bin/env bash
+echo "make stub: $*"
+exit 0
+EOF
+    chmod +x "$dir/make"
 }
 
 controlled_path() {
@@ -175,6 +207,31 @@ run_checks() {
     RUN_OUT=$(cd "$repo" && PATH="$path_value" /bin/bash "$SCRIPT" 2>&1)
     RUN_EXIT=$?
     set -e
+}
+
+assert_repo_status_eq() {
+    local label="$1" repo="$2" expected="$3"
+    local status
+    status=$(cd "$repo" && git status --short)
+    if [[ "$status" == "$expected" ]]; then
+        pass
+    else
+        fail "$label: expected git status to stay stable; before=${expected//$'\n'/; } after=${status//$'\n'/; }"
+    fi
+}
+
+assert_pin_phase_accounting_present() {
+    local label="$1"
+    if awk '
+        /PINS_EXIT=\$\?/ { saw_exit=1; next }
+        saw_exit && /PHASES_RUN=\$\(\(PHASES_RUN \+ 1\)\)/ { found=1; exit }
+        saw_exit && /if \[ "\$PINS_EXIT" -ne 0 \]; then/ { exit }
+        END { exit(found ? 0 : 1) }
+    ' "$SCRIPT"; then
+        pass
+    else
+        fail "$label: missing PHASES_RUN increment immediately after pin verifier exit capture"
+    fi
 }
 
 echo "=== Section 1: zero-phase paths ==="
@@ -269,6 +326,56 @@ run_checks "$REPO_3D" "$(controlled_path "$STUB_3D")"
 assert_exit_eq "3d: changed file + pre-commit ok + agent-lint rc=7" "$RUN_EXIT" 7
 assert_stdout_contains "3d: pre-commit stub invoked" "$RUN_OUT" "pre-commit stub:"
 assert_stdout_contains "3d: agent-lint stub invoked" "$RUN_OUT" "agent-lint stub:"
+
+echo "=== Section 3e: direct targets and pin verification ==="
+
+REPO_3E="$TMPROOT/repo-design-reference-no-pins"
+STUB_3E="$TMPROOT/stub-design-reference-no-pins"
+setup_design_reference_repo "$REPO_3E"
+make_stub_dir "$STUB_3E" present absent
+run_checks "$REPO_3E" "$(controlled_path "$STUB_3E")"
+assert_exit_eq "3e: design reference routes direct target with missing pin verifier" "$RUN_EXIT" 0
+assert_stdout_contains "3e: design reference routes test-design-structure" "$RUN_OUT" "=== Running direct relevant make target(s): test-lint-foreground-markers test-design-structure ==="
+assert_stdout_contains "3e: direct targets invoked through make" "$RUN_OUT" "make stub: test-lint-foreground-markers test-design-structure"
+assert_stdout_contains "3e: missing pin verifier warning" "$RUN_OUT" "WARNING: scripts/check-contains-pins.sh not found"
+
+REPO_3F="$TMPROOT/repo-design-reference-with-pins"
+STUB_3F="$TMPROOT/stub-design-reference-with-pins"
+setup_design_reference_repo "$REPO_3F"
+mkdir -p "$REPO_3F/scripts"
+cat > "$REPO_3F/scripts/check-contains-pins.sh" <<'EOF'
+#!/usr/bin/env bash
+test -f "$2"
+echo "pin verifier stub: $*"
+exit 0
+EOF
+chmod +x "$REPO_3F/scripts/check-contains-pins.sh"
+make_stub_dir "$STUB_3F" present absent
+STATUS_3F_BEFORE=$(cd "$REPO_3F" && git status --short)
+run_checks "$REPO_3F" "$(controlled_path "$STUB_3F")"
+assert_exit_eq "3f: present pin verifier runs and exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3f: pin verifier invoked" "$RUN_OUT" "pin verifier stub: --changed-files"
+assert_stdout_contains "3f: agent-lint absence after pin phase is non-fatal" "$RUN_OUT" "WARNING: agent-lint not found on PATH — skipping"
+assert_repo_status_eq "3f: relevant-checks stays read-only on pin verifier success" "$REPO_3F" "$STATUS_3F_BEFORE"
+assert_pin_phase_accounting_present "3f: pin phase increments PHASES_RUN"
+
+REPO_3G="$TMPROOT/repo-design-reference-with-failing-pins"
+STUB_3G="$TMPROOT/stub-design-reference-with-failing-pins"
+setup_design_reference_repo "$REPO_3G"
+mkdir -p "$REPO_3G/scripts"
+cat > "$REPO_3G/scripts/check-contains-pins.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "pin verifier stub: $*"
+exit 1
+EOF
+chmod +x "$REPO_3G/scripts/check-contains-pins.sh"
+make_stub_dir "$STUB_3G" present 0
+STATUS_3G_BEFORE=$(cd "$REPO_3G" && git status --short)
+run_checks "$REPO_3G" "$(controlled_path "$STUB_3G")"
+assert_exit_eq "3g: failing pin verifier exit propagates" "$RUN_EXIT" 1
+assert_stdout_contains "3g: failing pin verifier invoked" "$RUN_OUT" "pin verifier stub: --changed-files"
+assert_stdout_not_contains "3g: agent-lint must not run after pin verifier failure" "$RUN_OUT" "agent-lint stub:"
+assert_repo_status_eq "3g: relevant-checks stays read-only on pin verifier failure" "$REPO_3G" "$STATUS_3G_BEFORE"
 
 echo "=== Section 4: preflight failure ==="
 

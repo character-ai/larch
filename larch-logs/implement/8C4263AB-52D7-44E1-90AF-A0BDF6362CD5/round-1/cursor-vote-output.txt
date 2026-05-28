@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- documented v1 SKIPPED_NON_CANONICAL boundary for interpolated double-quoted literals
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- harness uses static forbidden-syntax grep; repo-wide lint-bash32 is the primary Bash 3.2 backstop
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- full test-*.sh scan is acceptable v1 cost for a local pre-commit helper
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- stacked #2828 readability work is real branch hygiene, not a pin-verifier code defect
+FINDING_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- script_parent resolution is implemented; only fixture coverage is missing
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- plan explicitly scoped design-structure routing to design paths only
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- emit() routes contract output to FD3 under quiet by design, not accidental suppression
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- READABILITY_STYLE_FILE is an operator-controlled test override, not an untrusted input surface
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- cursor-implementer.md jumps from hard-guard 8 to 10 and omits rule 9
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- forward-only assignment scan matches current harness style; gap is hypothetical
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan required a POSIX awk scanner but the implementation uses Bash regex parsing instead

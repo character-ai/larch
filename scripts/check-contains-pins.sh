@@ -1,0 +1,346 @@
+#!/usr/bin/env bash
+# Verify canonical contains "$VAR" literal assertions against their targets.
+# shellcheck disable=SC2016,SC2094
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+if [ -f "$SCRIPT_DIR/lib-quiet.sh" ]; then
+    # shellcheck source=scripts/lib-quiet.sh
+    source "$SCRIPT_DIR/lib-quiet.sh"
+    larch_quiet_init
+else
+    larch_err() { printf '%s\n' "$*" >&2; }
+    emit() { printf '%s\n' "$*"; }
+fi
+
+usage() {
+    larch_err "Usage: $0 [--changed-files FILE]"
+}
+
+CHANGED_FILES=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --changed-files)
+            if [ "$#" -lt 2 ]; then
+                usage
+                exit 2
+            fi
+            CHANGED_FILES="$2"
+            shift 2
+            ;;
+        -*)
+            usage
+            exit 2
+            ;;
+        *)
+            usage
+            exit 2
+            ;;
+    esac
+done
+
+if [ -n "$CHANGED_FILES" ] && [ ! -f "$CHANGED_FILES" ]; then
+    larch_err "ERROR: --changed-files path not found: $CHANGED_FILES"
+    exit 2
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -z "$REPO_ROOT" ]; then
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+fi
+cd "$REPO_ROOT" || exit 2
+
+normalize_rel() {
+    local path="$1" part idx out_path
+    local parts=()
+    local out=()
+
+    case "$path" in
+        "$REPO_ROOT"/*) path="${path#"$REPO_ROOT"/}" ;;
+        ./*) path="${path#./}" ;;
+    esac
+
+    IFS=/ read -r -a parts <<< "$path"
+    for part in "${parts[@]}"; do
+        case "$part" in
+            ""|.)
+                ;;
+            ..)
+                if [ "${#out[@]}" -gt 0 ]; then
+                    idx=$((${#out[@]} - 1))
+                    unset "out[$idx]"
+                else
+                    out+=("..")
+                fi
+                ;;
+            *)
+                out+=("$part")
+                ;;
+        esac
+    done
+
+    out_path=""
+    for part in "${out[@]}"; do
+        if [ -z "$out_path" ]; then
+            out_path="$part"
+        else
+            out_path="$out_path/$part"
+        fi
+    done
+    printf '%s\n' "$out_path"
+}
+
+CHANGED_RELS=()
+if [ -n "$CHANGED_FILES" ]; then
+    while IFS= read -r changed; do
+        [ -n "$changed" ] || continue
+        CHANGED_RELS+=("$(normalize_rel "$changed")")
+    done < "$CHANGED_FILES"
+fi
+
+target_is_in_scope() {
+    local target="$1" changed
+    if [ -z "$CHANGED_FILES" ]; then
+        return 0
+    fi
+    for changed in "${CHANGED_RELS[@]}"; do
+        if [ "$changed" = "$target" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+assertion_is_in_scope() {
+    local script="$1" var="${2:-}" target_rel
+
+    if [ -z "$CHANGED_FILES" ]; then
+        return 0
+    fi
+
+    if target_is_in_scope "$script"; then
+        return 0
+    fi
+
+    if [ -n "$var" ] && target_rel="$(get_var_rel "$var" 2>/dev/null)"; then
+        if target_is_in_scope "$target_rel"; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+set_var_rel() {
+    local name="$1" rel="$2" i
+    for i in "${!VAR_NAMES[@]}"; do
+        if [ "${VAR_NAMES[$i]}" = "$name" ]; then
+            VAR_RELS[i]="$rel"
+            return 0
+        fi
+    done
+    VAR_NAMES+=("$name")
+    VAR_RELS+=("$rel")
+}
+
+get_var_rel() {
+    local name="$1" i
+    for i in "${!VAR_NAMES[@]}"; do
+        if [ "${VAR_NAMES[$i]}" = "$name" ]; then
+            printf '%s\n' "${VAR_RELS[$i]}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+warn_unresolved() {
+    local script="$1" line_no="$2" var="$3"
+    larch_err "UNRESOLVED_VAR: $script:$line_no: could not resolve \$$var"
+}
+
+warn_skipped() {
+    local script="$1" line_no="$2"
+    larch_err "SKIPPED_NON_CANONICAL: $script:$line_no: assertion shape not in v1 grammar"
+}
+
+resolve_target_path() {
+    local target_rel="$1" abs
+
+    abs="$(cd "$REPO_ROOT" && realpath "$target_rel" 2>/dev/null)" || return 1
+    case "$abs" in
+        "$REPO_ROOT" | "$REPO_ROOT"/*)
+            printf '%s\n' "$abs"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
+check_literal() {
+    local script="$1" line_no="$2" var="$3" literal="$4"
+    local target_rel target_path
+
+    if ! target_rel="$(get_var_rel "$var")"; then
+        if assertion_is_in_scope "$script" "$var"; then
+            warn_unresolved "$script" "$line_no" "$var"
+        fi
+        return 0
+    fi
+
+    if ! assertion_is_in_scope "$script" "$var"; then
+        return 0
+    fi
+
+    if ! target_path="$(resolve_target_path "$target_rel")" || [ ! -f "$target_path" ]; then
+        warn_unresolved "$script" "$line_no" "$var"
+        return 0
+    fi
+
+    if ! grep -Fq -- "$literal" "$target_path"; then
+        emit "DEFECT: $script:$line_no: literal '$literal' not found in $target_rel"
+        DEFECTS=$((DEFECTS + 1))
+    fi
+}
+
+var_is_in_scope() {
+    local script="$1" var="$2"
+    assertion_is_in_scope "$script" "$var"
+}
+
+scan_test_script() {
+    local script="$1"
+    local script_dir script_parent kind line_no var payload rel literal
+
+    script_dir="${script%/*}"
+    if [ "$script_dir" = "$script" ]; then
+        script_dir="."
+    fi
+    script_parent="${script_dir%/*}"
+    if [ "$script_parent" = "$script_dir" ]; then
+        script_parent=""
+    fi
+
+    VAR_NAMES=()
+    VAR_RELS=()
+    while IFS="$(printf '\t')" read -r kind line_no var payload; do
+        [ -n "$kind" ] || continue
+        case "$kind" in
+            REPO_ASSIGN)
+                set_var_rel "$var" "$(normalize_rel "$payload")"
+                ;;
+            SCRIPT_ASSIGN)
+                if [ -n "$script_parent" ]; then
+                    rel="$script_parent/$payload"
+                else
+                    rel="$payload"
+                fi
+                set_var_rel "$var" "$(normalize_rel "$rel")"
+                ;;
+            CHECK)
+                check_literal "$script" "$line_no" "$var" "$payload"
+                ;;
+            SKIP)
+                if var_is_in_scope "$script" "$var"; then
+                    warn_skipped "$script" "$line_no"
+                fi
+                ;;
+        esac
+    done < <(
+        awk '
+function emit(kind, line_no, var, payload) {
+    printf "%s\t%s\t%s\t%s\n", kind, line_no, var, payload
+}
+function trim_leading_ws(text) {
+    sub(/^[[:space:]]+/, "", text)
+    return text
+}
+function parse_contains(text, line_no,    rest, var_end, var, quote, literal_end, literal) {
+    if (!match(text, /^[[:space:]]*contains[[:space:]]+/)) {
+        return
+    }
+    rest = substr(text, RSTART + RLENGTH)
+    if (substr(rest, 1, 2) != "\"$") {
+        return
+    }
+    rest = substr(rest, 3)
+    var_end = index(rest, "\"")
+    if (var_end == 0) {
+        return
+    }
+    var = substr(rest, 1, var_end - 1)
+    if (var !~ /^[A-Za-z_][A-Za-z0-9_]*$/) {
+        return
+    }
+    rest = trim_leading_ws(substr(rest, var_end + 1))
+    quote = substr(rest, 1, 1)
+    if (quote != "'"'"'" && quote != "\"") {
+        return
+    }
+    rest = substr(rest, 2)
+    literal_end = index(rest, quote)
+    if (literal_end == 0) {
+        emit("SKIP", line_no, var, "")
+        return
+    }
+    literal = substr(rest, 1, literal_end - 1)
+    rest = substr(rest, literal_end + 1)
+    if (rest !~ /^[[:space:]]+/) {
+        emit("SKIP", line_no, var, "")
+        return
+    }
+    if (quote == "\"" && index(literal, "$") > 0) {
+        emit("SKIP", line_no, var, "")
+        return
+    }
+    emit("CHECK", line_no, var, literal)
+}
+{
+    if (match($0, /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*="\$REPO_ROOT\/[^"]*"[[:space:]]*$/)) {
+        split(substr($0, RSTART, RLENGTH), pieces, "=")
+        name = pieces[1]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+        value = substr(pieces[2], 13)
+        value = substr(value, 1, length(value) - 1)
+        emit("REPO_ASSIGN", NR, name, value)
+        next
+    }
+    if (match($0, /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*="\$SCRIPT_DIR\/\.\.\/[^"]*"[[:space:]]*$/)) {
+        split(substr($0, RSTART, RLENGTH), pieces, "=")
+        name = pieces[1]
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", name)
+        value = substr(pieces[2], 17)
+        value = substr(value, 1, length(value) - 1)
+        emit("SCRIPT_ASSIGN", NR, name, value)
+        next
+    }
+    if ($0 ~ /^[[:space:]]*contains[[:space:]]+"\$[A-Za-z_][A-Za-z0-9_]*"[[:space:]]+/) {
+        parse_contains($0, NR)
+    }
+}
+        ' "$script"
+    )
+}
+
+TEST_LIST="$(mktemp "${TMPDIR:-/tmp}/check-contains-pins.XXXXXX")"
+trap 'rm -f "$TEST_LIST"' EXIT
+
+{
+    if [ -d scripts ]; then
+        find scripts -maxdepth 1 -type f -name 'test-*.sh'
+    fi
+    if [ -d skills ]; then
+        find skills -path 'skills/*/scripts/test-*.sh' -type f
+    fi
+} | LC_ALL=C sort > "$TEST_LIST"
+
+DEFECTS=0
+while IFS= read -r test_script; do
+    [ -n "$test_script" ] || continue
+    scan_test_script "$test_script"
+done < "$TEST_LIST"
+
+if [ "$DEFECTS" -gt 0 ]; then
+    exit 1
+fi
+exit 0

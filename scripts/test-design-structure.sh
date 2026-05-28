@@ -33,7 +33,8 @@ absent() {
 contains "$SKILL_MD" '[--simple|--hard]' 'SKILL argument hint must expose only SIMPLE/HARD tiers'
 contains "$SKILL_MD" '--trivial flag removed; tier consolidation in #2956. Use --simple or --hard.' 'SKILL missing removed --trivial hard-error prose'
 contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
-contains "$SKILL_MD" "unless \`design_classification == SIMPLE\`, where the user-confirmed no-sketch carve-out applies" 'SKILL missing SIMPLE Design Mindset carve-out'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" 'unless `design_classification == SIMPLE`, where the user-confirmed no-sketch carve-out applies' 'SKILL missing SIMPLE Design Mindset carve-out'
 contains "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_SIMPLE' 'SKILL missing SIMPLE sketch sentinel'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`' 'SKILL missing Anti-pattern #1 SIMPLE carve-out prose'
@@ -46,8 +47,10 @@ contains "$SKILL_MD" 'read-design-classification.sh' 'SKILL missing classificati
 contains "$SKILL_MD" '.step3-review-cap.env' 'SKILL missing persisted Step 3 cap state file'
 contains "$SKILL_MD" 'STEP3_REVIEW_CAP_REACHED=false' 'SKILL missing persisted cap-false state'
 contains "$SKILL_MD" 'STEP3_REVIEW_ROUND_NUM=' 'SKILL missing persisted Step 3 round number state'
-contains "$SKILL_MD" "including \`LOOP_STATUS=panel-failed\`" 'SKILL missing panel-failed counter-consumption contract'
-contains "$SKILL_MD" "MUST NOT persist when \`TALLY_PLAN_REVIEW_STATUS=tally-error\`" 'SKILL missing tally-error counter-skip contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" 'including `LOOP_STATUS=panel-failed`' 'SKILL missing panel-failed counter-consumption contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' 'SKILL missing tally-error counter-skip contract'
 contains "$SKILL_MD" 'review-round cap (' 'SKILL missing Step 3 cap breadcrumb prose'
 contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
 contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
@@ -83,12 +86,14 @@ contains "$APPROVAL_MD" 'the `Other` re-prompt preserves the **same option set u
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'when `plan.txt` is missing or empty, print `**⚠ plan.txt missing or empty; nothing to show.**` instead and still re-fire the same prompt' 'approval-gates.md missing Gate C Other missing-plan recovery contract'
 contains "$APPROVAL_MD" 'offer this option only when the current review-round count is still below the tier cap' 'approval-gates.md missing Gate C cap-aware rerun contract'
-contains "$PLAN_REVIEW_MD" "Step 3 always runs the full panel via \`plan-review-loop.sh\`" 'plan-review.md missing full-panel consumer line'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$PLAN_REVIEW_MD" 'Step 3 always runs the full panel via `plan-review-loop.sh`' 'plan-review.md missing full-panel consumer line'
 contains "$PLAN_REVIEW_MD" 'injects the SIMPLE-emphasis or HARD-emphasis text immediately after the role line' 'plan-review.md missing tier-emphasis injection contract'
 contains "$PLAN_REVIEW_MD" 'When in doubt between YES and EXONERATE, prefer EXONERATE.' 'plan-review.md missing voter-bias proportionality pin'
 contains "$PLAN_REVIEW_MD" 'Treat any suggested remedy in the item body as *informational only*' 'plan-review.md missing OOS remedy informational-only pin'
 contains "$PLAN_REVIEW_MD" 'Security-tagged findings are held locally and NEVER written to this public OOS issue artifact' 'plan-review.md missing SECURITY.md OOS exclusion pin'
-contains "$PLAN_REVIEW_MD" "Security-tagged accepted OOS findings are held locally per SECURITY.md and are NOT included in \`oos.md\`." 'plan-review.md missing SECURITY.md oos.md exclusion pin'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$PLAN_REVIEW_MD" 'Security-tagged accepted OOS findings are held locally per SECURITY.md and are NOT included in `oos.md`.' 'plan-review.md missing SECURITY.md oos.md exclusion pin'
 contains "$DISCUSSION_MD" 'invoke-plan-validator.sh' 'discussion-rounds.md missing renamed validator helper'
 
 if grep -Eq 'grep .*review-round-count\.txt|review-round-count\.txt.*grep' "$PLAN_LOOP_SH"; then

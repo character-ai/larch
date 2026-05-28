@@ -1,0 +1,221 @@
+## Goal
+Implement issue #3064: [IMPLEMENTING] [BUG] (URGENT) Codex review-fix test pin and implementation text diverge in same commit, causing CI stall\n\n## Context.
+
+## Implementation Plan
+## Plan
+
+## Goal
+
+Eliminate the failure mode behind #3064: Codex (or any implementer) commits a `contains "$VAR" 'literal' '...'` test pin whose literal text diverges from the file it just edited in the same review-fix commit, causing CI `test-harnesses-*` to stall the `/implement` pipeline at `STALL_STEP=10-max-retries`.
+
+Resolution: implement all three options from the issue body — wire `test-design-structure.sh` into `relevant-checks.sh` for design-doc changes (A), add a generic pin-vs-target verifier `scripts/check-contains-pins.sh` invoked from `relevant-checks.sh` (B), and reinforce the discipline in `agents/_implementer-base.md` so both Codex and Cursor inherit the rule (C). Bias: minimum change that closes the URGENT failure mode without expanding harness coverage to other pin-heavy scripts.
+
+## Approach
+
+Three independent additions, ordered by blast radius from smallest to largest:
+
+1. **C (prompt note)** — single Markdown edit to `agents/_implementer-base.md`. Lowest risk; behavior-only guidance. Both `agents/codex-implementer.md` and `agents/cursor-implementer.md` regenerate from that base via the existing `generate-{codex,cursor}-implementer.sh` generators, which are registered in `scripts/generators.tsv` and verified by `scripts/check-generators.sh`. Pre-commit will enforce regeneration.
+
+2. **A (relevant-checks routing for `test-design-structure`)** — append exactly one `case` arm inside `run_direct_relevant_targets()` in `scripts/relevant-checks.sh`, mirroring the existing `test-lint-foreground-markers` and `test-background-monitor-wait` patterns. Trigger pattern: `skills/design/SKILL.md` or `skills/design/references/*.md`. Per-file decision per the Step 1c user answer: do not generalize this routing to other pin-heavy harnesses in this issue.
+
+3. **B (`check-contains-pins.sh` + harness)** — generic verifier. The `contains()` helper in `scripts/test-design-structure.sh` is the canonical shape across larch harnesses: `contains "$VAR" 'LITERAL' 'LABEL'` where `$VAR` is a shell variable whose definition `VAR="$REPO_ROOT/<relative-path>"` appears earlier in the same file. The verifier walks every `test-*.sh` under `scripts/` and `skills/*/scripts/`, finds `contains` assertion lines, resolves `$VAR` to a path via a backward scan for `VAR="$REPO_ROOT/...` (and the SUBJECT/SKILL_MD/etc. equivalents present in existing harnesses), and `grep -Fq` the literal in that path. Filtering: when `--changed-files` is supplied, only verify assertions whose **resolved target path** is in the changed set — so editing a `references/*.md` causes every test pin against it to be rechecked regardless of which harness holds the pin.
+
+   **v1 literal grammar** (covers both forms observed in existing harnesses): the verifier accepts the third positional argument to `contains` as either (a) a single-quoted literal `'LITERAL'`, or (b) a static double-quoted literal `"LITERAL"` that contains **no shell substitutions** — explicitly excludes any `"` literal containing an unescaped `$`, `` ` ``, or `\$`. Mixed-quote and concatenated forms (e.g., `'a'"$VAR"'b'`) are out of v1 scope and emit `SKIPPED_NON_CANONICAL`. The harness must cover both single-quoted and double-quoted-static cases. Bash 3.2 portable: no associative arrays, no `mapfile`, no parameter-case conversion. Uses POSIX `awk` for the per-file scan and `grep -Fq` for the verbatim check. Time complexity O(F·A) where F = changed target files (small) and A = assertions matching one of those files.
+
+Integration point in `relevant-checks.sh`: invoke `check-contains-pins.sh` from a new helper `run_contains_pins_check()` placed AFTER `run_direct_relevant_targets` returns 0 and BEFORE the final `run_post_checks`. It receives `MODIFIED_FILES` via a temp file (`--changed-files`) so it can scope its scan. It increments `PHASES_RUN` so the "no validation phases ran" error stays accurate.
+
+Codex/Cursor regen: after the `_implementer-base.md` edit, the implementer runs both generator scripts (`bash scripts/generate-codex-implementer.sh` and `bash scripts/generate-cursor-implementer.sh`) so the derived files reflect the new prose. `scripts/check-generators.sh` is the post-commit safety net via `scripts/test-check-generators.sh` and pre-commit hooks.
+
+Make-target wiring (FINDING_2 + FINDING_5): add `test-check-contains-pins:` rule (recipe body), add `test-check-contains-pins` to the `.PHONY` declaration on line 4, and append it to **exactly one non-isolated shard** chosen via the current sharding contract — `test-harnesses-15` (currently 13 targets — the lightest non-isolated shard in the equal-count packing pool of shards 5-20). The implementer SHOULD additionally run `make test-harness-shards-coverage` after the Makefile edit to confirm the shard-balance invariant still holds; if the coverage check reports imbalance, follow `docs/linting.md` "Refreshing harness shard balance" to pick a different shard. **Do NOT** add the harness to the master `test-harnesses:` aggregate line — that line lists only `test-harnesses-N` shard targets per the Makefile's existing comment block (lines ~40-45). Shards 1-4 are reserved for isolated slow harnesses (`test-check-reviewers`, `test-launch-cursor-ci`, `test-launch-claude-ci`, `test-dispatch-code-voters-*`) and MUST NOT receive the new harness.
+
+agent-lint registration (FINDING_1): add four allow-list entries in `agent-lint.toml` for the new files (`scripts/check-contains-pins.sh`, `scripts/check-contains-pins.md`, `scripts/test-check-contains-pins.sh`, `scripts/test-check-contains-pins.md`) so `agent-lint --pedantic` does not flag them as orphans. Place the entries adjacent to the existing `relevant-checks.sh` / `test-relevant-checks.sh` block (the cluster of validation-helper allow-list rows already in that section).
+
+Update `scripts/test-relevant-checks.sh` with one new fixture asserting that a modified `skills/design/references/approval-gates.md` routes to `test-design-structure` in `DIRECT_TARGETS`. Also assert the new pin-verification phase fires when the verifier file is present in the fixture repo. This protects Option A's routing and Option B's phase wiring from silent removal.
+
+## Files to modify/create
+
+### NEW: `scripts/check-contains-pins.sh`
+
+Bash 3.2-compatible verifier for `contains "$VAR" 'literal' 'label'` and `contains "$VAR" "static-literal" "label"` test-pin assertions.
+
+Behavior:
+- Argv: `--changed-files FILE` (path to file listing newline-delimited changed paths; optional — when omitted, scan all `test-*.sh` assertions regardless of changed-file scope).
+- Walks `scripts/test-*.sh` and `skills/*/scripts/test-*.sh`.
+- For each file: builds a map of `VAR -> resolved-path` by scanning earlier-in-file `VAR="$REPO_ROOT/<rel-path>"` and `VAR="$SCRIPT_DIR/../<rel-path>"` assignment forms. Tier-1 grammar: literal `$REPO_ROOT/` or `$SCRIPT_DIR/../` followed by a relative path inside the surrounding double quotes (no further substitutions).
+- For each `contains "$VAR" <literal> <label>` line: parse the literal as either single-quoted (`'LITERAL'`) or static double-quoted (`"LITERAL"` with no `$`, no backtick, no `\$`). Resolve `$VAR`, then `grep -Fq -- 'LITERAL' <target>`. Reports a defect on miss.
+- When `--changed-files FILE` is supplied, only verify assertions whose resolved target path is in the change list (relative-path match).
+- Exit codes: **0** = no defects (including the no-applicable-assertions case), **1** = at least one defect (printed as `DEFECT: <test-script>:<lineno>: literal '<LIT>' not found in <target>`), **2** = argv / I/O error.
+- Counted warnings (printed on stderr, do NOT change exit code): `UNRESOLVED_VAR: <test-script>:<lineno>: could not resolve $<VAR>` (variable assignment not found, or target path absent on disk) and `SKIPPED_NON_CANONICAL: <test-script>:<lineno>: assertion shape not in v1 grammar` (mixed-quote forms, concatenated forms, interpolated literals).
+
+Quiet-aware: source `scripts/lib-quiet.sh` and call `larch_quiet_init` to follow the repo-wide contract.
+
+The script is invoked as `bash scripts/check-contains-pins.sh` (no executable-bit requirement). It does not need `chmod +x` because `relevant-checks.sh` invokes it via `bash`. The implementer MAY still set the executable bit for consistency with peer scripts (`scripts/check-generators.sh` is `chmod +x`); the relevant-checks invocation does not depend on it.
+
+### NEW: `scripts/check-contains-pins.md`
+
+Sibling spec per `.claude/rules/script-md-siblings.md`. Documents the CLI, the canonical v1 assertion grammar (both single-quoted and static-double-quoted), the variable-resolution heuristic, exit codes, and the explicit non-goals: arrays of literals, heredoc literals, multi-line assertions, regex-shaped assertions, mixed-quote concatenations, and `bash -c`-wrapped invocations are all out of v1 scope.
+
+### NEW: `scripts/test-check-contains-pins.sh`
+
+Offline regression harness. Creates a disposable TMPDIR with fixture `test-*.sh` files and fixture target files, invokes `check-contains-pins.sh`, asserts exit code and stdout/stderr content. Cases:
+- Happy path (single-quoted) — literal exists verbatim in target → exit 0.
+- Happy path (static double-quoted) — `"LITERAL"` literal with no substitutions exists verbatim → exit 0.
+- Diverged literal — assertion text differs by one character from target → exit 1, defect line cites the test file, line number, and literal.
+- Unresolved `$VAR` — assertion references variable whose `VAR="$REPO_ROOT/..."` definition is absent → warning printed, exit 0 (warnings do not fail the run).
+- `--changed-files` scoping — assertion against `target-A.md` skipped when changed-files lists only `target-B.md`.
+- Multiple defects — three diverging assertions across two test files → exit 1, all three reported.
+- Empty test set (no `test-*.sh` files exist) → exit 0.
+- Mixed-quote / interpolated literal (e.g., `"prefix$VAR'literal'"`) → `SKIPPED_NON_CANONICAL` warning, exit 0.
+- Bash 3.2 invocation under `env -i bash --posix=…` (negative coverage: must NOT use `declare -A` / `mapfile` / `${var^^}` / `&>>`).
+
+Use the same harness shape as `scripts/test-check-generators.sh`: `PASS=0 FAIL=0 FAIL_DETAILS=()`, per-case `assert_*` helpers, final summary, exit 1 on any failure.
+
+### NEW: `scripts/test-check-contains-pins.md`
+
+Sibling harness spec listing the cases above and the make-target invocation (`make test-check-contains-pins`).
+
+### UPDATED: `scripts/relevant-checks.sh`
+
+Three localized edits:
+
+1. Inside `run_direct_relevant_targets()`, add a new `case "$f"` arm between the existing `test-background-monitor-wait` arm and the `test-collect-agent-results` arm, mirroring the pattern:
+
+   ```text
+   skills/design/SKILL.md|skills/design/references/*.md)
+       append_target_once test-design-structure
+       ;;
+   ```
+
+2. After `run_direct_relevant_targets` succeeds and `DIRECT_EXIT=0`, add a new phase. Guard on file existence rather than executable bit so the relevant-checks backstop cannot be silently disabled by a missing `chmod`:
+
+   ```bash
+   # Verify contains-style test pins against their target files
+   PINS_SCRIPT="$REPO_ROOT/scripts/check-contains-pins.sh"
+   if [ -f "$PINS_SCRIPT" ]; then
+       _tmp_changed=$(mktemp)
+       printf '%s\n' "$MODIFIED_FILES" > "$_tmp_changed"
+       bash "$PINS_SCRIPT" --changed-files "$_tmp_changed"
+       PINS_EXIT=$?
+       rm -f "$_tmp_changed"
+       PHASES_RUN=$((PHASES_RUN + 1))
+       if [ "$PINS_EXIT" -ne 0 ]; then
+           exit "$PINS_EXIT"
+       fi
+   else
+       echo "WARNING: scripts/check-contains-pins.sh not found — pin verification skipped"
+   fi
+   ```
+
+   Placement: between the `DIRECT_EXIT` non-zero short-circuit and the final `run_post_checks` invocation at the end of the file. Use a temp file for `--changed-files` instead of `<(...)` process substitution (Bash 3.2 safe + avoids the parse-plan-commands rejection class).
+
+3. No change to the deletion-only / no-files-eligible branches at the top of the script — pin verification only adds value when there are modified files; those branches already exit through `run_post_checks` and the agent-lint sweep covers structural regressions there.
+
+### UPDATED: `Makefile`
+
+Three localized edits (do NOT modify the `test-harnesses:` aggregate line on ~line 47):
+
+1. Add `test-check-contains-pins` to the `.PHONY: lint lint-only test-harnesses ...` declaration on line 4 (keep alphabetic-ish position next to other `test-check-*` targets).
+2. Append `test-check-contains-pins` to **`test-harnesses-15`** (the lightest non-isolated shard, 13 current targets). If `make test-harness-shards-coverage` flags this shard as imbalanced after the addition, re-pick using `docs/linting.md` "Refreshing harness shard balance" guidance.
+3. Add the rule body at the bottom of the file in the test-targets section:
+
+   ```text
+   test-check-contains-pins:
+   	bash scripts/harness-timer.sh $@ bash scripts/test-check-contains-pins.sh
+   ```
+
+The `test-harnesses:` aggregate line (line ~47) MUST remain unchanged — that line lists only `test-harnesses-N` shard targets. Coverage of the new harness comes via inclusion in shard 15, which is already in the aggregate's shard list.
+
+### UPDATED: `agent-lint.toml`
+
+Add four allow-list entries for the new files so `agent-lint --pedantic` does not flag them as orphans:
+
+- `scripts/check-contains-pins.sh` — script helper, invoked from `scripts/relevant-checks.sh`.
+- `scripts/check-contains-pins.md` — sibling spec.
+- `scripts/test-check-contains-pins.sh` — Makefile harness, invoked from `make test-check-contains-pins`.
+- `scripts/test-check-contains-pins.md` — sibling spec.
+
+Place entries adjacent to the existing `scripts/relevant-checks.sh` / `scripts/test-relevant-checks.sh` / `scripts/check-generators.sh` cluster, mirroring the existing allow-list row schema (path + reason).
+
+### UPDATED: `agents/_implementer-base.md`
+
+Append one new numbered hard-guard rule (no new section needed — extends the existing `## Hard guards` list with one additional item). Use the exact item template:
+
+```text
+10. **NEVER paraphrase a test-pin literal you also wrote.** When the same commit edits a Markdown / SKILL.md / references file AND adds or modifies a `contains "$VAR" 'literal' 'label'` assertion that pins text in that same file, derive the assertion literal by quoting the edited file verbatim. Do NOT recompose the literal from intent or summary; the test compares with `grep -Fq`, so any character drift (smart quotes, inserted whitespace, reordered phrase) is a CI stall. If a literal is too long or fragile to pin exactly, split the assertion into multiple shorter `contains` checks each pinning a verbatim substring, rather than one paraphrased long literal.
+```
+
+The numbering picks up after the existing rules 1-9 (current tail at line 56 of `_implementer-base.md`).
+
+### UPDATED: `agents/codex-implementer.md`
+
+Regenerated artifact — runs `bash scripts/generate-codex-implementer.sh` after the `_implementer-base.md` edit. The generator is deterministic (LC_ALL=C, no timestamps); diff is exactly the new hard-guard item plus the auto-generated header. Do NOT hand-edit; let the generator run.
+
+### UPDATED: `agents/cursor-implementer.md`
+
+Same pattern — runs `bash scripts/generate-cursor-implementer.sh`. Diff identical in spirit to the Codex regeneration. Required by the launcher-parity rule (`agents/codex-implementer.md` and `agents/cursor-implementer.md` are co-managed via `_implementer-base.md`).
+
+### UPDATED: `scripts/test-relevant-checks.sh`
+
+Add one fixture case in the same style as the existing routing tests: create a disposable git repo, stage a one-line edit to `skills/design/references/approval-gates.md` (a stub file written into the fixture repo), invoke `relevant-checks.sh`, capture stdout, assert that `=== Running direct relevant make target(s): ... test-design-structure ...` appears. Also assert that the new pin-verification phase prints its `WARNING: scripts/check-contains-pins.sh not found` line when the verifier is absent in the fixture repo, and that the phase fires (and PHASES_RUN increments) when the verifier is present.
+
+If the fixture repo needs to exercise the present-verifier branch, copy the freshly-built `scripts/check-contains-pins.sh` into the fixture tree (or stub it with `#!/usr/bin/env bash` + `exit 0`). Use the same pattern as the existing pre-commit / agent-lint stubs in the harness.
+
+## Edge cases
+
+- **Empty `MODIFIED_FILES`**: `relevant-checks.sh` already short-circuits to `run_post_checks` before reaching the routing block; the new pin phase will never run there, which is correct (nothing to verify).
+- **Test pin that intentionally pins a non-`$REPO_ROOT`-relative literal** (e.g., a string baked into the harness itself, or a literal pinned against `$TMP_FILE` inside a fixture): `check-contains-pins.sh` cannot resolve the `$VAR` and prints `UNRESOLVED_VAR` warning rather than a defect. Warnings do not fail the run.
+- **A `contains` call where `$VAR` resolves to a binary or generated file**: `grep -Fq` works on any file content; the verifier does not need to special-case file type. If the file is absent on disk (e.g., generated and not yet built), the resolver emits `UNRESOLVED_VAR` (target file not found) rather than a defect.
+- **Repeated edits to the same `references/*.md` within one commit**: the verifier runs once per `relevant-checks.sh` invocation; idempotent.
+- **The verifier itself contains a `contains`-style assertion in its harness fixture**: the harness must isolate its fixture trees so the helper does not self-recurse into the test-harness fixtures. Use the same `TMPROOT=$(mktemp -d)` + filtered scan pattern as `test-relevant-checks.sh`.
+- **Pre-existing divergent pins in the tree**: a one-time scan during implementation will surface any current divergences. Plan: if `check-contains-pins.sh` finds defects in unrelated harnesses during the implementer's first local run, treat them as out-of-scope and file as OOS issues — do not bundle their fixes into this PR (scope of #3064 is the failure-mode fix, not a backlog sweep). The implementer surfaces such finds as `oos_observations[]` in the manifest.
+- **`_implementer-base.md` regeneration drift**: if pre-commit's `check-generators.sh` reports drift after the `_implementer-base.md` edit, the implementer MUST re-run both generator scripts and commit the regenerated outputs in the same commit. Do not bypass with `--no-verify`.
+- **agent-lint allow-list drift after schema change**: if `agent-lint.toml` schema changes between the design and implementation, place the four new rows using the schema present at implementation time and run `agent-lint --pedantic` locally to confirm acceptance.
+
+## Failure modes
+
+1. **Verifier false positive against legitimately-divergent pins** (e.g., a test pin that intentionally describes a NEGATIVE assertion phrased as the contradiction of file text). Earliest warning signal: implementer's first `make test-check-contains-pins` run flags an existing pin that has been stable in CI. Mitigation: the v1 grammar already excludes `absent()` / `not_contains` assertions. If a false positive arises, document the rare case in `check-contains-pins.md` non-goals and add a `# check-contains-pins: ok <reason>` inline suppression comment scanned by the verifier (suppression grammar deferred to v2 unless a concrete need surfaces during implementation).
+
+2. **`relevant-checks.sh` pin-phase invocation conflicts with pre-commit hook semantics** — pre-commit could re-invoke `relevant-checks.sh` recursively when the pin verifier itself modifies any tracked file. Mitigation: `check-contains-pins.sh` is read-only by contract (only `grep -Fq` reads). Verify with the harness's "no writes occur" assertion (use `git diff --quiet` before/after invocation in the fixture).
+
+3. **`_implementer-base.md` rule is too vague for Codex/Cursor to honor consistently**. Earliest signal: a subsequent `/implement` review-fix commit still produces a divergent pin. Mitigation: Option A (relevant-checks wiring) and Option B (pin verifier) are mechanical backstops; the prompt rule is the soft-belt, not the load-bearing fix. The combination is deliberately defense-in-depth.
+
+## Testing strategy
+
+- `scripts/test-check-contains-pins.sh` — new offline harness covering happy path (single-quoted and static-double-quoted), diverged-literal defect, unresolved-var warning, mixed-quote skip, changed-files scoping, multi-defect aggregation, empty test set, Bash 3.2 portability. Wired into Make as `test-check-contains-pins`, added to shard `test-harnesses-15`, and NOT added to the master `test-harnesses` aggregate line (coverage flows through the shard).
+- `scripts/test-relevant-checks.sh` — extended with one new fixture case asserting that a `skills/design/references/*.md` edit routes to `test-design-structure` in the direct-targets list. Also asserts the new pin-verification phase fires (and warns when absent / runs when present).
+- `scripts/check-generators.sh` — already runs in pre-commit; will catch missing regeneration of `codex-implementer.md` and `cursor-implementer.md` after the `_implementer-base.md` edit. No new test needed.
+- `make test-harness-shards-coverage` — already exists; confirms shard balance after appending `test-check-contains-pins` to shard 15.
+- No new harness for the prompt-rule prose itself — keep the change to documentation-only. If a literal-pin guard becomes necessary later, add it as a small `grep -Fq` check inside `test-check-generators.sh` rather than a separate harness.
+
+Implementer's local-validation sequence:
+1. Edit `_implementer-base.md`, then `bash scripts/generate-codex-implementer.sh && bash scripts/generate-cursor-implementer.sh`.
+2. Write `scripts/check-contains-pins.sh` + sibling `.md`; write harness + sibling `.md`.
+3. Add four `agent-lint.toml` allow-list rows.
+4. Run `bash scripts/test-check-contains-pins.sh` — must pass.
+5. Run `bash scripts/check-contains-pins.sh` against the full repo (no `--changed-files`) — surface any pre-existing divergences as OOS observations.
+6. Edit `scripts/relevant-checks.sh` (routing + pin phase) and `scripts/test-relevant-checks.sh` (new fixture).
+7. Run `bash scripts/test-relevant-checks.sh` — must pass.
+8. Edit `Makefile` (PHONY + shard 15 only + new rule); confirm `make test-check-contains-pins` runs.
+9. Run `make test-harness-shards-coverage` — must pass.
+10. Run `bash scripts/relevant-checks.sh` on the working tree — must pass cleanly (no defects against the implementer's own edits to `_implementer-base.md` or `references/*.md` because the implementer is following the discipline rule on this very commit).
+11. Run `make test-harnesses-15` — must pass.
+12. Run `make test-design-structure` and `make test-relevant-checks` — must pass.
+13. Run `agent-lint --pedantic .` — must pass (orphan check covers the four new files).
+
+
+## Acceptance
+
+- `bash scripts/test-check-contains-pins.sh` passes (all cases — single-quoted, static-double-quoted, diverged, unresolved, mixed-quote skip, changed-files scoping, multi-defect, empty, Bash 3.2 invocation).
+- `bash scripts/test-relevant-checks.sh` passes (including the new fixture asserting `skills/design/references/*.md` routes to `test-design-structure` AND the new pin-verification phase fires/warns appropriately).
+- `bash scripts/check-generators.sh` passes after `_implementer-base.md` edit + regen of `agents/codex-implementer.md` and `agents/cursor-implementer.md`.
+- `make test-harnesses-15` passes (new harness exercised in its shard).
+- `make test-harness-shards-coverage` passes after the Makefile edit.
+- `bash scripts/relevant-checks.sh` on the implementer's working tree passes cleanly — the implementer follows the new discipline rule on this very commit.
+- `agent-lint --pedantic .` passes (the four new files are registered in `agent-lint.toml`).
+- A diagnostic commit that introduces an intentional one-character literal divergence between a `contains` assertion and its target file causes `bash scripts/check-contains-pins.sh` to exit 1 with a `DEFECT:` line, and the same commit causes `bash scripts/relevant-checks.sh` to exit non-zero before reaching `run_post_checks` (verified locally; not committed).
+- The master `Makefile` `test-harnesses:` aggregate line (line ~47) is unchanged.
+
+diff_lines: 690
+
+## Test plan
+(no test plan section in plan-file)
