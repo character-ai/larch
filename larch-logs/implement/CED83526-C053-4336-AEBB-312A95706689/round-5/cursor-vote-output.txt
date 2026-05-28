@@ -1,0 +1,28 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- round-1 skip is cheap; assess-plan-round exits immediately
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- small duplicated env schema; shared helper would be optional polish
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- last-wins on duplicate ASSESSMENT is documented in tally-plan-assessor.md and harness-pinned
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- sequential Claude-then-waterfall dispatch appears intentional, not a defect
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- useful regression gap but not blocking this change
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- AskUserQuestion UX is prompt-orchestrated and hard to harness meaningfully
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- short-circuit routing is documented in SKILL.md branch matrix
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- test-design-structure.sh already pins all twelve assessor timing kinds
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- HARD guard exists in SKILL.md; stronger structural pin is optional
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- delimiter hardening is optional; plan content is expected assessor input
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- printing the verdict file matches SKILL.md; QUALIFICATIONS_SUMMARY already marked untrusted
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- assess-plan-round validates tmpdir-bound paths; direct-script misuse is out of normal workflow
+FINDING_23: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- write-once snapshot preservation is explicit by design
+FINDING_25: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- degraded-path partial env is unlikely; atomic write would be minor hardening
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- cap-reached/degraded-empty-collector skip is already documented in SKILL.md
+FINDING_28: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- cancelled-assessor-worse is listed in SKILL.md and approval-gates.md outcome enums

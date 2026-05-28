@@ -1,0 +1,16 @@
+Reviewing the breadcrumb-pair / quiet-log integration in the assessor dispatch path.
+### In-Scope Findings
+
+- **risk-integration** `skills/design/scripts/assess-plan-round.sh:154-201` — Dispatch KV recovery reads the entire `LARCH_QUIET_LOG_FILE` after the monitor returns, but the canonical Family B voter pattern in `skills/design/references/plan-review.md:189-211` captures contract output in a separate `*.stdout.*` mktemp while `LARCH_QUIET_LOG_FILE` holds only noisy chatter. Here, shell `>"$LARCH_QUIET_LOG_FILE"` and `larch_quiet_init` share one file, so `DISPATCH_OK` / path KVs are parsed from a log that also contains launcher stderr, waterfall warnings, and breadcrumbs; a spurious `DISPATCH_OK=` line could mis-set `DISPATCH_OK` before tally. **Suggested fix:** Mirror the voter pattern: redirect dispatch to a dedicated stdout capture file (FD3 contract stream) and keep `LARCH_QUIET_LOG_FILE` for quiet-only output; parse KVs from the capture file after `wait`, not from the quiet log.
+
+- **risk-integration** `skills/design/scripts/test-assess-plan-round.sh:4-118` — The harness always sets `LARCH_QUIET_DISABLE=1` and stubs `LARCH_BREADCRUMB_MONITOR_SH` / `LARCH_DISPATCH_PLAN_ASSESSORS_SH`, so CI never exercises the real background + `breadcrumb-monitor.sh` + quiet-log KV path that production uses. A regression in redirect/`emit_kv`/FD3 ordering would not be caught. **Suggested fix:** Add at least one integration case without `LARCH_QUIET_DISABLE` that runs the real monitor against a stub dispatch writing `emit_kv` lines under quiet mode, and assert `assess-plan-round.sh` parses `DISPATCH_OK` and assessor paths from the capture contract.
+
+- **risk-integration** `skills/design/scripts/assess-plan-round.sh:176-219` — On `breadcrumb-monitor.sh` timeout (`monitor_rc=4`), the script sets `dispatch_rc=$monitor_rc`, logs a warning, and still runs `tally-plan-assessor.sh` against default or partial output paths. The paired-PID kill is best-effort; tally may run on incomplete assessor files while the operator sees only a warning, not a hard degraded-default-open short-circuit. **Suggested fix:** On `monitor_rc != 0`, skip tally, call `write_default_verdict_artifacts`, emit `ASSESSOR_STATUS=degraded-default-open` with `EFFECTIVE_ASSESSORS=0`, matching the fail-open contract in `skills/design/references/assessor.md:38`.
+
+### Out-of-Scope Observations
+
+- **Mechanism check (scout hypothesis):** `dispatch-plan-assessors.sh` ends with `emit_kv` (`dispatch-plan-assessors.sh:151-158`), and under the branch’s redirect + `larch_quiet_init` (`scripts/lib-quiet.sh:84-141`), those lines should land in `LARCH_QUIET_LOG_FILE` via FD3, not “silently” miss stdout — so empty-log failure is unlikely if init succeeds. The main risk is parsing/noise and lack of tests, not FD3 routing itself.
+
+- **`plan-review-loop.sh`** still calls `dispatch-plan-voters.sh` in the foreground via command substitution (`plan-review-loop.sh:1046`); only the assessor orchestrator nests background+monitor inside the shell script. That asymmetry is intentional for long-running panels but worth documenting in `assess-plan-round.md`.
+
+- **Branch commits (since merge-base with `main`):** `46d880a70` Add HARD plan-quality assessor stage; `45d5f575d` chore(larch-logs) flush; `ad7890c72` relevant-checks fixes; `d8f1b7ce2` Address code review feedback (round 1).
