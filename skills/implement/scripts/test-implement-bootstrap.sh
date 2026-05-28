@@ -1594,6 +1594,7 @@ assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B7-plan-dirty-tree resume tail clea
 assert_contains "BRANCH_NAME=testuser/test-feature-123" "$out" "B7-plan-dirty-tree resume tail branch"
 assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B7-plan-dirty-tree resume tail keeps original tmpdir"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "post-tracking-issue --emergency-requested false" "$invoke" "B7-plan-dirty-tree resume tail refreshes metadata"
 assert_contains "check-mid-run-dirty-tree --mode checkpoint" "$invoke" "B7-plan-dirty-tree resume tail initial dirty check"
 if [ "$(printf '%s\n' "$invoke" | grep -cF "snapshot-untracked --output $SANDBOX_TMP/untracked-baseline.z --nul" || true)" -eq 1 ]; then
     PASS=$((PASS + 1))
@@ -1834,6 +1835,7 @@ assert_rc "$rc" 0 "B7-plan-dirty-tree inferred-emergency resume exit 0"
 assert_contains "EMERGENCY_REQUESTED=true" "$out" "B7-plan-dirty-tree inferred-emergency resume stdout KV"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" "$invoke" "B7-plan-dirty-tree inferred-emergency resume persists true"
+assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "B7-plan-dirty-tree inferred-emergency resume refreshes metadata"
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
 # --- B7-plan-dirty-tree resume tail re-bails when still dirty ---
@@ -2036,13 +2038,16 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 mkdir -p "$SANDBOX/preflight"
+printf 'BYPASS kind=missing-plan issue=123\n' >"$SANDBOX/preflight/emergency-bypass.log"
 set +e
-out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCopy --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null)
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCopy --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null)
 rc=$?
 set -e
 assert_rc "$rc" 2 "B11-plan-copy-plan-failure exit 2"
 assert_contains "STEP_FAILED=copy-plan" "$out" "B11-plan-copy-plan-failure STEP_FAILED"
 assert_contains "IMPLEMENT_TMPDIR=$SANDBOX_TMP" "$out" "B11-plan-copy-plan-failure tmpdir emitted"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "BYPASS kind=missing-plan issue=123" "$issues" "B11-plan-copy-plan-failure preserves emergency bypass audit"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B12-plan-gh-issue-view-failure ---

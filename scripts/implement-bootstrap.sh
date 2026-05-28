@@ -897,15 +897,15 @@ phase_plan_materialize() {
         "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization" || true
         "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization" || true
 
+        if ! append_emergency_bypass_log_if_present; then
+            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+            emit_kv STEP_FAILED emergency-bypass-log
+            exit 2
+        fi
         plan_src="$PREFLIGHT_TMPDIR_OPT/plan-from-issue.txt"
         if ! cp "$plan_src" "$PLAN_FILE" 2>"$IMPLEMENT_TMPDIR/copy-plan.stderr.log"; then
             emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
             emit_kv STEP_FAILED copy-plan
-            exit 2
-        fi
-        if ! append_emergency_bypass_log_if_present; then
-            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
-            emit_kv STEP_FAILED emergency-bypass-log
             exit 2
         fi
 
@@ -938,6 +938,9 @@ phase_plan_materialize() {
             exit 2
         fi
         persist_run_flags HARD || return 0
+        if [ "${BRANCH_SELECTED:-}" = "branch-1-resume" ]; then
+            post_tracking_metadata false || true
+        fi
     fi
     # Resume-tail idempotency: see implement-bootstrap.md § Resume-tail idempotency
     if ! run_dirty_tree_checkpoint; then

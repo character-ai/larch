@@ -386,4 +386,19 @@ set -e
 test "$sk" -eq 2 || fail '--skill foo must exit 2'
 pass 'reject unknown --skill'
 
+set +e
+"$HELPER" --skill implement --outcome approved --run-id X --mode m --workflow-path w --duration d \
+    --emergency-requested maybe \
+    --claude-tokens 0 --codex-tokens 0 --cursor-tokens 0 \
+    --claude-input-tokens 0 --claude-cache-read-tokens 0 --claude-cache-write-5m-tokens 0 --claude-cache-write-1h-tokens 0 --claude-output-tokens 0 \
+    --codex-input-tokens 0 --codex-cached-input-tokens 0 --codex-output-tokens 0 \
+    --cursor-input-tokens 0 --cursor-cache-read-tokens 0 --cursor-output-tokens 0 \
+    --issue-number 0 --issue-url N/A --pr-number 0 --pr-url N/A \
+    --plan-review-line N/A --code-review-line N/A --oos-count 0 --oos-urls '' \
+    --exec-issues 0 --warnings 0 --run-logs-path N/A --output-file "$TMP_DES_OUT" >/dev/null 2>&1
+sk=$?
+set -e
+test "$sk" -eq 2 || fail '--emergency-requested maybe must exit 2'
+pass 'reject invalid --emergency-requested'
+
 printf 'PASS=%s\n' "$PASS"

@@ -29,7 +29,11 @@ grep -Fq 'BYPASS kind=<lowercase-token> issue=<number>' "$SKILL" || fail "missin
 grep -Fq 'missing-plan' "$SKILL" || fail "missing missing-plan emergency token"
 grep -Fq 'malformed-plan' "$SKILL" || fail "missing malformed-plan emergency token"
 grep -Fq 'audit-refuse' "$SKILL" || fail "missing audit-refuse emergency token"
+# shellcheck disable=SC2016
+grep -Fq 'append exactly `BYPASS kind=audit-refuse issue=<N>`' "$SKILL" || fail "missing explicit audit-refuse bypass grammar"
 grep -Fq 'only once for the current emergency run, even after dirty-tree resume' "$SKILL" || fail "missing no-replay emergency bypass contract"
 grep -Fq "case \"\${emergency_requested:-}\" in" "$SKILL" || fail "missing conditional emergency bootstrap argv"
+# shellcheck disable=SC2016
+grep -Fq 'If `false` and `emergency_requested=false`, print `**❌ Issue #<N> has no larch:plan block — run /design <N> first.**` and exit **2**.' "$SKILL" || fail "missing non-emergency missing-plan refusal contract"
 
 echo "PASS: test-plan-adequacy-audit.sh"

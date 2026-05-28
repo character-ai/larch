@@ -69,6 +69,14 @@ else
     pass 'non-emergency metadata omits line'
 fi
 
+set +e
+bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested maybe 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -eq 2 ]; then pass 'invalid emergency flag exits 2'; else fail 'invalid emergency flag exits 2'; fi
+assert_contains 'POSTED=false' "$bad" 'invalid emergency flag emits envelope'
+assert_contains 'ERROR=--emergency-requested must be true or false' "$bad" 'invalid emergency flag emits validation error'
+
 # Missing --implement-tmpdir
 set +e
 bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" 2>/dev/null)
