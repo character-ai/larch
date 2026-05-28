@@ -1,0 +1,9 @@
+v1	vendor	1779929199	implement	-	codex	codex-phase1-dyn-codex-plan-line-ref-verifier	1779929135	1779929199	64	codex-primary-plan-dyn-line-ref-verifier-output.txt	0	complete
+v1	vendor	1779929218	implement	-	codex	codex-phase1-codex-plan-edge	1779929135	1779929218	83	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779929218	implement	-	codex	codex-phase1-codex-plan-innovation	1779929135	1779929218	83	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779929226	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779929135	1779929226	91	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779929236	implement	-	codex	codex-phase1-codex-plan-arch	1779929134	1779929236	102	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779929287	implement	-	codex	codex-phase1-codex-plan-requirements	1779929135	1779929287	152	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779930047	implement	-	codex	codex-phase1-aggregator	1779930016	1779930047	31	aggregator-output.txt	0	complete
+v1	vendor	1779930207	implement	-	codex	codex-phase1-voter-2	1779930156	1779930207	51	codex-vote-output.txt	0	complete
+v1	vendor	1779930269	implement	-	codex	codex-phase2-voter-3	1779930208	1779930269	61	cursor-vote-output-phase2.txt	0	complete

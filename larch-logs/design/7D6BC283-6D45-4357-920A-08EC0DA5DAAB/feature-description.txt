@@ -1,0 +1,18 @@
+# Issue #2977: phase_plan_materialize: tracking idempotency on resume + dirty-tree harness coverage gap
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-testing + cursor-specialist-edge-cases
+**Phase**: implement
+**Vote tally**: YES=2 (item 1), YES=2 (item 2)
+
+## Description
+
+Two related latent concerns in `scripts/implement-bootstrap.sh` Phase 3 path.
+
+  (1) `phase_plan_materialize` on a `--resume-plan-tail` re-entry re-runs `phase_tracking` before the plan tail (line ~904-908). On a dirty-tree resume in production, this may produce duplicate tracking metadata (double `post-tracking-issue.sh` comments or duplicate sentinel writes). Fix should evaluate idempotent tracking on resume (idempotency sentinel check) or skip `phase_tracking` when `RESUME_PLAN_TAIL=true` and the sentinel already exists.
+
+  (2) No regression test exercises the full prompt-side dirty-tree recovery orchestration path. The bootstrap harness covers `--resume-plan-tail` mechanically, but the orchestrator's sentinel check (`$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize`), re-probe, and `--resume-plan-tail` args documented in `skills/implement/SKILL.md` line ~464-468 are untested. A structural pin in `scripts/test-implement-structure.sh` or a new routing fixture would catch regressions.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
