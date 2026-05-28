@@ -20,7 +20,7 @@ Any allowlist change MUST update, in the same commit:
 
 ## Top-level `round-N/` allowlist
 
-**Include basenames:** `findings.md`, `findings-in-scope.md`, `findings-oos.md`, `findings-classification.tsv`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `ballot.txt`, `voting-tally.md`, `plan-review-slots.ndjson`, `plan-voter-slots.ndjson`, `scout-plan-manifest.json`, `round-summary.env`, `plan.txt`.
+**Include basenames:** `findings.md`, `findings-in-scope.md`, `findings-oos.md`, `findings-classification.tsv`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `ballot.txt`, `voting-tally.md`, `plan-review-slots.ndjson`, `plan-voter-slots.ndjson`, `scout-plan-manifest.json`, `round-summary.env`, `plan.txt`.
 
 **Include patterns:** `*-vote-output.txt`, `*-vote-output-first-pass.txt`, `voter*-diag.txt`.
 

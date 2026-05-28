@@ -107,6 +107,7 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 mkdir -p "$DESIGN_TMPDIR"
+export DESIGN_TMPDIR
 
 if [[ -z "$FEATURE_FILE" ]]; then
     FEATURE_FILE="${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
@@ -297,6 +298,24 @@ _snapshot_round_dir() {
         rm -rf "$tmp"
         return 1
     fi
+    if [[ -d "$dest" ]]; then
+        for src in "$dest"/*; do
+            [[ -f "$src" ]] || continue
+            name=$(basename "$src")
+            design_round_artifact_included "$name" || continue
+            [[ -e "$tmp/$name" ]] && continue
+            if [[ -L "$src" ]]; then
+                emit_kv WARN "plan-review-snapshot: refusing symlink round artifact $name"
+                failed=1
+                continue
+            fi
+            cp -f "$src" "$tmp/$name"
+        done
+    fi
+    if (( failed != 0 )); then
+        rm -rf "$tmp"
+        return 1
+    fi
     if [[ -d "$dest/revise" ]]; then
         local rname rsrc
         mkdir -p "$tmp/revise"
@@ -304,8 +323,17 @@ _snapshot_round_dir() {
             [[ -f "$rsrc" ]] || continue
             rname=$(basename "$rsrc")
             design_round_revise_artifact_included "$rname" || continue
+            if [[ -L "$rsrc" ]]; then
+                emit_kv WARN "plan-review-snapshot: refusing symlink revise artifact $rname"
+                failed=1
+                continue
+            fi
             cp -f "$rsrc" "$tmp/revise/$rname"
         done
+    fi
+    if (( failed != 0 )); then
+        rm -rf "$tmp"
+        return 1
     fi
     mkdir -p "$dest"
     local existing
@@ -396,7 +424,8 @@ if not blocks:
 
 def desc_key(block):
     m = re.search(r"\*\*Description\*\*:\s*(.+?)(?:\n|$)", block, re.S)
-    return (m.group(1).strip().lower() if m else block.strip().lower())
+    text = m.group(1) if m else block
+    return " ".join(text.strip().lower().split())
 
 try:
     existing = open(prior_path, encoding="utf-8", errors="replace").read()
@@ -409,12 +438,7 @@ for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", existing):
 out_parts = [existing.rstrip()] if existing.strip() else []
 for blk in blocks:
     dk = desc_key(blk)
-    dup = False
-    for ek in existing_keys:
-        if dk in ek or ek in dk:
-            dup = True
-            break
-    if dup:
+    if dk in existing_keys:
         continue
     existing_keys.append(dk)
     out_parts.append(blk)
@@ -463,6 +487,7 @@ _run_revise_with_status_parse() {
 
 _run_post_apply_pipeline() {
     local round_num="$1"
+    local plan_backup="${2:-}"
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
@@ -496,6 +521,8 @@ PY
     emit_rc=$?
     set -e
     if (( emit_rc != 0 )); then
+        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+        rm -f "$plan_backup"
         LOOP_STATUS=emit-plan-failed
         LOOP_REASON=emit-plan-driver-failed
         return 1
@@ -503,6 +530,8 @@ PY
     local emit_st
     emit_st=$(printf '%s\n' "$emit_out" | awk -F= '$1 == "EMIT_PLAN_STATUS" { print $2; found=1 } END { if (!found) print "" }')
     if [[ "$emit_st" == "missing-diff-lines" ]]; then
+        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+        rm -f "$plan_backup"
         LOOP_STATUS=emit-plan-failed
         LOOP_REASON=emit-plan-failed
         return 1
@@ -520,6 +549,7 @@ PY
         else
             LOOP_REASON=validator-driver-failed
         fi
+        rm -f "$plan_backup"
         return 1
     fi
     local size_out hard
@@ -528,8 +558,10 @@ PY
     if [[ "$hard" == "true" ]]; then
         LOOP_STATUS=plan-size-trigger
         LOOP_REASON=plan-size-hard
+        rm -f "$plan_backup"
         return 1
     fi
+    rm -f "$plan_backup"
     return 0
 }
 
@@ -1217,7 +1249,7 @@ while (( round_num <= ROUND_CAP )); do
     _count_collector_evidence
     ACCEPTED_COUNT=0
     if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
-        ACCEPTED_COUNT=$(grep -cE '^### FINDING_' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
+        ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
     fi
     IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
     PLAN_HASH_BEFORE_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
@@ -1231,7 +1263,7 @@ while (( round_num <= ROUND_CAP )); do
             _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
         fi
         if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
-            LOOP_STATUS=complete
+            LOOP_STATUS=zero-findings-degraded-panel
             LOOP_REASON=zero-findings-degraded-panel
         else
             LOOP_STATUS=converged
@@ -1248,7 +1280,10 @@ while (( round_num <= ROUND_CAP )); do
         _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
     fi
 
+    _pre_revise_plan_backup=$(mktemp "$DESIGN_TMPDIR/.plan-before-revise.XXXXXX")
+    cp -f "$PLAN_FILE" "$_pre_revise_plan_backup"
     if ! _run_revise_with_status_parse "$round_num"; then
+        rm -f "$_pre_revise_plan_backup"
         DEGRADED_PANEL=1
         PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
         LOOP_STATUS=revision-failed
@@ -1258,7 +1293,7 @@ while (( round_num <= ROUND_CAP )); do
     PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
     revise_status=ok
 
-    if ! _run_post_apply_pipeline "$round_num"; then
+    if ! _run_post_apply_pipeline "$round_num" "$_pre_revise_plan_backup"; then
         _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
     fi
 

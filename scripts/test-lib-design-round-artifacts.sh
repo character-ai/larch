@@ -36,6 +36,7 @@ assert_included findings-classification.tsv
 assert_included accepted-plan-findings.md
 assert_included rejected-findings.md
 assert_included oos.md
+assert_included oos-accepted-design.md
 assert_included ballot.txt
 assert_included voting-tally.md
 assert_included plan-review-slots.ndjson

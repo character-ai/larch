@@ -984,6 +984,8 @@ if [[ -d "$DESIGN_TMPDIR/plan-review" && ! -L "$DESIGN_TMPDIR/plan-review" ]]; t
   else
     printf '%s\n' "WARN=Step 3: plan-review directory could not be resolved; skipping round cleanup"
   fi
+elif [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
+  printf '%s\n' "WARN=Step 3: refusing to clean symlinked plan-review directory"
 fi
 if [[ -f "$DESIGN_TMPDIR/.step3-review-cap.env" ]]; then
   # shellcheck source=/dev/null
@@ -1039,7 +1041,7 @@ if [[ "${LOOP_STATUS:-}" != "cap-reached" ]]; then
       WARN) printf '%s\n' "WARN=$_value" ;;
     esac
   done <<<"${_plan_review_out:-}"
-  if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|panel-failed|main-agent-vote-required)$ ]]; then
+  if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|panel-failed|main-agent-vote-required)$ ]]; then
     LOOP_STATUS=panel-failed
     printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after plan-review-loop.sh; treating as panel-failed**"
   fi
@@ -1069,7 +1071,7 @@ Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected fi
 - `LOOP_STATUS=revision-failed` — proceed to Gate B with the warning banner and the full 3-option manual-style prompt for un-applied final-round findings.
 - `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (handled above); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; loop aborted; current plan preserved.**` and short-circuit to Step 3b (skip Gate B).
 - `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt`; print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation, not convergence.**` and short-circuit to Step 3b (skip Gate B).
-- `LOOP_STATUS=complete REASON=zero-findings-degraded-panel` — do not treat the round as converged; Gate B's zero-findings short-circuit still skips apply and continues to Step 3b.
+- `LOOP_STATUS=zero-findings-degraded-panel` — do not treat the round as converged; Gate B's zero-findings short-circuit still skips apply and continues to Step 3b.
 - `LOOP_STATUS=plan-size-trigger|plan-validator-defects` — run the Step 2b.5 Split-path / Cancel `AskUserQuestion` handler (or plan-command validator failure shared body) before Gate B/3b.
 - `LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure and route through Gate B's warning/manual handling, not the Split-path prompt.
 - `LOOP_STATUS=panel-failed` (`rc=1`) — existing short-circuit to Step 3b.
