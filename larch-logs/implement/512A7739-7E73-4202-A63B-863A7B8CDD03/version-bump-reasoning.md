@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `3b602a6f` (Bump version to 45.1.6 (#3056))
-- **Current version**: `45.1.16`
+- **Base commit**: `77c2d807` (Fixes #3025: Enforce monitor_rc propagation in Family B lint (#3086))
+- **Current version**: `45.1.17`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.1.17`
+- **New version**: `45.1.18`
 
 ### PATCH rationale
 
