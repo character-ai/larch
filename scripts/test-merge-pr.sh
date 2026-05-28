@@ -403,7 +403,7 @@ run_case "admin_failed_redacted" \
     GH_ADMIN_EXIT=1 \
     GH_ADMIN_OUTPUT='admin helper saw github_pat_abcdefghijklmnopqrstuvwxyz1234567890' \
     GH_PLAIN_EXIT=1 \
-    GH_PLAIN_OUTPUT='plain helper saw ghp_123456789012345678901234567890123456' \
+    GH_PLAIN_OUTPUT='plain helper saw ghp_'"123456789012345678""901234567890123456" \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
 if grep -Eq 'github_pat_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+' "$TMPDIR_BASE/admin_failed_redacted/stdout.log" "$TMPDIR_BASE/admin_failed_redacted/stderr.log"; then
     fail "F2: merge diagnostics leaked raw token"

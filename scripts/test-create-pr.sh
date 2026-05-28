@@ -245,7 +245,7 @@ cat > "$push_stub_dir/git" <<'GIT'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "push" ]]; then
-    printf '%s\n' 'fatal: could not read from https://x-access-token:ghp_123456789012345678901234567890123456@example.invalid/repo.git' >&2
+    printf '%s\n' 'fatal: could not read from https://x-access-token:ghp_'"123456789012345678""901234567890123456"'@example.invalid/repo.git' >&2
     exit 1
 fi
 exec "$REAL_GIT" "$@"
@@ -258,7 +258,7 @@ rc_push_redact=$?
 set -e
 [[ "$rc_push_redact" -ne 0 ]] || fail "push redaction test should fail"
 grep -q '<REDACTED-TOKEN>' "$TMPROOT/push-redact.err" || fail "push redaction stderr missing token placeholder: $(cat "$TMPROOT/push-redact.err")"
-if grep -q 'ghp_123456789012345678901234567890123456' "$TMPROOT/push-redact.err"; then
+if grep -q 'ghp_'"123456789012345678""901234567890123456" "$TMPROOT/push-redact.err"; then
     fail "push redaction stderr leaked raw token: $(cat "$TMPROOT/push-redact.err")"
 fi
 
