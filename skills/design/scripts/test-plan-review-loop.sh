@@ -368,6 +368,19 @@ printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected compl
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
 [[ -f "$D1/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing for real tally"
 
+echo "=== stubbed driver: COMBINED_FALLBACK_COUNT degrades findings-present path ==="
+D1C="$TMP/z1c"
+mkdir -p "$D1C"
+printf 'plan\n' >"$D1C/plan.txt"
+printf 'feat\n' >"$D1C/feature-description.txt"
+write_scout
+write_dispatch_combined_threshold
+write_collect one
+write_voters_three
+out1c=$(run_loop "$D1C")
+printf '%s\n' "$out1c" | grep -q '^DEGRADED_PANEL=1$' || fail "expected DEGRADED_PANEL=1 when COMBINED_FALLBACK_COUNT crosses threshold with findings present"
+printf '%s\n' "$out1c" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with findings present under combined threshold"
+
 echo "=== stubbed driver: round-2 artifacts honor --round-num ==="
 D1R2="$TMP/z1r2"
 mkdir -p "$D1R2"

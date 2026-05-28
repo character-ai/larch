@@ -235,9 +235,12 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$codex_log" "$REPO_ROOT/scripts/dis
     --competition-notice-file "$notice" \
     --timeout 5)
 assert_line "DISPATCH_OK=true" "$out"
+# launch-review.sh expands --agent-file before invoking Codex, so this harness
+# validates the prompt sidecar plus rendered prompt body instead of a literal
+# --agent-file argv token in CODEX_STUB_LOG.
 grep -Fq 'AGENT_FILE=' "$TMPROOT/competition-slot.txt.prompt" || { echo "FAIL: competition-notice prompt sidecar missing AGENT_FILE (launch-review --agent-file)" >&2; exit 1; }
 grep -Fq 'agents/reviewer-structure.md' "$TMPROOT/competition-slot.txt.prompt" || { echo "FAIL: competition-notice prompt sidecar missing agent path" >&2; cat "$TMPROOT/competition-slot.txt.prompt" >&2; exit 1; }
-grep -Fq 'Structure, KISS, and Maintainability' "$codex_log" || { echo "FAIL: competition-notice codex argv missing rendered agent body" >&2; cat "$codex_log" >&2; exit 1; }
+grep -Fq 'Structure, KISS, and Maintainability' "$codex_log" || { echo "FAIL: competition-notice codex prompt missing rendered agent body" >&2; cat "$codex_log" >&2; exit 1; }
 grep -Fq 'Competition notice' "$codex_log" || { echo "FAIL: missing competition notice block" >&2; exit 1; }
 grep -Fq 'Custom notice text' "$codex_log" || { echo "FAIL: missing competition notice file contents" >&2; exit 1; }
 
@@ -626,21 +629,32 @@ persist_counter="$TMPROOT/persist.count"
 printf '3\n' >"$persist_counter"
 manifest="$TMPROOT/slots-fallback-counter-persist.ndjson"
 {
-    jq -cn --arg out "$TMPROOT/persist-p2.txt" --arg pf "$prompt" \
-        '{slot:"persist-p2",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"persist-g"}'
+    jq -cn --arg out "$TMPROOT/persist-p2-a.txt" --arg pf "$prompt" \
+        '{slot:"persist-p2-a",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"persist-g"}'
+    jq -cn --arg out "$TMPROOT/persist-p2-b.txt" --arg pf "$prompt" \
+        '{slot:"persist-p2-b",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"persist-g"}'
     jq -cn --arg out "$TMPROOT/persist-p3.txt" --arg pf "$prompt" \
-        '{slot:"persist-p3",tool:"codex",output:$out,prompt_file:$pf,fallback_group:"persist-g"}'
+        '{slot:"persist-p3",tool:"cursor",output:$out,prompt_file:$pf}'
 } >"$manifest"
 out=$(PATH="$STUB_BIN:$PATH" \
-    CODEX_STUB_FAIL=true \
-    CURSOR_STUB_FAIL=true \
+    LARCH_TEST_REAL_CP="$REAL_CP" \
+    CP_STUB_FAIL_COUNTER="$TMPROOT/persist-p2.count" \
+    CP_STUB_FAIL_TARGET_CONTAINS="$TMPROOT/persist-p2-b.txt" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CURSOR_STUB_FAIL_OUTPUT_CONTAINS='persist-p3.txt' \
+    CODEX_STUB_RESULT_INCLUDE_BASENAME=true \
+    CODEX_STUB_FAIL_OUTPUT_CONTAINS='persist-p3-phase2.txt' \
     "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --fallback-counter-file "$persist_counter" \
     --codex-present true \
     --cursor-present true \
     --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
     --timeout 5)
+assert_line "FALLBACK_COUNT=1" "$out"
+assert_line "PHASE2_RELAUNCH_COUNT=1" "$out"
+assert_line "COMBINED_FALLBACK_COUNT=2" "$out"
 fb=$(grep -E '^FALLBACK_COUNT=' <<<"$out" | head -1 | cut -d= -f2-)
 p2=$(grep -E '^PHASE2_RELAUNCH_COUNT=' <<<"$out" | head -1 | cut -d= -f2-)
 case "$fb" in ''|*[!0-9]*) fb=0 ;; esac
