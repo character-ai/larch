@@ -11,12 +11,13 @@ larch_quiet_init
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'EOF'
-Usage: run-analysis.sh [--no-issue] [--no-plot] [--plot-from <issue-number>]
+Usage: run-analysis.sh --skill <design|implement> [--no-issue] [--no-plot] [--plot-from <issue-number>]
 
 Flags:
+  --skill <name>           Required. Which skill's larch-logs to scan (design or implement).
   --no-issue               Skip posting the analysis report GitHub issue.
   --no-plot                Skip plot generation (text analysis still printed).
-  --plot-from <N>          Re-plot from a prior [Analysis Report] issue body (skips scan).
+  --plot-from <N>          Re-plot from a prior analysis-report issue (title validated per skill).
 
 Environment overrides:
   LARCH_REPORT_TOKENS_REPO=<owner/repo>   GitHub repository to scan; defaults to gh repo view.
@@ -47,10 +48,26 @@ EOF
 NO_ISSUE=
 NO_PLOT=
 PLOT_FROM=
+SKILL=
+
+report_tokens_validate_skill() {
+    case "${1:-}" in
+        design|implement) return 0 ;;
+        "")
+            larch_err "ERROR: --skill is required (allowed: design, implement)"
+            return 1
+            ;;
+        *)
+            larch_err "ERROR: --skill must be design or implement (got: $1)"
+            return 1
+            ;;
+    esac
+}
 
 while [[ $# -gt 0 ]]; do
     case "${1:-}" in
         --help|-h) usage; exit 0 ;;
+        --skill) SKILL="${2:-}"; shift 2 ;;
         --no-issue) NO_ISSUE=1; shift ;;
         --no-plot)  NO_PLOT=1;  shift ;;
         --plot-from)
@@ -59,6 +76,13 @@ while [[ $# -gt 0 ]]; do
         *) larch_err "ERROR: unknown argument: $1"; usage; exit 1 ;;
     esac
 done
+
+if ! report_tokens_validate_skill "$SKILL"; then
+    usage
+    exit 1
+fi
+
+export LARCH_REPORT_TOKENS_SKILL="$SKILL"
 
 need_cmd() {
     command -v "$1" >/dev/null 2>&1 || {
@@ -106,17 +130,25 @@ CACHE_TMP="$TMPROOT/issues-cache.json.tmp"
 CACHE_JSON="$TMPROOT/issues-cache.json"
 ANALYZER="$TMPROOT/analyze-token-reports.py"
 
+if [[ "$SKILL" == "design" ]]; then
+    TOKEN_REPORT_BASENAME="token-report-final.json"
+    TIMING_REPORT_BASENAME="timing-report-final.json"
+else
+    TOKEN_REPORT_BASENAME="token-report.json"
+    TIMING_REPORT_BASENAME="timing-report.json"
+fi
+
 if [[ -z "$PLOT_FROM" ]]; then
     REPO_ROOT=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
-    LOG_BASE="$REPO_ROOT/larch-logs/implement"
-    emit_breadcrumb --category=progress "Scanning $LOG_BASE for larch run logs..."
+    LOG_BASE="$REPO_ROOT/larch-logs/$SKILL"
+    emit_breadcrumb --category=progress "Scanning $LOG_BASE for larch run logs (--skill=$SKILL)..."
 
     : > "$ISSUES_JSONL"
     run_count=0
     while IFS= read -r dir; do
         manifest="$dir/manifest.json"
-        token_report_json="$dir/token-report.json"
-        timing_report_json="$dir/timing-report.json"
+        token_report_json="$dir/$TOKEN_REPORT_BASENAME"
+        timing_report_json="$dir/$TIMING_REPORT_BASENAME"
         run_params_json="$dir/run-params.json"
         [[ -f "$manifest" ]] || continue
         [[ -f "$token_report_json" ]] || continue
@@ -154,7 +186,7 @@ if [[ -z "$PLOT_FROM" ]]; then
             --slurpfile token_report "$token_report_json" \
             'if ($token_report[0] | type) == "object" then {number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []} else error("not-an-object") end' \
             >> "$ISSUES_JSONL" 2>/dev/null; then
-            larch_err "Warning: invalid token-report.json for issue #${issue_number} — skipping run"
+            larch_err "Warning: invalid ${TOKEN_REPORT_BASENAME} for issue #${issue_number} — skipping run"
         fi
 
         run_count=$((run_count + 1))
@@ -1017,7 +1049,11 @@ def create_report_issue(records, analysis_text):
         for r in records
     ]
     now = dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    title = f"[Analysis Report] Token costs as of {now}"
+    skill = os.environ.get("LARCH_REPORT_TOKENS_SKILL", "implement")
+    if skill == "design":
+        title = f"[Design Analysis Report] Token costs as of {now}"
+    else:
+        title = f"[Implement Analysis Report] Token costs as of {now}"
     body = (
         analysis_text
         + "\n\n## Raw per-issue data\n\n```json\n"
@@ -1133,8 +1169,28 @@ export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
 
 if [[ -n "$PLOT_FROM" ]]; then
     emit_breadcrumb --category=progress "Fetching analysis report issue #$PLOT_FROM..."
+    ISSUE_JSON_FILE="$TMPROOT/plot-from-issue.json"
+    if ! gh issue view "$PLOT_FROM" --repo "$REPO" --json title,body > "$ISSUE_JSON_FILE"; then
+        larch_err "ERROR: failed to fetch issue #$PLOT_FROM"
+        exit 1
+    fi
+    ISSUE_TITLE=$(jq -r '.title // empty' "$ISSUE_JSON_FILE")
+    case "$SKILL" in
+        implement)
+            if ! printf '%s' "$ISSUE_TITLE" | grep -qE '^\[(Analysis Report|Implement Analysis Report)\]'; then
+                larch_err "ERROR: issue #$PLOT_FROM title does not match --skill=implement (expected [Analysis Report] or [Implement Analysis Report] prefix)"
+                exit 1
+            fi
+            ;;
+        design)
+            if ! printf '%s' "$ISSUE_TITLE" | grep -qE '^\[Design Analysis Report\]'; then
+                larch_err "ERROR: issue #$PLOT_FROM title does not match --skill=design (expected [Design Analysis Report] prefix)"
+                exit 1
+            fi
+            ;;
+    esac
     ISSUE_BODY_FILE="$TMPROOT/plot-from-body.txt"
-    gh issue view "$PLOT_FROM" --repo "$REPO" --json body --jq '.body' > "$ISSUE_BODY_FILE"
+    jq -r '.body // empty' "$ISSUE_JSON_FILE" > "$ISSUE_BODY_FILE"
     python3 "$ANALYZER" --plot-from "$ISSUE_BODY_FILE"
     exit $?
 fi

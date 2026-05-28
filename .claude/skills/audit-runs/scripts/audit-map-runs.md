@@ -1,5 +1,7 @@
 # .claude/skills/audit-runs/scripts/audit-map-runs.sh — contract
 
+Requires `--skill <design|implement>`. Default log root is `larch-logs/$SKILL`. Design maps PR title `chore(larch-logs): design run <RUN_ID>` to run dirs and leaves `closes_issue` empty. Implement behavior is unchanged.
+
 Maps each PR in `--pr-list` to its run-log directory under `larch-logs/implement/`.
 
 ## Output

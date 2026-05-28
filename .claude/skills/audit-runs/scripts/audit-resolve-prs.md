@@ -2,6 +2,10 @@
 
 Resolves a verbal description to a concrete PR list for `/audit-runs`.
 
+## Required flags
+
+- `--skill <design|implement>` — selects prior-report title shapes (`audit-title-matcher.sh`) and, for `design`, filters merged PRs to `chore(larch-logs): design run <UUID>` titles.
+
 ## Output KV (stdout)
 
 ```

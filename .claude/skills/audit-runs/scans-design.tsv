@@ -1,0 +1,2 @@
+name	type	pattern	expected_outcome	severity
+cache-freshness	manifest-field	manifest.json::larch_version < latest	run plugin matches or lags current (informational when behind)	low

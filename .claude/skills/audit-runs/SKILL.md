@@ -1,25 +1,26 @@
 ---
 name: audit-runs
-description: "Use when auditing recently-merged /implement run logs for anomalies, filing the chain-of-history audit-report issue, and proposing bug-issue follow-ups that require explicit user direction before any filing or augmentation. Mechanizes the ad-hoc post-merge audit workflow."
+description: "Use when auditing recently-merged larch run logs for anomalies (design or implement), filing the chain-of-history audit-report issue, and proposing bug-issue follow-ups that require explicit user direction before any filing or augmentation. Mechanizes the ad-hoc post-merge audit workflow."
 allowed-tools: Bash, Read
 ---
 
 # audit-runs
 
-Audit recently-merged `/implement` run logs for anomalies (EXON regression, OOS mangling, missing files, NS-retry sidecars, self-deploying gap, etc.); always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
+Audit recently-merged larch run logs for the selected skill (`--skill=design|implement`) for anomalies (EXON regression, OOS mangling, missing files, NS-retry sidecars, self-deploying gap, etc.); always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
 
 This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped with the plugin.
 
 ## Usage
 
 ```
-/larch:audit-runs [<verbal-description>] [--repo owner/name] [--allow-concurrent]
+/larch:audit-runs --skill <name> [<verbal-description>] [--repo owner/name] [--allow-concurrent]
 ```
 
 (Plugin slash-alias: `/audit-runs …` may also resolve to this skill depending on marketplace wiring; prefer `/larch:audit-runs` when unsure.)
 
 ### Args
 
+- `--skill <name>` (**required**): which skill’s run logs to audit. Closed enum: `design` or `implement`. Reject missing or out-of-enum values before any side effect (no `gh` call, no tmpdir). Parse from argv before preflight.
 - `<verbal-description>` (optional positional): when present, describes which PRs to audit. When omitted or empty, treat as `since last audit` (same error paths as that form). Supported forms:
   - `last N PRs` — N most-recently-merged PRs targeting `main`
   - `since last audit` — PRs merged after the prior audit report's `audited_pr_range.last`; error if no prior report exists or no new PRs have merged (do NOT file an empty report)
@@ -32,9 +33,11 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 
 ## Pre-flight
 
+After parsing and validating `--skill` into `$SKILL`:
+
 ```bash
 PREFLIGHT_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-preflight.sh" \
-  --repo "<owner/name>" [--allow-concurrent])
+  --skill "$SKILL" --repo "<owner/name>" [--allow-concurrent])
 ```
 
 Read `PREFLIGHT_OK` and `REASON` from stdout. Fail-fast when `PREFLIGHT_OK=false`; print `REASON` to the user. Contract: `.claude/skills/audit-runs/scripts/audit-preflight.md`.
@@ -43,21 +46,21 @@ Read `PREFLIGHT_OK` and `REASON` from stdout. Fail-fast when `PREFLIGHT_OK=false
 
 ```bash
 RESOLVE_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-resolve-prs.sh" \
-  --repo "<owner/name>" [--verbal-description "<verbal-description>"])
+  --skill "$SKILL" --repo "<owner/name>" [--verbal-description "<verbal-description>"])
 ```
 
 Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, `RESOLVED_ECHO`, and `ERROR` from stdout. Fail-fast when `ERROR` is non-empty; print it to the user. Print `RESOLVED_ECHO` before scanning. Contract: `.claude/skills/audit-runs/scripts/audit-resolve-prs.md`.
 
 ## Scan Registry
 
-The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON string escaping for NDJSON payloads is implemented in `.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash` (sourced by `audit-scan-run.sh` and `test-audit-runs.sh`). The plan-review / accepted / non-canonical-category filter shared by `oos-category-mangle` and `category-stats` lives in `.claude/skills/audit-runs/scripts/audit-scan-run-mangled-rows.jq` (invoked via `jq -f` from `audit-scan-run.sh`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update — routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on. **Operator parity with run-log audit-title hygiene on `main`**: audit-title and search-exclusion work assumes run logs and issue titles stay aligned with the same `^\[Run Logs Audit .* Report\]` title regex used by the audit-report writer; the pre-lock `scripts/check-main-sync.sh` probe uses the locally cached `origin/main` ref (no fetch). If the probe fails with `SYNC_STATUS=probe-error`, operators must `git fetch origin main` before locking — same freshness requirement as the audit-report title migration (treat main-sync as a first-class preflight gate next to audit-title hygiene, not an undocumented side effect).
+The scan list is externalized in `.claude/skills/audit-runs/scans-$SKILL.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON string escaping for NDJSON payloads is implemented in `.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash` (sourced by `audit-scan-run.sh` and `test-audit-runs.sh`). The plan-review / accepted / non-canonical-category filter shared by `oos-category-mangle` and `category-stats` lives in `.claude/skills/audit-runs/scripts/audit-scan-run-mangled-rows.jq` (invoked via `jq -f` from `audit-scan-run.sh`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update — routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on. **Operator parity with run-log audit-title hygiene on `main`**: audit-title and search-exclusion work assumes run logs and issue titles stay aligned with the same `^\[Run Logs Audit .* Report\]` title regex used by the audit-report writer; the pre-lock `scripts/check-main-sync.sh` probe uses the locally cached `origin/main` ref (no fetch). If the probe fails with `SYNC_STATUS=probe-error`, operators must `git fetch origin main` before locking — same freshness requirement as the audit-report title migration (treat main-sync as a first-class preflight gate next to audit-title hygiene, not an undocumented side effect).
 
 Read the registry at runtime:
 ```bash
-SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
+SCANS_TSV="$PWD/.claude/skills/audit-runs/scans-$SKILL.tsv"
 ```
 
-### Scans (baseline — see scans.tsv for the machine-readable registry)
+### Scans (baseline — see `scans-implement.tsv` / `scans-design.tsv` for the machine-readable registry)
 
 | Scan | What | Where |
 |---|---|---|
@@ -80,7 +83,7 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 ```bash
 # Map each PR to its run-log directory
 RUN_MAP_TSV=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-map-runs.sh" \
-  --pr-list "$PR_LIST" --repo "<owner/name>")
+  --skill "$SKILL" --pr-list "$PR_LIST" --repo "<owner/name>")
 # TSV: pr_number<TAB>run_id<TAB>started_at<TAB>larch_version<TAB>closes_issue
 ```
 
@@ -88,9 +91,10 @@ Then for each PR row in the TSV:
 
 ```bash
 bash "$PWD/.claude/skills/audit-runs/scripts/audit-scan-run.sh" \
-  --run-dir "larch-logs/implement/<RUN_ID>" \
+  --skill "$SKILL" \
+  --run-dir "larch-logs/$SKILL/<RUN_ID>" \
   --pr <PR_NUM> \
-  --scans-tsv "$PWD/.claude/skills/audit-runs/scans.tsv" \
+  --scans-tsv "$SCANS_TSV" \
   --required-files-tsv "$PWD/docs/run-logs-required-files.tsv" \
   --current-version "<latest-plugin-version>" \
   > "$TMPDIR/scan-results-<PR_NUM>.ndjson"
@@ -104,7 +108,7 @@ Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line)
 
 At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise: titles matching `^\[Run Logs Audit .* Report\]` (same title-prefix shape as **Scan Registry** operator parity). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise: titles matching `^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]` (all three audit-report families; same shapes as `audit-title-matcher.sh`). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
 - **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IMPLEMENTING]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
 
 For each finding, classify it into one of these two lists using GitHub + repo history; do not file or comment until after the post-report user prompt below.
@@ -200,7 +204,7 @@ PACIFIC_TIMESTAMP=$(printf '%s\n' "$PACIFIC_OUT" | sed -n 's/^PACIFIC_TIMESTAMP=
 # → PACIFIC_TIMESTAMP=2026-05-20T21:59-07:00
 
 TITLE_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-title.sh" \
-  --pr-list "$PR_LIST" --timestamp "$PACIFIC_TIMESTAMP")
+  --skill "$SKILL" --pr-list "$PR_LIST" --timestamp "$PACIFIC_TIMESTAMP")
 # stdout is KV-shaped: each line is `KEY=value`. The title script prints `TITLE=...` (not a bare title string).
 TITLE=$(printf '%s\n' "$TITLE_OUT" | sed -n 's/^TITLE=//p')
 ```
@@ -305,7 +309,7 @@ After the new audit report is filed:
 
 ```bash
 bash "$PWD/.claude/skills/audit-runs/scripts/audit-close-priors.sh" \
-  --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>"
+  --skill "$SKILL" --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>"
 ```
 
 Stdout is KV-shaped. Successful closes emit `CLOSED_NUMBER=<N>` (one line per issue). Failures can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line (see `audit-close-priors.md`). If `gh issue list` fails up front, the script prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. If temporary `--body-file` setup fails before the comment loop, the script prints `BODY_FILE_FAILED=true` plus `REASON=...` and exits non-zero. After any `audit-close-priors.sh` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` / `BODY_FILE_FAILED=` even when the exit code is `0` — do not treat “some `CLOSED_NUMBER=` lines” as unconditional full success.
@@ -331,30 +335,32 @@ Optional stdout-style summary after the chat contract (for example per-scan PASS
 - Working tree must be a clone of `--repo`
 - `audit-report` label must exist in the target repo (created by the bootstrap audit report — treat its existence as a precondition assertion, not something to create on each invocation)
 - `docs/run-logs-required-files.tsv` must exist in the repo root (for the Required-file presence scan)
-- `larch-logs/implement/` directory must exist in the repo root (for all scans)
+- `larch-logs/<skill>/` directory must exist in the repo root (for all scans; `<skill>` is the `--skill` argv value)
 
 ## Revised Orchestrator Flow
 
 ```
-audit-preflight.sh           → PREFLIGHT_OK / fail-fast
-audit-resolve-prs.sh         → full stdout KV contract (see `audit-resolve-prs.md`: IMPLICIT_SINCE_LAST_AUDIT, PRIOR_REPORT_NUMBER, PR_LIST, PR_COUNT, RESOLVED_ECHO, ERROR)
-audit-map-runs.sh            → run-map.tsv
+parse --skill (design|implement) → $SKILL; fail-fast if missing/invalid
+audit-preflight.sh --skill $SKILL → PREFLIGHT_OK / fail-fast
+audit-resolve-prs.sh --skill $SKILL → full stdout KV contract (see `audit-resolve-prs.md`)
+audit-map-runs.sh --skill $SKILL → run-map.tsv
 for each PR:
-  audit-scan-run.sh          → scan-results-NNNN.ndjson
+  audit-scan-run.sh --skill $SKILL → scan-results-NNNN.ndjson
 audit-compute-counters.sh    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
 [LLM: classify proposed_new_issues / proposed_augmentations via gh issue search (open+closed), version-window reasoning, and version_window_checks]
 audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP (extract from stdout KV)
-audit-title.sh               → TITLE
+audit-title.sh --skill $SKILL → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
        reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
 create-one.sh                → file audit report
-audit-close-priors.sh        → close prior audit-report issues
+audit-close-priors.sh --skill $SKILL → close prior audit-report issues for this skill
 [LLM: post-report 3-way question if proposed issues exist — or zero-findings short-circuit when both proposal lists are empty]
 [LLM: if audit-report issue number exists: post session-summary comment on that issue; else skip (no report filed)]
 ```
 
 ## Scripts
 
+- `.claude/skills/audit-runs/scripts/audit-title-matcher.sh` (contract: `audit-title-matcher.md`) — per-skill audit-report title matching
 - `.claude/skills/audit-runs/scripts/audit-preflight.sh` (contract: `audit-preflight.md`) — git fetch/pull, repo-identity, concurrency guard
 - `.claude/skills/audit-runs/scripts/audit-resolve-prs.sh` (contract: `audit-resolve-prs.md`) — verbal-description → PR_LIST
 - `.claude/skills/audit-runs/scripts/audit-map-runs.sh` (contract: `audit-map-runs.md`) — PR → run-log directory mapping (TSV)
@@ -364,6 +370,7 @@ audit-close-priors.sh        → close prior audit-report issues
 - `.claude/skills/audit-runs/scripts/audit-title.sh` (contract: `audit-title.md`) — generate report title string
 - `.claude/skills/audit-runs/scripts/audit-close-priors.sh` (contract: `audit-close-priors.md`) — close prior audit-report issues
 - `.claude/skills/audit-runs/scripts/test-audit-runs.sh` (contract: `.claude/skills/audit-runs/scripts/test-audit-runs.md`) — offline unit test harness
+- `.claude/skills/audit-runs/scripts/test-audit-title-matcher.sh` — offline harness for `audit-title-matcher.sh` (invoked from `test-audit-runs.sh`)
 
 ## Anti-patterns
 

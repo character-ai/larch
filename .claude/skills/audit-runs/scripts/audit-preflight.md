@@ -1,5 +1,7 @@
 # .claude/skills/audit-runs/scripts/audit-preflight.sh — contract
 
+Requires `--skill <design|implement>`. Concurrency guard is shared across skills (label `audit-report`).
+
 Pre-flight checks for `/audit-runs`. Runs git fetch/pull, repo-identity verification, and concurrency guard.
 
 ## Output KV (stdout)

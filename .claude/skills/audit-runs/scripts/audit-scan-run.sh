@@ -39,6 +39,21 @@ PR_NUM=""
 SCANS_TSV=""
 REQUIRED_FILES_TSV=""
 CURRENT_VERSION=""
+SKILL=""
+
+audit_scan_validate_skill() {
+    case "${1:-}" in
+        design|implement) return 0 ;;
+        "")
+            printf 'audit-scan-run.sh: --skill is required (allowed: design, implement)\n' >&2
+            return 1
+            ;;
+        *)
+            printf 'audit-scan-run.sh: --skill must be design or implement (got: %s)\n' "$1" >&2
+            return 1
+            ;;
+    esac
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -47,12 +62,17 @@ while [ $# -gt 0 ]; do
         --scans-tsv) SCANS_TSV="$2"; shift 2 ;;
         --required-files-tsv) REQUIRED_FILES_TSV="$2"; shift 2 ;;
         --current-version) CURRENT_VERSION="$2"; shift 2 ;;
+        --skill) SKILL="$2"; shift 2 ;;
         *)
             printf 'audit-scan-run.sh: unknown argument: %s\n' "$1" >&2
             exit 1
             ;;
     esac
 done
+
+if ! audit_scan_validate_skill "$SKILL"; then
+    exit 1
+fi
 
 for arg in RUN_DIR PR_NUM SCANS_TSV; do
     eval "val=\$$arg"

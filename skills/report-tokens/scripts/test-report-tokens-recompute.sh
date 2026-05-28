@@ -26,7 +26,7 @@ export LARCH_REPORT_TOKENS_NO_ISSUE=1
 export LARCH_REPORT_TOKENS_NO_PLOT=1
 export LARCH_REPORT_TOKENS_LIMIT=500
 
-out=$("$REPO/skills/report-tokens/scripts/run-analysis.sh")
+out=$("$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement)
 
 case "$out" in
     *'### Reported vs estimated'*) ;;
@@ -74,9 +74,47 @@ EOF
 chmod +x "$GH_STUB_DIR/gh"
 
 unset LARCH_REPORT_TOKENS_NO_ISSUE
-PATH="$GH_STUB_DIR:$PATH" GH_STUB_LOG="$GH_STUB_LOG" "$REPO/skills/report-tokens/scripts/run-analysis.sh" >/dev/null
+PATH="$GH_STUB_DIR:$PATH" GH_STUB_LOG="$GH_STUB_LOG" "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement >/dev/null
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh issue create --body-file in log"
 ! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh issue create should not use inline --body" # lint-gh-body-inline: ok gh-stub assertion fixture
 pass 'issue creation uses body-file with redacted tmpdir content'
+
+DESIGN_RUN="$REPO/larch-logs/design/BBBB-report-tokens-design-fixture"
+rm -rf "$DESIGN_RUN"
+mkdir -p "$DESIGN_RUN"
+cp "$FIX_SRC/manifest.json" "$DESIGN_RUN/"
+cp "$FIX_SRC/token-report.json" "$DESIGN_RUN/token-report-final.json"
+cp "$FIX_SRC/token-report.json" "$DESIGN_RUN/timing-report-final.json"
+design_out=$(LARCH_REPORT_TOKENS_NO_ISSUE=1 LARCH_REPORT_TOKENS_NO_PLOT=1 \
+    "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill design)
+case "$design_out" in
+    *'#999001'*) pass 'design --skill reads -final suffixed token report' ;;
+    *) fail "design scan missing fixture issue #999001";;
+esac
+rm -rf "$DESIGN_RUN"
+
+GH_PLOT_STUB=$(mktemp -d "${TMPDIR:-/tmp}/test-report-tokens-plot.XXXXXX")
+cat >"$GH_PLOT_STUB/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '{"title":"[Analysis Report] legacy","body":"## Raw per-issue data\n\n```json\n[]\n```\n"}'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOF
+chmod +x "$GH_PLOT_STUB/gh"
+set +e
+PATH="$GH_PLOT_STUB:$PATH" LARCH_REPORT_TOKENS_NO_PLOT=1 \
+    "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill design --plot-from 42 >/dev/null 2>"$GH_PLOT_STUB/err.txt"
+plot_rc=$?
+set -e
+if [ "$plot_rc" -ne 0 ] && grep -q 'does not match --skill=design' "$GH_PLOT_STUB/err.txt" 2>/dev/null; then
+    pass '--plot-from cross-skill title mismatch rejected for design'
+else
+    fail "expected design --plot-from legacy implement title rejection (rc=$plot_rc)"
+fi
+rm -rf "$GH_PLOT_STUB"
 
 printf 'PASS: test-report-tokens-recompute.sh\n'

@@ -355,7 +355,7 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 # the skill's own bug-search filter (prevents self-augmentation).
 # The audit report title format is: [Run Logs Audit <Pacific-ISO-timestamp> Report] PRs #X-#Y
 # (America/Los_Angeles wall time with explicit -07:00 or -08:00 offset in the bracket.)
-# The skill uses the prefix pattern ^\[Run Logs Audit .* Report\]
+# The skill uses the prefix pattern ^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]
 # (timestamp before the word "Report" inside the bracket). The generic
 # `has_report_prefix` in `scripts/implement-admission.sh` (see `/implement`
 # Preflight in `skills/implement/SKILL.md`) also matches this broad `[... Report]`
@@ -364,14 +364,18 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 echo "Test 14: audit report title matches self-exclusion prefix"
 title_matches_audit_report_exclusion() {
     local title="$1"
-    if printf '%s' "$title" | grep -qE '^\[Run Logs Audit .* Report\]'; then
+    if printf '%s' "$title" | grep -qE '^\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\]'; then
         echo "excluded"
         return
     fi
     echo "pickable"
 }
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440-#2450")
-assert_equal "$result" "excluded" "[14] audit report title matches self-exclusion prefix"
+assert_equal "$result" "excluded" "[14] legacy implement audit report title excluded"
+result=$(title_matches_audit_report_exclusion "[Implement Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440-#2450")
+assert_equal "$result" "excluded" "[14h] new implement-prefixed audit report title excluded"
+result=$(title_matches_audit_report_exclusion "[Design Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440-#2450")
+assert_equal "$result" "excluded" "[14i] design audit report title excluded"
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440, #2445")
 assert_equal "$result" "excluded" "[14b] non-contiguous audit report title also excluded"
 result=$(title_matches_audit_report_exclusion "Fix EXON regression in voting tally")
@@ -587,7 +591,7 @@ audited_pr_range:
 
 BOD19
 )
-    jq -nc --arg body "$PRIOR_BODY" '{number:500,title:"prior",body:$body,createdAt:"2026-01-01T00:00:00Z"}' >"$GH19/prior.json"
+    jq -nc --arg body "$PRIOR_BODY" '[{number:500,title:"[Run Logs Audit 2026-01-01T00:00:00Z Report] prior",body:$body,createdAt:"2026-01-01T00:00:00Z"}]' >"$GH19/prior.json"
     cat >"$GH19/gh" <<'EOSH19'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -614,7 +618,7 @@ if [[ "${1:-}" == "api" ]]; then
         fi
     done
     if [[ "$url" == repos/*/pulls* ]]; then
-        raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-02T00:00:00Z","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","base":{"ref":"main"}}]'
+        raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore: unrelated","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-02T00:00:00Z","title":"chore: unrelated","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore: unrelated","base":{"ref":"main"}}]'
         printf '%s' "$raw" | jq -c "$jq_filter"
         exit 0
     fi
@@ -625,31 +629,31 @@ printf 'fake gh: unsupported %s\n' "$*" >&2
 exit 1
 EOSH19
     chmod +x "$GH19/gh"
-    r19_empty=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "")
+    r19_empty=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "")
     imp19=$(printf '%s' "$r19_empty" | sed -n 's/^IMPLICIT_SINCE_LAST_AUDIT=//p')
     pl19=$(printf '%s' "$r19_empty" | sed -n 's/^PR_LIST=//p')
     assert_equal "$imp19" "true" "[19] empty verbal → implicit since-last-audit"
     assert_equal "$pl19" "20,30" "[19a] implicit since-last PR_LIST"
 
-    r19_sla=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since last audit")
+    r19_sla=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since last audit")
     imp19b=$(printf '%s' "$r19_sla" | sed -n 's/^IMPLICIT_SINCE_LAST_AUDIT=//p')
     pl19b=$(printf '%s' "$r19_sla" | sed -n 's/^PR_LIST=//p')
     assert_equal "$imp19b" "false" "[19b] explicit since last audit → not implicit"
     assert_equal "$pl19b" "20,30" "[19c] explicit since-last PR_LIST"
 
-    r19_last=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "last 2 PRs")
+    r19_last=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
     pl19L=$(printf '%s' "$r19_last" | sed -n 's/^PR_LIST=//p')
     assert_equal "$pl19L" "20,30" "[19d] last 2 PRs merge-time slice"
 
-    r19_iso=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
+    r19_iso=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
     pl19i=$(printf '%s' "$r19_iso" | sed -n 's/^PR_LIST=//p')
     assert_equal "$pl19i" "20,30" "[19e] since-iso PR_LIST"
 
-    r19_pound=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "#501")
+    r19_pound=$(bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "#501")
     pl19p=$(printf '%s' "$r19_pound" | sed -n 's/^PR_LIST=//p')
     assert_equal "$pl19p" "501" "[19f] #N form without gh"
 
-    r19_bad=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2026-05-01")
+    r19_bad=$(bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2026-05-01")
     er19=$(printf '%s' "$r19_bad" | sed -n 's/^ERROR=//p')
     case "$er19" in
         *full\ instant*) PASS=$((PASS + 1)); echo "  ok: [19g] date-only since rejected" ;;
@@ -660,7 +664,7 @@ EOSH19
             ;;
     esac
 
-    r19_unk=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "some random text")
+    r19_unk=$(bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "some random text")
     er19u=$(printf '%s' "$r19_unk" | sed -n 's/^ERROR=//p')
     case "$er19u" in
         *unrecognized*)
@@ -892,17 +896,20 @@ assert_equal "$result" "contiguous" "[28e] leading-zero tokens use decimal radix
 echo "Test 29: audit-title title format"
 TITLE_SCRIPT="$SCRIPT_DIR/audit-title.sh"
 if [ -x "$TITLE_SCRIPT" ]; then
-    result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[29] contiguous range title"
+    result=$(bash "$TITLE_SCRIPT" --skill implement --pr-list "2476,2477,2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Implement Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[29] contiguous range title"
 
-    result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2480" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476, #2477, #2480" "[29b] non-contiguous title"
+    result=$(bash "$TITLE_SCRIPT" --skill implement --pr-list "2476,2477,2480" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Implement Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476, #2477, #2480" "[29b] non-contiguous title"
 
-    result=$(bash "$TITLE_SCRIPT" --pr-list "2476, 2477 , 2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[29d] spaced comma PR list → contiguous title"
+    result=$(bash "$TITLE_SCRIPT" --skill implement --pr-list "2476, 2477 , 2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Implement Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[29d] spaced comma PR list → contiguous title"
 
-    result=$(bash "$TITLE_SCRIPT" --pr-list "2476" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476" "[29c] single PR title"
+    result=$(bash "$TITLE_SCRIPT" --skill implement --pr-list "2476" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Implement Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476" "[29c] single PR title"
+
+    result=$(bash "$TITLE_SCRIPT" --skill design --pr-list "2476" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Design Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476" "[29e] design skill title prefix"
 else
     echo "  SKIP: audit-title.sh not executable (not found at $TITLE_SCRIPT)"
 fi
@@ -944,7 +951,7 @@ EOSGH31
     mkdir -p "$MAP_TMP/RUNA" "$MAP_TMP/RUNB"
     printf '%s\n' '{"pr_number":999001,"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$MAP_TMP/RUNA/manifest.json"
     printf '%s\n' '{"pr_number":999001,"started_at":"2026-02-01T00:00:00Z","larch_version":"2.0.0"}' > "$MAP_TMP/RUNB/manifest.json"
-    row=$(PATH="$MAP_GH_OK:$PATH" bash "$MAP_SCRIPT" --pr-list "999001" --log-root "$MAP_TMP")
+    row=$(PATH="$MAP_GH_OK:$PATH" bash "$MAP_SCRIPT" --skill implement --pr-list "999001" --log-root "$MAP_TMP")
     rid=$(printf '%s' "$row" | cut -f2)
     assert_equal "$rid" "RUNB" "[31] newest started_at manifest wins"
     rm -rf "$MAP_TMP" "$MAP_GH_OK"
@@ -972,7 +979,7 @@ EOSGH31B
     mkdir -p "$MAP_TMPB/RUNX"
     printf '%s\n' '{"pr_number":999002,"started_at":"2026-02-01T00:00:00Z","larch_version":"9.0.0"}' > "$MAP_TMPB/RUNX/manifest.json"
     MAP_ERR=$(mktemp "${TMPDIR:-/tmp}/audit-map-31b-err.XXXXXX")
-    row=$(PATH="$MAP_GH_FAIL:$PATH" bash "$MAP_SCRIPT" --pr-list "999002" --log-root "$MAP_TMPB" 2>"$MAP_ERR")
+    row=$(PATH="$MAP_GH_FAIL:$PATH" bash "$MAP_SCRIPT" --skill implement --pr-list "999002" --log-root "$MAP_TMPB" 2>"$MAP_ERR")
     rid=$(printf '%s' "$row" | cut -f2)
     assert_equal "$rid" "" "[31b] gh failure → empty run_id despite legacy manifest"
     if grep -q 'MAP_GH_PR_VIEW_FAILED=true' "$MAP_ERR"; then
@@ -1013,7 +1020,7 @@ while (($# > 0)); do
     fi
 done
 if [[ "$url" == repos/*/pulls* ]]; then
-    raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-01T00:00:00Z","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","base":{"ref":"main"}}]'
+    raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"other","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"other","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"other","base":{"ref":"main"}}]'
     printf '%s' "$raw" | jq -c "$jq_filter"
     exit 0
 fi
@@ -1021,7 +1028,7 @@ printf 'fake gh: bad url %s\n' "$url" >&2
 exit 1
 EOSH
     chmod +x "$GH_STUB_DIR/gh"
-    resolve_out=$(PATH="$GH_STUB_DIR:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "last 2 PRs")
+    resolve_out=$(PATH="$GH_STUB_DIR:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
     pr_list=$(printf '%s' "$resolve_out" | sed -n 's/^PR_LIST=//p')
     assert_equal "$pr_list" "20,30" "[32] last 2 PRs are merge-time last two, not arbitrary list order"
     rm -rf "$GH_STUB_DIR"
@@ -1040,7 +1047,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$SC_TMP/run"
     printf '%s\n' '{"category":"Warnings","body":"changelog rebase needed"}' > "$SC_TMP/run/execution-issues.ndjson"
     printf '%s\n' '{"category":"Warnings","body":"CHANGELOG merge conflict"}' >> "$SC_TMP/run/execution-issues.ndjson"
-    scan_lines=$(bash "$SCAN_SCRIPT" \
+    scan_lines=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$SC_TMP/run" --pr 990001 \
         --scans-tsv "$SC_TMP/minimal-scans.tsv" \
         --required-files-tsv "$SC_TMP/required-empty.tsv" \
@@ -1073,22 +1080,22 @@ if [ -x "$SCAN_SCRIPT" ]; then
     cp "$CC_TMP/runv1/execution-issues.ndjson" "$CC_TMP/runv2omit/execution-issues.ndjson"
     cp "$CC_TMP/runv1/execution-issues.ndjson" "$CC_TMP/runv2gap/execution-issues.ndjson"
     cp "$CC_TMP/runv1/execution-issues.ndjson" "$CC_TMP/runv2pnnull/execution-issues.ndjson"
-    cc_v1=$(bash "$SCAN_SCRIPT" \
+    cc_v1=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$CC_TMP/runv1" --pr 100 \
         --scans-tsv "$CC_TMP/minimal-scans.tsv" \
         --required-files-tsv "$CC_TMP/required-empty.tsv" \
         --current-version "29.0.0")
-    cc_v2o=$(bash "$SCAN_SCRIPT" \
+    cc_v2o=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$CC_TMP/runv2omit" --pr 100 \
         --scans-tsv "$CC_TMP/minimal-scans.tsv" \
         --required-files-tsv "$CC_TMP/required-empty.tsv" \
         --current-version "29.0.0")
-    cc_v2g=$(bash "$SCAN_SCRIPT" \
+    cc_v2g=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$CC_TMP/runv2gap" --pr 100 \
         --scans-tsv "$CC_TMP/minimal-scans.tsv" \
         --required-files-tsv "$CC_TMP/required-empty.tsv" \
         --current-version "29.0.0")
-    cc_v2n=$(bash "$SCAN_SCRIPT" \
+    cc_v2n=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$CC_TMP/runv2pnnull" --pr 100 \
         --scans-tsv "$CC_TMP/minimal-scans.tsv" \
         --required-files-tsv "$CC_TMP/required-empty.tsv" \
@@ -1188,7 +1195,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     : > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt"
     printf '%s\n' 'NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN' > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt.meta"
     printf '%s\n' '{"category":"Errors","body":"not a warning"}' > "$R35_TMP/run/execution-issues.ndjson"
-    r35_lines=$(bash "$SCAN_SCRIPT" \
+    r35_lines=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$R35_TMP/run" --pr 990035 \
         --scans-tsv "$R35_TMP/sub-scans.tsv" \
         --required-files-tsv "$R35_TMP/required-empty.tsv" \
@@ -1218,7 +1225,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35B_TMP/required-empty.tsv"
     mkdir -p "$R35B_TMP/run"
     printf '%s\n' '{' > "$R35B_TMP/run/review-findings-full.jsonl"
-    r35b_lines=$(bash "$SCAN_SCRIPT" \
+    r35b_lines=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$R35B_TMP/run" --pr 990035 \
         --scans-tsv "$R35B_TMP/oos-only.tsv" \
         --required-files-tsv "$R35B_TMP/required-empty.tsv" \
@@ -1247,7 +1254,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     } > "$R35G0_TMP/sub-scans.tsv"
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35G0_TMP/required-empty.tsv"
     mkdir -p "$R35G0_TMP/run/round-1"
-    r35g0_lines=$(bash "$SCAN_SCRIPT" \
+    r35g0_lines=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$R35G0_TMP/run" --pr 990035 \
         --scans-tsv "$R35G0_TMP/sub-scans.tsv" \
         --required-files-tsv "$R35G0_TMP/required-empty.tsv" \
@@ -1270,7 +1277,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' '{"channel":"stdout","pid":1}' > "$R35G_TMP/run/round-1/cursor-ci-stall-a.json"
     printf '%s\n' '{"channel":"tree:/tmp/x","pid":2}' > "$R35G_TMP/run/round-1/cursor-ci-stall-b.json"
     printf '%s\n' 'not json' > "$R35G_TMP/run/round-1/cursor-ci-stall-bad.json"
-    r35g_lines=$(bash "$SCAN_SCRIPT" \
+    r35g_lines=$(bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$R35G_TMP/run" --pr 990035 \
         --scans-tsv "$R35G_TMP/sub-scans.tsv" \
         --required-files-tsv "$R35G_TMP/required-empty.tsv" \
@@ -1339,7 +1346,7 @@ EOSH37
     mkdir -p "$MAP37_TMP/RUNZ"
     printf '%s\n' 'ISSUE_NUMBER=550011' > "$MAP37_TMP/RUNZ/parent-issue.md"
     printf '%s\n' '{"pr_number":1,"started_at":"2025-06-01T00:00:00Z","larch_version":"9.0.0"}' > "$MAP37_TMP/RUNZ/manifest.json"
-    row37=$(PATH="$GH37:$PATH" bash "$MAP_SCRIPT" --pr-list "999888" --repo "character-ai/larch" --log-root "$MAP37_TMP")
+    row37=$(PATH="$GH37:$PATH" bash "$MAP_SCRIPT" --skill implement --pr-list "999888" --repo "character-ai/larch" --log-root "$MAP37_TMP")
     rid37=$(printf '%s' "$row37" | cut -f2)
     assert_equal "$rid37" "RUNZ" "[37] Closes #N maps to matching parent-issue run_id"
     rm -rf "$GH37" "$MAP37_TMP"
@@ -1367,7 +1374,7 @@ EOSH37B
     mkdir -p "$MAP37B_TMP/RUNZ"
     printf '%s\n' 'ISSUE_NUMBER=550011' > "$MAP37B_TMP/RUNZ/parent-issue.md"
     printf '%s\n' '{"pr_number":1,"started_at":"2025-06-01T00:00:00Z","larch_version":"9.0.0"}' > "$MAP37B_TMP/RUNZ/manifest.json"
-    row37b=$(PATH="$GH37B:$PATH" bash "$MAP_SCRIPT" --pr-list "999889" --repo "character-ai/larch" --log-root "$MAP37B_TMP")
+    row37b=$(PATH="$GH37B:$PATH" bash "$MAP_SCRIPT" --skill implement --pr-list "999889" --repo "character-ai/larch" --log-root "$MAP37B_TMP")
     rid37b=$(printf '%s' "$row37b" | cut -f2)
     ci37b=$(printf '%s' "$row37b" | cut -f5)
     assert_equal "$rid37b" "RUNZ" "[37b] later Closes #550011 maps run, not Fixes #550099"
@@ -1401,7 +1408,7 @@ EOSH38
     printf '%s\n' '{"pr_number":1,"started_at":"2026-01-01T00:00:00Z"}' > "$MAP38_TMP/RUN2/manifest.json"
     err38=$(mktemp "${TMPDIR:-/tmp}/test-map38-err.XXXXXX")
     set +e
-    row38=$(PATH="$GH38:$PATH" bash "$MAP_SCRIPT" --pr-list "999777" --repo "character-ai/larch" --log-root "$MAP38_TMP" 2>"$err38")
+    row38=$(PATH="$GH38:$PATH" bash "$MAP_SCRIPT" --skill implement --pr-list "999777" --repo "character-ai/larch" --log-root "$MAP38_TMP" 2>"$err38")
     map38_rc=$?
     set -e
     rid38=$(printf '%s' "$row38" | cut -f2)
@@ -1435,7 +1442,7 @@ EOSH38A
     printf '%s\n' 'ISSUE_NUMBER=111' > "$MAP38A_TMP/RUNM/parent-issue.md"
     printf '%s\n' '{"pr_number":424242,"started_at":"2026-03-01T00:00:00Z","larch_version":"1.2.3","closes_issue":424242}' > "$MAP38A_TMP/RUNM/manifest.json"
     err38a=$(mktemp "${TMPDIR:-/tmp}/test-map38a-err.XXXXXX")
-    row38a=$(PATH="$GH38A:$PATH" bash "$MAP_SCRIPT" --pr-list "424242" --repo "character-ai/larch" --log-root "$MAP38A_TMP" 2>"$err38a")
+    row38a=$(PATH="$GH38A:$PATH" bash "$MAP_SCRIPT" --skill implement --pr-list "424242" --repo "character-ai/larch" --log-root "$MAP38A_TMP" 2>"$err38a")
     rid38a=$(printf '%s' "$row38a" | cut -f2)
     ci38a=$(printf '%s' "$row38a" | cut -f5)
     amb38a=$(grep -c 'MAP_PR_BODY_CLOSING_AMBIGUOUS=true' "$err38a" || true)
@@ -1451,10 +1458,10 @@ fi
 echo "Test 39: audit-title long PR list + leading zeros"
 TITLE_SCRIPT="${TITLE_SCRIPT:-$SCRIPT_DIR/audit-title.sh}"
 if [ -x "$TITLE_SCRIPT" ]; then
-    long_title=$(bash "$TITLE_SCRIPT" --pr-list "2400,2401,2402,2403,2405,2407,2409,2411" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
-    assert_equal "$long_title" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2400, #2401, #2402, #2403, #2405, #2407, #2409, #2411" "[39] long explicit non-contiguous title snapshot"
-    lz_title=$(bash "$TITLE_SCRIPT" --pr-list "0002476,0002477,0002478" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
-    assert_equal "$lz_title" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[39b] leading-zero tokens form contiguous range"
+    long_title=$(bash "$TITLE_SCRIPT" --skill implement --pr-list "2400,2401,2402,2403,2405,2407,2409,2411" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
+    assert_equal "$long_title" "[Implement Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2400, #2401, #2402, #2403, #2405, #2407, #2409, #2411" "[39] long explicit non-contiguous title snapshot"
+    lz_title=$(bash "$TITLE_SCRIPT" --skill implement --pr-list "0002476,0002477,0002478" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
+    assert_equal "$lz_title" "[Implement Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[39b] leading-zero tokens form contiguous range"
 else
     echo "  SKIP: audit-title.sh not executable (not found at $TITLE_SCRIPT)"
 fi
@@ -1470,7 +1477,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$U_TMP/run"
     printf '%s\n' '{}' > "$U_TMP/run/execution-issues.ndjson"
     set +e
-    bash "$SCAN_SCRIPT" \
+    bash "$SCAN_SCRIPT" --skill implement \
         --run-dir "$U_TMP/run" --pr 990002 \
         --scans-tsv "$U_TMP/bad-scans.tsv" \
         --required-files-tsv "$U_TMP/required-empty.tsv" \
@@ -1485,7 +1492,7 @@ fi
 echo "Test 41: audit-resolve-prs #N verbal form"
 RESOLVE_SCRIPT="${RESOLVE_SCRIPT:-$SCRIPT_DIR/audit-resolve-prs.sh}"
 if [ -x "$RESOLVE_SCRIPT" ]; then
-    r41=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "#4242")
+    r41=$(bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "#4242")
     pl41=$(printf '%s' "$r41" | sed -n 's/^PR_LIST=//p')
     er41=$(printf '%s' "$r41" | sed -n 's/^ERROR=//p')
     assert_equal "$pl41" "4242" "[41] #N resolves to single PR list"
@@ -1527,7 +1534,7 @@ printf 'fake gh: bad url %s\n' "$url" >&2
 exit 1
 EOSH42
     chmod +x "$GH42/gh"
-    r42=$(PATH="$GH42:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
+    r42=$(PATH="$GH42:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
     pl42=$(printf '%s' "$r42" | sed -n 's/^PR_LIST=//p')
     assert_equal "$pl42" "20,30" "[42] since ISO filters mergedAt > cutoff"
     rm -rf "$GH42"
@@ -1539,7 +1546,7 @@ fi
 echo "Test 43: audit-resolve-prs rejects date-only since"
 RESOLVE_SCRIPT="${RESOLVE_SCRIPT:-$SCRIPT_DIR/audit-resolve-prs.sh}"
 if [ -x "$RESOLVE_SCRIPT" ]; then
-    r43=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2025-05-01")
+    r43=$(bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2025-05-01")
     er43=$(printf '%s' "$r43" | sed -n 's/^ERROR=//p')
     case "$er43" in
         *full\ instant*) PASS=$((PASS + 1)); echo "  ok: [43] date-only since → ERROR mentions full instant" ;;
@@ -1608,7 +1615,7 @@ EOSGH
     chmod +x "$PF_STUBS/git" "$PF_STUBS/gh"
     REAL_GIT=$(command -v git)
     (cd "$PF_ROOT" && "$REAL_GIT" init -q && "$REAL_GIT" remote add origin "https://github.com/character-ai/larch.git")
-    pf_out=$(cd "$PF_ROOT" && PATH="$PF_STUBS:$PATH" bash "$PREFLIGHT_SCRIPT" --repo character-ai/larch)
+    pf_out=$(cd "$PF_ROOT" && PATH="$PF_STUBS:$PATH" bash "$PREFLIGHT_SCRIPT" --skill implement --repo character-ai/larch)
     pf_ok=$(printf '%s' "$pf_out" | sed -n 's/^PREFLIGHT_OK=//p')
     assert_equal "$pf_ok" "true" "[44] stubbed git+gh → PREFLIGHT_OK=true"
     set +e
@@ -1616,7 +1623,7 @@ EOSGH
     gh44b_bad_rc=$?
     set -e
     assert_equal "$gh44b_bad_rc" "1" "[44b0] strict stub rejects gh repo view -R"
-    pf44b_out=$(cd "$PF_ROOT" && PATH="$PF_STUBS:$PATH" bash "$PREFLIGHT_SCRIPT" --repo character-ai/larch)
+    pf44b_out=$(cd "$PF_ROOT" && PATH="$PF_STUBS:$PATH" bash "$PREFLIGHT_SCRIPT" --skill implement --repo character-ai/larch)
     pf44b_ok=$(printf '%s' "$pf44b_out" | sed -n 's/^PREFLIGHT_OK=//p')
     assert_equal "$pf44b_ok" "true" "[44b] preflight ok with strict gh (positional repo view)"
     rm -rf "$PF_ROOT" "$PF_STUBS"
@@ -1633,8 +1640,7 @@ if [ -x "$CLOSE_SCRIPT" ]; then
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
-    printf '%s\n' "101"
-    printf '%s\n' "202"
+    printf '%s\n' '[{"number":101,"title":"[Run Logs Audit 2026-01-01 Report] old"},{"number":202,"title":"[Implement Run Logs Audit 2026-02-01 Report] new"}]'
     exit 0
 fi
 if [[ "${1:-}" == "issue" && "${2:-}" == "comment" ]]; then
@@ -1673,7 +1679,7 @@ printf 'stub gh unsupported: %s\n' "$*" >&2
 exit 1
 EOSH45
     chmod +x "$GH45/gh"
-    c45=$(PATH="$GH45:$PATH" bash "$CLOSE_SCRIPT" --new-issue-number 202 --repo character-ai/larch)
+    c45=$(PATH="$GH45:$PATH" bash "$CLOSE_SCRIPT" --skill implement --new-issue-number 202 --repo character-ai/larch)
     n45=$(printf '%s' "$c45" | grep -c '^CLOSED_NUMBER=101$' || true)
     assert_equal "$n45" "1" "[45] prior issue 101 closed; new issue skipped"
     rm -rf "$GH45"
@@ -1712,7 +1718,7 @@ echo "Test 47: audit-scan-run bootstrap error scans"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
 if [ -x "$SCAN_SCRIPT" ]; then
     set +e
-    bad_pr=$(bash "$SCAN_SCRIPT" --run-dir "/nope/nope" --pr 'abc' \
+    bad_pr=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "/nope/nope" --pr 'abc' \
         --scans-tsv "/nope/scans.tsv" \
         --required-files-tsv "/nope/req.tsv" \
         --current-version "1.0.0" 2>/dev/null)
@@ -1722,7 +1728,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     s47=$(printf '%s' "$bad_pr" | jq -r '.scan // empty' | head -1)
     assert_equal "$s47" "audit-scan-run-args" "[47b] invalid --pr → audit-scan-run-args scan"
     set +e
-    miss_rd=$(bash "$SCAN_SCRIPT" --run-dir "/nope/absent-run-dir" --pr 1001 \
+    miss_rd=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "/nope/absent-run-dir" --pr 1001 \
         --scans-tsv "/nope/x.tsv" \
         --required-files-tsv "/nope/y.tsv" \
         --current-version "1.0.0" 2>/dev/null)
@@ -1745,7 +1751,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P48/req.tsv"
     printf '%s\n' '../outside.txt	always	x	x' >> "$P48/req.tsv"
     mkdir -p "$P48/run"
-    p48_out=$(bash "$SCAN_SCRIPT" --run-dir "$P48/run" --pr 1002 \
+    p48_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P48/run" --pr 1002 \
         --scans-tsv "$P48/scans.tsv" \
         --required-files-tsv "$P48/req.tsv" \
         --current-version "1.0.0")
@@ -1794,7 +1800,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P50/req.tsv"
     mkdir -p "$P50/run"
     printf '%s\n' '{"schema_version":2,"steps_ran":{"step9a1":false}}' > "$P50/run/manifest.json"
-    p50_out=$(bash "$SCAN_SCRIPT" --run-dir "$P50/run" --pr 2001 \
+    p50_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P50/run" --pr 2001 \
         --scans-tsv "$P50/scans.tsv" \
         --required-files-tsv "$P50/req.tsv" \
         --current-version "1.0.0")
@@ -1817,7 +1823,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P51/req.tsv"
     mkdir -p "$P51/run"
     printf '%s\n' '{"schema_version":2}' > "$P51/run/manifest.json"
-    p51_out=$(bash "$SCAN_SCRIPT" --run-dir "$P51/run" --pr 2002 \
+    p51_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P51/run" --pr 2002 \
         --scans-tsv "$P51/scans.tsv" \
         --required-files-tsv "$P51/req.tsv" \
         --current-version "1.0.0")
@@ -1841,7 +1847,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$P52/run"
     printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P52/run/manifest.json"
     printf '%s\n' '## /implement run test-run — bailed' > "$P52/run/final-summary.md"
-    p52_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52/run" --pr 2003 \
+    p52_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P52/run" --pr 2003 \
         --scans-tsv "$P52/scans.tsv" \
         --required-files-tsv "$P52/req.tsv" \
         --current-version "1.0.0")
@@ -1865,7 +1871,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$P52b/run"
     printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P52b/run/manifest.json"
     printf '%s\n' '## /implement run test-run — bailed-needs-user-input' > "$P52b/run/final-summary.md"
-    p52b_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52b/run" --pr 2003 \
+    p52b_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P52b/run" --pr 2003 \
         --scans-tsv "$P52b/scans.tsv" \
         --required-files-tsv "$P52b/req.tsv" \
         --current-version "1.0.0")
@@ -1889,7 +1895,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$P52c/run"
     printf '%s\n' '{"schema_version":2}' > "$P52c/run/manifest.json"
     printf '%s\n' '## /implement run test-run — bailed' > "$P52c/run/final-summary.md"
-    p52c_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52c/run" --pr 2003 \
+    p52c_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P52c/run" --pr 2003 \
         --scans-tsv "$P52c/scans.tsv" \
         --required-files-tsv "$P52c/req.tsv" \
         --current-version "1.0.0")
@@ -1913,7 +1919,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$P52d/run"
     printf '%s\n' '{"schema_version":2,"steps_ran":{"step8":true}}' > "$P52d/run/manifest.json"
     printf '%s\n' '## /implement run test-run — bailed' > "$P52d/run/final-summary.md"
-    p52d_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52d/run" --pr 2003 \
+    p52d_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P52d/run" --pr 2003 \
         --scans-tsv "$P52d/scans.tsv" \
         --required-files-tsv "$P52d/req.tsv" \
         --current-version "1.0.0")
@@ -1937,7 +1943,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$P52e/run"
     printf '%s\n' '{not valid json' > "$P52e/run/manifest.json"
     printf '%s\n' '## /implement run test-run — bailed' > "$P52e/run/final-summary.md"
-    p52e_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52e/run" --pr 2006 \
+    p52e_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P52e/run" --pr 2006 \
         --scans-tsv "$P52e/scans.tsv" \
         --required-files-tsv "$P52e/req.tsv" \
         --current-version "1.0.0")
@@ -1961,7 +1967,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$P53/run"
     printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P53/run/manifest.json"
     printf '%s\n' '## /implement run test-run — completed' > "$P53/run/final-summary.md"
-    p53_out=$(bash "$SCAN_SCRIPT" --run-dir "$P53/run" --pr 2004 \
+    p53_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P53/run" --pr 2004 \
         --scans-tsv "$P53/scans.tsv" \
         --required-files-tsv "$P53/req.tsv" \
         --current-version "1.0.0")
@@ -1985,7 +1991,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$P54/run"
     printf '%s\n' '{"schema_version":2,"steps_ran":{"step9a1":false}}' > "$P54/run/manifest.json"
     printf '%s\n' '## /implement run test-run — completed' > "$P54/run/final-summary.md"
-    p54_out=$(bash "$SCAN_SCRIPT" --run-dir "$P54/run" --pr 2005 \
+    p54_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$P54/run" --pr 2005 \
         --scans-tsv "$P54/scans.tsv" \
         --required-files-tsv "$P54/req.tsv" \
         --current-version "1.0.0")
@@ -2006,7 +2012,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T50/required.tsv"
     mkdir -p "$T50/run"
     printf '%s\n' '{"larch_version":"29.8.62"}' > "$T50/run/manifest.json"
-    t50_out=$(bash "$SCAN_SCRIPT" --run-dir "$T50/run" --pr 990050 \
+    t50_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T50/run" --pr 990050 \
         --scans-tsv "$T50/scans.tsv" --required-files-tsv "$T50/required.tsv" \
         --current-version "34.0.0")
     t50_res=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
@@ -2030,7 +2036,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T51/required.tsv"
     mkdir -p "$T51/run"
     printf '%s\n' '{"larch_version":"34.0.0"}' > "$T51/run/manifest.json"
-    t51_out=$(bash "$SCAN_SCRIPT" --run-dir "$T51/run" --pr 990051 \
+    t51_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T51/run" --pr 990051 \
         --scans-tsv "$T51/scans.tsv" --required-files-tsv "$T51/required.tsv" \
         --current-version "34.0.0")
     t51_res=$(printf '%s\n' "$t51_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
@@ -2050,7 +2056,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T55/required.tsv"
     mkdir -p "$T55/run"
     printf '%s\n' '{"larch_version":""}' > "$T55/run/manifest.json"
-    t55_out=$(bash "$SCAN_SCRIPT" --run-dir "$T55/run" --pr 990055 \
+    t55_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T55/run" --pr 990055 \
         --scans-tsv "$T55/scans.tsv" --required-files-tsv "$T55/required.tsv" \
         --current-version "34.0.0")
     t55_res=$(printf '%s\n' "$t55_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
@@ -2132,7 +2138,7 @@ classify_c1_bucket_from_gh_issues_json() {
         def is_open: (.state | ascii_downcase) == "open";
         def is_noise:
             (.title | type == "string" and
-                test("^\\[Run Logs Audit .* Report\\]"));
+                test("^\\[(Run Logs Audit |Implement Run Logs Audit |Design Run Logs Audit ).* Report\\]"));
         ([$issues[] | select(is_open and (is_noise | not))]) as $eligible_open
         | if ($eligible_open | length) > 0 then
             "proposed_augmentations"
@@ -2164,7 +2170,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T59/required.tsv"
     mkdir -p "$T59/run"
     printf '%s\n' '{"phase":"code-review","outcome":"accepted","category":"fixes auth","id":"ACC_001"}' > "$T59/run/review-findings-full.jsonl"
-    t59_out=$(bash "$SCAN_SCRIPT" --run-dir "$T59/run" --pr 990059 \
+    t59_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T59/run" --pr 990059 \
         --scans-tsv "$T59/scans.tsv" --required-files-tsv "$T59/required.tsv" \
         --current-version "34.0.0")
     t59_res=$(printf '%s\n' "$t59_out" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
@@ -2184,7 +2190,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T60/required.tsv"
     mkdir -p "$T60/run"
     printf '%s\n' '{"phase":"plan-review","outcome":"accepted","category":"fixes auth","id":"ACC_002"}' > "$T60/run/review-findings-full.jsonl"
-    t60_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60/run" --pr 990060 \
+    t60_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T60/run" --pr 990060 \
         --scans-tsv "$T60/scans.tsv" --required-files-tsv "$T60/required.tsv" \
         --current-version "34.0.0")
     t60_res=$(printf '%s\n' "$t60_out" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
@@ -2208,7 +2214,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     T60O_SKIP="$T60O_BASE/skip"
     mkdir -p "$T60O_SKIP/run"
     : >"$T60O_SKIP/run/oos-accepted-main-agent.md"
-    t60o_skip_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_SKIP/run" --pr 990060 \
+    t60o_skip_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T60O_SKIP/run" --pr 990060 \
         --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
         --current-version "34.0.0")
     t60o_skip_res=$(printf '%s\n' "$t60o_skip_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
@@ -2221,7 +2227,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
 - **focus-area**: code-quality
 EOFMD
     printf '%s\n' '{"body":"filed https://github.com/example/repo/issues/42"}' >"$T60O_PASS/run/oos-issues.ndjson"
-    t60o_pass_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_PASS/run" --pr 990060 \
+    t60o_pass_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T60O_PASS/run" --pr 990060 \
         --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
         --current-version "34.0.0")
     t60o_pass_res=$(printf '%s\n' "$t60o_pass_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
@@ -2231,7 +2237,7 @@ EOFMD
     mkdir -p "$T60O_FAIL/run"
     cp "$T60O_PASS/run/oos-accepted-main-agent.md" "$T60O_FAIL/run/oos-accepted-main-agent.md"
     printf '%s\n' '{"body":"no urls"}' >"$T60O_FAIL/run/oos-issues.ndjson"
-    t60o_fail_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_FAIL/run" --pr 990060 \
+    t60o_fail_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T60O_FAIL/run" --pr 990060 \
         --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
         --current-version "34.0.0")
     t60o_fail_res=$(printf '%s\n' "$t60o_fail_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
@@ -2241,7 +2247,7 @@ EOFMD
     mkdir -p "$T60O_ERR/run"
     cp "$T60O_PASS/run/oos-accepted-main-agent.md" "$T60O_ERR/run/oos-accepted-main-agent.md"
     printf '%s\n' 'not-json' >"$T60O_ERR/run/oos-issues.ndjson"
-    t60o_err_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_ERR/run" --pr 990060 \
+    t60o_err_out=$(bash "$SCAN_SCRIPT" --skill implement --run-dir "$T60O_ERR/run" --pr 990060 \
         --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
         --current-version "34.0.0")
     t60o_err_res=$(printf '%s\n' "$t60o_err_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
@@ -2445,6 +2451,89 @@ unknown	["1.0.0"]	propose	[63c] unknown fix → propose
 2.0.0	["1.0.0","not-a-semver"]	propose	[63f] unparseable audited row → propose
 v2.0.0	["1.0.0"]	skip	[63g] strip v and compare → skip
 EOF
+fi
+
+# ---------------------------------------------------------------------------
+# Test 64–69: --skill flag, title-matcher, design PR title (hermetic)
+# ---------------------------------------------------------------------------
+echo "=== test-audit-runs: --skill and title-matcher ==="
+
+MATCHER_SCRIPT="$SCRIPT_DIR/audit-title-matcher.sh"
+if [ -x "$MATCHER_SCRIPT" ]; then
+    # shellcheck source=.claude/skills/audit-runs/scripts/audit-title-matcher.sh
+    . "$MATCHER_SCRIPT"
+    match_audit_report_title --skill implement --title "[Run Logs Audit 2026-01-01 Report] x" && r=0 || r=1
+    assert_equal "$r" "0" "[64] legacy implement title matches --skill=implement"
+    match_audit_report_title --skill implement --title "[Implement Run Logs Audit 2026-01-01 Report] x" && r=0 || r=1
+    assert_equal "$r" "0" "[65] new implement title matches --skill=implement"
+    match_audit_report_title --skill design --title "[Design Run Logs Audit 2026-01-01 Report] x" && r=0 || r=1
+    assert_equal "$r" "0" "[66] design title matches --skill=design"
+    match_audit_report_title --skill design --title "[Run Logs Audit 2026-01-01 Report] x" && r=0 || r=1
+    assert_equal "$r" "1" "[67] legacy implement title rejected for --skill=design"
+    match_audit_report_title --skill implement --title "[Design Run Logs Audit 2026-01-01 Report] x" && r=0 || r=1
+    assert_equal "$r" "1" "[68] design title rejected for --skill=implement"
+else
+    echo "  SKIP: audit-title-matcher.sh not executable"
+fi
+
+RESOLVE_SCRIPT="${RESOLVE_SCRIPT:-$SCRIPT_DIR/audit-resolve-prs.sh}"
+if [ -x "$RESOLVE_SCRIPT" ]; then
+    set +e
+    bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "#1" >/dev/null 2>/dev/null
+    rc_missing=$?
+    set -e
+    assert_equal "$rc_missing" "1" "[69a] missing --skill exits non-zero"
+    set +e
+    bash "$RESOLVE_SCRIPT" --skill bogus --repo character-ai/larch --verbal-description "#1" >/dev/null 2>/dev/null
+    rc_bad=$?
+    set -e
+    assert_equal "$rc_bad" "1" "[69b] invalid --skill enum exits non-zero"
+fi
+
+MAP_SCRIPT="${MAP_SCRIPT:-$SCRIPT_DIR/audit-map-runs.sh}"
+if [ -x "$MAP_SCRIPT" ]; then
+    GH69=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map69-XXXXXX")
+    cat > "$GH69/gh" <<'EOSGH69'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' 'chore(larch-logs): design run 90628862-9A18-4A56-8420-63DE723F9D81'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH69
+    chmod +x "$GH69/gh"
+    MAP69=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map69-log-XXXXXX")
+    mkdir -p "$MAP69/90628862-9A18-4A56-8420-63DE723F9D81"
+    printf '%s\n' '{"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$MAP69/90628862-9A18-4A56-8420-63DE723F9D81/manifest.json"
+    row=$(PATH="$GH69:$PATH" bash "$MAP_SCRIPT" --skill design --pr-list "9001" --log-root "$MAP69")
+    rid=$(printf '%s' "$row" | cut -f2)
+    closes=$(printf '%s' "$row" | cut -f5)
+    assert_equal "$rid" "90628862-9A18-4A56-8420-63DE723F9D81" "[69c] design PR title maps to run_id (no flush in title)"
+    assert_equal "$closes" "" "[69d] design map emits empty closes_issue"
+    bad_title='chore(larch-logs): flush design run 90628862-9A18-4A56-8420-63DE723F9D81'
+    if printf '%s' "$bad_title" | grep -qE '^chore\(larch-logs\): design run [0-9A-F-]+$'; then
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("[69e] commit-subject shape with flush must not match design PR title regex")
+        echo "  FAIL: [69e] flush commit-subject shape incorrectly matched design PR title regex" >&2
+    else
+        PASS=$((PASS + 1))
+        echo "  ok: [69e] flush commit-subject shape does not match design PR title regex"
+    fi
+    rm -rf "$GH69" "$MAP69"
+fi
+
+TITLE_MATCHER_TEST="$SCRIPT_DIR/test-audit-title-matcher.sh"
+if [ -x "$TITLE_MATCHER_TEST" ]; then
+    if bash "$TITLE_MATCHER_TEST"; then
+        PASS=$((PASS + 1))
+        echo "  ok: test-audit-title-matcher.sh passed"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("test-audit-title-matcher.sh subprocess")
+        echo "  FAIL: test-audit-title-matcher.sh subprocess" >&2
+    fi
 fi
 
 # ---------------------------------------------------------------------------

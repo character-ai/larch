@@ -1,5 +1,7 @@
 # .claude/skills/audit-runs/scripts/audit-scan-run.sh — contract
 
+Requires `--skill <design|implement>` (enum-validated). SKILL.md passes this flag on every invocation.
+
 Runs all scans from `scans.tsv` against one run-log directory. Emits NDJSON (one compact JSON object per scan per line) to stdout.
 
 ## Output

@@ -1,5 +1,7 @@
 # .claude/skills/audit-runs/scripts/audit-close-priors.sh — contract
 
+Requires `--skill <design|implement>`. Closes open audit-report issues whose titles match the skill via `audit-title-matcher.sh`.
+
 Closes prior open `audit-report` issues after a new report is filed.
 
 ## Output (stdout)

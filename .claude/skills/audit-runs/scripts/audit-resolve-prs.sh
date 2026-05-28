@@ -21,19 +21,43 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=.claude/skills/audit-runs/scripts/audit-title-matcher.sh
+. "$SCRIPT_DIR/audit-title-matcher.sh"
+
 REPO="character-ai/larch"
 VERBAL=""
+SKILL=""
+
+audit_resolve_validate_skill() {
+    case "${1:-}" in
+        design|implement) return 0 ;;
+        "")
+            printf 'audit-resolve-prs.sh: --skill is required (allowed: design, implement)\n' >&2
+            return 1
+            ;;
+        *)
+            printf 'audit-resolve-prs.sh: --skill must be design or implement (got: %s)\n' "$1" >&2
+            return 1
+            ;;
+    esac
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) REPO="$2"; shift 2 ;;
         --verbal-description) VERBAL="$2"; shift 2 ;;
+        --skill) SKILL="$2"; shift 2 ;;
         *)
             printf 'audit-resolve-prs.sh: unknown argument: %s\n' "$1" >&2
             exit 1
             ;;
     esac
 done
+
+if ! audit_resolve_validate_skill "$SKILL"; then
+    exit 1
+fi
 
 # Trim whitespace
 VERBAL=$(printf '%s' "$VERBAL" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
@@ -58,6 +82,19 @@ emit_ok() {
     exit 0
 }
 
+# Filter merged PR JSON array to skill-appropriate rows (jq filter on .title)
+filter_prs_for_skill() {
+    local json="$1"
+    case "$SKILL" in
+        design)
+            printf '%s' "$json" | jq '[.[] | select(.title | test("^chore\\(larch-logs\\): design run [0-9A-F-]+$"))]' 2>/dev/null || printf '%s\n' '[]'
+            ;;
+        implement)
+            printf '%s' "$json"
+            ;;
+    esac
+}
+
 # List merged PRs targeting main (paginated REST; mergedAt ISO for jq filters)
 fetch_merged_main_prs_json() {
     local owner="${REPO%%/*}"
@@ -68,7 +105,7 @@ fetch_merged_main_prs_json() {
     while [ "$page" -le "$max_page" ]; do
         local batch
         if ! batch=$(gh api "repos/$owner/$repo/pulls?state=closed&per_page=100&page=$page" \
-            --jq '[.[] | select(.merged_at != null and .base.ref == "main") | {number: .number, mergedAt: .merged_at}]' 2>/dev/null); then
+            --jq '[.[] | select(.merged_at != null and .base.ref == "main") | {number: .number, mergedAt: .merged_at, title: .title}]' 2>/dev/null); then
             printf 'audit-resolve-prs: gh api pulls page %s failed\n' "$page" >&2
             return 1
         fi
@@ -87,24 +124,37 @@ fetch_merged_main_prs_json() {
         printf 'audit-resolve-prs: merged-PR pagination exceeded safety cap (%s pages)\n' "$max_page" >&2
         return 1
     fi
-    printf '%s' "$acc" | jq 'unique_by(.number) | sort_by(.mergedAt)' 2>/dev/null || printf '%s\n' '[]'
+  filter_prs_for_skill "$(printf '%s' "$acc" | jq 'unique_by(.number) | sort_by(.mergedAt)' 2>/dev/null || printf '%s\n' '[]')"
 }
 
 # ---- "since last audit" helper ----
 resolve_since_last_audit() {
     local implicit="$1"
 
-    # Read most-recent audit-report issue
+    # Read audit-report issues; pick most recent whose title matches this skill
     PRIOR_BODY=$(gh issue list --state all --label audit-report --repo "$REPO" \
         --json number,title,body,createdAt \
-        --jq 'sort_by(.createdAt) | reverse | .[0]' 2>/dev/null || true)
+        --jq '[.[] | select(.title != null)] | sort_by(.createdAt) | reverse' 2>/dev/null || true)
 
-    if [ -z "$PRIOR_BODY" ] || [ "$PRIOR_BODY" = "null" ]; then
-        emit_error "no prior audit-report issue found"
+    if [ -z "$PRIOR_BODY" ] || [ "$PRIOR_BODY" = "null" ] || [ "$PRIOR_BODY" = "[]" ]; then
+        emit_error "no prior audit-report issue found for --skill=${SKILL}"
     fi
 
-    PRIOR_NUM=$(printf '%s' "$PRIOR_BODY" | jq -r '.number // empty' 2>/dev/null || true)
-    PRIOR_ISSUE_BODY=$(printf '%s' "$PRIOR_BODY" | jq -r '.body // empty' 2>/dev/null || true)
+    PRIOR_NUM=""
+    PRIOR_ISSUE_BODY=""
+    while IFS= read -r row; do
+        [ -z "$row" ] && continue
+        t=$(printf '%s' "$row" | jq -r '.title // empty' 2>/dev/null || true)
+        if match_audit_report_title --skill "$SKILL" --title "$t"; then
+            PRIOR_NUM=$(printf '%s' "$row" | jq -r '.number // empty' 2>/dev/null || true)
+            PRIOR_ISSUE_BODY=$(printf '%s' "$row" | jq -r '.body // empty' 2>/dev/null || true)
+            break
+        fi
+    done < <(printf '%s' "$PRIOR_BODY" | jq -c '.[]' 2>/dev/null || true)
+
+    if [ -z "$PRIOR_NUM" ]; then
+        emit_error "no prior audit-report issue found for --skill=${SKILL}"
+    fi
 
     # Parse audited_pr_range.last from YAML frontmatter (between --- markers)
     LAST_PR=$(printf '%s' "$PRIOR_ISSUE_BODY" \
@@ -129,20 +179,20 @@ resolve_since_last_audit() {
     PR_JSON=$(printf '%s' "$ALL_MERGED" | jq --arg m "$MERGED_AT" '[.[] | select(.mergedAt > $m)] | sort_by(.mergedAt) | [.[].number]' 2>/dev/null || true)
 
     if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "[]" ]; then
-        emit_error "no new PRs merged after prior audit (last PR: #${LAST_PR})"
+        emit_error "no new PRs merged after prior audit (last PR: #${LAST_PR}, skill=${SKILL})"
     fi
 
     PR_LIST=$(printf '%s' "$PR_JSON" | jq -r 'join(",")' 2>/dev/null || true)
     PR_COUNT=$(printf '%s' "$PR_JSON" | jq 'length' 2>/dev/null || echo 0)
 
     if [ -z "$PR_LIST" ] || [ "${PR_COUNT:-0}" -eq 0 ]; then
-        emit_error "no new PRs merged after prior audit (last PR: #${LAST_PR})"
+        emit_error "no new PRs merged after prior audit (last PR: #${LAST_PR}, skill=${SKILL})"
     fi
 
     if [ "$implicit" = "true" ]; then
-        ECHO_LINE="Resolved since last audit (implicit default: empty/omitted positional) to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
+        ECHO_LINE="Resolved since last audit (--skill=${SKILL}, implicit default: empty/omitted positional) to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
     else
-        ECHO_LINE="Resolved since last audit to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
+        ECHO_LINE="Resolved since last audit (--skill=${SKILL}) to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
     fi
 
     emit_ok "$implicit" "$PRIOR_NUM" "$PR_LIST" "$PR_COUNT" "$ECHO_LINE"
@@ -166,14 +216,14 @@ if printf '%s' "$VERBAL" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; 
     PR_JSON=$(printf '%s' "$ALL_MERGED" | jq --argjson n "$N" \
         'sort_by(.mergedAt) | if ($n <= 0) then [] else .[-($n):] end | [.[].number]' 2>/dev/null || true)
     if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "[]" ]; then
-        emit_error "empty PR list after merge-time sort (last ${N} PRs)"
+        emit_error "empty PR list after merge-time sort (last ${N} PRs, skill=${SKILL})"
     fi
     PR_LIST=$(printf '%s' "$PR_JSON" | jq -r 'join(",")' 2>/dev/null || true)
     PR_COUNT=$(printf '%s' "$PR_JSON" | jq 'length' 2>/dev/null || echo 0)
     if [ -z "$PR_LIST" ] || [ "${PR_COUNT:-0}" -eq 0 ]; then
-        emit_error "empty PR list after merge-time sort (last ${N} PRs)"
+        emit_error "empty PR list after merge-time sort (last ${N} PRs, skill=${SKILL})"
     fi
-    ECHO_LINE="Resolved last $N PRs to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
+    ECHO_LINE="Resolved last $N PRs (--skill=${SKILL}) to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
     emit_ok "false" "" "$PR_LIST" "$PR_COUNT" "$ECHO_LINE"
 fi
 
@@ -188,21 +238,22 @@ if printf '%s' "$VERBAL" | grep -qE '^since[[:space:]]+'; then
     fi
     PR_JSON=$(printf '%s' "$ALL_MERGED" | jq --arg t "$TS" '[.[] | select(.mergedAt > $t)] | sort_by(.mergedAt) | [.[].number]' 2>/dev/null || true)
     if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "[]" ]; then
-        emit_error "no PRs merged after $TS (or empty gh result)"
+        emit_error "no PRs merged after $TS (or empty gh result, skill=${SKILL})"
     fi
     PR_LIST=$(printf '%s' "$PR_JSON" | jq -r 'join(",")' 2>/dev/null || true)
     PR_COUNT=$(printf '%s' "$PR_JSON" | jq 'length' 2>/dev/null || echo 0)
     if [ -z "$PR_LIST" ] || [ "${PR_COUNT:-0}" -eq 0 ]; then
-        emit_error "no PRs merged after $TS (or empty gh result)"
+        emit_error "no PRs merged after $TS (or empty gh result, skill=${SKILL})"
     fi
-    ECHO_LINE="Resolved since $TS to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
+    ECHO_LINE="Resolved since $TS (--skill=${SKILL}) to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
     emit_ok "false" "" "$PR_LIST" "$PR_COUNT" "$ECHO_LINE"
 fi
 
 # "#N" or "PR #N"
 if printf '%s' "$VERBAL" | grep -qE '^(PR[[:space:]]+)?#[0-9]+$'; then
     N=$(printf '%s' "$VERBAL" | grep -oE '[0-9]+$')
-    emit_ok "false" "" "$N" "1" "Resolved $VERBAL to: [#${N}]. Proceeding."
+    ECHO_LINE="Resolved $VERBAL (--skill=${SKILL}) to: [#${N}]. Proceeding."
+    emit_ok "false" "" "$N" "1" "$ECHO_LINE"
 fi
 
 emit_error "unrecognized verbal description: $VERBAL"

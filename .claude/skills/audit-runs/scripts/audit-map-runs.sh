@@ -2,27 +2,43 @@
 # audit-map-runs.sh — Map each PR to its run-log directory.
 #
 # For each PR in --pr-list:
-#   1. Primary: gh pr view → closing keyword lines (see extract_closing_issue_from_pr_body) → parent-issue.md with ISSUE_NUMBER=N
-#   2. Fallback: newest manifest.json whose pr_number matches N (number or string; legacy runs)
+#   implement: gh pr view → closing keyword lines → parent-issue.md; manifest fallback
+#   design: gh pr view title → RUN_ID from chore(larch-logs): design run <UUID>
 #
 # Output: TSV to stdout (no header), one row per PR:
 #   pr_number<TAB>run_id<TAB>started_at<TAB>larch_version<TAB>closes_issue
-# Empty fields when a PR cannot be mapped.
 #
 # Usage:
-#   audit-map-runs.sh --pr-list N,M,... --repo OWNER/NAME [--log-root PATH]
+#   audit-map-runs.sh --skill <design|implement> --pr-list N,M,... --repo OWNER/NAME [--log-root PATH]
 
 set -euo pipefail
 
 PR_LIST=""
 REPO="character-ai/larch"
-LOG_ROOT="larch-logs/implement"
+LOG_ROOT=""
+LOG_ROOT_EXPLICIT=false
+SKILL=""
+
+audit_map_validate_skill() {
+    case "${1:-}" in
+        design|implement) return 0 ;;
+        "")
+            printf 'audit-map-runs.sh: --skill is required (allowed: design, implement)\n' >&2
+            return 1
+            ;;
+        *)
+            printf 'audit-map-runs.sh: --skill must be design or implement (got: %s)\n' "$1" >&2
+            return 1
+            ;;
+    esac
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --pr-list) PR_LIST="$2"; shift 2 ;;
         --repo) REPO="$2"; shift 2 ;;
-        --log-root) LOG_ROOT="$2"; shift 2 ;;
+        --log-root) LOG_ROOT="$2"; LOG_ROOT_EXPLICIT=true; shift 2 ;;
+        --skill) SKILL="$2"; shift 2 ;;
         *)
             printf 'audit-map-runs.sh: unknown argument: %s\n' "$1" >&2
             exit 1
@@ -30,8 +46,19 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+if ! audit_map_validate_skill "$SKILL"; then
+    exit 1
+fi
+
 if [ -z "$PR_LIST" ]; then
     printf 'audit-map-runs.sh: --pr-list is required\n' >&2
+    exit 1
+fi
+
+if [ -z "$LOG_ROOT" ]; then
+    LOG_ROOT="larch-logs/$SKILL"
+elif [ "$LOG_ROOT_EXPLICIT" = false ] && [ "$LOG_ROOT" != "larch-logs/$SKILL" ]; then
+    printf 'audit-map-runs.sh: --log-root must be larch-logs/%s when --skill=%s (got: %s)\n' "$SKILL" "$SKILL" "$LOG_ROOT" >&2
     exit 1
 fi
 
@@ -43,10 +70,6 @@ fi
 # Split comma-separated list (no shell expansion — PR_LIST is untrusted data)
 IFS=',' read -r -a PR_ARRAY <<<"$PR_LIST"
 
-# Keyword priority: Closes, then Fixes, then Resolves (GitHub treats them equivalently for
-# auto-close; order in the body is not semantic). Within one keyword class, multiple distinct
-# issue numbers → refuse mapping (stderr MAP_PR_BODY_CLOSING_AMBIGUOUS) instead of picking an
-# arbitrary first grep match.
 extract_closing_issue_from_pr_body() {
     local body="$1"
     local kw nums uniq n
@@ -66,13 +89,21 @@ extract_closing_issue_from_pr_body() {
     return 0
 }
 
+parse_design_run_id_from_pr_title() {
+    local title="$1"
+    if printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-F-]+$'; then
+        printf '%s' "$title" | sed -n 's/^chore(larch-logs): design run \([0-9A-F-]*\)$/\1/p'
+        return 0
+    fi
+    return 1
+}
+
 manifest_started_epoch() {
     local mf="$1"
     jq -r '(.started_at // "") | (try fromdateiso8601 catch empty)' "$mf" 2>/dev/null || true
 }
 
 pick_newest_manifest_among_pr() {
-    # Sets global: MANIFEST_FILE
     MANIFEST_FILE=""
     local best_epoch="" cur_epoch mf
     best_epoch=-9223372036854775808
@@ -109,6 +140,39 @@ for PR_NUM in "${PR_ARRAY[@]}"; do
     LARCH_VERSION=""
     CLOSES_ISSUE=""
 
+    if [ "$SKILL" = "design" ]; then
+        gh_stderr=$(mktemp "${TMPDIR:-/tmp}/audit-map-gh.XXXXXX")
+        PR_TITLE=""
+        gh_ok=false
+        if PR_TITLE=$(gh pr view "$PR_NUM" --repo "$REPO" --json title --jq '.title // empty' 2>"$gh_stderr"); then
+            gh_ok=true
+            rm -f "$gh_stderr"
+        else
+            printf 'audit-map-runs.sh: MAP_GH_PR_VIEW_FAILED=true REASON=%s\n' "$(tr '\n' ' ' <"$gh_stderr" | sed 's/[[:space:]]\+/ /g')" >&2
+            rm -f "$gh_stderr"
+        fi
+
+        if [ "$gh_ok" = true ]; then
+            RUN_ID=$(parse_design_run_id_from_pr_title "$PR_TITLE" || true)
+            if [ -n "$RUN_ID" ]; then
+                MANIFEST_FILE="$LOG_ROOT/$RUN_ID/manifest.json"
+                if [ -f "$MANIFEST_FILE" ]; then
+                    STARTED_AT=$(jq -r '.started_at // empty' "$MANIFEST_FILE" 2>/dev/null || true)
+                    LARCH_VERSION=$(jq -r '.larch_version // empty' "$MANIFEST_FILE" 2>/dev/null || true)
+                fi
+            fi
+        fi
+
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "$PR_NUM" \
+            "${RUN_ID:-}" \
+            "${STARTED_AT:-}" \
+            "${LARCH_VERSION:-}" \
+            ""
+        continue
+    fi
+
+    # ---- implement branch (unchanged behavior) ----
     gh_stderr=$(mktemp "${TMPDIR:-/tmp}/audit-map-gh.XXXXXX")
     PR_BODY=""
     gh_ok=false
