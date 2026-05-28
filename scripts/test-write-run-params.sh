@@ -113,6 +113,26 @@ assert_rejected_with manual-gate-b-missing 'write-run-params.sh: --manual-gate-b
     --output "$TMPROOT/manual-gate-b-missing.json" \
     --manual-gate-b
 
+assert_rejected_with partition-requested-empty 'write-run-params.sh: --partition-requested requires a value' \
+    --classification SIMPLE \
+    --partition-requested "" \
+    --output "$TMPROOT/partition-requested-empty.json"
+
+assert_rejected_with partition-requested-missing 'write-run-params.sh: --partition-requested requires a value' \
+    --classification SIMPLE \
+    --output "$TMPROOT/partition-requested-missing.json" \
+    --partition-requested
+
+assert_rejected_with brainstorm-requested-empty 'write-run-params.sh: --brainstorm-requested requires a value' \
+    --classification SIMPLE \
+    --brainstorm-requested "" \
+    --output "$TMPROOT/brainstorm-requested-empty.json"
+
+assert_rejected_with brainstorm-requested-missing 'write-run-params.sh: --brainstorm-requested requires a value' \
+    --classification SIMPLE \
+    --output "$TMPROOT/brainstorm-requested-missing.json" \
+    --brainstorm-requested
+
 assert_rejected_with bad-sketch-budget 'invalid --sketch-budget: 5' \
     --classification SIMPLE \
     --sketch-budget 5 \

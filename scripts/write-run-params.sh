@@ -34,6 +34,16 @@ take_value() {
     printf '%s' "$2"
 }
 
+# Require a flag's value to be present and non-empty; exit 2 otherwise.
+# Call directly (never inside $(...)) so the exit terminates the script.
+require_value() {
+    local flag="$1"
+    if [[ -z "${2-}" ]]; then
+        larch_err "write-run-params.sh: $flag requires a value"
+        exit 2
+    fi
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --classification)
@@ -85,18 +95,17 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --partition-requested)
-            PARTITION_REQUESTED="${2:?--partition-requested requires a value}"
+            require_value --partition-requested "${2-}"
+            PARTITION_REQUESTED="$2"
             shift 2
             ;;
         --brainstorm-requested)
-            BRAINSTORM_REQUESTED="${2:?--brainstorm-requested requires a value}"
+            require_value --brainstorm-requested "${2-}"
+            BRAINSTORM_REQUESTED="$2"
             shift 2
             ;;
         --manual-gate-b)
-            if [[ $# -lt 2 || -z "${2-}" ]]; then
-                larch_err "write-run-params.sh: --manual-gate-b requires a value"
-                exit 2
-            fi
+            require_value --manual-gate-b "${2-}"
             MANUAL_GATE_B="$2"
             shift 2
             ;;
