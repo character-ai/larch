@@ -1,0 +1,2 @@
+skills/upgrade-larch/scripts/upgrade-larch.sh
+skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh
