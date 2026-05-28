@@ -346,17 +346,7 @@ if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$man
       rm -f "$_rp_merge" "$_rp_err"
     fi
   else
-    "${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh" \
-      --classification "${design_classification:-HARD}" \
-      --reason "${design_classification_reason:-run-params write failed; router-flag recovery}" \
-      --source caller-forwarded \
-      --sketch-budget "${sketch_budget:-4}" \
-      --review-budget "${review_budget:-full}" \
-      --workflow-path "${workflow_path:-HARD}" \
-      --partition-requested "${partition_requested:-false}" \
-      --brainstorm-requested "${brainstorm_requested:-false}" \
-      --manual-gate-b "${manual_requested:-false}" \
-      --output "$DESIGN_TMPDIR/run-params.json" >/dev/null 2>&1 || true
+    printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
   fi
 elif [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]]; then
   printf '%s\n' "**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**"
