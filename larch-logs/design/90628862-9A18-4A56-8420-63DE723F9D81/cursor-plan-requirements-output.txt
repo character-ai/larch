@@ -1,0 +1,19 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/report-tokens/scripts/run-analysis.sh:118-122	Plan only switches LOG_BASE but keeps the token report filename as token-report.json while real design logs use token-report-final.json	/report-tokens --skill=design scans larch-logs/design and skips every committed design run because the required token-report.json file is absent	Add skill-specific token report selection so design reads token-report-final.json and implement reads token-report.json; update the design fixture to mirror that real filename
+1	in_scope	important	correctness	skills/report-tokens/scripts/run-analysis.sh:1088-1096,1134-1138	Plan says --plot-from skill-scopes by report title through the issue-body parser, but the script only fetches body and the parser has no title	/report-tokens --skill=design --plot-from N can accept a legacy [Analysis Report] issue body and plot implement-era data instead of rejecting the skill mismatch	Fetch title and body for --plot-from and validate the title before plotting, or add an explicit skill marker to report bodies and validate it; add the legacy-design rejection test
+
+1. **[correctness]** `skills/report-tokens/scripts/run-analysis.sh:118-122`
+
+Concern: the plan addresses the base directory for `--skill=design`, but not the design token report filename. Current scan code requires `token-report.json`; the committed design logs I checked have `token-report-final.json` and no `token-report.json`.
+
+Scenario: `/report-tokens --skill=design` would walk `larch-logs/design/*`, skip every run at the token-report existence gate, and report no parseable design token data.
+
+Suggested revision: make the token report path skill-aware. Keep `token-report.json` for implement and read `token-report-final.json` for design. Update the proposed design fixtures and tests to use `token-report-final.json`.
+
+2. **[correctness]** `skills/report-tokens/scripts/run-analysis.sh:1088-1096,1134-1138`
+
+Concern: the plan requires `--skill=design --plot-from <N>` to reject legacy `[Analysis Report]` issues, but it assigns that to the issue-body parser. The current flow fetches only `.body`, then passes only a body file to Python, so there is no title available to validate.
+
+Scenario: a legacy implement analysis issue with a valid raw-data block can be accepted under `--skill=design`, which breaks the skill-scoping contract.
+
+Suggested revision: fetch `title,body` for `--plot-from` and validate title shape before plotting, or write/read an explicit skill marker in the report body. Add a focused test for design rejecting legacy `[Analysis Report]` and implement accepting both legacy and `[Implement Analysis Report]`.

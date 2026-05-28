@@ -1,0 +1,16 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt","fallback_group":"plan-arch"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt","fallback_group":"plan-arch"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt","fallback_group":"plan-edge"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt","fallback_group":"plan-edge"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt","fallback_group":"plan-innovation"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt","fallback_group":"plan-innovation"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt","fallback_group":"plan-pragmatic"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt","fallback_group":"plan-pragmatic"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt","fallback_group":"plan-requirements"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt","fallback_group":"plan-requirements"}
+{"slot":"dyn-cursor-plan-callsite-audit","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-callsite-audit-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-callsite-audit.prompt","fallback_group":"plan-dyn-callsite-audit"}
+{"slot":"dyn-codex-plan-callsite-audit","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-callsite-audit-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-callsite-audit.prompt","fallback_group":"plan-dyn-callsite-audit"}
+{"slot":"dyn-cursor-plan-schema-evidence","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-schema-evidence-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-schema-evidence.prompt","fallback_group":"plan-dyn-schema-evidence"}
+{"slot":"dyn-codex-plan-schema-evidence","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-schema-evidence-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-schema-evidence.prompt","fallback_group":"plan-dyn-schema-evidence"}
+{"slot":"dyn-cursor-plan-regex-anchor","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-regex-anchor-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-regex-anchor.prompt","fallback_group":"plan-dyn-regex-anchor"}
+{"slot":"dyn-codex-plan-regex-anchor","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-regex-anchor-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-regex-anchor.prompt","fallback_group":"plan-dyn-regex-anchor"}

@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/design-log-publish.sh:601	Plan design chore-PR regex uses commit-subject prefix flush design run but gh pr create title is chore(larch-logs): design run <RUN_ID>	audit-resolve-prs.sh filters and audit-map-runs.sh title parse never match real merged design log PRs so design audits get empty PR lists or unmapped run dirs	Align regexes with PR title chore(larch-logs): design run plus capture group; anchor tests to design-log-publish.sh not flush commit subject
+2	in_scope	important	correctness	plan.txt:31-38	Plan RUN_ID character class [0-9A-F-]+ rejects hyphenated UUID run ids used in larch-logs/design/	Even with corrected design run prefix mapping fails for standard UUID RUN_ID values	Reuse larch_log_slug_is_valid character class or explicit UUID pattern in both filter and capture regexes
+3	in_scope	important	risk-integration	.claude/skills/audit-runs/SKILL.md:107	Plan does not update bug-search audit-report noise exclusion still ^\[Run Logs Audit .* Report\] only	New [Implement Run Logs Audit ...] and [Design Run Logs Audit ...] titles are not excluded so audit reports can be misclassified as proposed_augmentations during C1 search	Extend SKILL.md exclusion and test-audit-runs.sh Test 14 helper to dual implement prefixes plus Design prefix matching audit-title.sh output
+4	in_scope	important	architecture	.claude/skills/audit-runs/scripts/audit-close-priors.sh:36-74	Plan adds --skill and dual-regex prior search language but script closes every open audit-report issue with no title filter	Filing a design audit closes open implement audit-report issues and vice versa	Filter gh issue list candidates by skill-specific title regex before close or document intentional cross-skill supersession and keep current behavior
+5	in_scope	latent	correctness	.claude/skills/audit-runs/scans-design.tsv:73	Plan includes oos-category-mangle but scan reads review-findings-full.jsonl which design run dirs lack	Design audits always emit skip for that scan so the stated plan-review category signal never fires	Drop the row until scan reads design plan-review artifacts or defer to follow-up
+
+1. **correctness** (`scripts/design-log-publish.sh:601`, plan `audit-map-runs.sh` / `audit-resolve-prs.sh`): Design chore-PR matching must use PR title `chore(larch-logs): design run <RUN_ID>`, not commit subject `flush design run`.
+
+2. **correctness** (plan lines 31–38): RUN_ID regex must allow hyphenated UUIDs (or `larch_log_slug_is_valid` slug grammar), not `[0-9A-F-]+` alone.
+
+3. **risk-integration** (`.claude/skills/audit-runs/SKILL.md:107`, `test-audit-runs.sh:367`): Extend audit-report title self-exclusion for new Implement/Design prefixed audit titles.
+
+4. **architecture** (`audit-close-priors.sh:36-74`): Clarify whether `--skill` scopes which open `audit-report` issues get closed; today all open issues close.
+
+5. **correctness** (`scans-design.tsv`): `oos-category-mangle` will always skip on design trees without `review-findings-full.jsonl`; drop or retarget the scan.

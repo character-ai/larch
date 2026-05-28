@@ -1,0 +1,16 @@
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-callsite-audit	dyn-codex-plan-callsite-audit	codex	<TMPDIR>/codex-primary-plan-dyn-callsite-audit-output.txt	ok
+plan-dyn-schema-evidence	dyn-codex-plan-schema-evidence	codex	<TMPDIR>/codex-primary-plan-dyn-schema-evidence-output.txt	ok
+plan-dyn-regex-anchor	dyn-codex-plan-regex-anchor	codex	<TMPDIR>/codex-primary-plan-dyn-regex-anchor-output.txt	ok
+plan-arch	cursor-plan-arch	codex	<TMPDIR>/cursor-plan-arch-output.txt	reused	codex-plan-arch
+plan-edge	cursor-plan-edge	codex	<TMPDIR>/cursor-plan-edge-output.txt	reused	codex-plan-edge
+plan-innovation	cursor-plan-innovation	codex	<TMPDIR>/cursor-plan-innovation-output.txt	reused	codex-plan-innovation
+plan-requirements	cursor-plan-requirements	codex	<TMPDIR>/cursor-plan-requirements-output.txt	reused	codex-plan-requirements
+plan-dyn-callsite-audit	dyn-cursor-plan-callsite-audit	codex	<TMPDIR>/cursor-plan-dyn-callsite-audit-output.txt	reused	dyn-codex-plan-callsite-audit
+plan-dyn-schema-evidence	dyn-cursor-plan-schema-evidence	codex	<TMPDIR>/cursor-plan-dyn-schema-evidence-output.txt	reused	dyn-codex-plan-schema-evidence
+plan-dyn-regex-anchor	dyn-cursor-plan-regex-anchor	codex	<TMPDIR>/cursor-plan-dyn-regex-anchor-output.txt	reused	dyn-codex-plan-regex-anchor
