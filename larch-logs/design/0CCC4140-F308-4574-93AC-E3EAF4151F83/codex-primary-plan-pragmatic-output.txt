@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/breadcrumb-monitor.sh:141, scripts/lib-quiet.sh:147-152	The plan deletes larch_quiet_bc_valid_category while breadcrumb-monitor.sh still calls it	After lib-quiet.sh drops the helper, breadcrumb-monitor.sh prints command-not-found for each larch:bc line and drops valid streamed breadcrumbs; make lint also exercises test-breadcrumb-monitor	Keep larch_quiet_bc_valid_category until Piece 3, or move the small category case statement into breadcrumb-monitor.sh before deleting it from lib-quiet.sh
+1	in_scope	important	correctness	scripts/test-lib-quiet.sh:73-90	The plan deletes only test-lib-quiet cases 13-18 but leaves earlier emit_breadcrumb tests intact	bash scripts/test-lib-quiet.sh will fail because cases 4, 5, and 5b still execute the removed emit_breadcrumb function	Also delete or rewrite the remaining emit_breadcrumb-specific cases in test-lib-quiet.sh and update test-lib-quiet.md numbering/docs accordingly
+
+1. [correctness] scripts/breadcrumb-monitor.sh:141, scripts/lib-quiet.sh:147-152
+Concern: The proposed helper deletion is too broad. `breadcrumb-monitor.sh` is explicitly retained until Piece 3, but it still depends on `larch_quiet_bc_valid_category`.
+Suggested revision: keep that helper for now, or inline the category validation in `breadcrumb-monitor.sh`.
+
+2. [correctness] scripts/test-lib-quiet.sh:73-90
+Concern: The plan removes the API but leaves test cases 4, 5, and 5b calling it.
+Suggested revision: remove or rewrite those remaining breadcrumb tests in the same pass, then renumber/update the sibling markdown.

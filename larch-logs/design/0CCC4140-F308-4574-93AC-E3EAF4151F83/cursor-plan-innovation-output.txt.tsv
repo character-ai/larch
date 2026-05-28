@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/breadcrumb-monitor.sh:141	Plan removes larch_quiet_bc_valid_category from lib-quiet.sh but monitor still calls it	Piece 3 defers monitor removal; after lib-quiet.sh drops the helper, sourcing monitor fails at runtime or drops all streamed lines	Keep larch_quiet_bc_valid_category in lib-quiet.sh until Piece 3 removes breadcrumb-monitor.sh, or move the case statement into the monitor in the same PR
