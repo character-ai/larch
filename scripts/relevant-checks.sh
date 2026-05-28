@@ -68,6 +68,11 @@ run_direct_relevant_targets() {
                 append_target_once test-collect-agent-results
                 ;;
         esac
+        case "$f" in
+            scripts/lib-design-tmpdir.sh|scripts/test-lib-design-tmpdir.sh|scripts/lib-design-tmpdir.md|scripts/test-lib-design-tmpdir.md)
+                append_target_once test-lib-design-tmpdir
+                ;;
+        esac
     done <<< "$MODIFIED_FILES"
 
     if [ -n "$DIRECT_TARGETS" ]; then
