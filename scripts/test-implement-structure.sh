@@ -495,7 +495,7 @@ if grep -Fq 'not-yet-implemented-phase-' "$SKILL_MD"; then
   fail "SKILL.md must not reintroduce not-yet-implemented phase bail placeholders"
 fi
 # shellcheck disable=SC2016 # literal source text, not shell.
-grep -Fq 'emit_breadcrumb "→ step0: coder=${coder}"' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+grep -Fq 'larch_err "→ step0: coder=${coder}"' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must retain the coder breadcrumb literal"
 grep -Fq 'Review/fix and other fixer lanes remain Codex-first' "$REPO_ROOT/SECURITY.md" \
   || fail "SECURITY.md must document Codex-first fixer adjacency"

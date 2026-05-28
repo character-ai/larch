@@ -8,7 +8,7 @@ set -euo pipefail
 
 # Isolate from an inherited larch quiet session (agent/CI may export
 # LARCH_QUIET_BREADCRUMBS / LARCH_QUIET_BREADCRUMB_FD); stale FDs break
-# emit_breadcrumb inside apply-bump.sh.
+# larch_err inside apply-bump.sh.
 unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
 export LARCH_QUIET_DISABLE=1
 
@@ -238,6 +238,48 @@ assert_stdout_match_count() {
     fi
 }
 
+assert_stderr_matches() {
+    local case_name="$1"
+    local pattern="$2"
+    local label="$3"
+
+    if grep -Eq "$pattern" "$TMPDIR_BASE/$case_name/stderr.log"; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    stderr: /' "$TMPDIR_BASE/$case_name/stderr.log"
+    fi
+}
+
+assert_stderr_match_count() {
+    local case_name="$1"
+    local pattern="$2"
+    local expected="$3"
+    local label="$4"
+
+    local actual
+    actual=$(grep -Ec "$pattern" "$TMPDIR_BASE/$case_name/stderr.log" 2>/dev/null || echo 0)
+    if [[ "$actual" == "$expected" ]]; then
+        ok "$label"
+    else
+        fail "$label (expected $expected matching lines, got $actual)"
+        sed 's/^/    stderr: /' "$TMPDIR_BASE/$case_name/stderr.log"
+    fi
+}
+
+assert_stderr_not_matches() {
+    local case_name="$1"
+    local pattern="$2"
+    local label="$3"
+
+    if ! grep -Eq "$pattern" "$TMPDIR_BASE/$case_name/stderr.log"; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    stderr: /' "$TMPDIR_BASE/$case_name/stderr.log"
+    fi
+}
+
 assert_plugin_version() {
     local case_name="$1"
     local expected="$2"
@@ -341,7 +383,7 @@ assert_backup_absent "same_version" "C: backup removed"
 assert_commit_count "same_version" "2" "C: exactly one new commit after retry"
 assert_head_subject "same_version" "Bump version to 3.0.0" "C: retry commit subject"
 assert_index_unstaged "same_version" "C: index clean after commit"
-assert_stdout_match_count "same_version" "^apply-bump: retry" "1" "C: exactly one breadcrumb emitted"
+assert_stderr_match_count "same_version" "^apply-bump: retry" "1" "C: exactly one breadcrumb emitted"
 
 echo
 echo "Sub-test D: differing origin version still commits"
@@ -394,7 +436,7 @@ assert_backup_absent "regression_guard" "H: backup removed"
 assert_commit_count "regression_guard" "2" "H: exactly one new commit after retry"
 assert_head_subject "regression_guard" "Bump version to 4.0.0" "H: retry commit subject"
 assert_index_unstaged "regression_guard" "H: index clean after commit"
-assert_stdout_match_count "regression_guard" "^apply-bump: retry" "1" "H: exactly one breadcrumb emitted"
+assert_stderr_match_count "regression_guard" "^apply-bump: retry" "1" "H: exactly one breadcrumb emitted"
 
 echo
 echo "Sub-test I: larch-internal untracked artifacts are tolerated"
@@ -466,7 +508,7 @@ assert_plugin_version "retry_single" "1.0.2" "K: plugin.json has version 1.0.2 a
 assert_backup_absent "retry_single" "K: backup removed"
 assert_commit_count "retry_single" "2" "K: exactly one new commit"
 assert_head_subject "retry_single" "Bump version to 1.0.2" "K: retry commit subject"
-assert_stdout_match_count "retry_single" "^apply-bump: retry" "1" "K: exactly one breadcrumb emitted"
+assert_stderr_match_count "retry_single" "^apply-bump: retry" "1" "K: exactly one breadcrumb emitted"
 
 echo
 echo "Sub-test L: multiple collisions then success"
@@ -487,7 +529,7 @@ assert_plugin_version "retry_multi" "1.0.3" "L: plugin.json has version 1.0.3 af
 assert_backup_absent "retry_multi" "L: backup removed"
 assert_commit_count "retry_multi" "2" "L: exactly one new commit"
 assert_head_subject "retry_multi" "Bump version to 1.0.3" "L: retry commit subject"
-assert_stdout_match_count "retry_multi" "^apply-bump: retry" "2" "L: exactly two breadcrumbs emitted"
+assert_stderr_match_count "retry_multi" "^apply-bump: retry" "2" "L: exactly two breadcrumbs emitted"
 
 echo
 echo "Sub-test M: cap exhaustion — loud fail after 10 retries"
@@ -509,7 +551,7 @@ assert_plugin_version "retry_cap" "1.0.0" "M: plugin.json restored after cap exh
 assert_index_unstaged "retry_cap" "M: index unstaged after cap exhaustion"
 assert_backup_absent "retry_cap" "M: backup removed"
 assert_commit_count "retry_cap" "1" "M: no new commit after cap exhaustion"
-assert_stdout_match_count "retry_cap" "^apply-bump: retry" "10" "M: exactly 10 breadcrumbs emitted"
+assert_stderr_match_count "retry_cap" "^apply-bump: retry" "10" "M: exactly 10 breadcrumbs emitted"
 
 echo
 echo "Sub-test N: no collision baseline — succeeds on first attempt, no retry"
@@ -525,7 +567,7 @@ assert_stdout_matches "no_collision" "^COMMIT_SHA=[0-9a-f]+$" "N: no collision e
 assert_plugin_version "no_collision" "1.0.1" "N: plugin.json has version 1.0.1"
 assert_backup_absent "no_collision" "N: backup removed"
 assert_commit_count "no_collision" "2" "N: exactly one new commit"
-assert_stdout_not_matches "no_collision" "^apply-bump: retry" "N: no breadcrumb on first-attempt success"
+assert_stderr_not_matches "no_collision" "^apply-bump: retry" "N: no breadcrumb on first-attempt success"
 
 echo
 echo "Sub-test O: breadcrumb shape per retry"
@@ -539,10 +581,10 @@ invoke_apply_v_o() {
 }
 run_case "breadcrumb_shape" invoke_apply_v_o
 assert_exit_code "breadcrumb_shape" "0" "O: breadcrumb-shape test exits 0"
-assert_stdout_matches "breadcrumb_shape" \
+assert_stderr_matches "breadcrumb_shape" \
     "^apply-bump: retry 1/10 origin/main=1\\.0\\.1 new-version=1\\.0\\.2$" \
     "O: breadcrumb line matches expected format"
-assert_stdout_match_count "breadcrumb_shape" "^apply-bump: retry" "1" "O: exactly one breadcrumb line"
+assert_stderr_match_count "breadcrumb_shape" "^apply-bump: retry" "1" "O: exactly one breadcrumb line"
 
 echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then

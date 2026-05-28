@@ -38,7 +38,7 @@ On `rc=3`, the wrapper scans **stdout** lines for `REBASE_ERROR=` first, then **
 
 ## Breadcrumb
 
-One `emit_breadcrumb` line: `→ rebase-probe: <step-prefix> <short-name>` (honours `LARCH_QUIET_BREADCRUMBS` / `LARCH_QUIET_BREADCRUMB_FD` per `lib-quiet.sh`).
+One `larch_err` line: `→ rebase-probe: <step-prefix> <short-name>`.
 
 ## Executable bit (FINDING_10)
 

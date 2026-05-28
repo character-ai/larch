@@ -1110,22 +1110,22 @@ STUB_CI_ACTION=bail STUB_BAIL_REASON=fix-attempts-exhausted run_subject "$root" 
 assert_rc "$tmp/rc" 3 "user-input bail exits 3"
 assert_state_line "$tmp/ship-pr-state.sh" "BAIL_NEEDS_USER_INPUT=true" "user-input bail marks state"
 
-# Breadcrumb pin: phase-entry breadcrumbs appear in stdout when LARCH_QUIET_BREADCRUMBS=1.
+# Breadcrumb pin: phase-entry diagnostics appear on stderr via larch_err.
 root=$(make_repo breadcrumb_phase_entry)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" checks
-LARCH_QUIET_BREADCRUMBS=1 STUB_CI_ACTION=merge run_subject "$root" "$tmp" "$tmp/rc"
+STUB_CI_ACTION=merge run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "breadcrumb phase-entry scenario exits 0"
 for crumb in '→ ship-pr: checks' '→ ship-pr: version bump' '→ ship-pr: PR prep' '→ ship-pr: opening PR'; do
-    if grep -qF "$crumb" "$tmp/stdout"; then
-        ok "breadcrumb phase-entry: stdout contains '$crumb'"
+    if grep -qF "$crumb" "$tmp/stderr"; then
+        ok "breadcrumb phase-entry: stderr contains '$crumb'"
     else
-        fail "breadcrumb phase-entry: stdout missing '$crumb'"
-        sed 's/^/    stdout: /' "$tmp/stdout"
+        fail "breadcrumb phase-entry: stderr missing '$crumb'"
+        sed 's/^/    stderr: /' "$tmp/stderr"
     fi
 done
 
-# Breadcrumb pin: stall breadcrumb appears when LARCH_QUIET_BREADCRUMBS=1 and bump fails.
+# Breadcrumb pin: stall diagnostic appears on stderr when bump fails.
 root=$(make_repo breadcrumb_stall)
 tmp=$(make_tmpdir)
 cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
@@ -1134,15 +1134,15 @@ exit 1
 STUB
 chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh"
 write_state "$tmp/ship-pr-state.sh" bump
-LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc"
-if grep -qF '⛔ ship-pr: stalled at step 8' "$tmp/stdout"; then
-    ok "breadcrumb stall: stdout contains stall-at-step-8 breadcrumb"
+run_subject "$root" "$tmp" "$tmp/rc"
+if grep -qF '⛔ ship-pr: stalled at step 8' "$tmp/stderr"; then
+    ok "breadcrumb stall: stderr contains stall-at-step-8 diagnostic"
 else
-    fail "breadcrumb stall: stdout missing '⛔ ship-pr: stalled at step 8'"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    fail "breadcrumb stall: stderr missing '⛔ ship-pr: stalled at step 8'"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
-# Breadcrumb pin: transient breadcrumb appears when LARCH_QUIET_BREADCRUMBS=1.
+# Breadcrumb pin: transient diagnostic appears on stderr.
 root=$(make_repo breadcrumb_transient)
 tmp=$(make_tmpdir)
 cat > "$root/scripts/create-pr.sh" <<'STUB'
@@ -1154,12 +1154,12 @@ exit 1
 STUB
 chmod +x "$root/scripts/create-pr.sh"
 write_state "$tmp/ship-pr-state.sh" pr-create
-LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc"
-if grep -qF '⚠ ship-pr: transient network failure' "$tmp/stdout"; then
-    ok "breadcrumb transient: stdout contains transient-network breadcrumb"
+run_subject "$root" "$tmp" "$tmp/rc"
+if grep -qF '⚠ ship-pr: transient network failure' "$tmp/stderr"; then
+    ok "breadcrumb transient: stderr contains transient-network diagnostic"
 else
-    fail "breadcrumb transient: stdout missing '⚠ ship-pr: transient network failure'"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    fail "breadcrumb transient: stderr missing '⚠ ship-pr: transient network failure'"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
 # AC#12: recovery_waterfall_paths_delta_revert uses quoted paths (spaces / glob chars).
@@ -3537,7 +3537,6 @@ cat > "$runner" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 
-emit_breadcrumb() { :; }
 _per_job_argv() { return 1; }
 state_set_many() {
     while [ "$#" -gt 0 ]; do
@@ -3590,7 +3589,6 @@ cat > "$runner_mixed" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 
-emit_breadcrumb() { :; }
 _per_job_argv() { return 1; }
 state_set_many() {
     while [ "$#" -gt 0 ]; do

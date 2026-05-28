@@ -101,26 +101,20 @@ exactly the current run's directory regardless of symlink resolution differences
 
 **Breadcrumb commit artifact**: `commit` treats `breadcrumbs/` as a commit-only
 artifact class owned by the shared `larch_log_publish_breadcrumbs_shared` helper
-in `scripts/lib-larch-log.sh`, not by the batch table. Runtime streams are
-sourced from `LARCH_BREADCRUMB_SOURCE_DIR` when set, else from the log-root
-parent's `breadcrumbs/`, and the helper stages only depth-1 regular `*.ndjson`
-files through
+in `scripts/lib-larch-log.sh`, not by the batch table. The helper stages
+session-root `larch-quiet-<script>-<pid>.log` files (derived via `dirname` of
+the breadcrumbs source path from `LARCH_BREADCRUMB_SOURCE_DIR` or the log-root
+parent's `breadcrumbs/`) through
 `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`
 before atomically publishing `larch-logs/<skill>/<run-id>/breadcrumbs/`.
-Per-script `larch-quiet-<script>-<pid>.log` files at the session tmpdir root are
-also staged into `larch-logs/<skill>/<run-id>/breadcrumbs/` during `commit`
-through the same helper (derived via `dirname` of the breadcrumbs source dir).
-Legacy `*.ndjson` files under the session `breadcrumbs/` directory continue to
-be staged for forensics parity until later breadcrumb-deprecation stages.
+Legacy `*.ndjson` stream files are not published.
 
-A missing source directory, a source tree with zero accepted `*.ndjson` files,
-and a session root with zero accepted quiet logs are together a successful no-op
-when nothing is staged; they leave any previously committed `breadcrumbs/`
-directory untouched.
+A session root with zero accepted quiet logs is a successful no-op when nothing
+is staged; it leaves any previously committed `breadcrumbs/` directory untouched.
 Enforced triggers such as non-session-tmpdir paths, symlinks, hardlinks, invalid
 accepted basenames, or redaction failures fail closed for the whole directory;
-hidden entries, non-regular files, and non-`*.ndjson` regular files are silently
-ignored. See [SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction)
+legacy ndjson files and non-matching basenames are silently ignored. See
+[SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction)
 for the security posture and [docs/run-logs.md § breadcrumbs/](../docs/run-logs.md#breadcrumbs)
 for the operator-facing directory contract.
 

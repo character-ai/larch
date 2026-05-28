@@ -131,7 +131,7 @@ run_implement_loop() {
         if awk -v t="$LARCH_SKIP_RATIO_THRESHOLD" 'BEGIN{ exit !(t+0>0 && t+0<1) }'; then
             threshold="$LARCH_SKIP_RATIO_THRESHOLD"
         else
-            emit_breadcrumb --category=warn "⚠ review-and-fix: invalid LARCH_SKIP_RATIO_THRESHOLD=${LARCH_SKIP_RATIO_THRESHOLD}; using 0.5"
+            larch_err "⚠ review-and-fix: invalid LARCH_SKIP_RATIO_THRESHOLD=${LARCH_SKIP_RATIO_THRESHOLD}; using 0.5"
         fi
     fi
 
@@ -145,7 +145,7 @@ run_implement_loop() {
             exit 0
         fi
 
-        emit_breadcrumb --category=progress "→ Step 5 round ${round_num}/${effective_round_cap}"
+        larch_err "→ Step 5 round ${round_num}/${effective_round_cap}"
 
         ROUND_NUM="$round_num"
         MODE='diff'
@@ -324,7 +324,7 @@ run_implement_loop() {
 
         if [[ "$skip_hit" == true ]]; then
             if (( round_num < effective_round_cap )); then
-                emit_breadcrumb --category=progress "⏳ Step 5: bulk-skip-ratio gate triggered (ratio=${skip_ratio}; threshold=${threshold}); continuing"
+                larch_err "⏳ Step 5: bulk-skip-ratio gate triggered (ratio=${skip_ratio}; threshold=${threshold}); continuing"
                 round_num=$((round_num + 1))
                 continue
             fi

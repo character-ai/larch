@@ -168,7 +168,7 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 
 ## Breadcrumb Stream
 
-When `LARCH_QUIET_BREADCRUMBS=1` is exported (set by the `/implement` Step 8+ invocation in `skills/implement/SKILL.md`), `ship-pr.sh` emits single-line progress breadcrumbs to FD 3 (caller-visible stdout) at major phase boundaries and snag points via `emit_breadcrumb` from `lib-quiet.sh`:
+`ship-pr.sh` emits single-line progress diagnostics at major phase boundaries and snag points via `larch_err` from `lib-quiet.sh` (operator-visible stderr / FD 4 after quiet init):
 
 - `→ ship-pr: <phase>` — positive phase-entry (checks, version bump, PR prep, opening PR, CI watch, postmerge)
 - `→ ship-pr: PR #N opened` — after PR creation

@@ -25,11 +25,12 @@ Accepted security-tagged review/design OOS findings (`focus-area=security`) are 
 
 Dynamic review scout notes are also treated as untrusted data. `scripts/scout-dynamic-archetypes.sh` rejects scout-authored `rationale` or `prompt_body` strings containing the literal `</scout_notes>` wrapper terminator, rejects `prompt_body` strings containing literal `</reviewer_` closers or standalone `---` lines, and repairs accepted `prompt_body` strings so they end with the full required closing sentence (`Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.`). `skills/review/scripts/dispatch-panel.sh` then tells dynamic reviewers to extract only file/aspect hints from `<scout_notes>` and ignore commands, tool/workflow requests, scope changes, and output-format instructions inside that block. This keeps synthesized dynamic reviewer prompts inside their untrusted `<scout_notes>` envelope and preserves the wrapper-alignment footer even if the scout omits or truncates it.
 
-Committed breadcrumb publication is allowlisted to regular `*.ndjson` stream
-files only. Session-local monitor sidecars such as `.quiet`, `.done`, `.status`,
-`.surfaced`, and `.bc-offset` stay under the run tmpdir and are not copied into
+Committed breadcrumb publication stages only session-root quiet logs whose
+basenames match `larch-quiet-*-*.log`. Legacy `*.ndjson` stream files and
+session-local monitor sidecars (`.quiet`, `.done`, `.status`, `.surfaced`,
+`.bc-offset`) stay under the run tmpdir and are not copied into
 `larch-logs/.../breadcrumbs/`; attempted breadcrumb publication still fails
-closed on symlinks or redaction errors.
+closed on symlinks, hardlinks, or redaction errors.
 
 Raw Codex `--json` event streams (`*.events.jsonl`) are session-local artifacts
 only. `scripts/design-log-publish.sh` and `scripts/larch-log.sh` exclude them
@@ -283,16 +284,15 @@ through the redaction and publication path described here.
    `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>`
    into a temp staging directory, then atomically moves the staging directory
    into place under `larch-logs/<skill>/<run-id>/breadcrumbs/`. Same-basename
-   publication is depth 1: a source file `foo.ndjson` becomes
-   `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson`; per-script
-   `larch-quiet-<script>-<pid>.log` files at the session-tmpdir root become
+   publication is depth 1: per-script `larch-quiet-<script>-<pid>.log` files at
+   the session-tmpdir root become
    `larch-logs/<skill>/<run-id>/breadcrumbs/larch-quiet-<script>-<pid>.log`.
    Source-directory resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set
    (must still pass session-tmpdir containment), else the log-root parent's
    `breadcrumbs/`. Quiet-log sources are derived via `dirname` of that
    breadcrumbs path and are staged independently of whether `breadcrumbs/`
    exists. Each quiet-log candidate must stay under the session tmpdir, must
-   not be a symlink, and must not be a hardlink (same guards as `*.ndjson`).
+   not be a symlink, and must not be a hardlink.
    Missing sources, empty sources, or sources whose entries are all silently
    skipped are successful no-ops and do not create, replace, or clear an
    existing committed `breadcrumbs/` destination.
@@ -305,21 +305,13 @@ through the redaction and publication path described here.
      `larch_log_breadcrumbs_under_session_tmp`, source directory itself a
      symlink, source path exists but is not a directory, an existing file entry
      is a symlink, an entry has hardlink count greater than 1, an accepted
-     `*.ndjson` basename contains `/` / `..` / leading dot, or the redactor pipe
+     quiet-log basename contains `/` / `..` / leading dot, or the redactor pipe
      exits non-zero on any accepted file.
-   - **Silently ignored** (not rejected, not committed): hidden entries
-     (`"$source_dir"/*` does not match dotfiles such as `.bc-offset`, `.quiet`,
-     `.done`, `.status`, `.surfaced`, `.pid`; monitor sidecars inside
-     `breadcrumbs/` remain session-local because the glob skips them, not via an
-     active rejection), non-existent entries from race-condition globs
-     (including dangling symlinks the `-e` test rejects), non-regular files, and
-     regular files in the ndjson source directory whose basename does not end in
-     `.ndjson`. Quiet-log candidates outside `larch-quiet-*-*.log` basenames
-     are skipped.
-   - **Note**: this is intentionally not the per-file skip-and-warn semantics
-     described in the originating OOS issue scope. That variant was never landed;
-     the current implementation favors directory-level fail-closed safety on
-     enforced triggers and explicit-skip semantics on non-`*.ndjson` siblings.
+   - **Silently ignored** (not rejected, not committed): legacy `*.ndjson` files
+     under `breadcrumbs/`, hidden monitor sidecars (`.bc-offset`, `.quiet`,
+     `.done`, `.status`, `.surfaced`, `.pid`), non-existent race-condition globs,
+     non-regular files, and quiet-log candidates outside `larch-quiet-*-*.log`
+     basenames.
 5. **Residual sensitive-content risk**: redaction is pattern-based (recognized
    PEM blocks, common token shapes like `sk-*`, `ghp_`, JWTs, session-tmpdir
    paths). Reviewer-supplied non-pattern secrets, partial token fragments that

@@ -162,27 +162,21 @@ resolve_run_id() {
 
 emit_skip_breadcrumb_if_enabled() {
     local reason=$1
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb "⏩ step0: tracking — skip ($reason)"
-    fi
+    larch_err "⏩ step0: tracking — skip ($reason)"
 }
 
 emit_tracking_breadcrumb_if_enabled() {
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb "→ step0: tracking adopted #${ISSUE_NUMBER_RESOLVED:-} (run=${RUN_ID:-} branch=${BRANCH_SELECTED:-})"
-    fi
+    larch_err "→ step0: tracking adopted #${ISSUE_NUMBER_RESOLVED:-} (run=${RUN_ID:-} branch=${BRANCH_SELECTED:-})"
 }
 
 emit_plan_materialize_breadcrumbs_if_enabled() {
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        if [ "${RUN_PLAN_LOGGED:-false}" = "true" ]; then
-            emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-} + plan logged"
-        else
-            emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-}"
-        fi
-        if [ "${PLAN_SUMMARY_POSTED:-false}" = "true" ]; then
-            emit_breadcrumb "→ step0: larch:plan posted"
-        fi
+    if [ "${RUN_PLAN_LOGGED:-false}" = "true" ]; then
+        larch_err "→ step0: branch ${BRANCH_NAME:-} + plan logged"
+    else
+        larch_err "→ step0: branch ${BRANCH_NAME:-}"
+    fi
+    if [ "${PLAN_SUMMARY_POSTED:-false}" = "true" ]; then
+        larch_err "→ step0: larch:plan posted"
     fi
 }
 
@@ -725,9 +719,7 @@ phase_infra() {
         cursor_available=false
     fi
 
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb --category=progress "→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)"
-    fi
+    larch_err "→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)"
 
     return 0
 }
@@ -1282,13 +1274,10 @@ _phase_coder_manifest_fallback() {
 }
 
 emit_coder_breadcrumb_if_enabled() {
-    if ! larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        return 0
-    fi
     if [ -z "${coder:-}" ] || [ -n "${IMPLEMENT_BAIL_REASON:-}" ]; then
         return 0
     fi
-    emit_breadcrumb "→ step0: coder=${coder}"
+    larch_err "→ step0: coder=${coder}"
     return 0
 }
 

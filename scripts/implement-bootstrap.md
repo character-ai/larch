@@ -60,7 +60,7 @@ All of the above use `larch_err` (never raw `printf`/`echo` to stderr after `lar
 
 ### Breadcrumbs (`LARCH_QUIET_BREADCRUMBS=1`)
 
-When `LARCH_QUIET_BREADCRUMBS` is truthy, emits exactly one line via `emit_breadcrumb`:
+Emits exactly one operator-visible line via `larch_err` per guarded callsite:
 
 `→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)`
 

@@ -17,19 +17,10 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   stdout/stderr to the quiet log.
 - `emit TEXT` writes one line of contract output to the caller-visible stream.
 - `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream. Values must not contain `\n` or `\r`; the helper returns 2 with `larch_err` on violation. See `scripts/test-lib-quiet.sh` for reject coverage.
-- `emit_breadcrumb --category=NAME TEXT` writes progress text to the quiet log
-  by default and requires the fixed breadcrumb category vocabulary. Set
-  `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout. When
-  `LARCH_BREADCRUMB_STREAM` is set, it writes only the structured breadcrumb
-  record. When `LARCH_QUIET_BREADCRUMB_FD` is set to an inherited numeric file
-  descriptor, surfaced breadcrumbs write there instead of FD 3 so nested
-  scripts can stay operator-visible even when their stdout is redirected into
-  capture files.
-- `emit_breadcrumb_stderr --category=NAME FORMAT [ARGS...]` is the stderr
-  progress bridge for legacy `larch_errf` progress callsites. Without
-  `LARCH_BREADCRUMB_STREAM`, it preserves `larch_errf` formatting and no-newline
-  behavior. With a stream, it writes only a structured breadcrumb record in the
-  fixed category vocabulary.
+- `larch_quiet_bc_valid_category NAME` validates breadcrumb category tokens for
+  `scripts/breadcrumb-monitor.sh` (Piece 3 removal deferred). Runtime scripts use
+  `larch_err` / `larch_errf` for operator-visible progress instead of
+  `emit_breadcrumb` / `emit_breadcrumb_stderr`.
 - `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
   original stderr (FD 4 after init) so harnesses and operators still see them
   while incidental `echo`/`printf` chatter stays in the quiet log.
@@ -79,14 +70,14 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
   `LARCH_PAIRED_PID_FILE` before invoking them. See
   `scripts/breadcrumb-monitor.md`.
 
-`scripts/ship-pr.sh` and the review/review-and-fix tree (`skills/review/scripts/dispatch-panel.sh`, `skills/review/scripts/review-core.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`) opt into breadcrumb surfacing via `export LARCH_QUIET_BREADCRUMBS=1` set at their `/implement` invocation sites (`skills/implement/SKILL.md` Step 8+ block and `scripts/run-step5-review.sh`).
+Family B scripts surface progress via `larch_err` / `larch_errf` on the
+operator-visible stderr channel (FD 4 after `larch_quiet_init`).
 
 ## Harness
 
 `scripts/test-lib-quiet.sh` exercises default redirect behavior, explicit log
-paths, disable mode, nested init, contract emission, breadcrumb suppression and
-opt-in surfacing, empty values, fallback behavior when the log directory cannot
-be created, pure-filter disable semantics, `larch_err` routing to real stderr,
-and the paired PID writer's no-op, atomic-write, validation, fail-open, and
-parallel-write behavior. It is wired as `make
-test-lib-quiet`.
+paths, disable mode, nested init, contract emission, empty values, fallback
+behavior when the log directory cannot be created, pure-filter disable
+semantics, `larch_err` routing to real stderr, and the paired PID writer's
+no-op, atomic-write, validation, fail-open, and parallel-write behavior. It is
+wired as `make test-lib-quiet`.

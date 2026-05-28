@@ -14,4 +14,4 @@ single-line values.
 
 Wired into `make test-lib-quiet`. Keep this harness in sync with
 `scripts/lib-quiet.md` and any change to `larch_quiet_init`, `emit`,
-`emit_kv`, or `emit_breadcrumb`.
+`emit_kv`, or `larch_err`.

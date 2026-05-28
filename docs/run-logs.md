@@ -93,27 +93,22 @@ The source directory and every candidate file must resolve under
 `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
 `larch_log_breadcrumbs_under_session_tmp`; otherwise publication fails closed.
 
-Regular `*.ndjson` files at depth 1 under the session `breadcrumbs/` directory
-and per-script session-root quiet logs whose basenames match exactly
-`larch-quiet-<script>-<pid>.log`
-are staged. Each accepted file is redacted through
-`redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>` and
-committed as `larch-logs/<skill>/<run-id>/breadcrumbs/<basename>` after an
-atomic mktemp-plus-move of the staging directory. Quiet-log sourcing uses
-`dirname` of the breadcrumbs source path and runs even when `breadcrumbs/` was
-never created. Candidates must stay under the active session tmpdir, must not
-be symlinks, and must not be hardlinks. Legacy `*.ndjson` publication remains for
-forensics parity until later deprecation stages. When neither loop stages a
-file, the helper returns 0 and does not create, replace, or clear an existing
-committed `breadcrumbs/` destination.
+Per-script session-root quiet logs whose basenames match exactly
+`larch-quiet-<script>-<pid>.log` are staged. Each accepted file is redacted
+through `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file
+<tmp>` and committed as `larch-logs/<skill>/<run-id>/breadcrumbs/<basename>`
+after an atomic mktemp-plus-move of the staging directory. Quiet-log sourcing
+uses `dirname` of the breadcrumbs source path and runs even when `breadcrumbs/`
+was never created. Candidates must stay under the active session tmpdir, must
+not be symlinks, and must not be hardlinks. Legacy `*.ndjson` stream files are
+not published. When no quiet log stages, the helper returns 0 and does not
+create, replace, or clear an existing committed `breadcrumbs/` destination.
 
 The enforced-reject and silent-skip split is documented in
 [SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction):
-enforced triggers fail closed for the whole directory, while hidden entries,
-non-regular files, non-matching quiet-log basenames, and non-`*.ndjson` regular files are ignored and not
-committed. Hidden monitor sidecars such as `.quiet`, `.done`, `.status`,
-`.surfaced`, `.bc-offset`, and `.pid` are skipped by the glob and remain
-session-local.
+enforced triggers fail closed for the whole directory, while legacy ndjson
+files, hidden monitor sidecars, non-regular files, and non-matching quiet-log
+basenames are ignored and not committed.
 
 `round-<N>/` directories are written by `larch-log.sh write-round` during
 `/implement` code review. They preserve the per-round reviewer and voter

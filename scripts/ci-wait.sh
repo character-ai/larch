@@ -181,14 +181,14 @@ MAX_POLLS=$(( (TIMEOUT + 9) / 10 ))
 # Ensure at least one poll even for very small timeouts.
 [ "$MAX_POLLS" -ge 1 ] || MAX_POLLS=1
 
-emit_breadcrumb_stderr --category=wait-ci "⏳ CI: waiting"
+larch_errf "⏳ CI: waiting"
 
 while true; do
     # Poll-count timeout (suspend-resilient)
     if [[ $checks -ge $MAX_POLLS ]]; then
         ACTION="bail"
         BAIL_REASON="Poll budget (${MAX_POLLS} polls / ${TIMEOUT}s) exhausted"
-        emit_breadcrumb_stderr --category=warn "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS"
+        larch_errf "\n⚠ CI wait timed out after %d polls (%ds budget, %ds elapsed)\n" "$checks" "$TIMEOUT" "$SECONDS"
         exit 0
     fi
 
@@ -204,7 +204,7 @@ while true; do
         if [[ "$ci_failures" -ge 3 ]]; then
             ACTION="bail"
             BAIL_REASON="ci-status.sh returned no valid output 3 times consecutively"
-            emit_breadcrumb_stderr --category=warn "\n❌ ci-status.sh failed repeatedly\n"
+            larch_errf "\n❌ ci-status.sh failed repeatedly\n"
             exit 0
         fi
         CI_STATUS="pending"
@@ -219,7 +219,7 @@ while true; do
     if [[ "$CI_STATUS" == "NO_CHECKS" ]]; then
         ACTION="bail"
         BAIL_REASON="No CI checks observed after ${EMPTY_CHECKS_GRACE}s grace"
-        emit_breadcrumb_stderr --category=warn "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE"
+        larch_errf "\n⚠ CI produced no checks after %ds grace\n" "$EMPTY_CHECKS_GRACE"
         exit 0
     fi
 
@@ -235,7 +235,7 @@ while true; do
     if [[ "$DECIDE_EXIT" -ne 0 ]]; then
         ACTION="bail"
         BAIL_REASON="ci-decide.sh exited with error (code $DECIDE_EXIT)"
-        emit_breadcrumb_stderr --category=warn "\n❌ ci-decide.sh failed (exit %d)\n" "$DECIDE_EXIT"
+        larch_errf "\n❌ ci-decide.sh failed (exit %d)\n" "$DECIDE_EXIT"
         exit 0
     fi
 
@@ -250,13 +250,13 @@ while true; do
             larch_errf "\n"
         fi
         if [[ "$ACTION" == "merge" ]]; then
-            emit_breadcrumb_stderr --category=wait-ci "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks"
+            larch_errf "✓ CI passed (%ds, %d polls)\n" "$SECONDS" "$checks"
         elif [[ "$ACTION" == "already_merged" ]]; then
-            emit_breadcrumb_stderr --category=wait-ci "✓ PR already merged (%ds)\n" "$SECONDS"
+            larch_errf "✓ PR already merged (%ds)\n" "$SECONDS"
         elif [[ "$ACTION" == "bail" ]]; then
-            emit_breadcrumb_stderr --category=warn "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks"
+            larch_errf "⚠ Bailing: %s (%ds, %d polls)\n" "$BAIL_REASON" "$SECONDS" "$checks"
         else
-            emit_breadcrumb_stderr --category=wait-ci "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks"
+            larch_errf "→ Action: %s (%ds, %d polls)\n" "$ACTION" "$SECONDS" "$checks"
         fi
         exit 0
     fi
@@ -267,10 +267,10 @@ while true; do
     # ci-decide.sh's iteration limit (50) guards against infinite rebase/fix loops.
     checks=$((checks + 1))
 
-    emit_breadcrumb_stderr --category=wait-ci "."
+    larch_errf "."
     # Print status line every 6 polls (~1 minute)
     if [[ $((checks % 6)) -eq 0 ]]; then
-        emit_breadcrumb_stderr --category=wait-ci "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
+        larch_errf "\n⏳ CI: %dm elapsed, %d polls, status=%s\n" \
             "$((SECONDS / 60))" "$checks" "$CI_STATUS"
     fi
 
@@ -281,7 +281,7 @@ while true; do
     sleep 10
     iter_delta=$(( $(date +%s) - iter_start ))
     if [[ $iter_delta -gt 60 ]]; then
-        emit_breadcrumb_stderr --category=warn "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
+        larch_errf "\n⚠ suspend detected — iteration took %ds, not counting toward poll budget\n" "$iter_delta"
         checks=$((checks - 1))
     fi
 done

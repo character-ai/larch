@@ -164,7 +164,7 @@ emit_tally_with_failure_isolation() {
     rc=$?
     set -e
     if [[ "$rc" -ne 0 ]]; then
-        emit_breadcrumb --category=warn "⚠ review-core: emit-tally failed ($context, round $ROUND_NUM, rc=$rc)"
+        larch_err "⚠ review-core: emit-tally failed ($context, round $ROUND_NUM, rc=$rc)"
         if [[ -x "$APPEND_TOOL_FAILURE_SH" ]]; then
             issues_log="$(execution_issues_log)"
             "$APPEND_TOOL_FAILURE_SH" \
@@ -206,7 +206,7 @@ flush_round_log() {
     rc=$?
     set -e
     if [[ "$rc" -ne 0 ]]; then
-        emit_breadcrumb --category=warn "⚠ review-core: round log flush failed (round $ROUND_NUM, rc=$rc)"
+        larch_err "⚠ review-core: round log flush failed (round $ROUND_NUM, rc=$rc)"
         append_round_log_write_failure "5" "$ROUND_NUM" "$rc" "$flush_err"
     else
         rm -f "$flush_err"
@@ -451,7 +451,7 @@ if [[ -n "$claude_outputs" ]]; then
 else
     claude_array=()
 fi
-emit_breadcrumb --category=progress "→ review: consolidating findings"
+larch_err "→ review: consolidating findings"
 "$COLLECT_FINDINGS_SH" "${collect_args[@]}" > "$collect_out"
 recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}"
 
@@ -546,7 +546,7 @@ if [[ -s "$aggregate_stderr" ]]; then
     done < "$aggregate_stderr"
 fi
 if [[ "$aggregate_rc" -ne 0 ]]; then
-    emit_breadcrumb --category=warn "⚠ review-core: aggregate-findings exited non-zero (rc=$aggregate_rc; see $aggregate_stderr)"
+    larch_err "⚠ review-core: aggregate-findings exited non-zero (rc=$aggregate_rc; see $aggregate_stderr)"
     append_review_execution_issue "- **review-core / aggregate-findings**: subprocess exited with rc=$aggregate_rc (unexpected; see $aggregate_stderr)."
 fi
 
