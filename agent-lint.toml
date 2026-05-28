@@ -1250,7 +1250,6 @@ exclude = [
   "scripts/test-render-run-summary-callsites.sh",
   "scripts/test-render-run-summary-format.sh",
   "scripts/test-token-report-summary-format.sh",
-  "skills/report-tokens/scripts/test-report-tokens-recompute.sh",
   # scripts/test-timing-ledger.sh and scripts/test-timing-report.sh are
   # offline regression harnesses for the /implement timing-reporting PoC
   # (parallel to the token-reporting harnesses above). They are referenced
