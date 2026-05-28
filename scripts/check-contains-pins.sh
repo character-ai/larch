@@ -164,6 +164,19 @@ warn_skipped() {
     larch_err "SKIPPED_NON_CANONICAL: $script:$line_no: assertion shape not in v1 grammar"
 }
 
+resolve_target_path() {
+    local target_rel="$1" abs
+
+    abs="$(cd "$REPO_ROOT" && realpath "$target_rel" 2>/dev/null)" || return 1
+    case "$abs" in
+        "$REPO_ROOT" | "$REPO_ROOT"/*)
+            printf '%s\n' "$abs"
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 check_literal() {
     local script="$1" line_no="$2" var="$3" literal="$4"
     local target_rel target_path
@@ -179,8 +192,7 @@ check_literal() {
         return 0
     fi
 
-    target_path="$REPO_ROOT/$target_rel"
-    if [ ! -f "$target_path" ]; then
+    if ! target_path="$(resolve_target_path "$target_rel")" || [ ! -f "$target_path" ]; then
         warn_unresolved "$script" "$line_no" "$var"
         return 0
     fi
@@ -244,7 +256,10 @@ function trim_leading_ws(text) {
     return text
 }
 function parse_contains(text, line_no,    rest, var_end, var, quote, literal_end, literal) {
-    rest = trim_leading_ws(substr(text, 9))
+    if (!match(text, /^[[:space:]]*contains[[:space:]]+/)) {
+        return
+    }
+    rest = substr(text, RSTART + RLENGTH)
     if (substr(rest, 1, 2) != "\"$") {
         return
     }
@@ -274,7 +289,7 @@ function parse_contains(text, line_no,    rest, var_end, var, quote, literal_end
         emit("SKIP", line_no, var, "")
         return
     }
-    if (quote == "\"" && (index(literal, "$") > 0 || index(literal, "`") > 0)) {
+    if (quote == "\"" && index(literal, "$") > 0) {
         emit("SKIP", line_no, var, "")
         return
     }

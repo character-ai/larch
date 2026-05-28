@@ -107,6 +107,33 @@ printf '%s "$%s" "%s" "%s"\n' "contains" "TARGET" "static double literal" "targe
 run_checker "$dir"
 assert_exit_eq "static double-quoted literal exists" "$RUN_EXIT" 0
 
+dir="$(new_fixture double-quoted-backticks)"
+# shellcheck disable=SC2016 # backticks are literal markdown fixture text
+printf '%s\n' 'Use `literal token` exactly' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+EOF
+# shellcheck disable=SC2016 # backticks are literal markdown fixture text
+printf '%s "$%s" "%s" "%s"\n' "contains" "TARGET" 'Use `literal token` exactly' "target pin" >> "$dir/scripts/test-fixture.sh"
+run_checker "$dir"
+assert_exit_eq "static double-quoted backtick literal exists" "$RUN_EXIT" 0
+assert_not_contains "static double-quoted backtick literal is canonical" "SKIPPED_NON_CANONICAL" "$RUN_ERR"
+
+dir="$(new_fixture indented-canonical)"
+printf '%s\n' "indented canonical literal" > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+  contains "$TARGET" 'indented canonical literal' 'target pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "indented canonical literal exists" "$RUN_EXIT" 0
+
 echo "=== Section 2: defect and warning paths ==="
 
 dir="$(new_fixture diverged)"
@@ -143,6 +170,19 @@ printf '%s "$%s" "%s$%s" "%s"\n' "contains" "TARGET" "prefix" "TARGET" "target p
 run_checker "$dir"
 assert_exit_eq "interpolated double literal exits 0" "$RUN_EXIT" 0
 assert_contains "interpolated double literal warns" "SKIPPED_NON_CANONICAL: scripts/test-mixed.sh:5" "$RUN_ERR"
+
+dir="$(new_fixture single-quoted-backticks)"
+# shellcheck disable=SC2016 # backticks are literal markdown fixture text
+printf '%s\n' 'Keep `markdown backticks` intact' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-backticks.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+contains "$TARGET" 'Keep `markdown backticks` intact' 'target pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "single-quoted backtick literal exists" "$RUN_EXIT" 0
 
 echo "=== Section 3: changed-file scoping and aggregation ==="
 
@@ -199,6 +239,19 @@ printf '%s\n' "scripts/test-unresolved.sh" > "$dir/changed.txt"
 run_checker "$dir" --changed-files "$dir/changed.txt"
 assert_exit_eq "changed-files unresolved var exits 0" "$RUN_EXIT" 0
 assert_contains "changed-files unresolved var warns" "UNRESOLVED_VAR: scripts/test-unresolved.sh:3: could not resolve \$MISSING_MD" "$RUN_ERR"
+
+dir="$(new_fixture repo-escape)"
+printf '%s\n' "outside repo" > "$TMPROOT/outside-target.md"
+cat > "$dir/scripts/test-escape.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/../outside-target.md"
+contains "$TARGET" 'outside repo' 'target pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "repo escape exits 0" "$RUN_EXIT" 0
+assert_contains "repo escape warns unresolved" "UNRESOLVED_VAR: scripts/test-escape.sh:5: could not resolve \$TARGET" "$RUN_ERR"
 
 dir="$(new_fixture multi-defect)"
 printf '%s\n' "first target" > "$dir/docs/a.md"
