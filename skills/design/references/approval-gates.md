@@ -81,7 +81,7 @@ When the concern text is ambiguous, prefer the lower bucket and surface the ambi
 
 ### Zero-findings short-circuit
 
-When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds directly to Step 3b. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path. Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence.
+When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) before Step 3b. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path. Step 3.6 → Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence on HARD runs.
 
 #### Gate B mode (auto-apply vs manual)
 
@@ -154,7 +154,7 @@ After the chosen findings have been applied to `plan.txt` (either the full accep
 5. Only after the breadcrumb proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
 6. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
 7. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
-8. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
+8. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
 
 ### Gate B plan revision and Step 2b.5
 
@@ -179,7 +179,7 @@ Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partiti
 - **Approve final design** — exit Gate C; proceed to Step 5b publish (compose `composed-plan.md`, write `larch:plan` block to issue, run `design-log-publish.sh`, rename tracking issue).
 - **See full plan** — Print the current `$DESIGN_TMPDIR/plan.txt` into chat under a `## Final Design Plan` header (verbatim — same content the Gate C plan-emit produced or would produce in full mode), then re-fire the same Gate C `AskUserQuestion` minus the `See full plan` option. The remaining options preserve their cap-aware shape (Approve final design / Discuss further / Re-run review panel below cap, or Approve final design / Discuss further at cap). This option performs no state mutation and never advances control past Gate C.
 - **Discuss further** — re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`.
-- **Re-run review panel** — offer this option only when the current review-round count is still below the tier cap. Re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
+- **Re-run review panel** — offer this option only when the current review-round count is still below the tier cap. Re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved or auto-applied prior feedback). Do NOT re-run sketches or dialectic. On HARD runs the round cursor advances at Step 3 entry when `plan-after-round-<cursor>.txt` already exists (see `assessor.md`); Step 3.5 (Gate B) and Step 3.6 (assessor) fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
 
 When at the tier cap, omit `Re-run review panel` so three options remain (`Approve final design` / `See full plan` / `Discuss further`); after a `See full plan` pick at cap, the re-fired prompt has two options (`Approve final design` / `Discuss further`).
 
@@ -204,3 +204,5 @@ When the user picks **Approve final design**, proceed to Step 5b. The skill no l
 3. **Discussion outputs accumulate**: `discussion-round1.md` is written by Step 1d. Step 1d.7 writes the approved outline separately to `design-outline.md`. `discussion-round2.md` accumulates entries across all Gate A re-entries from Gate B(c) / Gate C(b). All three files remain readable inputs to subsequent plan revisions.
 
 4. **Gate B apply contract**: in default auto-apply mode (no `--manual` flag), Gate B revises `plan.txt` by applying every accepted in-scope finding after the compact findings list, with no user prompt. In manual mode (`--manual` set), Gate B revises `plan.txt` only when the user explicitly picks option (a) Apply all or option (b) per-finding Apply. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. **Loop-internal carve-out**: the multi-round plan-review loop auto-applies accepted findings between inner rounds via `revise-plan-with-waterfall.sh`, bounded by `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD` — this mechanical loop-internal revision is distinct from Gate B's user-driven apply contract. The mode is sticky for the entire `/design` run with this precedence chain: sourced `MANUAL_REQUESTED=true` override, then in-memory `manual_requested=true` override, then persisted `run-params.json` as the authority when it is readable, else the default auto-apply contract (`manual_gate_b=false`) remains in force.
+
+5. **Assessor Stop cancellation**: when Step 3.6 `AskUserQuestion` picks **Stop** on a WORSE-majority verdict, `/design` sets `SUMMARY_OUTCOME=cancelled-assessor-worse`, runs the Final summary block, preserves `$DESIGN_TMPDIR`, and skips `[DESIGNED]` rename and design-log publish (see `assessor.md`).

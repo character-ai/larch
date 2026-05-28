@@ -506,6 +506,19 @@ grep -Fq '## /design run RUN-FIX — cancelled-decompose' "$D/final-summary.md" 
 grep -Fq -- '- **Outcome**: cancelled-decompose' "$D/final-summary.md" || fail 'missing cancelled-decompose outcome bullet'
 pass 'cancelled-decompose outcome'
 
+assessor_std="$TMP/std-assessor.log"
+ASSESSOR_ROUND_NUM=2 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-ASSESSOR" \
+    "$SUBJECT" --outcome cancelled-assessor-worse --mode HARD --post-publish-only >"$assessor_std" 2>/dev/null
+grep -Fq 'assessor WORSE verdict (round 2)' "$D/final-summary.md" || fail 'cancelled-assessor-worse missing round in title'
+grep -Fq -- '- **Outcome**: cancelled-assessor-worse' "$D/final-summary.md" || fail 'cancelled-assessor-worse missing Outcome bullet'
+
+unset ASSESSOR_ROUND_NUM
+assessor_std2="$TMP/std-assessor-unset.log"
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-ASSESSOR2" \
+    "$SUBJECT" --outcome cancelled-assessor-worse --mode HARD --post-publish-only >"$assessor_std2" 2>/dev/null
+grep -Fq 'assessor WORSE verdict (round ?)' "$D/final-summary.md" || fail 'cancelled-assessor-worse missing ? round default'
+pass 'cancelled-assessor-worse outcome'
+
 for summary_outcome in \
     approved \
     approved-partition \
@@ -517,6 +530,7 @@ for summary_outcome in \
     cancelled-plan-size-hard \
     cancelled-decompose \
     cancelled-outline \
+    cancelled-assessor-worse \
     failed-plan-write
 do
     session="RUN-MATRIX-${summary_outcome}"
@@ -525,7 +539,11 @@ do
         "$SUBJECT" --outcome "$summary_outcome" --mode SIMPLE --post-publish-only >"$matrix_stdout" 2>/dev/null
     grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail "matrix $summary_outcome missing Cost bullet"
     grep -Fq "<!-- larch:run-summary v=1 -->" "$D/final-summary.md" || fail "matrix $summary_outcome missing sentinel"
-    grep -Fq "## /design run $session — $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing title"
+    if [[ "$summary_outcome" == cancelled-assessor-worse ]]; then
+        grep -Fq 'assessor WORSE verdict (round ?)' "$D/final-summary.md" || fail "matrix $summary_outcome missing assessor title"
+    else
+        grep -Fq "## /design run $session — $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing title"
+    fi
     grep -Fq -- '- **Cost**:' "$matrix_stdout" || fail "matrix $summary_outcome stdout missing Cost bullet"
     grep -Fq "<!-- larch:run-summary v=1 -->" "$matrix_stdout" || fail "matrix $summary_outcome stdout missing sentinel"
     cmp -s "$D/final-summary.md" "$matrix_stdout" || fail "matrix $summary_outcome stdout/file mismatch"
@@ -537,7 +555,7 @@ do
         grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
     fi
 done
-pass 'eleven-outcome post-publish matrix'
+pass 'twelve-outcome post-publish matrix'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
 pass 'render-final-summary append warning redacts stderr'

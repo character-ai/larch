@@ -37,6 +37,13 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-plan-voter
     cursor-plan-voter
     claude-plan-voter
+    claude-plan-assessor
+    codex-phase1-plan-assessor
+    codex-phase2-plan-assessor
+    codex-phase3-plan-assessor
+    cursor-phase1-plan-assessor
+    cursor-phase2-plan-assessor
+    cursor-phase3-plan-assessor
     codex-review-voter
     cursor-review-voter
     cursor-specialist-structure

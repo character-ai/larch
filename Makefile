@@ -82,7 +82,7 @@ test-harnesses-7: test-agent-model-args test-body-file-title test-ci-wait test-c
 
 test-harnesses-8: test-aggregate-findings test-cache-key-discipline test-ci-wait-exit-trap test-compose-review-findings test-dispatch-plan-voters test-gather-context test-implement-fork-env test-launch-claude-subprocess test-merge-pr test-persist-implement-run-flags test-post-tracking-issue test-relevant-checks-validation test-review-relevant-checks-helper test-session-env-roundtrip test-tally-code-votes
 
-test-harnesses-9: test-alias-structure test-cache-root-validation test-clarify-comment test-create-pr test-dispatch-with-waterfall test-revise-plan-with-waterfall test-generate-code-flow-diagram test-launch-codex-ci test-mermaid-fragments test-preflight-args test-render-findings-batch test-review-structure test-session-setup-presence-defaults test-tally-plan-review test-findings-classification test-review-findings-classification test-plan-review-loop test-lib-design-round-artifacts test-design-multi-round-integration test-step3-review-cap
+test-harnesses-9: test-alias-structure test-cache-root-validation test-clarify-comment test-create-pr test-dispatch-with-waterfall test-revise-plan-with-waterfall test-generate-code-flow-diagram test-launch-codex-ci test-mermaid-fragments test-preflight-args test-render-findings-batch test-review-structure test-session-setup-presence-defaults test-tally-plan-review test-findings-classification test-review-findings-classification test-plan-review-loop test-lib-design-round-artifacts test-design-multi-round-integration test-step3-review-cap test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round
 
 test-harnesses-10: test-alias-target-resolution test-capture-session-transcript test-clarify-state test-cursor-implementer test-drop-bump-commit test-drop-changelog-commit test-classify-bump test-commit-changelog test-generate-topology-docs test-implement-rebase-macro test-rebase-checkpoint-probe test-launch-review test-oos-disposition-gate test-render-lane-status test-session-setup-repo-fallback test-tally-vote
 
@@ -435,6 +435,21 @@ test-emit-design-plan-preview:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-emit-design-plan-preview.sh
 test-check-plan-size:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-check-plan-size.sh
+
+test-snapshot-plan-round:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-snapshot-plan-round.sh
+
+test-dispatch-plan-assessors:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-dispatch-plan-assessors.sh
+
+test-render-assessor-prompt:
+	bash scripts/harness-timer.sh $@ bash skills/shared/scripts/test-render-assessor-prompt.sh
+
+test-tally-plan-assessor:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-tally-plan-assessor.sh
+
+test-assess-plan-round:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-assess-plan-round.sh
 
 test-parse-plan-commands:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-parse-plan-commands.sh

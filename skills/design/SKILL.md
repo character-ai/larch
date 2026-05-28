@@ -27,7 +27,7 @@ Design an implementation plan for a feature and review it with the **full** pane
 
 **Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c's `render-final-summary.sh` prints the structured block to chat, or after any cancellation outcome's Final summary block prints it, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that helper returns is the shared verbatim full-body emission of `$DESIGN_TMPDIR/final-summary.md`, gated on helper exit 0 and that file being non-empty. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c's `render-final-summary.sh` prints the structured block to chat, or after any cancellation outcome's Final summary block prints it, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that helper returns is the shared verbatim full-body emission of `$DESIGN_TMPDIR/final-summary.md`, gated on helper exit 0 and that file being non-empty. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -357,7 +357,7 @@ fi
 
 **When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
 
-**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-tier-gate` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Step 5c happy path uses the **two-phase** callsites in Step 5c prose (`--pre-publish-only` before `design-log-publish.sh`, then `--post-publish-only` after publish) instead of this single-phase fence.
+**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-assessor-worse` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-tier-gate` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Step 5c happy path uses the **two-phase** callsites in Step 5c prose (`--pre-publish-only` before `design-log-publish.sh`, then `--post-publish-only` after publish) instead of this single-phase fence.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
@@ -817,6 +817,16 @@ printf '%s\n' 'ACTION=EMIT_PLAN' \
 
 If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, treat it as a hard Step 2b failure and repair `$DESIGN_TMPDIR/plan.txt` before proceeding to Step 2b.5 / Step 3.
 
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+_wp_snap=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo "")
+if [ "$_wp_snap" = "HARD" ]; then
+  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
+    write-original --design-tmpdir "$DESIGN_TMPDIR"
+fi
+```
+
 **Plan-command validator (Tier 2 + opt-in Tier 3)** — skip entirely when `review_budget` from `$DESIGN_TMPDIR/run-params.json` is `quick` (same read/validation rules as Step 3). Otherwise, immediately after a successful `ACTION=EMIT_PLAN`, run:
 
 ```bash
@@ -1000,6 +1010,23 @@ else
     _step3_prior_round_count=$((STEP3_REVIEW_ROUND_NUM - 1))
     printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$DESIGN_TMPDIR/review-round-count.txt"
   fi
+  ROUND_NUM=1
+  _wp_round=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo "")
+  if [[ "$_wp_round" == "HARD" ]]; then
+    # plan-review-round-cursor.txt — parse contract via read-cursor (single integer ≥ 1).
+    _cursor_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
+    while IFS= read -r _cline || [[ -n "$_cline" ]]; do
+      case "$_cline" in
+        ROUND_CURSOR=*) ROUND_NUM="${_cline#ROUND_CURSOR=}" ;;
+      esac
+    done <<< "$_cursor_out"
+    if [[ -f "$DESIGN_TMPDIR/plan-after-round-${ROUND_NUM}.txt" ]]; then
+      _next_cursor=$((ROUND_NUM + 1))
+      "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
+        write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$_next_cursor"
+      ROUND_NUM=$_next_cursor
+    fi
+  fi
   # Foreground required: see BASH_AUTHORING.md §4
   set +e
   _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh" \
@@ -1008,6 +1035,7 @@ else
     --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
+    --round-num "$ROUND_NUM" \
     --round-cap "${LARCH_DESIGN_ROUND_CAP:-5}" \
     --convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}")
   _plan_review_rc=$?
@@ -1105,10 +1133,57 @@ Print: `> **🔶 /design 3.5: gate B**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
 
-Execute the Gate B body in `approval-gates.md` (which requires **Step 2b.5** immediately after each settled `ACTION=EMIT_PLAN` re-emit — see that reference for the exact Apply-all / Go-through-each wording). Gate B replaces the previous "Design Discussion Round 2" auto-flow: it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation. When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch. When Gate B resolves `manual_gate_b=true`, revision only happens when the user explicitly picks Apply all or per-finding Apply. See `approval-gates.md` §Gate B for the normative branch. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles (auto-apply, Apply all, or full one-by-one without abort) **and Step 2b.5 returns**, proceed to Step 3b.
-At the Step 3.5 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.5"` before entering Step 3b.
+Execute the Gate B body in `approval-gates.md` (which requires **Step 2b.5** immediately after each settled `ACTION=EMIT_PLAN` re-emit — see that reference for the exact Apply-all / Go-through-each wording). Gate B replaces the previous "Design Discussion Round 2" auto-flow: it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation. When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch. When Gate B resolves `manual_gate_b=true`, revision only happens when the user explicitly picks Apply all or per-finding Apply. See `approval-gates.md` §Gate B for the normative branch. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles (auto-apply, Apply all, or full one-by-one without abort) **and Step 2b.5 returns**, proceed to Step 3.6 (HARD-only plan-quality assessor) before Step 3b.
+At the Step 3.5 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.5"` before entering Step 3.6.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the user reaches them via Gate B's **Switch to discussion mode** → Gate A loop. Round 2 is no longer a forced auto-step; users opt in through Gate B.
+
+<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+_wp=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo "")
+if [ "$_wp" != "HARD" ]; then
+  printf '%s\n' "⏩ 3.6: assessor — workflow_path=$_wp; skipped"
+else
+  printf '%s\n' "> **🔶 /design 3.6: assessor**"
+  if [ -z "${ROUND_NUM:-}" ]; then
+    _cursor_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
+    ROUND_NUM=1
+    while IFS= read -r _line || [ -n "$_line" ]; do
+      case "$_line" in
+        ROUND_CURSOR=*) ROUND_NUM="${_line#ROUND_CURSOR=}" ;;
+      esac
+    done <<< "$_cursor_out"
+  fi
+  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
+    write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$ROUND_NUM"
+  _assess_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh" \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --codex-present "$CODEX_PRESENT" \
+    --cursor-present "$CURSOR_PRESENT")
+  ASSESSOR_STATUS="" ASSESSOR_VERDICT="" EFFECTIVE_ASSESSORS="" ASSESSOR_VERDICT_FILE="" ASSESSOR_VERDICT_ENV=""
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    case "$_line" in
+      ASSESSOR_STATUS=*) ASSESSOR_STATUS="${_line#ASSESSOR_STATUS=}" ;;
+      ASSESSOR_VERDICT=*) ASSESSOR_VERDICT="${_line#ASSESSOR_VERDICT=}" ;;
+      EFFECTIVE_ASSESSORS=*) EFFECTIVE_ASSESSORS="${_line#EFFECTIVE_ASSESSORS=}" ;;
+      ASSESSOR_VERDICT_FILE=*) ASSESSOR_VERDICT_FILE="${_line#ASSESSOR_VERDICT_FILE=}" ;;
+      ASSESSOR_VERDICT_ENV=*) ASSESSOR_VERDICT_ENV="${_line#ASSESSOR_VERDICT_ENV=}" ;;
+    esac
+  done <<< "$_assess_out"
+  if [ "$ASSESSOR_VERDICT" = "not-worse" ] && [ "${EFFECTIVE_ASSESSORS:-0}" = "0" ]; then
+    printf '%s\n' "**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round ${ROUND_NUM:-?}, see ${ASSESSOR_VERDICT_ENV:-?}).**"
+  fi
+fi
+```
+
+On `ASSESSOR_VERDICT=worse-majority` with `EFFECTIVE_ASSESSORS >= 1`: print the verdict file under `## Plan-Quality Assessor — WORSE majority (round <N>)`, surface `QUALIFICATIONS_SUMMARY` from the `.env` sibling (FINDING_15), then fire `AskUserQuestion` (**Continue** / **Stop**). On **Continue**: proceed to Step 3b. On **Stop**: `export SUMMARY_OUTCOME=cancelled-assessor-worse`, `export ASSESSOR_ROUND_NUM="${ROUND_NUM:-}"`, run the Final summary block, print `**ℹ /design cancelled by operator (assessor WORSE verdict, round <N>).**`, exit 0; do NOT call `cleanup-tmpdir.sh`; skip `[DESIGNED]` rename and design-log publish.
+
+Normative reference: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/assessor.md`.
+
+At the Step 3.6 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"` before entering Step 3b.
 
 <!-- step:3b — Architecture Diagram -->
 
