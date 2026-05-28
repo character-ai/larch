@@ -135,7 +135,7 @@ This script **must not** append or overwrite `$IMPLEMENT_TMPDIR/session-env.sh` 
 
 ## Resume-tail idempotency
 
-Audit of `phase_plan_materialize` (lines ~750–911) on `--resume-plan-tail` re-entry.
+Audit of the `phase_plan_materialize` checkpoint-and-tail region around lines ~750–911. On `--resume-plan-tail` re-entry, resume skips the earlier first-pass block and re-enters at the dirty-tree checkpoint near line ~755; the post-checkpoint helper tail is the portion that can continue after that checkpoint.
 
 **Load-bearing invariant:** `run_dirty_tree_checkpoint` runs at the top of `phase_plan_materialize` after the resume-skip block (`RESUME_PLAN_TAIL=true` skips copy/gh/persist at lines ~708–754). On the canonical dirty-tree-then-resume sequence, the first pass bails at this checkpoint (`IMPLEMENT_BAIL_REASON=dirty-tree`, return 0) **before** any helper at lines ~759–915 runs. Those post-checkpoint helpers therefore execute exactly once across the dirty-tree-then-resume sequence, not twice.
 
