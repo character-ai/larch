@@ -139,9 +139,15 @@ If no issues were identified, your entire response content MUST be exactly the s
 __READABILITY_STYLE_BLOCK__
 EOF
 
-prompt_body="${prompt_body//__FULL_ROLE__/$full_role}"
-prompt_body="${prompt_body//__TIER_EMPHASIS__/$tier_emphasis}"
-prompt_body="${prompt_body//__PLAN_FILE__/$PLAN_FILE}"
+_fr_before="${prompt_body%%__FULL_ROLE__*}"
+_fr_after="${prompt_body##*__FULL_ROLE__}"
+prompt_body="${_fr_before}${full_role}${_fr_after}"
+_te_before="${prompt_body%%__TIER_EMPHASIS__*}"
+_te_after="${prompt_body##*__TIER_EMPHASIS__}"
+prompt_body="${_te_before}${tier_emphasis}${_te_after}"
+_pf_before="${prompt_body%%__PLAN_FILE__*}"
+_pf_after="${prompt_body##*__PLAN_FILE__}"
+prompt_body="${_pf_before}${PLAN_FILE}${_pf_after}"
 
 # Use %% / ## split instead of ${var//pat/rep} to avoid bash 5.x treating '&'
 # in the replacement as the matched text (same as sed's & behaviour).

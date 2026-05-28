@@ -45,6 +45,8 @@ Do not use Bash 4+ constructs in committed shell scripts:
 
 Use Bash 3.2-compatible alternatives: newline-delimited temp files, `while IFS= read -r ...`, `case` or `tr` for case conversion, and `>>file 2>&1` instead of `&>>file`.
 
+Avoid `${var//pattern/$replacement}` when `$replacement` can contain file, user, or prompt content. Bash 5.x treats an unescaped `&` in the replacement as the matched text, while macOS Bash 3.2 treats it literally, so content like `Strunk & White` can be corrupted only in CI. Use a `%%` / `##` split around the marker token, or pre-escape `&` only in a Bash-version-scoped helper with a comment explaining the constraint.
+
 Run `make lint-bash32` after shell-script edits. If a regression harness intentionally contains a forbidden token as fixture text or static grep pattern, suppress only that line with an inline `# lint-bash32: ok <reason>` comment.
 
 ## 4. Background+propagate markers for blocking Family B script calls

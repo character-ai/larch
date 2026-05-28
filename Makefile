@@ -17,16 +17,23 @@
 .PHONY: test-stall-recovery-report
 .PHONY: test-design-pause-resume
 .PHONY: lint-readability-preamble test-lint-readability-preamble
+.PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-foreground-markers lint-readability-preamble lint-only
+lint: test-harnesses lint-bash32 lint-foreground-markers lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-only
 
 lint-only:
 	pre-commit run --all-files
 
 lint-readability-preamble:
 	bash scripts/lint-readability-preamble.sh
+
+lint-renderer-substitution-safety:
+	bash scripts/lint-renderer-substitution-safety.sh
+
+lint-skill-md-flag-signature:
+	bash scripts/lint-skill-md-flag-signature.sh
 
 # Balanced regression-harness shards (closes #1294, #1585, #1911, #2080, #2252, #2262, #2291, #2349, #2366, #2386 — rebalance after
 # slow harnesses pushed shards 2/3/5 over the 20s target, resharded to 10, then resharded to 11,
@@ -58,7 +65,7 @@ test-harnesses-3: test-dispatch-code-voters-happy
 
 test-harnesses-4: test-dispatch-code-voters-edge-and-r3-claude
 
-test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-lint-readability-preamble test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths test-stall-recovery-report
+test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-lint-readability-preamble test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths test-stall-recovery-report
 
 test-harnesses-6: test-add-blocked-by test-blocked-by-issue test-ci-status test-compose-plan-goals-test test-dispatch-panel-limits test-implement-cleanup-script test-larch-logs-manifest test-local-cleanup test-read-design-classification test-relevant-checks-byte-budget test-review-and-fix-dispatch test-review-and-fix-parsers test-sentinel-write test-subskill-anchors test-write-run-params test-write-design-current-env
 
@@ -465,6 +472,12 @@ test-brainstorm-prompts:
 
 test-lint-readability-preamble:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-readability-preamble.sh
+
+test-lint-renderer-substitution-safety:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-renderer-substitution-safety.sh
+
+test-lint-skill-md-flag-signature:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-skill-md-flag-signature.sh
 
 test-scout-plan-archetypes-wrapper:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-scout-plan-archetypes-wrapper.sh
