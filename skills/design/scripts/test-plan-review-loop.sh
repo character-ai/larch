@@ -1153,6 +1153,28 @@ printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revis
 printf '%s\n' "$out_rv" | grep -q '^REVISE_STATUS=failed-no-patch$' || fail "revise failure should preserve revise status"
 grep -q '^REVISE_STATUS=failed-no-patch$' "$DRV/plan-review/round-1/round-summary.env" || fail "round summary should preserve revise failure status"
 
+echo "=== multi-round: ok-fallback propagates into result env and round summary ==="
+DOF="$TMP/mr-ok-fallback"
+mkdir -p "$DOF"
+printf 'plan\n\ndiff_lines: 1\n' >"$DOF/plan.txt"
+printf 'feat\n' >"$DOF/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok-fallback\nREVISE_WINNING_TIER=codex\n'
+exit 0
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_of=$(run_loop "$DOF" 1 --round-cap 1 --convergence-threshold 3)
+printf '%s\n' "$out_of" | grep -q '^LOOP_STATUS=cap-hit$' || fail "ok-fallback round should still settle normally"
+printf '%s\n' "$out_of" | grep -q '^REVISE_STATUS=ok-fallback$' || fail "ok-fallback should propagate to stdout"
+grep -q '^REVISE_STATUS=ok-fallback$' "$DOF/.step3-plan-review-result.env" || fail "result env should preserve ok-fallback"
+grep -q '^REVISE_STATUS=ok-fallback$' "$DOF/plan-review/round-1/round-summary.env" || fail "round summary should preserve ok-fallback"
+
 echo "=== multi-round: revise rc failure returns revision-failed + failed-apply ==="
 DRC="$TMP/mr-revise-rc-fail"
 mkdir -p "$DRC"
@@ -1364,7 +1386,8 @@ while [[ $# -gt 0 ]]; do
 done
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-1/revise"
 printf 'prompt\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/prompt.txt"
-printf 'patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-candidate.patch"
+printf 'patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-output-candidate.patch"
+printf 'REVISE_STATUS=failed-no-patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/revise.env"
 printf 'REVISE_STATUS=failed-no-patch\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
@@ -1372,8 +1395,9 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_sr=$(run_loop "$DSR" 1 --round-cap 2)
 printf '%s\n' "$out_sr" | grep -q '^LOOP_STATUS=revision-failed$' || fail "snapshot failure should preserve revision-failed status"
 printf '%s\n' "$out_sr" | grep -q '^REASON=revision-failed,snapshot-failed$' || fail "snapshot failure should append snapshot-failed reason"
+[[ -f "$DSR/plan-review/round-1/revise/revise.env" ]] || fail "snapshot failure must preserve revise.env forensics"
 [[ -f "$DSR/plan-review/round-1/revise/prompt.txt" ]] || fail "snapshot failure must preserve revise prompt forensics"
-[[ -f "$DSR/plan-review/round-1/revise/cursor-candidate.patch" ]] || fail "snapshot failure must preserve revise patch forensics"
+[[ -f "$DSR/plan-review/round-1/revise/cursor-output-candidate.patch" ]] || fail "snapshot failure must preserve revise patch forensics"
 
 echo "=== snapshot failure preserves terminal cap-hit status ==="
 DSC="$TMP/snap-cap-status"
@@ -1526,7 +1550,7 @@ while [[ $# -gt 0 ]]; do
 done
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-1/revise"
 printf 'prompt\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/prompt.txt"
-ln -sf "$DESIGN_TMPDIR/feature-description.txt" "$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-candidate.patch"
+ln -sf "$DESIGN_TMPDIR/feature-description.txt" "$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-output-candidate.patch"
 printf 'REVISE_STATUS=failed-no-patch\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"

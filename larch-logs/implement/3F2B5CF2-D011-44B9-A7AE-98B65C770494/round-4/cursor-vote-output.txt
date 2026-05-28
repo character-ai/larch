@@ -1,0 +1,32 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Multi-candidate extraction is scope creep versus the plan but is plausibly required for #3146 recovery.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Any fenced-block extraction sets found_file and skips the full-response unfenced pass.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Harness was rewritten with new case IDs and no traceability map to the nine baseline scenarios.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Tier validation iterates *-candidate*.patch in lexicographic glob order, not encounter order.
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- extract_patch and helpers always succeed; the attempt_tier failure branch is dead.
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Allowlist/docs now use *-candidate.patch; residual legacy names still match the glob.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Extra candidate artifacts are noisy but do not change which patch wins.
+FINDING_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- Post-apply EMIT_PLAN rollback restores plan.txt but leaves revise_status at ok/ok-fallback.
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Harness covers trailing prose (case2b) but not leading preamble before a valid diff.
+FINDING_10: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- No fixture exercises miscounted hunks that need git apply --recount.
+FINDING_11: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- Rewritten harness never runs --patch-format file-replacement for tiers 1-3.
+FINDING_12: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- No automated #3146 long-line corrupt multi-hunk reproduction fixture.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- End-to-end revise-loop coverage gap is real but stub KV tests cover consumer propagation.
+FINDING_14: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- revise.env success and ok-fallback paths are thinner than failure-path assertions.
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Several cases (e.g. case1b) omit REVISE_TIER_4_STATUS despite acceptance requiring it everywhere.
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- is_patch_line stops at blank lines, so interior blank lines split one multi-hunk patch.
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- --recount was an explicit plan change; wrong-boundary risk is an accepted tradeoff.
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- invalid-patch over apply-failed matches plan edit 6 and documented merge_tier4_status precedence.
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- extract_file_replacement_candidate never copies the ## Plan opener into the emitted block.
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- is_patch_line's broad [-+] alternative can absorb post-hunk markdown bullets.
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- is_candidate_start fires on embedded ---/+++ pairs inside an existing diff --git patch.
+FINDING_22: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- Old case 5 mismatched-context apply-check failure has no equivalent in the rewritten harness.
+FINDING_23: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Harness checks missing --cursor-present but not missing required --plan-file with clean stderr.
+FINDING_24: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- New case6 lacks old case4's empty winner fields, unchanged plan hash, and snapshot-presence checks.
+FINDING_25: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Diff includes unrelated test-design-log-publish tmpdir tweaks and implement run-log artifacts.
+FINDING_26: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- Primary consumers were updated; repo-wide audit is reasonable but low urgency.
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- SECURITY.md still documents snapshot removal only for REVISE_STATUS=ok, not ok-fallback/tier-4/recount.
+FINDING_28: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- Symlink hardening gap is noted as pre-existing, not introduced by this branch.
+FINDING_29: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- Rename/copy metadata relies on git apply backstop by design.
+FINDING_30: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Tier-4 runs only after unified-diff failure; extra latency is intentional fallback behavior.
+FINDING_31: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Gate B passive-summary prose does not document ok-fallback alongside converged/cap-hit outcomes.
+FINDING_32: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Aggregated non-actionable reviewer notes, not a concrete defect worth filing.

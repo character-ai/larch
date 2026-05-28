@@ -70,6 +70,11 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/scripts/revise-plan-with-waterfall.sh|skills/design/scripts/revise-plan-with-waterfall.md|scripts/test-revise-plan-with-waterfall.sh)
+                append_target_once test-revise-plan-with-waterfall
+                ;;
+        esac
+        case "$f" in
             scripts/design-log-publish.sh|scripts/test-design-log-publish.sh|scripts/test-design-multi-round-integration.sh|scripts/test-design-multi-round-integration.md)
                 append_target_once test-design-log-publish
                 append_target_once test-design-multi-round-integration

@@ -485,7 +485,7 @@ _run_revise_with_status_parse() {
         revise_status="failed-apply"
         return 1
     fi
-    [[ "$revise_status" == "ok" ]] && return 0
+    [[ "$revise_status" == "ok" || "$revise_status" == "ok-fallback" ]] && return 0
     return 1
 }
 
@@ -1374,7 +1374,7 @@ while (( round_num <= ROUND_CAP )); do
         _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-failed-no-patch}"
     fi
     PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
-    revise_status=ok
+    revise_status="${revise_status:-ok}"
 
     if ! _run_post_apply_pipeline "$round_num" "$_pre_revise_plan_backup"; then
         _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
@@ -1403,12 +1403,12 @@ while (( round_num <= ROUND_CAP )); do
             LOOP_STATUS="$_next_terminal_status"
             LOOP_REASON="${_next_terminal_reason},snapshot-failed"
             CONVERGENCE_STREAK="$_next_convergence_streak"
-            _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" ok
+            _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" "${revise_status:-ok}"
             _terminal_exit 0 "$round_num"
         fi
         LOOP_STATUS=panel-failed
         LOOP_REASON=snapshot-failed
-        _write_round_summary "$round_num" panel-failed snapshot-failed ok
+        _write_round_summary "$round_num" panel-failed snapshot-failed "${revise_status:-ok}"
         _terminal_exit 1 "$round_num"
     fi
 
@@ -1421,7 +1421,7 @@ while (( round_num <= ROUND_CAP )); do
         if (( convergence_streak >= 2 )); then
             LOOP_STATUS=converged
             LOOP_REASON=streak
-            _write_round_summary "$round_num" converged streak ok
+            _write_round_summary "$round_num" converged streak "${revise_status:-ok}"
             _terminal_exit 0 "$round_num"
         fi
     else
@@ -1432,11 +1432,11 @@ while (( round_num <= ROUND_CAP )); do
     if (( round_num == ROUND_CAP )); then
         LOOP_STATUS=cap-hit
         LOOP_REASON=cap-hit
-        _write_round_summary "$round_num" cap-hit cap-hit ok
+        _write_round_summary "$round_num" cap-hit cap-hit "${revise_status:-ok}"
         _terminal_exit 0 "$round_num"
     fi
 
-    _write_round_summary "$round_num" "" "" ok
+    _write_round_summary "$round_num" "" "" "${revise_status:-ok}"
     round_num=$((round_num + 1))
 done
 

@@ -1,0 +1,17 @@
+Reviewing the branch diff and tier-4 state machine implementation.
+Reading the full tier-4 implementation and related tests.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:513-525` — `finalize()` now emits the full revise KV contract with `printf … | tee "$REVISE_DIR/revise.env"` instead of `emit_kv`. Under a normal quiet session (`larch_quiet_init` at line 10), contract output must go to FD 3; stdout is redirected to the quiet log. `plan-review-loop.sh` captures revise output via command substitution (`revise_out=$("$PLAN_REVIEW_REVISE_SH" …)` at `skills/design/scripts/plan-review-loop.sh:463-483`), so production runs can receive an empty `revise_out`, leave `revise_status` at its default `failed-no-patch`, and treat successful revisions (including `ok-fallback`) as `LOOP_STATUS=revision-failed` even when the plan was actually updated and `revise.env` is correct. Harnesses pass because `scripts/test-revise-plan-with-waterfall.sh:6` and `skills/design/scripts/test-plan-review-loop.sh:502` set `LARCH_QUIET_DISABLE=1`. **Suggested fix:** Restore per-key `emit_kv` for every stdout contract line (including `REVISE_TIER_4_STATUS` and `REVISE_WINNING_TIER`), and write `revise.env` separately (e.g. `> "$REVISE_DIR/revise.env"` or a small helper that calls `emit_kv` then appends to the file). Do not route contract KVs through stdout/`tee` alone.
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:166-177` — `merge_tier4_status` uses numeric rank comparison where `ok` is rank 6, so an early tier-4 `ok` cannot be downgraded by later attempts (rank 6 wins over all failure ranks). That matches the documented precedence for failures (`emit-plan-failed` 5 > `apply-failed` 4 > `invalid-patch` 3 > `no-patch` 2 > `skipped-not-present` 1 > `not-attempted` 0). **Suggested fix:** No change required for the state machine itself; add an explicit regression test that tier-4 records `ok` after a prior `invalid-patch`/`no-patch` so this invariant stays covered when `finalize()` is fixed.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:538-548` — When tier 4 runs with `CODEX_PRESENT=false` and `CURSOR_PRESENT=false`, the mini-waterfall records two `skipped-not-present` and one `no-patch` (if Claude returns empty), so `REVISE_TIER_4_STATUS=no-patch`, not `skipped-not-present`. That follows the documented severity order (`no-patch` is worse than `skipped-not-present`). There is no harness case for this tier-4-only-absent-tools path (case 11 covers tiers 1–3 only).
+
+- **code-quality** `scripts/test-revise-plan-with-waterfall.sh:309-385` — Acceptance called for `REVISE_TIER_4_STATUS` on every case; only cases 12–13 assert it. Cases 1–11 and 4 (all unified-diff failures now trigger tier 4) never assert `REVISE_TIER_4_STATUS=not-attempted` or `=no-patch`.
+
+- **architecture** Branch commits: `3741edc8` (initial fix), `421ef1fe` (implement logs), `e9490962` (round-1 review feedback). The `printf|tee` finalize regression and separate `*-fallback-output.txt` artifacts were introduced in `e9490962`, not the initial tier-4 design in `3741edc8` (which still used `emit_kv` and reused tier 1–3 output filenames).
+
+**Commits on branch (since `main`):** `3741edc8` Fix /design plan-revise auto-apply… · `421ef1fe` chore(larch-logs)… · `e9490962` Address code review feedback (round 1)

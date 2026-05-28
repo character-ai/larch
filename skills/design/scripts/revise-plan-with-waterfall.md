@@ -37,7 +37,8 @@ Under `$DESIGN_TMPDIR/plan-review/round-<N>/revise/`:
 
 - `prompt.txt`: composed revision prompt.
 - `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`: raw launcher output for attempted tiers.
-- `<tier>-candidate.patch`: extracted candidate used for validation and apply.
+- `<tier>-output-candidate.patch`: extracted candidate used for validation and apply.
+- `revise.env`: durable copy of the full revise KV contract for the round.
 - `<plan-file>.before-revise`: snapshot kept on overall failure, removed on success.
 
 ## KV Contract
@@ -47,19 +48,29 @@ KVs are emitted in this order on every logical invocation:
 1. `REVISE_TIER_1_STATUS`: Codex status.
 2. `REVISE_TIER_2_STATUS`: Cursor status.
 3. `REVISE_TIER_3_STATUS`: Claude status.
-4. `REVISE_STATUS`: `ok`, `failed-no-patch`, `failed-validation`, or `failed-apply`.
-5. `REVISE_TIER`: winning tier name, or empty on failure.
-6. `REVISE_PATCH_PATH`: winning raw output path, or empty on failure.
-7. `REVISE_PLAN_HASH_BEFORE`: SHA-256 of the original plan.
-8. `REVISE_PLAN_HASH_AFTER`: SHA-256 after a successful revision, or the original hash on failure.
+4. `REVISE_TIER_4_STATUS`: tier-4 file-replacement fallback status (see below).
+5. `REVISE_STATUS`: `ok`, `ok-fallback`, `failed-no-patch`, `failed-validation`, or `failed-apply`.
+6. `REVISE_TIER`: winning tier name, or empty on failure.
+7. `REVISE_WINNING_TIER`: same value as `REVISE_TIER`, kept as the stable downstream key.
+8. `REVISE_PATCH_PATH`: winning raw output path, or empty on failure.
+9. `REVISE_PLAN_HASH_BEFORE`: SHA-256 of the original plan.
+10. `REVISE_PLAN_HASH_AFTER`: SHA-256 after a successful revision, or the original hash on failure.
 
-Per-tier status values are `skipped-not-present`, `not-attempted`, `no-patch`, `invalid-patch`, `apply-failed`, `emit-plan-failed`, and `ok`. The ordinal mapping is part of the public contract: 1 is always Codex, 2 is always Cursor, and 3 is always Claude.
+`ok-fallback` means the tier-4 file-replacement fallback applied successfully after all unified-diff tiers failed.
+
+Per-tier status values are `skipped-not-present`, `not-attempted`, `no-patch`, `invalid-patch`, `apply-failed`, `emit-plan-failed`, and `ok`. The ordinal mapping is part of the public contract: 1 is always Codex, 2 is always Cursor, 3 is always Claude, and 4 is the file-replacement fallback mini-waterfall (Codex → Cursor → Claude) that runs only when unified-diff tiers 1–3 all fail.
+
+## Tier 4 (file-replacement fallback)
+
+When `--patch-format` is `unified-diff` (the default) and tiers 1–3 produce no winner, the script switches to `file-replacement`, re-renders `prompt.txt`, and runs an internal Codex → Cursor → Claude mini-waterfall as tier 4. Tier 4 reuses the same per-tool raw output paths (`codex-output.txt`, `cursor-output.txt`, `claude-output.txt`) and `revise.env` persists the full per-tier status contract for later snapshot/publish flows.
+
+`merge_tier4_status` aggregates tier-4 attempts with severity precedence (least severe → most severe): `not-attempted` < `skipped-not-present` < `no-patch` < `emit-plan-failed` < `apply-failed` < `invalid-patch`, with `ok` sticky once recorded. A later less-severe miss never masks an earlier worse failure.
 
 ## Patch Validator
 
-In `unified-diff` mode, the candidate may be raw diff text or wrapped in one outer ```diff fence. Header validation requires every file header path to be exactly `a/plan.txt` or `b/plan.txt`, and every `diff --git` header to be exactly `a/plan.txt b/plan.txt`. No other path form is accepted. The script then runs `git apply --check --whitespace=nowarn` from `dirname "$plan_file"` and classifies any failure there as `invalid-patch`; only a failing live `git apply --whitespace=nowarn` is reported as `apply-failed`. The script never uses `--unsafe-paths`.
+In `unified-diff` mode, `extract_patch` uses Bash/Awk-only extraction. It scans fenced ` ```diff ` blocks in order, otherwise the full response, emits candidate patches in encounter order, excludes closing fences and trailing prose, and lets header validation plus `git apply --check --recount --whitespace=nowarn` choose the first candidate that cleanly targets `a/plan.txt` / `b/plan.txt`. `diff --git` headers may target any path during extraction, and `---` / `+++` headers may carry tab- or space-suffixed metadata such as timestamps; target-path enforcement happens during validation. Only a failing live `git apply --recount --whitespace=nowarn` is reported as `apply-failed`. The script never uses `--unsafe-paths`.
 
-In `file-replacement` mode, the candidate must be non-empty and its last non-blank line must be `diff_lines: <N>` with numeric `N`.
+In `file-replacement` mode, `extract_patch` prefers the last complete `## Plan` block, strips preamble/fences, and extracts through the last `diff_lines: <N>` trailer recorded for that block. A trailer placed immediately after a closing fence is still accepted. The candidate must be non-empty and its last non-blank line must be `diff_lines: <N>` with numeric `N`.
 
 After either apply path, if the original plan had any `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, the revised plan must still have at least one such heading. The final structural gate is `ACTION=EMIT_PLAN` through the design driver. The script does not parse further plan semantics.
 

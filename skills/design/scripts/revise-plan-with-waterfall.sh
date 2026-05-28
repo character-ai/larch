@@ -145,13 +145,48 @@ compose_prompt() {
 tier1_status=""
 tier2_status=""
 tier3_status=""
+tier4_status=""
 winner=""
+winner_is_fallback=false
+winner_output=""
+
+tier4_rank() {
+    case "$1" in
+        not-attempted) printf '0\n' ;;
+        skipped-not-present) printf '1\n' ;;
+        no-patch) printf '2\n' ;;
+        emit-plan-failed) printf '3\n' ;;
+        apply-failed) printf '4\n' ;;
+        invalid-patch) printf '5\n' ;;
+        ok) printf '6\n' ;;
+        *) printf '%s\n' '-1' ;;
+    esac
+}
+
+merge_tier4_status() {
+    local new="$1"
+    local current_rank new_rank
+    if [[ -z "$tier4_status" ]]; then
+        tier4_status="$new"
+        return
+    fi
+    if [[ "$tier4_status" == "ok" || "$new" == "ok" ]]; then
+        tier4_status="ok"
+        return
+    fi
+    current_rank=$(tier4_rank "$tier4_status")
+    new_rank=$(tier4_rank "$new")
+    if (( new_rank > current_rank )); then
+        tier4_status="$new"
+    fi
+}
 
 set_tier_status() {
     case "$1" in
         1) tier1_status="$2" ;;
         2) tier2_status="$2" ;;
         3) tier3_status="$2" ;;
+        4) merge_tier4_status "$2" ;;
         *) return 1 ;;
     esac
 }
@@ -161,6 +196,7 @@ get_tier_status() {
         1) printf '%s\n' "$tier1_status" ;;
         2) printf '%s\n' "$tier2_status" ;;
         3) printf '%s\n' "$tier3_status" ;;
+        4) printf '%s\n' "$tier4_status" ;;
         *) return 1 ;;
     esac
 }
@@ -181,14 +217,238 @@ last_nonblank_line() {
 }
 
 extract_patch() {
-    local output="$1" patch="$2" first_line last_line
-    first_line=$(sed -n '1p' "$output")
-    last_line=$(sed -n '$p' "$output")
-    if [[ "$PATCH_FORMAT" == "unified-diff" && "$first_line" == '```diff' && "$last_line" == '```' ]]; then
-        sed '1d;$d' "$output" >"$patch"
+    local output="$1" patch="$2"
+    if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
+        extract_unified_diff_candidates "$output" "$patch"
     else
-        cp "$output" "$patch"
+        extract_file_replacement_candidate "$output" "$patch"
     fi
+}
+
+extract_unified_diff_candidates_from_source() {
+    local src="$1" dest_dir="$2" found_file="$3"
+    awk -v outdir="$dest_dir" -v found_file="$found_file" '
+        function is_old_header(line) {
+            return line ~ /^--- a\/[^ \t]+([ \t].*)?$/
+        }
+        function is_new_header(line) {
+            return line ~ /^\+\+\+ b\/[^ \t]+([ \t].*)?$/
+        }
+        function is_candidate_start(idx) {
+            if (lines[idx] ~ /^diff --git /) {
+                return 1
+            }
+            if (idx < line_count && is_old_header(lines[idx]) && is_new_header(lines[idx + 1])) {
+                return 1
+            }
+            return 0
+        }
+        function is_metadata_line(line) {
+            return line ~ /^(diff --git |index |old mode |new mode |deleted file mode |new file mode |similarity index |rename from |rename to |copy from |copy to )/
+        }
+        function is_hunk_header(line) {
+            return line ~ /^@@ /
+        }
+        function is_hunk_body(line) {
+            return line ~ /^( |[-+]|\\ No newline at end of file)/
+        }
+        function emit_candidate(start,    end, idx, line, file, saw_old, saw_new, saw_content, in_hunk) {
+            saw_old = 0
+            saw_new = 0
+            saw_content = 0
+            in_hunk = 0
+            end = start
+            while (end <= line_count) {
+                line = lines[end]
+                if (end > start && is_candidate_start(end) && saw_old && saw_new && saw_content) {
+                    break
+                }
+                if (line == "") {
+                    if (saw_old && saw_new && end < line_count && is_hunk_header(lines[end + 1])) {
+                        end++
+                        continue
+                    }
+                    break
+                }
+                if (!saw_old && is_metadata_line(line)) {
+                    end++
+                    continue
+                }
+                if (!saw_old && is_old_header(line)) {
+                    saw_old = 1
+                    end++
+                    continue
+                }
+                if (saw_old && !saw_new && is_new_header(line)) {
+                    saw_new = 1
+                    end++
+                    continue
+                }
+                if (saw_new && is_hunk_header(line)) {
+                    saw_content = 1
+                    in_hunk = 1
+                    end++
+                    continue
+                }
+                if (saw_new && line ~ /^(Binary files |GIT binary patch|literal |delta )/) {
+                    saw_content = 1
+                    end++
+                    continue
+                }
+                if (in_hunk && is_hunk_body(line)) {
+                    end++
+                    continue
+                }
+                break
+            }
+            if (!(saw_old && saw_new && saw_content)) {
+                return start + 1
+            }
+            file = sprintf("%s/candidate-%03d.patch", outdir, ++count)
+            for (idx = start; idx < end; idx++) {
+                if (lines[idx] != "") {
+                    print lines[idx] > file
+                }
+            }
+            close(file)
+            return end
+        }
+        {
+            lines[++line_count] = $0
+        }
+        END {
+            idx = 1
+            while (idx <= line_count) {
+                if (is_candidate_start(idx)) {
+                    idx = emit_candidate(idx)
+                } else {
+                    idx++
+                }
+            }
+            if (count > 0) {
+                print "1" > found_file
+                close(found_file)
+            }
+        }
+    ' "$src"
+}
+
+extract_unified_diff_candidates() {
+    local output="$1" patch="$2" tmpdir found_file block_dir block count first candidate_dir candidate_file list_file
+    tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/revise-unified.XXXXXX")
+    found_file="$tmpdir/found"
+    block_dir="$tmpdir/blocks"
+    list_file="${patch}.list"
+    mkdir -p "$block_dir"
+    : >"$list_file"
+
+    awk -v outdir="$block_dir" '
+        BEGIN { in_block = 0; count = 0 }
+        /^```diff[[:space:]]*$/ {
+            in_block = 1
+            file = sprintf("%s/block-%03d.txt", outdir, ++count)
+            next
+        }
+        in_block && /^```$/ {
+            in_block = 0
+            close(file)
+            next
+        }
+        in_block {
+            print > file
+        }
+    ' "$output"
+
+    count=0
+    first=""
+    for block in "$block_dir"/block-*.txt; do
+        [[ -e "$block" ]] || break
+        count=$((count + 1))
+        candidate_dir=$(printf '%s/extract-%03d' "$tmpdir" "$count")
+        mkdir -p "$candidate_dir"
+        extract_unified_diff_candidates_from_source "$block" "$candidate_dir" "$found_file"
+    done
+    candidate_dir=$(printf '%s/extract-%03d' "$tmpdir" $((count + 1)))
+    mkdir -p "$candidate_dir"
+    extract_unified_diff_candidates_from_source "$output" "$candidate_dir" "$found_file"
+    count=0
+    for candidate_dir in "$tmpdir"/extract-*; do
+        [[ -d "$candidate_dir" ]] || break
+        for candidate_file in "$candidate_dir"/candidate-*.patch; do
+            [[ -e "$candidate_file" ]] || break
+            count=$((count + 1))
+            if [[ -z "$first" ]]; then
+                first="$candidate_file"
+                cp "$candidate_file" "$patch"
+                printf '%s\n' "$patch" >>"$list_file"
+            else
+                printf -v candidate_file_suffix '%03d' "$count"
+                cp "$candidate_file" "${patch%.patch}-${candidate_file_suffix}.patch"
+                printf '%s\n' "${patch%.patch}-${candidate_file_suffix}.patch" >>"$list_file"
+            fi
+        done
+    done
+    if [[ -z "$first" ]]; then
+        : >"$patch"
+        rm -f "$list_file"
+    fi
+    rm -rf "$tmpdir"
+}
+
+extract_file_replacement_candidate() {
+    local output="$1" patch="$2"
+    awk '
+        function reset_block() {
+            block_len = 0
+            trailer_idx = 0
+        }
+        function is_fence_open(line) {
+            return line ~ /^```([[:alnum:]_-]+)?[[:space:]]*$/
+        }
+        function capture_candidate(    idx, start_idx, end_idx) {
+            if (trailer_idx == 0) {
+                return
+            }
+            candidate_len = 0
+            start_idx = 1
+            end_idx = trailer_idx
+            if (start_idx <= end_idx && is_fence_open(block[start_idx])) {
+                start_idx++
+                if (start_idx <= end_idx && block[end_idx] == "```") {
+                    end_idx--
+                }
+            }
+            for (idx = start_idx; idx <= end_idx; idx++) {
+                candidate[++candidate_len] = block[idx]
+            }
+        }
+        BEGIN {
+            in_block = 0
+            reset_block()
+            candidate_len = 0
+        }
+        /^## Plan$/ {
+            if (in_block) {
+                capture_candidate()
+            }
+            in_block = 1
+            reset_block()
+        }
+        in_block {
+            block[++block_len] = $0
+            if ($0 ~ /^diff_lines:[[:space:]]*[0-9]+[[:space:]]*$/) {
+                trailer_idx = block_len
+            }
+        }
+        END {
+            if (in_block) {
+                capture_candidate()
+            }
+            for (idx = 1; idx <= candidate_len; idx++) {
+                print candidate[idx]
+            }
+        }
+    ' "$output" >"$patch"
 }
 
 validate_unified_headers() {
@@ -236,14 +496,14 @@ validate_file_replacement() {
 check_git_apply() {
     local patch="$1" plan_dir
     plan_dir=$(dirname "$PLAN_FILE")
-    (cd "$plan_dir" && git apply --check --whitespace=nowarn "$patch") >/dev/null 2>&1
+    (cd "$plan_dir" && git apply --check --recount --whitespace=nowarn "$patch") >/dev/null 2>&1
 }
 
 apply_patch_file() {
     local patch="$1" plan_dir tmp
     if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
         plan_dir=$(dirname "$PLAN_FILE")
-        (cd "$plan_dir" && git apply --whitespace=nowarn "$patch") >/dev/null 2>&1
+        (cd "$plan_dir" && git apply --recount --whitespace=nowarn "$patch") >/dev/null 2>&1
     else
         tmp=$(mktemp "$PLAN_FILE.replacement.XXXXXX")
         cp "$patch" "$tmp"
@@ -281,7 +541,7 @@ launch_tier() {
 }
 
 attempt_tier() {
-    local ordinal="$1" tier="$2" output="$3" patch_file rc post_heading_count
+    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count candidate candidate_ok candidate_list
 
     if [[ "$tier" == "codex" && "$CODEX_PRESENT" == "false" ]]; then
         set_tier_status "$ordinal" skipped-not-present
@@ -292,6 +552,7 @@ attempt_tier() {
         return 1
     fi
 
+    : >"$output"
     if ! launch_tier "$tier" "$output"; then
         set_tier_status "$ordinal" no-patch
         return 1
@@ -301,7 +562,10 @@ attempt_tier() {
         return 1
     fi
 
-    patch_file="$REVISE_DIR/$tier-candidate.patch"
+    output_name=$(basename "$output")
+    patch_file="$REVISE_DIR/${output_name%.txt}-candidate.patch"
+    candidate_list="${patch_file}.list"
+    rm -f "$patch_file" "$candidate_list" "$REVISE_DIR/${output_name%.txt}-candidate"-*.patch
     extract_patch "$output" "$patch_file"
     if [[ ! -s "$patch_file" ]]; then
         set_tier_status "$ordinal" no-patch
@@ -309,11 +573,40 @@ attempt_tier() {
     fi
 
     if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
-        if ! validate_unified_headers "$patch_file"; then
-            set_tier_status "$ordinal" invalid-patch
-            return 1
+        candidate_ok=false
+        if [[ -f "$candidate_list" ]]; then
+            while IFS= read -r candidate || [[ -n "$candidate" ]]; do
+                [[ -n "$candidate" ]] || continue
+                [[ -e "$candidate" ]] || continue
+                if ! validate_unified_headers "$candidate"; then
+                    continue
+                fi
+                if ! check_git_apply "$candidate"; then
+                    continue
+                fi
+                if [[ "$candidate" != "$patch_file" ]]; then
+                    cp "$candidate" "$patch_file"
+                fi
+                candidate_ok=true
+                break
+            done <"$candidate_list"
+        else
+            for candidate in "$REVISE_DIR/${output_name%.txt}-candidate"*.patch; do
+                [[ -e "$candidate" ]] || break
+                if ! validate_unified_headers "$candidate"; then
+                    continue
+                fi
+                if ! check_git_apply "$candidate"; then
+                    continue
+                fi
+                if [[ "$candidate" != "$patch_file" ]]; then
+                    cp "$candidate" "$patch_file"
+                fi
+                candidate_ok=true
+                break
+            done
         fi
-        if ! check_git_apply "$patch_file"; then
+        if [[ "$candidate_ok" != "true" ]]; then
             set_tier_status "$ordinal" invalid-patch
             restore_plan_or_die
             return 1
@@ -346,47 +639,70 @@ attempt_tier() {
 
     set_tier_status "$ordinal" ok
     winner="$tier"
+    winner_output="$output"
     return 0
 }
 
 finalize() {
-    local status1 status2 status3 final_status hash_after patch_path
+    local status1 status2 status3 status4 final_status hash_after patch_path all_statuses revise_status
+    local revise_tier
     status1=$(get_tier_status 1)
     status2=$(get_tier_status 2)
     status3=$(get_tier_status 3)
+    status4=$(get_tier_status 4)
     [[ -n "$status1" ]] || status1=not-attempted
     [[ -n "$status2" ]] || status2=not-attempted
     [[ -n "$status3" ]] || status3=not-attempted
-
-    emit_kv REVISE_TIER_1_STATUS "$status1"
-    emit_kv REVISE_TIER_2_STATUS "$status2"
-    emit_kv REVISE_TIER_3_STATUS "$status3"
+    [[ -n "$status4" ]] || status4=not-attempted
 
     if [[ -n "$winner" ]]; then
         hash_after=$(sha256_file "$PLAN_FILE")
-        patch_path="$REVISE_DIR/$winner-output.txt"
+        patch_path="$winner_output"
         rm -f "$SNAPSHOT"
-        emit_kv REVISE_STATUS ok
-        emit_kv REVISE_TIER "$winner"
-        emit_kv REVISE_PATCH_PATH "$patch_path"
-        emit_kv REVISE_PLAN_HASH_BEFORE "$HASH_BEFORE"
-        emit_kv REVISE_PLAN_HASH_AFTER "$hash_after"
-        exit 0
-    fi
-
-    if [[ "$status1 $status2 $status3" != *"invalid-patch"* && "$status1 $status2 $status3" != *"apply-failed"* && "$status1 $status2 $status3" != *"emit-plan-failed"* ]]; then
-        final_status=failed-no-patch
-    elif [[ "$status1 $status2 $status3" == *"invalid-patch"* ]]; then
-        final_status=failed-validation
+        if [[ "$winner_is_fallback" == "true" ]]; then
+            revise_status=ok-fallback
+        else
+            revise_status=ok
+        fi
+        revise_tier="$winner"
     else
-        final_status=failed-apply
+        all_statuses="$status1 $status2 $status3 $status4"
+        if [[ "$all_statuses" != *"invalid-patch"* && "$all_statuses" != *"apply-failed"* && "$all_statuses" != *"emit-plan-failed"* ]]; then
+            final_status=failed-no-patch
+        elif [[ "$all_statuses" == *"invalid-patch"* ]]; then
+            final_status=failed-validation
+        else
+            final_status=failed-apply
+        fi
+
+        revise_status="$final_status"
+        revise_tier=""
+        patch_path=""
+        hash_after="$HASH_BEFORE"
     fi
 
-    emit_kv REVISE_STATUS "$final_status"
-    emit_kv REVISE_TIER ""
-    emit_kv REVISE_PATCH_PATH ""
+    {
+        printf 'REVISE_TIER_1_STATUS=%s\n' "$status1"
+        printf 'REVISE_TIER_2_STATUS=%s\n' "$status2"
+        printf 'REVISE_TIER_3_STATUS=%s\n' "$status3"
+        printf 'REVISE_TIER_4_STATUS=%s\n' "$status4"
+        printf 'REVISE_STATUS=%s\n' "$revise_status"
+        printf 'REVISE_TIER=%s\n' "$revise_tier"
+        printf 'REVISE_WINNING_TIER=%s\n' "$revise_tier"
+        printf 'REVISE_PATCH_PATH=%s\n' "$patch_path"
+        printf 'REVISE_PLAN_HASH_BEFORE=%s\n' "$HASH_BEFORE"
+        printf 'REVISE_PLAN_HASH_AFTER=%s\n' "$hash_after"
+    } >"$REVISE_DIR/revise.env"
+    emit_kv REVISE_TIER_1_STATUS "$status1"
+    emit_kv REVISE_TIER_2_STATUS "$status2"
+    emit_kv REVISE_TIER_3_STATUS "$status3"
+    emit_kv REVISE_TIER_4_STATUS "$status4"
+    emit_kv REVISE_STATUS "$revise_status"
+    emit_kv REVISE_TIER "$revise_tier"
+    emit_kv REVISE_WINNING_TIER "$revise_tier"
+    emit_kv REVISE_PATCH_PATH "$patch_path"
     emit_kv REVISE_PLAN_HASH_BEFORE "$HASH_BEFORE"
-    emit_kv REVISE_PLAN_HASH_AFTER "$HASH_BEFORE"
+    emit_kv REVISE_PLAN_HASH_AFTER "$hash_after"
     exit 0
 }
 
@@ -398,6 +714,19 @@ elif attempt_tier 2 cursor "$REVISE_DIR/cursor-output.txt"; then
     :
 else
     attempt_tier 3 claude "$REVISE_DIR/claude-output.txt" || true
+fi
+
+if [[ "$PATCH_FORMAT" == "unified-diff" && -z "$winner" ]]; then
+    PATCH_FORMAT="file-replacement"
+    winner_is_fallback=true
+    compose_prompt
+    if attempt_tier 4 codex "$REVISE_DIR/codex-output.txt"; then
+        :
+    elif attempt_tier 4 cursor "$REVISE_DIR/cursor-output.txt"; then
+        :
+    else
+        attempt_tier 4 claude "$REVISE_DIR/claude-output.txt" || true
+    fi
 fi
 
 finalize

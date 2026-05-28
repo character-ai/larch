@@ -1,0 +1,21 @@
+Reviewing branch changes with focus on the Python `extract_patch` implementation and related tests.
+Reading the full `extract_patch` implementation and tracing edge cases against tests 14–16.
+Verifying timestamp-line behavior and whether tests cover the `diff_lines`-outside-fence case.
+**Branch commits** (vs `main`): `3741edc8` (main fix), `421ef1fe` (implement run logs), `e9490962` (round-1 review feedback).
+
+Cases **14–16** match the documented priority (first fenced ` ```diff ` with a canonical start; last unfenced `--- a/plan.txt` / `+++ b/plan.txt` pair; trailing prose / later fences excluded). Below are correctness gaps in `extract_patch` and its caller.
+
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:427` — `extract_patch` is invoked under `set -euo pipefail` with no exit-code guard. Any unhandled Python failure (permission error on `dest`, `MemoryError`, etc.) aborts the whole waterfall instead of returning `no-patch` for that tier; the `[[ ! -s "$patch_file" ]]` check at `skills/design/scripts/revise-plan-with-waterfall.sh:428-430` never runs because `attempt_tier` does not run inside a `set +e` region. **Suggested fix:** Wrap the `python3` call in `set +e` / capture `$?`, or add a top-level `try`/`except` in the heredoc that always exits 0 after writing an empty file; treat non-zero exit or empty output as `no-patch`.
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:238-240,272-281` — `find_diff_start()` requires exact equality `block[idx] == "--- a/plan.txt"` and `block[idx + 1] == "+++ b/plan.txt"`. Git and many models emit tab-suffixed headers (`--- a/plan.txt\t<date>`), which the prior awk preamble strip accepted via `^--- /` but this logic does not. Valid patches can be missed (`write_lines([])` → `no-patch` / unnecessary tier-4) even though `validate_unified_headers` at `skills/design/scripts/revise-plan-with-waterfall.sh:322-327` would accept them after extraction. **Suggested fix:** Match with `startswith("--- a/plan.txt")` / `startswith("+++ b/plan.txt")` (optionally allow only tab/space after the path), and add a harness case with timestamped headers.
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:296-307` — In `file-replacement` mode, the unfenced `## Plan` scan stops at the first closing ` ``` ` (`if lines[idx] == "```": break`) before it can reach a `diff_lines:` trailer placed outside the fence. A fenced block containing `## Plan` but with `diff_lines: N` after the closing fence is dropped entirely; tier-4 can spuriously report `no-patch` / `failed-validation` for otherwise complete replacements. Case 12 only covers `diff_lines` inside the fence (`scripts/test-revise-plan-with-waterfall.sh:225-236`). **Suggested fix:** If a fenced block has `## Plan` but no in-block trailer, continue searching `lines` after the closing fence index for `^diff_lines:\s*[0-9]+\s*$` and emit `block[start:] + lines[fence_end+1:trailer+1]`; add a test modeled on `write_fenced_replacement` with the trailer moved outside the closing fence.
+
+### Out-of-Scope Observations
+
+- Unified-diff cases **14–16** (`scripts/test-revise-plan-with-waterfall.sh:557-579`) align with the implementation: first valid fenced ` ```diff ` wins; unfenced fallback uses reverse `find_diff_start` for the last canonical `---`/`+++` pair; closing fences cap unfenced output.
+- Unfenced unified-diff extraction (`skills/design/scripts/revise-plan-with-waterfall.sh:276-281`) still appends all lines after the chosen start until EOF (no stop at blank line or “obvious” prose). That can turn trailing narration into `invalid-patch` rather than silent mis-apply; leading preamble is fixed vs the #3146 report.
+- `merge_tier4_status` rank merge (`skills/design/scripts/revise-plan-with-waterfall.sh:166-177`) matches the documented severity order after round-1 refactor.
+- Implement-run artifacts under `larch-logs/implement/3F2B5CF2-.../` are operational noise, not revise logic.

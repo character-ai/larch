@@ -49,7 +49,7 @@ When `plan-review-loop.sh` is invoked with explicit `--round-cap` on argv (SKILL
 
 - **Env vars**: `LARCH_DESIGN_ROUND_CAP` (default 5), `LARCH_DESIGN_CONVERGENCE_THRESHOLD` (default 3).
 - **Manual Gate B**: when `manual_gate_b=true` in `run-params.json`, the loop runs one round and exits `LOOP_STATUS=complete REASON=manual-gate-b` without inner auto-apply; Gate B applies findings per the normal manual/auto contract.
-- **Revision failures**: non-zero revise rc or `REVISE_STATUS` other than `ok` → `LOOP_STATUS=revision-failed`; Gate B falls back to the 3-option prompt.
+- **Revision failures**: non-zero revise rc or `REVISE_STATUS` not in (`ok`, `ok-fallback`) → `LOOP_STATUS=revision-failed`; Gate B falls back to the 3-option prompt.
 - **Post-apply failures**: failed `ACTION=EMIT_PLAN` → `LOOP_STATUS=emit-plan-failed` (Gate B warning/manual handling); validator defects → `LOOP_STATUS=plan-validator-defects`; hard size threshold → `LOOP_STATUS=plan-size-trigger`.
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
 - **`oos-accepted-design.md` cumulation**: within a single multi-round loop, `oos-accepted-design.md` accumulates across rounds via the in-script `_accumulate_round_oos` helper. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across review runs** covers cross-Gate-C-re-run behavior only).
