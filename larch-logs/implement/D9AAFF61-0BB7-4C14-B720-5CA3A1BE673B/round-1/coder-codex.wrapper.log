@@ -1,0 +1,5 @@
+Reading additional input from stdin...
+2026-05-28T02:29:25.260920Z ERROR codex_core::tools::router: error=invalid agent id 84515: Error(ParseSimpleLength { len: 5 })
+⏳ codex agent: still running (1m elapsed)
+2026-05-28T02:30:11.950534Z ERROR codex_core::session: failed to record rollout items: thread 019e6c69-ae08-79c1-83ee-c8d0a9b532d2 not found
+✓ codex agent: completed (exit code 0, 100s elapsed, output 18 bytes)

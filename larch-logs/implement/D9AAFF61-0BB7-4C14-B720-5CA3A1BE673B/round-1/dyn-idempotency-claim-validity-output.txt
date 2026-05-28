@@ -1,0 +1,14 @@
+I'll read the precomputed diff, commit history, and the `phase_plan_materialize` / dirty-tree checkpoint code to verify the idempotency claims.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **architecture** `scripts/implement-bootstrap.sh:760-777` — The new “Resume-tail idempotency” section correctly pins the canonical dirty-tree → clean resume path: the `RESUME_PLAN_TAIL` guard at `708-754` skips copy/`gh`/persist on re-entry; `run_dirty_tree_checkpoint` at `756-758` is the first mutating gate after that block (`IMPLEMENT_BAIL_REASON=dirty-tree`, `return 1` → caller `return 0`); and `create-branch.sh` only runs after a clean checkpoint, so it cannot run on the first dirty pass. `phase_tracking` early-return at `545-587` also prevents duplicate `rename_to_implementing` / `run_larch_log_init` / `post-tracking-issue.sh` on resume when a sentinel matches. This matches `test-implement-bootstrap.sh` B7-plan-dirty-tree resume-tail assertions.
+
+- **architecture** `scripts/implement-bootstrap.sh:760-777` — Outside the documented canonical sequence, if a first pass clears the checkpoint and creates the branch, then later dirties the tree and the operator resumes with `--resume-plan-tail`, the resume path still reaches `create-branch.sh` again; that is not idempotent and will bail with `branch-create-failed`. The new doc’s scope note (“dirty-tree bail → single resume”) is accurate but does not cover this partial-tail case.
+
+- **architecture** `skills/implement/SKILL.md:409-423` — Original issue #2977 item (2) asked for structural coverage of prompt-side dirty-tree recovery (sentinel file, re-probe, `--resume-plan-tail` args). This branch adds prose pins and expansion counts in `scripts/test-implement-structure.sh` but still does not exercise the orchestrator sentinel / re-probe path end-to-end; B7 in `test-implement-bootstrap.sh` remains the behavioral authority for bootstrap-only resume.
+
+- **code-quality** `scripts/test-implement-structure.sh:442-466` — The plan specified `grep -cF` on full expansion literals (mirroring `_ib_preflight` at `416-417`); the branch uses `grep -oF '_ib_*[@]'` counts instead. Likely equivalent for current `SKILL.md`, but it is a weaker contract pin than the plan specified.
