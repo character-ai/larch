@@ -96,6 +96,12 @@ if [ ! -d "$RUN_DIR" ]; then
     exit 1
 fi
 
+if [ "$(basename "$RUN_DIR")" = "$SKILL" ]; then
+    jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" \
+        '{scan:"run-dir-invalid",pr:$pr,"incomplete":true,result:"error",detail:("run-dir resolves to skill log root instead of a specific run: "+$rd)}'
+    exit 1
+fi
+
 if [ ! -f "$SCANS_TSV" ]; then
     jq -nc --argjson pr "$PR_NUM" --arg sp "$SCANS_TSV" \
         '{scan:"scans-registry",pr:$pr,result:"error",detail:("scans-tsv not found: "+$sp)}'

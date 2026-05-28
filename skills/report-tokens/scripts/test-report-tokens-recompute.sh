@@ -49,10 +49,21 @@ cat >"$GH_STUB_DIR/gh" <<'EOF'
 set -euo pipefail
 printf '%s\n' "$*" >>"${GH_STUB_LOG:?}"
 if [[ "${1:-}" == "issue" && "${2:-}" == "create" ]]; then
+    title=""
     if [[ "$*" == *" --body "* ]]; then
         printf 'inline --body is forbidden: %s\n' "$*" >&2
         exit 1
     fi
+    for ((i = 1; i <= $#; i++)); do
+        if [[ "${!i}" == "--title" ]]; then
+            next=$((i + 1))
+            title="${!next:-}"
+        fi
+    done
+    [[ "$title" == "[Implement Analysis Report]"* ]] || {
+        printf 'unexpected title: %s\n' "$title" >&2
+        exit 1
+    }
     body_file=""
     for ((i = 1; i <= $#; i++)); do
         if [[ "${!i}" == "--body-file" ]]; then
@@ -91,7 +102,41 @@ case "$design_out" in
     *'#999001'*) pass 'design --skill reads -final suffixed token report' ;;
     *) fail "design scan missing fixture issue #999001";;
 esac
+
+GH_DESIGN_STUB=$(mktemp -d "${TMPDIR:-/tmp}/test-report-tokens-design-gh.XXXXXX")
+GH_DESIGN_LOG="$GH_DESIGN_STUB/gh.log"
+cat >"$GH_DESIGN_STUB/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"${GH_DESIGN_LOG:?}"
+if [[ "${1:-}" == "issue" && "${2:-}" == "create" ]]; then
+    title=""
+    body_file=""
+    for ((i = 1; i <= $#; i++)); do
+        if [[ "${!i}" == "--title" ]]; then
+            next=$((i + 1))
+            title="${!next:-}"
+        fi
+        if [[ "${!i}" == "--body-file" ]]; then
+            next=$((i + 1))
+            body_file="${!next:-}"
+        fi
+    done
+    [[ "$title" == "[Design Analysis Report]"* ]] || { printf 'unexpected title: %s\n' "$title" >&2; exit 1; }
+    [[ -f "$body_file" ]] || { printf 'body file missing: %s\n' "$body_file" >&2; exit 1; }
+    printf 'https://github.com/fixture/local/issues/999998\n'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOF
+chmod +x "$GH_DESIGN_STUB/gh"
+PATH="$GH_DESIGN_STUB:$PATH" GH_DESIGN_LOG="$GH_DESIGN_LOG" \
+    LARCH_REPORT_TOKENS_NO_PLOT=1 "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill design >/dev/null
+grep -Fq -- '--title [Design Analysis Report]' "$GH_DESIGN_LOG" || fail "expected design issue title prefix in gh log"
+pass 'issue creation uses design-prefixed analysis report title'
 rm -rf "$DESIGN_RUN"
+rm -rf "$GH_DESIGN_STUB"
 
 GH_PLOT_STUB=$(mktemp -d "${TMPDIR:-/tmp}/test-report-tokens-plot.XXXXXX")
 cat >"$GH_PLOT_STUB/gh" <<'EOF'
@@ -116,5 +161,27 @@ else
     fail "expected design --plot-from legacy implement title rejection (rc=$plot_rc)"
 fi
 rm -rf "$GH_PLOT_STUB"
+
+set +e
+"$REPO/skills/report-tokens/scripts/run-analysis.sh" >/dev/null 2>"$REPO/.tmp-report-tokens-missing-skill.err"
+missing_skill_rc=$?
+set -e
+if [ "$missing_skill_rc" -ne 0 ] && grep -q -- '--skill is required' "$REPO/.tmp-report-tokens-missing-skill.err"; then
+    pass 'missing --skill rejected'
+else
+    fail "expected missing --skill rejection (rc=$missing_skill_rc)"
+fi
+rm -f "$REPO/.tmp-report-tokens-missing-skill.err"
+
+set +e
+"$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill bogus >/dev/null 2>"$REPO/.tmp-report-tokens-bad-skill.err"
+bad_skill_rc=$?
+set -e
+if [ "$bad_skill_rc" -ne 0 ] && grep -q -- '--skill must be design or implement' "$REPO/.tmp-report-tokens-bad-skill.err"; then
+    pass 'invalid --skill rejected'
+else
+    fail "expected invalid --skill rejection (rc=$bad_skill_rc)"
+fi
+rm -f "$REPO/.tmp-report-tokens-bad-skill.err"
 
 printf 'PASS: test-report-tokens-recompute.sh\n'

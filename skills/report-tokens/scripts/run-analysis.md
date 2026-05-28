@@ -39,7 +39,7 @@ The scan uses:
 - `larch-logs/<skill>/*/timing-report.json` or `timing-report-final.json` (design) — preferred workflow path source via `scripts/read-workflow-path.sh`.
 - `larch-logs/<skill>/*/run-params.json` — fallback workflow path source; `design_classification` accepted when exactly `SIMPLE` or `HARD`.
 
-`gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the `[Analysis Report]` issue (active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.
+`gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the skill-prefixed analysis-report issue (`[Implement Analysis Report]` or `[Design Analysis Report]`, active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.
 
 ## Parsing invariants
 
@@ -62,7 +62,7 @@ Stdout contains progress lines while fetching and then a markdown analysis with:
 - cost-reduction suggestions
 - per-day cost trend tables, bucketed by `manifest.json` `started_at` date, for Total/Claude/Codex/Cursor cost across SIMPLE and HARD workflows
 
-After the textual analysis, the script posts a GitHub issue titled `[Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` unless `--no-issue` is passed. The issue body contains the full analysis text plus a fenced JSON block with raw per-issue data (`number`, `workflow`, `started_at`, `closed_at`, `cost`) for re-plotting via `--plot-from`. Before the temporary markdown file is written, the body is passed through `scripts/redact-secrets.sh` and `scripts/redact-tmpdir-paths.sh`, plus a report-specific tmpdir scrub for `larch-report-tokens.*` paths, then passed to `gh issue create --body-file` per `.claude/rules/gh-body-file.md`; do not pass the analysis text through inline `--body`.
+After the textual analysis, the script posts a GitHub issue titled `[Implement Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` or `[Design Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` unless `--no-issue` is passed. The issue body contains the full analysis text plus a fenced JSON block with raw per-issue data (`number`, `workflow`, `started_at`, `closed_at`, `cost`, `cost_reported`, `cost_estimated`) for re-plotting via `--plot-from`. Before the temporary markdown file is written, the body is passed through `scripts/redact-secrets.sh` and `scripts/redact-tmpdir-paths.sh`, plus a report-specific tmpdir scrub for `larch-report-tokens.*` paths, then passed to `gh issue create --body-file` per `.claude/rules/gh-body-file.md`; do not pass the analysis text through inline `--body`.
 
 Generated plots are written to a temporary directory as `larch-report-tokens-simple.png` and `larch-report-tokens-hard.png`. On macOS, the script attempts to open them with `open` unless `LARCH_REPORT_TOKENS_NO_OPEN=1` is set. Plotting runs in a child Python process so missing or crashing `matplotlib` skips plot generation without losing the textual analysis. Pass `--no-plot` to skip plot generation entirely.
 

@@ -57,9 +57,18 @@ fi
 
 if [ -z "$LOG_ROOT" ]; then
     LOG_ROOT="larch-logs/$SKILL"
-elif [ "$LOG_ROOT_EXPLICIT" = false ] && [ "$LOG_ROOT" != "larch-logs/$SKILL" ]; then
-    printf 'audit-map-runs.sh: --log-root must be larch-logs/%s when --skill=%s (got: %s)\n' "$SKILL" "$SKILL" "$LOG_ROOT" >&2
-    exit 1
+elif [ "$LOG_ROOT_EXPLICIT" = true ]; then
+    case "$LOG_ROOT" in
+        larch-logs/design|larch-logs/implement|*/larch-logs/design|*/larch-logs/implement)
+            case "$LOG_ROOT" in
+                larch-logs/"$SKILL"|*/larch-logs/"$SKILL") ;;
+                *)
+                    printf 'audit-map-runs.sh: --log-root must be larch-logs/%s when --skill=%s (got: %s)\n' "$SKILL" "$SKILL" "$LOG_ROOT" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+    esac
 fi
 
 if [ ! -d "$LOG_ROOT" ]; then

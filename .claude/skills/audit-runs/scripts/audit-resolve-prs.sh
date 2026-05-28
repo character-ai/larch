@@ -90,7 +90,19 @@ filter_prs_for_skill() {
             printf '%s' "$json" | jq '[.[] | select(.title | test("^chore\\(larch-logs\\): design run [0-9A-F-]+$"))]' 2>/dev/null || printf '%s\n' '[]'
             ;;
         implement)
-            printf '%s' "$json"
+            printf '%s' "$json" | jq '[.[] | select((.title | test("^chore\\(larch-logs\\): design run [0-9A-F-]+$")) | not)]' 2>/dev/null || printf '%s\n' '[]'
+            ;;
+    esac
+}
+
+pr_matches_skill() {
+    local title="$1"
+    case "$SKILL" in
+        design)
+            printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-F-]+$'
+            ;;
+        implement)
+            ! printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-F-]+$'
             ;;
     esac
 }
@@ -132,7 +144,7 @@ resolve_since_last_audit() {
     local implicit="$1"
 
     # Read audit-report issues; pick most recent whose title matches this skill
-    PRIOR_BODY=$(gh issue list --state all --label audit-report --repo "$REPO" \
+    PRIOR_BODY=$(gh issue list --state all --limit 1000 --label audit-report --repo "$REPO" \
         --json number,title,body,createdAt \
         --jq '[.[] | select(.title != null)] | sort_by(.createdAt) | reverse' 2>/dev/null || true)
 
@@ -252,6 +264,13 @@ fi
 # "#N" or "PR #N"
 if printf '%s' "$VERBAL" | grep -qE '^(PR[[:space:]]+)?#[0-9]+$'; then
     N=$(printf '%s' "$VERBAL" | grep -oE '[0-9]+$')
+    PR_TITLE=$(gh pr view "$N" --repo "$REPO" --json title --jq '.title // empty' 2>/dev/null || true)
+    if [ -z "$PR_TITLE" ]; then
+        emit_error "could not resolve PR #${N} title for --skill=${SKILL}"
+    fi
+    if ! pr_matches_skill "$PR_TITLE"; then
+        emit_error "PR #${N} title does not match --skill=${SKILL}"
+    fi
     ECHO_LINE="Resolved $VERBAL (--skill=${SKILL}) to: [#${N}]. Proceeding."
     emit_ok "false" "" "$N" "1" "$ECHO_LINE"
 fi

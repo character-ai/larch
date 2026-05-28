@@ -8,7 +8,7 @@ SCRIPT="$SCRIPT_DIR/run-analysis.sh"
 fail=0
 check() {
     local label="$1" pattern="$2"
-    grep -qE "$pattern" "$SCRIPT" || { echo "FAIL: $label" >&2; fail=1; }
+    grep -qE -- "$pattern" "$SCRIPT" || { echo "FAIL: $label" >&2; fail=1; }
 }
 check "codex input 0.44"          'LARCH_RATE_CODEX_INPUT.*0\.44'
 check "codex output 3.50"        'LARCH_RATE_CODEX_OUTPUT.*3\.50'
@@ -17,6 +17,8 @@ check "codex cache_read 0.04"     'LARCH_RATE_CODEX_CACHE_READ.*0\.04'
 check "cursor input 1.25"         'LARCH_RATE_CURSOR_INPUT.*1\.25'
 check "cursor output 6.00"        'LARCH_RATE_CURSOR_OUTPUT.*6\.00'
 check "cursor aggregate 1.50"     'LARCH_RATE_CURSOR_AGGREGATE.*1\.50'
+check "skill required guard"      '--skill is required \(allowed: design, implement\)'
+check "skill enum guard"          '--skill must be design or implement'
 
 TMPFILE=$(mktemp /tmp/test-rate-assertions.py.XXXXXX)
 trap 'rm -f "$TMPFILE"' EXIT
