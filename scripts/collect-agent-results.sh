@@ -153,7 +153,8 @@ preserve_and_publish_ns_retry() {
 
     first_pass_sidecar="$(first_pass_sidecar_path "$orig_output")"
     if cp "$orig_output" "$first_pass_sidecar" 2>/dev/null; then
-        larch_err "ns-retry: first-pass content preserved at $(basename "$first_pass_sidecar")"    else
+        larch_err "ns-retry: first-pass content preserved at $(basename "$first_pass_sidecar")"
+    else
         larch_err "collect-agent-results.sh: $retry_label: failed to preserve first-pass content at $first_pass_sidecar; leaving STATUS=NOT_SUBSTANTIVE"
         return 1
     fi
@@ -167,7 +168,8 @@ preserve_and_publish_ns_retry() {
     fi
 
     if cp "$retry_output" "$publish_tmp" 2>/dev/null && mv -f "$publish_tmp" "$orig_output" 2>/dev/null; then
-        larch_err "ns-retry: published retry content to $orig_base; retry artifact retained at $(basename "$retry_output")"        return 0
+        larch_err "ns-retry: published retry content to $orig_base; retry artifact retained at $(basename "$retry_output")"
+        return 0
     fi
 
     rm -f "$publish_tmp" "$first_pass_sidecar" 2>/dev/null || true

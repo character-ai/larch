@@ -2324,7 +2324,6 @@ if section_runs step5-starting-round; then
             RUN_ID="step5-${case_name}"
             PLUGIN_ROOT="$REPO_ROOT"
             emit_kv() { printf '%s=%s\n' "$1" "$2"; }
-            larch_err() { :; }
             larch_err() { printf '%s\n' "$*" >&2; }
             flush_review_batches() { printf 'flush %s %s\n' "$1" "$2" >> "$STEP5_FLUSH_LOG"; }
             kv_get() {

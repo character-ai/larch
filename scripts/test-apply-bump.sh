@@ -209,6 +209,7 @@ assert_stderr_contains() {
     fi
 }
 
+# shellcheck disable=SC2317  # false positive in this test helper block
 assert_stdout_not_matches() {
     local case_name="$1"
     local pattern="$2"
@@ -222,6 +223,7 @@ assert_stdout_not_matches() {
     fi
 }
 
+# shellcheck disable=SC2317  # false positive in this test helper block
 assert_stdout_match_count() {
     local case_name="$1"
     local pattern="$2"
