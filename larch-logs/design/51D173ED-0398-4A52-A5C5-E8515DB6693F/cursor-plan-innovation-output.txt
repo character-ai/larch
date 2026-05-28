@@ -1,0 +1,35 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-foreground-markers.sh:25-27,496-528	Parent-unset lint only scans files containing dispatch-with-waterfall.sh and only treats that child as requiring unset; run-step5-review.sh and ship-pr.sh are not covered.	After adding unset in run-step5-review.sh (review-and-fix.sh) and ship-pr.sh (ci-wait.sh), make lint-foreground-markers will not enforce the new four-var unset on those parents; regressions can reintroduce early-exit.	Extend PARENT_UNSET_REQUIRED_CHILDREN to include review-and-fix.sh and ci-wait.sh; run scan_shell_file_for_unset_before_nested_child on any script that invokes those children (not only dispatch-with-waterfall); teach unset_before_anchor_idx to require unset of all four env vars; mirror in test-lint-foreground-markers.sh.
+2	in_scope	important	correctness	scripts/ship-pr.sh:872-875	Item 3.2 cites lines 719-723, but those lines are capture_command_output, not the failure-log relay.	The implementer may patch the wrong site and leave the real per-line larch_err relay (append_tool_failure_local fallback when append-tool-failure.sh is unavailable) unsanitized.	Retarget Item 3.2 to scripts/ship-pr.sh:872-875 (or audit all while-read loops that pipe captured failure logs to larch_err) and pipe each line through sanitize_diagnostic_line there.
+3	in_scope	important	correctness	skills/implement/scripts/step-7a.sh:104-111,389-407	Item 3.3 asks to sanitize CODE_FLOW_SKIP_REASON before larch:diagrams upsert at 368-380, but main has no CODE_FLOW_SKIP_REASON, compose_summary_diagrams only copies on STATUS=ok, and step-7a.md says skipped/failed omit the upsert.	Sanitization never runs; if someone adds SKIP_REASON wiring without updating the plan, behavior may still diverge from the stated OOS intent.	Either drop Item 3.3 from this 12-item PR as out of contract, or add an explicit minimal wiring step (compose_summary_diagrams placeholder + upsert gate) consistent with step-7a.md before sanitizing; do not reference nonexistent lines 368-380 for upsert.
+4	in_scope	latent	architecture	scripts/lib-quiet.sh:96-103,Approach Cluster 3	Cluster 3 Item 3.1 is an open-ended audit of every external-stderr larch_err passthrough with optional new tests.	In a SIMPLE 12-OOS bundle, audit scope can balloon diff beyond the confirmed minimum.	Keep the audit bounded to the OOS-listed surfaces (ship-pr relay, any other already-known passthroughs); defer repo-wide expansion unless a site is in the 12-item list.
+
+Numbered findings for prose section after TSV - the format says "Return numbered findings" AND TSV. The user said response MUST begin with TSV header OR sentinel. So I should start with TSV then add numbered findings? Re-read instructions.
+
+"Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel"
+
+"When you have findings, include a TSV structured-record block"
+
+"Return numbered findings with focus-area tag..."
+
+So structure: TSV block first, then numbered findings? Or only TSV? The example shows only TSV for one finding. The instructions also say "Return numbered findings". I'll do TSV first then numbered list - but user said first non-whitespace must be `s` or `{`. TSV starts with schema_version - good.
+
+Actually re-read - maybe they want ONLY TSV when findings, and numbered findings are embedded in the TSV? The numbered findings section seems separate for human readers. I'll include both after TSV.
+
+Wait - "If no issues were identified, your entire response content MUST be exactly the single-line JSON" - when issues exist, I can have more content.
+
+For SIMPLE tier EXONERATE nits - I had finding 4 as latent architecture scope - is that valid? User said prefer EXONERATE on forward-looking. Finding 4 might be EXONERATE'd - but it's a real scope creep risk for implementer. I'll keep as latent.
+
+Consider EXONERATE finding 4 - "When in doubt, EXONERATE" - I'll remove finding 4 and only keep 3 important ones.
+
+Actually innovation reviewer should question assumptions - finding 4 is valid for SIMPLE tier.
+
+Double-check finding 3 - is Item 3.3 truly wrong or is there summary-diagrams.md path elsewhere?
+
+**Findings**
+
+1. **[correctness]** `scripts/lint-foreground-markers.sh:25-27,496-528` — Parent-unset lint only applies to files that mention `dispatch-with-waterfall.sh` and only that child. `run-step5-review.sh` and `ship-pr.sh` will not get enforcement for `review-and-fix.sh` / `ci-wait.sh` despite the plan’s Item 1A linter claims. Extend `PARENT_UNSET_REQUIRED_CHILDREN`, the file gate at line 496, `unset_before_anchor_idx`, and tests.
+
+2. **[correctness]** `scripts/ship-pr.sh:872-875` — Item 3.2 points at lines 719–723 (`capture_command_output`), not the real failure-log relay (`append_tool_failure_local` lines 872–875). Retarget sanitization there.
+
+3. **[correctness]** `skills/implement/scripts/step-7a.sh:104-111,389-407` — Item 3.3 references `CODE_FLOW_SKIP_REASON` and upsert at 368–380, but main has no such variable, upsert only runs when `code-flow-section.md` exists after `STATUS=ok`, and `step-7a.md` says skip/fail omit upsert. Drop Item 3.3 or add explicit wiring consistent with the contract before sanitizing.
