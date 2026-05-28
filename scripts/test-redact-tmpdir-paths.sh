@@ -47,6 +47,7 @@ assert_eq "$(run_redactor 'see /tmp/claude-research-a_b-C/log.txt now')" 'see <T
 assert_eq "$(run_redactor '/tmp/not-larch-session and /var/tmp/claude-implement-abc')" '/tmp/not-larch-session and /var/tmp/claude-implement-abc' "non-matching paths preserved"
 assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-implement-larch5-XyZ')" '<TMPDIR>' "/var/folders macOS session path redacted"
 assert_eq "$(run_redactor '/private/var/folders/kf/abc123/T/larch-fix-issue-XyZ')" '<TMPDIR>' "/private/var/folders canonical macOS session path redacted"
+assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-501/larch-design-breadcrumbs.ABC123/private.txt')" '<TMPDIR>/private.txt' "nested /var/folders session path redacted"
 
 once=$(run_redactor 'see /private/tmp/larch-issue-idempotent')
 twice=$(run_redactor "$once")
@@ -136,6 +137,10 @@ assert_eq \
     "$(run_redactor '\n/private/var/folders/kf/abc/T/larch-fix-issue-XyZ')" \
     '\n<TMPDIR>' \
     "E7: \\n immediately before /var/folders session path redacted, \\n preserved"
+assert_eq \
+    "$(run_redactor '\n/var/folders/kf/abc/T/claude-501/larch-design-breadcrumbs.ABC123/private.txt')" \
+    '\n<TMPDIR>/private.txt' \
+    "E7: \\n immediately before nested /var/folders session path redacted, \\n preserved"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

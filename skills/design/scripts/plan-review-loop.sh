@@ -508,7 +508,7 @@ prev_key = None
 inside_constraints = False
 constraints_level = None
 in_fence = False
-_fence_marker = chr(96) * 3
+fence_len = 0
 out = []
 
 
@@ -517,10 +517,20 @@ def norm_key(line: str) -> str:
 
 
 def update_section_state(line: str) -> None:
-    global inside_constraints, constraints_level, in_fence
+    global inside_constraints, constraints_level, in_fence, fence_len
     stripped = line.strip()
-    if stripped == _fence_marker:
-        in_fence = not in_fence
+    m = re.match(r"^(\x60{3,})(.*)$", stripped)
+    if m:
+        ticks = len(m.group(1))
+        suffix = m.group(2)
+        if not in_fence:
+            in_fence = True
+            fence_len = ticks
+            return
+        if ticks >= fence_len and suffix.strip() == "":
+            in_fence = False
+            fence_len = 0
+            return
         return
     if in_fence:
         return
@@ -529,7 +539,7 @@ def update_section_state(line: str) -> None:
         return
     level = len(m.group(1))
     text = m.group(2).strip().lower()
-    if text.startswith("constraints"):
+    if text == "constraints":
         if inside_constraints:
             constraints_level = min(constraints_level, level)
         else:

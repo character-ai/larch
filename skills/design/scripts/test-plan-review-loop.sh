@@ -1571,8 +1571,14 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_irs=$(run_loop "$DIRS" 1 --round-cap 5 --convergence-threshold 3)
 printf '%s\n' "$out_irs" | grep -q '^LOOP_STATUS=converged$' || fail "important-reset path should converge"
 printf '%s\n' "$out_irs" | grep -q '^REASON=streak$' || fail "important-reset path should use streak reason"
+printf '%s\n' "$out_irs" | grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' || fail "important-reset path should finish with IMPORTANT_ACCEPTED_COUNT=0"
 printf '%s\n' "$out_irs" | grep -q '^CONVERGENCE_STREAK=2$' || fail "important-reset path should finish at streak 2"
 printf '%s\n' "$out_irs" | grep -q '^ROUNDS_COMPLETED=4$' || fail "important-reset path should complete four rounds"
+grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/.step3-plan-review-result.env" || fail "terminal result env should record IMPORTANT_ACCEPTED_COUNT=0"
+grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/plan-review/round-1/round-summary.env" || fail "round 1 should record IMPORTANT_ACCEPTED_COUNT=0"
+grep -q '^IMPORTANT_ACCEPTED_COUNT=1$' "$DIRS/plan-review/round-2/round-summary.env" || fail "round 2 should record IMPORTANT_ACCEPTED_COUNT=1"
+grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/plan-review/round-3/round-summary.env" || fail "round 3 should record IMPORTANT_ACCEPTED_COUNT=0"
+grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/plan-review/round-4/round-summary.env" || fail "round 4 should record IMPORTANT_ACCEPTED_COUNT=0"
 grep -q '^CONVERGENCE_STREAK=1$' "$DIRS/plan-review/round-1/round-summary.env" || fail "round 1 should advance streak to 1"
 grep -q '^CONVERGENCE_STREAK=0$' "$DIRS/plan-review/round-2/round-summary.env" || fail "round 2 important finding should reset streak to 0"
 grep -q '^CONVERGENCE_STREAK=1$' "$DIRS/plan-review/round-3/round-summary.env" || fail "round 3 should rebuild streak to 1"
@@ -1626,6 +1632,17 @@ duplicate fenced
 duplicate fenced
 ```
 
+```bash
+## Constraints
+duplicate tagged fenced
+duplicate tagged fenced
+```
+
+## Constraints-related notes
+
+duplicate lookalike
+duplicate lookalike
+
 ## After
 
 diff_lines: 1
@@ -1660,14 +1677,18 @@ dedup_log=$(
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
 )
-printf '%s\n' "$dedup_log" | grep -q 'dedup-sweep: removed 2 duplicate line(s) from plan.txt' || fail "section-aware dedup should remove two duplicates"
+printf '%s\n' "$dedup_log" | grep -q 'dedup-sweep: removed 4 duplicate line(s) from plan.txt' || fail "section-aware dedup should remove four duplicates"
 outside_count=$(grep -c '^duplicate outside$' "$DDED/plan.txt" || true)
 inside_count=$(grep -c '^duplicate inside constraints$' "$DDED/plan.txt" || true)
+lookalike_count=$(grep -c '^duplicate lookalike$' "$DDED/plan.txt" || true)
 nested_count=$(grep -c '^duplicate nested$' "$DDED/plan.txt" || true)
 fenced_count=$(grep -c '^duplicate fenced$' "$DDED/plan.txt" || true)
+tagged_fenced_count=$(grep -c '^duplicate tagged fenced$' "$DDED/plan.txt" || true)
 [[ "$outside_count" == "1" ]] || fail "outside Constraints duplicates should collapse"
 [[ "$inside_count" == "2" ]] || fail "inside Constraints duplicates should be preserved"
+[[ "$lookalike_count" == "1" ]] || fail "Constraints-prefixed non-Constraints heading should not be protected"
 [[ "$nested_count" == "2" ]] || fail "nested Constraints duplicates should be preserved"
 [[ "$fenced_count" == "1" ]] || fail "fenced duplicates should collapse"
+[[ "$tagged_fenced_count" == "1" ]] || fail "language-tagged fenced duplicates should collapse"
 
 printf '%s\n' "test-plan-review-loop: ok"
