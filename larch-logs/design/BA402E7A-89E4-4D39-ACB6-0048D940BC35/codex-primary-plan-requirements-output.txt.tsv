@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	<TMPDIR>/plan.txt:97-100; AGENTS.md:18	Testing strategy does not explicitly run the repo-required post-change gate	The plan commands the targeted harness, then only notes that make lint would cover it; implementer could finish without running bash scripts/relevant-checks.sh or make lint despite AGENTS.md requiring one after any change	Add an explicit final validation step: run bash scripts/relevant-checks.sh, or run make lint instead
