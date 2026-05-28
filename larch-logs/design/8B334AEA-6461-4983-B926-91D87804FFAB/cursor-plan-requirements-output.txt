@@ -1,0 +1,30 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:3-16; <TMPDIR>/feature-description.txt:51-53	Feature description fix #1 targets `[[:` inside dynamic awk regex (the mawk `[[:space:]]` failure); the plan ships multibyte-UTF-8 detection only	The original incident pattern remains lint-clean; a recurrence of the POSIX-class dynamic-regex bug would still reach CI and ship-pr unchanged	Align lint scope with fix #1 (add a `[[:`-in-dynamic-awk rule or rename/issue-scope explicitly) or document that #3134 defers mawk class-portability to a follow-up
+2	in_scope	important	risk-integration	.pre-commit-config.yaml:166-171; Makefile:26-29; .github/workflows/ci.yaml:73	New lint is wired into `make lint` but not into pre-commit / `make lint-only`, unlike `lint-bare-grep-probe`	CI and normal PR validation never run the repo-wide scan; only the fixture harness does	Add a local `always_run` / `pass_filenames: false` pre-commit hook for `scripts/lint-awk-multibyte-regex.sh`, matching `lint-bare-grep-probe`
+3	in_scope	important	correctness	scripts/ship-pr.sh:4-7; <TMPDIR>/plan.txt:43-48	HEAD-non-advance logic is specified immediately after `_stage_and_push_ci_fixes` with no explicit success guard; `ship-pr.sh` intentionally omits `set -e`	A failed stage/push with unchanged HEAD can still set `BAIL_REASON=first-fixer-non-health` and mask the real failure	Wrap with `_stage_and_push_ci_fixes ...; stage_rc=$?; [ "$stage_rc" -ne 0 ] && return "$stage_rc";` before HEAD compare
+4	in_scope	important	risk-integration	scripts/test-ship-pr.sh:4379-4427; <TMPDIR>/plan.txt:37-48	Existing successful fix-loop vendor stubs exit 0 without advancing HEAD; the plan does not update them	Tests such as `ci_fix_vendor_tier_order_cursor_first` flip from expected 0 to 3 once HEAD detection lands	Update each existing successful vendor fixture to produce a commit (or stub `git-commit.sh`) so only the new `run_ship_pr_3134_vendor_exit0_no_commits` case expects exit 3
+5	in_scope	important	correctness	<TMPDIR>/plan.txt:18-32; scripts/test-lint-awk-multibyte-regex.sh:planned	Planned harness literals (em-dash/CJK in awk lines) live inside the new repo-wide `.sh` scan	`make lint` flags the harness before temp fixtures run; the repo cannot stay clean	Build violating bytes via escapes/`printf` into temp files only, or pragma-guard harness source lines while keeping generated positive fixtures unsuppressed
+6	in_scope	important	correctness	<TMPDIR>/plan.txt:25; <TMPDIR>/plan.txt:122	Rule 2 fixture describes non-ASCII in a variable assignment while Rule 2 only flags same-line regex tokens plus non-ASCII	Fixture cannot pass as written or forces unplanned variable-flow tracking	Change the fixture to a same-line callsite (e.g. `$0 ~ "—"`) or drop it and rely on the `match()` case
+7	in_scope	latent	correctness	<TMPDIR>/plan.txt:101	Testing strategy claims unfixed `main` fails the new lint on `lint-readability-preamble.sh` em-dash patterns	On current `main` the em-dash is only in a `grep -Ec` shell variable, not an awk `-v` value or awk-body regex callsite; `make lint` would stay clean contrary to the plan	Retarget examples to the dac0d00c `check_step_placement` awk pattern or drop the pre-#3144 main-fails claim
+
+1. **correctness** — `plan.txt:3-16` / `feature-description.txt:51-53`: Feature fix #1 asked for `[[:` inside dynamic awk regex; the plan only detects multibyte UTF-8. The original `[[:space:]]` mawk bug would not be caught. **Revision:** Add a `[[:`-in-dynamic-awk rule, or narrow the issue scope and document deferral.
+
+2. **risk-integration** — `.pre-commit-config.yaml:166-171`, `Makefile:26-29`, `.github/workflows/ci.yaml:73`: Lint is on `make lint` but not pre-commit / `lint-only` (unlike `lint-bare-grep-probe`). CI would not enforce it. **Revision:** Add matching pre-commit hook.
+
+3. **correctness** — `scripts/ship-pr.sh:4-7`, `plan.txt:43-48`: HEAD check after `_stage_and_push_ci_fixes` without an explicit success guard conflicts with no `set -e`. **Revision:** Capture `stage_rc` and return before HEAD compare on failure.
+
+4. **risk-integration** — `scripts/test-ship-pr.sh:4379-4427`, `plan.txt:37-48`: Existing successful vendor stubs do not advance HEAD; they will break when HEAD detection lands. **Revision:** Update sibling fixtures to commit; reserve exit 3 for the new case only.
+
+5. **correctness** — `plan.txt:18-32`: Harness literals would be scanned by the new lint. **Revision:** Use byte escapes / temp-only violations; avoid checked-in violating awk lines.
+
+6. **correctness** — `plan.txt:25`, `plan.txt:122`: Rule 2 `$0 ~ var` fixture conflicts with same-line-only Rule 2. **Revision:** Use a same-line regex callsite fixture.
+
+7. **latent/correctness** — `plan.txt:101`: Claim that unfixed `main` fails the lint on `lint-readability-preamble.sh` does not match current tree (em-dash in `grep`, not awk). **Revision:** Fix testing-strategy wording or examples.
+
+**[OUT_OF_SCOPE]** `feature-description.txt:55-57` — mawk smoke test in CI: not in plan; reasonable deferral for minimum change.
+
+**[OUT_OF_SCOPE]** `feature-description.txt:59-61` — CI-fixer full-log diagnostic escalation: not in plan; separate from Exit 3 / HEAD routing.
+
+**Exonerated (SIMPLE):** `plan.txt:6` continuation-line joining without a fixture (latent; drop joining or add one fixture only if needed). `plan.txt:173` LAUNCHER_EXIT via `--output` wording (existing stubs print to stdout captured in the fail file). Heredoc detached-body edge case (pragma escape documented). `record_failure` on the new branch (minor, consistent with other failure paths).
+
+**Met:** Feature fix #4 (vendor exit 0, no commit → `first-fixer-non-health` / exit 3) with `test-ship-pr.sh` regression; Makefile harness wiring; pragma/exit-code/test-fixture structure mirrors `lint-bare-grep-probe`; ship-pr change reuses existing bail plumbing without new state keys.

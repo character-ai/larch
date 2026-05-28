@@ -1,0 +1,3 @@
+SCOUT_STATUS=ok
+SCOUT_MANIFEST=<TMPDIR>/scout-plan-manifest.json
+SCOUT_ARCHETYPE_COUNT=3

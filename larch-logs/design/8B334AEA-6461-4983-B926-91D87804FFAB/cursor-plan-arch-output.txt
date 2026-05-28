@@ -1,0 +1,35 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-ship-pr.sh (plan §run_ship_pr_3134_vendor_exit0_no_commits)	Test stub says LAUNCHER_EXIT=0 goes to --output file	ship-pr reads LAUNCHER_EXIT from launcher stdout captured in fail_file (scripts/ship-pr.sh:1883-1884), not from --output; stub that only writes to --output leaves launcher_exit default 0 via empty parse but wrapper path may not treat tier as winning, or mis-doc leads implementer to omit stdout line	New case should printf LAUNCHER_EXIT=0 to stdout (same pattern as scripts/test-ship-pr.sh:4389 and default make_repo launcher stub :250), optionally still write token-record to --output
+2	in_scope	important	correctness	scripts/ship-pr.sh:1922-1923 (plan §run_ci_fix_vendor)	HEAD-non-advance branch planned after _stage_and_push_ci_fixes without guarding its exit status	If _stage_and_push_ci_fixes returns non-zero (git add/commit/push failure), HEAD may be unchanged and the new check could misclassify a real stage/push failure as first-fixer-non-health (exit 3)	Capture rc from _stage_and_push_ci_fixes; return that rc immediately on failure; run baseline_head/final_head comparison only when rc is 0
+3	in_scope	important	risk-integration	agent-lint.toml:301-881 (plan Makefile only)	Four new scripts not listed in agent-lint exclude block	Peer lints (e.g. lint-bare-grep-probe at :878-881) are excluded; omitting the new paths breaks the agent-lint CI job on this PR	Add scripts/lint-awk-multibyte-regex.sh, .md, test-lint-awk-multibyte-regex.sh, .md to exclude with the same Makefile-only reachability comment used for lint-bare-grep-probe
+4	in_scope	important	correctness	scripts/test-ship-pr.sh (plan §run_ship_pr_3134_vendor_exit0_no_commits)	Fix-loop case omits TRANSIENT_RETRIES=1 (and explicit state seeding)	run_evaluate_failure skips ci-rerun-failed only when TRANSIENT_RETRIES>=1 (scripts/ship-pr.sh:2205-2218); with default TRANSIENT_RETRIES=0 the case hits ci-rerun-failed first and records failure noise before vendor dispatch	Mirror sibling fix-loop cases: after write_state ci-initial, awk TRANSIENT_RETRIES=1 and FAILED_RUN_ID=run3134 into ship-pr-state.sh (see scripts/test-ship-pr.sh:4362-4420)
+
+**1. [correctness]** `run_ship_pr_3134` stub contract for `LAUNCHER_EXIT`
+
+The plan tells the harness to put `LAUNCHER_EXIT=0` in the `--output` file. `run_ci_fix_vendor` parses it from the launcher’s redirected stdout/stderr (`fail_file`), not from `--output`:
+
+```1883:1884:scripts/ship-pr.sh
+        launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ {print $2; exit}' "$fail_file")
+        launcher_exit="${launcher_exit:-0}"
+```
+
+Existing tier-order cases print `LAUNCHER_EXIT=0` to stdout (e.g. `scripts/test-ship-pr.sh:4389`). The new case should do the same.
+
+**2. [correctness]** Guard `_stage_and_push_ci_fixes` before HEAD comparison
+
+The plan adds HEAD equality only “after `_stage_and_push_ci_fixes` returns successfully,” but `run_ci_fix_vendor` today ends with an unguarded call:
+
+```1922:1923:scripts/ship-pr.sh
+    _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"
+}
+```
+
+If staging/push fails, HEAD often stays at `baseline_head`; without an explicit `rc` check, the new branch could set `first-fixer-non-health` and exit 3 for a push/stage failure instead of a no-op vendor.
+
+**3. [risk-integration]** `agent-lint.toml` companion update
+
+The plan wires Makefile targets only. New lint scripts must join the `exclude` list beside `lint-bare-grep-probe` (`agent-lint.toml:878-881`) or `agent-lint` will flag them as unreachable dead scripts in CI.
+
+**4. [correctness]** Test must seed `TRANSIENT_RETRIES=1`
+
+`run_evaluate_failure` calls `ci-rerun-failed.sh` while `TRANSIENT_RETRIES < 1` (`scripts/ship-pr.sh:2205-2218`). Fix-loop vendor tests set `TRANSIENT_RETRIES=1` via state `awk` (e.g. `scripts/test-ship-pr.sh:4418-4420`). The plan’s new case should include that step so it reaches `run_ci_fix_vendor` deterministically.

@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	.pre-commit-config.yaml:143-171; .github/workflows/ci.yaml:62-73; scripts/relevant-checks.sh:167-172	New lint is only planned for Makefile wiring, not pre-commit	CI lint runs make lint-only, and relevant-checks delegates to pre-commit on changed files, so lint-awk-multibyte-regex would not run in the enforced lint job or normal relevant-checks path	Also add a local pre-commit hook for lint-awk-multibyte-regex with pass_filenames false and always_run true, mirroring lint-bare-grep-probe
+
+1. [risk-integration] `.pre-commit-config.yaml:143-171`, `.github/workflows/ci.yaml:62-73`, `scripts/relevant-checks.sh:167-172`
+
+Concern: the plan wires `lint-awk-multibyte-regex` into `make lint`, but not into `.pre-commit-config.yaml`. That misses the enforced path: CI’s lint job runs `make lint-only`, and `scripts/relevant-checks.sh` runs `pre-commit run --files ...`.
+
+Suggested revision: add the new lint as a local pre-commit hook next to `lint-bare-grep-probe`, using `pass_filenames: false` and `always_run: true`. Update the lint docs only as needed to keep the caller list truthful.
