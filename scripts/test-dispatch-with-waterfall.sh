@@ -196,6 +196,7 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD=1 "$REPO_ROOT/
     --mode description \
     --timeout 5)
 assert_line "FALLBACK_COUNT=2" "$out"
+assert_line "PHASE2_RELAUNCH_COUNT=0" "$out"
 grep -Fq "WARN=cost-fallback-exceeded-threshold" <<< "$out" || { echo "FAIL: missing WARN=cost-fallback-exceeded-threshold" >&2; printf '%s\n' "$out" >&2; exit 1; }
 assert_line "DISPATCH_OK=true" "$out"
 
