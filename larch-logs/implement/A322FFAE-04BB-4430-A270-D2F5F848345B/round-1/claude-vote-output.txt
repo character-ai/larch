@@ -1,0 +1,19 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan's shared TSV contract and identical awk filter documented in tsv.md address the structural concern; vague fix not warranted for a latent parity edge case
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- adding TSV-derived step ID lookup to fixture generators adds complexity disproportionate to this latent maintenance concern
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- four awk passes on one SKILL.md file in pre-commit is negligible overhead; optimizing this adds complexity without meaningful benefit
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicating style-line constants in tests is the standard pattern; deriving them from the script under test adds coupling complexity
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- make banner format is stable; upgrading grep substring check to exact match adds marginal robustness for negligible risk
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- multiple direct targets for design edits is an intentional correctness tradeoff; not worth a dedicated issue
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- step markers and directives are always on separate lines by SKILL.md convention; this edge case is not a practical concern
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=true
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- bash manual states "backslashes preceding characters without a special meaning are left unmodified"; the plan's two-char behavior matches actual bash double-quote semantics
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- current step IDs are alphanumeric only; adding regex escaping for an invariant that holds in practice is unnecessary complexity
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate step markers would be a SKILL.md authoring error caught by other means; edge case not worth added detection logic
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- leading-zero digits pass primary validation; this is a cosmetic schema concern not worth additional complexity
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
