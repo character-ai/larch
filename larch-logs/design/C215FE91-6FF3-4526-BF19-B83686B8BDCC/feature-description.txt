@@ -1,0 +1,14 @@
+[DESIGNING] [OOS] lint-foreground-markers.sh: heredoc rescanning performance + per-anchor suppression bypass
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-edge-cases-output.txt, cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-security-output.txt
+**Phase**: implement
+**Vote tally**: Combined per OOS triage rule 3 (multiple medium bugs ≥~30 LOC each)
+
+## Description
+
+`scripts/lint-foreground-markers.sh`; Two related issues: (1) `line_is_heredoc_body_idx` rescans from index 0 on every call inside nested loops, producing O(n²) behavior on large fences — particularly affects the new monitor_rc init walk and forward conditional scan; (2) per-anchor `# lint-foreground-markers: ok` suppression at the writer invocation line silently skips all three new monitor_rc checks (initialization, capture, branching), which means a single suppression comment can evade monitor_rc enforcement entirely. Suggested fix: (1) linearize heredoc detection into a pre-built index or single-pass walker; (2) scope per-anchor suppression to the specific check(s) it is intended to waive rather than all Family B invariants.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

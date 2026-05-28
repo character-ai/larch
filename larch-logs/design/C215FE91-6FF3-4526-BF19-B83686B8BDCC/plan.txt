@@ -1,0 +1,91 @@
+# Implementation Plan — Fix O(n²) heredoc rescanning + add opt-in scoped suppression
+
+This plan biases toward the smallest change that achieves the goal (SIMPLE tier). It addresses both concerns from issue #3085 in one PR per Round 1 Decision 1, and preserves the existing bare-suppression semantics per Round 1 Decision 2 ("Bare still suppresses everything"). The scoped form is therefore additive: it lets new callsites opt into finer-grained suppression, while the ~5 existing bare comments keep working unchanged.
+
+## Files to modify/create
+
+### UPDATED: `scripts/lint-foreground-markers.sh`
+
+Two correlated edits in one file. Heredoc-flag construction is hoisted out of `fence_has_family_b_pid_capture_and_wait` to the per-fence and per-file callers so the index is built once per input, not once per Family B anchor; the suppression-scoping change stays inside `fence_has_family_b_pid_capture_and_wait`.
+
+**(a) Linearize heredoc-body detection at the per-input level.**
+
+- Add a new global bash indexed array `FENCE_HEREDOC_FLAGS` (declared near the other globals, e.g. beside `HEREDOC_OPEN_DELIM`). Bash 3.2 safe (regular indexed array, not associative).
+- Add a new helper `build_fence_heredoc_flags` taking the lines array via `$@`: walks `lines` once, reuses the existing `try_begin_heredoc` / `heredoc_close_matches` logic, sets `FENCE_HEREDOC_FLAGS=()` first, then assigns `FENCE_HEREDOC_FLAGS[$i]=1` for body lines and `0` otherwise. One linear walk per input.
+- Add a new O(1) lookup helper `fence_line_is_heredoc_body "$idx"`: returns 0 (true) when `${FENCE_HEREDOC_FLAGS[$idx]:-0}` is `1`, 1 (false) otherwise.
+- **Call `build_fence_heredoc_flags` once per input, not once per anchor.** In the Markdown-fence processing path, invoke it immediately after `FG_FENCE_LINES` is populated (in the caller that holds `FG_FENCE_LINES` and dispatches to `fence_has_family_b_pid_capture_and_wait`, around the `${FG_FENCE_LINES[@]}` call site). In the shell-file processing path inside `scan_shell_file_for_family_b_wait`, invoke it once after the shell-file lines array is loaded (before the per-anchor loop that calls `fence_has_family_b_pid_capture_and_wait`). The per-anchor function itself does not rebuild `FENCE_HEREDOC_FLAGS`; it only reads through `fence_line_is_heredoc_body`. Multiple anchors in the same fence/file therefore share one linear-time index build.
+- Replace the three `line_is_heredoc_body_idx "$i" "${lines[@]}"` call sites inside `conditional_opener_mentions_monitor_rc`, `fence_has_monitor_rc_init_before`, and `fence_has_monitor_rc_conditional_after` with `fence_line_is_heredoc_body "$i"`. These three helpers no longer need to receive the heredoc-detection burden through `lines`; the global is set by the per-input caller.
+- Remove `line_is_heredoc_body_idx` (the entire function body). Grep confirms no other callers in the tree; it becomes orphaned after the three migrations.
+
+**(b) Add opt-in scoped suppression for monitor_rc checks.**
+
+- Add a new helper `line_has_scoped_suppression_check "$line" "$token"`: returns 0 iff `$line` contains a `# lint-foreground-markers: ok-checks=<list> <reason>` comment whose `<list>` (comma-separated) contains `$token` **and** that comment carries a non-empty reason after the list. Implementation: anchored `LC_ALL=C grep -Eq` with pattern `# lint-foreground-markers: ok-checks=([^[:space:]]*,)?TOKEN([,[:space:]]|$).*[[:space:]]+[^[:space:]#]` where `TOKEN` is a literal substitution of `$token` (the closed enum contains only `_` and ASCII alnum, so no regex-escape is needed). The trailing `[[:space:]]+[^[:space:]#]` clause enforces a non-empty, non-comment reason after the token list — matching the bare-form contract today (`# lint-foreground-markers: ok <reason>` already requires a trailing space). A comment that ends immediately after the token list (e.g. `# lint-foreground-markers: ok-checks=monitor_rc_init` with no reason) does **not** suppress; this preserves the documented reason requirement and avoids accidental silent suppressions.
+- In `fence_has_family_b_pid_capture_and_wait`, replace the existing blanket `line_has_lint_suppression "${lines[$((anchor_idx - 1))]}" && return 0` with a per-check bookkeeping block immediately before the existing forward walks:
+  - `local suppress_line="${lines[$((anchor_idx - 1))]}"`.
+  - When bare `line_has_lint_suppression "$suppress_line"` is true, keep the existing early-return (suppress all checks, today's behavior — Round 1 backward-compat decision).
+  - Otherwise, compute three local booleans `suppress_monitor_rc_init`, `suppress_monitor_rc_capture`, `suppress_monitor_rc_branch` by calling `line_has_scoped_suppression_check "$suppress_line" "<token>"` for each of `monitor_rc_init`, `monitor_rc_capture`, `monitor_rc_branch`.
+- Guard the three existing monitor_rc check sites in `fence_has_family_b_pid_capture_and_wait` so each one is skipped silently when its corresponding `suppress_monitor_rc_*` boolean is set:
+  - `monitor_rc_init` → guards `fence_has_monitor_rc_init_before` failure block.
+  - `monitor_rc_capture` → guards the `|| monitor_rc=$?` grep failure block.
+  - `monitor_rc_branch` → guards `fence_has_monitor_rc_conditional_after` failure block.
+  When the suppression boolean is true, do not print the diagnostic and do not increment `VIOLATIONS`. The early `return 0` for the function as a whole remains tied only to bare suppression, mirroring today's bare semantics.
+
+Token vocabulary is a closed enum encoded only as call-site literal strings in `fence_has_family_b_pid_capture_and_wait`: `monitor_rc_init`, `monitor_rc_capture`, `monitor_rc_branch`. Unknown scoped tokens silently suppress nothing because no check site asks for them.
+
+### UPDATED: `scripts/lint-foreground-markers.md`
+
+- Document the new `# lint-foreground-markers: ok-checks=<tokens> <reason>` grammar and the closed enum (`monitor_rc_init`, `monitor_rc_capture`, `monitor_rc_branch`).
+- State explicitly that the scoped form requires a non-empty reason after the token list (matching the bare form's grammar) and that bare `# lint-foreground-markers: ok <reason>` retains current "suppress all checks" semantics; no migration is required.
+- Add one short sentence noting that per-fence heredoc-body classification is now built once per input (per fenced bash block in Markdown processing, and once per shell file in `scan_shell_file_for_family_b_wait`), replacing the prior per-call rescan. No public contract change.
+
+### UPDATED: `scripts/test-lint-foreground-markers.sh`
+
+Add the following fixtures, matching the harness's existing fixture style (named functions, `assert_*` calls, captured stderr):
+
+- One Family B fixture per scoped token: writer line carries `# lint-foreground-markers: ok-checks=monitor_rc_init <reason>` and asserts that `missing monitor_rc= initialization` is absent while `missing "|| monitor_rc=$?"` and `missing conditional branching on monitor_rc` still fire. Mirror fixtures for `monitor_rc_capture` and `monitor_rc_branch`.
+- One fixture asserting that bare `# lint-foreground-markers: ok <reason>` continues to suppress all three monitor_rc diagnostics (backward compat regression guard).
+- One fixture using an unknown scoped token (e.g. `ok-checks=monitor_rc_unknown <reason>`) and asserting that all three monitor_rc diagnostics still fire.
+- One fixture using multiple scoped tokens in a single comma list (`ok-checks=monitor_rc_init,monitor_rc_branch <reason>`) asserting only the named two are suppressed.
+- One fixture using all three tokens in one comma list (`ok-checks=monitor_rc_init,monitor_rc_capture,monitor_rc_branch <reason>`) asserting all three monitor_rc diagnostics are suppressed — guards the multi-token regex against the rejected FINDING_2-style concern by exercising three-deep listing.
+- **Right-boundary adversarial fixture**: writer line carries `# lint-foreground-markers: ok-checks=monitor_rc_initializer <reason>` (valid token name extended with a suffix) — assert all three monitor_rc diagnostics still fire. This proves the right boundary `([,[:space:]]|$)` rejects token suffixes.
+- **Left-boundary adversarial fixture**: writer line carries `# lint-foreground-markers: ok-checks=foomonitor_rc_init <reason>` (valid token name prefixed with `foo`) — assert all three monitor_rc diagnostics still fire. This proves the left side of the pattern rejects token prefixes without relying on a separate leading anchor.
+- **Missing-reason fixture**: writer line carries `# lint-foreground-markers: ok-checks=monitor_rc_init` with no trailing reason — assert all three monitor_rc diagnostics still fire. This enforces the new non-empty-reason contract from FINDING_4.
+- One large-fence behavioral-equivalence fixture: ≥ 80 in-fence lines including at least two heredoc blocks, exercising the new `fence_line_is_heredoc_body` lookup; assert the linter still catches a deliberately-planted monitor_rc violation outside the heredoc bodies. No wall-clock assertion (avoids harness flakiness); the perf invariant is enforced structurally by removing `line_is_heredoc_body_idx`.
+
+### UPDATED: `scripts/test-lint-foreground-markers.md`
+
+- Document each new fixture under the harness's existing case-list section, naming them in the same style as existing entries.
+
+### UPDATED: `BASH_AUTHORING.md`
+
+In the §4 suppression-grammar paragraph, add one short prose block documenting the new `ok-checks=<tokens> <reason>` form, the closed enum of monitor_rc tokens, the required non-empty reason after the token list, and the unchanged bare semantics. No other §4 prose changes.
+
+## Approach
+
+Both fixes share the same target file (`scripts/lint-foreground-markers.sh`) and the same regression harness, so they ship together. The implementation follows the existing helper style in the linter: small named helpers, `LC_ALL=C grep -Eq` for anchored matches, no Bash 4+ features (no associative arrays, no namerefs, no `mapfile`). The closed monitor_rc token enum is encoded only as literal strings inside the three check guards; future token additions are a code-and-doc change in the same file, not a runtime registry.
+
+Heredoc-flag building is hoisted to the per-input level (per Markdown fence in the caller that owns `FG_FENCE_LINES`, and per shell file in `scan_shell_file_for_family_b_wait`) so multiple Family B anchors in the same input share one linear-time index walk. `fence_has_family_b_pid_capture_and_wait` is purely a reader of the global.
+
+Backward-compat tradeoff (chosen at Round 1): bare suppression keeps blanket semantics. This intentionally leaves a path for a single bare comment to silence monitor_rc enforcement at a callsite. The scoped form lets new callsites be precise; reviewers can ask "why bare instead of scoped?" during PR review. The OOS issue documents this as the minimum-blast-radius option.
+
+## Edge cases
+
+- Empty input (`lines` of length 0): `build_fence_heredoc_flags` produces an empty array and `fence_line_is_heredoc_body` returns false for any index. Existing harness fixtures already cover empty fences.
+- Heredoc that runs to end of input without closing: existing `line_is_heredoc_body_idx` treated unclosed heredocs as remaining open through EOF; `build_fence_heredoc_flags` preserves this because `active_hd_delim` stays non-empty and the loop keeps marking lines `1` until exhaustion.
+- Both bare and scoped tokens on the same line: bare wins (early-return preserved). Scoped-token checks become unreachable on that path.
+- Scoped token adjacency: anchored grep requires the token to be surrounded by `,` or whitespace (or list-end), so neither `monitor_rc_initializer` (right-boundary suffix) nor `foomonitor_rc_init` (left-boundary prefix) matches `monitor_rc_init`.
+- Reason text mentioning a token: the regex anchors on `ok-checks=` and only consumes characters before whitespace, so a token mentioned later in the reason text cannot satisfy the left-boundary anchor.
+- Comment with no reason: the trailing `[[:space:]]+[^[:space:]#]` clause requires at least one non-whitespace, non-`#` character after the list. A token-only comment fails to suppress.
+- Multiple scoped tokens: any subset of the closed enum, comma-separated with no whitespace inside the list, followed by whitespace and the reason. Example: `# lint-foreground-markers: ok-checks=monitor_rc_init,monitor_rc_branch reason`.
+
+## Failure modes
+
+- **Stale `FENCE_HEREDOC_FLAGS` across inputs.** A partially-populated global could mis-classify the next input's lines. Mitigation: `build_fence_heredoc_flags` always begins with `FENCE_HEREDOC_FLAGS=()`. Earliest signal: a fence that doesn't open a heredoc starts producing false positives because lines are mis-classified as heredoc body and skipped. The large-fence harness fixture catches this.
+- **Suppression-token false match.** An unanchored regex could match a token inside an unrelated identifier (e.g. a variable named `monitor_rc_init_test`). Mitigation: anchored grep with explicit `(^|[, ])TOKEN([, ]|$)` boundaries plus the new reason-required suffix, enforced by adversarial harness fixtures for both boundaries and the missing-reason case.
+- **Sibling-doc drift.** `.claude/rules/script-md-siblings.md` and `BASH_AUTHORING.md` §4 changes must land in the same PR. Earliest signal: pre-commit `lint-foreground-markers` and `script-md-siblings` hooks block the commit until the sibling docs are updated.
+
+## Testing strategy
+
+All new behavior is exercised through `scripts/test-lint-foreground-markers.sh`, which is the canonical regression surface for this linter and is already wired into `make lint-foreground` and the pre-commit hook. Existing fixtures continue to pass unchanged (proves no behavioral regression). New fixtures (listed under the test file update above) cover each scoped token, the bare-suppression backward-compat path, the unknown-token silent-ignore path, multi-token suppression including the three-token case, both left- and right-boundary adversarial cases, the missing-reason rejection, and a large-fence behavioral-equivalence check that exercises the new O(1) heredoc lookup. The per-input flag-building hoist is exercised implicitly by every Family B fixture that has at least two anchors in the same input.
+
+diff_lines: 210
