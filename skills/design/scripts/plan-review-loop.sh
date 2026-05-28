@@ -532,7 +532,9 @@ rm -f "$_dedup_py"
 if ! grep -qE '^### (FINDING|OOS)_[0-9]+:' "$DESIGN_TMPDIR/findings.md" 2>/dev/null; then
     write_empty_review_artifacts "No findings were raised — voting was not needed."
     : > "$DESIGN_TMPDIR/ballot.txt"
-    emit_loop_kvs complete 0 "$_dispatch_degraded_panel" skipped-empty-input skipped-empty-findings "$DESIGN_TMPDIR/voting-tally.md" SKIPPED
+    _short_circuit_degraded="$_dispatch_degraded_panel"
+    [[ "$_dedup_failed" -eq 1 ]] && _short_circuit_degraded=1
+    emit_loop_kvs complete 0 "$_short_circuit_degraded" skipped-empty-input skipped-empty-findings "$DESIGN_TMPDIR/voting-tally.md" SKIPPED
     exit 0
 fi
 
