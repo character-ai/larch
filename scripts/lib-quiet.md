@@ -16,7 +16,7 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   `LARCH_QUIET_ACTIVE=1`, records `LARCH_QUIET_LOG_FILE`, and redirects ordinary
   stdout/stderr to the quiet log.
 - `emit TEXT` writes one line of contract output to the caller-visible stream.
-- `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream.
+- `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream. Values must not contain `\n` or `\r`; the helper returns 2 with `larch_err` on violation. See `scripts/test-lib-quiet.sh` for reject coverage.
 - `emit_breadcrumb --category=NAME TEXT` writes progress text to the quiet log
   by default and requires the fixed breadcrumb category vocabulary. Set
   `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout. When

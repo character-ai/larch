@@ -339,6 +339,14 @@ fi
 assert_key_order "all-failed dispatcher stdout" "$(printf '%s\n' "$out_all_failed" | stdout_key_order | grep -v '^DEGRADED_PANEL_WARNING$' || true)" "$EXPECTED_ORDER_NO_PATHS"
 grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out_all_failed" || fail "all-failed path should emit degraded warning"
 
+set +e
+out_invalid_tmpdir=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$TMP/invalid-tmpdir.log" \
+    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/healthy/../escaped-dotdot" --codex-available true --cursor-available true 2>&1)
+rc_invalid_tmpdir=$?
+set -e
+[[ "$rc_invalid_tmpdir" -eq 2 ]] || fail "dotdot tmpdir should be rejected before launch"
+grep -Fq "must not contain '.' or '..' segments" <<< "$out_invalid_tmpdir" || fail "dotdot tmpdir diagnostic missing"
+
 for status2 in launched fallback failed; do
     for status3 in launched fallback failed; do
         case_dir="$TMP/status-${status2}-${status3}"

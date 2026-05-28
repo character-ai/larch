@@ -15,6 +15,9 @@ source "$SCRIPT_DIR/lib-findings-classification.sh"
 # shellcheck source=scripts/lib-vote-tally.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
+# shellcheck source=scripts/lib-design-tmpdir.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 DESIGN_TMPDIR=""
 BALLOT_FILE=""
@@ -104,6 +107,7 @@ if [[ -z "$FINDINGS_CLASSIFICATION_OUT" ]]; then
     FINDINGS_CLASSIFICATION_OUT="$DESIGN_TMPDIR/plan-review/round-1/findings-classification.tsv"
 fi
 
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
 tally_file="$DESIGN_TMPDIR/voting-tally.md"
 write_tally_stub() {

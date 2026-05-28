@@ -1104,6 +1104,14 @@ exclude = [
   # not follow sibling `source` directives or Makefile targets.
   "scripts/lib-title-eligibility.sh",
   "scripts/test-lib-title-eligibility.sh",
+  # scripts/lib-design-tmpdir.sh is a sourced-only validator for
+  # --design-tmpdir consumers. scripts/test-lib-design-tmpdir.sh is its
+  # Makefile-only regression harness (test-lib-design-tmpdir target) and
+  # scripts/test-lib-design-tmpdir.md is the sibling contract, matching the
+  # same sourced-library / Makefile-only pattern as the title-eligibility block.
+  "scripts/lib-design-tmpdir.sh",
+  "scripts/test-lib-design-tmpdir.sh",
+  "scripts/test-lib-design-tmpdir.md",
   "scripts/false-positive-keywords.sh",
   "scripts/test-false-positive-keywords.sh",
   # Regression harness for tracking-issue-read.sh's --sentinel branch

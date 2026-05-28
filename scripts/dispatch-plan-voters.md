@@ -2,7 +2,8 @@
 
 `scripts/dispatch-plan-voters.sh` launches `/design` Step 3 **plan-review** voter slots: **Voter 1 (Claude)** via `scripts/launch-claude-review.sh`, and **Voters 2–3** (Codex, Cursor) through `scripts/dispatch-with-waterfall.sh`.
 
-- Sources `scripts/lib-voter-coverage.sh`; effective-judge coverage and the per-slot status KV block are emitted by that library.
+- Sources `scripts/lib-plan-voter-coverage.sh`; effective-judge coverage and the per-slot status KV block are emitted by that library.
+- Validates `--design-tmpdir` via `scripts/lib-design-tmpdir.sh` (`larch_design_tmpdir_validate`) after argv parsing and before `mkdir -p`.
 
 ## Voter 1 (Claude)
 
