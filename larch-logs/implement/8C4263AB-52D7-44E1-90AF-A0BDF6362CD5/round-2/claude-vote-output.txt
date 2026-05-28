@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- temp file leak in dev tool is trivial; trap adds complexity for negligible benefit
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- env-clean bash invocation plus static source greps is adequate; forcing 3.2 binary adds complexity
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- scan-all-then-filter is simpler and O(F·A) overhead is negligible for local runs
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- lint-readability-preamble is from correctly committed prior run; branch diff scope resolves on merge, not a codeable issue
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- verifier is read-only by construction; git diff assertion adds overhead without meaningful protection
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- path traversal requires malicious committed code; bounds check is disproportionate for a developer tool
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- deletion-only bypass is explicit design decision documented in the plan
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- missing-target-as-warning is explicit plan contract; changing to defect contradicts the stated design
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- graceful degradation on missing verifier is by design; agent-lint catches missing file on CI
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- test-script-only edits triggering full harness would be over-eager; pin verification still fires via changed-script-scope path
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- same limitation already captured and filed as issue #3050
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- broader scoping than plan wording but sensible behavior; documentation update is adequate and coder's choice is defensible
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- inline vs named helper is minor structural choice with no functional impact
