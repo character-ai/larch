@@ -395,16 +395,16 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 0,
-          "output": 0,
-          "total": 0
+          "input": 108888,
+          "output": 2188,
+          "total": 602468
         }
       }
     ],
     "totals": {
-      "input": 1399729,
-      "output": 76438,
-      "total": 21204295
+      "input": 1508617,
+      "output": 78626,
+      "total": 21806763
     }
   },
   "cursor": {
@@ -521,10 +521,10 @@
     "total": 23447586
   },
   "BUCKETS_codex": {
-    "input": 1399729,
-    "cached_input": 19728128,
-    "output": 76438,
-    "total": 21204295
+    "input": 1508617,
+    "cached_input": 20219520,
+    "output": 78626,
+    "total": 21806763
   },
   "BUCKETS_cursor": {
     "input": 2732433,
