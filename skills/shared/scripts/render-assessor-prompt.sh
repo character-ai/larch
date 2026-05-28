@@ -3,6 +3,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
 PLAN_ORIGINAL=""
 PLAN_PREV=""
 PLAN_CURRENT=""
@@ -10,7 +16,7 @@ FEATURE_FILE=""
 OUTPUT=""
 
 usage() {
-    echo "Usage: render-assessor-prompt.sh --plan-original PATH --plan-prev PATH --plan-current PATH --feature-file PATH --output PATH" >&2
+    larch_err "Usage: render-assessor-prompt.sh --plan-original PATH --plan-prev PATH --plan-current PATH --feature-file PATH --output PATH"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -21,17 +27,17 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
         --output) OUTPUT="${2:?}"; shift 2 ;;
         --help) usage; exit 0 ;;
-        *) echo "render-assessor-prompt.sh: unknown option: $1" >&2; usage; exit 2 ;;
+        *) larch_err "render-assessor-prompt.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
 for req in PLAN_ORIGINAL PLAN_PREV PLAN_CURRENT FEATURE_FILE OUTPUT; do
     val="${!req}"
-    [[ -n "$val" ]] || { echo "render-assessor-prompt.sh: all path arguments are required" >&2; usage; exit 2; }
+    [[ -n "$val" ]] || { larch_err "render-assessor-prompt.sh: all path arguments are required"; usage; exit 2; }
 done
 
 for f in "$PLAN_ORIGINAL" "$PLAN_PREV" "$PLAN_CURRENT" "$FEATURE_FILE"; do
-    [[ -f "$f" ]] || { echo "render-assessor-prompt.sh: file not readable: $f" >&2; exit 2; }
+    [[ -f "$f" ]] || { larch_err "render-assessor-prompt.sh: file not readable: $f"; exit 2; }
 done
 
 mkdir -p "$(dirname "$OUTPUT")"

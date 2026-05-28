@@ -24,8 +24,14 @@ atomic_copy_plan() {
     local src="$1" dest="$2" prefix="$3"
     local tmp
     tmp=$(mktemp "$DESIGN_TMPDIR/${prefix}.XXXXXX")
-    cp -p "$src" "$tmp"
-    mv -f "$tmp" "$dest"
+    if ! cp -p "$src" "$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    if ! mv -f "$tmp" "$dest"; then
+        rm -f "$tmp"
+        return 1
+    fi
 }
 
 parse_cursor_file() {

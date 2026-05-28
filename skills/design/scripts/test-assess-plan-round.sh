@@ -172,8 +172,9 @@ chmod +x "$TMP/mock-monitor.sh"
 setup_round2
 printf 'stale worse\n' >"$TMP/assessor-verdict-round-2.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
-printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail 'monitor failure must degrade open'
-grep -Fqx 'NOT_WORSE' "$TMP/assessor-verdict-round-2.txt" || fail 'monitor failure must overwrite stale verdict artifact'
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=ok' || fail 'monitor failure should still tally valid assessor outputs'
+grep -Fqx 'WORSE: c' "$TMP/assessor-verdict-round-2.txt" || fail 'monitor failure must not suppress valid WORSE tally'
+grep -Fq 'assess-plan-round.sh' "$TMP/execution-issues.md" || fail 'monitor failure should still append warning'
 
 cat >"$TMP/mock-tally.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -223,5 +224,33 @@ out=$("$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present tr
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'production quiet-mode wiring path failed'
 [[ -f "$TMP/breadcrumbs/assessor-round-2.dispatch.kv" ]] || fail 'dispatch kv file missing'
 [[ -f "$TMP/breadcrumbs/assessor-round-2.quiet.log" ]] || fail 'quiet log missing'
+
+cat >"$TMP/mock-dispatch.sh" <<'STUB'
+#!/usr/bin/env bash
+DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --design-tmpdir) DIR="${2:?}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'DISPATCH_OK=true\n'
+printf 'CLAUDE_ASSESSOR_PATH=%s/../../escape.txt\n' "$DIR"
+printf 'CODEX_ASSESSOR_PATH=%s/codex-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
+printf 'ASSESSMENT: WORSE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/codex-plan-assessor-round-2.txt"
+printf 'ASSESSMENT: WORSE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/cursor-plan-assessor-round-2.txt"
+STUB
+chmod +x "$TMP/mock-dispatch.sh"
+cat >"$TMP/mock-monitor.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$TMP/mock-monitor.sh"
+setup_round2
+rm -f "$TMP/execution-issues.md"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail 'dispatch path escape must degrade open'
+grep -Fqx 'NOT_WORSE' "$TMP/assessor-verdict-round-2.txt" || fail 'dispatch path escape must synthesize NOT_WORSE verdict'
 
 pass 'assess-plan-round harness'

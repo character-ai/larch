@@ -58,4 +58,21 @@ if "$SUBJECT" write-cursor --design-tmpdir "$TMP" --value 0 >/tmp/larch-snapshot
   fail 'write-cursor zero should fail closed'
 fi
 
+STUBBIN="$TMP/stub-bin"
+mkdir -p "$STUBBIN"
+cat >"$STUBBIN/mv" <<'EOF'
+#!/usr/bin/env bash
+exit 91
+EOF
+chmod +x "$STUBBIN/mv"
+printf 'plan v3\n' >"$TMP/plan.txt"
+rm -f "$TMP/plan-after-round-3.txt"
+before_tmp_count=$(find "$TMP" -maxdepth 1 -name '.snapshot-after.*' | wc -l | tr -d ' ')
+if PATH="$STUBBIN:$PATH" "$SUBJECT" write-after --design-tmpdir "$TMP" --round 3 >/tmp/larch-snapshot-mvfail.out 2>&1; then
+  fail 'write-after rename failure should fail closed'
+fi
+after_tmp_count=$(find "$TMP" -maxdepth 1 -name '.snapshot-after.*' | wc -l | tr -d ' ')
+[[ ! -e "$TMP/plan-after-round-3.txt" ]] || fail 'rename failure must not leave destination snapshot'
+[[ "$before_tmp_count" == "$after_tmp_count" ]] || fail 'rename failure must clean temporary snapshot file'
+
 pass 'snapshot-plan-round harness'

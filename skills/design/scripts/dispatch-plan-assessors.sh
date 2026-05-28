@@ -59,6 +59,7 @@ done
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "dispatch-plan-assessors.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "dispatch-plan-assessors.sh: --cursor-present must be true or false"; exit 2; }
 larch_quiet_write_paired_pid_file
+emit_breadcrumb --category=progress "→ assessor-dispatch: round=${ROUND_NUM} prompt"
 
 RENDER_SH="${LARCH_RENDER_ASSESSOR_PROMPT_SH:-$PLUGIN_ROOT/skills/shared/scripts/render-assessor-prompt.sh}"
 prompt_file="$DESIGN_TMPDIR/assessor-prompt-round-${ROUND_NUM}.txt"
@@ -86,6 +87,7 @@ set +e
 claude_rc=$?
 set -e
 [[ -f "${CLAUDE_PATH}.done" ]] || printf '%s\n' "$claude_rc" >"${CLAUDE_PATH}.done"
+emit_breadcrumb --category=progress "→ assessor-dispatch: round=${ROUND_NUM} claude-status=${claude_rc}"
 
 CLAUDE_STATUS=launched
 [[ "$claude_rc" -eq 0 && -s "$CLAUDE_PATH" ]] || CLAUDE_STATUS=failed
@@ -109,6 +111,7 @@ waterfall_output=$("$WATERFALL_SH" \
     --require-result-pattern "$ASSESSMENT_PATTERN")
 wf_rc=$?
 set -e
+emit_breadcrumb --category=progress "→ assessor-dispatch: round=${ROUND_NUM} waterfall-rc=${wf_rc}"
 
 dispatch_ok=true
 all_outputs=""
@@ -137,7 +140,6 @@ CURSOR_STATUS=launched
 [[ "$CURSOR_TOOL" == "claude" ]] && CURSOR_STATUS=fallback
 [[ -s "$CODEX_PATH" ]] || CODEX_STATUS=failed
 [[ -s "$CURSOR_PATH" ]] || CURSOR_STATUS=failed
-[[ "$CLAUDE_STATUS" == "failed" ]] && dispatch_ok=false
 
 degraded_warning=false
 effective=0
@@ -148,6 +150,7 @@ if (( effective < 3 )); then degraded_warning=true; fi
 
 [[ "$dispatch_ok" != "true" || "$wf_rc" -ne 0 ]] && dispatch_ok=false
 [[ "$dispatch_ok" != "true" ]] && degraded_warning=true
+[[ "$CLAUDE_STATUS" == "failed" || "$CODEX_STATUS" == "failed" || "$CURSOR_STATUS" == "failed" ]] && degraded_warning=true
 
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv CLAUDE_ASSESSOR_PATH "$CLAUDE_PATH"

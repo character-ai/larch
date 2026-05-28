@@ -213,6 +213,16 @@ assert_env_has_keys "$TMP/design/.step3-plan-review-result.env" LOOP_STATUS ACCE
 printf 'original snapshot\n' >"$TMP/design/plan.txt-original"
 printf 'round 1 snapshot\n' >"$TMP/design/plan-after-round-1.txt"
 printf 'round 2 snapshot\n' >"$TMP/design/plan-after-round-2.txt"
+printf 'WORSE: assessor summary\n' >"$TMP/design/assessor-verdict-round-2.txt"
+cat >"$TMP/design/assessor-verdict-round-2.txt.env" <<'EOF'
+ASSESSOR_VERDICT=worse-majority
+BETTER_VOTES=0
+WORSE_VOTES=2
+TIE_VOTES=1
+EFFECTIVE_ASSESSORS=3
+DEGRADED_DEFAULT_OPEN=false
+QUALIFICATIONS_SUMMARY=assessor summary
+EOF
 printf '3\n' >"$TMP/design/plan-review-round-cursor.txt"
 
 # shellcheck source=scripts/lib-design-round-artifacts.sh
@@ -244,7 +254,10 @@ expected_paths=$(expected_round_paths "$TMP/design")
 actual_paths=$(published_round_paths "$clone" "RUNMRINT1")
 [[ "$expected_paths" == "$actual_paths" ]] || fail "published plan-review file list must match loop snapshot"
 grep -Fxq '3' "$clone/larch-logs/design/RUNMRINT1/plan-review-round-cursor.txt" || fail "published assessor round cursor missing"
+cmp -s "$TMP/design/plan.txt-original" "$clone/larch-logs/design/RUNMRINT1/plan.txt-original" || fail "published original snapshot mismatch"
 cmp -s "$TMP/design/plan-after-round-2.txt" "$clone/larch-logs/design/RUNMRINT1/plan-after-round-2.txt" || fail "published assessor snapshot mismatch"
+cmp -s "$TMP/design/assessor-verdict-round-2.txt" "$clone/larch-logs/design/RUNMRINT1/assessor-verdict-round-2.txt" || fail "published assessor verdict mismatch"
+cmp -s "$TMP/design/assessor-verdict-round-2.txt.env" "$clone/larch-logs/design/RUNMRINT1/assessor-verdict-round-2.txt.env" || fail "published assessor verdict env mismatch"
 
 echo "=== publish fails closed on unknown.bin ==="
 printf 'x\n' >"$TMP/design/plan-review/round-1/unknown.bin"

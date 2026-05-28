@@ -71,6 +71,14 @@ append_warning() {
         >/dev/null 2>&1 || true
 }
 
+assessor_path_valid() {
+    local candidate="$1" expected_basename="$2" candidate_dir=""
+    [[ -n "$candidate" ]] || return 1
+    [[ "$(basename "$candidate")" == "$expected_basename" ]] || return 1
+    candidate_dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
+    [[ "$candidate_dir" == "$DESIGN_TMPDIR" ]]
+}
+
 write_default_verdict_artifacts() {
     local verdict_file="$DESIGN_TMPDIR/assessor-verdict-round-${ROUND_NUM}.txt"
     local verdict_env="${verdict_file}.env"
@@ -102,6 +110,7 @@ done
 [[ -n "$DESIGN_TMPDIR" ]] || { usage; exit 2; }
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
+DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 ROUND_NUM=1
 
 workflow_path="$(read_workflow_path)"
@@ -185,13 +194,8 @@ monitor_rc=0
     --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
     --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
     || monitor_rc=$?
-if [[ "$monitor_rc" -eq 0 ]]; then
-    wait "$dispatch_pid"
-    dispatch_rc=$?
-else
-    wait "$dispatch_pid" 2>/dev/null || true
-    dispatch_rc=$monitor_rc
-fi
+wait "$dispatch_pid"
+dispatch_rc=$?
 set -e
 
 dispatch_out=""
@@ -212,10 +216,27 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     esac
 done <<<"$dispatch_out"
 
+if ! assessor_path_valid "$CLAUDE_ASSESSOR_PATH" "claude-plan-assessor-round-${ROUND_NUM}.txt" || \
+   ! assessor_path_valid "$CODEX_ASSESSOR_PATH" "codex-plan-assessor-round-${ROUND_NUM}.txt" || \
+   ! assessor_path_valid "$CURSOR_ASSESSOR_PATH" "cursor-plan-assessor-round-${ROUND_NUM}.txt"; then
+    DISPATCH_OK=false
+fi
+
+if [[ "$monitor_rc" -ne 0 ]]; then
+    cap=$(mktemp "${TMPDIR:-/tmp}/assessor-monitor.XXXXXX")
+    {
+        printf 'monitor_rc=%s\n' "$monitor_rc"
+        [[ -f "$LARCH_QUIET_LOG_FILE" ]] && cat "$LARCH_QUIET_LOG_FILE"
+    } >"$cap"
+    append_warning "$cap" "$monitor_rc"
+    rm -f "$cap"
+fi
+
 if [[ "$DISPATCH_OK" != "true" || "$dispatch_rc" -ne 0 ]]; then
     cap=$(mktemp "${TMPDIR:-/tmp}/assessor-dispatch.XXXXXX")
     {
         printf 'dispatch_rc=%s\n' "${dispatch_rc:-1}"
+        printf 'monitor_rc=%s\n' "${monitor_rc:-0}"
         printf '%s\n' "$dispatch_out"
         [[ -f "$LARCH_QUIET_LOG_FILE" ]] && cat "$LARCH_QUIET_LOG_FILE"
     } >"$cap"

@@ -18,6 +18,7 @@ PLUGIN_STUB="$TMP/plugin"
 mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/skills/shared/scripts" "$PLUGIN_STUB/skills/design/scripts"
 
 cp "$ROOT/skills/shared/scripts/render-assessor-prompt.sh" "$PLUGIN_STUB/skills/shared/scripts/"
+cp "$ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/"
 chmod +x "$PLUGIN_STUB/skills/shared/scripts/render-assessor-prompt.sh"
 
 cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'STUB'
@@ -100,9 +101,10 @@ export LARCH_LAUNCH_CLAUDE_REVIEW_SH="$PLUGIN_STUB/scripts/launch-claude-review.
 export LARCH_DISPATCH_WITH_WATERFALL_SH="$PLUGIN_STUB/scripts/dispatch-with-waterfall.sh"
 export DESIGN_TMPDIR="$TMP"
 export LARCH_PAIRED_PID_FILE="$TMP/paired.pid"
+export LARCH_BREADCRUMB_STREAM="$TMP/breadcrumbs.ndjson"
 unset IMPLEMENT_TMPDIR || true
 
-out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+out=$(LARCH_QUIET_DISABLE='' "$SUBJECT" \
   --design-tmpdir "$TMP" \
   --round-num 2 \
   --plan-original "$TMP/o.txt" \
@@ -117,6 +119,8 @@ printf '%s\n' "$out" | grep -Fq 'CLAUDE_ASSESSOR_PATH=' || fail 'missing claude 
 printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=false' || fail 'happy path should not be degraded'
 grep -Fq 'plan-assessor' "$TMP/plan-assessor-slots.ndjson" || fail 'missing manifest'
 [[ -s "$TMP/paired.pid" ]] || fail 'paired pid file was not written'
+grep -Fq 'assessor-dispatch: round=2 prompt' "$TMP/breadcrumbs.ndjson" || fail 'breadcrumb stream missing prompt marker'
+grep -Fq 'assessor-dispatch: round=2 waterfall-rc=0' "$TMP/breadcrumbs.ndjson" || fail 'breadcrumb stream missing waterfall marker'
 
 out=$(CURSOR_STUB_MODE=narrate LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \

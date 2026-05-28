@@ -67,6 +67,11 @@ write_assessor "$TMP/cursor.txt" WORSE
 : >"$TMP/codex.txt"
 body=$(run_tally)
 printf '%s\n' "$body" | grep -Fxq 'NOT_WORSE' || fail '(0,1,1) expected NOT_WORSE'
+write_assessor "$TMP/claude.txt" TIE
+write_assessor "$TMP/cursor.txt" TIE
+: >"$TMP/codex.txt"
+body=$(run_tally)
+printf '%s\n' "$body" | grep -Fxq 'NOT_WORSE' || fail '(0,2,0) expected NOT_WORSE'
 write_assessor "$TMP/claude.txt" WORSE
 : >"$TMP/cursor.txt"
 : >"$TMP/codex.txt"
@@ -134,6 +139,21 @@ EOF
 body=$(run_tally)
 printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'lowercase assessment tokens should parse'
 grep -Fq 'QUALIFICATIONS_SUMMARY=lower' "$TMP/v.txt.env" || fail 'lowercase assessment tokens must preserve qualification'
+
+cat >"$TMP/claude.txt" <<'EOF'
+ASSESSMENT: WORSE
+REASONING: line one
+KEY=spoof
+QUALIFICATIONS: first line
+NEXT=spoof
+EOF
+: >"$TMP/cursor.txt"
+: >"$TMP/codex.txt"
+body=$(run_tally)
+printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'multiline env-safety case should still be WORSE'
+grep -Eq '^KEY=' "$TMP/v.txt.env" && fail 'WORSE justification must not inject extra env keys'
+grep -Eq '^NEXT=' "$TMP/v.txt.env" && fail 'QUALIFICATIONS_SUMMARY must not inject extra env keys'
+grep -Fq 'QUALIFICATIONS_SUMMARY=first line NEXT=spoof' "$TMP/v.txt.env" || fail 'QUALIFICATIONS_SUMMARY must collapse multiline content onto one line'
 
 grep -Fq 'QUALIFICATIONS_SUMMARY=' "$TMP/v.txt.env" || fail 'missing env sidecar'
 

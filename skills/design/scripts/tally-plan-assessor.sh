@@ -20,6 +20,13 @@ usage() {
     larch_err "Usage: tally-plan-assessor.sh --design-tmpdir DIR --round-num N --claude-output PATH --cursor-output PATH --codex-output PATH --output PATH"
 }
 
+normalize_single_line() {
+    local value="$1"
+    value=$(printf '%s' "$value" | tr '\r\n' '  ' | LC_ALL=C tr '\000-\010\013\014\016-\037\177' ' ')
+    value=$(printf '%s' "$value" | sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//')
+    printf '%s' "$value"
+}
+
 strip_md_bold() {
     local line="$1"
     line="${line#"${line%%[![:space:]]*}"}"
@@ -149,6 +156,7 @@ tmp_env=$(mktemp "$(dirname "$OUTPUT")/.assessor-verdict-env.XXXXXX")
 
 if [[ "$worse_majority" == true ]]; then
     justification="${reason_worse:-Multiple assessors judged the current plan worse than the previous round.}"
+    justification=$(normalize_single_line "$justification")
     if [[ ${#justification} -gt 500 ]]; then
         justification="${justification:0:497}..."
     fi
@@ -166,6 +174,7 @@ elif [[ "$degraded" == true ]]; then
 else
     qual_summary="${qual_summary:-Assessors found no WORSE-majority consensus.}"
 fi
+qual_summary=$(normalize_single_line "$qual_summary")
 if [[ ${#qual_summary} -gt 240 ]]; then
     qual_summary="${qual_summary:0:237}..."
 fi
