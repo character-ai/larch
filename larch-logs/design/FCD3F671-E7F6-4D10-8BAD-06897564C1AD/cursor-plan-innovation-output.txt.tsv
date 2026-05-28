@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	skills/design/scripts/revise-plan-with-waterfall.sh:365-371	Tier-4 success would emit the wrong REVISE_PATCH_PATH	A fallback winner writes <tool>-fallback-output.txt, but finalize still derives <tool>-output.txt from winner, so the success KV points at the earlier unified-diff artifact or a missing file	Track the actual winning output path in attempt_tier, or conditionally use <tool>-fallback-output.txt when winner_is_fallback is true
