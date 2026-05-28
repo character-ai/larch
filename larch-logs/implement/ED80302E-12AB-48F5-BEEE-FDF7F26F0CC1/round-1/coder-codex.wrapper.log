@@ -1,0 +1,9 @@
+Reading additional input from stdin...
+2026-05-28T20:04:15.799918Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 503 Service Unavailable, url: wss://chatgpt.com/backend-api/codex/responses
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+2026-05-28T20:09:50.000415Z ERROR codex_core::session: failed to record rollout items: thread 019e702f-f29e-7483-81c7-72ff2e1e020c not found
+✓ codex agent: completed (exit code 0, 351s elapsed, output 193 bytes)
