@@ -32,6 +32,7 @@ Grouped dedup:
 - Phase-1 and phase-2 `STATUS=OK` results for grouped slots append `ok` rows.
 - Phase-2 launches are serialized within each `fallback_group`. Before launching a grouped phase-2 slot, the dispatcher looks for the most recent existing `ok` row for the same group and fallback tool, so a fresh post-relaunch result supersedes any older row. If found, it copies that output to the slot's phase-1 output path, records final bookkeeping, and skips the launch.
 - If the phase-2 reuse copy fails for any `cp` failure mode, most commonly a stale ledger row whose source output has been deleted, the dispatcher falls through to a normal phase-2 relaunch on the fallback tool rather than aborting under `set -e`.
+  These relaunches feed `PHASE2_RELAUNCH_COUNT` and the cost-threshold warning alongside phase-3 Claude fallback work.
 - Ungrouped phase-2 slots remain on the legacy parallel path.
 - Reused slots write `${output}.dedup` with exactly:
 
@@ -57,7 +58,8 @@ Stdout keys:
 - `ALL_OUTPUT_FILES_PATH` — absolute/resolved path to the line-oriented paths-file (one output path per line, slot order); default file is `<slots-file>.output-files`, overridable with `--paths-file <path>`
 - `ALL_OUTPUT_TOOLS`
 - `FALLBACK_COUNT`
-- `WARN=cost-fallback-exceeded-threshold` when phase-3 count exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD` (default 3)
+- `PHASE2_RELAUNCH_COUNT`
+- `WARN=cost-fallback-exceeded-threshold` when combined phase-2 fall-through + phase-3 Claude count exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD` (default 3)
 - `DISPATCH_OK=true|false`
 
 Flags:

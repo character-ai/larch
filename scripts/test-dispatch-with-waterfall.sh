@@ -566,6 +566,7 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --require-result-pattern '^[[:space:]]*## Recommendation' \
     --timeout 5)
 assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "PHASE2_RELAUNCH_COUNT=1" "$out"
 assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex codex codex" "$out"
 [[ "$(counter_value "$codex_cp_fail_counter")" == "2" ]] || { echo "FAIL: cp-failure grouped reuse should launch codex twice" >&2; cat "$codex_cp_fail_log" >&2; exit 1; }
@@ -577,6 +578,41 @@ grep -Fq 'fresh cp-fail-b-phase2.txt' "$TMPROOT/cp-fail-c.txt" || { echo "FAIL: 
 [[ ! -f "$TMPROOT/cp-fail-b.txt.dedup" ]] || { echo "FAIL: relaunched slot must not keep a dedup sidecar" >&2; exit 1; }
 [[ -f "$TMPROOT/cp-fail-c.txt.dedup" ]] || { echo "FAIL: later slot should dedup against relaunched output" >&2; exit 1; }
 grep -Fxq 'DEDUPE_REUSED_FROM=cp-fail-b' "$TMPROOT/cp-fail-c.txt.dedup" || { echo "FAIL: most recent ok row should supersede stale donor" >&2; cat "$TMPROOT/cp-fail-c.txt.dedup" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-dedup-cp-warn.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/cp-warn-a.txt" --arg pf "$prompt" \
+        '{slot:"cp-warn-a",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-warn-g"}'
+    jq -cn --arg out "$TMPROOT/cp-warn-b.txt" --arg pf "$prompt" \
+        '{slot:"cp-warn-b",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-warn-g"}'
+    jq -cn --arg out "$TMPROOT/cp-warn-c.txt" --arg pf "$prompt" \
+        '{slot:"cp-warn-c",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-warn-g"}'
+} >"$manifest"
+codex_cp_warn_log="$TMPROOT/codex-cp-warn.log"
+codex_cp_warn_counter="$TMPROOT/codex-cp-warn.count"
+cp_warn_counter="$TMPROOT/cp-warn.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD=0 \
+    LARCH_TEST_REAL_CP="$REAL_CP" \
+    CP_STUB_FAIL_COUNTER="$cp_warn_counter" \
+    CP_STUB_FAIL_TARGET_CONTAINS="$TMPROOT/cp-warn-b.txt" \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_INCLUDE_BASENAME=true \
+    CODEX_STUB_LOG="$codex_cp_warn_log" \
+    CODEX_STUB_COUNTER="$codex_cp_warn_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "PHASE2_RELAUNCH_COUNT=1" "$out"
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "WARN=cost-fallback-exceeded-threshold" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+[[ "$(counter_value "$codex_cp_warn_counter")" == "2" ]] || { echo "FAIL: cp-warning grouped reuse should launch codex twice" >&2; cat "$codex_cp_warn_log" >&2; exit 1; }
+[[ "$(counter_value "$cp_warn_counter")" == "1" ]] || { echo "FAIL: cp-warning shim should fail exactly one reuse copy" >&2; exit 1; }
 
 manifest="$TMPROOT/slots-dedup-phase1-ok.ndjson"
 {
