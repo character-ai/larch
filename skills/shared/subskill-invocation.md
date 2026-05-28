@@ -41,7 +41,7 @@ Set `allowed-tools` to the minimum needed by the parent skill itself — never m
 | Tier | `allowed-tools` | Example (with stable anchor) |
 |---|---|---|
 | Pure delegator | `Skill` | `skills/im/SKILL.md` frontmatter (allowed-tools line) — forwards only |
-| Delegator that validates first | `Bash, Skill` | `skills/block-issue/SKILL.md` frontmatter — runs Bash helpers before delegating |
+| Delegator that validates first | `Bash, Skill` | `skills/block-issue/SKILL.md` frontmatter — runs Bash helpers before delegating; see `skills/research/SKILL.md § Sub-skill invocation` for another Bash-plus-Skill call-site shape in a stateful parent |
 | Hybrid orchestrator | `Skill` plus whatever the parent needs | `skills/implement/SKILL.md`, `skills/review/SKILL.md`, `skills/alias/SKILL.md`, `skills/research/SKILL.md` — parent runs setup, file I/O, git ops, and in `/alias`'s case a post-delegation sentinel-file verification. |
 
 `allowed-tools: Skill` alone is **neither necessary nor sufficient** to classify a skill as a pure delegator — some delegators need `Bash` for input validation. Conversely, a skill with `Skill` in its allowed list is not automatically a delegator; hybrid orchestrators include `Skill` as one tool among many.
