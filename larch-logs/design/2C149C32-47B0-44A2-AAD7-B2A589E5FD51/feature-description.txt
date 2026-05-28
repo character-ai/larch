@@ -1,0 +1,9 @@
+# Issue #2921: Add lint/CI guard for inline `gh --body`/`--notes` outside rule-covered paths
+
+The new `.claude/rules/gh-body-file.md` path-triggered rule covers the known set of `gh --body`/`--notes` callers, but a new script added outside the frontmatter's `paths:` list would bypass the reminder. A pre-commit grep hook or agent-lint rule scanning for `gh.*--body[^-]` in `.sh`/`.py` files would provide a repo-wide backstop independent of path coverage.
+
+**Accepted OOS from /implement run 37BD5132-0D63-4410-B48C-54DC0B2B094E (issue #2830).**
+
+Reviewers: cursor-specialist-edge-cases (FINDING_12, Vote YES=2 NO=1)
+
+Possible implementation: new pre-commit hook under `scripts/` or new rule in `agent-lint.toml` scanning staged files for the forbidden inline-body pattern.
