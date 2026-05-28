@@ -11,7 +11,7 @@
 
 ## Invariants
 
-- Required arguments are `--ballot-file FILE` and `--design-tmpdir DIR`.
+- Required arguments are `--ballot-file FILE` and `--design-tmpdir DIR`. `--design-tmpdir` is validated via `scripts/lib-design-tmpdir.sh` before `mkdir -p`.
   Voters are passed with repeatable `--voter <SLOT>:<PATH>` where `SLOT` is
   `Claude`, `Codex`, `Cursor`, or `MainAgent`. `--voter-files FILE...` remains
   as a transition fallback and emits `deprecated: --voter-files; use --voter
@@ -44,7 +44,7 @@
 - Scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected` (+1 per accepted item, -1 per rejected item).
 - The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Exonerated`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, `OOS-Rejected`, and `Score`.
 - Whenever `--design-tmpdir` has been validated, `voting-tally.md` is materialized with at least the degraded header (`# Plan Review Voting Tally` plus a one-line abort note) before any non-zero exit. The missing-required-args and unknown-argument branches are exempt because `$DESIGN_TMPDIR` may be empty.
-- `mkdir -p "$DESIGN_TMPDIR"` runs as the first action after argv validation so all subsequent exit paths (including the ballot/voter-unreadable and split-failure branches) can safely write to it.
+- `larch_design_tmpdir_validate` runs after argv validation; `mkdir -p "$DESIGN_TMPDIR"` runs only after validation succeeds so all subsequent exit paths can safely write under the tmpdir.
 - The forensic TSV has exactly 21 tab-separated fields per row:
   `finding_id`, `finding_reviewers`, `voting_result`, then for v1/v2/v3:
   `vote`, `correctness`, `severity`, `quality`, `uncertain`, `tool`.

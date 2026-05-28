@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Shared helpers for plan/code voter coverage accounting and status KV emission.
-# Source-only library; callers own quiet initialization and argv validation.
+# Plan-review-specific helpers for voter coverage accounting and status KV emission.
+# The interleaved KV order in plan_voter_coverage_emit_status_block is a binding
+# contract for plan-review stdout parsers; do not reuse from code-review dispatch.
 
 # shellcheck source=scripts/lib-quiet.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib-quiet.sh"
 
-voter_coverage_compute_effective_judges() {
+plan_voter_coverage_compute_effective_judges() {
     local effective_judges=0
     local slot_record status path parse_rate_status
 
@@ -24,7 +25,7 @@ voter_coverage_compute_effective_judges() {
     printf '%s\n' "$effective_judges"
 }
 
-voter_coverage_emit_degraded_warning_if_needed() {
+plan_voter_coverage_emit_degraded_warning_if_needed() {
     local effective_judges="${1:?effective_judges is required}"
     local expected_judges="${2:?expected_judges is required}"
     local warn_msg
@@ -36,7 +37,7 @@ voter_coverage_emit_degraded_warning_if_needed() {
     fi
 }
 
-voter_coverage_emit_status_block() {
+plan_voter_coverage_emit_status_block() {
     local voter_1_path="${1:?voter_1_path is required}"
     local voter_1_tool="${2:?voter_1_tool is required}"
     local voter_1_status="${3:?voter_1_status is required}"

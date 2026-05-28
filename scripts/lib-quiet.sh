@@ -131,6 +131,12 @@ emit() {
 
 emit_kv() {
     local key=$1 value=${2-}
+    case "$value" in
+        *$'\n'*|*$'\r'*)
+            larch_err "emit_kv: value for key ${key} must not contain newline or carriage return"
+            return 2
+            ;;
+    esac
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         printf '%s=%s\n' "$key" "$value" >&3
     else
