@@ -137,6 +137,7 @@ CURSOR_STATUS=launched
 [[ "$CURSOR_TOOL" == "claude" ]] && CURSOR_STATUS=fallback
 [[ -s "$CODEX_PATH" ]] || CODEX_STATUS=failed
 [[ -s "$CURSOR_PATH" ]] || CURSOR_STATUS=failed
+[[ "$CLAUDE_STATUS" == "failed" ]] && dispatch_ok=false
 
 degraded_warning=false
 effective=0

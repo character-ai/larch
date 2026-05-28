@@ -178,6 +178,34 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --cursor-present false)
 printf '%s\n' "$out" | grep -Fq 'CURSOR_ASSESSOR_STATUS=fallback' || fail 'cursor-unavailable path should surface fallback'
 
+cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'STUB'
+#!/usr/bin/env bash
+OUTPUT="" PROMPT_FILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) OUTPUT="${2:?}"; shift 2 ;;
+    --prompt-file) PROMPT_FILE="${2:?}"; shift 2 ;;
+    --mode|--role|--timeout|--timing-task-kind) shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'ASSESSMENT: WORSE\nREASONING: claude ok\nQUALIFICATIONS: claude qual\n' >"$OUTPUT"
+printf '0\n' >"${OUTPUT}.done"
+STUB
+chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+  --design-tmpdir "$TMP" \
+  --round-num 2 \
+  --plan-original "$TMP/o.txt" \
+  --plan-prev "$TMP/p.txt" \
+  --plan-current "$TMP/c.txt" \
+  --feature-file "$TMP/feature.txt" \
+  --codex-present false \
+  --cursor-present false)
+printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'dual-fallback path should still satisfy dispatch contract'
+printf '%s\n' "$out" | grep -Fq 'CODEX_ASSESSOR_STATUS=fallback' || fail 'dual-fallback path should surface codex fallback'
+printf '%s\n' "$out" | grep -Fq 'CURSOR_ASSESSOR_STATUS=fallback' || fail 'dual-fallback path should surface cursor fallback'
+
 if LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \
   --round-num 02x \

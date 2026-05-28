@@ -83,7 +83,7 @@ write_default_verdict_artifacts() {
         printf 'TIE_VOTES=0\n'
         printf 'EFFECTIVE_ASSESSORS=0\n'
         printf 'DEGRADED_DEFAULT_OPEN=true\n'
-        printf 'QUALIFICATIONS_SUMMARY=Assessors found no WORSE-majority consensus.\n'
+        printf 'QUALIFICATIONS_SUMMARY=Plan-quality assessor panel degraded; no WORSE-majority verdict available.\n'
     } >"$verdict_env"
     emit_assessor_kv degraded-default-open not-worse 0 "$verdict_file" "$verdict_env"
 }

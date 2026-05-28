@@ -78,6 +78,23 @@ rm -f "$TMP/feature-description.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=missing-snapshot' || fail 'missing feature file must skip before dispatch'
 [[ ! -e "$TMP/assessor-verdict-round-2.txt" ]] || fail 'missing-snapshot path must not write verdict artifacts'
+grep -Fq 'feature-description.txt' "$TMP/execution-issues.md" || fail 'missing feature file must append execution warning'
+
+setup_round2
+rm -f "$TMP/plan.txt-original"
+rm -f "$TMP/execution-issues.md"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=missing-snapshot' || fail 'missing original snapshot must skip before dispatch'
+[[ ! -e "$TMP/assessor-verdict-round-2.txt" ]] || fail 'missing original snapshot path must not write verdict artifacts'
+grep -Fq 'plan.txt-original' "$TMP/execution-issues.md" || fail 'missing original snapshot must append execution warning'
+
+setup_round2
+rm -f "$TMP/plan-after-round-1.txt"
+rm -f "$TMP/execution-issues.md"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=missing-snapshot' || fail 'missing prior-round snapshot must skip before dispatch'
+[[ ! -e "$TMP/assessor-verdict-round-2.txt" ]] || fail 'missing prior-round snapshot path must not write verdict artifacts'
+grep -Fq 'plan-after-round-1.txt' "$TMP/execution-issues.md" || fail 'missing prior-round snapshot must append execution warning'
 
 setup_round2
 printf 'stale\n' >"$TMP/claude-plan-assessor-round-2.txt"
@@ -109,6 +126,7 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present tr
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail 'dispatch failure must degrade open'
 grep -Fq 'ASSESSOR_VERDICT=not-worse' "$TMP/assessor-verdict-round-2.txt.env" || fail 'dispatch failure should synthesize not-worse verdict env'
 grep -Fq 'EFFECTIVE_ASSESSORS=0' "$TMP/assessor-verdict-round-2.txt.env" || fail 'dispatch failure should not tally partial outputs'
+grep -Fq 'Plan-quality assessor panel degraded; no WORSE-majority verdict available.' "$TMP/assessor-verdict-round-2.txt.env" || fail 'dispatch failure should synthesize degraded summary'
 
 cat >"$TMP/mock-dispatch.sh" <<'STUB'
 #!/usr/bin/env bash

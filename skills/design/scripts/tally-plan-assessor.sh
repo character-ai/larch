@@ -98,7 +98,7 @@ reason_worse=""
 add_distinct_qualification() {
     local candidate="$1" existing=""
     [[ -n "$candidate" ]] || return 0
-    for existing in "${qual_worse_list[@]:-}"; do
+    for existing in ${qual_worse_list[@]+"${qual_worse_list[@]}"}; do
         [[ "$existing" == "$candidate" ]] && return 0
     done
     qual_worse_list+=("$candidate")
@@ -161,6 +161,8 @@ fi
 
 if [[ "$worse_majority" == true ]]; then
     qual_summary="${qual_summary:-WORSE-majority assessors supplied no qualifications.}"
+elif [[ "$degraded" == true ]]; then
+    qual_summary="${qual_summary:-Plan-quality assessor panel degraded; no WORSE-majority verdict available.}"
 else
     qual_summary="${qual_summary:-Assessors found no WORSE-majority consensus.}"
 fi

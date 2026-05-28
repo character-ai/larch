@@ -10,6 +10,10 @@ SUBJECT="$ROOT/skills/design/scripts/tally-plan-assessor.sh"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
+# shellcheck disable=SC2016 # Literal grep pin for Bash 3.2-safe array expansion.
+grep -Fq 'for existing in ${qual_worse_list[@]+"${qual_worse_list[@]}"}; do' "$SUBJECT" \
+  || fail 'bash32-safe empty-array idiom missing from add_distinct_qualification'
+
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/ttpa.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
@@ -50,6 +54,7 @@ assert_verdict() {
 assert_verdict '(0,0,3)' WORSE WORSE WORSE WORSE
 assert_verdict '(0,1,2)' WORSE WORSE TIE WORSE
 assert_verdict '(1,0,2)' WORSE BETTER WORSE WORSE
+assert_verdict '(2,1,0)' NOT_WORSE BETTER BETTER TIE
 assert_verdict '(0,2,1)' NOT_WORSE TIE TIE WORSE
 assert_verdict '(1,1,1)' NOT_WORSE BETTER TIE WORSE
 : >"$TMP/cursor.txt"
@@ -88,6 +93,7 @@ body=$(run_tally)
 printf '%s\n' "$body" | grep -Fxq 'NOT_WORSE' || fail 'zero-effective should degrade open to NOT_WORSE'
 grep -Fq 'EFFECTIVE_ASSESSORS=0' "$TMP/v.txt.env" || fail 'zero-effective assessor count missing'
 grep -Fq 'DEGRADED_DEFAULT_OPEN=true' "$TMP/v.txt.env" || fail 'zero-effective should mark degraded default open'
+grep -Fq 'QUALIFICATIONS_SUMMARY=Plan-quality assessor panel degraded; no WORSE-majority verdict available.' "$TMP/v.txt.env" || fail 'zero-effective should use degraded summary'
 
 write_assessor "$TMP/claude.txt" WORSE
 printf '**ASSESSMENT: WORSE**\nREASONING: md\nQUALIFICATIONS: mdqual\n' >"$TMP/cursor.txt"
@@ -117,6 +123,17 @@ EOF
 body=$(run_tally)
 printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'duplicate assessment block should honor final verdict'
 grep -Fq 'QUALIFICATIONS_SUMMARY=q1' "$TMP/v.txt.env" || fail 'duplicate assessment block must reset stale qualification state'
+
+cat >"$TMP/claude.txt" <<'EOF'
+assessment: worse
+reasoning: lowercase
+qualifications: lower
+EOF
+: >"$TMP/cursor.txt"
+: >"$TMP/codex.txt"
+body=$(run_tally)
+printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'lowercase assessment tokens should parse'
+grep -Fq 'QUALIFICATIONS_SUMMARY=lower' "$TMP/v.txt.env" || fail 'lowercase assessment tokens must preserve qualification'
 
 grep -Fq 'QUALIFICATIONS_SUMMARY=' "$TMP/v.txt.env" || fail 'missing env sidecar'
 

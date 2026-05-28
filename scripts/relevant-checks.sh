@@ -64,6 +64,31 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/scripts/snapshot-plan-round.sh|skills/design/scripts/snapshot-plan-round.md|skills/design/scripts/test-snapshot-plan-round.sh|skills/design/scripts/test-snapshot-plan-round.md)
+                append_target_once test-snapshot-plan-round
+                ;;
+        esac
+        case "$f" in
+            skills/design/scripts/dispatch-plan-assessors.sh|skills/design/scripts/dispatch-plan-assessors.md|skills/design/scripts/test-dispatch-plan-assessors.sh|skills/design/scripts/test-dispatch-plan-assessors.md)
+                append_target_once test-dispatch-plan-assessors
+                ;;
+        esac
+        case "$f" in
+            skills/shared/scripts/render-assessor-prompt.sh|skills/shared/scripts/render-assessor-prompt.md|skills/shared/scripts/test-render-assessor-prompt.sh|skills/shared/scripts/test-render-assessor-prompt.md)
+                append_target_once test-render-assessor-prompt
+                ;;
+        esac
+        case "$f" in
+            skills/design/scripts/tally-plan-assessor.sh|skills/design/scripts/tally-plan-assessor.md|skills/design/scripts/test-tally-plan-assessor.sh|skills/design/scripts/test-tally-plan-assessor.md)
+                append_target_once test-tally-plan-assessor
+                ;;
+        esac
+        case "$f" in
+            skills/design/scripts/assess-plan-round.sh|skills/design/scripts/assess-plan-round.md|skills/design/scripts/test-assess-plan-round.sh|skills/design/scripts/test-assess-plan-round.md)
+                append_target_once test-assess-plan-round
+                ;;
+        esac
+        case "$f" in
             skills/design/scripts/plan-review-loop.sh|skills/design/scripts/plan-review-loop.md|skills/design/scripts/test-plan-review-loop.sh)
                 append_target_once test-plan-review-loop
                 append_target_once test-design-multi-round-integration

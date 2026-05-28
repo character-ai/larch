@@ -87,6 +87,12 @@ contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping p
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'Then fire `AskUserQuestion` with exactly two options: **Continue to Step 3.6 and Gate C** (Recommended) / **Switch to discussion mode**.' 'approval-gates.md missing passive-summary Step 3.6 forward link'
+contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 forward link'
+contains "$APPROVAL_MD" 'passive-summary Continue → Step 3.6 → Step 3b → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 forward link'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b' 'approval-gates.md missing shared post-apply Step 3.6 forward link'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:' 'approval-gates.md missing explicit converged/cap-hit auto-apply skip guard'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -833,6 +839,7 @@ contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-revie
 contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
 contains "$SKILL_MD" "--round-num \"\$ROUND_NUM\"" 'SKILL.md missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
+contains "$SKILL_MD" 'passive-summary Continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
 contains "$SKILL_MD" 'cancelled-assessor-worse' 'SKILL.md missing cancelled-assessor-worse outcome'
 contains "$REPO_ROOT/skills/design/scripts/render-final-summary.sh" 'cancelled-assessor-worse' 'render-final-summary.sh missing cancelled-assessor-worse outcome'
 contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'claude-plan-assessor' 'lib-timing-kinds.sh missing claude-plan-assessor'
