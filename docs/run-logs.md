@@ -175,14 +175,14 @@ for the authoritative producer contract and harness coverage.
 
 Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each inner round of the multi-round plan-review loop produces forensic artifacts. The list below is a **representative** selection grouped by producer — `scripts/lib-design-round-artifacts.md` is the **authoritative** allowlist for the complete file set, and the `SECURITY.md` design-log publish-allowlist paragraph enforces what may be committed.
 
-**Findings**
+#### Findings
 
 - `findings.md`
 - `findings-in-scope.md`
 - `findings-oos.md`
 - `findings-classification.tsv`
 
-**Voting**
+#### Voting
 
 - `accepted-plan-findings.md`
 - `rejected-findings.md`
@@ -191,7 +191,7 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each inner round of t
 - `ballot.txt`
 - `voting-tally.md`
 
-**Manifests and voter diagnostics**
+#### Manifests and voter diagnostics
 
 - `plan-review-slots.ndjson`
 - `plan-voter-slots.ndjson`
@@ -200,11 +200,11 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each inner round of t
 - `voter*-diag.txt`
 - `plan.txt` (per-round snapshot)
 
-**Loop forensics**
+#### Loop forensics
 
 - `round-summary.env`
 
-**Revise sub-tree (`round-<N>/revise/`)**
+#### Revise sub-tree (`round-<N>/revise/`)
 
 - `codex-output.txt`
 - `cursor-output.txt`

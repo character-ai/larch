@@ -791,6 +791,7 @@ echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
 contains "$APPROVAL_MD" 'important → High' '(FINDING_2667) approval-gates.md missing important → High mapping'
 contains "$APPROVAL_MD" 'latent → Medium' '(FINDING_2667) approval-gates.md missing latent → Medium mapping'
 contains "$APPROVAL_MD" 'nit → Low' '(FINDING_2667) approval-gates.md missing nit → Low mapping'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'When **any** accepted finding lacks that structured `- **Severity**:` line' \
   '(FINDING_2667) approval-gates.md missing all-or-nothing Concern-text fallback when structured Severity absent'
 echo "PASS: FINDING_2667 — Gate B severity precedence prose OK"
