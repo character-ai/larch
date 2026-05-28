@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- individual counters are tested in isolation; mixed scenario adds marginal value when the formula is trivial arithmetic
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- no in-repo callers; doc gap is real but blast radius is zero and scope is narrow
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing coverage gap unrelated to this change; not worth filing against this PR's surface
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- finding body concludes no regression is identified; not a problem worth filing
+FINDING_10: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- telemetry log files being non-consumers is expected and not a problem

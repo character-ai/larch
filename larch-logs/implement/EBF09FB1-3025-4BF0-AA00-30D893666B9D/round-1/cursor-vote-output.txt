@@ -1,0 +1,10 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- reuse_fell_through correctly scopes increments; simplification is optional style only
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- phase-2 and phase-3 paths are covered separately; mixed WARN scenario is optional harness depth
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- review paths forward WARN only; no fallback-counter consumer regression to file
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- run-log paths are telemetry, not executable fallback-KV consumers

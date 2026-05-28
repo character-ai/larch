@@ -14,7 +14,7 @@ Scout output is treated as untrusted metadata. The dispatcher does not forward L
 
 Once-per-round-dispatch is scoped to `$REVIEW_TMPDIR`. Standalone `/review` reuses the sentinel for the run; `/implement` creates a new round dir after fixes, so the scout can run again against the changed diff in the next round.
 
-`PANEL_MODE=waterfall` is always emitted (the waterfall is the only dispatch mode). `PANEL_SHAPE=simple|hard` reports the selected topology shape. `DISPATCH_OK=false` is emitted when any Phase 3 Claude slot fails, so callers can gate on full-panel availability. `WARN=cost-fallback-exceeded-threshold` is emitted when the Phase 3 fallback count exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD`.
+`PANEL_MODE=waterfall` is always emitted (the waterfall is the only dispatch mode). `PANEL_SHAPE=simple|hard` reports the selected topology shape. `DISPATCH_OK=false` is emitted when any Phase 3 Claude slot fails, so callers can gate on full-panel availability. `WARN=cost-fallback-exceeded-threshold` is emitted when the combined phase-2 fall-through relaunch count plus the phase-3 Claude count exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD`.
 
 Pass `--description-text` to thread the user's description through to both external and Claude reviewer prompts in description mode.
 

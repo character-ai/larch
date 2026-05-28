@@ -476,6 +476,7 @@ for idx in "${phase2_queue[@]+"${phase2_queue[@]}"}"; do
 done
 collect_phase phase2_ungrouped_failed
 
+phase2_relaunch_count=0
 phase2_grouped_failed=()
 processed_groups=()
 for grouped_idx in "${phase2_grouped[@]+"${phase2_grouped[@]}"}"; do
@@ -491,6 +492,7 @@ for grouped_idx in "${phase2_grouped[@]+"${phase2_grouped[@]}"}"; do
     processed_groups+=("$group")
     for idx in "${phase2_grouped[@]+"${phase2_grouped[@]}"}"; do
         [[ "${slot_fallback_groups[$idx]}" == "$group" ]] || continue
+        reuse_fell_through=false
         primary="${slot_tools[$idx]}"
         alt=$(other_tool "$primary" || true)
         source_row="$(find_group_ok_for_tool "$group" "$alt" || true)"
@@ -501,10 +503,12 @@ for grouped_idx in "${phase2_grouped[@]+"${phase2_grouped[@]}"}"; do
             if reuse_slot_result "$idx" "$source_slot" "$source_output" "$source_tool"; then
                 continue
             fi
+            reuse_fell_through=true
         fi
         reset_phase
         out=$(output_for_phase "${slot_outputs[$idx]}" phase2)
         phase2_outputs+=("$out")
+        [[ "$reuse_fell_through" == "true" ]] && phase2_relaunch_count=$((phase2_relaunch_count + 1))
         launch_slot "$idx" phase2 "$alt" "$out"
         phase2_one_failed=()
         collect_phase phase2_one_failed
@@ -529,12 +533,14 @@ done
 phase3_failed=()
 collect_phase phase3_failed
 
+combined_fallback=$((fallback_count + phase2_relaunch_count))
+
 if [[ -n "$FALLBACK_COUNTER_FILE" ]]; then
     prior=0
     [[ -f "$FALLBACK_COUNTER_FILE" ]] && prior=$(cat "$FALLBACK_COUNTER_FILE" 2>/dev/null || echo 0)
     case "$prior" in ''|*[!0-9]*) prior=0 ;; esac
     tmp=$(mktemp "${FALLBACK_COUNTER_FILE}.tmp.XXXXXX")
-    printf '%s\n' "$((prior + fallback_count))" > "$tmp"
+    printf '%s\n' "$((prior + combined_fallback))" > "$tmp"
     mv "$tmp" "$FALLBACK_COUNTER_FILE"
 fi
 
@@ -556,7 +562,7 @@ done
 warn=""
 threshold="${LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD:-3}"
 case "$threshold" in ''|*[!0-9]*) threshold=3 ;; esac
-if (( fallback_count > threshold )); then
+if (( combined_fallback > threshold )); then
     warn="cost-fallback-exceeded-threshold"
 fi
 
@@ -583,6 +589,7 @@ emit_kv ALL_OUTPUT_FILES "${final_outputs[*]-}"
 emit_kv ALL_OUTPUT_FILES_PATH "$resolved_paths_file"
 emit_kv ALL_OUTPUT_TOOLS "${final_tools[*]-}"
 emit_kv FALLBACK_COUNT "$fallback_count"
+emit_kv PHASE2_RELAUNCH_COUNT "$phase2_relaunch_count"
 [[ -n "$warn" ]] && emit_kv WARN "$warn"
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
