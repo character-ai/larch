@@ -353,30 +353,87 @@ larch_log_publish_breadcrumbs_swap() {
     return 1
 }
 
+larch_log_publish_breadcrumbs_stage_file() {
+    local staging_parent="$1" staging_dir="$2" f="$3" on_error="$4"
+    local base state_file tmp_out link_count
+
+    [ -e "$f" ] || return 0
+    [ ! -L "$f" ] || {
+        rm -rf "$staging_parent"
+        "$on_error" "breadcrumbs source file must not be a symlink: $f"
+        return 1
+    }
+    [ -f "$f" ] || return 0
+    if ! larch_log_breadcrumbs_under_session_tmp "$f"; then
+        rm -rf "$staging_parent"
+        "$on_error" "breadcrumbs source file must stay under the session tmpdir: $f"
+        return 1
+    fi
+    link_count="$(larch_log_stat_link_count "$f" 2>/dev/null || printf '0')"
+    if [ "${link_count:-0}" -gt 1 ]; then
+        rm -rf "$staging_parent"
+        "$on_error" "breadcrumbs source file must not be a hardlink: $f"
+        return 1
+    fi
+    base="$(basename "$f")"
+    case "$base" in
+        */*|.*|*..*)
+            rm -rf "$staging_parent"
+            "$on_error" "invalid breadcrumbs basename: $base"
+            return 1
+            ;;
+    esac
+    state_file="$staging_parent/${base}.state"
+    tmp_out="$staging_dir/$base"
+    printf 'in_pem=0\n' >"$state_file" || {
+        rm -rf "$staging_parent"
+        "$on_error" "cannot create breadcrumbs redaction state"
+        return 1
+    }
+    if ! "$LARCH_LOG_LIB_DIR/redact-tmpdir-paths.sh" <"$f" | "$LARCH_LOG_LIB_DIR/redact-secrets.sh" --streaming --state-file "$state_file" >"$tmp_out"; then
+        rm -rf "$staging_parent" 2>/dev/null || true
+        "$on_error" "breadcrumbs redaction failed for $f"
+        return 1
+    fi
+    return 0
+}
+
 larch_log_publish_breadcrumbs_shared() {
     local source_dir="$1" dest_dir="$2" on_error="$3"
-    local staging_parent staging_dir f base state_file tmp_out found_any=false link_count
+    local staging_parent staging_dir f base found_any=false
+    local session_root ndjson_source_ok=false quiet_source_ok=false
 
     [ -n "$source_dir" ] || return 0
-    if [ ! -e "$source_dir" ]; then
+    session_root="$(dirname "$source_dir")"
+
+    if [ -e "$source_dir" ]; then
+        case "$source_dir" in
+            /*) ;;
+            *) "$on_error" "breadcrumbs source must be absolute: $source_dir"; return 1 ;;
+        esac
+        if [ -L "$source_dir" ]; then
+            "$on_error" "breadcrumbs source must not be a symlink: $source_dir"
+            return 1
+        fi
+        if [ ! -d "$source_dir" ]; then
+            "$on_error" "breadcrumbs source is not a directory: $source_dir"
+            return 1
+        fi
+        if ! larch_log_breadcrumbs_under_session_tmp "$source_dir"; then
+            "$on_error" "breadcrumbs source must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR: $source_dir"
+            return 1
+        fi
+        ndjson_source_ok=true
+    fi
+
+    if larch_log_breadcrumbs_under_session_tmp "$session_root"; then
+        quiet_source_ok=true
+    fi
+
+    if [ "$ndjson_source_ok" != true ] && [ "$quiet_source_ok" != true ]; then
         return 0
     fi
-    case "$source_dir" in
-        /*) ;;
-        *) "$on_error" "breadcrumbs source must be absolute: $source_dir"; return 1 ;;
-    esac
-    if [ -L "$source_dir" ]; then
-        "$on_error" "breadcrumbs source must not be a symlink: $source_dir"
-        return 1
-    fi
-    if [ ! -d "$source_dir" ]; then
-        "$on_error" "breadcrumbs source is not a directory: $source_dir"
-        return 1
-    fi
-    if ! larch_log_breadcrumbs_under_session_tmp "$source_dir"; then
-        "$on_error" "breadcrumbs source must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR: $source_dir"
-        return 1
-    fi
+
     staging_parent="$(mktemp -d "${TMPDIR:-/tmp}/larch-log-breadcrumbs.XXXXXX")" || {
         "$on_error" "cannot create breadcrumbs staging temp"
         return 1
@@ -388,51 +445,37 @@ larch_log_publish_breadcrumbs_shared() {
         return 1
     }
 
-    for f in "$source_dir"/*; do
-        [ -e "$f" ] || continue
-        [ ! -L "$f" ] || {
-            rm -rf "$staging_parent"
-            "$on_error" "breadcrumbs source file must not be a symlink: $f"
-            return 1
-        }
-        [ -f "$f" ] || continue
-        if ! larch_log_breadcrumbs_under_session_tmp "$f"; then
-            rm -rf "$staging_parent"
-            "$on_error" "breadcrumbs source file must stay under the session tmpdir: $f"
-            return 1
-        fi
-        link_count="$(larch_log_stat_link_count "$f" 2>/dev/null || printf '0')"
-        if [ "${link_count:-0}" -gt 1 ]; then
-            rm -rf "$staging_parent"
-            "$on_error" "breadcrumbs source file must not be a hardlink: $f"
-            return 1
-        fi
-        base="$(basename "$f")"
-        case "$base" in
-            *.ndjson) ;;
-            *) continue ;;
-        esac
-        case "$base" in
-            */*|.*|*..*)
-                rm -rf "$staging_parent"
-                "$on_error" "invalid breadcrumbs basename: $base"
+    if [ "$ndjson_source_ok" = true ]; then
+        for f in "$source_dir"/*; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f")"
+            case "$base" in
+                *.ndjson) ;;
+                *) continue ;;
+            esac
+            if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
                 return 1
-                ;;
-        esac
-        state_file="$staging_parent/${base}.state"
-        tmp_out="$staging_dir/$base"
-        printf 'in_pem=0\n' >"$state_file" || {
-            rm -rf "$staging_parent"
-            "$on_error" "cannot create breadcrumbs redaction state"
-            return 1
-        }
-        if ! "$LARCH_LOG_LIB_DIR/redact-tmpdir-paths.sh" <"$f" | "$LARCH_LOG_LIB_DIR/redact-secrets.sh" --streaming --state-file "$state_file" >"$tmp_out"; then
-            rm -rf "$staging_parent" 2>/dev/null || true
-            "$on_error" "breadcrumbs redaction failed for $f"
-            return 1
-        fi
-        found_any=true
-    done
+            fi
+            [ -e "$staging_dir/$base" ] || continue
+            found_any=true
+        done
+    fi
+
+    if [ "$quiet_source_ok" = true ]; then
+        for f in "$session_root"/larch-quiet-*-*.log; do
+            [ -e "$f" ] || continue
+            base="$(basename "$f")"
+            case "$base" in
+                larch-quiet-*-*.log) ;;
+                *) continue ;;
+            esac
+            if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
+                return 1
+            fi
+            [ -e "$staging_dir/$base" ] || continue
+            found_any=true
+        done
+    fi
 
     if [ "$found_any" != "true" ]; then
         rm -rf "$staging_parent"

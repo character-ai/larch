@@ -235,6 +235,14 @@ printf 'EXIT_CODE=0\n' > "$_staging/breadcrumbs/foo.done"
 printf 'EXIT_CODE=0\n' > "$_staging/breadcrumbs/foo.status"
 printf 'surfaced\n' > "$_staging/breadcrumbs/foo.surfaced"
 printf '12\n' > "$_staging/breadcrumbs/foo.bc-offset"
+PEM_BEGIN_Q='-----BEGIN RSA PRIVATE ''KEY-----'
+PEM_END_Q='-----END RSA PRIVATE ''KEY-----'
+{
+    printf 'quiet tmpdir %s\n' "/tmp/larch-implement-demoABC"
+    printf '%s\n' "$PEM_BEGIN_Q"
+    printf '%s\n' 'MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Qu'
+    printf '%s\n' "$PEM_END_Q"
+} > "$_staging/larch-quiet-foo.sh-12345.log"
 _mf_staging="$_staging/larch-logs/implement/$_rid/manifest.json"
 if command -v jq >/dev/null 2>&1; then
     _commit_ts_before="$(jq -r '.updated_at' "$_mf_staging")"
@@ -263,6 +271,10 @@ fi
 if grep -q '<REDACTED-PRIVATE-KEY>' "$_breadcrumbs" 2>/dev/null; then pass "commit redacts breadcrumb PEM"; else fail "commit redacts breadcrumb PEM"; fi
 if grep -q 'MIIBOgIBAAJB' "$_breadcrumbs" 2>/dev/null; then fail "commit leaked raw breadcrumb PEM"; else pass "commit omits raw breadcrumb PEM"; fi
 if grep -q '<TMPDIR>' "$_breadcrumbs" 2>/dev/null; then pass "commit redacts breadcrumb tmpdir path"; else fail "commit redacts breadcrumb tmpdir path"; fi
+_quiet_bc="$_repo/larch-logs/implement/$_rid/breadcrumbs/larch-quiet-foo.sh-12345.log"
+if [ -f "$_quiet_bc" ]; then pass "commit publishes session-root quiet log"; else fail "commit publishes session-root quiet log (missing $_quiet_bc)"; fi
+if grep -q '<REDACTED-PRIVATE-KEY>' "$_quiet_bc" 2>/dev/null; then pass "commit redacts quiet-log PEM"; else fail "commit redacts quiet-log PEM"; fi
+if grep -q '<TMPDIR>' "$_quiet_bc" 2>/dev/null; then pass "commit redacts quiet-log tmpdir path"; else fail "commit redacts quiet-log tmpdir path"; fi
 _mf="$_repo/larch-logs/implement/$_rid/manifest.json"
 if [ -f "$_mf" ]; then pass "commit copies manifest to repo"; else fail "commit copies manifest to repo (missing $_mf)"; fi
 if [ -n "$_commit_ts_before" ] && command -v jq >/dev/null 2>&1; then
@@ -271,6 +283,72 @@ if [ -n "$_commit_ts_before" ] && command -v jq >/dev/null 2>&1; then
 fi
 if git -C "$_repo" log -1 --format=%s | grep -qF "larch-logs"; then pass "commit creates git commit in repo"; else fail "commit creates git commit in repo"; fi
 export LARCH_LOG_ROOT="$_saved_log_root"
+
+echo "=== commit rejects hardlinked session-root quiet log ==="
+_bc_qlink_run="breadcrumbquietlink123"
+_bc_qlink_staging="$TMP/breadcrumb-quietlink-staging"
+_bc_qlink_repo="$TMP/breadcrumb-quietlink-repo"
+mkdir -p "$_bc_qlink_staging"
+git init "$_bc_qlink_repo" >/dev/null 2>&1
+git -C "$_bc_qlink_repo" config user.email "ci@test"
+git -C "$_bc_qlink_repo" config user.name "Test CI"
+touch "$_bc_qlink_repo/.gitkeep"
+git -C "$_bc_qlink_repo" add .
+git -C "$_bc_qlink_repo" commit -q -m "init"
+git -C "$_bc_qlink_repo" checkout -q -b feature-breadcrumb-quietlink
+(cd "$_bc_qlink_repo" && "$LARCH_LOG" init --log-root "$_bc_qlink_staging/larch-logs" --skill implement --run-id "$_bc_qlink_run" --issue 42) >/dev/null
+printf 'quiet hardlink fixture\n' > "$_bc_qlink_staging/source-quiet.log"
+ln "$_bc_qlink_staging/source-quiet.log" "$_bc_qlink_staging/larch-quiet-hardlink.sh-99999.log"
+_bc_qlink_out="$(cd "$_bc_qlink_repo" && "$LARCH_LOG" commit --log-root "$_bc_qlink_staging/larch-logs" --skill implement --run-id "$_bc_qlink_run" 2>&1)" || _bc_qlink_rc=$?
+_bc_qlink_rc="${_bc_qlink_rc:-0}"
+if [ "$_bc_qlink_rc" -ne 0 ]; then pass "hardlinked quiet log fails commit"; else fail "hardlinked quiet log must fail commit: $_bc_qlink_out"; fi
+if [ ! -e "$_bc_qlink_repo/larch-logs/implement/$_bc_qlink_run/breadcrumbs" ]; then
+    pass "hardlinked quiet log leaves no breadcrumbs directory"
+else
+    fail "hardlinked quiet log must not publish breadcrumbs"
+fi
+
+echo "=== commit publishes quiet log without breadcrumbs source directory ==="
+_bc_no_bc_run="breadcrumbnosrcdir123"
+_bc_no_bc_staging="$TMP/breadcrumb-no-srcdir-staging"
+_bc_no_bc_repo="$TMP/breadcrumb-no-srcdir-repo"
+mkdir -p "$_bc_no_bc_staging"
+git init "$_bc_no_bc_repo" >/dev/null 2>&1
+git -C "$_bc_no_bc_repo" config user.email "ci@test"
+git -C "$_bc_no_bc_repo" config user.name "Test CI"
+touch "$_bc_no_bc_repo/.gitkeep"
+git -C "$_bc_no_bc_repo" add .
+git -C "$_bc_no_bc_repo" commit -q -m "init"
+git -C "$_bc_no_bc_repo" checkout -q -b feature-breadcrumb-no-srcdir
+(cd "$_bc_no_bc_repo" && "$LARCH_LOG" init --log-root "$_bc_no_bc_staging/larch-logs" --skill implement --run-id "$_bc_no_bc_run" --issue 42) >/dev/null
+printf 'quiet-only session\n' > "$_bc_no_bc_staging/larch-quiet-bar.sh-67890.log"
+_bc_no_bc_out="$(cd "$_bc_no_bc_repo" && "$LARCH_LOG" commit --log-root "$_bc_no_bc_staging/larch-logs" --skill implement --run-id "$_bc_no_bc_run" 2>&1)"
+_bc_no_bc_quiet="$_bc_no_bc_repo/larch-logs/implement/$_bc_no_bc_run/breadcrumbs/larch-quiet-bar.sh-67890.log"
+if [ -f "$_bc_no_bc_quiet" ]; then pass "commit publishes quiet log without breadcrumbs dir"; else fail "commit publishes quiet log without breadcrumbs dir (missing $_bc_no_bc_quiet; out=$_bc_no_bc_out)"; fi
+
+echo "=== commit rejects symlinked session-root quiet log ==="
+_bc_quiet_symlink_repo="$TMP/breadcrumb-quiet-symlink-repo"
+_bc_quiet_symlink_staging="$TMP/breadcrumb-quiet-symlink-staging"
+_bc_quiet_symlink_run="breadcrumbquietsymlink123"
+mkdir -p "$_bc_quiet_symlink_staging"
+git init "$_bc_quiet_symlink_repo" >/dev/null 2>&1
+git -C "$_bc_quiet_symlink_repo" config user.email "ci@test"
+git -C "$_bc_quiet_symlink_repo" config user.name "Test CI"
+touch "$_bc_quiet_symlink_repo/.gitkeep"
+git -C "$_bc_quiet_symlink_repo" add .
+git -C "$_bc_quiet_symlink_repo" commit -q -m "init"
+git -C "$_bc_quiet_symlink_repo" checkout -q -b feature-breadcrumb-quiet-symlink
+(cd "$_bc_quiet_symlink_repo" && "$LARCH_LOG" init --log-root "$_bc_quiet_symlink_staging/larch-logs" --skill implement --run-id "$_bc_quiet_symlink_run" --issue 42) >/dev/null
+printf 'quiet symlink fixture\n' > "$_bc_quiet_symlink_staging/source-quiet.log"
+ln -s "$_bc_quiet_symlink_staging/source-quiet.log" "$_bc_quiet_symlink_staging/larch-quiet-symlink.sh-88888.log"
+_bc_quiet_symlink_out="$(cd "$_bc_quiet_symlink_repo" && "$LARCH_LOG" commit --log-root "$_bc_quiet_symlink_staging/larch-logs" --skill implement --run-id "$_bc_quiet_symlink_run" 2>&1)" || _bc_quiet_symlink_rc=$?
+_bc_quiet_symlink_rc="${_bc_quiet_symlink_rc:-0}"
+if [ "$_bc_quiet_symlink_rc" -ne 0 ]; then pass "symlinked quiet log fails commit"; else fail "symlinked quiet log must fail commit: $_bc_quiet_symlink_out"; fi
+if [ ! -e "$_bc_quiet_symlink_repo/larch-logs/implement/$_bc_quiet_symlink_run/breadcrumbs" ]; then
+    pass "symlinked quiet log leaves no breadcrumbs directory"
+else
+    fail "symlinked quiet log must not publish breadcrumbs"
+fi
 
 echo "=== commit rejects breadcrumb source traversal under session tmpdir ==="
 _bc_traversal_repo="$TMP/breadcrumb-traversal-repo"
@@ -574,6 +652,27 @@ if [ -f "$_bc_empty_repo/larch-logs/implement/$_bc_empty_run/breadcrumbs/existin
     pass "empty breadcrumb source leaves committed breadcrumbs intact"
 else
     fail "empty breadcrumb source must not delete committed breadcrumbs"
+fi
+
+echo "=== non-regular ndjson in breadcrumbs dir does not trigger false-positive found_any ==="
+_bc_nonreg_run="breadcrumbnonreg123"
+_bc_nonreg_staging="$TMP/breadcrumb-nonreg-staging"
+_bc_nonreg_repo="$TMP/breadcrumb-nonreg-repo"
+mkdir -p "$_bc_nonreg_staging/breadcrumbs"
+mkdir -p "$_bc_nonreg_staging/breadcrumbs/fake.ndjson"
+git init "$_bc_nonreg_repo" >/dev/null 2>&1
+git -C "$_bc_nonreg_repo" config user.email "ci@test"
+git -C "$_bc_nonreg_repo" config user.name "Test CI"
+touch "$_bc_nonreg_repo/.gitkeep"
+git -C "$_bc_nonreg_repo" add .
+git -C "$_bc_nonreg_repo" commit -q -m "init"
+git -C "$_bc_nonreg_repo" checkout -q -b feature-breadcrumb-nonreg
+(cd "$_bc_nonreg_repo" && "$LARCH_LOG" init --log-root "$_bc_nonreg_staging/larch-logs" --skill implement --run-id "$_bc_nonreg_run" --issue 42) >/dev/null
+(cd "$_bc_nonreg_repo" && with_implement_tmpdir "$_bc_nonreg_staging" "$LARCH_LOG" commit --log-root "$_bc_nonreg_staging/larch-logs" --skill implement --run-id "$_bc_nonreg_run") >/dev/null 2>&1 || true
+if [ ! -e "$_bc_nonreg_repo/larch-logs/implement/$_bc_nonreg_run/breadcrumbs" ]; then
+    pass "non-regular ndjson in breadcrumbs dir does not publish empty breadcrumbs"
+else
+    fail "non-regular ndjson in breadcrumbs dir must not publish empty breadcrumbs (found_any false-positive)"
 fi
 
 echo "=== commit does not include orphan stale-run directories ==="

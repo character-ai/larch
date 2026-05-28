@@ -1271,6 +1271,16 @@ else
     echo "FAIL: teardown: larch-log.sh stub not called (no argv record)"
 fi
 
+_forensics_comment='commit also stages per-script quiet logs into breadcrumbs/ for forensics.'
+_forensics_count=$(grep -cF "$_forensics_comment" "$REAL_SCRIPT" 2>/dev/null || printf '0')
+if [ "$_forensics_count" -eq 2 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: implement-finalize documents quiet-log forensics at both larch-log commit callsites"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: expected two quiet-log forensics comments in implement-finalize.sh (got $_forensics_count)"
+fi
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

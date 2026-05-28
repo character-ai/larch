@@ -131,6 +131,7 @@ if [ -f "$mf_impl" ]; then
 fi
 
 # Commit via larch-log.sh, which handles the tmpdir→repo copy and git operations.
+# Committed breadcrumbs/ includes per-script quiet logs alongside legacy *.ndjson.
 # No push — caller owns the push.
 commit_out=""
 commit_rc=0

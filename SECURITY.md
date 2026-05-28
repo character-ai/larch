@@ -272,9 +272,15 @@ through the redaction and publication path described here.
    into a temp staging directory, then atomically moves the staging directory
    into place under `larch-logs/<skill>/<run-id>/breadcrumbs/`. Same-basename
    publication is depth 1: a source file `foo.ndjson` becomes
-   `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson`. Source-directory
-   resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (must still pass
-   session-tmpdir containment), else the log-root parent's `breadcrumbs/`.
+   `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson`; per-script
+   `larch-quiet-<script>-<pid>.log` files at the session-tmpdir root become
+   `larch-logs/<skill>/<run-id>/breadcrumbs/larch-quiet-<script>-<pid>.log`.
+   Source-directory resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set
+   (must still pass session-tmpdir containment), else the log-root parent's
+   `breadcrumbs/`. Quiet-log sources are derived via `dirname` of that
+   breadcrumbs path and are staged independently of whether `breadcrumbs/`
+   exists. Each quiet-log candidate must stay under the session tmpdir, must
+   not be a symlink, and must not be a hardlink (same guards as `*.ndjson`).
    Missing sources, empty sources, or sources whose entries are all silently
    skipped are successful no-ops and do not create, replace, or clear an
    existing committed `breadcrumbs/` destination.
@@ -291,11 +297,13 @@ through the redaction and publication path described here.
      exits non-zero on any accepted file.
    - **Silently ignored** (not rejected, not committed): hidden entries
      (`"$source_dir"/*` does not match dotfiles such as `.bc-offset`, `.quiet`,
-     `.done`, `.status`, `.surfaced`, `.pid`; they remain session-local because
-     the glob skips them, not via an active rejection), non-existent entries from
-     race-condition globs (including dangling symlinks the `-e` test rejects),
-     non-regular files, and regular files whose basename does not end in
-     `.ndjson`.
+     `.done`, `.status`, `.surfaced`, `.pid`; monitor sidecars inside
+     `breadcrumbs/` remain session-local because the glob skips them, not via an
+     active rejection), non-existent entries from race-condition globs
+     (including dangling symlinks the `-e` test rejects), non-regular files, and
+     regular files in the ndjson source directory whose basename does not end in
+     `.ndjson`. Quiet-log candidates outside `larch-quiet-*-*.log` basenames
+     are skipped.
    - **Note**: this is intentionally not the per-file skip-and-warn semantics
      described in the originating OOS issue scope. That variant was never landed;
      the current implementation favors directory-level fail-closed safety on
