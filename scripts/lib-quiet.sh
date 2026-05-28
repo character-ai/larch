@@ -102,26 +102,49 @@ sanitize_diagnostic_line() {
     LC_ALL=C tr -d '[:cntrl:]'
 }
 
+larch_quiet_redaction_state_file() {
+    if [ -n "${LARCH_QUIET_REDACT_STATE_FILE:-}" ]; then
+        printf '%s\n' "$LARCH_QUIET_REDACT_STATE_FILE"
+        return 0
+    fi
+    printf '%s/larch-quiet-redact-%s.state\n' "${TMPDIR:-/tmp}" "$$"
+}
+
+larch_quiet_redact_diagnostic_stream() {
+    local helper state_file
+    helper="$LARCH_LIB_QUIET_DIR/lib-redact-streaming.sh"
+    if [ ! -x "$helper" ]; then
+        cat
+        return 0
+    fi
+    state_file="$(larch_quiet_redaction_state_file)"
+    if ! "$helper" --state-file "$state_file" 2>/dev/null; then
+        printf 'WARN larch_err-redaction-failed\n'
+    fi
+}
+
+larch_quiet_write_diagnostic_stream() {
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        tee >(cat >&4) >&2 || true
+    else
+        cat >&2 || true
+    fi
+}
+
 # User-visible diagnostics (argv validation, fatals): go to the process's
 # original stderr after larch_quiet_init redirects FD 1/2 to the quiet log, and
-# are mirrored into the quiet log for failure-tail visibility.
+# are mirrored into the quiet log for failure-tail visibility. The text is
+# passed through the streaming secret scrubber first so direct operator output
+# keeps the same redaction family as breadcrumb-monitor lines.
 larch_err() {
-    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
-        printf '%s\n' "$*" >&2
-        printf '%s\n' "$*" >&4
-    else
-        printf '%s\n' "$*" >&2
-    fi
+    printf '%s\n' "$*" | larch_quiet_redact_diagnostic_stream | larch_quiet_write_diagnostic_stream
+    return 0
 }
 
 # shellcheck disable=SC2059 # callers pass fixed format strings (like printf)
 larch_errf() {
-    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
-        printf "$@" >&2
-        printf "$@" >&4
-    else
-        printf "$@" >&2
-    fi
+    printf "$@" | larch_quiet_redact_diagnostic_stream | larch_quiet_write_diagnostic_stream
+    return 0
 }
 
 emit() {

@@ -408,7 +408,6 @@ if [ -n "$ISSUE_NUMBER" ] && [ -s "$IMPLEMENT_TMPDIR/code-flow-section.md" ]; th
 fi
 
 BASE_ARGS=(--base-remote "$base_remote" --base-ref "$base_ref")
-export LARCH_QUIET_BREADCRUMBS=1
 set +e
 rebase_out="$IMPLEMENT_TMPDIR/rebase-checkpoint-probe.stdout"
 "$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}" >"$rebase_out"

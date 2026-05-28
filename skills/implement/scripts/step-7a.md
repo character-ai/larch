@@ -52,7 +52,6 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 - When generation is skipped or failed, Step 7a removes any stale local `code-flow-diagram.md` / `code-flow-section.md`, omits the upsert, and preserves any prior valid Code Flow section on the issue instead of replacing it with a placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
 - `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `tracking-issue-summary.sh` directly and does not use a `runid=` marker for diagrams.
-- `LARCH_QUIET_BREADCRUMBS=1` is exported for the 7a.r rebase checkpoint probe.
 - Only `REBASE_OUTCOME=ok|skipped` reaches the pre-bump flush phase.
 - The helper does not write a `diagrams` larch-log batch.
 

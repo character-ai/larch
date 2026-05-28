@@ -23,9 +23,11 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   are no longer part of the runtime authoring path.
 - `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
   original stderr (FD 4 after init) so harnesses and operators still see them
-  while incidental `echo`/`printf` chatter stays in the quiet log.
+  while incidental `echo`/`printf` chatter stays in the quiet log. The emitted
+  text is mirrored into the quiet log and passed through the streaming
+  secret-redaction helper first.
 - `larch_errf` is the `printf`-style variant for formatted user-visible errors
-  (same FD routing as `larch_err`).
+  (same routing and redaction contract as `larch_err`).
 - `larch_quiet_write_paired_pid_file` writes the caller's `$$` to
   `LARCH_PAIRED_PID_FILE` when that env var is set. It validates an absolute,
   non-symlink path with no `..` under the active session tmpdir, requires a

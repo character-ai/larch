@@ -189,7 +189,6 @@ JSON
         INSTALL_CACHE_VERSION="${INSTALL_CACHE_VERSION:-}" \
         RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
         LARCH_BREADCRUMB_STREAM='' \
-        LARCH_QUIET_BREADCRUMBS=1 \
         "$SCRIPT" 2>&1
     )
     rc=$?

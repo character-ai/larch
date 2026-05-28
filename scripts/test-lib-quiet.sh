@@ -133,6 +133,18 @@ write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; larch
 out=$("$helper")
 assert_eq "$out" $'VALID=progress\nVALID=warn\nVALID=stall\nVALID=retry\nVALID=escalate\nVALID=wait-ci\nVALID=network-flake\nINVALID=invalid\nINVALID=' "breadcrumb category validation"
 
+# 10d. larch_err redacts token families before stderr/log mirroring.
+helper="$SCRATCH/larch_err_redact.sh"
+log="$SCRATCH/larch_err_redact.log"
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; larch_err "token ghp_abcdefghijklmnopqrstuvwxyz123456 secret"; emit_kv STATUS ok'
+"$helper" "$log" >"$SCRATCH/larch_err_redact.out" 2>"$SCRATCH/larch_err_redact.err"
+assert_eq "$(cat "$SCRATCH/larch_err_redact.out")" "STATUS=ok" "larch_err redaction stdout"
+grep -Fq '<REDACTED-TOKEN>' "$SCRATCH/larch_err_redact.err" || fail "larch_err redaction stderr missing placeholder"
+grep -Fq '<REDACTED-TOKEN>' "$log" || fail "larch_err redaction log missing placeholder"
+if grep -Fq 'ghp_abcdefghijklmnopqrstuvwxyz123456' "$SCRATCH/larch_err_redact.err" || grep -Fq 'ghp_abcdefghijklmnopqrstuvwxyz123456' "$log"; then
+    fail "larch_err redaction leaked token"
+fi
+
 # 11. Paired PID writer is a no-op when env var is unset.
 helper="$SCRATCH/paired-pid-unset.sh"
 write_helper "$helper" 'unset LARCH_PAIRED_PID_FILE; larch_quiet_write_paired_pid_file; printf "ok\n"'

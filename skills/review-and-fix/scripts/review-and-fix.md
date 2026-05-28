@@ -119,7 +119,7 @@ Submodule guard layers:
 2. The coder prompt includes a submodule prohibition block.
 3. After coder dispatch, tracked changes under submodule roots are reverted with `git checkout -- <path>`, untracked files under submodule roots are removed, and the round is reported as `CODER_STATUS=submodule-violation`.
 
-When `LARCH_QUIET_BREADCRUMBS=1` is exported (inherited from `run-step5-review.sh`), the script emits breadcrumbs at major round-loop and coder-dispatch boundaries:
+The script emits breadcrumbs at major round-loop and coder-dispatch boundaries through `larch_err`, so they are operator-visible on stderr and mirrored into the quiet log:
 
 - `→ review-and-fix: round N` — on `run_implement_round` entry
 - `→ review-and-fix: round N — X accepted, Y rejected` — after review-core tally reads finish

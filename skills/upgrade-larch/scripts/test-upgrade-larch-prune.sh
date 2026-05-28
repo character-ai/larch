@@ -244,7 +244,6 @@ STATE
             STAT_GNU_F_GARBAGE_VERSION="${STAT_GNU_F_GARBAGE_VERSION:-}" \
             LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="$fallback_session_roots" \
             LARCH_BREADCRUMB_STREAM='' \
-            LARCH_QUIET_BREADCRUMBS='' \
             LARCH_QUIET_DISABLE=1 \
             "$SCRIPT" 2>&1
         )
@@ -263,7 +262,6 @@ STATE
             STAT_GNU_F_GARBAGE_VERSION="${STAT_GNU_F_GARBAGE_VERSION:-}" \
             LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="$fallback_session_roots" \
             LARCH_BREADCRUMB_STREAM='' \
-            LARCH_QUIET_BREADCRUMBS='' \
             LARCH_QUIET_DISABLE=1 \
             "$SCRIPT" 2>&1
         )

@@ -92,6 +92,6 @@ Run-log batches are not written here. The `/review` wrapper owns `log-phase.sh` 
 
 Known gap deferred to Part 2: `skills/review/references/heavy-worker.md` still documents heavy-worker Step 1 as `gather-branch-context.sh`, while inline `review-core.sh` uses `gather-context.sh` to match the current inline path. This PR documents the divergence rather than changing heavy-worker behavior.
 
-When `LARCH_QUIET_BREADCRUMBS=1` is exported, `review-core.sh` emits `→ review: consolidating findings` immediately before the `collect-findings.sh` invocation. The existing `⚠ review-core: emit-tally failed …` breadcrumb also surfaces when this env var is set.
+`review-core.sh` emits `→ review: consolidating findings` immediately before the `collect-findings.sh` invocation. The existing `⚠ review-core: emit-tally failed …` breadcrumb uses the same `larch_err` path, so both lines are operator-visible on stderr and mirrored into the quiet log.
 
 Harness: `skills/review/scripts/test-review-core.sh`, wired through `make test-review-core`. The harness uses environment-variable seams (`REVIEW_CORE_*_SH`) to stub helper scripts without launching external reviewers.

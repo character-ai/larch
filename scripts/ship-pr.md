@@ -168,7 +168,7 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 
 ## Breadcrumb Stream
 
-`ship-pr.sh` emits single-line progress diagnostics at major phase boundaries and snag points via `larch_err` from `lib-quiet.sh` (operator-visible stderr / FD 4 after quiet init):
+`ship-pr.sh` emits single-line progress diagnostics at major phase boundaries and snag points via `larch_err` from `lib-quiet.sh` (operator-visible stderr after quiet init, mirrored into the quiet log with the standard streaming secret scrubber):
 
 - `→ ship-pr: <phase>` — positive phase-entry (checks, version bump, PR prep, opening PR, CI watch, postmerge)
 - `→ ship-pr: PR #N opened` — after PR creation

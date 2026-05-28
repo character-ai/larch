@@ -23,7 +23,7 @@ Every Family B `# Background pair required` fence in:
 
 ## Wire contract
 
-Six env vars are allocated by paired callers before launching the monitor (the
+Five env vars are allocated by paired callers before launching the monitor (the
 launcher fences do this via `mktemp` under the calling skill's session
 tmpdir):
 - `LARCH_DONE_SENTINEL` — **signaled when non-empty.** The monitored
@@ -128,7 +128,7 @@ monitor loop does not tail FD4/stderr directly.
 
 ## Caller-side path allocation
 
-See `BASH_AUTHORING.md` §4 ("Pre-launch path allocation"). The six env
+See `BASH_AUTHORING.md` §4 ("Pre-launch path allocation"). The five env
 vars must live under the calling skill's session tmpdir
 (`$IMPLEMENT_TMPDIR` / `$DESIGN_TMPDIR` / `$REVIEW_TMPDIR` /
 `$RESEARCH_TMPDIR`); `larch_bm_validate_path` rejects anything outside
