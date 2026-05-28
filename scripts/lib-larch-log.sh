@@ -456,6 +456,7 @@ larch_log_publish_breadcrumbs_shared() {
             if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
                 return 1
             fi
+            [ -e "$staging_dir/$base" ] || continue
             found_any=true
         done
     fi
@@ -471,6 +472,7 @@ larch_log_publish_breadcrumbs_shared() {
             if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
                 return 1
             fi
+            [ -e "$staging_dir/$base" ] || continue
             found_any=true
         done
     fi

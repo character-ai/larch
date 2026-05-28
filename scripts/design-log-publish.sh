@@ -89,7 +89,6 @@ if [[ ! -d "$DESIGN_TMPDIR" ]]; then
     emit_publish_result false
     exit 0
 fi
-export DESIGN_TMPDIR
 
 if [[ "$DRY_RUN" == true ]]; then
     if ! command -v git >/dev/null 2>&1; then

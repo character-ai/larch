@@ -323,9 +323,32 @@ git -C "$_bc_no_bc_repo" checkout -q -b feature-breadcrumb-no-srcdir
 (cd "$_bc_no_bc_repo" && "$LARCH_LOG" init --log-root "$_bc_no_bc_staging/larch-logs" --skill implement --run-id "$_bc_no_bc_run" --issue 42) >/dev/null
 printf 'quiet-only session\n' > "$_bc_no_bc_staging/larch-quiet-bar.sh-67890.log"
 _bc_no_bc_out="$(cd "$_bc_no_bc_repo" && "$LARCH_LOG" commit --log-root "$_bc_no_bc_staging/larch-logs" --skill implement --run-id "$_bc_no_bc_run" 2>&1)"
-_bc_no_bc_quiet="$ _bc_no_bc_repo/larch-logs/implement/$_bc_no_bc_run/breadcrumbs/larch-quiet-bar.sh-67890.log"
 _bc_no_bc_quiet="$_bc_no_bc_repo/larch-logs/implement/$_bc_no_bc_run/breadcrumbs/larch-quiet-bar.sh-67890.log"
 if [ -f "$_bc_no_bc_quiet" ]; then pass "commit publishes quiet log without breadcrumbs dir"; else fail "commit publishes quiet log without breadcrumbs dir (missing $_bc_no_bc_quiet; out=$_bc_no_bc_out)"; fi
+
+echo "=== commit rejects symlinked session-root quiet log ==="
+_bc_quiet_symlink_repo="$TMP/breadcrumb-quiet-symlink-repo"
+_bc_quiet_symlink_staging="$TMP/breadcrumb-quiet-symlink-staging"
+_bc_quiet_symlink_run="breadcrumbquietsymlink123"
+mkdir -p "$_bc_quiet_symlink_staging"
+git init "$_bc_quiet_symlink_repo" >/dev/null 2>&1
+git -C "$_bc_quiet_symlink_repo" config user.email "ci@test"
+git -C "$_bc_quiet_symlink_repo" config user.name "Test CI"
+touch "$_bc_quiet_symlink_repo/.gitkeep"
+git -C "$_bc_quiet_symlink_repo" add .
+git -C "$_bc_quiet_symlink_repo" commit -q -m "init"
+git -C "$_bc_quiet_symlink_repo" checkout -q -b feature-breadcrumb-quiet-symlink
+(cd "$_bc_quiet_symlink_repo" && "$LARCH_LOG" init --log-root "$_bc_quiet_symlink_staging/larch-logs" --skill implement --run-id "$_bc_quiet_symlink_run" --issue 42) >/dev/null
+printf 'quiet symlink fixture\n' > "$_bc_quiet_symlink_staging/source-quiet.log"
+ln -s "$_bc_quiet_symlink_staging/source-quiet.log" "$_bc_quiet_symlink_staging/larch-quiet-symlink.sh-88888.log"
+_bc_quiet_symlink_out="$(cd "$_bc_quiet_symlink_repo" && "$LARCH_LOG" commit --log-root "$_bc_quiet_symlink_staging/larch-logs" --skill implement --run-id "$_bc_quiet_symlink_run" 2>&1)" || _bc_quiet_symlink_rc=$?
+_bc_quiet_symlink_rc="${_bc_quiet_symlink_rc:-0}"
+if [ "$_bc_quiet_symlink_rc" -ne 0 ]; then pass "symlinked quiet log fails commit"; else fail "symlinked quiet log must fail commit: $_bc_quiet_symlink_out"; fi
+if [ ! -e "$_bc_quiet_symlink_repo/larch-logs/implement/$_bc_quiet_symlink_run/breadcrumbs" ]; then
+    pass "symlinked quiet log leaves no breadcrumbs directory"
+else
+    fail "symlinked quiet log must not publish breadcrumbs"
+fi
 
 echo "=== commit rejects breadcrumb source traversal under session tmpdir ==="
 _bc_traversal_repo="$TMP/breadcrumb-traversal-repo"
