@@ -1,6 +1,6 @@
 # Version Bump Reasoning
 
-- **Base commit**: `cd3ee5659` (Fixes #3008: Close #3008 Gate B degraded-mode test gaps (#3162))
+- **Base commit**: `03e7e38d8` (chore(larch-logs): flush design run 3BFB97C9-7986-4FDC-9E27-50930B3584AE [skip ci] (#3163))
 - **Current version**: `45.3.13`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
