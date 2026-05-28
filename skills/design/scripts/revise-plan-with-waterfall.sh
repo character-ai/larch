@@ -155,9 +155,9 @@ tier4_rank() {
         not-attempted) printf '0\n' ;;
         skipped-not-present) printf '1\n' ;;
         no-patch) printf '2\n' ;;
-        invalid-patch) printf '3\n' ;;
+        emit-plan-failed) printf '3\n' ;;
         apply-failed) printf '4\n' ;;
-        emit-plan-failed) printf '5\n' ;;
+        invalid-patch) printf '5\n' ;;
         ok) printf '6\n' ;;
         *) printf '%s\n' '-1' ;;
     esac
@@ -168,6 +168,10 @@ merge_tier4_status() {
     local current_rank new_rank
     if [[ -z "$tier4_status" ]]; then
         tier4_status="$new"
+        return
+    fi
+    if [[ "$tier4_status" == "ok" || "$new" == "ok" ]]; then
+        tier4_status="ok"
         return
     fi
     current_rank=$(tier4_rank "$tier4_status")
@@ -214,116 +218,168 @@ last_nonblank_line() {
 
 extract_patch() {
     local output="$1" patch="$2"
-    python3 - "$PATCH_FORMAT" "$output" "$patch" <<'PY'
-import re
-import sys
+    if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
+        extract_unified_diff_candidates "$output" "$patch"
+    else
+        extract_file_replacement_candidate "$output" "$patch"
+    fi
+}
 
-patch_format, src, dest = sys.argv[1:4]
-with open(src, encoding="utf-8", errors="replace") as fh:
-    lines = fh.read().splitlines()
+extract_unified_diff_candidates_from_source() {
+    local src="$1" dest_dir="$2" found_file="$3"
+    awk -v outdir="$dest_dir" -v found_file="$found_file" '
+        function is_old_header(line) {
+            return line ~ /^--- a\/[^ \t]+([ \t].*)?$/
+        }
+        function is_new_header(line) {
+            return line ~ /^\+\+\+ b\/[^ \t]+([ \t].*)?$/
+        }
+        function is_candidate_start(idx) {
+            if (lines[idx] ~ /^diff --git /) {
+                return 1
+            }
+            if (idx < line_count && is_old_header(lines[idx]) && is_new_header(lines[idx + 1])) {
+                return 1
+            }
+            return 0
+        }
+        function is_patch_line(line) {
+            return line ~ /^(diff --git |index |--- |\+\+\+ |@@ |old mode |new mode |deleted file mode |new file mode |similarity index |rename from |rename to |copy from |copy to |Binary files |GIT binary patch|literal |delta |\\ No newline at end of file| |[-+])/
+        }
+        function emit_candidate(start,    end, idx, file) {
+            end = start
+            while (end <= line_count && is_patch_line(lines[end])) {
+                end++
+            }
+            if (end <= start) {
+                return
+            }
+            file = sprintf("%s/candidate-%03d.patch", outdir, ++count)
+            for (idx = start; idx < end; idx++) {
+                print lines[idx] > file
+            }
+            close(file)
+        }
+        {
+            lines[++line_count] = $0
+        }
+        END {
+            for (idx = 1; idx <= line_count; idx++) {
+                if (is_candidate_start(idx)) {
+                    emit_candidate(idx)
+                }
+            }
+            if (count > 0) {
+                print "1" > found_file
+                close(found_file)
+            }
+        }
+    ' "$src"
+}
 
+extract_unified_diff_candidates() {
+    local output="$1" patch="$2" tmpdir found_file block_dir block count first candidate_dir candidate_file
+    tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/revise-unified.XXXXXX")
+    found_file="$tmpdir/found"
+    block_dir="$tmpdir/blocks"
+    mkdir -p "$block_dir"
 
-def write_lines(out_lines):
-    with open(dest, "w", encoding="utf-8") as fh:
-        if out_lines:
-            fh.write("\n".join(out_lines) + "\n")
+    awk -v outdir="$block_dir" '
+        BEGIN { in_block = 0; count = 0 }
+        /^```diff[[:space:]]*$/ {
+            in_block = 1
+            file = sprintf("%s/block-%03d.txt", outdir, ++count)
+            next
+        }
+        in_block && /^```$/ {
+            in_block = 0
+            close(file)
+            next
+        }
+        in_block {
+            print > file
+        }
+    ' "$output"
 
+    count=0
+    first=""
+    for block in "$block_dir"/block-*.txt; do
+        [[ -e "$block" ]] || break
+        count=$((count + 1))
+        candidate_dir=$(printf '%s/extract-%03d' "$tmpdir" "$count")
+        mkdir -p "$candidate_dir"
+        extract_unified_diff_candidates_from_source "$block" "$candidate_dir" "$found_file"
+    done
+    if [[ ! -f "$found_file" ]]; then
+        candidate_dir="$tmpdir/extract-fallback"
+        mkdir -p "$candidate_dir"
+        extract_unified_diff_candidates_from_source "$output" "$candidate_dir" "$found_file"
+    fi
+    count=0
+    for candidate_dir in "$tmpdir"/extract-*; do
+        [[ -d "$candidate_dir" ]] || break
+        for candidate_file in "$candidate_dir"/candidate-*.patch; do
+            [[ -e "$candidate_file" ]] || break
+            count=$((count + 1))
+            if [[ -z "$first" ]]; then
+                first="$candidate_file"
+                cp "$candidate_file" "$patch"
+            else
+                cp "$candidate_file" "${patch%.patch}-$count.patch"
+            fi
+        done
+    done
+    if [[ -z "$first" ]]; then
+        : >"$patch"
+    fi
+    rm -rf "$tmpdir"
+}
 
-def is_old_header(line):
-    return bool(re.match(r"^---\s+a/[^ \t]+(?:[ \t].*)?$", line))
-
-
-def is_new_header(line):
-    return bool(re.match(r"^\+\+\+\s+b/[^ \t]+(?:[ \t].*)?$", line))
-
-
-def find_diff_start(block, from_end=False):
-    indexes = range(len(block) - 1, -1, -1) if from_end else range(len(block))
-    for idx in indexes:
-        if block[idx].startswith("diff --git "):
-            return idx
-    pair_indexes = range(len(block) - 2, -1, -1) if from_end else range(len(block) - 1)
-    for idx in pair_indexes:
-        if is_old_header(block[idx]) and is_new_header(block[idx + 1]):
-            return idx
-    return None
-
-
-def fenced_blocks(diff_only):
-    blocks = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if diff_only:
-            opening = re.match(r"^```diff\s*$", line)
-        else:
-            opening = re.match(r"^```(?:[A-Za-z0-9_-]+)?\s*$", line)
-        if not opening:
-            i += 1
-            continue
-        j = i + 1
-        while j < len(lines) and lines[j] != "```":
-            j += 1
-        if j >= len(lines):
-            break
-        blocks.append(lines[i + 1 : j])
-        i = j + 1
-    return blocks
-
-
-if patch_format == "unified-diff":
-    for block in reversed(fenced_blocks(diff_only=True)):
-        start = find_diff_start(block, from_end=True)
-        if start is not None:
-            out = []
-            for line in block[start:]:
-                if line == "```" or re.match(r"^```diff\s*$", line):
-                    break
-                out.append(line)
-            write_lines(out)
-            raise SystemExit(0)
-    start = find_diff_start(lines, from_end=True)
-    if start is None:
-        write_lines([])
-        raise SystemExit(0)
-    out = []
-    for line in lines[start:]:
-        if line == "```" or re.match(r"^```diff\s*$", line):
-            break
-        out.append(line)
-    write_lines(out)
-    raise SystemExit(0)
-
-starts = [idx for idx, line in enumerate(lines) if line == "## Plan"]
-for start in reversed(starts):
-    trailer = None
-    saw_closing_fence = False
-    for idx in range(start, len(lines)):
-        if re.match(r"^diff_lines:\s*[0-9]+\s*$", lines[idx]):
-            trailer = idx
-            break
-        if lines[idx] == "```" and saw_closing_fence:
-            break
-        if lines[idx] == "```":
-            saw_closing_fence = True
-    if trailer is not None:
-        write_lines([line for line in lines[start : trailer + 1] if line != "```"])
-        raise SystemExit(0)
-
-for block in reversed(fenced_blocks(diff_only=False)):
-    starts = [idx for idx, line in enumerate(block) if line == "## Plan"]
-    for start in reversed(starts):
-        trailer = None
-        for idx in range(start, len(block)):
-            if re.match(r"^diff_lines:\s*[0-9]+\s*$", block[idx]):
-                trailer = idx
-                break
-        if trailer is not None:
-            write_lines(block[start : trailer + 1])
-            raise SystemExit(0)
-
-write_lines([])
-PY
+extract_file_replacement_candidate() {
+    local output="$1" patch="$2"
+    awk '
+        function reset_block() {
+            block_len = 0
+            trailer_idx = 0
+        }
+        function capture_candidate(    idx) {
+            if (trailer_idx == 0) {
+                return
+            }
+            candidate_len = 0
+            for (idx = 1; idx <= trailer_idx; idx++) {
+                candidate[++candidate_len] = block[idx]
+            }
+        }
+        BEGIN {
+            in_block = 0
+            reset_block()
+            candidate_len = 0
+        }
+        /^## Plan$/ {
+            if (in_block) {
+                capture_candidate()
+            }
+            in_block = 1
+            reset_block()
+        }
+        in_block {
+            if ($0 != "```") {
+                block[++block_len] = $0
+                if ($0 ~ /^diff_lines:[[:space:]]*[0-9]+[[:space:]]*$/) {
+                    trailer_idx = block_len
+                }
+            }
+        }
+        END {
+            if (in_block) {
+                capture_candidate()
+            }
+            for (idx = 1; idx <= candidate_len; idx++) {
+                print candidate[idx]
+            }
+        }
+    ' "$output" >"$patch"
 }
 
 validate_unified_headers() {
@@ -416,7 +472,7 @@ launch_tier() {
 }
 
 attempt_tier() {
-    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count
+    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count candidate candidate_ok
 
     if [[ "$tier" == "codex" && "$CODEX_PRESENT" == "false" ]]; then
         set_tier_status "$ordinal" skipped-not-present
@@ -451,11 +507,22 @@ attempt_tier() {
     fi
 
     if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
-        if ! validate_unified_headers "$patch_file"; then
-            set_tier_status "$ordinal" invalid-patch
-            return 1
-        fi
-        if ! check_git_apply "$patch_file"; then
+        candidate_ok=false
+        for candidate in "$REVISE_DIR/${output_name%.txt}-candidate"*.patch; do
+            [[ -e "$candidate" ]] || break
+            if ! validate_unified_headers "$candidate"; then
+                continue
+            fi
+            if ! check_git_apply "$candidate"; then
+                continue
+            fi
+            if [[ "$candidate" != "$patch_file" ]]; then
+                cp "$candidate" "$patch_file"
+            fi
+            candidate_ok=true
+            break
+        done
+        if [[ "$candidate_ok" != "true" ]]; then
             set_tier_status "$ordinal" invalid-patch
             restore_plan_or_die
             return 1

@@ -51,9 +51,10 @@ KVs are emitted in this order on every logical invocation:
 4. `REVISE_TIER_4_STATUS`: tier-4 file-replacement fallback status (see below).
 5. `REVISE_STATUS`: `ok`, `ok-fallback`, `failed-no-patch`, `failed-validation`, or `failed-apply`.
 6. `REVISE_TIER`: winning tier name, or empty on failure.
-7. `REVISE_PATCH_PATH`: winning raw output path, or empty on failure.
-8. `REVISE_PLAN_HASH_BEFORE`: SHA-256 of the original plan.
-9. `REVISE_PLAN_HASH_AFTER`: SHA-256 after a successful revision, or the original hash on failure.
+7. `REVISE_WINNING_TIER`: same value as `REVISE_TIER`, kept as the stable downstream key.
+8. `REVISE_PATCH_PATH`: winning raw output path, or empty on failure.
+9. `REVISE_PLAN_HASH_BEFORE`: SHA-256 of the original plan.
+10. `REVISE_PLAN_HASH_AFTER`: SHA-256 after a successful revision, or the original hash on failure.
 
 `ok-fallback` means the tier-4 file-replacement fallback applied successfully after all unified-diff tiers failed.
 
@@ -63,13 +64,13 @@ Per-tier status values are `skipped-not-present`, `not-attempted`, `no-patch`, `
 
 When `--patch-format` is `unified-diff` (the default) and tiers 1–3 produce no winner, the script switches to `file-replacement`, re-renders `prompt.txt`, and runs an internal Codex → Cursor → Claude mini-waterfall as tier 4. Tier 4 reuses the same per-tool raw output paths (`codex-output.txt`, `cursor-output.txt`, `claude-output.txt`) and `revise.env` persists the full per-tier status contract for later snapshot/publish flows.
 
-`merge_tier4_status` aggregates tier-4 attempts with severity precedence (best → worst): `ok` > `emit-plan-failed` > `apply-failed` > `invalid-patch` > `no-patch` > `skipped-not-present` > `not-attempted`. Once tier 4 records `ok`, later attempts cannot downgrade it; otherwise the worst recorded status wins so a later `no-patch` never masks an earlier `invalid-patch`.
+`merge_tier4_status` aggregates tier-4 attempts with severity precedence (least severe → most severe): `not-attempted` < `skipped-not-present` < `no-patch` < `emit-plan-failed` < `apply-failed` < `invalid-patch`, with `ok` sticky once recorded. A later less-severe miss never masks an earlier worse failure.
 
 ## Patch Validator
 
-In `unified-diff` mode, `extract_patch` prefers the last fenced ` ```diff ` block that contains a diff candidate, otherwise falls back to the last unfenced diff candidate in the response. `diff --git` headers may target any path for extraction purposes, and `---` / `+++` headers may carry tab- or space-suffixed metadata such as timestamps; later header validation still requires the actual target file to be `a/plan.txt` / `b/plan.txt`. Closing fences and trailing prose are excluded from the extracted candidate. The script then runs `git apply --check --recount --whitespace=nowarn` from `dirname "$plan_file"` and classifies any failure there as `invalid-patch`; only a failing live `git apply --recount --whitespace=nowarn` is reported as `apply-failed`. The script never uses `--unsafe-paths`.
+In `unified-diff` mode, `extract_patch` uses Bash/Awk-only extraction. It scans fenced ` ```diff ` blocks in order, otherwise the full response, emits candidate patches in encounter order, excludes closing fences and trailing prose, and lets header validation plus `git apply --check --recount --whitespace=nowarn` choose the first candidate that cleanly targets `a/plan.txt` / `b/plan.txt`. `diff --git` headers may target any path during extraction, and `---` / `+++` headers may carry tab- or space-suffixed metadata such as timestamps; target-path enforcement happens during validation. Only a failing live `git apply --recount --whitespace=nowarn` is reported as `apply-failed`. The script never uses `--unsafe-paths`.
 
-In `file-replacement` mode, `extract_patch` prefers the last complete `## Plan` block, strips preamble/fences, and extracts through the first `diff_lines: <N>` trailer for that block. A trailer placed immediately after a closing fence is still accepted. The candidate must be non-empty and its last non-blank line must be `diff_lines: <N>` with numeric `N`.
+In `file-replacement` mode, `extract_patch` prefers the last complete `## Plan` block, strips preamble/fences, and extracts through the last `diff_lines: <N>` trailer recorded for that block. A trailer placed immediately after a closing fence is still accepted. The candidate must be non-empty and its last non-blank line must be `diff_lines: <N>` with numeric `N`.
 
 After either apply path, if the original plan had any `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, the revised plan must still have at least one such heading. The final structural gate is `ACTION=EMIT_PLAN` through the design driver. The script does not parse further plan semantics.
 
