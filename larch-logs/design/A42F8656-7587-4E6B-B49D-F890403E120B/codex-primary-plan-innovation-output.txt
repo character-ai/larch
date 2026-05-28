@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/design/SKILL.md:267; skills/design/SKILL.md:1279	/design prompt callsites are not updated for post-push exit 1	After the script starts returning exit 1 with PUBLISH_OK=false, inline /design may abort before parsing stdout, logging the warning, skipping cleanup preservation logic, or applying the existing rename guard	Update these prompt callsites to capture stdout stderr and rc under set +e, then parse PUBLISH_OK regardless of rc and keep the existing PUBLISH_OK=false handling
+1	in_scope	important	security	SECURITY.md:28-32; docs/run-logs.md:96-104	Quiet-log publication changes the public artifact boundary but security/operator docs still say breadcrumbs are ndjson-only and sidecars stay local	Operators and reviewers may assume stdout/stderr quiet logs are never committed under larch-logs and miss the expanded disclosure surface	Add a scoped SECURITY.md update and align docs/run-logs.md to document larch-quiet-*-*.log staging, redaction, guards, and that monitor .quiet sidecars remain excluded
+
+1. [risk-integration] `skills/design/SKILL.md:267` and `skills/design/SKILL.md:1279`
+
+The plan changes `design-log-publish.sh` so post-push failures return exit 1 while still emitting `PUBLISH_OK=false`. The inline `/design` prompt still says to run the command and parse `PUBLISH_OK`, with no instruction to tolerate non-zero exit. Update those callsites so the orchestrator captures stdout/stderr and rc, then parses `PUBLISH_OK` even when rc is 1.
+
+2. [security] `SECURITY.md:28-32` and `docs/run-logs.md:96-104`
+
+The plan starts committing root `larch-quiet-*-*.log` files, but current policy says breadcrumb publication is `*.ndjson` only and sidecars stay local. That is now stale at the public-boundary level. Add the minimum doc update that distinguishes the new root quiet logs from monitor `.quiet` sidecars and states the redaction/guard contract.

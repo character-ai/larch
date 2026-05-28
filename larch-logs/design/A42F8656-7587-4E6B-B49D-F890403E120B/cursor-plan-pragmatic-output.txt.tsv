@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	SECURITY.md:28-32; docs/run-logs.md:96-110; scripts/larch-log.md:102-118	Plan updates larch-log.md only while SECURITY.md and run-logs.md still say breadcrumbs commit only *.ndjson	Operators and reviewers follow stale allowlist docs after quiet logs land in breadcrumbs/	Add minimal SECURITY.md and docs/run-logs.md updates: session-root larch-quiet-*-*.log files are redacted and committed alongside legacy *.ndjson
