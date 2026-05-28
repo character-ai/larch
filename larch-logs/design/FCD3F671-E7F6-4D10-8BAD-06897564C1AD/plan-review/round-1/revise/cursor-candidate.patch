@@ -1,0 +1,116 @@
+Reviewing the codebase to incorporate reviewer findings into the plan revision.
+Drafting the revised plan diff incorporating all accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,7 +1,7 @@
+ ## Plan
+ 
+-Fix `/design` plan-revise auto-apply by combining three small changes (A+B+C from issue #3146) and adding one new tier-4 file-replacement fallback inside `revise-plan-with-waterfall.sh`. Update the two consumer surfaces (`plan-review-loop.sh` and `plan-review.md`) so the new `REVISE_STATUS=ok-fallback` value reads as success.
++Fix `/design` plan-revise auto-apply by combining three small changes (A+B+C from issue #3146) and adding one new tier-4 file-replacement fallback inside `revise-plan-with-waterfall.sh`. Update the two consumer surfaces (`plan-review-loop.sh` and `plan-review.md`) so the new `REVISE_STATUS=ok-fallback` value reads as success and propagates through round summaries and Step-3 stdout KVs.
+ 
+ ## Files to modify/create
+ 
+@@ -9,7 +9,7 @@ Fix `/design` plan-revise auto-apply by combining three small changes (A+B+C from
+ 
+ ### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.sh`
+ 
+-Five surgical edits, all inside the existing script (no new files):
++Seven surgical edits, all inside the existing script (no new files):
+ 
+-1. **State extension.** Add `tier4_status=""` next to the existing `tier1_status` / `tier2_status` / `tier3_status` declarations. Add `winner_is_fallback=false` next to `winner=""`. Extend the `case` statements in `set_tier_status()` and `get_tier_status()` to accept ordinal `4`.
++1. **State extension.** Add `tier4_status=""` next to the existing `tier1_status` / `tier2_status` / `tier3_status` declarations. Add `winner_is_fallback=false` and `winner_output_path=""` next to `winner=""`. Extend the `case` statements in `get_tier_status()` to accept ordinal `4`. Extend `set_tier_status()` for ordinal `4` only: merge with severity precedence (`emit-plan-failed` > `apply-failed` > `invalid-patch` > `no-patch` > `skipped-not-present` / `not-attempted`) so a later tier-4 `no-patch` or `skipped-not-present` cannot overwrite an earlier `invalid-patch`, `apply-failed`, or `emit-plan-failed` (FINDING_3). Ordinals 1–3 keep overwrite semantics.
+ 
+ 2. **Preamble + fence strip in `extract_patch()`.** Replace the current first-line / last-line `` ```diff `` fence check with an awk pass that runs only when `PATCH_FORMAT == "unified-diff"`. The awk drops every leading line until the first one that matches `^```diff$`, `^diff --git `, `^--- `, `^\+\+\+ `, or `^@@ `; the `` ```diff `` opener is consumed (`next`), the diff-header opener is included. After that point it copies every line except a standalone `` ``` `` line. For `PATCH_FORMAT == "file-replacement"` the existing `cp "$output" "$patch"` stays unchanged.
+ 
+@@ -17,15 +17,17 @@ Five surgical edits, all inside the existing script (no new files):
+ 
+ 4. **Tier-4 fallback chain (after the existing tier-1..3 chain).** Append:
+ 
+    - Gate on `[[ "$PATCH_FORMAT" == "unified-diff" && -z "$winner" ]]`. Only fire when the caller did not already request file-replacement and no winner emerged from tiers 1-3.
+-   - Best-effort copy `"$PROMPT_PATH"` to `"$REVISE_DIR/prompt-unified-diff.txt"` for forensics; ignore copy failure.
+    - Set `PATCH_FORMAT="file-replacement"`, set `winner_is_fallback=true`, call `compose_prompt` to re-render `"$PROMPT_PATH"` with the file-replacement instruction body.
+-   - Internal mini-waterfall using the existing `attempt_tier 4 <tool> "$REVISE_DIR/<tool>-fallback-output.txt"` shape: try `codex`, then `cursor`, then `claude`. Each call already short-circuits with `skipped-not-present` when the tool is absent, so this mirrors the tier-1..3 waterfall behavior. Chain the three with `||` and trailing `|| true` on the last to keep `set -e` happy.
++   - Internal mini-waterfall reusing **allowlisted** revise artifact basenames (FINDING_2): `attempt_tier 4 codex "$REVISE_DIR/codex-output.txt"`, then `cursor` / `claude` with the same `<tool>-output.txt` paths tiers 1–3 already use. Tier-4 overwrites the failed unified-diff raw outputs; do **not** introduce `*-fallback-output.txt` or `prompt-unified-diff.txt`. Forensic context for the failed unified-diff attempt remains in tiers 1–3 `*-candidate.patch` files and the pre-`compose_prompt` unified-diff prompt is not separately retained once `prompt.txt` is re-rendered for file-replacement.
++   - Chain the three with `||` and trailing `|| true` on the last to keep `set -e` happy.
++
++5. **`attempt_tier()` winner path capture (FINDING_1).** On success, after `winner="$tier"`, set `winner_output_path="$output"` (the `$3` argument). Do not reconstruct the winning path in `finalize()`.
+ 
+-5. **`finalize()` aggregation.** Read `tier4_status` (default `not-attempted`) and emit `REVISE_TIER_4_STATUS=$status4`. Extend the substring checks that compute `final_status` to include `$status4` alongside `$status1 $status2 $status3` (so a tier-4 `invalid-patch` keeps mapping to `failed-validation`, a tier-4 `apply-failed` to `failed-apply`, etc.). When `$winner` is non-empty, emit `REVISE_STATUS=ok-fallback` if `winner_is_fallback == true`; otherwise emit `REVISE_STATUS=ok` (existing behavior).
++6. **`finalize()` aggregation.** Read `tier4_status` (default `not-attempted`) and emit `REVISE_TIER_4_STATUS=$status4`. Extend the substring checks that compute `final_status` to include `$status4` alongside `$status1 $status2 $status3`. When `$winner` is non-empty, emit `REVISE_STATUS=ok-fallback` if `winner_is_fallback == true`, else `REVISE_STATUS=ok`; emit `REVISE_PATCH_PATH="$winner_output_path"` (never `$REVISE_DIR/$winner-output.txt` by reconstruction). Clear `winner_output_path` on failure paths.
+ 
+ The existing `restore_plan_or_die()` already restores `"$SNAPSHOT"` before any tier reruns, so tier 4 starts from the original plan whenever tier-3 mutated it. The existing `ORIG_FILE_HEADING_COUNT` post-apply check still fires for tier 4 because it lives inside `attempt_tier()`.
+ 
+ ### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.md`
+@@ -34,9 +36,9 @@ The existing `restore_plan_or_die()` already restores `"$SNAPSHOT"` before any t
+ Sibling-doc edits required by `.claude/rules/script-md-siblings.md`:
+ 
+ - Extend the documented `REVISE_STATUS` enum from `ok | failed-no-patch | failed-validation | failed-apply` to `ok | ok-fallback | failed-no-patch | failed-validation | failed-apply`. Define `ok-fallback` as "tier-4 file-replacement fallback applied successfully".
+-- Add a short "Tier 4 (file-replacement fallback)" paragraph explaining when it fires (initial `--patch-format unified-diff` AND all of tiers 1-3 failed) and the internal Codex → Cursor → Claude waterfall.
+-- Mention the new `REVISE_TIER_4_STATUS` key in the emitted KV section and the `prompt-unified-diff.txt` forensic sidecar.
++- Add a short "Tier 4 (file-replacement fallback)" paragraph: fires when initial `--patch-format unified-diff` AND tiers 1–3 produced no winner; internal Codex → Cursor → Claude waterfall; reuses allowlisted `<tool>-output.txt` paths (overwriting tier 1–3 raw outputs); `set_tier_status` ordinal 4 uses severity merge.
++- Extend the KV Contract section: insert `REVISE_TIER_4_STATUS` after tier 3; document `ok-fallback`; state `REVISE_PATCH_PATH` is the winning tier's actual `$output` path captured in `attempt_tier`, not a reconstructed basename.
+ 
+ ### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+ 
+-One-line consumer fix in `_run_revise_with_status_parse()`. Replace:
++Two consumer fixes (FINDING_4):
++
++1. **`_run_revise_with_status_parse()` success gate.** Replace:
+ 
+ `[[ "$revise_status" == "ok" ]] && return 0`
+ 
+ with:
+ 
+ `[[ "$revise_status" == "ok" || "$revise_status" == "ok-fallback" ]] && return 0`
+ 
+-This is the sole call site that treats `REVISE_STATUS` as success-vs-failure. The downstream `printf 'REVISE_STATUS=%s\n' "$revise_st"` writers preserve whatever value flowed through, so the new `ok-fallback` value propagates into `round-summary.env` and into the Step-3 stdout KVs without any other consumer change.
++2. **Preserve parsed status after success.** Delete the unconditional `revise_status=ok` immediately after `_run_revise_with_status_parse` returns success (~line 1298). The parsed `ok-fallback` must survive into `_write_round_summary`, `_snapshot_terminal_exit_preserving_status`, and Step-3 `emit_kv REVISE_STATUS` (`${revise_status:-ok}` only when empty).
+ 
+ ### UPDATED: `skills/design/references/plan-review.md`
+ 
+@@ -52,11 +54,11 @@ One-line edit to the "Revision failures" bullet. Replace:
+ 
+ ## Approach
+ 
+-Five small in-place edits across two scripts plus two sibling docs. No new files, no new CLI flags, no new env vars, no new sentinels. The tier-4 chain reuses the existing `attempt_tier` machinery by overwriting the script-level `PATCH_FORMAT` and re-rendering the prompt; nothing about `attempt_tier`'s own body changes. The preamble strip is folded into the existing `extract_patch()` rather than added as a new pre-pass, because `extract_patch` is already the single point that normalizes raw model output before validation.
++Seven small in-place edits across two scripts plus two sibling docs. No new files, no allowlist changes (`scripts/lib-design-round-artifacts.sh` unchanged — tier 4 reuses existing revise basenames). No new CLI flags, env vars, or sentinels. Tier 4 reuses `attempt_tier` by overwriting script-level `PATCH_FORMAT` and re-rendering `prompt.txt`; `winner_output_path` and tier-4 severity merge are the only `attempt_tier` / `set_tier_status` touchpoints beyond ordinal `4` dispatch. Preamble strip stays inside `extract_patch()`.
+ 
+ Sequencing inside the script tail stays simple: tiers 1-3 unchanged; tier-4 block sits between the existing `attempt_tier 3 claude ... || true` line and the `finalize` call, gated on `PATCH_FORMAT == "unified-diff"` so callers that already pass `--patch-format file-replacement` (test case 3b) skip tier-4 entirely.
+ 
+ ## Edge cases
+ 
+ - **Original PATCH_FORMAT is `file-replacement`** (test case 3b in `scripts/test-revise-plan-with-waterfall.sh`): the tier-4 gate is false, tier-4 never fires, behavior unchanged.
+ - **All tiers including tier 4 fail**: existing `finalize()` failure aggregation extended to include `$status4`. Returns the same `failed-validation` / `failed-apply` / `failed-no-patch` enum as today.
++- **Tier-4 codex returns `invalid-patch`, tier-4 cursor returns `no-patch`**: ordinal-4 severity merge keeps `REVISE_TIER_4_STATUS=invalid-patch` for `finalize()` (FINDING_3).
+ - **Tier-4 codex succeeds at file-replacement but emit-plan-gate fails**: `attempt_tier`'s post-apply emit-plan check restores the snapshot, sets `tier4_status=emit-plan-failed`, returns 1. Cursor and Claude tier-4 attempts proceed in turn.
++- **Tier-4 success after tier-1 codex failure**: `REVISE_PATCH_PATH` points at `$REVISE_DIR/codex-output.txt` (file-replacement body), not a stale tier-1 unified-diff file (FINDING_1).
+ - **Original plan has no `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings**: `ORIG_FILE_HEADING_COUNT=0`, the post-apply heading check is skipped, and tier-4 file-replacement may produce a plan without these headings (matching tier-1..3 behavior).
+ - **Model emits diff wrapped in both prose preamble and `` ```diff `` fence**: the new awk in `extract_patch()` drops the preamble lines, consumes the `` ```diff `` opener, and drops the trailing standalone `` ``` `` line. Validation sees a clean diff.
+ - **Model emits a `` ``` `` line inside the diff body**: this is not legal in unified-diff syntax (the body holds context, `+`, `-`, or `\` lines only), so the awk's `if (/^```$/) next` rule will never strip a legitimate body line.
+@@ -64,16 +66,18 @@ Sequencing inside the script tail stays simple: tiers 1-3 unchanged; tier-4 bloc
+ 
+ ## Failure modes
+ 
+-1. **Consumer drift**: if `_run_revise_with_status_parse()` is updated to accept `ok-fallback` but `plan-review.md` is not, downstream prose drifts from runtime. Earliest signal: `make lint-design-doc-sync` (if such a target exists) or a manual `grep ok-fallback skills/design/` showing 1 hit instead of 2+. Mitigation: land both edits in the same commit.
+-2. **Existing harness assertion drift**: the test harness `scripts/test-revise-plan-with-waterfall.sh` runs nine cases that assert specific `REVISE_TIER_1/2/3_STATUS` and `REVISE_STATUS` lines. Tier-4 adds the new `REVISE_TIER_4_STATUS` KV without changing the existing assertions; if an assertion order check or a `grep -c '^REVISE_TIER_' == 3` check existed, it would break. Mitigation: confirmed by reading the harness — no count or order assertion exists, only `assert_line` per KV. Run `bash scripts/test-revise-plan-with-waterfall.sh` before merge.
+-3. **Over-aggressive preamble strip**: the awk in `extract_patch()` drops lines until the first valid header. If a model emits a malformed first hunk that lacks any header but contains real diff content, the entire output would be dropped to empty and the tier records `no-patch`. Earliest signal: `REVISE_TIER_1_STATUS=no-patch` in a run where the model returned visible content. Mitigation: this is the same behavior the unmodified script would exhibit (any model output without a valid header fails `validate_unified_headers`), so the strip does not regress; it only adds the ability to recover from prose-prefixed valid output.
++1. **Consumer drift**: if `_run_revise_with_status_parse()` accepts `ok-fallback` but `plan-review.md` does not, or if the post-success `revise_status=ok` reset remains, summaries show `ok` while revise emitted `ok-fallback`. Mitigation: land `plan-review.md`, both `plan-review-loop.sh` edits, and `grep ok-fallback skills/design/` (expect 2+ hits) in one commit.
++2. **Existing harness assertion drift**: `scripts/test-revise-plan-with-waterfall.sh` runs nine cases with per-KV `assert_line` only (no `REVISE_TIER_*` count check). Tier-4 adds `REVISE_TIER_4_STATUS` without changing existing assertions. Run `bash scripts/test-revise-plan-with-waterfall.sh` before merge.
++3. **Over-aggressive preamble strip**: same as before — strip only recovers prose-prefixed valid headers; malformed-only output still yields `no-patch` / `invalid-patch`.
++4. **Wrong `REVISE_PATCH_PATH` on fallback win**: mitigated by `winner_output_path` capture (FINDING_1); signal is empty or tier-1-sized patch path when tier-4 won.
+ 
+ ## Testing strategy
+ 
+ Per the Round 1 directive, do NOT add new harness fixtures or test cases. Verify before merge:
+ 
+ - `bash scripts/test-revise-plan-with-waterfall.sh` — all nine existing cases continue to pass. The new tier-4 path only fires on three of them (cases 3a, 4, and the tier-3-only cases at lines 416 / 429), and in each case the stub fixtures cause tier-4 internal attempts to fail with the same failure status as tiers 1-3, leaving the final `REVISE_STATUS` unchanged.
+-- `bash scripts/test-plan-review-loop.sh` — exercises the `_run_revise_with_status_parse()` consumer. Existing tests stub `REVISE_STATUS=ok` and `REVISE_STATUS=failed-*`; the relaxed conditional treats both old values identically.
++- `bash skills/design/scripts/test-plan-review-loop.sh` — exercises `_run_revise_with_status_parse()` and round-summary propagation (FINDING_6). Existing tests stub `REVISE_STATUS=ok` and `failed-*`; the relaxed conditional treats `ok` and `ok-fallback` as success without normalizing `ok-fallback` away.
+ - `make lint` — `relevant-checks.sh` enforces the bash-3.2, script-md-siblings, and renderer-substitution-safety lints. No Bash 4+ features are introduced; both edited scripts already use case-based dispatch.
+-- Manual: re-run `/design --simple` on a small issue to confirm the happy path still emits `REVISE_STATUS=ok` when tier-1 codex succeeds.
++- Manual (FINDING_5, no new fixtures): on a stubbed run where tiers 1–3 return `invalid-patch` and tier-4 file-replacement succeeds, confirm `REVISE_STATUS=ok-fallback`, `REVISE_PATCH_PATH` matches the winning `<tool>-output.txt`, `round-summary.env` retains `ok-fallback`, and the loop does not set `LOOP_STATUS=revision-failed`.
++- Manual: re-run `/design --simple` on a small issue to confirm tier-1 unified-diff success still emits `REVISE_STATUS=ok`.
+ 
+-diff_lines: 75
++diff_lines: 88
+

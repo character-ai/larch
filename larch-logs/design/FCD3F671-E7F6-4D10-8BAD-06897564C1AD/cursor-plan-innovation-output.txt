@@ -1,0 +1,17 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	skills/design/scripts/revise-plan-with-waterfall.sh:365-371	Tier-4 success would emit the wrong REVISE_PATCH_PATH	A fallback winner writes <tool>-fallback-output.txt, but finalize still derives <tool>-output.txt from winner, so the success KV points at the earlier unified-diff artifact or a missing file	Track the actual winning output path in attempt_tier, or conditionally use <tool>-fallback-output.txt when winner_is_fallback is true
+2	in_scope	latent	correctness	skills/design/scripts/revise-plan-with-waterfall.sh:150-166,377-383	Tier-4 status can be downgraded by later fallback attempts	The proposed mini-waterfall reuses ordinal 4 for Codex, Cursor, and Claude, so an invalid-patch from Codex can be overwritten by a later no-patch from Claude and final_status becomes failed-no-patch instead of failed-validation	Preserve the highest-priority tier4 failure status unless a later tier succeeds
+
+1. [risk-integration] `skills/design/scripts/revise-plan-with-waterfall.sh:365-371`
+
+Concern: The plan names fallback outputs as `<tool>-fallback-output.txt`, but `finalize()` derives `REVISE_PATCH_PATH` from only `winner`. A tier-4 Codex success would emit `revise/codex-output.txt`, not `revise/codex-fallback-output.txt`.
+
+Suggested revision: Track the actual output path when `attempt_tier` succeeds, or add the smallest conditional in `finalize()` for `winner_is_fallback`.
+
+2. [correctness] `skills/design/scripts/revise-plan-with-waterfall.sh:150-166,377-383`
+
+Concern: The proposed tier-4 chain stores three fallback attempts in one `tier4_status`. Later failures can overwrite earlier, more informative failures.
+
+Scenario: tiers 1-3 all return `no-patch`; tier-4 Codex returns `invalid-patch`; tier-4 Cursor and Claude return `no-patch`. The final aggregation sees only `no-patch` for tier 4 and reports `failed-no-patch`, contrary to the plan’s stated failure mapping.
+
+Suggested revision: For ordinal 4, preserve the highest-priority failure status (`invalid-patch`, then apply/emit failures, then no-patch/skipped) unless a later attempt succeeds.

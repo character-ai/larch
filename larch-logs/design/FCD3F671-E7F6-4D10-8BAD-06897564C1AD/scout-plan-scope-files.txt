@@ -1,0 +1,4 @@
+skills/design/scripts/revise-plan-with-waterfall.sh
+skills/design/scripts/revise-plan-with-waterfall.md
+skills/design/scripts/plan-review-loop.sh
+skills/design/references/plan-review.md
