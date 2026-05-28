@@ -1,0 +1,25 @@
+## Approach Synthesis (4-sketch HARD; all OK)
+
+### Strong convergence (all 4 agents):
+1. `plan-review-loop.sh` becomes the loop driver in-place. Refactor single-pass body into `_run_plan_review_round()`; add outer `while` loop tracking round_num, convergence_streak, accepted/important counts, degraded. No new wrapper script. Reviewer dispatch / collection / aggregation / voting / tally stay inline.
+2. Per-round artifacts under `$DESIGN_TMPDIR/plan-review/round-N/`; session-root files reflect FINAL loop-exit state. Distill each round at end-of-tally.
+3. `revise-plan-with-waterfall.sh` mutates plan.txt only between non-terminal rounds; waterfall snapshots/restores plan.txt per tier. On total failure: LOOP_STATUS=revision-failed, DEGRADED_PANEL=1, pre-revise plan preserved.
+4. Convergence: 2 consecutive non-degraded rounds with ACCEPTED_COUNT <= 3 AND IMPORTANT_ACCEPTED_COUNT == 0 (in-scope only). Degraded breaks streak.
+5. Zero-findings short-circuit requires collector evidence (broken panel != convergence).
+6. design-log-publish.sh allowlist mirrors scripts/larch-log.sh:67-101 round_artifact_included() basename allowlist, retains symlink/path-escape guards.
+7. plan-review-loop.sh MUST NOT touch review-round-count.txt. SKILL.md keeps tier cap (3/5) as outer Gate-C entry cap; LARCH_DESIGN_ROUND_CAP=5 is inner per-loop cap.
+8. main-agent-vote-required halts outer loop immediately (exit 0).
+
+### Personality-specific decisions incorporated:
+- Cursor-Arch: reuse dispatch-plan-voters.sh / revise-plan-with-waterfall.sh / lib-findings-classification.sh / tally-plan-review.sh / aggregate-findings.sh; SRP risk → extract round function + severity helper, not a second orchestration script.
+- Cursor-Edge: TSV severity bug at plan-review-loop.sh:338 (defaults missing severity to "important") MUST be fixed; count only explicit severity=important; degraded rounds break streak; aggregator input-root coupling (Piece 2).
+- Codex-Pragmatic: design-log-publish.sh is HIGH risk → only relax allowlist to KNOWN forensic filenames; fail-closed on unknown.
+- Codex-Innovation: transactional rounds — snapshot round-N/ BEFORE revision mutates plan.txt for clean revision-failure forensics; --round-cap is per-loop (fresh count per Step 3 entry).
+
+### Auto-apply scope (user override from Round 1 D6):
+All rounds auto-apply via revise-plan-with-waterfall.sh (including terminal/convergence). Gate B no longer applies findings; it becomes a passive summary. The "assessor" agent is deferred to #2953.
+
+### Open architectural questions for dialectic:
+1. Severity scanner location: extract to scripts/lib-important-findings.sh (shared with review-and-fix) vs inline in plan-review-loop.sh.
+2. Round-N/ snapshot timing: at end-of-tally (before revise) vs at start-of-next-round (after revise) — affects what round-N/ holds on revision-failure.
+3. Gate B post-auto-apply shape: passive summary vs structural removal — UX consequence.

@@ -1,0 +1,25 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/revise-plan-with-waterfall.sh:348-386; skills/design/scripts/plan-review-loop.sh:676-705	Plan treats revise exit code as the only failure signal	The revise helper reports logical total failure as REVISE_STATUS=failed-* with exit 0, so the loop can mark findings auto-applied and converge even though plan.txt was restored unchanged	Parse revise stdout, require REVISE_STATUS=ok, and treat any failed-* status as LOOP_STATUS=revision-failed; update tests to stub rc=0 plus failed status
+1	in_scope	important	architecture	skills/design/references/approval-gates.md:78-103; skills/design/references/approval-gates.md:180	Manual Gate B contract is contradicted by unconditional inner-loop auto-apply	Users who pass --manual still have accepted findings applied before Gate B, then see manual choices for changes already made	Either disable inner-loop auto-apply when manual_gate_b=true, or explicitly make manual mode incompatible with multi-round auto-apply and change the prompt/contract
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:120-131	Auto-applied revisions skip the existing post-apply pipeline	The loop revises plan.txt, then passive Gate B can continue without duplicate sweep, plan validator, or Step 2b.5 size/decomposition checks that currently run after Gate B applies findings	Run the shared post-apply pipeline once after the final successful auto-apply, or factor it into a script and invoke it from passive Gate B before Step 3b
+1	in_scope	important	risk-integration	skills/design/scripts/revise-plan-with-waterfall.sh:104-108; scripts/design-log-publish.sh:362-374	Revision forensics are written under a path the proposed publisher rejects	revise-plan-with-waterfall.sh writes plan-review/round-N/revise/* today, while the plan says design-log-publish.sh will disallow revise/ under plan-review/round-N, so any successful auto-apply can make final log publishing fail closed	Choose one contract: either allow a constrained round-N/revise allowlist in design-log-publish.sh, or change the revise helper output dir and add explicit publishing support for that subtree
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:337-377; skills/design/scripts/plan-review-loop.sh:676-705	Per-round artifacts can reuse stale accepted findings after a tally error	Early tally errors can happen before accepted-plan-findings.md is truncated, so round N can count and re-apply round N-1 findings instead of stopping cleanly	Clear session-root review artifacts at the start of each round or use round-scoped files, and branch on TALLY_PLAN_REVIEW_STATUS=tally-error before accepted-count, convergence, or revise
+1	in_scope	latent	code-quality	skills/design/scripts/test-plan-review-loop.sh:327-329; skills/design/scripts/plan-review-loop.sh:699-705	Backward-compatible LOOP_STATUS=complete path conflicts with the proposed cap logic	With --round-num K and no --round-cap, effective cap equals K, so a positive-finding single-pass run reaches the cap branch and emits cap-hit instead of current complete	Track whether --round-cap was explicitly provided; in omitted-cap single-pass mode preserve LOOP_STATUS=complete and current artifact behavior
+
+1. **[correctness] `skills/design/scripts/revise-plan-with-waterfall.sh:348-386`**
+   The plan’s `revise_rc != 0` check is wrong for the actual helper contract. Logical waterfall failure exits 0 and emits `REVISE_STATUS=failed-*`. Parse that KV and gate convergence/passive Gate B on `REVISE_STATUS=ok`.
+
+2. **[architecture] `skills/design/references/approval-gates.md:78-103`**
+   The plan says manual Gate B remains an escape hatch, but auto-apply happens before Gate B. That removes the user’s manual control. Add a manual-mode branch before launching the multi-round auto-apply loop.
+
+3. **[correctness] `skills/design/references/approval-gates.md:120-131`**
+   Moving apply out of Gate B drops the existing post-apply validation sequence. Preserve the duplicate sweep, `ACTION=EMIT_PLAN`, full-budget validator, and Step 2b.5 after the final auto-apply.
+
+4. **[risk-integration] `skills/design/scripts/revise-plan-with-waterfall.sh:104-108`**
+   The current revise helper writes under `plan-review/round-N/revise/`. The proposed publisher disallows that subtree. Align the helper and publisher before landing, or design log publishing will fail after successful revisions.
+
+5. **[correctness] `skills/design/scripts/tally-plan-review.sh:337-377`**
+   Tally can fail before it truncates accepted artifacts. In a multi-round session-root loop, stale accepted findings can leak into the next decision point. Clear or scope artifacts per round and stop on tally errors before counting.
+
+6. **[code-quality] `skills/design/scripts/test-plan-review-loop.sh:327-329`**
+   The plan asks to keep `LOOP_STATUS=complete` for single-pass compatibility, but the pseudocode emits `cap-hit` when omitted `--round-cap` defaults to `--round-num`. Add an explicit single-pass compatibility mode.
