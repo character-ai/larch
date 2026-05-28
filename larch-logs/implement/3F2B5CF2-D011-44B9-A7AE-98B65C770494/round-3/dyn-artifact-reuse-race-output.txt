@@ -1,0 +1,7 @@
+Reviewing tier-4 artifact reuse and stale-output handling in the branch diff.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **risk-integration** `skills/design/scripts/revise-plan-with-waterfall.sh:430-447` — Tier-4 artifact reuse is guarded on the apply path: every `attempt_tier` truncates the raw output (`: >"$output"`) before `launch_tier`, and only after a successful non-empty launch does it `rm -f` the derived `${output_name%.txt}-candidate.patch` and re-run `extract_patch` under the current `PATCH_FORMAT`. A tier-4 `no-patch` from a non-zero launcher exit therefore does not re-validate a tier-1 unified-diff candidate; it simply never reaches extraction. The remaining gap is forensic only—if tier-4 codex launch fails, `codex-output.txt` is empty/truncated while `codex-output-candidate.patch` can still hold the tier-1 extract until a later attempt on that same basename reaches `rm -f`.
+- **risk-integration** `scripts/test-revise-plan-with-waterfall.sh:201-253` — Case C3 correctly exercises tier-4 reuse of `codex-output.txt` (via the `.tier4` stub gate and `codex-fallback.txt`) and asserts `ok-fallback` plus path reuse, but it does not assert candidate-patch refresh or a tier-4 launcher-failure path where output is truncated without `rm -f` of `codex-output-candidate.patch`.

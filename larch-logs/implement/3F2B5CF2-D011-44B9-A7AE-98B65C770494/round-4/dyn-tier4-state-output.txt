@@ -1,0 +1,15 @@
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+Tier-4 state wiring in `skills/design/scripts/revise-plan-with-waterfall.sh` is internally consistent with the scout checklist:
+
+- **Format dispatch:** The tier-4 block sets `PATCH_FORMAT="file-replacement"` and re-runs `compose_prompt` before any `attempt_tier 4` call (`635:645:skills/design/scripts/revise-plan-with-waterfall.sh`). `extract_patch()` branches on `PATCH_FORMAT`, so tier-4 attempts use `extract_file_replacement_candidate`, not unified-diff extraction (`219:225:skills/design/scripts/revise-plan-with-waterfall.sh`, `509:533:skills/design/scripts/revise-plan-with-waterfall.sh`).
+- **`merge_tier4_status`:** Sticky `ok` is enforced (`173:175`), and non-ok statuses keep the highest-severity value via `tier4_rank` (`177:181`), so a later `no-patch` cannot mask an earlier `invalid-patch`/`apply-failed`/`emit-plan-failed`. Harness case C11 locks this (`1316:1375:scripts/test-revise-plan-with-waterfall.sh`).
+- **Winner path:** On success, `winner_output` is set from the successful `attempt_tier` output argument (`556:558:skills/design/scripts/revise-plan-with-waterfall.sh`), and `finalize()` emits that same path as `REVISE_PATCH_PATH` on stdout and in `revise.env` (`574:619:skills/design/scripts/revise-plan-with-waterfall.sh`).
+- **Tier metadata:** On tier-4 success, `REVISE_TIER` / `REVISE_WINNING_TIER` are set to the winning tool name (`codex`/`cursor`/`claude`), not empty (`583:583:skills/design/scripts/revise-plan-with-waterfall.sh`, `606:618:skills/design/scripts/revise-plan-with-waterfall.sh`), with `REVISE_STATUS=ok-fallback` when `winner_is_fallback=true` (`578:579:skills/design/scripts/revise-plan-with-waterfall.sh`).
+- **Consumer propagation:** `plan-review-loop.sh` treats `ok-fallback` as success and preserves it through round summaries (`488:488:skills/design/scripts/plan-review-loop.sh`, `1298:1298:skills/design/scripts/plan-review-loop.sh`).
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND
+
+**Branch commits (since `main`):** `3741edc8` (core fix), `421ef1fe` (implement run logs), then three review-feedback rounds (`e9490962`, `d929bc46`, `74bda1f2`).

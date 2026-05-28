@@ -1,0 +1,19 @@
+Reviewing the branch diff and artifact-contract surfaces named in the scout notes.
+Checking finalize stdout contract, publish allowlist enforcement, and consumers of revise artifacts.
+### In-Scope Findings
+
+- **architecture** `skills/design/scripts/revise-plan-with-waterfall.sh:513-524` — `finalize()` now emits the full revise KV contract with `printf … | tee "$REVISE_DIR/revise.env"` instead of `emit_kv`. Under `larch_quiet_init`, contract output must go to FD 3 (`emit_kv` / `emit`); FD 1 is redirected to the quiet log. `plan-review-loop.sh` captures revise output only via command substitution on stdout (`_run_revise_with_status_parse`, ~463–483), so in a normal (non-`LARCH_QUIET_DISABLE`) `/design` run the loop will not see `REVISE_STATUS`, `REVISE_WINNING_TIER`, or tier statuses even when tier 4 succeeds; `revise.env` is written but nothing in `skills/design/` reads it. Harnesses pass because `scripts/test-revise-plan-with-waterfall.sh` sets `LARCH_QUIET_DISABLE=1`. **Suggested fix:** Emit every contract KV with `emit_kv` (preserving key order), and write `revise.env` in a second step (e.g. duplicate the same lines to the file, or `tee` only after redirecting through FD 3). Add a quiet-mode harness case that omits `LARCH_QUIET_DISABLE` and asserts `plan-review-loop.sh` parses `ok-fallback` from the subprocess.
+
+- **architecture** `docs/run-logs.md:208-215` — The published design run-log catalog for `round-<N>/revise/` still lists only `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`, `revise.env`, `prompt.txt`, and `*-candidate.patch`. The branch adds tier-4 artifacts (`codex-fallback-output.txt`, `cursor-fallback-output.txt`, `claude-fallback-output.txt` and derived `*-fallback-output-candidate.patch` names) to `scripts/lib-design-round-artifacts.sh`, `scripts/lib-design-round-artifacts.md`, and `scripts/design-log-publish.md`, but not here. Operators and auditors using `docs/run-logs.md` will not expect published fallback forensics even though publish/snapshot now allow them. **Suggested fix:** Extend the Revise sub-tree bullet list in `docs/run-logs.md` to match `scripts/lib-design-round-artifacts.md` (same basename set as in `scripts/design-log-publish.md`).
+
+### Out-of-Scope Observations
+
+- **artifact-contract (scout checklist):** Tier-4 names are internally consistent across `skills/design/scripts/revise-plan-with-waterfall.sh` (`*-fallback-output.txt`, `${output_name%.txt}-candidate.patch`), `scripts/lib-design-round-artifacts.sh`, both `.md` siblings, `scripts/test-lib-design-round-artifacts.sh`, and test case 12 (`revise.env`, fallback outputs, `REVISE_PATCH_PATH` → `codex-fallback-output.txt`). This deliberately diverges from the issue plan’s “reuse `<tool>-output.txt`” strategy but is self-consistent on the branch.
+
+- **`prompt.txt` overwrite:** Documented in `skills/design/scripts/revise-plan-with-waterfall.md` (Tier 4 section): after tier 4, published `prompt.txt` is the file-replacement prompt, not the unified-diff prompt. Snapshot/publish include it by design; no publish regression found.
+
+- **`revise-plan-with-waterfall.md:41`:** Output list says `<tier>-candidate.patch`; tier 4 actually writes names like `codex-fallback-output-candidate.patch` (covered by allowlist `*-candidate.patch`).
+
+- **Acceptance vs tests:** Plan acceptance calls for `REVISE_TIER_4_STATUS` in all harness cases; only cases 12–13 assert it (others likely still emit `not-attempted` on stdout when quiet is disabled).
+
+- **Diff noise:** `larch-logs/implement/3F2B5CF2-…/` run-log files are unrelated implement-session artifacts on the branch, not part of the #3146 fix surface.

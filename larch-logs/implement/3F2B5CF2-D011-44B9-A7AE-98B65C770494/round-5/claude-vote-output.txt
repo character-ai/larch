@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- code and md doc are mutually consistent with each other; plan's "best→worst" wording is ambiguous and both orderings have merit; impact is cosmetic (wrong label in logs when all tier-4 attempts fail)
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stale numbered unified-diff candidates only exist in REVISE_DIR under codex/cursor/claude namespaces; tier-4 runs in file-replacement mode where the numbered-candidate glob loop is never entered, so stale patches are never selected
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- extract_unified_diff_candidates_from_source already requires saw_old+saw_new to emit a candidate, so pure diff-git patches without ---/+++ never reach validate_unified_headers
+OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- file-replacement is the documented last-resort fallback; heading check is the structural guard; this tradeoff is explicitly accepted in the plan and pre-exists for caller-driven file-replacement mode
+FINDING_11: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- last-complete-plan-wins is intentional and tested in case4; LLM may refine its answer across multiple attempts
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- --recount is fix A explicitly required by issue #3146; context matching still enforced; relaxation is intentional for LLM-generated hunk counts
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- first encounter goes to base patch (no suffix), later encounters get -002/-003 suffixes; glob sorts -002 before . so second encounter is iterated first; when multiple valid candidates exist the second-encountered wins over the first, contradicting encounter-order semantics
+OOS_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly documents that tier-4 reuses artifact names and raw outputs are overwritten; this is an accepted design tradeoff, not a bug
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- REVISE_STATUS and LOOP_STATUS serve distinct purposes; ok-fallback revise + emit-plan-failed loop status together correctly report that revision succeeded but post-apply pipeline failed
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- deviation from plan's stated constraint is in the positive direction (extract_file_replacement_candidate is more robust than cp); well-tested; plan fidelity concern is process-level only
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- positive observation with no problem described, not worth filing
+OOS_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- positive observation
+OOS_21: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- concern about validation order is real but fully subsumed by FINDING_13; no independent issue to file
+OOS_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- positive observation
+OOS_23: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

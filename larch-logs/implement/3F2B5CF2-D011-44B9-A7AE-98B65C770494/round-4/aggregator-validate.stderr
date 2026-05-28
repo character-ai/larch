@@ -1,0 +1,8 @@
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_1 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, dyn-awk-extraction-output.txt, dyn-candidate-lifecycle-output.txt' in FINDING_2 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_3 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, dyn-awk-extraction-output.txt, dyn-candidate-lifecycle-output.txt' in FINDING_4 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt, dyn-harness-equivalence-output.txt' in FINDING_5 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_6 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-testing-output.txt, dyn-harness-equivalence-output.txt' in FINDING_11 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt' in FINDING_15 (not present on any input finding)

@@ -1,0 +1,18 @@
+Reviewing the branch diff and the awk extraction logic in `revise-plan-with-waterfall.sh`.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:377-384,560-575` — `extract_unified_diff_candidates` assigns the first extracted patch to `${output_name%.txt}-candidate.patch` and later ones to `${output_name%.txt}-candidate-NNN.patch`, but `attempt_tier` validates with an unquoted glob (`"${output_name%.txt}-candidate"*.patch`). Bash expands that lexicographically so `codex-output-candidate-002.patch` sorts before `codex-output-candidate.patch` (verified: `-` < `.`). That inverts the documented “encounter order” selection in `revise-plan-with-waterfall.md` whenever two or more unified-diff candidates exist (e.g. fenced-block extract plus full-response rescan in `extract_unified_diff_candidates:362-371`). Tests like case2d can pass because the better patch ends up in a `-NNN` file and is tried first, but the primary file can be a worse or partial candidate (case2g-style overlap) and win if it passes header/`git apply` checks before the intended first candidate is reached. **Suggested fix:** Keep encounter order explicitly—e.g. loop `candidate-*.patch` in numeric order inside each extract dir, then walk `extract-*` in sorted order; or name the primary `…-candidate-001.patch` and iterate `001..N`; or `sort -V` the glob in `attempt_tier` before validation.
+
+- **correctness** `skills/design/scripts/revise-plan-with-waterfall.sh:266-271` — The inter-hunk blank-line rule only peeks one line ahead: a blank is kept in the candidate only when `lines[end+1]` is an `@@` hunk header. If the model inserts two consecutive blank lines between hunks (common with prose-heavy responses), the first blank sees the second blank (not `@@`) and `emit_candidate` breaks, truncating the patch before later hunks. Blank lines are also dropped on write (`308-311`), so the emitted patch cannot preserve intentional empty separators. Case2f covers a single blank only. **Suggested fix:** Skip runs of blank lines while any following non-blank line is `@@` (loop `end++` until the next non-blank is a hunk header or the candidate should end), or treat “blank then `@@`” with a small lookahead window; add a harness case with two blanks between hunks.
+
+### Out-of-Scope Observations
+
+- Branch commits (6 since `main`): `3741edc8` (core fix), four review-feedback rounds, plus `421ef1fe` run-log flush. The awk extractor and tier-4/`ok-fallback` wiring match the issue #3146 plan; `plan-review-loop.sh:1298` correctly preserves `ok-fallback` via `${revise_status:-ok}`.
+
+- `is_candidate_start` (`237-244`) and the early `return start + 1` path (`304-306`) behave as intended for the reviewed cases: `diff --git` vs `---`/`+++` pairs, embedded ` --- a/...` context lines (case2g), and false-start advancement.
+
+- Fenced-block plus full-response scanning (`362-371`) can emit duplicate candidates by design; that is acceptable when validation order is reliable. The glob-order issue above is what makes duplicates risky, not the double scan alone.
+
+- When no candidates are found, behavior is deterministic: empty `extract-*` dirs, no `candidate-*.patch`, and `: >"$patch"` (`387-389`).
+
+- Trailing markdown `- item` lines are excluded only if a blank line precedes them (case2e); without that blank, `is_hunk_body` still accepts `-`-prefixed lines inside an open hunk—a pre-existing LLM-format fragility, not introduced by tier-4/consumer changes.

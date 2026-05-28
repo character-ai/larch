@@ -1,0 +1,14 @@
+Reviewing the branch diff and tier-4 fallback logic in the revise-plan scripts.
+**Branch commits** (since `main`): `3741edc8` Fix /design plan-revise auto-apply…; `421ef1fe` chore(larch-logs); `e9490962`–`237017db` review feedback rounds 1–4.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+Tier-4 `PATCH_FORMAT="file-replacement"` mutation, `compose_prompt`, and `attempt_tier`/`extract_patch`/`apply_patch_file` branching were checked for unified-diff leakage; `merge_tier4_status`/`tier4_rank` ordering and `ok` stickiness; and `finalize()` / `revise.env` on total tier-4 failure vs `ok-fallback` success. No correctness defects tied to the global mutation pattern.
+
+### Out-of-Scope Observations
+- **`PATCH_FORMAT` gating is consistent.** Tier 4 only runs when the entry gate still sees `unified-diff` and `winner` is empty (`686:697:skills/design/scripts/revise-plan-with-waterfall.sh`). After mutation, `extract_patch` (`219:225`), validation (`560:584`), and `apply_patch_file` (`490:497`) all branch on `PATCH_FORMAT`; unified-diff `git apply` paths are not reachable in tier 4.
+- **`merge_tier4_status` matches the documented precedence.** Ranks treat higher numeric rank as the retained failure (`153:181`), `ok` is sticky via the early return (`173:175`), and `finalize()` includes `status4` in `all_statuses` while emitting `ok-fallback` only when `winner` is set and `winner_is_fallback=true` (`625:648`, `686:688`).
+- **Total tier-4 failure is handled correctly.** With no `winner`, `finalize()` sets `hash_after="$HASH_BEFORE"`, empty `REVISE_WINNING_TIER`/`REVISE_PATCH_PATH`, and a failure `REVISE_STATUS` derived from aggregated tier statuses—not `ok-fallback` (`635:648`, `651:662`). Harness case 11 asserts this (`1046:1056:scripts/test-revise-plan-with-waterfall.sh`).
+- **`plan-review-loop.sh` propagation looks correct.** `_run_revise_with_status_parse` accepts `ok-fallback` (`488`), and `${revise_status:-ok}` at `1298` only runs after a successful revise path because revision failure calls `_snapshot_terminal_exit_preserving_status` → `_terminal_exit` (`1289:1295`, `367:374`).
+- **`REVISE_PATCH_PATH` reuses `*-output.txt` by design** (tier 4 overwrites tier 1–3 raw outputs). Tests assert the winning path exists and matches stdout/`revise.env` (`548`, `1085:1085:scripts/test-revise-plan-with-waterfall.sh`); this is intentional artifact reuse, not a path mismatch bug.

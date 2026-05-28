@@ -1,0 +1,10 @@
+Reviewing the branch diff and auditing artifact rename consistency across consumers.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+The rename from `<tier>-candidate.patch` to `<tier>-output-candidate.patch` is consistent across the branch: the producer derives names from the output basename (`${output_name%.txt}-candidate.patch` at `skills/design/scripts/revise-plan-with-waterfall.sh:551-552`), which yields `codex-output-candidate.patch`, `cursor-output-candidate.patch`, and `claude-output-candidate.patch` for the three standard `*-output.txt` paths; consumers were updated in `scripts/test-lib-design-round-artifacts.sh`, `scripts/test-design-log-publish.sh`, `scripts/test-design-multi-round-integration.sh`, `skills/design/scripts/test-plan-review-loop.sh`, and `skills/design/scripts/revise-plan-with-waterfall.md`; and `scripts/lib-design-round-artifacts.sh:42` still allows both old and new primary names via the unchanged `*-candidate.patch` glob (so the allowlist did not need a literal rename). `plan-review-loop.sh` snapshots and `design-log-publish.sh` gate through `design_round_revise_artifact_included()` by basename, so they pick up the new names without hardcoded literals. No stale `codex-candidate.patch` / `cursor-candidate.patch` / `claude-candidate.patch` references remain in runtime `.sh` / `.md` sources (only in committed `larch-logs/` session artifacts).
+
+One related architecture note not tied to the rename itself: the new multi-candidate unified-diff extraction copies alternates into `revise/` as `${patch%.patch}-NNN.patch` (e.g. `codex-output-candidate-002.patch` at `skills/design/scripts/revise-plan-with-waterfall.sh:382-383`), which does **not** match the `*-candidate.patch` allowlist pattern and is neither snapshotted nor publishable. That can fail closed on `design-log-publish` when multiple embedded candidates are extracted, independent of whether the primary file uses the old or new basename.
