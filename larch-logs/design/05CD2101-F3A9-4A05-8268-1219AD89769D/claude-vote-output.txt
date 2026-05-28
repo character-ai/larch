@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan says "every cached version is pinned (each appears in either LATEST_STABLE or ACTIVE_SESSION_VERSIONS)" which covers both preservation paths; prescribing exact version strings is informational and doesn't change test correctness

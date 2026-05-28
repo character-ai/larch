@@ -1,0 +1,64 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/upgrade-larch/scripts/upgrade-larch.sh:385-388
+- **Concern**: Proposed cap-overflow warning attributes every remaining over-cap state to pinned entries, but this loop can also stop because prune failures exhausted removable candidates.. Scenario: If multiple rm -rf calls fail, the new post-loop warning would say pinned entries blocked full trim even though prune failures caused the cache to remain over cap.
+- **Proposed resolution**: Change the warning text to name both causes, e.g. pinned entries or prune failures blocked full trim, or only use the pinning-specific text when PRUNE_FAILED_VERSIONS is empty.
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/upgrade-larch/scripts/upgrade-larch.sh:385-388
+- **Concern**: Proposed cap-overflow warning attributes every remaining over-cap state to pinned entries, but this loop can also stop because prune failures exhausted removable candidates.. Scenario: If multiple rm -rf calls fail, the new post-loop warning would say pinned entries blocked full trim even though prune failures caused the cache to remain over cap.
+- **Proposed resolution**: Change the warning text to name both causes, e.g. pinned entries or prune failures blocked full trim, or only use the pinning-specific text when PRUNE_FAILED_VERSIONS is empty.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-sibling-contract
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: .claude/rules/script-md-siblings.md:1-18; skills/upgrade-larch/scripts/upgrade-larch.md:18-18; <TMPDIR>/plan.txt:3-19
+- **Concern**: Plan changes upgrade-larch.sh behavior but omits the required sibling doc update. Scenario: The repo rule requires sibling .md updates in the same PR as behavior changes under skills/*/scripts; the proposed cap-overflow warning changes prune operator behavior, while upgrade-larch.md currently documents the loop stopping when no removable version remains without documenting the new warning
+- **Proposed resolution**: Add skills/upgrade-larch/scripts/upgrade-larch.md to the plan and update the prune behavior text to include the post-loop cache-cap warning when pinned entries leave the cache above KEEP_LIMIT
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-dyn-sibling-contract
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: .claude/rules/script-md-siblings.md:1-18; skills/upgrade-larch/scripts/test-upgrade-larch-prune.md:7-21; <TMPDIR>/plan.txt:21-26
+- **Concern**: Plan changes test-upgrade-larch-prune.sh behavior but omits the required sibling harness doc update. Scenario: Adding the all-pinned cache-cap scenario changes the harness coverage, but test-upgrade-larch-prune.md covered cases do not include that scenario
+- **Proposed resolution**: Add skills/upgrade-larch/scripts/test-upgrade-larch-prune.md to the plan and add the all-pinned over-cap scenario to its covered-cases list
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-sibling-contract
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: .claude/rules/script-md-siblings.md:1-18; skills/upgrade-larch/scripts/upgrade-larch.md:18-18; <TMPDIR>/plan.txt:3-19
+- **Concern**: Plan changes upgrade-larch.sh behavior but omits the required sibling doc update. Scenario: The repo rule requires sibling .md updates in the same PR as behavior changes under skills/*/scripts; the proposed cap-overflow warning changes prune operator behavior, while upgrade-larch.md currently documents the loop stopping when no removable version remains without documenting the new warning
+- **Proposed resolution**: Add skills/upgrade-larch/scripts/upgrade-larch.md to the plan and update the prune behavior text to include the post-loop cache-cap warning when pinned entries leave the cache above KEEP_LIMIT
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-sibling-contract
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: .claude/rules/script-md-siblings.md:1-18; skills/upgrade-larch/scripts/test-upgrade-larch-prune.md:7-21; <TMPDIR>/plan.txt:21-26
+- **Concern**: Plan changes test-upgrade-larch-prune.sh behavior but omits the required sibling harness doc update. Scenario: Adding the all-pinned cache-cap scenario changes the harness coverage, but test-upgrade-larch-prune.md covered cases do not include that scenario
+- **Proposed resolution**: Add skills/upgrade-larch/scripts/test-upgrade-larch-prune.md to the plan and add the all-pinned over-cap scenario to its covered-cases list
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-test-pin-completeness
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh:176-203; skills/upgrade-larch/scripts/upgrade-larch.sh:304-316,344-356
+- **Concern**: The plan asks for an all-pinned overflow test but does not pin down fixture values that prove the two implicit preservation paths are covered. PLUGIN_ROOT_VERSION becomes ACTIVE_SESSION_VERSIONS through INSTALLED_VERSION even without SESSION_PINNED_VERSIONS, while INSTALL_RESULT_VERSION only survives as LATEST_STABLE through the trim-loop guard.. Scenario: An implementation could put every old version, including the plugin-root version or latest stable, into SESSION_PINNED_VERSIONS, or seed only 7 old cached versions plus the installed stable. That can either miss the implicit PLUGIN_ROOT/LATEST_STABLE paths or fall into the no-prune branch instead of exercising the cap-overflow warning.
+- **Proposed resolution**: Revise the plan's test fixture to specify post-install >8 entries and zero evictable candidates, for example GH_OUTPUT and INSTALL_RESULT_VERSION = 50.0.10, PLUGIN_ROOT_VERSION = 50.0.1, CACHED_VERSIONS = 50.0.1 through 50.0.9, SESSION_PINNED_VERSIONS = 50.0.2 through 50.0.9, with no rm/stat failure knobs; then assert all original cache dirs plus 50.0.10 remain and the cap-overflow warning appears.
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-test-pin-completeness
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh:176-203; skills/upgrade-larch/scripts/upgrade-larch.sh:304-316,344-356
+- **Concern**: The plan asks for an all-pinned overflow test but does not pin down fixture values that prove the two implicit preservation paths are covered. PLUGIN_ROOT_VERSION becomes ACTIVE_SESSION_VERSIONS through INSTALLED_VERSION even without SESSION_PINNED_VERSIONS, while INSTALL_RESULT_VERSION only survives as LATEST_STABLE through the trim-loop guard.. Scenario: An implementation could put every old version, including the plugin-root version or latest stable, into SESSION_PINNED_VERSIONS, or seed only 7 old cached versions plus the installed stable. That can either miss the implicit PLUGIN_ROOT/LATEST_STABLE paths or fall into the no-prune branch instead of exercising the cap-overflow warning.
+- **Proposed resolution**: Revise the plan's test fixture to specify post-install >8 entries and zero evictable candidates, for example GH_OUTPUT and INSTALL_RESULT_VERSION = 50.0.10, PLUGIN_ROOT_VERSION = 50.0.1, CACHED_VERSIONS = 50.0.1 through 50.0.9, SESSION_PINNED_VERSIONS = 50.0.2 through 50.0.9, with no rm/stat failure knobs; then assert all original cache dirs plus 50.0.10 remain and the cap-overflow warning appears.
+
