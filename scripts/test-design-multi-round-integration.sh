@@ -182,7 +182,6 @@ while [[ $# -gt 0 ]]; do
     case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 2 ;; esac
 done
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-1/revise"
-printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/revise.env"
 printf 'prompt\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/prompt.txt"
 printf 'patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-candidate.patch"
 printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'

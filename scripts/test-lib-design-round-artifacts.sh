@@ -36,6 +36,7 @@ assert_included findings-classification.tsv
 assert_included accepted-plan-findings.md
 assert_included rejected-findings.md
 assert_included oos.md
+# Canonical pin for issue #3143 group A (oos-accepted-design.md allowlist coverage).
 assert_included oos-accepted-design.md
 assert_included ballot.txt
 assert_included voting-tally.md
@@ -69,7 +70,7 @@ assert_excluded unknown.bin
 assert_revise_included codex-output.txt
 assert_revise_included cursor-output.txt
 assert_revise_included claude-output.txt
-assert_revise_included revise.env
+assert_revise_excluded revise.env
 assert_revise_included prompt.txt
 assert_revise_included codex-candidate.patch
 assert_revise_included cursor-candidate.patch

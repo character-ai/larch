@@ -498,20 +498,62 @@ _run_post_apply_pipeline() {
     local dedup_tmp dedup_removed
     dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
     dedup_removed=$(python3 - "$plan_path" "$dedup_tmp" <<'PY'
+import re
 import sys
 
 src, dest = sys.argv[1:3]
+heading_re = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 removed = 0
 prev_key = None
+inside_constraints = False
+constraints_level = None
+in_fence = False
+_fence_marker = chr(96) * 3
 out = []
+
+
+def norm_key(line: str) -> str:
+    return " ".join(line.strip().split())
+
+
+def update_section_state(line: str) -> None:
+    global inside_constraints, constraints_level, in_fence
+    stripped = line.strip()
+    if stripped == _fence_marker:
+        in_fence = not in_fence
+        return
+    if in_fence:
+        return
+    m = heading_re.match(line)
+    if not m:
+        return
+    level = len(m.group(1))
+    text = m.group(2).strip().lower()
+    if text.startswith("constraints"):
+        if inside_constraints:
+            constraints_level = min(constraints_level, level)
+        else:
+            inside_constraints = True
+            constraints_level = level
+    elif inside_constraints and level <= constraints_level:
+        inside_constraints = False
+        constraints_level = None
+
+
 with open(src, encoding="utf-8", errors="replace") as fh:
     for line in fh:
-        key = " ".join(line.strip().split())
-        if key and prev_key == key:
+        update_section_state(line)
+        m = heading_re.match(line)
+        if m and not in_fence:
+            prev_key = None
+        key = norm_key(line)
+        protected = inside_constraints and not in_fence
+        if key and prev_key == key and not protected:
             removed += 1
             continue
         out.append(line)
         prev_key = key
+
 with open(dest, "w", encoding="utf-8") as fh:
     fh.writelines(out)
 print(removed)

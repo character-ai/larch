@@ -125,6 +125,78 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_dispatch_round2_degraded() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file|--feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+state_file="$DESIGN_TMPDIR/.dispatch-round-count"
+round=1
+if [[ -f "$state_file" ]]; then
+    round=$(( $(cat "$state_file") + 1 ))
+fi
+printf '%s\n' "$round" >"$state_file"
+OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
+PROMPT="$DESIGN_TMPDIR/render-plan-cursor-arch.prompt"
+printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'","prompt_file":"'"$PROMPT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+: >"$OUT"
+: >"$PROMPT"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+printf '%s\n' "$OUT" >"$PATHS"
+combined=0
+if [[ "$round" == "2" ]]; then
+    combined=1
+fi
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=%s\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$combined" "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_collect_important_round2() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 1
+state_file="$(dirname "$paths")/.collect-round-count"
+round=1
+if [[ -f "$state_file" ]]; then
+    round=$(( $(cat "$state_file") + 1 ))
+fi
+printf '%s\n' "$round" >"$state_file"
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    {
+        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+        if [[ "$round" == "2" ]]; then
+            printf '%s\n' "in_scope	important	correctness	src/a	Important streak reset finding	scenario	fix"
+        else
+            printf '%s\n' "in_scope	nit	correctness	src/a	Nit streak finding	scenario	fix"
+        fi
+    } >"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
 write_dispatch_round1_degraded_then_ok() {
     cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -208,6 +280,10 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_collect_one_nit() {
+    write_collect one_nit
+}
+
 write_collect() {
     local mode="${1:?}"
     cat >"$STUB/collect-agent-results.sh" <<EOS
@@ -232,6 +308,11 @@ while IFS= read -r p || [[ -n "\$p" ]]; do
 EOS
     if [[ "$mode" == "empty" ]]; then
         cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+    } >"$tsv"
+EOS
+    elif [[ "$mode" == "one_nit" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+        printf '%s\n' "in_scope	nit	correctness	src/a	Nit streak finding	scenario	fix"
     } >"$tsv"
 EOS
     elif [[ "$mode" == "three_distinct" ]]; then
@@ -1449,5 +1530,144 @@ set -e
 [[ "$rc_dsrev" -eq 0 ]] || fail "symlinked revise artifact should preserve terminal revision-failed exit status"
 printf '%s\n' "$out_dsrev" | grep -q '^LOOP_STATUS=revision-failed$' || fail "symlinked revise artifact should preserve revision-failed status"
 printf '%s\n' "$out_dsrev" | grep -q '^REASON=revision-failed,snapshot-failed$' || fail "symlinked revise artifact should append snapshot-failed reason"
+
+echo "=== multi-round: two-round nit streak converges via streak ==="
+DSTR="$TMP/streak-two-round"
+mkdir -p "$DSTR"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSTR/plan.txt"
+printf 'feat\n' >"$DSTR/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one_nit
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_str=$(run_loop "$DSTR" 1 --round-cap 5 --convergence-threshold 3)
+printf '%s\n' "$out_str" | grep -q '^LOOP_STATUS=converged$' || fail "two-round nit streak should converge"
+printf '%s\n' "$out_str" | grep -q '^REASON=streak$' || fail "two-round nit streak should use streak reason"
+printf '%s\n' "$out_str" | grep -q '^CONVERGENCE_STREAK=2$' || fail "two-round nit streak should reach streak 2"
+printf '%s\n' "$out_str" | grep -q '^ROUNDS_COMPLETED=2$' || fail "two-round nit streak should complete two rounds"
+grep -q '^CONVERGENCE_STREAK=1$' "$DSTR/plan-review/round-1/round-summary.env" || fail "round 1 should record streak 1"
+
+echo "=== multi-round: important finding resets convergence streak ==="
+DIRS="$TMP/streak-important-reset"
+mkdir -p "$DIRS"
+printf 'plan\n\ndiff_lines: 1\n' >"$DIRS/plan.txt"
+printf 'feat\n' >"$DIRS/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_important_round2
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_irs=$(run_loop "$DIRS" 1 --round-cap 5 --convergence-threshold 3)
+printf '%s\n' "$out_irs" | grep -q '^LOOP_STATUS=converged$' || fail "important-reset path should converge"
+printf '%s\n' "$out_irs" | grep -q '^REASON=streak$' || fail "important-reset path should use streak reason"
+printf '%s\n' "$out_irs" | grep -q '^CONVERGENCE_STREAK=2$' || fail "important-reset path should finish at streak 2"
+printf '%s\n' "$out_irs" | grep -q '^ROUNDS_COMPLETED=4$' || fail "important-reset path should complete four rounds"
+grep -q '^CONVERGENCE_STREAK=1$' "$DIRS/plan-review/round-1/round-summary.env" || fail "round 1 should advance streak to 1"
+grep -q '^CONVERGENCE_STREAK=0$' "$DIRS/plan-review/round-2/round-summary.env" || fail "round 2 important finding should reset streak to 0"
+grep -q '^CONVERGENCE_STREAK=1$' "$DIRS/plan-review/round-3/round-summary.env" || fail "round 3 should rebuild streak to 1"
+
+echo "=== multi-round: degraded round 2 resets convergence streak (dedicated) ==="
+DDR2="$TMP/streak-degraded-round2"
+mkdir -p "$DDR2"
+printf 'plan\n\ndiff_lines: 1\n' >"$DDR2/plan.txt"
+printf 'feat\n' >"$DDR2/feature-description.txt"
+write_scout
+write_dispatch_round2_degraded
+write_collect one_nit
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_ddr2=$(run_loop "$DDR2" 1 --round-cap 5 --convergence-threshold 3)
+printf '%s\n' "$out_ddr2" | grep -q '^LOOP_STATUS=converged$' || fail "degraded-round2 path should converge"
+printf '%s\n' "$out_ddr2" | grep -q '^REASON=streak$' || fail "degraded-round2 path should use streak reason"
+printf '%s\n' "$out_ddr2" | grep -q '^CONVERGENCE_STREAK=2$' || fail "degraded-round2 path should finish at streak 2"
+printf '%s\n' "$out_ddr2" | grep -q '^ROUNDS_COMPLETED=4$' || fail "degraded-round2 path should complete four rounds"
+grep -q '^CONVERGENCE_STREAK=1$' "$DDR2/plan-review/round-1/round-summary.env" || fail "round 1 should advance streak to 1"
+grep -q '^CONVERGENCE_STREAK=0$' "$DDR2/plan-review/round-2/round-summary.env" || fail "round 2 degraded panel should reset streak to 0"
+grep -q '^DEGRADED_PANEL=1$' "$DDR2/plan-review/round-2/round-summary.env" || fail "round 2 should record degraded panel"
+
+echo "=== post-apply: section-aware duplicate-line dedup ==="
+DDED="$TMP/section-aware-dedup"
+mkdir -p "$DDED"
+cat >"$DDED/plan.txt" <<'PLAN'
+## Intro
+
+duplicate outside
+duplicate outside
+
+## Constraints
+
+duplicate inside constraints
+duplicate inside constraints
+
+### Hard constraints
+
+duplicate nested
+duplicate nested
+
+```
+## Constraints lookalike
+duplicate fenced
+duplicate fenced
+```
+
+## After
+
+diff_lines: 1
+PLAN
+cat >"$STUB/dedup-emit-driver.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'EMIT_PLAN_STATUS=ok\n'
+EOS
+chmod +x "$STUB/dedup-emit-driver.sh"
+cat >"$STUB/dedup-validate.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'VALIDATE_STATUS=ok\n'
+EOS
+chmod +x "$STUB/dedup-validate.sh"
+export DESIGN_TMPDIR="$DDED"
+export CLAUDE_PLUGIN_ROOT="$ROOT"
+export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
+export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
+export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export LARCH_QUIET_DISABLE=1
+# shellcheck disable=SC1091
+source "$ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+dedup_log=$(
+    bash -c '
+        set -euo pipefail
+        # shellcheck disable=SC1091
+        source "$1/scripts/lib-quiet.sh"
+        larch_quiet_init
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT
+        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        _run_post_apply_pipeline 1
+    ' _ "$ROOT" "$PLR" 2>&1
+)
+printf '%s\n' "$dedup_log" | grep -q 'dedup-sweep: removed 2 duplicate line(s) from plan.txt' || fail "section-aware dedup should remove two duplicates"
+outside_count=$(grep -c '^duplicate outside$' "$DDED/plan.txt" || true)
+inside_count=$(grep -c '^duplicate inside constraints$' "$DDED/plan.txt" || true)
+nested_count=$(grep -c '^duplicate nested$' "$DDED/plan.txt" || true)
+fenced_count=$(grep -c '^duplicate fenced$' "$DDED/plan.txt" || true)
+[[ "$outside_count" == "1" ]] || fail "outside Constraints duplicates should collapse"
+[[ "$inside_count" == "2" ]] || fail "inside Constraints duplicates should be preserved"
+[[ "$nested_count" == "2" ]] || fail "nested Constraints duplicates should be preserved"
+[[ "$fenced_count" == "1" ]] || fail "fenced duplicates should collapse"
 
 printf '%s\n' "test-plan-review-loop: ok"

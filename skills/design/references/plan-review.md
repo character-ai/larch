@@ -54,12 +54,12 @@ When `plan-review-loop.sh` is invoked with explicit `--round-cap` on argv (SKILL
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
 - **`oos-accepted-design.md` cumulation**: within a single multi-round loop, `oos-accepted-design.md` accumulates across rounds via the in-script `_accumulate_round_oos` helper. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across review runs** covers cross-Gate-C-re-run behavior only).
 - **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification rubric** for the **Severity precedence rule** used by Gate B presentation.
-- **Dedup divergence**: the loop's post-apply pipeline uses regex duplicate-line removal in bash; Gate B uses LLM-driven dedup in the shared post-apply pipeline.
+- **Dedup divergence**: the loop's post-apply pipeline uses regex duplicate-line removal in bash; Gate B uses LLM-driven dedup in the shared post-apply pipeline. Loop dedup is regex/whitespace-key based and may keep semantic duplicates that Gate B's LLM-driven dedup would have removed; this divergence is observable on `LOOP_STATUS=converged` and `LOOP_STATUS=cap-hit` outputs that bypass Gate B.
 - **Artifacts**: per-round forensics under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `scripts/lib-design-round-artifacts.md`. Gate B passive-summary reads `round-summary.env` when `LOOP_STATUS=converged|cap-hit` (see `approval-gates.md`).
 
 ## Legacy single-pass mode
 
-Callers that **omit** `--round-cap` on argv get exactly the pre-multi-round contract: one panel pass, `LOOP_STATUS=complete`, no inner auto-apply, no `converged`/`cap-hit` emissions. `--round-cap 1` is **not** legacy mode — it is multi-round with a one-round cap (auto-apply still runs when findings exist).
+Callers that **omit** `--round-cap` on argv get exactly the pre-multi-round contract: one panel pass, `LOOP_STATUS=complete`, no inner auto-apply, no `converged`/`cap-hit` emissions. `--round-cap 1` is **not** legacy mode — it is multi-round with a one-round cap (auto-apply still runs when findings exist). The SKILL.md Step 3 caller always passes `--round-cap`, so legacy single-pass mode is reachable only via direct script invocation (offline harness, `skills/design/scripts/test-plan-review-loop.sh`, ad-hoc runs) and not through normal `/design` orchestration.
 
 ---
 
