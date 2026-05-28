@@ -7,9 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT="$REPO_ROOT"
 VIOLATIONS=0
+FILES=()
 
 usage() {
-    printf 'Usage: %s [--root PATH]\n' "$(basename "$0")" >&2
+    printf 'Usage: %s [--root PATH] [FILE ...]\n' "$(basename "$0")" >&2
 }
 
 while [[ "$#" -gt 0 ]]; do
@@ -26,9 +27,13 @@ while [[ "$#" -gt 0 ]]; do
             usage
             exit 0
             ;;
-        *)
+        -*)
             usage
             exit 2
+            ;;
+        *)
+            FILES+=("$1")
+            shift
             ;;
     esac
 done
@@ -93,10 +98,39 @@ scan_file() {
     fi
 }
 
-list_shell_files > "$TMP_FILES"
-while IFS= read -r -d '' rel; do
-    scan_file "$rel"
-done < "$TMP_FILES"
+if [[ "${#FILES[@]}" -eq 0 ]]; then
+    list_shell_files > "$TMP_FILES"
+    while IFS= read -r -d '' rel; do
+        scan_file "$rel"
+    done < "$TMP_FILES"
+else
+    for file in "${FILES[@]}"; do
+        case "$file" in
+            *.sh|*.inc.bash)
+                ;;
+            *)
+                printf 'lint-bash32: skipping non-shell path: %s\n' "$file" >&2
+                continue
+                ;;
+        esac
+
+        case "$file" in
+            /*)
+                case "$file" in
+                    "$ROOT"/*)
+                        scan_file "${file#"$ROOT"/}"
+                        ;;
+                    *)
+                        printf 'lint-bash32: skipping path outside lint root: %s\n' "$file" >&2
+                        ;;
+                esac
+                ;;
+            *)
+                scan_file "${file#./}"
+                ;;
+        esac
+    done
+fi
 
 if [[ "$VIOLATIONS" -gt 0 ]]; then
     exit 1

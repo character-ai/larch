@@ -30,8 +30,12 @@ write_sh() {
 
 run_lint() {
     local stderr_file="$1"
+    shift
     set +e
-    bash "$LINT" --root "$TMPROOT" 2>"$stderr_file"
+    (
+        cd "$TMPROOT" || exit 1
+        bash "$LINT" --root "$TMPROOT" "$@"
+    ) 2>"$stderr_file"
     local rc=$?
     set -e
     printf '%s\n' "$rc"
@@ -60,6 +64,31 @@ assert_case() {
     done
     printf 'PASS [%s]\n' "$label"
     PASS=$((PASS + 1))
+}
+
+assert_not_in_stderr() {
+    local label="$1"
+    local stderr_file="$2"
+    local needle="$3"
+
+    if grep -Fq "$needle" "$stderr_file"; then
+        printf 'FAIL [%s]: stderr contained unexpected needle: %s\n' "$label" "$needle" >&2
+        cat "$stderr_file" >&2
+        FAIL=$((FAIL + 1))
+        return
+    fi
+}
+
+assert_empty_stderr() {
+    local label="$1"
+    local stderr_file="$2"
+
+    if [[ -s "$stderr_file" ]]; then
+        printf 'FAIL [%s]: expected empty stderr\n' "$label" >&2
+        cat "$stderr_file" >&2
+        FAIL=$((FAIL + 1))
+        return
+    fi
 }
 
 stderr_file="$(mktemp)"
@@ -142,6 +171,85 @@ rc="$(run_lint "$stderr_file")"
 assert_case "inc.bash extension is scanned" 1 "$stderr_file" "$rc" \
     "scripts/helper-bad.inc.bash" \
     "declare -A associative arrays"
+
+reset_tree
+write_sh "$TMPROOT/scripts/good.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "${1:-ok}"
+EOF
+rc="$(run_lint "$stderr_file" scripts/good.sh)"
+assert_case "positional clean .sh" 0 "$stderr_file" "$rc"
+assert_empty_stderr "positional clean .sh" "$stderr_file"
+
+reset_tree
+write_sh "$TMPROOT/scripts/bad-positional.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+declare -A seen=() # lint-bash32: ok fixture
+typeset -A old=() # lint-bash32: ok fixture
+mapfile -t rows < input.txt # lint-bash32: ok fixture
+readarray -t more < input.txt # lint-bash32: ok fixture
+echo "${NAME^^}" # lint-bash32: ok fixture
+echo "${NAME^}" # lint-bash32: ok fixture
+echo "${NAME,,}" # lint-bash32: ok fixture
+echo "${NAME,}" # lint-bash32: ok fixture
+declare -n ref=target # lint-bash32: ok fixture
+local -n inner=target # lint-bash32: ok fixture
+cmd &>> log.txt # lint-bash32: ok fixture
+coproc WORKER { cat; } # lint-bash32: ok fixture
+coproc { cat; } # lint-bash32: ok fixture
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/bad-positional.sh" > "$TMPROOT/scripts/bad-unsuppressed.sh"
+rm -f "$TMPROOT/scripts/bad-positional.sh"
+write_sh "$TMPROOT/scripts/bad-positional-2.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+declare -A sibling=() # lint-bash32: ok fixture
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/bad-positional-2.sh" > "$TMPROOT/scripts/bad-unsuppressed-2.sh"
+rm -f "$TMPROOT/scripts/bad-positional-2.sh"
+rc="$(run_lint "$stderr_file" scripts/bad-unsuppressed.sh)"
+assert_case "positional forbidden constructs .sh" 1 "$stderr_file" "$rc" \
+    "scripts/bad-unsuppressed.sh" \
+    "declare -A associative arrays" \
+    "typeset -A associative arrays" \
+    "mapfile/readarray" \
+    "parameter case conversion" \
+    "declare -n nameref" \
+    "local -n nameref" \
+    "&>""> append-all redirection" \
+    "coproc"
+assert_not_in_stderr "positional forbidden constructs .sh" "$stderr_file" "bad-unsuppressed-2.sh"
+
+reset_tree
+write_sh "$TMPROOT/scripts/helper.inc.bash" <<'EOF'
+# shellcheck shell=bash
+declare -A bad=() # lint-bash32: ok fixture
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/helper.inc.bash" > "$TMPROOT/scripts/helper-bad.inc.bash"
+rm -f "$TMPROOT/scripts/helper.inc.bash"
+rc="$(run_lint "$stderr_file" scripts/helper-bad.inc.bash)"
+assert_case "positional forbidden constructs .inc.bash" 1 "$stderr_file" "$rc" \
+    "scripts/helper-bad.inc.bash" \
+    "declare -A associative arrays"
+
+reset_tree
+write_sh "$TMPROOT/scripts/good.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' ok
+EOF
+printf '%s\n' '# notes' > "$TMPROOT/notes.md"
+rc="$(run_lint "$stderr_file" scripts/good.sh notes.md)"
+assert_case "positional skip non-shell" 0 "$stderr_file" "$rc" \
+    "lint-bash32: skipping non-shell path: notes.md"
+
+reset_tree
+rc="$(run_lint "$stderr_file" /tmp/foo.sh)"
+assert_case "positional skip outside-root" 0 "$stderr_file" "$rc" \
+    "lint-bash32: skipping path outside lint root: /tmp/foo.sh"
 
 if command -v git >/dev/null 2>&1; then
     reset_tree

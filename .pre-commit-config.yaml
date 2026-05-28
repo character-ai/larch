@@ -115,6 +115,15 @@ repos:
 
   - repo: local
     hooks:
+      - id: lint-bash32
+        name: Lint Bash 3.2 portability of shell scripts
+        entry: bash scripts/lint-bash32.sh
+        language: system
+        files: \.(sh|inc\.bash)$
+        pass_filenames: true
+
+  - repo: local
+    hooks:
       - id: check-topology-rule-paths
         name: Check topology-rule paths coverage
         entry: python scripts/check-topology-rule-paths.py
