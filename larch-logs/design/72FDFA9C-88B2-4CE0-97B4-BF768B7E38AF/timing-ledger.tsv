@@ -1,0 +1,19 @@
+v1	mark	1779945850	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779946020	implement	-	codex	codex-phase1-dyn-codex-plan-line-ref-accuracy	1779945988	1779946020	32	codex-primary-plan-dyn-line-ref-accuracy-output.txt	0	complete
+v1	vendor	1779946073	implement	-	cursor	cursor-phase1-dyn-cursor-plan-line-ref-accuracy	1779945988	1779946073	85	cursor-plan-dyn-line-ref-accuracy-output.txt	0	complete
+v1	vendor	1779946080	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779945987	1779946080	93	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779946089	implement	-	codex	codex-phase1-codex-plan-edge	1779945987	1779946089	102	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779946091	implement	-	codex	codex-phase1-dyn-codex-plan-ref-inventory	1779945988	1779946091	103	codex-primary-plan-dyn-ref-inventory-output.txt	0	complete
+v1	vendor	1779946091	implement	-	codex	codex-phase1-codex-plan-arch	1779945987	1779946091	104	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779946092	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779945987	1779946092	105	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779946099	implement	-	codex	codex-phase1-codex-plan-requirements	1779945987	1779946099	112	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779946102	implement	-	codex	codex-phase1-codex-plan-innovation	1779945987	1779946102	115	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779946110	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779945987	1779946110	123	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779946111	implement	-	cursor	cursor-phase1-dyn-cursor-plan-ref-inventory	1779945988	1779946111	123	cursor-plan-dyn-ref-inventory-output.txt	0	complete
+v1	vendor	1779946122	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779945987	1779946121	134	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779946131	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779945987	1779946131	144	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779946150	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779945987	1779946150	163	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779946186	implement	-	codex	codex-phase1-aggregator	1779946155	1779946186	31	aggregator-output.txt	0	complete
+v1	vendor	1779946257	implement	-	cursor	cursor-phase1-voter-3	1779946226	1779946257	31	cursor-vote-output.txt	0	complete
+v1	vendor	1779946266	implement	-	codex	codex-phase1-voter-2	1779946226	1779946266	40	codex-vote-output.txt	0	complete
+v1	mark	1779949589	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
