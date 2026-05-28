@@ -58,6 +58,23 @@ append_warning() {
         >/dev/null 2>&1 || true
 }
 
+write_default_verdict_artifacts() {
+    local verdict_file="$DESIGN_TMPDIR/assessor-verdict-round-${ROUND_NUM}.txt"
+    local verdict_env="${verdict_file}.env"
+    mkdir -p "$(dirname "$verdict_file")"
+    printf 'NOT_WORSE\n' >"$verdict_file"
+    {
+        printf 'ASSESSOR_VERDICT=not-worse\n'
+        printf 'BETTER_VOTES=0\n'
+        printf 'WORSE_VOTES=0\n'
+        printf 'TIE_VOTES=0\n'
+        printf 'EFFECTIVE_ASSESSORS=0\n'
+        printf 'DEGRADED_DEFAULT_OPEN=true\n'
+        printf 'QUALIFICATIONS_SUMMARY=Assessors found no WORSE-majority consensus.\n'
+    } >"$verdict_env"
+    emit_assessor_kv degraded-default-open not-worse 0 "$verdict_file" "$verdict_env"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
@@ -96,7 +113,7 @@ plan_prev="$DESIGN_TMPDIR/plan-after-round-$((ROUND_NUM - 1)).txt"
 plan_current="$DESIGN_TMPDIR/plan.txt"
 feature_file="${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
 
-for missing in "$plan_original" "$plan_prev" "$plan_current"; do
+for missing in "$plan_original" "$plan_prev" "$plan_current" "$feature_file"; do
     if [[ ! -f "$missing" ]]; then
         emit "**⚠ assessor: missing input snapshot ($missing); skipped"
         cap=$(mktemp "${TMPDIR:-/tmp}/assessor-missing.XXXXXX")
@@ -135,7 +152,7 @@ DISPATCH_SH="${LARCH_DISPATCH_PLAN_ASSESSORS_SH:-$PLUGIN_ROOT/skills/design/scri
 MONITOR_SH="${LARCH_BREADCRUMB_MONITOR_SH:-$PLUGIN_ROOT/scripts/breadcrumb-monitor.sh}"
 
 set +e
-LARCH_QUIET_DISABLE=1 "$DISPATCH_SH" \
+"$DISPATCH_SH" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --round-num "$ROUND_NUM" \
     --plan-original "$plan_original" \
@@ -169,9 +186,9 @@ dispatch_out=""
 [[ -f "$LARCH_QUIET_LOG_FILE" ]] && dispatch_out=$(cat "$LARCH_QUIET_LOG_FILE" 2>/dev/null || true)
 
 DISPATCH_OK=false
-CLAUDE_ASSESSOR_PATH=""
-CODEX_ASSESSOR_PATH=""
-CURSOR_ASSESSOR_PATH=""
+CLAUDE_ASSESSOR_PATH="$DESIGN_TMPDIR/claude-plan-assessor-round-${ROUND_NUM}.txt"
+CODEX_ASSESSOR_PATH="$DESIGN_TMPDIR/codex-plan-assessor-round-${ROUND_NUM}.txt"
+CURSOR_ASSESSOR_PATH="$DESIGN_TMPDIR/cursor-plan-assessor-round-${ROUND_NUM}.txt"
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
@@ -188,19 +205,28 @@ if [[ "$DISPATCH_OK" != "true" || "$dispatch_rc" -ne 0 ]]; then
     printf '%s\n' "$dispatch_out" >"$cap"
     append_warning "$cap" "${dispatch_rc:-1}"
     rm -f "$cap"
-    emit_assessor_kv degraded-default-open not-worse 0 "" ""
-    exit 0
 fi
 
 verdict_file="$DESIGN_TMPDIR/assessor-verdict-round-${ROUND_NUM}.txt"
 TALLY_SH="${LARCH_TALLY_PLAN_ASSESSOR_SH:-$PLUGIN_ROOT/skills/design/scripts/tally-plan-assessor.sh}"
+set +e
 tally_out=$("$TALLY_SH" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --round-num "$ROUND_NUM" \
     --claude-output "$CLAUDE_ASSESSOR_PATH" \
     --cursor-output "$CURSOR_ASSESSOR_PATH" \
     --codex-output "$CODEX_ASSESSOR_PATH" \
-    --output "$verdict_file")
+    --output "$verdict_file" 2>&1)
+tally_rc=$?
+set -e
+if [[ "$tally_rc" -ne 0 ]]; then
+    cap=$(mktemp "${TMPDIR:-/tmp}/assessor-tally.XXXXXX")
+    printf '%s\n' "$tally_out" >"$cap"
+    append_warning "$cap" "$tally_rc"
+    rm -f "$cap"
+    write_default_verdict_artifacts
+    exit 0
+fi
 
 ASSESSOR_VERDICT=""
 EFFECTIVE_ASSESSORS=0

@@ -922,7 +922,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
   --variant step3
 ```
 
-Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`. Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`.
+Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`). Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`.
 
 **Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). Persist the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` so later Bash fences in this step rehydrate the same `STEP3_REVIEW_CAP_REACHED` / `STEP3_REVIEW_ROUND_NUM` state instead of relying on a prior fence's shell locals. The guard computes the pending round number. Before launching `plan-review-loop.sh`, Step 3 persists that pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, Step 3 keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`; on that path, roll back to the prior count. If the cap is reached, print the warning, skip `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
 
@@ -1021,9 +1021,12 @@ else
       esac
     done <<< "$_cursor_out"
     if [[ -f "$DESIGN_TMPDIR/plan-after-round-${ROUND_NUM}.txt" ]]; then
-      _next_cursor=$((ROUND_NUM + 1))
-      "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
-        write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$_next_cursor"
+      _next_cursor=$((10#$ROUND_NUM + 1))
+      if ! "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
+        write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$_next_cursor"; then
+        printf '%s\n' "**⚠ Step 3: failed to advance plan-review round cursor; aborting before review launch.**"
+        exit 1
+      fi
       ROUND_NUM=$_next_cursor
     fi
   fi
@@ -1098,8 +1101,8 @@ Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected fi
 - `LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode** (findings already auto-applied inside the loop; do not re-apply them at Gate B).
 - `LOOP_STATUS=revision-failed` — proceed to Gate B with the warning banner and the full 3-option manual-style prompt for un-applied final-round findings.
 - `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (handled above); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; loop aborted; current plan preserved.**` and short-circuit to Step 3b (skip Gate B).
-- `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt`; print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation, not convergence.**` and short-circuit to Step 3b (skip Gate B).
-- `LOOP_STATUS=zero-findings-degraded-panel` — do not treat the round as converged; Gate B's zero-findings short-circuit still skips apply and continues to Step 3b.
+- `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt`; print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation, not convergence.**` and short-circuit to Step 3b (skip Gate B and Step 3.6).
+- `LOOP_STATUS=zero-findings-degraded-panel` — do not treat the round as converged; proceed to Gate B, whose zero-findings short-circuit still continues to Step 3.6 before Step 3b.
 - `LOOP_STATUS=plan-size-trigger|plan-validator-defects` — run the Step 2b.5 Split-path / Cancel `AskUserQuestion` handler (or plan-command validator failure shared body) before Gate B/3b.
 - `LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure and route through Gate B's warning/manual handling, not the Split-path prompt.
 - `LOOP_STATUS=panel-failed` (`rc=1`) — existing short-circuit to Step 3b.
@@ -1119,7 +1122,7 @@ If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `plan-size-trigge
 
 At the Step 3 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3"` before entering Step 3.5.
 
-> **Continue to Step 3.5 IMMEDIATELY when Step 3 actually produced fresh review artifacts.** The plan-review result is not terminal — proceed to the post-review chooser. If Step 3 short-circuited with `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, bypass Step 3.5 and continue to Step 3b instead.
+> **Continue to Step 3.5 IMMEDIATELY when Step 3 actually produced fresh review artifacts.** The plan-review result is not terminal — proceed to the post-review chooser. If Step 3 short-circuited with `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, bypass Step 3.5 and continue to Step 3b instead. Zero-findings paths still traverse Gate B's short-circuit and then Step 3.6 before Step 3b.
 
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->
 
@@ -1148,17 +1151,20 @@ if [ "$_wp" != "HARD" ]; then
   printf '%s\n' "⏩ 3.6: assessor — workflow_path=$_wp; skipped"
 else
   printf '%s\n' "> **🔶 /design 3.6: assessor**"
-  if [ -z "${ROUND_NUM:-}" ]; then
-    _cursor_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
-    ROUND_NUM=1
-    while IFS= read -r _line || [ -n "$_line" ]; do
-      case "$_line" in
-        ROUND_CURSOR=*) ROUND_NUM="${_line#ROUND_CURSOR=}" ;;
-      esac
-    done <<< "$_cursor_out"
-  fi
-  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
-    write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$ROUND_NUM"
+  _cursor_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
+  ROUND_NUM=1
+  while IFS= read -r _line || [ -n "$_line" ]; do
+    case "$_line" in
+      ROUND_CURSOR=*) ROUND_NUM="${_line#ROUND_CURSOR=}" ;;
+    esac
+  done <<< "$_cursor_out"
+  if ! [ -f "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" ]; then
+    printf '%s\n' "**⚠ 3.6: feature-description.txt missing; skipping assessor for round ${ROUND_NUM:-?}.**"
+  elif ! "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
+    write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$ROUND_NUM"; then
+    printf '%s\n' "**⚠ 3.6: failed to snapshot post-Gate-B plan for round ${ROUND_NUM:-?}; aborting before assessment.**"
+    exit 1
+  else
   _assess_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-present "$CODEX_PRESENT" \
@@ -1176,14 +1182,15 @@ else
   if [ "$ASSESSOR_VERDICT" = "not-worse" ] && [ "${EFFECTIVE_ASSESSORS:-0}" = "0" ]; then
     printf '%s\n' "**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round ${ROUND_NUM:-?}, see ${ASSESSOR_VERDICT_ENV:-?}).**"
   fi
+  fi
 fi
 ```
 
-On `ASSESSOR_VERDICT=worse-majority` with `EFFECTIVE_ASSESSORS >= 1`: print the verdict file under `## Plan-Quality Assessor — WORSE majority (round <N>)`, surface `QUALIFICATIONS_SUMMARY` from the `.env` sibling (FINDING_15), then fire `AskUserQuestion` (**Continue** / **Stop**). On **Continue**: proceed to Step 3b. On **Stop**: `export SUMMARY_OUTCOME=cancelled-assessor-worse`, `export ASSESSOR_ROUND_NUM="${ROUND_NUM:-}"`, run the Final summary block, print `**ℹ /design cancelled by operator (assessor WORSE verdict, round <N>).**`, exit 0; do NOT call `cleanup-tmpdir.sh`; skip `[DESIGNED]` rename and design-log publish.
+On `ASSESSOR_VERDICT=worse-majority` with `ASSESSOR_STATUS=ok` and `EFFECTIVE_ASSESSORS >= 1`: print the verdict file under `## Plan-Quality Assessor — WORSE majority (round <N>)`, surface `QUALIFICATIONS_SUMMARY` from the `.env` sibling (FINDING_15), then fire `AskUserQuestion` (**Continue** / **Stop**). On **Continue**: proceed to Step 3b. On **Stop**: `export SUMMARY_OUTCOME=cancelled-assessor-worse`, `export ASSESSOR_ROUND_NUM="${ROUND_NUM:-}"`, run the Final summary block, print `**ℹ /design cancelled by operator (assessor WORSE verdict, round <N>).**`, exit 0; do NOT call `cleanup-tmpdir.sh`; skip `[DESIGNED]` rename and design-log publish. If `ASSESSOR_STATUS` is `skipped` or `missing-snapshot`, do not present the Continue/Stop prompt.
 
 Normative reference: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/assessor.md`.
 
-Step 3.6 helper surface: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh` writes `plan.txt-original`, round snapshots, and `plan-review-round-cursor.txt` (contract: `snapshot-plan-round.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/dispatch-plan-assessors.sh` launches the three-assessor panel (contract: `dispatch-plan-assessors.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-assessor.sh` resolves the strict-majority WORSE verdict and `.env` sidecar (contract: `tally-plan-assessor.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh` orchestrates the round dispatch+tally path (contract: `assess-plan-round.md`). Offline harness coverage for this assessor lane lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.sh`, and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.sh`.
+Step 3.6 helper surface: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh` writes `plan.txt-original`, round snapshots, and `plan-review-round-cursor.txt` (contract: `snapshot-plan-round.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/dispatch-plan-assessors.sh` launches the three-assessor panel (contract: `dispatch-plan-assessors.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-assessor.sh` resolves the strict-majority WORSE verdict and `.env` sidecar (contract: `tally-plan-assessor.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh` orchestrates the round dispatch+tally path (contract: `assess-plan-round.md`). Offline harness coverage for this assessor lane lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.md`), `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.md`), `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.md`), and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.md`).
 
 At the Step 3.6 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"` before entering Step 3b.
 
@@ -1459,11 +1466,11 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.awk` — awk implementation loaded by `parse-plan-commands.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. The SKILL.md prose guards invocation on `review_budget != quick`. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. The SKILL.md prose guards invocation on `review_budget != quick`. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.md`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`. Shared TSV header helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-findings-classification.sh`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.sh`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`. Shared TSV header helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-findings-classification.sh`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).

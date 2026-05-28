@@ -81,7 +81,7 @@ When the concern text is ambiguous, prefer the lower bucket and surface the ambi
 
 ### Zero-findings short-circuit
 
-When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) before Step 3b. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path. Step 3.6 → Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence on HARD runs.
+When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) before Step 3b. This short-circuit fires before Gate B mode resolution, presentation, any prompt, or any plan-apply path. Step 3.6 → Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence on HARD runs, including `LOOP_STATUS=zero-findings-degraded-panel`.
 
 #### Gate B mode (auto-apply vs manual)
 

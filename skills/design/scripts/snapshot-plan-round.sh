@@ -41,7 +41,7 @@ parse_cursor_file() {
             printf '1'
             ;;
         *)
-            printf '%s' "$raw"
+            printf '%s' "$((10#$raw))"
             ;;
     esac
 }

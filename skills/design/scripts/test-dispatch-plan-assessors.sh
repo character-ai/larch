@@ -2,6 +2,8 @@
 # Offline harness for dispatch-plan-assessors.sh
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
+unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE \
+  LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE LARCH_PAIRED_PID_FILE || true
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SUBJECT="$ROOT/skills/design/scripts/dispatch-plan-assessors.sh"
@@ -51,10 +53,15 @@ while IFS= read -r row; do
   [[ -n "$row" ]] || continue
   tool=$(printf '%s' "$row" | sed -n 's/.*"tool":"\([^"]*\)".*/\1/p')
   output=$(printf '%s' "$row" | sed -n 's/.*"output":"\([^"]*\)".*/\1/p')
-  if [[ "$tool" == codex ]]; then out1="$output"; fi
+  if [[ "$tool" == codex ]]; then
+    printf 'ASSESSMENT: BETTER\nREASONING: codex ok\nQUALIFICATIONS: x qual\n' >"$output"
+    out1="$output"
+  fi
   if [[ "$tool" == cursor ]]; then
     if [[ "${CURSOR_STUB_MODE:-ok}" == narrate ]]; then
       printf 'I will now assess the plan.\n' >"$output"
+      printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=%s %s\nALL_OUTPUT_TOOLS=codex cursor\n' "$out1" "$output"
+      exit 0
     else
       printf 'ASSESSMENT: TIE\nREASONING: cursor ok\nQUALIFICATIONS: c qual\n' >"$output"
     fi
@@ -73,6 +80,9 @@ printf 'c\n' >"$TMP/c.txt"
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB"
 export LARCH_LAUNCH_CLAUDE_REVIEW_SH="$PLUGIN_STUB/scripts/launch-claude-review.sh"
 export LARCH_DISPATCH_WITH_WATERFALL_SH="$PLUGIN_STUB/scripts/dispatch-with-waterfall.sh"
+export DESIGN_TMPDIR="$TMP"
+export LARCH_PAIRED_PID_FILE="$TMP/paired.pid"
+unset IMPLEMENT_TMPDIR || true
 
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \
@@ -86,6 +96,58 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
 
 printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'DISPATCH_OK not true'
 printf '%s\n' "$out" | grep -Fq 'CLAUDE_ASSESSOR_PATH=' || fail 'missing claude path kv'
+printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=false' || fail 'happy path should not be degraded'
 grep -Fq 'plan-assessor' "$TMP/plan-assessor-slots.ndjson" || fail 'missing manifest'
+[[ -s "$TMP/paired.pid" ]] || fail 'paired pid file was not written'
+
+out=$(CURSOR_STUB_MODE=narrate LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+  --design-tmpdir "$TMP" \
+  --round-num 2 \
+  --plan-original "$TMP/o.txt" \
+  --plan-prev "$TMP/p.txt" \
+  --plan-current "$TMP/c.txt" \
+  --feature-file "$TMP/feature.txt" \
+  --codex-present true \
+  --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=false' || fail 'narration-only cursor output must fail dispatch contract'
+printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=true' || fail 'narration-only cursor output should mark degraded panel'
+
+cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'STUB'
+#!/usr/bin/env bash
+OUTPUT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) OUTPUT="${2:?}"; shift 2 ;;
+    --prompt-file|--mode|--role|--timeout|--timing-task-kind) shift 2 ;;
+    *) shift ;;
+  esac
+done
+: >"$OUTPUT"
+exit 9
+STUB
+chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+  --design-tmpdir "$TMP" \
+  --round-num 2 \
+  --plan-original "$TMP/o.txt" \
+  --plan-prev "$TMP/p.txt" \
+  --plan-current "$TMP/c.txt" \
+  --feature-file "$TMP/feature.txt" \
+  --codex-present true \
+  --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'CLAUDE_ASSESSOR_STATUS=failed' || fail 'launcher failure should be surfaced as failed claude assessor'
+printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=true' || fail 'launcher failure should mark degraded panel'
+
+if LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+  --design-tmpdir "$TMP" \
+  --round-num 02x \
+  --plan-original "$TMP/o.txt" \
+  --plan-prev "$TMP/p.txt" \
+  --plan-current "$TMP/c.txt" \
+  --feature-file "$TMP/feature.txt" \
+  --codex-present true \
+  --cursor-present true >/tmp/larch-dispatch-assessor-invalid.out 2>&1; then
+  fail 'invalid round number should fail closed'
+fi
 
 pass 'dispatch-plan-assessors harness'

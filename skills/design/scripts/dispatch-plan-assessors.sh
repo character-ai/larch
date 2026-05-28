@@ -48,12 +48,17 @@ done
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
 export DESIGN_TMPDIR
+case "$ROUND_NUM" in
+    ''|*[!0-9]*|0) larch_err "dispatch-plan-assessors.sh: --round-num must be a positive integer"; exit 2 ;;
+esac
+ROUND_NUM=$((10#$ROUND_NUM))
 
 for f in "$PLAN_ORIGINAL" "$PLAN_PREV" "$PLAN_CURRENT" "$FEATURE_FILE"; do
     [[ -f "$f" ]] || { larch_err "dispatch-plan-assessors.sh: missing input file: $f"; exit 2; }
 done
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "dispatch-plan-assessors.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "dispatch-plan-assessors.sh: --cursor-present must be true or false"; exit 2; }
+larch_quiet_write_paired_pid_file
 
 RENDER_SH="${LARCH_RENDER_ASSESSOR_PROMPT_SH:-$PLUGIN_ROOT/skills/shared/scripts/render-assessor-prompt.sh}"
 prompt_file="$DESIGN_TMPDIR/assessor-prompt-round-${ROUND_NUM}.txt"
@@ -140,8 +145,8 @@ for st in "$CLAUDE_STATUS" "$CODEX_STATUS" "$CURSOR_STATUS"; do
 done
 if (( effective < 3 )); then degraded_warning=true; fi
 
-[[ "$CLAUDE_STATUS" == "failed" ]] && dispatch_ok=false
 [[ "$dispatch_ok" != "true" || "$wf_rc" -ne 0 ]] && dispatch_ok=false
+[[ "$dispatch_ok" != "true" ]] && degraded_warning=true
 
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv CLAUDE_ASSESSOR_PATH "$CLAUDE_PATH"

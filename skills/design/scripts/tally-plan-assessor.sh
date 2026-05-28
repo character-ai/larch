@@ -93,8 +93,17 @@ done
 [[ -n "$DESIGN_TMPDIR" && -n "$ROUND_NUM" && -n "$OUTPUT" ]] || { usage; exit 2; }
 
 better=0 worse=0 tie=0 successful=0
-qual_worse=""
+declare -a qual_worse_list=()
 reason_worse=""
+
+add_distinct_qualification() {
+    local candidate="$1" existing=""
+    [[ -n "$candidate" ]] || return 0
+    for existing in "${qual_worse_list[@]:-}"; do
+        [[ "$existing" == "$candidate" ]] && return 0
+    done
+    qual_worse_list+=("$candidate")
+}
 
 for path in "$CLAUDE_OUTPUT" "$CODEX_OUTPUT" "$CURSOR_OUTPUT"; do
     ASSESS_VERDICT="" ASSESS_REASON="" ASSESS_QUAL=""
@@ -104,7 +113,7 @@ for path in "$CLAUDE_OUTPUT" "$CODEX_OUTPUT" "$CURSOR_OUTPUT"; do
             BETTER) better=$((better + 1)) ;;
             WORSE)
                 worse=$((worse + 1))
-                if [[ -z "$qual_worse" && -n "$ASSESS_QUAL" ]]; then qual_worse="$ASSESS_QUAL"; fi
+                add_distinct_qualification "$ASSESS_QUAL"
                 if [[ -n "$ASSESS_REASON" ]]; then
                     if [[ -n "$reason_worse" ]]; then reason_worse="$reason_worse "; fi
                     reason_worse="$reason_worse$ASSESS_REASON"
@@ -123,6 +132,18 @@ if (( successful == 1 && worse == 1 )); then worse_majority=true; fi
 degraded=false
 if (( successful == 0 )); then degraded=true; fi
 
+qual_summary=""
+if ((${#qual_worse_list[@]} > 0)); then
+    qual_summary="${qual_worse_list[0]}"
+    if ((${#qual_worse_list[@]} > 1)); then
+        local_idx=1
+        while (( local_idx < ${#qual_worse_list[@]} )); do
+            qual_summary="${qual_summary} | ${qual_worse_list[$local_idx]}"
+            local_idx=$((local_idx + 1))
+        done
+    fi
+fi
+
 mkdir -p "$(dirname "$OUTPUT")"
 tmp_out=$(mktemp "$(dirname "$OUTPUT")/.assessor-verdict.XXXXXX")
 tmp_env=$(mktemp "$(dirname "$OUTPUT")/.assessor-verdict-env.XXXXXX")
@@ -139,7 +160,11 @@ else
     assessor_verdict='not-worse'
 fi
 
-qual_summary="${qual_worse:-Assessors found no WORSE-majority consensus.}"
+if [[ "$worse_majority" == true ]]; then
+    qual_summary="${qual_summary:-WORSE-majority assessors supplied no qualifications.}"
+else
+    qual_summary="${qual_summary:-Assessors found no WORSE-majority consensus.}"
+fi
 {
     printf 'ASSESSOR_VERDICT=%s\n' "$assessor_verdict"
     printf 'BETTER_VOTES=%s\n' "$better"

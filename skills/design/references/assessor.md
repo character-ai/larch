@@ -18,7 +18,7 @@ No `plan-review/round-<N>/` subdirectory — design-log harvest uses `find -maxd
 
 ## Round cursor (FINDING_2)
 
-At Step 3 entry (HARD-only): if `plan-after-round-<cursor>.txt` exists, advance cursor to `cursor+1` before `plan-review-loop.sh`. Step 3.6 calls `write-after` for the current round after Gate B.
+At Step 3 entry (HARD-only): if `plan-after-round-<cursor>.txt` exists, advance cursor to `cursor+1` before `plan-review-loop.sh`. Cursor parsing normalizes leading-zero decimal inputs before arithmetic, and a failed `write-cursor` aborts Step 3 before review launch rather than letting shell state diverge from `plan-review-round-cursor.txt`. Step 3.6 re-reads the cursor file unconditionally, preflights `feature-description.txt`, and calls `write-after` for the current round after Gate B; a failed `write-after` aborts before assessor dispatch.
 
 ## Strict tally (FINDING_3 + FINDING_8)
 
@@ -30,12 +30,12 @@ Examples (BETTER, TIE, WORSE): (0,0,3)→WORSE; (0,1,2)→WORSE; (1,0,2)→WORSE
 
 ## Operator UX (FINDING_15)
 
-On `ASSESSOR_VERDICT=worse-majority` with `EFFECTIVE_ASSESSORS >= 1`: show verdict file + `QUALIFICATIONS_SUMMARY` from `.env`, then `AskUserQuestion` **Continue** / **Stop**.
+On `ASSESSOR_VERDICT=worse-majority` with `ASSESSOR_STATUS=ok` and `EFFECTIVE_ASSESSORS >= 1`: show verdict file + `QUALIFICATIONS_SUMMARY` from `.env`, then `AskUserQuestion` **Continue** / **Stop**.
 
 - **Continue** → Step 3b unchanged.
 - **Stop** → `SUMMARY_OUTCOME=cancelled-assessor-worse`, Final summary, preserve `$DESIGN_TMPDIR`, no `[DESIGNED]` rename, no design-log publish.
 
-On `EFFECTIVE_ASSESSORS=0`: proceed as NOT_WORSE; print `**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round <N>, see assessor-verdict-round-<N>.env).**` — no Continue/Stop prompt.
+On `EFFECTIVE_ASSESSORS=0`: proceed as NOT_WORSE; print `**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round <N>, see assessor-verdict-round-<N>.env).**` — no Continue/Stop prompt. Dispatch or tally failures must still leave a verdict `.env` behind via degraded-default-open synthesis so the warning points to a real artifact.
 
 ## Cursor narration backstop (#2995)
 

@@ -2,6 +2,8 @@
 # Offline harness for tally-plan-assessor.sh
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
+unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE \
+  LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE LARCH_PAIRED_PID_FILE || true
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SUBJECT="$ROOT/skills/design/scripts/tally-plan-assessor.sh"
@@ -76,6 +78,16 @@ printf '**ASSESSMENT: WORSE**\nREASONING: md\nQUALIFICATIONS: mdqual\n' >"$TMP/c
 write_assessor "$TMP/codex.txt" TIE
 body=$(run_tally)
 printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'markdown-wrapped parse'
+grep -Fq 'QUALIFICATIONS_SUMMARY=qual-WORSE | mdqual' "$TMP/v.txt.env" || fail 'distinct worse qualifications should be joined'
+
+cat >"$TMP/claude.txt" <<'EOF'
+ASSESSMENT: WORSE
+REASONING: no qualification
+EOF
+: >"$TMP/cursor.txt"
+: >"$TMP/codex.txt"
+run_tally >/dev/null
+grep -Fq 'QUALIFICATIONS_SUMMARY=WORSE-majority assessors supplied no qualifications.' "$TMP/v.txt.env" || fail 'worse-majority fallback summary missing'
 
 grep -Fq 'QUALIFICATIONS_SUMMARY=' "$TMP/v.txt.env" || fail 'missing env sidecar'
 
