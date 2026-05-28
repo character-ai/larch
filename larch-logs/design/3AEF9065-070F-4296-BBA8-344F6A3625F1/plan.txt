@@ -1,0 +1,187 @@
+## Implementation Plan
+
+Tier: SIMPLE. Bias: smallest change that closes all 6 acceptance items in #3091. No new lint scripts; no rewrites of unrelated lint surfaces. One new TSV manifest file plus its `.md` sibling. The 11 accepted plan-review findings have been applied to this revision.
+
+### Files to modify/create
+
+#### UPDATED: `scripts/check-contains-pins.sh`
+- **Escape-aware closing-quote scan for double-quoted literals.** The current code uses `literal_end = index(rest, quote)` to find the closing quote, which truncates literals containing escaped `\"`. Replace the double-quoted-literal branch in `parse_contains` with a char-by-char scanner that walks `rest` one character at a time, tracking `\\` escapes; the literal ends at the first UNESCAPED `"`. Single-quoted-literal scanning stays as-is (no escapes inside single quotes in bash).
+- **Bare-dollar detection on ORIGINAL source.** While the char scanner walks the double-quoted source, set a flag `bare_dollar` when a `$` is encountered that is NOT preceded by `\`. The flag captures bash semantics: `\$` is a literal `$` (no interpolation), bare `$` is a real variable interpolation. After capturing the closing-quote position, apply the unescape pass (`\$`→`$`, `\"`→`"`, `\\`→`\`) only to the body slice between the opening `"$VAR"` argument and the closing unescaped `"`.
+- **CHECK vs SKIP decision.** If `bare_dollar` is set on the ORIGINAL source, emit `SKIP` (true variable interpolation cannot be verified verbatim). Otherwise emit `CHECK` with the UNESCAPED literal as the payload. Literals containing only `\$` escapes are CHECKable because bash unescapes them to literal `$` at runtime — exactly what the target file is expected to contain.
+- **Trailing backslash handling.** If the char scanner consumes a backslash at the end of input without a following char, treat it as unterminated → emit `SKIP`.
+- **Non-recognized escape sequences.** A `\` followed by any char OTHER than `$" \` leaves both chars in the literal (matches bash double-quote semantics: `\n` inside double quotes is literally `\` + `n`).
+- Bash 3.2 portability preserved (awk implementation only; no Bash arrays for the new logic).
+
+#### UPDATED: `scripts/check-contains-pins.md`
+- Update the canonical-grammar paragraph: static double-quoted literals are supported including bash double-quote escapes (`\$`, `\"`, `\\`); double-quoted literals containing an UNESCAPED `$` (true variable interpolation) remain `SKIPPED_NON_CANONICAL` even when they also contain escaped `\$`. The escape unescape pass uses bash-double-quote semantics.
+- Add a non-goal: unrecognized escape sequences (`\n`, `\t`, etc.) inside double-quoted literals are left as the literal two-char sequence, matching bash behavior.
+
+#### UPDATED: `scripts/test-check-contains-pins.sh`
+- Add Section 5: "escape-bearing double-quoted literals". Fixtures:
+  - `escape-dollar-only`: target contains `--round-num "${FOO}"`; assertion uses `"--round-num \"\${FOO}\""`; expect exit 0, no SKIP, no DEFECT. Confirms `\$`-only literals are CHECKed.
+  - `escape-quotes-only`: target contains `say "hi"`; assertion uses `"say \"hi\""`; expect exit 0. Confirms `\"` parses without truncation.
+  - `escape-backslash`: target contains `a\b`; assertion uses `"a\\b"`; expect exit 0. Confirms `\\` → `\`.
+  - `escape-defect`: target lacks the unescaped literal; assertion uses `"\${MISSING}"`; expect exit 1 with DEFECT row naming the unescaped literal `${MISSING}`.
+  - `escape-with-bare-dollar`: assertion uses `"prefix\$ESCAPED bare$VAR"` (one `\$` AND one bare `$`); the ORIGINAL source contains a bare unescaped `$`, so this MUST emit `SKIPPED_NON_CANONICAL`. Locks the rule that mixed escaped + bare `$` skips conservatively.
+  - `escape-quote-inside-literal`: target contains the literal `she said "hi"` verbatim; assertion uses `"she said \"hi\""` — the `\"` is in the middle of the literal, NOT terminating it. Expect exit 0. This case fails today because `index(rest, quote)` finds the escaped `\"` and truncates.
+- Add Section 6: "bash 3.2 compat smoke (informational portability check)". Re-run an existing happy-path fixture under `BASH_COMPAT=3.2 bash scripts/check-contains-pins.sh` and assert identical exit code + empty stderr. Note in the section header: this is a smoke check, not the portability gate; `make lint-bash32` and the existing Section 4 forbidden-token assertions remain the authoritative portability gate per Round 1 Decision 2.
+
+#### UPDATED: `scripts/relevant-checks.sh`
+- Keep the existing design-skill arm unchanged at `skills/design/SKILL.md|skills/design/references/*.md` → `test-design-structure`. That harness is design-specific; broadening to all skills would run unrelated assertions.
+- Add ONE new case block for verifier/harness/canonical-pin-source edits. Pattern matches `scripts/check-contains-pins.sh`, `scripts/check-contains-pins.md`, `scripts/test-check-contains-pins.sh`, `scripts/test-check-contains-pins.md`, and `scripts/test-design-structure.sh`. Routes to `test-check-contains-pins` (NOT `test-design-structure`). Do NOT include `scripts/test-parse-codex-usage.sh` — its one contains-pin is a side-effect of the v1 grammar, not a contractual pin source.
+- Add ONE additional broader case block for cross-skill pin verification: pattern matches `skills/*/SKILL.md|skills/*/references/*.md`, routes to `test-check-contains-pins` only (NOT test-design-structure). This lets pin-target drift in any skill trigger the verifier; the `--changed-files` scoping inside `check-contains-pins.sh` prevents false positives.
+
+#### UPDATED: `scripts/relevant-checks.md`
+- Document the new verifier-source case and the cross-skill `test-check-contains-pins` routing. Note the explicit design choice: design-structure remains design-scoped; pin verification is the cross-skill mechanism.
+
+#### UPDATED: `scripts/test-relevant-checks.sh`
+- Update existing assertion(s) that pin the direct-targets list when design-skill paths change (e.g. line 338's `test-lint-foreground-markers test-design-structure` expectation). The new pin-verifier case adds `test-check-contains-pins` to the routed targets for verifier-source edits and broadens for cross-skill changes — pin assertions in this harness must reflect the updated direct-target enumeration.
+- Add 2 new test cases:
+  - When `scripts/check-contains-pins.sh` changes: targets include `test-check-contains-pins`.
+  - When `skills/implement/SKILL.md` changes (a non-design skill): targets include `test-check-contains-pins` but NOT `test-design-structure`.
+- Add a negative case: `scripts/test-parse-codex-usage.sh` change does NOT route to `test-check-contains-pins`.
+
+#### UPDATED: `scripts/test-relevant-checks.md`
+- Document the new test cases and routing semantics.
+
+#### NEW: `scripts/lint-readability-preamble.tsv`
+- Tab-separated manifest. Comment lines (`#`-prefixed) and blank lines skipped by both consumers. Columns: `path`, `variant`, `expected_count`, `prompt_kind`, `step_markers`. All 5 columns are ALWAYS present (no missing trailing fields); empty optional fields are literal empty strings between tabs.
+- Rows (preserving today's manifest semantics from `lint-readability-preamble.sh`):
+  - `skills/design/SKILL.md`<TAB>`orchestrator-inline`<TAB>`4`<TAB>(empty)<TAB>`2b,3b,4,5`
+  - 6 other orchestrator-inline rows: count `1`, empty `prompt_kind`, empty `step_markers`.
+  - 4 external-prompt rows: brainstorm-prompts (3, standard), sketch-prompts (4, **sketch**), dialectic-debate (2, standard), plan-review (1, plan-review); empty `step_markers`.
+
+#### NEW: `scripts/lint-readability-preamble.tsv.md`
+- Sibling `.md` per `.claude/rules/script-md-siblings.md`.
+- Documents the shared TSV-reader contract (FINDING_13) that BOTH `lint-readability-preamble.sh` AND `test-lint-readability-preamble.sh` must implement identically:
+  - Comment lines: lines whose first character is `#` are skipped.
+  - Blank lines: skipped.
+  - Field parsing: tab-delimited 5 fields, using POSIX `awk -F '\t'`; empty middle fields preserved. Bash `IFS=$'\t' read` MUST NOT be used because tab is whitespace in C-IFS, and empty fields collapse.
+  - Default for `expected_count` in file-level checks when empty: rejected as malformed (`''|*[!0-9]*` → exit 2 with diagnostic). Non-negative integer required.
+  - `prompt_kind` semantics: only consulted for `variant=external-prompt`; values `standard` / `plan-review` / `sketch`. Empty for `orchestrator-inline`.
+  - `step_markers`: comma-separated step IDs, only consulted for `variant=orchestrator-inline`. Empty values skip the placement check; the file-level count check still applies.
+  - Edit-in-sync rules with both consumers and with `skills/design/SKILL.md` (when step IDs are renamed/added/removed, `step_markers` must be updated in the same change).
+
+#### UPDATED: `scripts/lint-readability-preamble.sh`
+- Remove the inline `manifest_rows=(...)` Bash array (lines 41-53). Replace with an awk-based TSV reader that emits one tab-prefixed record per non-comment non-blank line:
+  ```
+  manifest_tsv="$ROOT/scripts/lint-readability-preamble.tsv"
+  while IFS= read -r row; do
+      path=$(printf '%s\n' "$row" | awk -F '\t' '{print $1}')
+      variant=$(printf '%s\n' "$row" | awk -F '\t' '{print $2}')
+      expected_count=$(printf '%s\n' "$row" | awk -F '\t' '{print $3}')
+      prompt_kind=$(printf '%s\n' "$row" | awk -F '\t' '{print $4}')
+      step_markers=$(printf '%s\n' "$row" | awk -F '\t' '{print $5}')
+      ...
+  done < <(awk -F '\t' 'NF >= 1 && $1 !~ /^#/ && $0 != ""' "$manifest_tsv")
+  ```
+  (or equivalent shape that preserves empty middle fields; the actual implementation may use a single awk pass that prints one field per output line and a paired `read` block).
+- Validate `expected_count`: `case "$expected_count" in (''|*[!0-9]*) printf 'lint-readability-preamble: malformed expected_count in row: %s\n' "$row" >&2; exit 2 ;; esac`.
+- Add a sketch-specific style line constant alongside the existing ones:
+  ```
+  sketch_style_line='Style requirements: <READABILITY_STYLE>.'
+  ```
+  (no backticks — matches the actual sketch prompts in `sketch-prompts.md`).
+- Switch the `sketch` variant counting from `grep -Foc '<READABILITY_STYLE>' "$file"` to per-line line-anchored substring match: `count=$(grep -Fc "$sketch_style_line" "$file" || true)`. Counts matching LINES; extra mentions of just `<READABILITY_STYLE>` without the `Style requirements:` prefix no longer satisfy the count.
+- Add step-marker placement check, gated on `variant == orchestrator-inline` AND non-empty `step_markers`. Implementation in awk (Bash 3.2 portable; no associative arrays). Pseudocode:
+  ```
+  for step_id in $(echo "$step_markers" | tr ',' ' '); do
+      directives_in_step=$(awk -v step="$step_id" -v re="$orchestrator_style_re" '
+          /^<!-- step:/ { in_target = ($0 ~ "<!-- step:" step " ") ? 1 : 0; next }
+          in_target && $0 ~ re { count++ }
+          END { print count + 0 }
+      ' "$file")
+      if [ "$directives_in_step" -lt 1 ]; then
+          printf '%s: step "%s": expected ≥1 orchestrator-inline readability-style directive within step body, found %s\n' \
+              "$path" "$step_id" "$directives_in_step" >&2
+          missing=1
+      fi
+  done
+  ```
+- File-level count check (existing) stays. Placement check is additive — both must pass.
+
+#### UPDATED: `scripts/lint-readability-preamble.md`
+- Document: manifest moved to `scripts/lint-readability-preamble.tsv`; sketch variant now uses line-anchored substring match against `sketch_style_line` (no backticks); new step-marker placement check; awk-based TSV reader preserves empty middle fields; `expected_count` validation rejects empty and non-digit. Reference the shared TSV-reader contract in the TSV sibling `.md`.
+
+#### UPDATED: `scripts/test-lint-readability-preamble.sh`
+- Remove the duplicated `external_paths=...` and `orchestrator_paths=...` lists. Replace with an awk-based TSV reader (identical contract to lint, per FINDING_13) that parses `scripts/lint-readability-preamble.tsv` and derives:
+  - `parsed_paths` (all paths from the TSV)
+  - per-path `expected_count`, `variant`, `prompt_kind`, `step_markers`
+  Both lists are computed from the parsed rows.
+- Helper `stage_manifest <root>`: copies the repo TSV (`$REPO_ROOT/scripts/lint-readability-preamble.tsv`) to `$root/scripts/lint-readability-preamble.tsv` before each lint invocation. Variant fixtures (e.g., B6 extra-row case) write a modified TSV to the same path. This addresses FINDING_9.
+- Helper `write_skill_md_with_steps <root> <count_per_step>`: writes the SKILL.md fixture with explicit `<!-- step:2b -->` ... `<!-- step:3b -->` ... `<!-- step:4 -->` ... `<!-- step:5 -->` markers, with `count_per_step` orchestrator directives between each marker pair. Used by every fixture that includes SKILL.md so the placement check sees real step bodies. This addresses FINDING_8.
+- Helper writes sketch fixture using the new `sketch_style_line='Style requirements: <READABILITY_STYLE>.'` (no backticks); the standard external-prompt fixture still uses the existing backticked `external_style_line`. This addresses FINDING_1.
+- Test cases added:
+  - **A4 — sketch line-anchoring**: `sketch-bare-token-rejected`: sketch-prompts.md has 4 `<READABILITY_STYLE>` tokens but only 2 lines contain `Style requirements: <READABILITY_STYLE>.`. Lint must fail with count 2/4.
+  - **B5 placement — missing step**: SKILL.md fixture writes 4 directives all in step:2b (none in 3b/4/5). Lint must fail naming each of `3b`, `4`, `5` as missing.
+  - **B5 placement — correct count, correct placement**: SKILL.md fixture writes 1 directive in each of step:2b/3b/4/5. Lint must pass.
+  - **B6 source-of-truth (extended per FINDING_12)**: Write a variant TSV with one EXTRA row pointing to a fixture-only path (e.g., `skills/design/references/fake-extra.md`, 1 orchestrator-inline directive expected). The test harness's TSV reader MUST enumerate this extra row and `stage_manifest`'s manifest-derived fixture writer creates the corresponding fixture file with the expected directive. The compliant case passes only because the harness consumed the extra parsed row to generate the fixture. Then mutate the harness to DELIBERATELY skip parsing one row and confirm the lint fails because the corresponding fixture file is absent.
+  - **Malformed-TSV row**: write a TSV with an empty `expected_count` field. Lint must exit 2 with the malformed diagnostic.
+- Existing 5 test cases (`compliant`, `external-bad`, `orchestrator-bad`, `orchestrator-partial`, `orchestrator-missing-file`) must continue to pass after the refactor. The `orchestrator-bad` / `orchestrator-partial` fixtures now need to use `write_skill_md_with_steps` so step bodies are present; `orchestrator-partial` must keep its existing 3/4 file-level mismatch while still satisfying placement-step bookkeeping (write 3 directives in step:2b, none in the other 3 steps — produces both a file-level count mismatch AND placement misses, but the assertion needs to match against whichever error fires first; consider switching `orchestrator-partial` to write 3 directives distributed across steps 2b/3b/4 so only the file-level count fails).
+
+#### UPDATED: `scripts/test-lint-readability-preamble.md`
+- Document: test sources `scripts/lint-readability-preamble.tsv` via the same awk-based reader as lint; new test cases cover A4 sketch line-anchoring, B5 placement (missing step + correct placement), B6 source-of-truth (extended to prove harness consumes every row), and malformed-row rejection.
+
+#### UPDATED: `scripts/test-design-structure.sh`
+- No new structural pin lines required — the existing line 44 (`contains "$SKILL_MD" "--round-num \"\${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}\""`) becomes a passing pin after A1 lands and is the in-repo demonstration of the unescape fix. Add a short comment near line 44 explaining the assertion now exercises double-quote escape unescaping (no behavior change).
+
+### Approach
+
+**A1** — The awk parser's `parse_contains` function gets two narrow changes for double-quoted literals: (1) replace `index(rest, quote)` with a char-by-char scanner that respects `\\` escapes, and (2) detect bare unescaped `$` on the ORIGINAL source (before unescape). Bash double-quote semantics dictate the escape rules: `\$`, `\"`, `\\` are recognized; everything else preserves the backslash. The CHECK/SKIP decision uses the original-source bare-`$` flag, not a post-unescape rescan.
+
+**A2** — `relevant-checks.sh` keeps `test-design-structure` design-scoped. Two new case blocks: one for verifier/harness/canonical-pin-source edits (routes to `test-check-contains-pins`), and one broader for cross-skill `skills/*/SKILL.md|skills/*/references/*.md` (routes to `test-check-contains-pins` only). The verifier's `--changed-files` scoping inside the script handles work expansion.
+
+**A3** — One new test section (Section 6) in `test-check-contains-pins.sh` that wraps an existing happy-path fixture under `BASH_COMPAT=3.2 bash`. Documented as an informational smoke check; `make lint-bash32` + Section 4's forbidden-token assertions remain the authoritative portability gate (per Round 1 Decision 2 and FINDING_11's framing).
+
+**A4** — Switch sketch variant from `grep -Foc '<READABILITY_STYLE>'` (counts substring occurrences) to `grep -Fc "$sketch_style_line"` (counts matching LINES; `sketch_style_line='Style requirements: <READABILITY_STYLE>.'` without backticks). Each sketch bullet contains the substring exactly once; count stays 4 on the real repo. Extra mentions of `<READABILITY_STYLE>` without the `Style requirements:` prefix no longer satisfy.
+
+**B5** — Per-step placement is enforced for `orchestrator-inline` rows with non-empty `step_markers`. Implementation is awk-based: for each step ID, find the `<!-- step:<id>` marker line, treat lines between that marker and the next `<!-- step:` line (or EOF) as the step body, count `orchestrator_style_re` matches inside. Each named step requires ≥1 directive.
+
+**B6** — Shared TSV at `scripts/lint-readability-preamble.tsv` (root `scripts/`, sibling to its consumers). Sibling `.md` documents the canonical reader contract. Both `lint-readability-preamble.sh` and `test-lint-readability-preamble.sh` use awk-based TSV parsing (NOT `IFS=$'\t' read`, which collapses empty middle fields). The test harness derives fixture paths and expected counts from the parsed manifest, proving consumption.
+
+### Edge cases
+
+- **Empty `step_markers` field**: skipped; only the file-level count is enforced (matches all rows except SKILL.md).
+- **TSV comment lines** (`#` prefix) and **blank lines**: skipped via the awk filter `NF >= 1 && $1 !~ /^#/ && $0 != ""`.
+- **TSV last line without trailing newline**: awk handles it naturally.
+- **A1 trailing backslash** (`\` at end of literal): emits SKIP (cannot be unambiguously unescaped).
+- **A1 `\` followed by char other than `$" \``**: leave as-is (literal backslash + char). Matches bash double-quote semantics: `\n` is two chars `\` + `n`.
+- **A1 escaped quote at end of literal** (`"foo \""`): the char scanner ends at the SECOND `"` (the unescaped one). The captured body is `foo \"`. Unescape produces `foo "`. CHECK against target.
+- **A1 mixed escaped + bare `$`**: the original-source scan sets `bare_dollar=1`; emits SKIP. Covered by the new `escape-with-bare-dollar` fixture.
+- **B5 step-marker not present in file**: emit a clear error `<file>: step "<id>" referenced in TSV but <!-- step:<id> marker not found`. Surfaces stale TSV rows when a step is renamed/removed.
+- **B5 step-marker present but next-marker missing** (last step in file): treat EOF as the closing bound. Awk's natural END handler covers this.
+- **B6 awk-based TSV reader under set -u**: awk is its own process; the outer Bash `set -u` does not interact with awk variables. Empty middle fields from awk are real empty strings; `$5` is `""` not unset.
+- **B6 TSV reader applied to malformed line**: invalid `expected_count` triggers exit 2 before consumer logic runs.
+- **A4 sketch line containing the substring twice**: counts as 1 line (`-Fc` semantics). Today no sketch line has it twice; if a future sketch does, the count drops by 1 and the lint warns — intentional.
+- **F8 step bodies in fixtures**: the `write_skill_md_with_steps` helper places one or more directives between each `<!-- step:N -->` and the next; the placement check sees real step bodies.
+
+### Failure modes
+
+The three most likely architectural/systemic failure paths and their mitigations:
+
+1. **A1 escape-aware scanner regressing the canonical no-`$` double-quoted literal path**: the new char scanner replaces a working `index(rest, quote)` call. A bug in the new scanner (e.g., wrong escape state transition) could silently truncate literals that were parsed correctly before. **Earliest signal**: existing Section 1 happy-path tests for double-quoted literals (`double-quoted`, `double-quoted-backticks`) fail. **Mitigation**: existing Section 1 fixtures must continue to pass post-change; add explicit `escape-quote-inside-literal` to Section 5 that exercises the new scanner against the in-the-middle escape case.
+
+2. **B5 step-marker proximity false positives during SKILL.md refactors**: a future refactor that renames step IDs would leave the manifest's `step_markers` stale, and lint would fail with `step "<id>": ... marker not found`. **Earliest signal**: pre-commit lint failure naming the missing step ID and TSV path. **Mitigation**: the error message names the exact step ID and TSV row; `scripts/lint-readability-preamble.tsv.md` documents the edit-in-sync rule with SKILL.md. The error fails closed — operators can't accidentally ship a stale manifest.
+
+3. **B6 TSV reader divergence between lint and test**: if lint and test implement the awk parser slightly differently (e.g., different `NF` filter, different comment-skip rule), the test harness can pass on a TSV that lint rejects (or vice versa). **Earliest signal**: the extended FINDING_12 case `tsv-extended-source-of-truth` fails because the synthetic extra row is enumerated by one consumer but not the other. **Mitigation**: identical awk filter (`NF >= 1 && $1 !~ /^#/ && $0 != ""`) and identical field extraction; `scripts/lint-readability-preamble.tsv.md` documents the canonical contract; the test harness explicitly asserts row-count match between its enumeration and lint's iteration.
+
+### Testing strategy
+
+- **Existing tests must continue to pass**: `scripts/test-check-contains-pins.sh` Sections 1-4 (15 assertions), `scripts/test-lint-readability-preamble.sh` 5 existing test cases, `scripts/test-design-structure.sh` 52 contains-pin assertions, `make lint-bash32` repo-wide.
+- **A1 new harness coverage** (6 fixtures in Section 5):
+  - `escape-dollar-only` (CHECK passes after `\$`→`$`)
+  - `escape-quotes-only` (escape-aware scanner doesn't truncate)
+  - `escape-backslash` (`\\`→`\`)
+  - `escape-defect` (DEFECT row with unescaped literal in payload)
+  - `escape-with-bare-dollar` (SKIP because original has bare `$`)
+  - `escape-quote-inside-literal` (escape-aware scanner finds the LATER unescaped `"`)
+- **A3 new harness coverage** (1 fixture in Section 6): re-run a happy-path fixture under `BASH_COMPAT=3.2 bash`; assert identical exit code and empty stderr. Documented as smoke, not the portability gate.
+- **A4 new harness coverage**: 1 new test case in `test-lint-readability-preamble.sh` where sketch-prompts.md has 4 `<READABILITY_STYLE>` tokens but only 2 lines contain `Style requirements: <READABILITY_STYLE>.`. Lint must fail with count 2/4.
+- **B5 new harness coverage**: 2 new test cases (placement-missing-step, placement-correct-count-correct-placement). The first asserts lint fails per missing step; the second asserts lint passes when correctly placed.
+- **B6 new harness coverage** (extended per FINDING_12): 1 fixture with a variant TSV containing an extra row; the test harness's TSV reader enumerates the extra row, generates the corresponding fixture file via `stage_manifest`'s manifest-derived writer, and the compliant case passes only because that parsed row was consumed by the harness. A negative-control assertion mutates the harness to skip parsing one row and confirms lint fails because the corresponding fixture is absent.
+- **Malformed-TSV coverage**: 1 fixture with empty `expected_count` field; lint must exit 2.
+- **`scripts/test-relevant-checks.sh` new coverage**: 3 cases (pin-verifier source edit, cross-skill SKILL.md edit, negative `test-parse-codex-usage.sh` no-route).
+- **Real-repo smoke**: After all changes, run `bash scripts/check-contains-pins.sh`, `bash scripts/lint-readability-preamble.sh`, and `bash scripts/test-relevant-checks.sh` on the real repo; all must exit 0. Run `bash scripts/relevant-checks.sh` on a staged trivial edit to confirm new routing fires.
+- **Pre-commit + Makefile**: confirm `make lint`, `make test-check-contains-pins`, `make test-lint-readability-preamble`, `make test-relevant-checks`, `make lint-bash32`, `make lint-readability-preamble` all pass post-change.
+
+diff_lines: 420
