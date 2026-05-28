@@ -582,6 +582,7 @@ PY
     ); then
         rm -f "$dedup_tmp"
         [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+        rm -f "$plan_backup"
         LOOP_STATUS=emit-plan-failed
         LOOP_REASON=dedup-python-failed
         return 1
@@ -590,6 +591,7 @@ PY
     if [[ ! "$dedup_removed" =~ ^[0-9]+$ ]]; then
         rm -f "$dedup_tmp"
         [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+        rm -f "$plan_backup"
         LOOP_STATUS=emit-plan-failed
         LOOP_REASON=dedup-python-failed
         return 1
