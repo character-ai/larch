@@ -15,7 +15,7 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP"
 printf 'plan v1\n' >"$TMP/plan.txt"
 
-out=$("$SUBJECT" write-original --design-tmpdir "$TMP" 2>&1) || fail 'write-original failed'
+"$SUBJECT" write-original --design-tmpdir "$TMP" >/dev/null 2>&1 || fail 'write-original failed'
 [[ -f "$TMP/plan.txt-original" ]] || fail 'missing plan.txt-original'
 out2=$("$SUBJECT" write-original --design-tmpdir "$TMP" 2>&1) || fail 'write-original second failed'
 printf '%s\n' "$out2" | grep -Fq 'already exists' || fail 'second write-original must preserve'

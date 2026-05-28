@@ -1183,6 +1183,8 @@ On `ASSESSOR_VERDICT=worse-majority` with `EFFECTIVE_ASSESSORS >= 1`: print the 
 
 Normative reference: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/assessor.md`.
 
+Step 3.6 helper surface: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh` writes `plan.txt-original`, round snapshots, and `plan-review-round-cursor.txt` (contract: `snapshot-plan-round.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/dispatch-plan-assessors.sh` launches the three-assessor panel (contract: `dispatch-plan-assessors.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-assessor.sh` resolves the strict-majority WORSE verdict and `.env` sidecar (contract: `tally-plan-assessor.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh` orchestrates the round dispatch+tally path (contract: `assess-plan-round.md`). Offline harness coverage for this assessor lane lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.sh`, and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.sh`.
+
 At the Step 3.6 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"` before entering Step 3b.
 
 <!-- step:3b — Architecture Diagram -->

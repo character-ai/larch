@@ -831,7 +831,7 @@ contains "$SKILL_MD" 'write-original --design-tmpdir' 'SKILL.md Step 2b missing 
 contains "$SKILL_MD" 'assess-plan-round.sh' 'SKILL.md Step 3.6 missing assess-plan-round.sh'
 contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
 contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
-contains "$SKILL_MD" '--round-num "$ROUND_NUM"' 'SKILL.md missing --round-num ROUND_NUM to plan-review-loop'
+contains "$SKILL_MD" "--round-num \"\$ROUND_NUM\"" 'SKILL.md missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
 contains "$SKILL_MD" 'cancelled-assessor-worse' 'SKILL.md missing cancelled-assessor-worse outcome'
 contains "$REPO_ROOT/skills/design/scripts/render-final-summary.sh" 'cancelled-assessor-worse' 'render-final-summary.sh missing cancelled-assessor-worse outcome'

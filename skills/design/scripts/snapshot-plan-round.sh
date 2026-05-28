@@ -37,7 +37,7 @@ parse_cursor_file() {
     IFS= read -r raw <"$file" || raw=""
     case "$raw" in
         ''|*[!0-9]*|0|-*)
-            printf '**⚠ snapshot-plan-round: cursor file %s; defaulting to 1**\n' "$reason" >&2
+            larch_errf '**⚠ snapshot-plan-round: cursor file %s; defaulting to 1**\n' "$reason"
             printf '1'
             ;;
         *)

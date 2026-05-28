@@ -133,10 +133,10 @@ if [[ "$worse_majority" == true ]]; then
         justification="${justification:0:497}..."
     fi
     printf 'WORSE: %s\n' "$justification" >"$tmp_out"
-    assessor_verdict=worse-majority
+    assessor_verdict='worse-majority'
 else
     printf 'NOT_WORSE\n' >"$tmp_out"
-    assessor_verdict=not-worse
+    assessor_verdict='not-worse'
 fi
 
 qual_summary="${qual_worse:-Assessors found no WORSE-majority consensus.}"
