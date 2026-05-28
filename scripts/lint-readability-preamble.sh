@@ -48,8 +48,6 @@ fi
 external_style_line='Style requirements: `<READABILITY_STYLE>`.'
 # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
 plan_review_style_line='Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.'
-# shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
-sketch_style_line='Style requirements: <READABILITY_STYLE>.'
 # shellcheck disable=SC2016 # literal Markdown/backtick substring anchor, not shell expansion.
 # Using a plain-ASCII anchor instead of a full regex avoids em-dash (U+2014) in
 # dynamic awk/grep patterns, which emits silent warnings on some Ubuntu awk builds.
