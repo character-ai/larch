@@ -1,0 +1,16 @@
+Implemented the `monitor_rc` propagation lint.
+
+Changed:
+- [scripts/lint-foreground-markers.sh](<OPERATOR_REPO_PATH>/scripts/lint-foreground-markers.sh): adds checks for `monitor_rc=0`, `|| monitor_rc=$?`, and a post-monitor conditional referencing `monitor_rc`.
+- [scripts/test-lint-foreground-markers.sh](<OPERATOR_REPO_PATH>/scripts/test-lint-foreground-markers.sh): updates passing Family B fixtures and adds negative Markdown/shell cases.
+- [scripts/lint-foreground-markers.md](<OPERATOR_REPO_PATH>/scripts/lint-foreground-markers.md): documents the new diagnostics and contract.
+
+Verification:
+- Passed: `bash scripts/test-lint-foreground-markers.sh` (`73 passed, 0 failed`)
+- Passed: `make lint-foreground-markers`
+- Passed: `make test-background-monitor-wait`
+- Passed: `make lint-bash32`
+- Passed: `git diff --check`
+- Failed: `make lint` stops in unrelated `test-dispatch-panel-core`; trace shows it expects `→ review: launching 6 reviewers...` under `LARCH_QUIET_BREADCRUMBS=1`, but `dispatch-panel.sh` emits only KV output there.
+
+Wrote the required manifest at `<TMPDIR>/manifest.json`. No `qa-pending.json` was written because status is `complete`.

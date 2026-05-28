@@ -1,0 +1,14 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=weak UNCERTAIN=false -- concern about unrelated if/case satisfying check is real but full structural verification is complex; FINDING_2 covers the more tractable comment-bypass aspect; canonical pattern already works correctly
+FINDING_2: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- O(n^2) heredoc rescans are negligible at typical fence sizes; refactor cost not warranted
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- explicitly by-design per plan; new checks intentionally run only after existing wait/identifier validation succeeds
+FINDING_9: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- md already states "conditional opens before the line-initial waits"; ambiguity is marginal
+OOS_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- performance concern real but negligible for typical fence sizes; not worth a separate issue
+OOS_14: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- process observation about branch scope; not a concrete defect warranting a separate GitHub issue

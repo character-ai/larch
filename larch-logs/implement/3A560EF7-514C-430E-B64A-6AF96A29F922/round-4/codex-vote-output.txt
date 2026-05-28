@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- real maintenance/perf concern, but an OOS refactor is more complexity than this narrow lint change warrants
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- real drift risk, but factoring the heredoc walker is a small maintainability cleanup rather than worth blocking this change
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- fixture repetition is real but not worth raising unless it starts obscuring behavior or causing missed updates
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the regex already accepts space-before-comment shell comments and correctly rejects no-space comment text as part of the assignment value
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the fixture harness is not the live-tree lint; the Makefile/pre-commit lint target already scans the real repository surface
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- bare monitor_rc inside ordinary command substitution does not satisfy the runtime monitor_rc matcher
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- suppression bypass is real but intentional, and splitting suppression semantics is more policy complexity than this warrants
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- reachability proof for loop conditions is real but beyond the intended static token lint
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the implementation is stricter than the plan wording in a defensible direction and avoids bareword false positives
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the exact planned paragraph reference is thin, but the updated docs already point readers to BASH_AUTHORING.md §4
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- docs/linting.md is a reasonable contract-sync edit, so the plan-file-set bookkeeping issue is not worth filing separately

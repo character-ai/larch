@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [45.1.17] - 2026-05-27
+
+### Changed
+
+- Enforce monitor_rc initialization, capture, and conditional branching after validated Family B writer wait pairs.
+- Update foreground-marker regression fixtures to the canonical monitor_rc two-branch wait shape and add negative Markdown/shell coverage.
+- Document the new monitor_rc diagnostics and top-level Family B propagation contract.
+
 ## [45.1.16] - 2026-05-27
 
 ### Changed

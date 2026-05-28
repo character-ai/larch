@@ -47,6 +47,20 @@ Black-box regression harness for `scripts/lint-foreground-markers.sh`. It builds
 51. **Missing ampersand** — top-level writer without shell `&` → `missing shell ampersand`.
 52. **Identifier mismatch** — captured PID variable and waited variable differ → mismatch diagnostic.
 53. **Nested wait exemption** — nested Family B child remains exempt from paired-PID and writer-wait tokens.
+54. **Missing `monitor_rc` tokens** — top-level writer omits init, capture, and branch → all three monitor diagnostics.
+55. **Missing `monitor_rc` branch** — init/capture present but no branch before `wait` → `missing conditional branching on monitor_rc`.
+56. **Heredoc fake init** — `monitor_rc=0` inside a heredoc body does not satisfy the init window.
+57. **Shell-file missing init** — tracked shell wrapper uses `monitor_rc` capture/branch without a local `monitor_rc=0` init.
+58. **Backslash-continued capture** — monitor command split with `\` plus trailing `|| monitor_rc=$?` still passes.
+59. **Missing `monitor_rc` capture only** — init and branch present, logical-end `|| monitor_rc=$?` missing.
+60. **Decorative conditional bypass** — unrelated conditional plus `wait` does not satisfy the `monitor_rc` branch requirement.
+61. **Multiline `monitor_rc` branch** — opener split across lines before `then` still passes.
+62. **Comment-only mention** — `# monitor_rc` on an unrelated conditional opener does not count.
+63. **Init too far above monitor** — literal `monitor_rc=0` four non-blank lines above the monitor is rejected.
+64. **Dead `elif` branch** — an unrelated leading `if` plus later `elif [ "$monitor_rc" ... ]` is rejected because the first post-monitor conditional is not the `monitor_rc` branch.
+65. **`case "$monitor_rc" in`** — case-form branch is accepted.
+66. **Quoted literal text** — `"monitor_rc"` string comparisons do not satisfy the runtime-branch check.
+67. **Non-literal init** — `monitor_rc=$?` does not satisfy the literal `monitor_rc=0` initialization requirement.
 16. **Family A baseline** — minimum `grep -cF 'run_in_background: true'` floors on `skills/design/references/sketch-launch.md`, `skills/design/references/dialectic-execution.md`, `skills/shared/voting-protocol.md`, and `skills/shared/dialectic-protocol.md` (count decreases fail; increases allowed).
 
 Wiring: Makefile targets `test-lint-foreground-markers`, `lint-foreground-markers`, and `lint-foreground` (alias), one `test-harnesses-16` shard entry, pre-commit hook `lint-foreground-markers`, and `agent-lint.toml` exclusions mirroring the `lint-bash32` Makefile-only pattern. Primary normative contract: `scripts/lint-foreground-markers.md`.

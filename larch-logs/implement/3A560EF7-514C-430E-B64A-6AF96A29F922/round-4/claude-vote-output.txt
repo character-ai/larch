@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- repeated fixtures in bash harnesses are standard practice; shared-fixture abstraction would add complexity without clear benefit
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- plan explicitly scoped this as a static token/shape lint not a full control-flow proof; adding exit-code verification exceeds the declared scope
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- implementation is stricter than the plan spec (requires $monitor_rc in the conditional opener, not just bareword anywhere in fence), which is more correct behavior
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
