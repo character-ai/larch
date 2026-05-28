@@ -1,0 +1,5 @@
+Count phase-2 waterfall relaunches in fallback warning
+
+Track grouped phase-2 reuse-copy fall-through relaunches separately from phase-3 Claude fallback count, and include both counters in the existing cost fallback threshold and persisted fallback total.
+
+Update the dispatch waterfall regression harness and related docs for the new PHASE2_RELAUNCH_COUNT stdout key.
