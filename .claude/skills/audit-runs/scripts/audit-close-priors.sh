@@ -57,7 +57,7 @@ if [ -z "$NEW_ISSUE" ]; then
     exit 1
 fi
 
-if ! OPEN_ISSUES_JSON=$(gh issue list --state open --label audit-report --repo "$REPO" \
+if ! OPEN_ISSUES_JSON=$(gh issue list --state open --limit 100000 --label audit-report --repo "$REPO" \
     --json number,title 2>/dev/null); then
     printf 'ISSUE_LIST_FAILED=true\nREASON=gh issue list failed\n'
     exit 1

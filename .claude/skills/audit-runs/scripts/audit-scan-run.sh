@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# audit-scan-run.sh — Run all scans from scans.tsv against one run-log directory.
+# audit-scan-run.sh — Run all scans from the selected per-skill registry against one run-log directory.
 #
 # Emits NDJSON (one compact JSON object per scan per line) to stdout.
 # Also emits category-stats and cross-cutting metadata objects.
 #
 # Usage:
 #   audit-scan-run.sh --run-dir PATH --pr N \
-#     --scans-tsv PATH --required-files-tsv PATH --current-version VER
+#     --skill <design|implement> --scans-tsv PATH \
+#     --required-files-tsv PATH --current-version VER
 
 set -euo pipefail
 

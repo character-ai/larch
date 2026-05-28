@@ -100,8 +100,8 @@ extract_closing_issue_from_pr_body() {
 
 parse_design_run_id_from_pr_title() {
     local title="$1"
-    if printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-F-]+$'; then
-        printf '%s' "$title" | sed -n 's/^chore(larch-logs): design run \([0-9A-F-]*\)$/\1/p'
+    if printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'; then
+        printf '%s' "$title" | sed -n 's/^chore(larch-logs): design run \([0-9A-Fa-f-]*\)$/\1/p'
         return 0
     fi
     return 1

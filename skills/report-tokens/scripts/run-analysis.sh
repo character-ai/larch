@@ -72,6 +72,7 @@ while [[ $# -gt 0 ]]; do
         --no-plot)  NO_PLOT=1;  shift ;;
         --plot-from)
             [[ -n "${2:-}" ]] || { larch_err "ERROR: --plot-from requires an issue number"; exit 1; }
+            [[ "${2:-}" =~ ^[0-9]+$ ]] || { larch_err "ERROR: --plot-from must be a decimal issue number"; exit 1; }
             PLOT_FROM="$2"; shift 2 ;;
         *) larch_err "ERROR: unknown argument: $1"; usage; exit 1 ;;
     esac

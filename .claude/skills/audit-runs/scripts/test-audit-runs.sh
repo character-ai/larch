@@ -618,7 +618,11 @@ if [[ "${1:-}" == "api" ]]; then
         fi
     done
     if [[ "$url" == repos/*/pulls* ]]; then
-        raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore: unrelated","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-02T00:00:00Z","title":"chore: unrelated","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore: unrelated","base":{"ref":"main"}}]'
+        raw='[
+          {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
+          {"number":20,"merged_at":"2025-06-02T00:00:00Z","title":"chore(larch-logs): flush implement run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
+          {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
+        ]'
         printf '%s' "$raw" | jq -c "$jq_filter"
         exit 0
     fi
@@ -643,7 +647,7 @@ EOSH19
 
     r19_last=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
     pl19L=$(printf '%s' "$r19_last" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pl19L" "20,30" "[19d] last 2 PRs merge-time slice"
+    assert_equal "$pl19L" "20,30" "[19d] last 2 PRs slices merged PRs before implement filtering"
 
     r19_iso=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
     pl19i=$(printf '%s' "$r19_iso" | sed -n 's/^PR_LIST=//p')
@@ -653,7 +657,7 @@ EOSH19
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
-    printf '%s\n' 'implement follow-up'
+    printf '%s\n' 'chore(larch-logs): flush implement run 55555555-5555-5555-5555-555555555555'
     exit 0
 fi
 printf 'fake gh: unsupported %s\n' "$*" >&2
@@ -699,9 +703,9 @@ if [[ "${1:-}" == "api" ]]; then
     done
     if [[ "$url" == repos/*/pulls* ]]; then
         raw='[
-          {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"implement work","base":{"ref":"main"}},
+          {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
           {"number":20,"merged_at":"2025-06-02T00:00:00Z","title":"chore(larch-logs): design run 90628862-9A18-4A56-8420-63DE723F9D81","base":{"ref":"main"}},
-          {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"implement follow-up","base":{"ref":"main"}}
+          {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
         ]'
         printf '%s' "$raw" | jq -c "$jq_filter"
         exit 0
@@ -719,7 +723,40 @@ EOSH19B
 
     r19_impl=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 3 PRs")
     pl19impl=$(printf '%s' "$r19_impl" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pl19impl" "10,30" "[19k] implement last-N excludes design log PRs"
+    assert_equal "$pl19impl" "10,30" "[19k] implement last-N keeps only implement log flushes from sliced merges"
+
+    cat >"$GH19/gh" <<'EOSH19C'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
+    printf '%s\n' '[]'
+    exit 0
+fi
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '2025-01-01T00:00:00Z'
+    exit 0
+fi
+if [[ "${1:-}" == "api" ]]; then
+    printf '%s\n' 'not-json'
+    exit 0
+fi
+printf 'fake gh: unsupported %s\n' "$*" >&2
+exit 1
+EOSH19C
+    chmod +x "$GH19/gh"
+    r19_jq=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
+    er19jq=$(printf '%s' "$r19_jq" | sed -n 's/^ERROR=//p')
+    case "$er19jq" in
+        *gh\ api\ failed\ listing\ merged\ PRs*)
+            PASS=$((PASS + 1))
+            echo "  ok: [19l] invalid gh api JSON fails loudly"
+            ;;
+        *)
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[19l] expected loud gh api failure, got: $er19jq")
+            echo "  FAIL: [19l] expected loud gh api failure, got: $er19jq" >&2
+            ;;
+    esac
 
     r19_bad=$(bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2026-05-01")
     er19=$(printf '%s' "$r19_bad" | sed -n 's/^ERROR=//p')
@@ -1088,7 +1125,11 @@ while (($# > 0)); do
     fi
 done
 if [[ "$url" == repos/*/pulls* ]]; then
-    raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"other","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"other","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"other","base":{"ref":"main"}}]'
+    raw='[
+      {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
+      {"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"chore(larch-logs): flush implement run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
+      {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
+    ]'
     printf '%s' "$raw" | jq -c "$jq_filter"
     exit 0
 fi
@@ -1583,7 +1624,7 @@ if [ -x "$RESOLVE_SCRIPT" ]; then
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
-    printf '%s\n' 'implement follow-up'
+    printf '%s\n' 'chore(larch-logs): flush implement run 44444444-4444-4444-4444-444444444444'
     exit 0
 fi
 printf 'fake gh: unsupported %s\n' "$*" >&2
@@ -1625,7 +1666,11 @@ while (($# > 0)); do
     fi
 done
 if [[ "$url" == repos/*/pulls* ]]; then
-    raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"implement setup","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"implement follow-up","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"implement polish","base":{"ref":"main"}}]'
+    raw='[
+      {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
+      {"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"chore(larch-logs): flush implement run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
+      {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
+    ]'
     printf '%s' "$raw" | jq -c "$jq_filter"
     exit 0
 fi
@@ -2619,6 +2664,15 @@ EOSGH69
     else
         PASS=$((PASS + 1))
         echo "  ok: [69e] flush commit-subject shape does not match design PR title regex"
+    fi
+    lower_title='chore(larch-logs): design run 90628862-9a18-4a56-8420-63de723f9d81'
+    if printf '%s' "$lower_title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'; then
+        PASS=$((PASS + 1))
+        echo "  ok: [69g] lowercase design run title matches regex"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("[69g] lowercase design run title should match regex")
+        echo "  FAIL: [69g] lowercase design run title should match regex" >&2
     fi
     rm -rf "$GH69" "$MAP69"
 fi

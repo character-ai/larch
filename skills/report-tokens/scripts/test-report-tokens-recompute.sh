@@ -162,6 +162,37 @@ else
 fi
 rm -rf "$GH_PLOT_STUB"
 
+GH_PLOT_IMPL_STUB=$(mktemp -d "${TMPDIR:-/tmp}/test-report-tokens-plot-impl.XXXXXX")
+cat >"$GH_PLOT_IMPL_STUB/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '{"title":"[Analysis Report] legacy","body":"## Raw per-issue data\n\n```json\n[]\n```\n"}'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOF
+chmod +x "$GH_PLOT_IMPL_STUB/gh"
+plot_impl_out=$(PATH="$GH_PLOT_IMPL_STUB:$PATH" LARCH_REPORT_TOKENS_NO_PLOT=1 \
+    "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement --plot-from 42)
+case "$plot_impl_out" in
+    *'No plots generated.'*) pass '--plot-from implement accepts legacy analysis-report title' ;;
+    *) fail "expected implement --plot-from legacy title compatibility";;
+esac
+rm -rf "$GH_PLOT_IMPL_STUB"
+
+set +e
+"$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement --plot-from nope >/dev/null 2>"$REPO/.tmp-report-tokens-bad-plot-from.err"
+bad_plot_from_rc=$?
+set -e
+if [ "$bad_plot_from_rc" -ne 0 ] && grep -q -- '--plot-from must be a decimal issue number' "$REPO/.tmp-report-tokens-bad-plot-from.err"; then
+    pass 'non-numeric --plot-from rejected'
+else
+    fail "expected non-numeric --plot-from rejection (rc=$bad_plot_from_rc)"
+fi
+rm -f "$REPO/.tmp-report-tokens-bad-plot-from.err"
+
 set +e
 "$REPO/skills/report-tokens/scripts/run-analysis.sh" >/dev/null 2>"$REPO/.tmp-report-tokens-missing-skill.err"
 missing_skill_rc=$?
