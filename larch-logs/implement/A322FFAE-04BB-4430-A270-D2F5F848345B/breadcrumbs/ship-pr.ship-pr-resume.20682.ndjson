@@ -58,3 +58,7 @@ larch:bc t=2026-05-28T05:03:56Z d=0 p=50394 s=ci-wait.sh c=wait-ci text=.
 larch:bc t=2026-05-28T05:04:09Z d=0 p=50394 s=ci-wait.sh c=wait-ci text=.
 larch:bc t=2026-05-28T05:04:23Z d=0 p=50394 s=ci-wait.sh c=wait-ci text=.
 larch:bc t=2026-05-28T05:04:36Z d=0 p=50394 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (71s, 5 polls)
+larch:bc t=2026-05-28T05:13:00Z d=0 p=20708 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-28T05:13:00Z d=0 p=47238 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-28T05:13:04Z d=0 p=47238 s=ci-wait.sh c=wait-ci text=→ Action: rebase (4s, 0 polls)
+larch:bc t=2026-05-28T05:13:04Z d=0 p=20708 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
