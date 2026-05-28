@@ -1,0 +1,3 @@
+Move implement coder selection into bootstrap
+
+Route omitted /implement --coder selection through implement-bootstrap.sh, collapse the Step 0 prompt surface, require Step 2 to consume the resolved coder, and update the associated docs and regression harnesses.
