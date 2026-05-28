@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- assertion covers the key substring; adding the count check is marginal improvement not worth a finding
+FINDING_5: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- scope metadata from a reviewer is not a code problem worth raising
+FINDING_6: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive affirmation that cleanup is correct; not a real problem
+FINDING_7: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms intentional omission; not a real problem
+FINDING_8: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive affirmation that wiring is correct; not a real problem
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

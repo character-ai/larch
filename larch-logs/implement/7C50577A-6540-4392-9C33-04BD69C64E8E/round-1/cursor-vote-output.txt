@@ -1,0 +1,9 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Pre-existing structural duplication; plan intentionally kept mtime listing and semver helpers separate.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Dual ordering models are documented intentional prune design, not a regression from this change.
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan documents RM_FAIL cap-overflow behavior but only the all-pinned harness asserts the new summary warning.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Substring-only assert matches the plan’s stated acceptance criteria for this scenario.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Describes reviewer output metadata, not a defect in the changed code.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Reviewer confirms env cleanup is already correct; no actionable issue remains.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Omission of unseeded 29.1.29 is intentional and matches the fixture design.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Positive confirmation of correct test wiring, not a problem to fix or file.
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- New all-pinned case ships without the harness sibling doc update the file’s edit-in-sync note expects.
