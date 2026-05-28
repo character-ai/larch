@@ -251,6 +251,42 @@ rc="$(run_lint "$stderr_file" /tmp/foo.sh)"
 assert_case "positional skip outside-root" 0 "$stderr_file" "$rc" \
     "lint-bash32: skipping path outside lint root: /tmp/foo.sh"
 
+reset_tree
+write_sh "$TMPROOT/scripts/good.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' ok
+EOF
+rc="$(run_lint "$stderr_file" "$TMPROOT/scripts/good.sh")"
+assert_case "positional absolute in-root .sh" 0 "$stderr_file" "$rc"
+assert_empty_stderr "positional absolute in-root .sh" "$stderr_file"
+
+reset_tree
+OUTSIDE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-lint-bash32-outside.XXXXXX")"
+trap 'rm -rf "$TMPROOT" "$OUTSIDE_ROOT"' EXIT
+write_sh "$OUTSIDE_ROOT/escaped.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+declare -A escaped=() # lint-bash32: ok fixture
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$OUTSIDE_ROOT/escaped.sh" >"$OUTSIDE_ROOT/escaped-unsuppressed.sh"
+rm -f "$OUTSIDE_ROOT/escaped.sh"
+rc="$(run_lint "$stderr_file" "../$(basename "$OUTSIDE_ROOT")/escaped-unsuppressed.sh")"
+assert_case "positional skip relative parent traversal" 0 "$stderr_file" "$rc" \
+    "lint-bash32: skipping path outside lint root: ../$(basename "$OUTSIDE_ROOT")/escaped-unsuppressed.sh"
+
+reset_tree
+write_sh "$OUTSIDE_ROOT/escaped.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+declare -A escaped=() # lint-bash32: ok fixture
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$OUTSIDE_ROOT/escaped.sh" >"$OUTSIDE_ROOT/escaped-unsuppressed.sh"
+rm -f "$OUTSIDE_ROOT/escaped.sh"
+rc="$(run_lint "$stderr_file" "$TMPROOT/../$(basename "$OUTSIDE_ROOT")/escaped-unsuppressed.sh")"
+assert_case "positional skip absolute parent traversal outside-root" 0 "$stderr_file" "$rc" \
+    "lint-bash32: skipping path outside lint root: $TMPROOT/../$(basename "$OUTSIDE_ROOT")/escaped-unsuppressed.sh"
+
 if command -v git >/dev/null 2>&1; then
     reset_tree
     (

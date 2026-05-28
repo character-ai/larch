@@ -43,7 +43,7 @@ if [[ ! -d "$ROOT" ]]; then
     exit 2
 fi
 
-ROOT="$(cd "$ROOT" && pwd)"
+ROOT="$(cd "$ROOT" && pwd -P)"
 TMP_FILES="$(mktemp "${TMPDIR:-/tmp}/lint-bash32-files.XXXXXX")"
 trap 'rm -f "$TMP_FILES"' EXIT
 
@@ -61,6 +61,23 @@ list_shell_files() {
                 done
         )
     fi
+}
+
+resolve_positional_path() {
+    local candidate="$1"
+    local dir
+    local base
+    local abs_dir
+
+    if [[ "$candidate" = /* ]]; then
+        dir="$(dirname -- "$candidate")"
+    else
+        dir="$ROOT/$(dirname -- "$candidate")"
+    fi
+    base="$(basename -- "$candidate")"
+
+    abs_dir="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
+    printf '%s/%s\n' "$abs_dir" "$base"
 }
 
 scan_file() {
@@ -116,19 +133,37 @@ else
 
         case "$file" in
             /*)
-                case "$file" in
+                resolved="$(resolve_positional_path "$file")" || {
+                    printf 'lint-bash32: skipping unresolved path: %s\n' "$file" >&2
+                    continue
+                }
+                case "$resolved" in
                     "$ROOT"/*)
-                        scan_file "${file#"$ROOT"/}"
+                        file="${resolved#"$ROOT"/}"
                         ;;
                     *)
                         printf 'lint-bash32: skipping path outside lint root: %s\n' "$file" >&2
+                        continue
                         ;;
                 esac
                 ;;
             *)
-                scan_file "${file#./}"
-                ;;
+                resolved="$(resolve_positional_path "$file")" || {
+                    printf 'lint-bash32: skipping unresolved path: %s\n' "$file" >&2
+                    continue
+                }
+                case "$resolved" in
+                    "$ROOT"/*)
+                        file="${resolved#"$ROOT"/}"
+                        ;;
+                    *)
+                        printf 'lint-bash32: skipping path outside lint root: %s\n' "$file" >&2
+                        continue
+                        ;;
+                esac
         esac
+
+        scan_file "$file"
     done
 fi
 
