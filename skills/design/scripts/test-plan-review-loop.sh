@@ -1602,7 +1602,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_athr=$(run_loop "$DATHR" 1 --round-cap 5 --convergence-threshold 3)
+run_loop "$DATHR" 1 --round-cap 5 --convergence-threshold 3 >/dev/null
 grep -q '^CONVERGENCE_STREAK=0$' "$DATHR/plan-review/round-1/round-summary.env" || fail "above-threshold round 1 should keep streak at 0"
 grep -q '^ACCEPTED_COUNT=4$' "$DATHR/plan-review/round-1/round-summary.env" || fail "above-threshold round 1 should record 4 accepted findings"
 
