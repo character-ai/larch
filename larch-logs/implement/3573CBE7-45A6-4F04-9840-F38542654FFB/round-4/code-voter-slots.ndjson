@@ -1,0 +1,2 @@
+{"slot":"voter-2","tool":"codex","output":"<TMPDIR>/round-4/codex-vote-output.txt","prompt_file":"<TMPDIR>/round-4/codex-vote-prompt.txt"}
+{"slot":"voter-3","tool":"cursor","output":"<TMPDIR>/round-4/cursor-vote-output.txt","prompt_file":"<TMPDIR>/round-4/cursor-vote-prompt.txt"}

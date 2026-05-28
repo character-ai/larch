@@ -1,0 +1,7 @@
+Reviewing the branch diff and shell sourcing behavior for `audit-title-matcher.sh`.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **architecture** — The implementation plan’s acceptance text says `audit-title-matcher.sh` is consumed by `audit-preflight.sh`, but `audit-preflight.sh` does not source the matcher; concurrency uses the shared `audit-report` label only (`.claude/skills/audit-runs/scripts/audit-preflight.sh:107-130`). That matches the skill contract (“Concurrency guard is shared across skills”) and is intentional, not a pipefail/sourcing defect.
+- **code-quality** — In direct CLI mode (`audit-title-matcher.sh:48-50`), a non-matching title still exits `1` under `set -e` before `exit $?` runs; behavior is correct, but `exit $?` is only reachable on success. Harmless for the primary sourced use case.
