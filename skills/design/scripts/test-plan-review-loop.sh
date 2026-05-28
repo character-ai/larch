@@ -315,6 +315,14 @@ EOS
         printf '%s\n' "in_scope	nit	correctness	src/a	Nit streak finding	scenario	fix"
     } >"$tsv"
 EOS
+    elif [[ "$mode" == "above_threshold" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+        printf '%s\n' "in_scope	nit	correctness	src/a	Above threshold finding A	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/b	Above threshold finding B	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/c	Above threshold finding C	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/d	Above threshold finding D	scenario	fix"
+    } >"$tsv"
+EOS
     elif [[ "$mode" == "three_distinct" ]]; then
         cat >>"$STUB/collect-agent-results.sh" <<'EOS'
     idx=$((idx + 1))
@@ -1552,6 +1560,51 @@ printf '%s\n' "$out_str" | grep -q '^REASON=streak$' || fail "two-round nit stre
 printf '%s\n' "$out_str" | grep -q '^CONVERGENCE_STREAK=2$' || fail "two-round nit streak should reach streak 2"
 printf '%s\n' "$out_str" | grep -q '^ROUNDS_COMPLETED=2$' || fail "two-round nit streak should complete two rounds"
 grep -q '^CONVERGENCE_STREAK=1$' "$DSTR/plan-review/round-1/round-summary.env" || fail "round 1 should record streak 1"
+
+echo "=== multi-round: accepted-count above threshold resets convergence streak ==="
+DATHR="$TMP/streak-above-threshold"
+mkdir -p "$DATHR"
+printf 'plan\n\ndiff_lines: 1\n' >"$DATHR/plan.txt"
+printf 'feat\n' >"$DATHR/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect above_threshold
+# Voter stub votes YES for all four findings so ACCEPTED_COUNT=4 (above threshold 3)
+cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+v1="$DESIGN_TMPDIR/vstub1.txt"
+v2="$DESIGN_TMPDIR/vstub2.txt"
+v3="$DESIGN_TMPDIR/vstub3.txt"
+vp="$DESIGN_TMPDIR/voter-paths.list"
+for f in "$v1" "$v2" "$v3"; do
+    printf '%s\n' 'FINDING_1: YES' 'FINDING_2: YES' 'FINDING_3: YES' 'FINDING_4: YES' >"$f"
+done
+printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
+EOS
+chmod +x "$STUB/dispatch-plan-voters.sh"
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_athr=$(run_loop "$DATHR" 1 --round-cap 5 --convergence-threshold 3)
+grep -q '^CONVERGENCE_STREAK=0$' "$DATHR/plan-review/round-1/round-summary.env" || fail "above-threshold round 1 should keep streak at 0"
+grep -q '^ACCEPTED_COUNT=4$' "$DATHR/plan-review/round-1/round-summary.env" || fail "above-threshold round 1 should record 4 accepted findings"
 
 echo "=== multi-round: important finding resets convergence streak ==="
 DIRS="$TMP/streak-important-reset"
