@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- function is large but coherent; refactoring into separate sub-functions would add indirection without fixing a defect
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- change is correct and already committed; the concern is commit organization, not correctness
+FINDING_3: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- test-plan-adequacy-audit.sh already pins the key bypass tokens and bootstrap tests cover log consumption; structural greps are the appropriate level for prompt-based behaviors
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- bootstrap tests are correctly scoped to bootstrap's consumption behavior; Preflight creation behavior is tested at the structural level separately
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- SECURITY.md explicitly documents this trust-boundary downgrade; adding mechanical wrapping for external implementers is a separate feature request beyond the emergency flag scope
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- SECURITY.md already has extensive documentation on emergency bypass trust-boundary downgrade
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- this is an inherent CLI tool design constraint; GitHub-level access control is outside larch's scope
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false
+FINDING_20: NO CORRECTNESS=false SEVERITY=latent QUALITY=weak UNCERTAIN=false -- post_tracking_metadata is called in phase_tracking with the same EMERGENCY_REQUESTED value set from argv or restore_emergency_requested_from_run_flags_if_unset; both metadata and run-flags reflect the same value
+FINDING_21: YES CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
