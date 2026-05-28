@@ -229,6 +229,14 @@ def write_lines(out_lines):
             fh.write("\n".join(out_lines) + "\n")
 
 
+def is_old_header(line):
+    return bool(re.match(r"^---\s+a/[^ \t]+(?:[ \t].*)?$", line))
+
+
+def is_new_header(line):
+    return bool(re.match(r"^\+\+\+\s+b/[^ \t]+(?:[ \t].*)?$", line))
+
+
 def find_diff_start(block, from_end=False):
     indexes = range(len(block) - 1, -1, -1) if from_end else range(len(block))
     for idx in indexes:
@@ -236,7 +244,7 @@ def find_diff_start(block, from_end=False):
             return idx
     pair_indexes = range(len(block) - 2, -1, -1) if from_end else range(len(block) - 1)
     for idx in pair_indexes:
-        if block[idx] == "--- a/plan.txt" and block[idx + 1] == "+++ b/plan.txt":
+        if is_old_header(block[idx]) and is_new_header(block[idx + 1]):
             return idx
     return None
 
@@ -264,10 +272,15 @@ def fenced_blocks(diff_only):
 
 
 if patch_format == "unified-diff":
-    for block in fenced_blocks(diff_only=True):
-        start = find_diff_start(block)
+    for block in reversed(fenced_blocks(diff_only=True)):
+        start = find_diff_start(block, from_end=True)
         if start is not None:
-            write_lines(block[start:])
+            out = []
+            for line in block[start:]:
+                if line == "```" or re.match(r"^```diff\s*$", line):
+                    break
+                out.append(line)
+            write_lines(out)
             raise SystemExit(0)
     start = find_diff_start(lines, from_end=True)
     if start is None:
@@ -281,9 +294,25 @@ if patch_format == "unified-diff":
     write_lines(out)
     raise SystemExit(0)
 
-for block in fenced_blocks(diff_only=False):
+starts = [idx for idx, line in enumerate(lines) if line == "## Plan"]
+for start in reversed(starts):
+    trailer = None
+    saw_closing_fence = False
+    for idx in range(start, len(lines)):
+        if re.match(r"^diff_lines:\s*[0-9]+\s*$", lines[idx]):
+            trailer = idx
+            break
+        if lines[idx] == "```" and saw_closing_fence:
+            break
+        if lines[idx] == "```":
+            saw_closing_fence = True
+    if trailer is not None:
+        write_lines([line for line in lines[start : trailer + 1] if line != "```"])
+        raise SystemExit(0)
+
+for block in reversed(fenced_blocks(diff_only=False)):
     starts = [idx for idx, line in enumerate(block) if line == "## Plan"]
-    for start in starts:
+    for start in reversed(starts):
         trailer = None
         for idx in range(start, len(block)):
             if re.match(r"^diff_lines:\s*[0-9]+\s*$", block[idx]):
@@ -292,19 +321,6 @@ for block in fenced_blocks(diff_only=False):
         if trailer is not None:
             write_lines(block[start : trailer + 1])
             raise SystemExit(0)
-
-starts = [idx for idx, line in enumerate(lines) if line == "## Plan"]
-for start in reversed(starts):
-    trailer = None
-    for idx in range(start, len(lines)):
-        if re.match(r"^diff_lines:\s*[0-9]+\s*$", lines[idx]):
-            trailer = idx
-            break
-        if lines[idx] == "```":
-            break
-    if trailer is not None:
-        write_lines(lines[start : trailer + 1])
-        raise SystemExit(0)
 
 write_lines([])
 PY
@@ -424,7 +440,11 @@ attempt_tier() {
     output_name=$(basename "$output")
     patch_file="$REVISE_DIR/${output_name%.txt}-candidate.patch"
     rm -f "$patch_file"
-    extract_patch "$output" "$patch_file"
+    if ! extract_patch "$output" "$patch_file"; then
+        : >"$patch_file"
+        set_tier_status "$ordinal" no-patch
+        return 1
+    fi
     if [[ ! -s "$patch_file" ]]; then
         set_tier_status "$ordinal" no-patch
         return 1
@@ -521,7 +541,17 @@ finalize() {
         printf 'REVISE_PATCH_PATH=%s\n' "$patch_path"
         printf 'REVISE_PLAN_HASH_BEFORE=%s\n' "$HASH_BEFORE"
         printf 'REVISE_PLAN_HASH_AFTER=%s\n' "$hash_after"
-    } | tee "$REVISE_DIR/revise.env"
+    } >"$REVISE_DIR/revise.env"
+    emit_kv REVISE_TIER_1_STATUS "$status1"
+    emit_kv REVISE_TIER_2_STATUS "$status2"
+    emit_kv REVISE_TIER_3_STATUS "$status3"
+    emit_kv REVISE_TIER_4_STATUS "$status4"
+    emit_kv REVISE_STATUS "$revise_status"
+    emit_kv REVISE_TIER "$revise_tier"
+    emit_kv REVISE_WINNING_TIER "$revise_tier"
+    emit_kv REVISE_PATCH_PATH "$patch_path"
+    emit_kv REVISE_PLAN_HASH_BEFORE "$HASH_BEFORE"
+    emit_kv REVISE_PLAN_HASH_AFTER "$hash_after"
     exit 0
 }
 
@@ -539,12 +569,12 @@ if [[ "$PATCH_FORMAT" == "unified-diff" && -z "$winner" ]]; then
     PATCH_FORMAT="file-replacement"
     winner_is_fallback=true
     compose_prompt
-    if attempt_tier 4 codex "$REVISE_DIR/codex-fallback-output.txt"; then
+    if attempt_tier 4 codex "$REVISE_DIR/codex-output.txt"; then
         :
-    elif attempt_tier 4 cursor "$REVISE_DIR/cursor-fallback-output.txt"; then
+    elif attempt_tier 4 cursor "$REVISE_DIR/cursor-output.txt"; then
         :
     else
-        attempt_tier 4 claude "$REVISE_DIR/claude-fallback-output.txt" || true
+        attempt_tier 4 claude "$REVISE_DIR/claude-output.txt" || true
     fi
 fi
 

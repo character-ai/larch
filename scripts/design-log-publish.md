@@ -158,9 +158,7 @@ Edit-in-sync: any allowlist change updates `lib-design-round-artifacts.sh`, this
 `plan-review-loop.md`, `scripts/lib-design-round-artifacts.md`, and
 `scripts/test-lib-design-round-artifacts.sh` in the same change. The current
 `round-N/revise/` include set is `codex-output.txt`, `cursor-output.txt`,
-`claude-output.txt`, `codex-fallback-output.txt`, `cursor-fallback-output.txt`,
-`claude-fallback-output.txt`, `revise.env`, `prompt.txt`, and
-`*-candidate.patch`.
+`claude-output.txt`, `revise.env`, `prompt.txt`, and `*-candidate.patch`.
 
 Allowed files are staged through the same trim/redact pipeline as other design
 artifacts at `larch-logs/design/<RUN_ID>/plan-review/<relpath>`.
