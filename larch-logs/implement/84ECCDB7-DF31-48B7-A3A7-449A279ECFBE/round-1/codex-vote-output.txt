@@ -1,0 +1,17 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Optional symmetry hardening is real but not worth filing for this scoped regression test change.
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The reliance exists, but current runs truncate stderr via redirection and the hypothetical append-mode risk is not worth a follow-up.
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate verification note, but it describes correct behavior rather than a problem to raise.
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate verification note, but it describes correct behavior rather than a problem to raise.
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate verification note, but it describes intended behavior rather than a problem to raise.
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The test does not directly assert the internal slot set, but that is beyond this regression’s scoped contract.
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The grep pattern depends on truncating stderr, but that is current behavior and the risk is only a hypothetical future harness change.
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Commit summary only; no concrete problem is stated.
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Scope summary only; no concrete problem is stated.
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.
+FINDING_13: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate positive assessment, not a problem to raise.

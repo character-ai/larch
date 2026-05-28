@@ -1,0 +1,17 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- optional exec-isolation parity was explicitly out of plan scope for #3003
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing stderr overwrite at aggregate-findings.sh:643 makes the grep pattern safe today
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive verification of gap-1 behavior, not an actionable defect
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms existing nospace-without-attestation path; no change requested
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documents intended gap-2 contract per plan, not a problem
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real coverage limit but plan explicitly accepted it for this regression scope
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- hypothetical append-mode stderr risk is pre-existing and not introduced by this branch
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- commit metadata only, not a code-review finding
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- larch-logs flush excluded from product-risk review by policy
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative fixture description, not a defect
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative assertion alignment with aggregate-findings.sh:555-559
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative test ordering note, not a defect
+FINDING_13: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms stderr overwrite behavior; no issue to file
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative fixture/slot description for gap 2
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative success-contract check, not actionable
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative placement rationale only
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- explicitly documents accepted test limitation per plan
