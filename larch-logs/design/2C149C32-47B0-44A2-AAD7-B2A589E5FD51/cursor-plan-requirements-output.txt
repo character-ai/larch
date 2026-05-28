@@ -1,0 +1,9 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:66-67	Planned regex cannot catch the planned Python argv-list case	The acceptance goal covers .py files, but subprocess.run(["gh", "issue", "create", "--body", "x"]) has "gh", not gh followed by whitespace, so the proposed pattern misses it and the planned test at lines 116-119 would fail or be weakened	Update the token pattern to handle Python list argv strings such as quoted gh followed by comma, and keep the explicit Python fixture expecting exit 1
+1	in_scope	important	risk-integration	<TMPDIR>/plan.txt:58-61	Plan says larch-logs are excluded, but git enumeration would include tracked run-log .sh/.py files	In a git worktree the script uses git ls-files without excluding larch-logs, while .pre-commit-config.yaml only excludes .venv and node_modules; committed run-log source-env.sh and aggregate-validate.py files would be scanned despite the stated edge-case contract	Filter larch-logs in the git ls-files path too, for example with a case skip or git pathspec exclude, and add a small harness fixture covering tracked larch-logs exclusion if that contract remains stated
+
+1. [correctness] `<TMPDIR>/plan.txt:66-67`  
+The proposed `gh[[:space:]]` regex does not satisfy the `.py` requirement. It misses the plan’s own Python example because `"gh",` is not `gh` followed by whitespace. Revise the pattern or scanning logic to catch Python argv-list calls while preserving the `--body-file` / `--notes-file` exclusion.
+
+2. [risk-integration] `<TMPDIR>/plan.txt:58-61`  
+The larch-logs exclusion only exists in the non-git `find` fallback. In the normal git path, tracked `larch-logs/**/*.sh` and `larch-logs/**/*.py` are included, and the current top-level pre-commit exclude does not remove them. Add an explicit git-path exclusion or script-level skip to keep the minimum-change contract.
