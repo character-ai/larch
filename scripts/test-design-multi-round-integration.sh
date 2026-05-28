@@ -93,6 +93,15 @@ run_loop_fixture() {
         --convergence-threshold 3
 }
 
+assert_env_has_keys() {
+    local path="$1"
+    shift
+    local key
+    for key in "$@"; do
+        grep -q "^${key}=" "$path" || fail "missing ${key}= in $path"
+    done
+}
+
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-design-mr-int.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 STUB="$TMP/stub-bin"
@@ -186,6 +195,7 @@ printf '%s\n' "$out" | grep -q '^LOOP_STATUS=cap-hit$' || fail "expected cap-hit
 [[ -f "$TMP/design/plan-review/round-1/round-summary.env" ]] || fail "round-summary missing"
 grep -q '^LOOP_STATUS=cap-hit$' "$TMP/design/plan-review/round-2/round-summary.env" || fail "round-2 summary should record cap-hit"
 cmp -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-2/plan.txt" || fail "round-2 snapshot plan must match final plan"
+assert_env_has_keys "$TMP/design/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS CONVERGENCE_STREAK AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
 
 # shellcheck source=scripts/lib-design-round-artifacts.sh
 source "$ROOT/scripts/lib-design-round-artifacts.sh"
@@ -242,5 +252,93 @@ ln -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-1/linked.txt"
     [[ "$publish_link" == *"PUBLISH_OK=false"* ]] || fail "symlink under plan-review should fail publish"
 )
 rm -f "$TMP/design/plan-review/round-1/linked.txt"
+
+echo "=== converge path writes passive-summary status ==="
+DCONV="$TMP/converged"
+mkdir -p "$DCONV"
+printf '## Plan\n\nDo thing.\n\ndiff_lines: 3\n' >"$DCONV/plan.txt"
+printf 'feat\n' >"$DCONV/feature-description.txt"
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
+done
+while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" >"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
+out_conv=$(run_loop_fixture "$DCONV")
+printf '%s\n' "$out_conv" | grep -q '^LOOP_STATUS=converged$' || fail "zero-findings collector-ok path should converge"
+grep -q '^LOOP_STATUS=converged$' "$DCONV/plan-review/round-1/round-summary.env" || fail "converged summary missing"
+
+echo "=== manual Gate B stops after one round ==="
+DMAN="$TMP/manual"
+mkdir -p "$DMAN"
+printf '## Plan\n\nDo thing.\n\ndiff_lines: 3\n' >"$DMAN/plan.txt"
+printf 'feat\n' >"$DMAN/feature-description.txt"
+printf '{"manual_gate_b":true}\n' >"$DMAN/run-params.json"
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
+done
+while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    {
+        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+        printf '%s\n' "in_scope	nit	correctness	src/a	manual finding	scenario	fix"
+    } >"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "manual Gate B should not auto-revise" >&2
+exit 99
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+out_man=$(run_loop_fixture "$DMAN")
+printf '%s\n' "$out_man" | grep -q '^REASON=manual-gate-b$' || fail "manual Gate B should short-circuit with manual-gate-b"
+[[ -d "$DMAN/plan-review/round-1" ]] || fail "manual Gate B should still snapshot round-1"
+[[ ! -d "$DMAN/plan-review/round-2" ]] || fail "manual Gate B should stop after one round"
+
+echo "=== revision-failed path stays on final-round findings route ==="
+DRV="$TMP/revision-failed"
+mkdir -p "$DRV"
+printf '## Plan\n\nDo thing.\n\ndiff_lines: 3\n' >"$DRV/plan.txt"
+printf 'feat\n' >"$DRV/feature-description.txt"
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
+done
+while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    {
+        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+        printf '%s\n' "in_scope	important	correctness	src/a	revision fail finding	scenario	fix"
+    } >"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=failed-no-patch\nREVISE_WINNING_TIER=\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+out_rv=$(run_loop_fixture "$DRV")
+printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revision-failed integration path missing"
+grep -q '^LOOP_STATUS=revision-failed$' "$DRV/.step3-plan-review-result.env" || fail "revision-failed env missing"
 
 printf '%s\n' 'test-design-multi-round-integration: ok'

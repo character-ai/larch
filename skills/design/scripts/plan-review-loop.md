@@ -15,7 +15,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 - Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv` for normal tally runs; header-only TSV on empty-artifact exits.
 - Writes `$DESIGN_TMPDIR/.step3-plan-review-result.env` at every terminal exit (multi-round and legacy).
 - Per-round forensics allowlist: `scripts/lib-design-round-artifacts.md`.
-- Allowed snapshot inputs must be regular files. If an allowlisted session-root artifact resolves as a symlink, the round snapshot is deleted and the loop fails closed with `LOOP_STATUS=panel-failed`.
+- Allowed snapshot inputs must be regular files. If an allowlisted session-root artifact resolves as a symlink, the new snapshot payload is discarded, pre-existing `round-N/revise/` forensics are preserved, and terminal statuses keep their original `LOOP_STATUS` while appending `snapshot-failed` to `REASON` when the failure happens after a terminal outcome has already been determined.
 
 ## Argv
 

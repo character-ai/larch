@@ -21,7 +21,7 @@ branch by:
 4. Running `larch-log.sh init` under `larch-logs/` in that worktree (schema v2
    `manifest.json` for skill `design`).
 5. Copying design artifacts: top-level regular files (maxdepth 1), the strict
-   `plan-review/round-<N>/findings-classification.tsv` allowlist, plus all
+   `plan-review/` round-artifact allowlist documented below, plus all
    regular files under `render-cache/` (recursive). Symlinks at the top level
    are skipped; `plan-review/` and `render-cache/` subtrees fail closed on any
    symlink anywhere in them.

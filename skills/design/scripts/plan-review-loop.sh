@@ -183,11 +183,36 @@ _count_important_findings() {
     local path="$1"
     [[ -f "$path" ]] || { printf '0'; return 0; }
     awk '
-        /^### FINDING_[0-9]+:/ { in_block=1; important=0; next }
+        /^### FINDING_[0-9]+:/ {
+            if (in_block && important) c++
+            in_block=1
+            important=0
+            next
+        }
         in_block && /^- \*\*Severity\*\*: important/ { important=1 }
         in_block && /^### / { if (important) c++; in_block=0; important=0; next }
         END { if (in_block && important) c++; print c+0 }
     ' "$path"
+}
+
+_read_manual_gate_b() {
+    local params="$1"
+    [[ -f "$params" ]] || { printf 'false'; return 0; }
+    python3 - "$params" <<'PY' 2>/dev/null || awk '
+        BEGIN { found=0 }
+        /"manual_gate_b"[[:space:]]*:[[:space:]]*true/ { found=1 }
+        END { print found ? "true" : "false" }
+    ' "$params"
+import json, sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    raise SystemExit(1)
+
+print("true" if data.get("manual_gate_b") is True else "false")
+PY
 }
 
 _count_collector_evidence() {
@@ -253,7 +278,9 @@ _clear_session_root_review_artifacts() {
 _snapshot_round_dir() {
     local round_num="$1"
     local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}"
-    mkdir -p "$dest"
+    local tmp="${dest}.snapshot-tmp"
+    rm -rf "$tmp"
+    mkdir -p "$tmp"
     local name src failed=0
     for src in "$DESIGN_TMPDIR"/*; do
         [[ -f "$src" ]] || continue
@@ -264,20 +291,55 @@ _snapshot_round_dir() {
             failed=1
             continue
         fi
-        cp -f "$src" "$dest/$name"
+        cp -f "$src" "$tmp/$name"
     done
     if (( failed != 0 )); then
-        rm -rf "$dest"
+        rm -rf "$tmp"
         return 1
     fi
     if [[ -d "$dest/revise" ]]; then
         local rname rsrc
+        mkdir -p "$tmp/revise"
         for rsrc in "$dest/revise"/*; do
             [[ -f "$rsrc" ]] || continue
             rname=$(basename "$rsrc")
-            design_round_revise_artifact_included "$rname" || rm -f "$rsrc"
+            design_round_revise_artifact_included "$rname" || continue
+            cp -f "$rsrc" "$tmp/revise/$rname"
         done
     fi
+    mkdir -p "$dest"
+    local existing
+    for existing in "$dest"/*; do
+        [[ -e "$existing" ]] || continue
+        [[ "$(basename "$existing")" == "revise" ]] && continue
+        rm -rf "$existing"
+    done
+    for src in "$tmp"/*; do
+        [[ -e "$src" ]] || continue
+        name=$(basename "$src")
+        if [[ "$name" == "revise" ]]; then
+            mkdir -p "$dest/revise"
+            local revise_existing
+            for revise_existing in "$dest/revise"/*; do
+                [[ -e "$revise_existing" ]] || continue
+                rm -f "$revise_existing"
+            done
+            cp -f "$src"/* "$dest/revise/" 2>/dev/null || true
+            continue
+        fi
+        cp -f "$src" "$dest/$name"
+    done
+    rm -rf "$tmp"
+}
+
+_snapshot_terminal_exit_preserving_status() {
+    local round_num="$1" rc="$2" summary_revise="$3"
+    if ! _snapshot_round_dir "$round_num"; then
+        emit_kv WARN "plan-review-snapshot: round-${round_num} snapshot failed after terminal status ${LOOP_STATUS:-unknown}"
+        LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
+    fi
+    _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "$summary_revise"
+    _terminal_exit "$rc" "$round_num"
 }
 
 _write_round_summary() {
@@ -1098,7 +1160,7 @@ convergence_streak=0
 CONVERGENCE_STREAK=0
 manual_mode=false
 if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
-    _mg=$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf 'false')
+    _mg=$(_read_manual_gate_b "$DESIGN_TMPDIR/run-params.json")
     [[ "$_mg" == "true" ]] && manual_mode=true
 fi
 
@@ -1118,17 +1180,11 @@ while (( round_num <= ROUND_CAP )); do
 
     if [[ "$loop_status_override" == "main-agent-vote-required" ]]; then
         LOOP_STATUS=main-agent-vote-required
+        LOOP_REASON=""
         IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
         _count_collector_evidence
         _accumulate_round_oos "$round_num" "$_prior_cum_oos"
-        if ! _snapshot_round_dir "$round_num"; then
-            LOOP_STATUS=panel-failed
-            LOOP_REASON=snapshot-failed
-            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
-            _terminal_exit 1 "$round_num"
-        fi
-        _write_round_summary "$round_num" main-agent-vote-required "" skipped
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
     fi
 
     if (( _round_rc != 0 )); then
@@ -1154,14 +1210,7 @@ while (( round_num <= ROUND_CAP )); do
         revise_status=skipped
         IMPORTANT_ACCEPTED_COUNT=0
         _count_collector_evidence
-        if ! _snapshot_round_dir "$round_num"; then
-            LOOP_STATUS=panel-failed
-            LOOP_REASON=snapshot-failed
-            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
-            _terminal_exit 1 "$round_num"
-        fi
-        _write_round_summary "$round_num" tally-error tally-error skipped
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
     fi
 
     _accumulate_round_oos "$round_num" "$_prior_cum_oos"
@@ -1179,14 +1228,7 @@ while (( round_num <= ROUND_CAP )); do
             LOOP_REASON=degraded-empty-collector
             DEGRADED_PANEL=1
             revise_status=skipped
-            if ! _snapshot_round_dir "$round_num"; then
-                LOOP_STATUS=panel-failed
-                LOOP_REASON=snapshot-failed
-                _write_round_summary "$round_num" panel-failed snapshot-failed skipped
-                _terminal_exit 1 "$round_num"
-            fi
-            _write_round_summary "$round_num" degraded-empty-collector degraded-empty-collector skipped
-            _terminal_exit 0 "$round_num"
+            _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
         fi
         if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
             LOOP_STATUS=complete
@@ -1196,28 +1238,14 @@ while (( round_num <= ROUND_CAP )); do
             LOOP_REASON=zero-findings
         fi
         revise_status=skipped
-        if ! _snapshot_round_dir "$round_num"; then
-            LOOP_STATUS=panel-failed
-            LOOP_REASON=snapshot-failed
-            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
-            _terminal_exit 1 "$round_num"
-        fi
-        _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" skipped
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
     fi
 
     if [[ "$manual_mode" == true ]]; then
         LOOP_STATUS=complete
         LOOP_REASON=manual-gate-b
         revise_status=skipped
-        if ! _snapshot_round_dir "$round_num"; then
-            LOOP_STATUS=panel-failed
-            LOOP_REASON=snapshot-failed
-            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
-            _terminal_exit 1 "$round_num"
-        fi
-        _write_round_summary "$round_num" complete manual-gate-b skipped
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
     fi
 
     if ! _run_revise_with_status_parse "$round_num"; then
@@ -1225,30 +1253,41 @@ while (( round_num <= ROUND_CAP )); do
         PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
         LOOP_STATUS=revision-failed
         LOOP_REASON=revision-failed
-        if ! _snapshot_round_dir "$round_num"; then
-            LOOP_STATUS=panel-failed
-            LOOP_REASON=snapshot-failed
-            _write_round_summary "$round_num" panel-failed snapshot-failed "${revise_status:-failed-no-patch}"
-            _terminal_exit 1 "$round_num"
-        fi
-        _write_round_summary "$round_num" revision-failed revision-failed "${revise_status:-failed-no-patch}"
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-failed-no-patch}"
     fi
     PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
     revise_status=ok
 
     if ! _run_post_apply_pipeline "$round_num"; then
-        if ! _snapshot_round_dir "$round_num"; then
-            LOOP_STATUS=panel-failed
-            LOOP_REASON=snapshot-failed
-            _write_round_summary "$round_num" panel-failed snapshot-failed "${revise_status:-ok}"
-            _terminal_exit 1 "$round_num"
-        fi
-        _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "${revise_status:-ok}"
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
     fi
 
+    _next_terminal_status=""
+    _next_terminal_reason=""
+    _next_convergence_streak="$convergence_streak"
     if ! _snapshot_round_dir "$round_num"; then
+        if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
+            _next_convergence_streak=0
+        elif [[ "$ACCEPTED_COUNT" -le "$CONVERGENCE_THRESHOLD" && "$IMPORTANT_ACCEPTED_COUNT" -eq 0 ]]; then
+            _next_convergence_streak=$((convergence_streak + 1))
+            if (( _next_convergence_streak >= 2 )); then
+                _next_terminal_status=converged
+                _next_terminal_reason=streak
+            fi
+        else
+            _next_convergence_streak=0
+        fi
+        if [[ -z "$_next_terminal_status" && $round_num -eq $ROUND_CAP ]]; then
+            _next_terminal_status=cap-hit
+            _next_terminal_reason=cap-hit
+        fi
+        if [[ -n "$_next_terminal_status" ]]; then
+            LOOP_STATUS="$_next_terminal_status"
+            LOOP_REASON="${_next_terminal_reason},snapshot-failed"
+            CONVERGENCE_STREAK="$_next_convergence_streak"
+            _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" ok
+            _terminal_exit 0 "$round_num"
+        fi
         LOOP_STATUS=panel-failed
         LOOP_REASON=snapshot-failed
         _write_round_summary "$round_num" panel-failed snapshot-failed ok
