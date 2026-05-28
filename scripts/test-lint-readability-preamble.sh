@@ -157,7 +157,7 @@ assert_lint_ok() {
     local out="$TMPROOT/${label}.out"
     local err="$TMPROOT/${label}.err"
     bash "$LINT" --root "$root" >"$out" 2>"$err" || fail "$label: expected lint success: $(cat "$err")"
-    [ ! -s "$err" ] || fail "$label: expected empty stderr"
+    [ ! -s "$err" ] || fail "$label: expected empty stderr -- got: $(cat "$err")"
 }
 
 assert_lint_fails_for() {
