@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `dba34360` (chore(larch-logs): flush design run A42F8656-7587-4E6B-B49D-F890403E120B [skip ci] (#3130))
-- **Current version**: `45.3.2`
+- **Base commit**: `6d4dda97` (Fixes #3003: Add missing attestation-only empty-merge regression tests (#3003) (#3131))
+- **Current version**: `45.3.3`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.3.3`
+- **New version**: `45.3.4`
 
 ### PATCH rationale
 
