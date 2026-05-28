@@ -110,7 +110,7 @@ for issue_num in "${ISSUES[@]}"; do
     CLOSED=$((CLOSED + 1))
     rm -f "$close_fail_file"
   else
-    CLOSE_ERR=$_WTR_OUT
+    CLOSE_ERR=$(cat "$close_fail_file" 2>/dev/null || true)
     rm -f "$close_fail_file"
     CLOSE_ERRORS="${CLOSE_ERRORS}Failed to close #${issue_num}: ${CLOSE_ERR}; "
   fi

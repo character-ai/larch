@@ -10,7 +10,7 @@ Hermetic offline harness for `scripts/lib-net.sh`.
 
 ## Fixture layout
 
-Working dir: `${TMPDIR}/larch-test-lib-net.XXXXXX`. Stub commands write stderr to the `fail_file` first argument and print stdout; `SLEEP_SCRIPT_DIR` points at a stub `sleep-seconds.sh` that appends sleep durations to `SLEEP_LOG`.
+Working dir: `${TMPDIR}/test-lib-net.XXXXXX`. Stub commands write stderr to the `fail_file` first argument and print stdout; `SLEEP_SCRIPT_DIR` points at a stub `sleep-seconds.sh` that appends sleep durations to `SLEEP_LOG`.
 
 ## Run
 

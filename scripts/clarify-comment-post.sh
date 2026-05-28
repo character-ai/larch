@@ -157,7 +157,7 @@ if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
     gh issue comment "$ISSUE" --repo "$REPO" --body-file "$REDACTED"; then
     OUT_URL=$_WTR_OUT
 else
-    ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+    ERR_CONTENT=$(cat "$comment_fail_file" 2>/dev/null || true)
     rm -f "$comment_fail_file"
     emit_gh_failure "$ERR_CONTENT"
 fi

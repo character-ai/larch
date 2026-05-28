@@ -245,7 +245,7 @@ if with_transient_retry transient_envelope_predicate_none "$edit_fail_file" \
     gh issue edit "$ISSUE" --repo "$REPO" --body-file "$EDIT_TMP"; then
     :
 else
-    ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+    ERR_CONTENT=$(cat "$edit_fail_file" 2>/dev/null || true)
     rm -f "$edit_fail_file"
     emit_gh_failure "$ERR_CONTENT"
 fi

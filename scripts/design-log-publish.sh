@@ -621,7 +621,6 @@ if with_transient_retry transient_envelope_predicate_none "$push_fail_file" \
 else
     push_rc=$_WTR_RC
 fi
-_push_out=$_WTR_OUT
 if [[ "$push_rc" -ne 0 ]]; then
     larch_err "design-log-publish: git push failed"
     if commit_sha=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null); then
@@ -656,6 +655,7 @@ PR_BODY_TMP=""
 
 PR_NUM=""
 PR_URL=""
+recovery_probe_ok=false
 if [[ "$create_rc" -eq 0 ]]; then
     PR_URL=$(printf '%s\n' "$create_out" | grep -oE 'https://[^[:space:]]+/pull/[0-9]+' | tail -1 || true)
     if [[ -n "$PR_URL" ]]; then
@@ -664,17 +664,45 @@ if [[ "$create_rc" -eq 0 ]]; then
 fi
 
 if [[ -z "$PR_NUM" ]]; then
-    PR_NUM=$(gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+    list_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-list.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for pr-list capture"
+        emit_publish_result false
+        exit 0
+    }
+    if with_transient_retry transient_envelope_predicate_none "$list_fail_file" \
+        gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
+        list_rc=0
+    else
+        list_rc=$_WTR_RC
+    fi
+    PR_NUM=$_WTR_OUT
+    recovery_probe_ok=true
+    if [[ "$list_rc" -ne 0 ]]; then
+        recovery_probe_ok=false
+    fi
     if [[ -z "$PR_NUM" || "$PR_NUM" == "null" ]]; then
         larch_err "design-log-publish: gh pr create failed: ${create_out:-unknown}"
-        if [[ "$create_rc" -ne 0 ]]; then
+        if [[ "$create_rc" -ne 0 && "$recovery_probe_ok" == true ]]; then
             git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
         fi
+        rm -f "$list_fail_file"
         emit_publish_result false
         [[ "$PUSH_DONE" == true ]] && emit_kv RECOVERY_BRANCH "$WT_BRANCH"
         exit 1
     fi
-    PR_URL=$(gh pr view "${gh_repo_args[@]}" "$PR_NUM" --json url --jq '.url' 2>/dev/null || true)
+    rm -f "$list_fail_file"
+    view_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-view.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for pr-view capture"
+        emit_publish_result false
+        exit 0
+    }
+    if with_transient_retry transient_envelope_predicate_none "$view_fail_file" \
+        gh pr view "${gh_repo_args[@]}" "$PR_NUM" --json url --jq '.url'; then
+        PR_URL=$_WTR_OUT
+    else
+        PR_URL=""
+    fi
+    rm -f "$view_fail_file"
 fi
 
 merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
@@ -688,7 +716,6 @@ if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
 else
     merge_rc=$_WTR_RC
 fi
-_merge_out=$_WTR_OUT
 
 git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
 rm -rf "${WT_PARENT:-}" 2>/dev/null || true

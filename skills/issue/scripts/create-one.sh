@@ -335,8 +335,6 @@ if [[ "$USE_FALLBACK" == "true" ]] || (echo "$ERR_CONTENT" | grep -qiE 'unknown 
         # stderr (redacted) but does not change the exit path — the operator
         # still sees ISSUE_FAILED=true.
         rollback_orphan() {
-            local rollback_err
-            rollback_err=$(mktemp)
             rollback_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-one-rollback.XXXXXX")
             if with_transient_retry transient_envelope_predicate_none "$rollback_fail_file" \
                 gh issue close --repo "$REPO" "$ISSUE_NUM" --reason "not planned"; then
@@ -344,11 +342,11 @@ if [[ "$USE_FALLBACK" == "true" ]] || (echo "$ERR_CONTENT" | grep -qiE 'unknown 
                 larch_err "ROLLBACK: closed orphan issue #$ISSUE_NUM after id-lookup failure"
             else
                 local rb_redacted rb_flat
-                rb_redacted=$(redact "$(cat "$rollback_err")") || rb_redacted="(redaction-helper failed)"
+                rb_redacted=$(redact "$(cat "$rollback_fail_file" 2>/dev/null || true)") || rb_redacted="(redaction-helper failed)"
                 rb_flat=$(echo "$rb_redacted" | tr '\n' ' ' | head -c 300)
                 larch_err "ROLLBACK_FAILED: could not close orphan issue #$ISSUE_NUM ($URL_LINE): $rb_flat. Manually close."
             fi
-            rm -f "$rollback_err" "$rollback_fail_file"
+            rm -f "$rollback_fail_file"
         }
         # Best-effort id lookup. Failure rolls back the just-created orphan
         # via rollback_orphan() (above) before emitting ISSUE_FAILED=true.

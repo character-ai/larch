@@ -318,7 +318,7 @@ case "$cmd" in
             emit_kv ISSUE_URL "$URL_LINE"
             exit 0
         else
-            ERR_CONTENT=$(cat "$ERR_TMP")
+            ERR_CONTENT=$(cat "$net_fail_file" 2>/dev/null || true)
             emit_gh_failure "$ERR_CONTENT"
         fi
         ;;
@@ -502,7 +502,7 @@ case "$cmd" in
         fi
         rm -f "$rename_fail_file"
         if [[ "$rename_rc" -ne 0 ]]; then
-            ERR_CONTENT=$(cat "$ERR_TMP")
+            ERR_CONTENT=$(cat "$rename_fail_file" 2>/dev/null || true)
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
         emit_kv RENAMED "true"
@@ -563,7 +563,7 @@ case "$cmd" in
         fi
         rm -f "$mark_fail_file"
         if [[ "$mark_rc" -ne 0 ]]; then
-            ERR_CONTENT=$(cat "$ERR_TMP")
+            ERR_CONTENT=$(cat "$mark_fail_file" 2>/dev/null || true)
             emit_gh_failure "gh issue edit failed: $ERR_CONTENT"
         fi
         emit_kv MARKED "true"

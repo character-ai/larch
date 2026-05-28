@@ -82,10 +82,18 @@ if [[ "$1" == "pr" ]]; then
             exit 0
             ;;
         view)
+            if [[ -n "${GH_STUB_PR_VIEW_RC:-}" && "${GH_STUB_PR_VIEW_RC}" != "0" ]]; then
+                echo "Could not resolve host: api.github.com" >&2
+                exit "${GH_STUB_PR_VIEW_RC}"
+            fi
             echo '{"url":"https://github.com/owner/repo/pull/101"}'
             exit 0
             ;;
         list)
+            if [[ -n "${GH_STUB_PR_LIST_RC:-}" && "${GH_STUB_PR_LIST_RC}" != "0" ]]; then
+                echo "Could not resolve host: api.github.com" >&2
+                exit "${GH_STUB_PR_LIST_RC}"
+            fi
             if [[ "${GH_STUB_PR_LIST_EMPTY:-}" == "1" ]]; then
                 if printf '%s\n' "$*" | grep -q -- '--jq'; then
                     echo 'null'
@@ -556,8 +564,41 @@ set -e
 [[ "$out_cf" == *"PUBLISH_OK=false"* ]] || fail "create-fail hard PUBLISH_OK: $out_cf"
 [[ "$rc_cf" -eq 1 ]] || fail "create-fail after push should exit 1 (got $rc_cf)"
 [[ "$out_cf" == *"RECOVERY_BRANCH=larch-log-design-RUNCREATEFAIL1"* ]] || fail "create-fail hard RECOVERY_BRANCH: $out_cf"
+if git -C "$clone_cf" ls-remote --exit-code --heads origin larch-log-design-RUNCREATEFAIL1 >/dev/null 2>&1; then
+    fail "create-fail hard path should delete remote branch after no-PR confirmation"
+fi
 unset GH_STUB_CREATE_RC GH_STUB_PR_LIST_EMPTY
 rm -rf "$TMPCF"
+
+echo "=== pr create failure keeps remote branch when list recovery probe fails transiently ==="
+TMPCLF=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail-listfail.XXXXXX")
+clone_clf=$(setup_clone_with_origin_head "$TMPCLF")
+stub_clf="$TMPCLF/stub"
+GH_STUB_LOG_CLF="$TMPCLF/gh-createfail-listfail.log"
+: >"$GH_STUB_LOG_CLF"
+export GH_STUB_LOG="$GH_STUB_LOG_CLF"
+make_gh_stub "$stub_clf"
+export PATH="$stub_clf:$PATH"
+export TEST_CLONE_ROOT="$clone_clf"
+export TEST_MERGE_BRANCH="larch-log-design-RUNCREATEFAIL2"
+export GH_STUB_CREATE_RC=1
+export GH_STUB_PR_LIST_RC=1
+unset GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC GH_STUB_PR_LIST_EMPTY GH_STUB_PR_VIEW_RC
+mkdir -p "$TMPCLF/design"
+printf 'clf\n' >"$TMPCLF/design/cf.txt"
+set +e
+out_clf=$(
+    (cd "$clone_clf" && bash "$PUBLISH" --design-tmpdir "$TMPCLF/design" --run-id "RUNCREATEFAIL2" --issue 14 --repo owner/repo) 2>/dev/null
+)
+rc_clf=$?
+set -e
+[[ "$out_clf" == *"PUBLISH_OK=false"* ]] || fail "create-fail list-probe failure PUBLISH_OK: $out_clf"
+[[ "$rc_clf" -eq 1 ]] || fail "create-fail list-probe failure should exit 1 (got $rc_clf)"
+[[ "$out_clf" == *"RECOVERY_BRANCH=larch-log-design-RUNCREATEFAIL2"* ]] || fail "create-fail list-probe failure RECOVERY_BRANCH: $out_clf"
+git -C "$clone_clf" ls-remote --exit-code --heads origin larch-log-design-RUNCREATEFAIL2 >/dev/null 2>&1 \
+    || fail "create-fail list-probe failure should preserve remote branch for recovery"
+unset GH_STUB_CREATE_RC GH_STUB_PR_LIST_RC
+rm -rf "$TMPCLF"
 
 echo "=== quiet logs excluded from top-level design artifacts ==="
 TMPQL=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-quiet-excl.XXXXXX")

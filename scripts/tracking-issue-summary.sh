@@ -107,8 +107,6 @@ case "$cmd" in
         trap 'rm -f "$tmp" "${json_tmp:-}"' EXIT
         printf '%s' "$body" > "$tmp"
         if [ "$count" -eq 0 ]; then
-            err_tmp="$(mktemp)"
-            trap 'rm -f "$tmp" "${json_tmp:-}" "${err_tmp:-}"' EXIT
             comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-summary-comment.XXXXXX")
             if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
                 gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp"; then
@@ -117,8 +115,9 @@ case "$cmd" in
                 comment_rc=$_WTR_RC
             fi
             out=$_WTR_OUT
+            comment_err=$(cat "$comment_fail_file" 2>/dev/null || true)
             rm -f "$comment_fail_file"
-            [ "$comment_rc" -eq 0 ] || fail 2 "gh issue comment failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
+            [ "$comment_rc" -eq 0 ] || fail 2 "gh issue comment failed: $(redact_text "$comment_err" | tr '\n' ' ' | head -c 500)"
             url="$(printf '%s\n' "$out" | grep -oE 'https?://[^[:space:]]+' | tail -1 || true)"
             emit_kv COMMENT_ID ""
             emit_kv COMMENT_URL "$url"
@@ -126,8 +125,6 @@ case "$cmd" in
         elif [ "$count" -eq 1 ]; then
             id="$(printf '%s\n' "$ids" | awk 'NF { print; exit }')"
             json_tmp="$(mktemp)"
-            err_tmp="$(mktemp)"
-            trap 'rm -f "$tmp" "${json_tmp:-}" "${err_tmp:-}"' EXIT
             jq -n --arg body "$body" '{body:$body}' > "$json_tmp"
             patch_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-summary-patch.XXXXXX")
             if with_transient_retry transient_envelope_predicate_none "$patch_fail_file" \
@@ -137,8 +134,9 @@ case "$cmd" in
                 patch_rc=$_WTR_RC
             fi
             out=$_WTR_OUT
+            patch_err=$(cat "$patch_fail_file" 2>/dev/null || true)
             rm -f "$patch_fail_file"
-            [ "$patch_rc" -eq 0 ] || fail 2 "gh api comment patch failed: $(redact_text "$(cat "$err_tmp")" | tr '\n' ' ' | head -c 500)"
+            [ "$patch_rc" -eq 0 ] || fail 2 "gh api comment patch failed: $(redact_text "$patch_err" | tr '\n' ' ' | head -c 500)"
             emit_kv COMMENT_ID "$id"
             emit_kv COMMENT_URL "$out"
             emit_kv UPDATED true

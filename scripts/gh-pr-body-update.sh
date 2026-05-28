@@ -78,12 +78,12 @@ fi
 
 fail_file=$(mktemp "${TMPDIR:-/tmp}/gh-pr-body-update.XXXXXX")
 if with_transient_retry transient_envelope_predicate_none "$fail_file" \
-    gh pr edit "$PR" "${GH_REPO_ARGS[@]}" --body-file "$BODY_FILE"; then
+    gh pr edit "$PR" ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --body-file "$BODY_FILE"; then
     EXIT_CODE=0
 else
     EXIT_CODE=$_WTR_RC
 fi
-OUTPUT=$_WTR_OUT
+OUTPUT=$(cat "$fail_file" 2>/dev/null || true)
 rm -f "$fail_file"
 
 if [[ $EXIT_CODE -eq 0 ]]; then

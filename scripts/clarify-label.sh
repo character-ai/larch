@@ -143,7 +143,7 @@ case "$ACTION" in
                 gh issue edit "$ISSUE" --repo "$REPO" --add-label "$LABEL_NAME"; then
                 :
             else
-                ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+                ERR_CONTENT=$(cat "$addlabel_fail_file" 2>/dev/null || true)
                 rm -f "$addlabel_fail_file"
                 emit_gh_failure "$ERR_CONTENT"
             fi
@@ -160,7 +160,7 @@ case "$ACTION" in
                 gh issue edit "$ISSUE" --repo "$REPO" --remove-label "$LABEL_NAME"; then
                 :
             else
-                ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+                ERR_CONTENT=$(cat "$removelabel_fail_file" 2>/dev/null || true)
                 rm -f "$removelabel_fail_file"
                 emit_gh_failure "$ERR_CONTENT"
             fi
