@@ -2,7 +2,9 @@
 
 **Consumer**: `/design` Step 3.6 between Gate B settled paths and Step 3b.
 
-**When it fires**: HARD-only (`workflow_path=HARD` re-read from `run-params.json` each invocation), round ≥ 2 (per `plan-review-round-cursor.txt`), on every Gate B settled path — Apply all, Go through each (without abort), zero-findings short-circuit. Switch-to-discussion-mode returns to Gate A and does **not** traverse Step 3.6.
+**Contract**: Normative source for the plan-quality assessor stage: when it fires, input/output artifact schema, the strict-majority tally rule with worked examples, fail-open policy on missing snapshots and panel-wide failure, Continue/Stop `AskUserQuestion` contract, `QUALIFICATIONS:` surfacing, round-cursor advancement, Cursor narration backstop, and top-level artifact location scheme.
+
+**When to load**: before executing Step 3.6 (plan-quality assessor invocation) or when implementing `assess-plan-round.sh`, `dispatch-plan-assessors.sh`, `tally-plan-assessor.sh`, or `snapshot-plan-round.sh`.
 
 ## Artifacts (top-level under `$DESIGN_TMPDIR`)
 
