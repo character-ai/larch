@@ -1,0 +1,24 @@
+v1	mark	1779924746	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779925249	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1779925553	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779925846	implement	-	cursor	cursor-phase1-dyn-cursor-plan-silent-fallback-completeness	1779925741	1779925846	105	cursor-plan-dyn-silent-fallback-completeness-output.txt	0	complete
+v1	vendor	1779925858	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779925741	1779925858	117	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779925865	implement	-	cursor	cursor-phase1-dyn-cursor-plan-linter-pattern-gap	1779925741	1779925865	124	cursor-plan-dyn-linter-pattern-gap-output.txt	0	complete
+v1	vendor	1779925866	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779925741	1779925866	125	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779925873	implement	-	codex	codex-phase1-dyn-codex-plan-linter-pattern-gap	1779925741	1779925873	132	codex-primary-plan-dyn-linter-pattern-gap-output.txt	0	complete
+v1	vendor	1779925875	implement	-	cursor	cursor-phase1-dyn-cursor-plan-schema-migration-compat	1779925741	1779925875	134	cursor-plan-dyn-schema-migration-compat-output.txt	0	complete
+v1	vendor	1779925895	implement	-	codex	codex-phase1-dyn-codex-plan-schema-migration-compat	1779925741	1779925895	154	codex-primary-plan-dyn-schema-migration-compat-output.txt	0	complete
+v1	vendor	1779925904	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779925741	1779925904	163	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779925905	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779925741	1779925905	164	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779925913	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779925740	1779925913	173	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779925914	implement	-	codex	codex-phase1-codex-plan-requirements	1779925741	1779925914	173	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779925926	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779925741	1779925926	185	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779925934	implement	-	codex	codex-phase1-dyn-codex-plan-silent-fallback-completeness	1779925741	1779925934	193	codex-primary-plan-dyn-silent-fallback-completeness-output.txt	0	complete
+v1	vendor	1779925936	implement	-	codex	codex-phase1-codex-plan-innovation	1779925741	1779925936	195	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779925937	implement	-	codex	codex-phase1-codex-plan-edge	1779925741	1779925937	196	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779925982	implement	-	codex	codex-phase1-codex-plan-arch	1779925741	1779925982	241	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779926085	implement	-	codex	codex-phase1-aggregator	1779925995	1779926085	90	aggregator-output.txt	0	complete
+v1	vendor	1779926252	implement	-	cursor	cursor-phase1-voter-3	1779926188	1779926252	64	cursor-vote-output.txt	0	complete
+v1	vendor	1779926300	implement	-	codex	codex-phase1-voter-2	1779926188	1779926300	112	codex-vote-output.txt	0	complete
+v1	mark	1779926568	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779927009	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:299-305	Plan always passes --reason but writer plan rejects empty values	design_classification_reason is not assigned in the cited Step 0 mapping, so --reason "" can make write-run-params.sh exit non-zero and the new contract-drift abort fires on normal SIMPLE/HARD runs	Either set a non-empty design_classification_reason before this call, or make --reason/--source parsing accept empty strings and emit null, matching the plan edge case
+1	in_scope	latent	risk-integration	skills/design/references/flags.md:15-17	Normative flag mapping is left out of the v3 schema update	The mandatory flag reference still maps --simple to sketch_budget=2 and documents --trivial fields while the proposed writer/schema and SIMPLE no-sketch contract move elsewhere	Update flags.md in the same change to describe the v3 fields and the intended SIMPLE/HARD mappings, or explicitly state that design_classification overrides sketch_budget for SIMPLE
+
+1. **[correctness] [important] `skills/design/SKILL.md:299-305`**  
+Concern: the plan makes `--reason` an always-passed argument, but the proposed parser shape uses `${2:?...}` while the plan also says empty `--reason` / `--source` should be accepted and emitted as `null`. Since this Step 0 excerpt only sets `design_classification_source`, a normal run can pass `--reason ""`, making the writer fail and triggering the new abort path.
+
+Suggested revision: either bind a non-empty `design_classification_reason` in Step 0 for both SIMPLE and HARD, or parse `--reason` / `--source` with an arity check that permits empty values and add the planned empty-string harness case.
+
+2. **[risk-integration] [latent] `skills/design/references/flags.md:15-17`**  
+Concern: the plan updates `SKILL.md` and `write-run-params.md`, but not the mandatory flag reference that `SKILL.md` says is authoritative. It still says `--simple` maps to `sketch_budget=2` and still documents the removed `--trivial` mapping.
+
+Suggested revision: include `skills/design/references/flags.md` in the plan and align the v3 field mapping there, especially the SIMPLE no-sketch contract.
