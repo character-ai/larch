@@ -4,3 +4,4 @@ larch:bc t=2026-05-28T01:40:08Z d=0 p=22999 s=ship-pr.sh c=progress text=→ shi
 larch:bc t=2026-05-28T01:40:09Z d=0 p=28859 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
 larch:bc t=2026-05-28T01:40:12Z d=0 p=28859 s=ci-wait.sh c=wait-ci text=→ Action: rebase (3s, 0 polls)
 larch:bc t=2026-05-28T01:40:12Z d=0 p=22999 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
+larch:bc t=2026-05-28T01:40:27Z d=0 p=22999 s=ship-pr.sh c=stall text=⛔ ship-pr: stalled at step 10
