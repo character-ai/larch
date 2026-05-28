@@ -8,6 +8,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 
 DESIGN_TMPDIR=""
 ISSUE=""
@@ -61,6 +63,7 @@ done
 
 [[ -n "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-unset"
 [[ -d "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-missing"
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_fail "tmpdir-invalid"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_fail "invalid-issue"
 
 if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then

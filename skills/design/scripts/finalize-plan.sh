@@ -7,6 +7,8 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 DESIGN_TMPDIR=""
 
@@ -39,6 +41,8 @@ if [[ -z "$DESIGN_TMPDIR" ]]; then
     usage
     exit 2
 fi
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || { emit_kv FINALIZE_PLAN_STATUS missing-design-tmpdir; exit 1; }
 
 if [[ ! -d "$DESIGN_TMPDIR" ]]; then
     emit_kv FINALIZE_PLAN_STATUS missing-design-tmpdir

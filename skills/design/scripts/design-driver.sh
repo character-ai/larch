@@ -7,6 +7,8 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 DESIGN_TMPDIR=""
 ACTION_FILE=""
@@ -53,6 +55,7 @@ if [[ -n "$ACTION_FILE" && ! -r "$ACTION_FILE" ]]; then
     larch_err "design-driver.sh: --action-file is missing or unreadable: $ACTION_FILE"
     exit 2
 fi
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR/.completed"
 
 normalize_step() {

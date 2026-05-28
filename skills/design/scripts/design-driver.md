@@ -13,6 +13,8 @@
 
 ## Invariants
 
+Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before `mkdir -p $DESIGN_TMPDIR/.completed`.
+
 - Completion sentinels are written under `$DESIGN_TMPDIR/.completed/<step>` after successful known actions.
 - Known actions emit `STEP_STARTED=<name>` and `STEP_COMPLETED=<name>` or `STEP_FAILED=<name> REASON=<token>`.
 - Most completed steps are skipped on replay via sentinel. Exception: `EMIT_PLAN` and `VALIDATE_PLAN_COMMANDS` are re-runnable and never skipped by the sentinel — `/design` may re-run them after plan revisions or composed-plan updates, so they must always refresh their outputs (`diff-lines.txt` and `validate-plan-commands.log` respectively).

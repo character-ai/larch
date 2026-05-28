@@ -8,6 +8,8 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 # shellcheck source=scripts/lib-quiet.sh
 source "$REPO_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$REPO_ROOT/scripts/lib-design-tmpdir.sh"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -63,6 +65,8 @@ case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "revise-plan-with-waterfall.sh: --ti
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "revise-plan-with-waterfall.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "revise-plan-with-waterfall.sh: --cursor-present must be true or false"; exit 2; }
 [[ "$PATCH_FORMAT" == "unified-diff" || "$PATCH_FORMAT" == "file-replacement" ]] || { larch_err "revise-plan-with-waterfall.sh: --patch-format must be unified-diff or file-replacement"; exit 2; }
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 canonical_path() {
     local path="$1" dir base target

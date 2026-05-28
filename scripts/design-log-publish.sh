@@ -29,6 +29,8 @@ source "$SCRIPT_DIR/lib-larch-log.sh"
 # shellcheck source=scripts/lib-redact.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-redact.sh"
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 
 DESIGN_TMPDIR=""
 RUN_ID=""
@@ -83,6 +85,8 @@ if ! larch_log_slug_is_valid "$RUN_ID"; then
     emit_publish_result false
     exit 0
 fi
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || { emit_publish_result false; exit 0; }
 
 if [[ ! -d "$DESIGN_TMPDIR" ]]; then
     larch_err "design-log-publish: design tmpdir not found: $DESIGN_TMPDIR"

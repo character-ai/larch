@@ -11,6 +11,8 @@ larch_quiet_init
 # shellcheck source=scripts/lib-larch-log.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-larch-log.sh"
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 
 DESIGN_TMPDIR=""
 ISSUE=""
@@ -84,6 +86,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$DESIGN_TMPDIR" ]] || emit_load_fail "tmpdir-unset"
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-invalid"
 mkdir -p "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-create-failed"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_load_fail "invalid-issue"
 jq --null-input 'null' >/dev/null 2>&1 || emit_load_fail "jq-missing"

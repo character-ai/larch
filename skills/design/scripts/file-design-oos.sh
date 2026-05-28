@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 CAP_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-issue-cap.sh"
@@ -470,6 +472,7 @@ if [[ -z "$PHASE" || -z "$DESIGN_TMPDIR" ]]; then
   usage
   exit 2
 fi
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 case "$PHASE" in
   prepare) cmd_prepare ;;
   annotate)

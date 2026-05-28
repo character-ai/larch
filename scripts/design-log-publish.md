@@ -116,6 +116,8 @@ empty `PR_NUMBER` / `PR_URL`.
 
 ## Security and token scope
 
+Validates `$DESIGN_TMPDIR` is under the allowlist via `larch_design_tmpdir_validate` immediately after the required-arg check and before any worktree or log-root mkdir; failure routes through `emit_publish_result false; exit 0` to preserve `PUBLISH_OK=false`.
+
 Design log bytes follow the same tmpdir + secrets redaction pipeline as
 implement round artifacts. `gh pr merge --admin` bypasses branch-protection
 rules that require reviews or status checks; it requires a `gh` OAuth token

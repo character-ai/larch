@@ -6,6 +6,8 @@
 
 **CLI**: `--design-tmpdir DIR --panel-outputs-file PATH --codex-present true|false --cursor-present true|false --output PATH [--timeout SEC]`.
 
+Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before creating the decomposition working directory.
+
 **Stdout**: `AGGREGATOR_STATUS=ok|failed` and `AGGREGATOR_OUTPUT=<path>` via `emit_kv`.
 
 **Primary tool**: the single-slot row is assigned to `codex` (more reliable than Cursor at returning structured output on the single safety-net slot); the shared dispatcher's `cursor → claude` fallback covers the remaining waterfall positions.

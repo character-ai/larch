@@ -33,6 +33,10 @@ done
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 [ -n "$OUTCOME" ] || { usage; exit 2; }
 if [ "$OUTCOME" = "cancelled-title-filter" ]; then
     MODE_STR="Refused (title-filter)"

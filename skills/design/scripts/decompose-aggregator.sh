@@ -10,6 +10,8 @@ export LARCH_QUIET_DISABLE
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 usage() {
     larch_err "Usage: decompose-aggregator.sh --design-tmpdir DIR --panel-outputs-file PATH --codex-present true|false --cursor-present true|false --output PATH [--timeout SEC]"
@@ -46,6 +48,8 @@ fail() {
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || fail "--codex-present must be true or false"
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || fail "--cursor-present must be true or false"
 case "$TIMEOUT" in ''|*[!0-9]*|0) fail "--timeout must be a positive integer" ;; esac
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 DECOMP_DIR="$DESIGN_TMPDIR/decompose"

@@ -38,6 +38,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 
 OUTPUT=""
 DESIGN_TMPDIR_ARG=""
@@ -114,6 +116,8 @@ if [[ "$DESIGN_TMPDIR_ARG" != /* ]]; then
   larch_err "ERROR=Invalid --design-tmpdir: must be an absolute path"
   exit 1
 fi
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR_ARG" || exit 1
 
 if [[ "$OUTPUT" != /* ]]; then
   larch_err "ERROR=Invalid --output: must be an absolute path"

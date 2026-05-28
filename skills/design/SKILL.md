@@ -912,7 +912,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
   --variant step3
 ```
 
-Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`.
+Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`. Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`.
 
 **Review-round cap entry guard**: SKILL.md Step 3 is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. Run this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). Persist the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` so later Bash fences in this step rehydrate the same `STEP3_REVIEW_CAP_REACHED` / `STEP3_REVIEW_ROUND_NUM` state instead of relying on a prior fence's shell locals. The guard computes the pending round number. Before launching `plan-review-loop.sh`, Step 3 persists that pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, Step 3 keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`; on that path, roll back to the prior count. If the cap is reached, print the warning, skip `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
 

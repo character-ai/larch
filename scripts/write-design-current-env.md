@@ -51,6 +51,8 @@ extra nested `bash` / `bash -c` invocation unless you deliberately re-thread
 `--claude-pid` for the PID namespace that owns the symlink slot — otherwise
 `$PPID` may refer to an intermediate shell, not Claude.
 
+Validates the `--design-tmpdir` argument is under the allowlist via `larch_design_tmpdir_validate` after the existing absolute-path check; failure maps to argv exit 1 (preserving the script's exit-code contract).
+
 Validation: `--claude-pid` must match `^[1-9][0-9]{0,6}$` (at most seven
 decimal digits, no leading zero).
 

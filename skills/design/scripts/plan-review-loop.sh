@@ -16,6 +16,8 @@ PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/s
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 # shellcheck source=skills/design/scripts/lib-findings-classification.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-findings-classification.sh"
@@ -56,6 +58,8 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-num mu
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "plan-review-loop.sh: --round-num must be a positive integer"; exit 2; }
 case "$COLLECT_TIMEOUT" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --timeout must be a positive integer"; exit 2 ;; esac
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 mkdir -p "$DESIGN_TMPDIR"
