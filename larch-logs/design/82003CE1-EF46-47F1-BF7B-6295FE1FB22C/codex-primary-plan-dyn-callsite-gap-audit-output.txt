@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:1622,2761; <TMPDIR>/plan.txt:18-33	Plan omits two Tier 1 gh pr edit gaps from scripts/ship-pr.sh	The issue audit names scripts/ship-pr.sh:1622 and :2761, but the plan only updates existing with_transient_retry callsites plus :3067; these two bare gh pr edit calls would remain exposed to transient gh/GitHub failures	Add explicit bullets in the scripts/ship-pr.sh section to wrap both gh pr edit callsites, preserving record_failure behavior at :1622 and best-effort title-update behavior at :2761
+
+1. **[correctness] `scripts/ship-pr.sh:1622,2761`**  
+Concern: the Tier 1 audit lists both `gh pr edit` sites, but the plan’s `scripts/ship-pr.sh` section only renames existing helper callsites at `:1549`, `:1556`, `:1585`, `:1592`, `:2891`, `:3087`, `:3266`, plus a parenthetical `:3067`. It does not say to wrap the bare `gh pr edit` at `:1622` or `:2761`.
+
+Suggested revision: add those two callsites to the `scripts/ship-pr.sh` per-file section. Keep `:1622` on the existing `record_failure pr-create "gh pr edit --title"` path, and keep `:2761` best-effort instead of making it a new terminal failure path.

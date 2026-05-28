@@ -1,0 +1,7 @@
+warning: unknown From slot label 'Cursor-Arch, Codex-Arch' in FINDING_1 (not present on any input finding)
+warning: unknown From slot label 'Cursor-Arch, Codex-Arch' in FINDING_2 (not present on any input finding)
+warning: unknown From slot label 'Codex-Innovation, Cursor-dyn-wrapper-rename-regression, Codex-dyn-wrapper-rename-regression' in FINDING_2 (not present on any input finding)
+warning: unknown From slot label 'Cursor-Pragmatic, Codex-Pragmatic' in FINDING_2 (not present on any input finding)
+warning: unknown From slot label 'Cursor-Pragmatic, Codex-Pragmatic' in FINDING_5 (not present on any input finding)
+warning: unknown From slot label 'Cursor-dyn-global-state-contract, Codex-dyn-global-state-contract' in FINDING_9 (not present on any input finding)
+warning: unknown From slot label 'Cursor-dyn-global-state-contract, Codex-dyn-global-state-contract' in FINDING_10 (not present on any input finding)

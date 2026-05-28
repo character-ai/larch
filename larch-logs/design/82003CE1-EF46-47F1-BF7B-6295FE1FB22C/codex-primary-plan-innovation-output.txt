@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:2372-2390 and scripts/ship-pr.sh:3067-3088	Proposed ship_pr_with_transient_retry loses rc=0 envelope exhaustion semantics	merge-pr.sh and ci-wait.sh can emit transient failure envelopes while exiting 0; after three predicate-triggered retries the lifted helper returns _WTR_RC=0, so the proposed wrapper returns success instead of exit_transient_net	Have with_transient_retry expose an exhausted-transient flag, or otherwise let ship_pr_with_transient_retry detect predicate exhaustion before any rc=0 return
+1	in_scope	important	risk-integration	scripts/create-pr.sh:27 and scripts/create-pr.sh:199-240	Plan shows a bare return-style helper contract that breaks under set -e	Most target scripts use set -euo pipefail; if with_transient_retry returns nonzero as a simple command, the script exits before reading _WTR_RC and emitting its existing structured failure output	Require each set -e callsite to invoke the helper in an if/set +e guard, then copy _WTR_RC and _WTR_OUT before restoring existing error handling
+1	in_scope	latent	architecture	skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh:401-403	Wrapping git clone is scope creep and not an idempotent retry	The first failed clone can leave clone_dir populated; the retry then fails with destination exists instead of retrying the network operation	Drop the git clone wrap from this minimum-change plan, or add explicit cleanup of clone_dir between retry attempts if clone retry is truly required
+
+1. **[correctness] `scripts/ship-pr.sh:2372-2390`, `scripts/ship-pr.sh:3067-3088`**  
+   The proposed wrapper returns success on exhausted rc=0 envelope retries. Add an explicit exhausted-transient signal from `with_transient_retry`, then have `ship_pr_with_transient_retry` call `exit_transient_net` from that signal.
+
+2. **[risk-integration] `scripts/create-pr.sh:27`, `scripts/create-pr.sh:199-240`**  
+   The plan’s canonical bare helper call is not safe in `set -e` scripts. Wrap helper calls in `if` or `set +e` so callers can read `_WTR_RC` and preserve their current error contracts.
+
+3. **[architecture] `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh:401-403`**  
+   `git clone` retry is not minimum-change safe unless the partial target is cleaned between attempts. Prefer leaving this callsite bare for this PR.

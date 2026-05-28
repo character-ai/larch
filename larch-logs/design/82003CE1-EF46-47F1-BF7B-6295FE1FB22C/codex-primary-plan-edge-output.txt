@@ -1,0 +1,17 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:2372-2404	Proposed ship_pr_with_transient_retry returns success after rc=0 envelope retries are exhausted	merge-pr.sh or ci-wait.sh can emit a transient error envelope while exiting 0 three times; lib-net returns _WTR_RC=0 and the wrapper's rc==0 fast path makes ship-pr continue as if merge or CI wait succeeded	After with_transient_retry, re-run the final predicate against the fail_file before any rc==0 return, or have lib-net expose an exhausted-transient flag; call exit_transient_net when the final envelope is still transient
+1	in_scope	important	correctness	scripts/tracking-issue-write.sh:304, skills/issue/scripts/create-one.sh:276-315, .claude/skills/combine-issues/scripts/apply-combination.sh:83-85	Generic retry is proposed for non-idempotent gh issue create calls	A create can succeed on GitHub but lose the response with EOF or a reset; retrying creates duplicate issues, and create-one's orphan handling cannot close an issue number it never received	Keep issue-create calls bare for this SIMPLE lane, or add callsite-specific recovery before retry using a stable existing-issue lookup or idempotency marker
+1	in_scope	important	risk-integration	scripts/design-log-publish.sh:644-650	Remote-branch cleanup after PR-create failure treats an uncertain recovery probe as confirmed absence	If gh pr create succeeds server-side but the response is lost, then gh pr list fails or lags, the new unconditional delete can remove the branch backing an open PR	Only delete after a successful recovery probe positively confirms no PR; on list failure or uncertainty, preserve the branch and emit RECOVERY_BRANCH
+1	in_scope	latent	risk-integration	skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh:401-403	Wrapping git clone against a fixed target does not actually retry after partial clone creation	A transient clone failure can leave upstream.git behind; the next attempt fails with destination already exists, so the helper stops on a non-transient local error	Use a tiny callsite wrapper that removes the partial clone_dir before retry, or retry into per-attempt clone directories and use the successful one
+
+1. [correctness] `scripts/ship-pr.sh:2372-2404`  
+The proposed wrapper preserves non-zero transient exhaustion, but not rc=0 envelope exhaustion. The final predicate result must still drive `exit_transient_net`.
+
+2. [correctness] `scripts/tracking-issue-write.sh:304`, `skills/issue/scripts/create-one.sh:276-315`, `.claude/skills/combine-issues/scripts/apply-combination.sh:83-85`  
+`gh issue create` is not safe for blind retry. This is scope creep for the SIMPLE lane unless each callsite gets idempotent recovery.
+
+3. [risk-integration] `scripts/design-log-publish.sh:644-650`  
+The cleanup branch needs a confirmed “no PR exists” result before deleting the remote branch. A swallowed or transient `gh pr list` failure is not that confirmation.
+
+4. [risk-integration] `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh:401-403`  
+The clone retry needs partial-target cleanup. Otherwise the first transient can turn retries into a deterministic local failure.

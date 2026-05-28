@@ -1,0 +1,221 @@
+Reviewing key call sites to align the revised plan with the codebase.
+Producing the unified plan revision diff incorporating all accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -6,6 +6,7 @@
+ - `with_transient_retry <predicate> <fail_file> <cmd> <args...>` — generic, return-style retry helper. Behavior mirrors the existing helper in `scripts/ship-pr.sh:2404`, with two changes: exhaustion returns `_WTR_RC` instead of calling `exit_transient_net`, and the retry loop sleeps before the next attempt (2 seconds after attempt 1, 4 seconds after attempt 2). Sleeps are issued via `"${SLEEP_SCRIPT_DIR:-${SCRIPT_DIR:-$(dirname "${BASH_SOURCE[0]}")}}/sleep-seconds.sh"` when available, with `sleep` as a fallback, so test harnesses can stub the call. Exports `_WTR_OUT` and `_WTR_RC` globals exactly like the current helper. Returns the captured command exit code on the final attempt.
+ - `transient_envelope_predicate_none()` — returns 1 (no envelope hint). Identical to `scripts/ship-pr.sh:2368`.
+ 
+ Keep `is_transient_net_signature()` byte-stable. Keep the `LARCH_LIB_NET_LOADED` sentinel.
+ 
+ ### UPDATED: `scripts/lib-net.md`
+ 
+-Document the two new exports under the existing `Exposes:` list, and append a Wrapper-pattern section showing the canonical call shape: allocate `fail_file` with `mktemp`, call `with_transient_retry transient_envelope_predicate_none "$fail_file" <verb> <args>`, read `_WTR_OUT` and `_WTR_RC`. Add `scripts/ship-pr.sh`, `scripts/test-lib-net.sh`, and the new gap callsite scripts to the `Edit-in-sync:` list.
++Document the two new exports under the existing `Exposes:` list. Append a **Wrapper-pattern** section showing the canonical call shape: allocate `fail_file` with `mktemp`, invoke the helper in an errexit-safe form (see **Errexit callers** below), read `_WTR_OUT` and `_WTR_RC` immediately, then branch on `rc`. Append an **Errexit callers** section: under `set -e`, never use a bare `with_transient_retry ...` statement — use `if with_transient_retry ...; then :; else :; fi` or a `set +e` / `set -e` capture block so the shell cannot exit before `_WTR_RC` / `_WTR_OUT` are copied to locals. Add `scripts/ship-pr.sh`, `scripts/test-lib-net.sh`, and the new gap callsite scripts to the `Edit-in-sync:` list.
+ 
+ ### UPDATED: `scripts/ship-pr.sh`
+ 
+ Delete the local `with_transient_retry()` definition at line 2404. Keep `exit_transient_net()` at line 1044, `transient_envelope_predicate_merge_pr()` at 2372, `transient_envelope_predicate_ci_wait()` at 2385. Delete `transient_envelope_predicate_none()` at line 2368 because `lib-net.sh` now owns it. Add a thin wrapper:
+ 
+ ```bash
+ ship_pr_with_transient_retry() {
+     with_transient_retry "$@"
+-    local rc=$_WTR_RC
+-    [ "$rc" -eq 0 ] && return 0
+-    is_transient_net_signature "$(cat "$2" 2>/dev/null || true)" \
++    local rc=$_WTR_RC pred=$1 ff=$2 ff_content
++    ff_content=$(cat "$ff" 2>/dev/null || true)
++  # Re-run predicate after exhaustion so rc=0 envelope failures (merge-pr, ci-wait)
++  # still hit exit_transient_net instead of returning success.
++    if "$pred" "$ff_content"; then
++        exit_transient_net "Transient retries exhausted"
++    fi
++    [ "$rc" -eq 0 ] && return 0
++    is_transient_net_signature "$ff_content" \
+         && exit_transient_net "Transient retries exhausted"
+     return "$rc"
+ }
+ ```
+ 
+-Update the 7 existing internal callsites (`:1549`, `:1556`, `:1585`, `:1592`, `:2891`, `:3087`, `:3266`) to call `ship_pr_with_transient_retry` so the orchestrator-exit semantics survive. Leave the `:3067` `ci_wait` callsite using the new wrapper as well (its predicate is `transient_envelope_predicate_ci_wait`, not `_none`). The existing call shape `<wrapper> <predicate> <fail_file> <cmd> <args>` is preserved.
++Update the 7 existing internal callsites (`:1549`, `:1556`, `:1585`, `:1592`, `:2891`, `:3087`, `:3266`) to call `ship_pr_with_transient_retry` in an `if ...; then :; else :; fi` shape (or equivalent `set +e` capture) so `set -e` cannot exit before `_WTR_RC` is read. Leave the `:3067` `ci_wait` callsite on `ship_pr_with_transient_retry` with predicate `transient_envelope_predicate_ci_wait`. Add two Tier-1 `gh pr edit` wraps omitted from the first pass:
++- **`:1622`** (`gh pr edit ... --title` on existing-PR path): `if ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" gh pr edit ...; then :; else :; fi`, then `rc=$_WTR_RC`; keep the existing `record_failure pr-create "gh pr edit --title"` branch on non-zero `rc` (reuse the surrounding `fail_file` from `failure_capture_path pr-create`).
++- **`:2761`** (post-rebump best-effort title sync): `if with_transient_retry transient_envelope_predicate_none "$fail_file" gh pr edit ...; then :; else :; fi`, read `_WTR_RC`, retain trailing `|| true` so a exhausted non-transient failure stays best-effort (do **not** route through `ship_pr_with_transient_retry`, which would call `exit_transient_net`).
++The existing call shape `<wrapper> <predicate> <fail_file> <cmd> <args>` is preserved.
+ 
+ ### UPDATED: `scripts/ship-pr.md`
+ 
+@@ -25,16 +36,22 @@
+ 
+ Three changes:
+ 
+-1. Wrap the push at line 610 with `with_transient_retry transient_envelope_predicate_none "$fail_file" git -C "$WT_DIR" push "${push_args[@]}"`. Replace the captured-stderr inline pattern; reuse `_WTR_OUT` / `_WTR_RC` for error reporting.
+-2. Wrap `gh pr create` at line 628 the same way.
+-3. Wrap `gh pr merge` at line 657 the same way.
+-4. In the `gh pr create` failed branch (currently emits `"remote branch may need manual cleanup"` at line 648), add an unconditional best-effort cleanup before `emit_publish_result false`:
++1. Allocate **separate** `mktemp` capture files per network verb: `push_fail_file`, `create_fail_file`, `merge_fail_file` (never reuse one `fail_file` across push/create/merge — the helper truncates at each attempt). After each `if with_transient_retry ...; then :; else :; fi`, **immediately** copy `push_rc=$_WTR_RC` / `push_out=$_WTR_OUT` (and the create/merge analogs) before any later helper call can overwrite globals.
++2. Wrap the push at line 610: `if with_transient_retry transient_envelope_predicate_none "$push_fail_file" git -C "$WT_DIR" push "${push_args[@]}"; then :; else :; fi`, then read `push_rc` / `push_out` from `_WTR_*`.
++3. Wrap `gh pr create` at line 628 with `"$create_fail_file"` and immediate `create_rc` / `create_out` capture.
++4. Wrap `gh pr merge` at line 657 with `"$merge_fail_file"` and immediate `merge_rc` capture.
++5. In the branch where **`create_rc` is non-zero** after all retries (true create failure — not URL-parse or recovery-list uncertainty), before `emit_publish_result false`, run a **recovery-gated** remote cleanup:
+ 
+ ```bash
+-recovery_pr=$(gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+-if [[ -z "$recovery_pr" || "$recovery_pr" == "null" ]]; then
+-    git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
+-fi
++if [[ "$create_rc" -ne 0 ]]; then
++    recovery_pr=$(gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open \
++        --json number --jq '.[0].number' 2>/dev/null || true)
++    if [[ -z "$recovery_pr" || "$recovery_pr" == "null" ]]; then
++        git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
++    fi
++fi
+ ```
+ 
+-Remove the manual-cleanup `larch_err` log line. The cleanup runs only when push succeeded but PR create failed.
++Remove the manual-cleanup `larch_err` log line. Do **not** delete the remote branch on the recovery-list path (`create_rc` may be 0 while `PR_NUM` is still empty — server-side create may have succeeded); on `gh pr list` failure or ambiguity, skip `--delete`, preserve the branch, and emit `RECOVERY_BRANCH` as today. Cleanup `--delete` stays bare `|| true` (no retry wrap).
+ 
+ Source `scripts/lib-net.sh` at the top of the script if not already sourced (idempotent via `LARCH_LIB_NET_LOADED`).
+ 
+ ### UPDATED: `scripts/create-pr.sh`
+ 
+-Wrap three callsites with `with_transient_retry transient_envelope_predicate_none`:
++Wrap three callsites with errexit-safe `if with_transient_retry transient_envelope_predicate_none "$fail_file" ...; then :; else :; fi` and immediate `_WTR_RC` / `_WTR_OUT` capture:
+ 
+ - Line 129: `git push -u origin HEAD` inside the existing-PR fast-path. The subsequent `git-force-push.sh` escalation stays intact for non-transient failures.
+ - Line 201: `git push -u origin HEAD` in the new-PR push step.
+@@ -55,7 +72,8 @@
+ 
+ Wrap five callsites:
+ 
+-- Line 281: `git fetch origin main --quiet` pre-merge same-version verification.
++- Line 281: `git fetch origin main --quiet` pre-merge same-version verification (errexit-safe `if with_transient_retry ...` — the script uses `set -e` in places).
+ - Line 318: `git fetch origin main --quiet` pre-merge re-fetch.
+-- Line 333: `gh pr merge "$PR_NUMBER" --repo "$REPO" --squash` no-admin-fallback branch.
+-- Line 348: `gh pr merge ... --squash --admin` admin branch.
+-- Line 359: `gh pr merge ... --squash` admin-failed fallback branch.
++- Line 333: `gh pr merge "$PR_NUMBER" --repo "$REPO" --squash` no-admin-fallback branch — after the wrap, **immediately** set `MERGE_OUTPUT=$_WTR_OUT` and `MERGE_EXIT=$_WTR_RC` before any later helper call.
++- Line 348: `gh pr merge ... --squash --admin` admin branch — **immediately** copy to `ADMIN_OUTPUT` / `ADMIN_EXIT`.
++- Line 359: `gh pr merge ... --squash` admin-failed fallback branch — **immediately** copy to `MERGE_OUTPUT` / `MERGE_EXIT` (do not rely on globals left over from the admin attempt).
+ 
+ Source `lib-net.sh` if not already.
+ 
+@@ -63,14 +81,15 @@
+ 
+ ### UPDATED: `scripts/check-remote-branch.sh`
+ 
+-Wrap line 56 `git ls-remote --exit-code --heads "$REMOTE" "$BRANCH"` with `with_transient_retry`. Preserve the existing `RC=$_WTR_RC` reading and the case-on-RC dispatch.
++Wrap line 56 `git ls-remote --exit-code --heads "$REMOTE" "$BRANCH"` with errexit-safe `if with_transient_retry transient_envelope_predicate_none "$fail_file" git ls-remote ...; then :; else :; fi`, then `RC=$_WTR_RC`. **Drop `STDERR_TMP`** (or stop writing diagnostics only there): build `STDERR_FLAT` from `"$fail_file"` (or `_WTR_OUT` plus `fail_file`) in the `error` case branch so `ERROR=` rows retain transport/auth text for redaction. Preserve the case-on-RC dispatch (`0` present / `2` absent / other error).
+ 
+ Source `lib-net.sh` if not already.
+ 
+ ### UPDATED: `scripts/tracking-issue-write.sh`
+ 
+-Wrap four callsites:
++Wrap three callsites (leave **`gh issue create` bare** at line 304 — retrying create can duplicate issues when the server accepts the request but the client loses the response; no stable issue number exists for rollback):
+ 
+-- Line 304: `gh issue create ...`.
+ - Line 391: `gh issue comment ...`.
+ - Line 481: `gh issue edit ... --title ...` rename helper.
+ - Line 534: `gh issue edit ... --title ...` rename helper.
+ 
++Each wrap uses errexit-safe `if with_transient_retry ...` plus immediate `_WTR_RC` / `_WTR_OUT` capture.
++
+ Source `lib-net.sh` if not already.
+ 
+ ### UPDATED: `scripts/tracking-issue-summary.sh`
+@@ -113,23 +132,22 @@
+ 
+ ### UPDATED: `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh`
+ 
+-Wrap four callsites:
++Wrap three callsites (**do not wrap** line 403 `git clone` in this lane — a failed clone can leave `clone_dir` behind and the next attempt fails locally with "destination exists" rather than retrying the network op):
+ 
+ - Line 125: `git ls-remote --heads ...` upstream probe.
+-- Line 403: `git clone ...`.
+ - Line 411: mirror `git push ...`.
+ - Line 497: `git submodule update --init`.
+ 
+ Source `scripts/lib-net.sh` from the consumer script via the same path resolution it already uses for other shared helpers.
+ 
+ ### UPDATED: `skills/issue/scripts/create-one.sh`
+ 
+-Wrap three callsites:
++Wrap one callsite only:
+ 
+-- Line 270: `gh issue create ...`.
+-- Line 309: `gh issue create ...` fallback create path.
+-- Line 335: `gh issue close ...` rollback close path.
++- Line 335: `gh issue close ...` rollback close path (errexit-safe wrap; 3-attempt cap keeps rollback bounded).
++
++Leave lines 270 and 309 `gh issue create` **bare** (same non-idempotent rationale as `tracking-issue-write.sh:304`).
+ 
+ Source `scripts/lib-net.sh` if not already.
+ 
+ ### UPDATED: `.claude/skills/combine-issues/scripts/apply-combination.sh`
+ 
+-Wrap two callsites:
++Wrap one callsite:
+ 
+-- Line 83: `gh issue create ...`.
+-- Line 100: `gh issue close ...`.
++- Line 100: `gh issue close ...` (errexit-safe wrap).
++
++Leave line 83 `gh issue create` **bare**.
+ 
+ Source `scripts/lib-net.sh` if not already.
+ 
+@@ -148,6 +166,8 @@
+   - rc=1 plus non-transient signature → command runs once, returns rc immediately.
+   - rc=0 plus custom predicate matching the captured envelope → command runs 3 times (envelope-error retry).
++  - rc=0 plus predicate still true on attempt 3 (exhausted envelope) → returns 0 from helper; separate fixture documents that `ship_pr_with_transient_retry` must call `exit_transient_net` when the final `fail_file` still satisfies the predicate (MERGE_RESULT=error / ACTION=bail style).
+   - Backoff: stubbed `sleep` records its argv; assert `2 4` between attempts.
+ - Final exit prints `lib-net OK`.
+ 
+@@ -161,7 +181,9 @@
+ 
+ ## Approach
+ 
+-The smallest change that achieves the goal is to move the existing helper one file over and add 2-second / 4-second sleeps. The lifted helper is byte-equivalent to the current helper for ship-pr's existing 7 callsites because the thin `ship_pr_with_transient_retry` wrapper preserves `exit_transient_net` terminal semantics. Every new gap callsite uses the canonical pattern: `mktemp` a `fail_file`, call `with_transient_retry transient_envelope_predicate_none "$fail_file" <verb> <args>`, read `_WTR_OUT` and `_WTR_RC` in place of the previous direct capture. The wrapper signature already accepts a predicate so `_none` is a no-op envelope check and existing capture/log surfaces stay intact.
++The smallest change that achieves the goal is to move the existing helper one file over and add 2-second / 4-second sleeps. The lifted helper is byte-equivalent to the current helper for ship-pr's predicate-driven paths because `ship_pr_with_transient_retry` re-runs the passed predicate against the final `fail_file` before any `rc==0` return and then preserves the existing `is_transient_net_signature` / `exit_transient_net` path for non-zero `rc`. Every new gap callsite uses the canonical pattern: `mktemp` a dedicated `fail_file`, `if with_transient_retry transient_envelope_predicate_none "$fail_file" <verb> <args>; then :; else :; fi`, then immediately read `_WTR_OUT` and `_WTR_RC`. `gh issue create` stays bare at non-idempotent create paths. `design-log-publish.sh` uses per-verb `fail_file`s and recovery-gated `--delete`.
+ 
+-For `design-log-publish.sh`, the cleanup-on-PR-create-fail branch is the load-bearing fix from today's incident: even with retries, three consecutive transient failures must not leave a published remote branch behind to wedge the next caller-driven retry on non-fast-forward. `git push origin --delete` is best-effort; failures are silenced because the operator already has a recovery branch ref.
++For `design-log-publish.sh`, the cleanup branch is the load-bearing fix from today's incident: after exhausted `create_rc != 0`, delete the remote branch only when `gh pr list --head` positively finds no open PR; never delete on list failure or when recovering an already-created PR from parse ambiguity.
+ 
+ ## Edge cases
+ 
+ - `lib-net.sh` is sourced into many call chains. The `LARCH_LIB_NET_LOADED` sentinel already prevents duplicate sourcing; the new exports inherit this guard at no extra cost.
+-- `with_transient_retry` is invoked from scripts that may run under `set -e`. The helper itself does not use `set -e`; callers that read `_WTR_RC` must do so before any intermediate command that might overwrite `$?`.
++- **`set -e` callers.** The helper itself does not use `set -e`. A bare `with_transient_retry ...` under errexit can exit before `_WTR_RC` is read, bypassing structured failure handling — every wrapped callsite must use `if with_transient_retry ...; then :; else :; fi` or `set +e` / `set -e` around the call, then copy globals to locals immediately.
+ - A `fail_file` is truncated at the start of every attempt (`: > "$ff"`) — callers must allocate it with `mktemp` and must not assume content persists across calls.
++- **`design-log-publish.sh` globals.** Push/create/merge each need their own `fail_file` and immediate `*_rc` / `*_out` locals; reusing one file or deferring capture lets a later wrap truncate the failure a branch still needs.
++- **`gh issue create` non-idempotency.** Server-side success with a lost client response cannot be rolled back without an issue number — create paths in `tracking-issue-write.sh`, `create-one.sh`, and `apply-combination.sh` stay single-shot in this lane.
+ - For `gh issue close` rollback callsites (`create-one.sh:335`, `apply-combination.sh:100`, `decompose-file-issues.sh:355`, `audit-close-priors.sh:100`), the retry must not block the rollback path forever; the 3-attempt cap with 6 seconds of total backoff keeps the worst-case rollback wall-time bounded.
+ - `local-cleanup.sh:74` is a soft-fail callsite that prints `(continuing)`; the wrap preserves that behavior on exhaustion because the caller still ignores `_WTR_RC`.
+-- `setup-forked-open-source-repo.sh:403` (`git clone`) runs against a brand-new directory; retry is safe because `git clone` is idempotent on an empty target (the second attempt sees an existing directory and would normally fail, but the existing directory after a failed first attempt is partial and `git clone` aborts cleanly — operator workflow is unchanged).
+-- `git push origin --delete` in `design-log-publish.sh`'s cleanup branch may itself hit a transient. Leave it bare with `|| true`; wrapping it would deepen the cleanup latency without buying recovery, and the script already preserves a local recovery branch.
++- **`setup-forked-open-source-repo.sh:403` (`git clone`)** is intentionally out of scope for `with_transient_retry` here; partial `clone_dir` after a failed attempt makes retries unsafe without per-attempt directory cleanup (defer to a follow-up if clone retry is required).
++- `git push origin --delete` in `design-log-publish.sh`'s cleanup branch may itself hit a transient. Leave it bare with `|| true`; wrapping it would deepen cleanup latency without buying recovery, and the script already preserves a local recovery branch.
++- **`design-log-publish.sh` cleanup vs recovery.** When `create_rc` is 0 but URL parsing fails and `gh pr list` finds an open PR, adopt the recovery PR and do not `--delete` the branch backing it.
+ 
+ ## Failure modes
+ 
+ 1. **Nested-retry latency blowup on `rebase-push.sh:274`.** The inner push wrap pairs with the existing 3-attempt lease-race outer loop, so a sustained transient outage could cost up to 9 push attempts plus jittered + 2s/4s backoff (~30 seconds wall-time). Earliest signal: rebase-push timing breadcrumbs grow. Mitigation: documented in the plan and accepted per Round 1; rebase-push callers (Step 12c, postbump) already have their own timeout envelopes.
+-2. **`exit_transient_net` semantics regression in ship-pr.** If the thin wrapper drops the predicate-on-rc=0 path used by `transient_envelope_predicate_merge_pr` / `_ci_wait`, ship-pr would silently accept envelope-failure responses. Earliest signal: ship-pr merges that should have retried on `MERGE_RESULT=error` succeed without retrying. Mitigation: `ship_pr_with_transient_retry` delegates entirely to the lifted helper (which keeps the predicate-before-rc=0 ordering) and only adds the `exit_transient_net` step after the helper returns; the new `scripts/test-lib-net.sh` exercises the envelope-error path.
+-3. **`design-log-publish.sh` cleanup races with operator retry.** If the operator retries `design-log-publish.sh` between the failed-create branch and the `--delete` push, the second attempt may delete a freshly recreated remote branch. Earliest signal: a subsequent `gh pr list --head $WT_BRANCH` returns empty unexpectedly. Mitigation: cleanup uses `|| true` so a delete failure on a re-pushed branch is silent, and the `RECOVERY_BRANCH` emit_kv still points at the local commit so no work is lost.
++2. **`exit_transient_net` / envelope semantics regression in ship-pr.** If `ship_pr_with_transient_retry` returns 0 while the final `fail_file` still satisfies `transient_envelope_predicate_merge_pr` / `_ci_wait`, ship-pr would accept `MERGE_RESULT=error` or `ACTION=bail` as success. Earliest signal: merges or ci-wait that should stall exit 6 instead complete. Mitigation: final predicate re-check in the wrapper before any `rc==0` return; `scripts/test-lib-net.sh` asserts exhausted rc=0 envelope is not success at the ship-pr layer.
++3. **`design-log-publish.sh` cleanup deletes a branch backing an existing PR.** Unconditional `--delete` after ambiguous create failure can remove the remote branch for a server-side-successful PR. Earliest signal: open PR with missing head ref. Mitigation: run `--delete` only when `create_rc != 0` **and** recovery list positively finds no open PR; on list failure, skip delete and emit `RECOVERY_BRANCH`.
++4. **`set -e` bypass of structured errors.** Bare helper invocation exits the script before `ERROR=` / `record_failure` paths run. Earliest signal: missing KV fields with non-zero shell exit. Mitigation: errexit-safe invocation documented in `lib-net.md` and applied at every wrapped callsite.
++5. **`gh issue create` duplicate issues.** Retrying create without idempotency can file duplicate tracking issues. Mitigation: leave create calls bare in this lane (see Approach).
++6. **`design-log-publish.sh` cleanup races with operator retry.** If the operator retries between failed-create and `--delete`, a gated delete may still race; `|| true` keeps delete best-effort and `RECOVERY_BRANCH` preserves local work.
+ 
+ ## Testing strategy
+ 
+ - New `scripts/test-lib-net.sh` exercises the lifted helper exhaustively (cases listed in the file's NEW section above) with stubbed commands and stubbed `sleep`. Asserts on exit code, attempt count, `_WTR_OUT` content, and the literal sleep duration sequence.
+@@ -179,5 +199,5 @@
+ - `make lint` is the regression gate — no shellcheck breakage from the lift or wraps.
+ - Manual smoke: trigger a synthetic transient on `design-log-publish.sh` (point `gh` at an unreachable host for one attempt, then restore) to confirm the retry path lands and the cleanup branch fires when all three attempts fail.
+ 
+-diff_lines: 450
++diff_lines: 485

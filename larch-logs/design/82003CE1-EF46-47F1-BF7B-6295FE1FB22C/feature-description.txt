@@ -1,0 +1,171 @@
+# [BUG] (URGENT) Wrap every network-touching git/gh callsite in with_transient_retry()
+
+## Context
+
+Surfaced by `/design --simple 3117` (2026-05-28). `scripts/design-log-publish.sh` failed because:
+
+1. **First attempt**: `git push -u origin larch-log-design-<RUN_ID>` succeeded (created remote at `1c19d200`), then `gh pr create` failed for an unknown transient reason. When the exact same `gh pr create` command was re-issued moments later it succeeded as PR #3149 — so the underlying cause was a transient gh / GitHub API hiccup.
+2. **Second attempt** (operator-driven retry of the whole script): `git push` was rejected as **non-fast-forward** because the first attempt's pushed commit (`1c19d200`) and the new local commit (`54a12d8`) had divergent histories (rev-list `1 1`). The two commits differed in `manifest.json`, two `breadcrumbs/larch-quiet-design-log-publish.sh-*.log` files, and `design-log-publish.retry.log` — the second attempt regenerates `$DESIGN_TMPDIR` content between attempts.
+
+Linked cause: the first attempt's uncleaned remote branch guaranteed the second attempt's push rejection. Neither `git push` nor `gh pr create` in `design-log-publish.sh` has any retry logic; nor do any of the script's call sites for `gh pr merge`. Most other network-touching callsites across the codebase share this gap.
+
+## Existing retry infrastructure
+
+| Helper | Location | Scope | Used where |
+|---|---|---|---|
+| `with_transient_retry()` | `scripts/ship-pr.sh:2404` | 3-attempt + `is_transient_net_signature` predicate | `ship-pr.sh` only (7 internal callsites) |
+| `is_transient_net_signature()` | `scripts/lib-net.sh:7` | Pattern matcher: `Could not resolve`, `unable to access`, `Connection refused`, `Temporary failure`, `timed out`, `TLS handshake`, `HTTP 5xx`, `network/auth issue`, `connection reset`, `EOF during`, `context deadline exceeded`, `git fetch failed` | Sourced by ship-pr |
+| `scripts/git-push.sh` | dedicated wrapper | 3-attempt jittered backoff for plain `git push` | `/implement` only (via `create-pr.sh`, `rebase-push.sh`) |
+| `scripts/git-force-push.sh` | dedicated wrapper | 1 retry on lease-race | `/implement` Step 12c only |
+
+## Audit — callsites without retry (the gap)
+
+#### Tier 1 — git push / gh pr verbs
+
+`git push` (bare):
+- `scripts/design-log-publish.sh:610` (today's bug)
+- `scripts/rebase-push.sh:274`
+- `scripts/create-pr.sh:129, 201` (escalates to `git-force-push.sh` on fail, but no transient retry on the plain push)
+- `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh:411` (mirror push)
+
+`gh pr create`:
+- `scripts/design-log-publish.sh:628` (today's bug)
+- `scripts/create-pr.sh:230`
+
+`gh pr merge`:
+- `scripts/design-log-publish.sh:657`
+- `scripts/merge-pr.sh:333, 348, 359` (`merge-pr.sh` is called by `ship-pr.sh` via `with_transient_retry` at `ship-pr.sh:3087`, but standalone `merge-pr.sh` callers — e.g., manual operator runs — have no retry)
+
+`gh pr edit`:
+- `scripts/gh-pr-body-update.sh:77`
+- `scripts/ship-pr.sh:1622, 2761` (these are inside ship-pr but not wrapped by the local helper)
+
+#### Tier 2 — gh issue verbs and gh api writes
+
+`gh issue create / edit / comment / close`:
+- `scripts/tracking-issue-write.sh:304` (create), `:391` (comment), `:481, 534` (edit — the rename helper)
+- `scripts/clarify-label.sh:139` (edit --add-label), `:150` (edit --remove-label)
+- `scripts/clarify-comment-post.sh:153` (comment)
+- `scripts/named-block-write.sh:241` (edit --body-file)
+- `scripts/tracking-issue-summary.sh:110` (comment)
+- `skills/design/scripts/decompose-file-issues.sh:332` (comment), `:355` (close)
+- `skills/issue/scripts/cleanup-failed-issue.sh:80` (close)
+- `skills/issue/scripts/create-one.sh:270, 309, 335` (create, fallback create, rollback close)
+- `.claude/skills/combine-issues/scripts/apply-combination.sh:83` (create), `:100` (close)
+- `.claude/skills/audit-runs/scripts/audit-close-priors.sh:99` (comment), `:100` (close)
+
+`gh api` writes:
+- `scripts/upsert-diagrams-comment.sh:397` (DELETE comment)
+- `scripts/tracking-issue-summary.sh:122` (PATCH comment)
+
+#### Tier 3 — git fetch / pull / ls-remote / remote / submodule / clone
+
+Most `git fetch` callsites use `--quiet 2>/dev/null || true` and tolerate failure (14 unique scripts). Only the hard-failing callsites need wrapping:
+
+`git fetch` (hard fail on failure):
+- `scripts/merge-pr.sh:281, 318` (pre-merge same-version verification)
+- `scripts/preflight.sh:72` (PREFLIGHT_ERROR on fail)
+- `scripts/create-branch.sh:109`
+- `scripts/local-cleanup.sh:74`
+- `.claude/skills/audit-runs/scripts/audit-preflight.sh:54`
+
+`git pull`:
+- `scripts/local-cleanup.sh:108`
+
+`git ls-remote`:
+- `scripts/check-remote-branch.sh:56` (hard fail)
+- `scripts/rebase-push.sh:155`
+- `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh:125`
+
+`git clone / submodule update --init`:
+- `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh:403, 497`
+
+`git remote add / set-url` are rare and local-only after the initial add; leave alone.
+
+## Proposed fix
+
+#### Lift `with_transient_retry()` out of `ship-pr.sh` into `scripts/lib-net.sh`
+
+`lib-net.sh` already houses `is_transient_net_signature()` — the predicate `with_transient_retry()` already depends on. Move the helper there as a public API:
+
+```bash
+# In scripts/lib-net.sh
+with_transient_retry() {
+    local pred=$1 ff=$2 attempt=1 transient=0 ff_content
+    shift 2
+    _WTR_OUT=""
+    _WTR_RC=0
+    while [ "$attempt" -le 3 ]; do
+        : > "$ff"
+        if _WTR_OUT=$("$@" 2>>"$ff"); then
+            _WTR_RC=0
+        else
+            _WTR_RC=$?
+        fi
+        printf '%s\n' "$_WTR_OUT" >> "$ff"
+        ff_content=$(cat "$ff" 2>/dev/null || true)
+        transient=0
+        if "$pred" "$ff_content"; then
+            transient=1
+        fi
+        if [ "$transient" -eq 0 ] && [ "$_WTR_RC" -ne 0 ] && is_transient_net_signature "$ff_content"; then
+            transient=1
+        fi
+        if [ "$transient" -eq 0 ]; then
+            return "$_WTR_RC"
+        fi
+        if [ "$attempt" -eq 3 ]; then
+            return "$_WTR_RC"
+        fi
+        attempt=$((attempt + 1))
+        sleep $((attempt * 2))  # 2s, 4s
+    done
+    return "$_WTR_RC"
+}
+
+transient_envelope_predicate_none() { return 1; }
+```
+
+Notes on the lift:
+- The existing helper's `exit_transient_net` path is ship-pr-specific (it terminates the orchestrator); the lifted version should `return $rc` so generic callers can decide. ship-pr can keep a thin wrapper that adds its terminal-exit semantics, or move to the generic return-style.
+- The helper relies on `is_transient_net_signature` already living in `lib-net.sh`.
+- `ship-pr.sh` continues to source `lib-net.sh` (it already does) and removes its local definition.
+
+#### Wrap every gap callsite
+
+Replace each bare `git push` / `gh pr ...` / `gh issue ...` / `gh api -X ...` / hard-fail `git fetch|pull|ls-remote|clone|submodule update --init` call with `with_transient_retry transient_envelope_predicate_none "$fail_file" <verb> <args...>`.
+
+Specific callsites listed in the Audit section above. After the lift, update ship-pr.sh's existing 7 callsites to source the helper from `lib-net.sh` instead of using the local definition.
+
+#### Special cases
+
+- **`design-log-publish.sh` push-succeeded-but-pr-create-failed branch**: even with retry on `gh pr create`, if all 3 attempts fail the script must clean up the remote branch (`git push origin --delete $WT_BRANCH`) or the next caller-driven retry of the whole script hits non-fast-forward. Today's script only logs `"remote branch may need manual cleanup"` (line 648). The cleanup should be best-effort but unconditional on this failure path.
+- **`create-pr.sh:201` (plain push, new-PR path)**: the new-PR path uses plain `git push -u origin HEAD` (no force semantics). Wrap in `with_transient_retry`. The existing-PR fast-path at `:129` already escalates to `git-force-push.sh`; that escalation already has 1-retry semantics, so the plain attempt before escalation could either be wrapped or left bare. Recommended: wrap.
+- **`merge-pr.sh` callsites**: today merge-pr.sh has no internal retry; ship-pr's outer caller wraps it. After the lift, the internal `gh pr merge` calls can be wrapped directly so standalone (non-ship-pr) callers of `merge-pr.sh` also get retry behavior.
+
+## Test plan
+
+- Lift `with_transient_retry()` to `lib-net.sh`. Add `scripts/test-lib-net.sh` (or extend an existing harness) with fixture cases:
+  - rc=0 on first attempt → returns 0, no retry.
+  - rc=1 + transient signature → retries up to 3 times.
+  - rc=1 + non-transient signature → returns immediately.
+  - rc=0 + custom predicate matches transient envelope → retries.
+  - Backoff: assert at least 2s sleep between attempts (mockable).
+- For each wrapped callsite, the existing per-script harness validates structured stdout still parses on success (since the wrapper transparently passes through on rc=0).
+- Stress test: simulate transient gh API failure (e.g., a sandbox stub that fails the first 2 invocations, succeeds the 3rd) on `design-log-publish.sh` end-to-end to confirm the retry path.
+- Run `make lint` to confirm no shellcheck regressions from the lift.
+
+## Acceptance
+
+- `scripts/lib-net.sh` exports `with_transient_retry()` and `transient_envelope_predicate_none()`.
+- `scripts/ship-pr.sh` no longer defines `with_transient_retry()` locally; instead sources it from `lib-net.sh`. All 7 existing ship-pr callsites continue to work.
+- Every callsite enumerated in the Audit section is wrapped (Tier 1 + Tier 2 + Tier 3).
+- `design-log-publish.sh`'s gh-pr-create-failed branch unconditionally attempts to clean up the pushed remote branch so a caller-driven retry can re-push cleanly.
+- `bash scripts/test-lib-net.sh` (new or extended) passes.
+- `make lint` passes.
+
+## Reproduction artifacts
+
+Today's reproduction: `$DESIGN_TMPDIR=<TMPDIR>` preserved. Failed publish attempts visible at `larch-logs/design/0CCC4140-F308-4574-93AC-E3EAF4151F83/breadcrumbs/larch-quiet-design-log-publish.sh-*.log` after merge of PR #3149.
+
+## Phase: implement
