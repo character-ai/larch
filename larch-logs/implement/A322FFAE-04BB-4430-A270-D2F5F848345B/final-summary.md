@@ -1,6 +1,6 @@
-## /implement run A322FFAE-04BB-4430-A270-D2F5F848345B — bailed
+## /implement run A322FFAE-04BB-4430-A270-D2F5F848345B — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 00:37:11
@@ -11,7 +11,7 @@
 - **Code review**: 4/13 accepted
 - **OOS filed**: 6
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/A322FFAE-04BB-4430-A270-D2F5F848345B/`
 
 <!-- larch:run-summary v=1 -->
