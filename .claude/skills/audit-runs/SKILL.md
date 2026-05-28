@@ -28,7 +28,7 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
   - `#N` or `PR #N` — exactly one PR
   - Default when empty: treat as `since last audit` (requires a prior audit-report issue; continues to error if no prior report or malformed frontmatter — same as the explicit `since last audit` form)
 - `--repo <owner/name>`: target repo. Default: `character-ai/larch`
-- `--allow-concurrent`: override the 5-minute concurrency guard
+- `--allow-concurrent`: override the shared 5-minute `audit-report` concurrency guard (not skill-scoped)
 - **Removed flag**: `--no-fix-issues` is not supported. If any token in the skill argv is exactly `--no-fix-issues`, refuse immediately with a clear usage error (flag removed); do not proceed or silently ignore it.
 
 ## Pre-flight

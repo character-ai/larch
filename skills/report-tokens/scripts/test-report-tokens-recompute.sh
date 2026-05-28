@@ -182,6 +182,30 @@ case "$plot_impl_out" in
 esac
 rm -rf "$GH_PLOT_IMPL_STUB"
 
+GH_PLOT_IMPL_MISMATCH=$(mktemp -d "${TMPDIR:-/tmp}/test-report-tokens-plot-impl-mismatch.XXXXXX")
+cat >"$GH_PLOT_IMPL_MISMATCH/gh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '{"title":"[Design Analysis Report] design-only","body":"## Raw per-issue data\n\n```json\n[]\n```\n"}'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOF
+chmod +x "$GH_PLOT_IMPL_MISMATCH/gh"
+set +e
+PATH="$GH_PLOT_IMPL_MISMATCH:$PATH" LARCH_REPORT_TOKENS_NO_PLOT=1 \
+    "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement --plot-from 42 >/dev/null 2>"$GH_PLOT_IMPL_MISMATCH/err.txt"
+plot_impl_mismatch_rc=$?
+set -e
+if [ "$plot_impl_mismatch_rc" -ne 0 ] && grep -q 'does not match --skill=implement' "$GH_PLOT_IMPL_MISMATCH/err.txt" 2>/dev/null; then
+    pass '--plot-from implement rejects design-prefixed analysis-report title'
+else
+    fail "expected implement --plot-from design title rejection (rc=$plot_impl_mismatch_rc)"
+fi
+rm -rf "$GH_PLOT_IMPL_MISMATCH"
+
 set +e
 "$REPO/skills/report-tokens/scripts/run-analysis.sh" --skill implement --plot-from nope >/dev/null 2>"$REPO/.tmp-report-tokens-bad-plot-from.err"
 bad_plot_from_rc=$?

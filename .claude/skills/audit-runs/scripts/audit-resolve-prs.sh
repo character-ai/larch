@@ -92,7 +92,9 @@ filter_prs_for_skill() {
             '
             ;;
         implement)
-            printf '%s' "$json"
+            printf '%s' "$json" | jq '
+                [.[] | select(((.title // "") | test("^chore\\(larch-logs\\): design run [0-9A-Fa-f-]+$")) | not)]
+            '
             ;;
     esac
 }
@@ -104,7 +106,7 @@ pr_matches_skill() {
             printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'
             ;;
         implement)
-            return 0
+            ! printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'
             ;;
     esac
 }
@@ -237,8 +239,9 @@ if printf '%s' "$VERBAL" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; 
     if ! ALL_MERGED=$(fetch_merged_main_prs_json); then
         emit_error "gh api failed listing merged PRs (network or auth)"
     fi
+    FILTERED_MERGED=$(filter_prs_for_skill "$ALL_MERGED")
     if ! PR_JSON=$(jq -n \
-        --argjson prs "$(filter_prs_for_skill "$(printf '%s' "$ALL_MERGED" | jq --argjson n "$N" 'sort_by(.mergedAt) | if ($n <= 0) then [] else .[-($n):] end')")" \
+        --argjson prs "$(printf '%s' "$FILTERED_MERGED" | jq --argjson n "$N" 'sort_by(.mergedAt) | if ($n <= 0) then [] else .[-($n):] end')" \
         '$prs | [.[].number]' 2>/dev/null); then
         emit_error "gh api failed listing merged PRs (network or auth)"
     fi

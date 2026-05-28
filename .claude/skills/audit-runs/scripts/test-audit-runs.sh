@@ -641,9 +641,11 @@ EOSH19
 
     r19_sla=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since last audit")
     imp19b=$(printf '%s' "$r19_sla" | sed -n 's/^IMPLICIT_SINCE_LAST_AUDIT=//p')
+    prior19b=$(printf '%s' "$r19_sla" | sed -n 's/^PRIOR_REPORT_NUMBER=//p')
     pl19b=$(printf '%s' "$r19_sla" | sed -n 's/^PR_LIST=//p')
     assert_equal "$imp19b" "false" "[19b] explicit since last audit → not implicit"
     assert_equal "$pl19b" "20,30" "[19c] explicit since-last PR_LIST"
+    assert_equal "$prior19b" "500" "[19c2] explicit since-last keeps legacy prior report number"
 
     r19_last=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
     pl19L=$(printf '%s' "$r19_last" | sed -n 's/^PR_LIST=//p')
@@ -725,11 +727,15 @@ EOSH19B
     prior19impl=$(printf '%s' "$r19_impl_since" | sed -n 's/^PRIOR_REPORT_NUMBER=//p')
     pl19impl_since=$(printf '%s' "$r19_impl_since" | sed -n 's/^PR_LIST=//p')
     assert_equal "$prior19impl" "801" "[19k] implement since-last picks implement-prefixed audit report"
-    assert_equal "$pl19impl_since" "20,30" "[19l] implement since-last keeps ordinary merged PRs after prior audit"
+    assert_equal "$pl19impl_since" "30" "[19l] implement since-last excludes design log PRs after prior audit"
 
     r19_impl=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 3 PRs")
     pl19impl=$(printf '%s' "$r19_impl" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pl19impl" "10,20,30" "[19m] implement last-N keeps ordinary merged PRs without title filtering"
+    assert_equal "$pl19impl" "10,30" "[19m] implement last-N excludes design log PRs before slicing"
+
+    r19_design_last=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill design --repo character-ai/larch --verbal-description "last 1 PR")
+    pl19design_last=$(printf '%s' "$r19_design_last" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pl19design_last" "20" "[19m2] design last-N filters before repo-wide slicing"
 
     cat >"$GH19/gh" <<'EOSH19C'
 #!/usr/bin/env bash
@@ -1133,8 +1139,9 @@ done
 if [[ "$url" == repos/*/pulls* ]]; then
     raw='[
       {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
-      {"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"chore(larch-logs): flush implement run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
-      {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
+      {"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"chore(larch-logs): design run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
+      {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}},
+      {"number":40,"merged_at":"2025-12-15T00:00:00Z","title":"chore(larch-logs): design run 44444444-4444-4444-4444-444444444444","base":{"ref":"main"}}
     ]'
     printf '%s' "$raw" | jq -c "$jq_filter"
     exit 0
@@ -1145,7 +1152,10 @@ EOSH
     chmod +x "$GH_STUB_DIR/gh"
     resolve_out=$(PATH="$GH_STUB_DIR:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
     pr_list=$(printf '%s' "$resolve_out" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pr_list" "20,30" "[32] last 2 PRs are merge-time last two, not arbitrary list order"
+    assert_equal "$pr_list" "10,30" "[32] last 2 PRs filter mixed titles before merge-time slicing"
+    resolve_design=$(PATH="$GH_STUB_DIR:$PATH" bash "$RESOLVE_SCRIPT" --skill design --repo character-ai/larch --verbal-description "last 2 PRs")
+    pr_list_design=$(printf '%s' "$resolve_design" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pr_list_design" "20,40" "[32b] design last 2 PRs filters mixed merged list before slicing"
     rm -rf "$GH_STUB_DIR"
 else
     echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
@@ -1674,8 +1684,9 @@ done
 if [[ "$url" == repos/*/pulls* ]]; then
     raw='[
       {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
-      {"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"chore(larch-logs): flush implement run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
-      {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
+      {"number":20,"merged_at":"2025-06-01T00:00:00Z","title":"chore(larch-logs): design run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
+      {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}},
+      {"number":40,"merged_at":"2025-12-15T00:00:00Z","title":"chore(larch-logs): design run 44444444-4444-4444-4444-444444444444","base":{"ref":"main"}}
     ]'
     printf '%s' "$raw" | jq -c "$jq_filter"
     exit 0
@@ -1686,7 +1697,10 @@ EOSH42
     chmod +x "$GH42/gh"
     r42=$(PATH="$GH42:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
     pl42=$(printf '%s' "$r42" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pl42" "20,30" "[42] since ISO filters mergedAt > cutoff"
+    assert_equal "$pl42" "30" "[42] since ISO excludes interleaved design merges for implement"
+    r42d=$(PATH="$GH42:$PATH" bash "$RESOLVE_SCRIPT" --skill design --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
+    pl42d=$(printf '%s' "$r42d" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pl42d" "20,40" "[42b] design since ISO keeps only design log PRs from mixed list"
     rm -rf "$GH42"
 else
     echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
@@ -2825,6 +2839,17 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$rc69b8" "1" "[69b8] scan-run invalid --skill exits non-zero"
 fi
 
+if [ -x "$TITLE_SCRIPT" ]; then
+    set +e
+    bash "$TITLE_SCRIPT" --pr-list "1" --timestamp "2026-01-01T00:00:00Z" >/dev/null 2>/dev/null
+    rc69b9=$?
+    bash "$TITLE_SCRIPT" --skill bogus --pr-list "1" --timestamp "2026-01-01T00:00:00Z" >/dev/null 2>/dev/null
+    rc69b10=$?
+    set -e
+    assert_equal "$rc69b9" "1" "[69b9] audit-title missing --skill exits non-zero"
+    assert_equal "$rc69b10" "1" "[69b10] audit-title invalid --skill exits non-zero"
+fi
+
 if [ -x "$RESOLVE_SCRIPT" ]; then
     GH69G=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-resolve69g-XXXXXX")
     cat > "$GH69G/gh" <<'EOSGH69G'
@@ -2852,6 +2877,35 @@ EOSGH69G
             ;;
     esac
     rm -rf "$GH69G"
+fi
+
+if [ -x "$RESOLVE_SCRIPT" ]; then
+    GH69H=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-resolve69h-XXXXXX")
+    cat > "$GH69H/gh" <<'EOSGH69H'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' 'chore(larch-logs): design run 90628862-9A18-4A56-8420-63DE723F9D81'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH69H
+    chmod +x "$GH69H/gh"
+    r69h=$(PATH="$GH69H:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "#43")
+    e69h=$(printf '%s' "$r69h" | sed -n 's/^ERROR=//p')
+    case "$e69h" in
+        *does\ not\ match\ --skill=implement*)
+            PASS=$((PASS + 1))
+            echo "  ok: [69h1] single-PR implement resolution rejects design PR title"
+            ;;
+        *)
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[69h1] expected implement single-PR skill mismatch error, got: $e69h")
+            echo "  FAIL: [69h1] expected implement single-PR skill mismatch error, got: $e69h" >&2
+            ;;
+    esac
+    rm -rf "$GH69H"
 fi
 
 if [ -x "$SCAN_SCRIPT" ]; then

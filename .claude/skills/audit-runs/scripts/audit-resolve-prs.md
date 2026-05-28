@@ -4,7 +4,7 @@ Resolves a verbal description to a concrete PR list for `/audit-runs`.
 
 ## Required flags
 
-- `--skill <design|implement>` — selects prior-report title shapes (`audit-title-matcher.sh`). `design` filters merged PRs to `chore(larch-logs): design run <UUID>` titles; `implement` audits ordinary merged PRs without a title-shape filter.
+- `--skill <design|implement>` — selects prior-report title shapes (`audit-title-matcher.sh`). `design` filters merged PRs to `chore(larch-logs): design run <UUID>` titles; `implement` excludes those design-log PRs and audits the remaining merged PRs.
 
 ## Output KV (stdout)
 
@@ -25,7 +25,7 @@ Normal outcomes exit `0`; caller reads `PR_LIST` and `ERROR`. **Unknown argv** e
 |---|---|
 | empty / omitted | Implicit `since last audit`; `IMPLICIT_SINCE_LAST_AUDIT=true` |
 | `since last audit` | Reads most-recent `audit-report` issue, parses `audited_pr_range.last`, queries PRs merged after that PR's `mergedAt` |
-| `last N PRs` | Paginated `gh api repos/{owner}/{repo}/pulls` (merged to `main`), sorted by `merged_at`, then the last *N* PRs by merge time (not `gh pr list` default order) |
+| `last N PRs` | Paginated `gh api repos/{owner}/{repo}/pulls` (merged to `main`), filtered to the selected skill first, then sorted by `merged_at` and sliced to the last *N* PRs (not `gh pr list` default order) |
 | `since <ISO8601>` | Filters PRs with `mergedAt > <ISO>`; `<ISO>` must be a **full instant** (`YYYY-MM-DDThh:mm[:ss][.frac][Z\|±hh:mm]`) — date-only prefixes are rejected |
 | `#N` / `PR #N` | Exactly one PR |
 
