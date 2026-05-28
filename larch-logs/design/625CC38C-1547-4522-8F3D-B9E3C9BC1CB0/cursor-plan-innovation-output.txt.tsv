@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	.pre-commit-config.yaml:200-214	New pre-commit hooks omit always_run: true unlike lint-readability-preamble	Scoped pre-commit/relevant-checks runs only fire hooks when staged files match types_or/types, so a shell-only or markdown-only commit can skip the cross-repo SKILL↔script or substitution-safety scan until a full make lint	Match lint-readability-preamble: add always_run: true to both new local hooks (keep pass_filenames: false)
