@@ -1,0 +1,26 @@
+larch:bc t=2026-05-28T06:59:56Z d=0 p=56899 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-28T06:59:57Z d=0 p=56899 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T06:59:57Z d=0 p=56999 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-28T06:59:58Z d=0 p=56999 s=ci-wait.sh c=wait-ci text=✓ CI passed (1s, 0 polls)
+larch:bc t=2026-05-28T06:59:58Z d=0 p=57365 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-28T06:59:58Z d=0 p=57365 s=ci-wait.sh c=wait-ci text=✓ CI passed (0s, 0 polls)
+larch:bc t=2026-05-28T06:59:58Z d=0 p=57431 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-28T06:59:58Z d=0 p=57431 s=ci-wait.sh c=warn text= ⚠ CI produced no checks after 30s grace
+larch:bc t=2026-05-28T07:00:04Z d=0 p=59974 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:04Z d=0 p=59974 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at codex-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:05Z d=0 p=59974 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at cursor-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:06Z d=0 p=60959 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:07Z d=0 p=61726 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:08Z d=0 p=62445 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:09Z d=0 p=63037 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:10Z d=0 p=63533 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:10Z d=0 p=64056 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:11Z d=0 p=64586 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:12Z d=0 p=65144 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:13Z d=0 p=65623 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:14Z d=0 p=66232 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:15Z d=0 p=66618 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:00:17Z d=0 p=67169 s=dispatch-plan-voters.sh c=retry text=voter-claude: first-pass content preserved at claude-vote-output-first-pass.txt (parse-rate retry succeeded)
+larch:bc t=2026-05-28T07:04:52Z d=0 p=98281 s=implement-finalize.sh c=progress text=✅ 18: cleanup status=complete elapsed=0s
+larch:bc t=2026-05-28T07:12:20Z d=0 p=8646 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1
+larch:bc t=2026-05-28T07:12:21Z d=0 p=8646 s=review-and-fix.sh c=progress text=→ review-and-fix: round 1 — 0 accepted, 0 rejected (0 exonerated)
