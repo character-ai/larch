@@ -25,7 +25,7 @@ lines ending in `\` are joined before matching. Rule id: `awk-v-nonascii`.
 
 Historical example (Rule 1): an em-dash inside `orchestrator_style_re` passed as
 `awk -v style_re='… — …'` in `scripts/lint-readability-preamble.sh` before
-#3144.
+`# 3144`.
 
 **Rule 2 — non-ASCII inside an awk body at a regex callsite.** The linter tracks
 single-quoted `awk '…'` bodies, heredoc bodies (`awk … <<'AWK' … AWK`), and
