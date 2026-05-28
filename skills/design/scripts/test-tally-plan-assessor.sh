@@ -126,8 +126,19 @@ EOF
 : >"$TMP/cursor.txt"
 : >"$TMP/codex.txt"
 body=$(run_tally)
-printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'duplicate assessment block should honor final verdict'
-grep -Fq 'QUALIFICATIONS_SUMMARY=q1' "$TMP/v.txt.env" || fail 'duplicate assessment block must reset stale qualification state'
+printf '%s\n' "$body" | grep -Fxq 'NOT_WORSE' || fail 'duplicate assessment block should honor first verdict'
+grep -Fq 'QUALIFICATIONS_SUMMARY=Assessors found no WORSE-majority consensus.' "$TMP/v.txt.env" || fail 'duplicate assessment block should ignore later verdict block'
+
+cat >"$TMP/claude.txt" <<'EOF'
+ASSESSMENT: WORSE because the latest revision regressed scope control
+REASONING: trailing rationale tokenization
+QUALIFICATIONS: tokenized
+EOF
+: >"$TMP/cursor.txt"
+: >"$TMP/codex.txt"
+body=$(run_tally)
+printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'assessment with trailing rationale should parse first token'
+grep -Fq 'QUALIFICATIONS_SUMMARY=tokenized' "$TMP/v.txt.env" || fail 'trailing-rationale parse must preserve qualification'
 
 cat >"$TMP/claude.txt" <<'EOF'
 assessment: worse

@@ -76,7 +76,7 @@ write_common_inputs() {
     local dir="$1" classification="$2"
     mkdir -p "$dir/scripts" "$dir/skills/design/scripts"
     cat >"$dir/run-params.json" <<EOF
-{"schema_version":2,"design_classification":"$classification","partition_requested":false,"brainstorm_requested":false}
+{"schema_version":2,"design_classification":"$classification","workflow_path":"$classification","partition_requested":false,"brainstorm_requested":false}
 EOF
     printf '# Plan\n\ndiff_lines: 1\n' >"$dir/plan.txt"
     printf 'feature\n' >"$dir/feature-description.txt"
@@ -92,6 +92,44 @@ set -euo pipefail
 $body
 EOF
     chmod +x "$dir/skills/design/scripts/plan-review-loop.sh"
+}
+
+write_snapshot_stub() {
+    local dir="$1"
+    mkdir -p "$dir/skills/design/scripts"
+    cat >"$dir/skills/design/scripts/snapshot-plan-round.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+subcmd="${1:?}"
+shift
+design_tmpdir=""
+round=""
+value=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) design_tmpdir="${2:?}"; shift 2 ;;
+        --round) round="${2:?}"; shift 2 ;;
+        --value) value="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+case "$subcmd" in
+    read-cursor)
+        current=1
+        [[ -f "$design_tmpdir/plan-review-round-cursor.txt" ]] && current="$(cat "$design_tmpdir/plan-review-round-cursor.txt")"
+        printf 'ROUND_CURSOR=%s\n' "$current"
+        ;;
+    write-cursor)
+        printf '%s\n' "$value" >"$design_tmpdir/plan-review-round-cursor.txt"
+        printf 'write-cursor:%s\n' "$value" >>"$design_tmpdir/snapshot.log"
+        ;;
+    *)
+        echo "unexpected snapshot subcmd: $subcmd" >&2
+        exit 2
+        ;;
+esac
+EOF
+    chmod +x "$dir/skills/design/scripts/snapshot-plan-round.sh"
 }
 
 echo "=== missing counter starts at round 1 ==="
@@ -153,6 +191,33 @@ driver_out=$(run_driver "$DP")
 printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=cap-hit$' || fail "expected cap-hit passive-summary status"
 [[ "$(cat "$DP/review-round-count.txt")" == "2" ]] || fail "second passive-summary entry should persist round 2"
 [[ -f "$DP/plan-review/round-2/new.txt" ]] || fail "fresh round-2 artifact missing after second entry"
+
+echo "=== hard path advances round 2 after successful round-1 snapshot ==="
+DH="$TMPROOT/hard-round2"
+write_common_inputs "$DH" HARD
+printf '1\n' >"$DH/review-round-count.txt"
+printf '1\n' >"$DH/plan-review-round-cursor.txt"
+printf 'round1 snapshot\n' >"$DH/plan-after-round-1.txt"
+write_snapshot_stub "$DH"
+dh_loop_body=$(cat <<EOF
+round_num=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --round-num) round_num="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf "%s\n" "\$round_num" >"$DH/round-num-seen.txt"
+printf "LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nVOTER_1_PARSE_RATE_STATUS=ok\n" "\$round_num"
+EOF
+)
+write_loop_stub "$DH" "$dh_loop_body"
+run_guard "$DH" >/tmp/larch-step3-cap.guardh.out
+driver_out=$(run_driver "$DH")
+printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=complete$' || fail "hard round-2 path should still complete"
+[[ "$(cat "$DH/round-num-seen.txt")" == "2" ]] || fail "hard round-2 path must pass --round-num 2 to plan-review-loop.sh"
+[[ "$(cat "$DH/plan-review-round-cursor.txt")" == "2" ]] || fail "hard round-2 path must persist cursor 2 before launch"
+grep -Fqx 'write-cursor:2' "$DH/snapshot.log" || fail "hard round-2 path must advance cursor via snapshot helper"
 
 echo "=== tally-error does not consume the pending round ==="
 D4="$TMPROOT/tally-error"

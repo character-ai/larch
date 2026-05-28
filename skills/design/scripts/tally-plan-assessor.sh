@@ -36,21 +36,24 @@ strip_md_bold() {
 
 parse_assessment() {
     local file="$1"
-    local line verdict="" reasoning="" qualifications="" in_reason=0 in_qual=0
+    local line verdict="" reasoning="" qualifications="" in_reason=0 in_qual=0 assessment_seen=0
     [[ -f "$file" && -s "$file" ]] || return 1
     shopt -s nocasematch
     while IFS= read -r line || [[ -n "$line" ]]; do
         local stripped
         stripped=$(strip_md_bold "$line")
         if [[ "$stripped" =~ ^[[:space:]]*assessment[[:space:]]*[:=][[:space:]]*(.*)$ ]]; then
+                [[ "$assessment_seen" -eq 0 ]] || break
                 verdict="${BASH_REMATCH[1]}"
                 verdict="${verdict#"${verdict%%[![:space:]]*}"}"
                 verdict="${verdict%"${verdict##*[![:space:]]}"}"
+                verdict="${verdict%%[[:space:]]*}"
                 verdict=$(printf '%s' "$verdict" | tr '[:lower:]' '[:upper:]')
                 reasoning=""
                 qualifications=""
                 in_reason=0
                 in_qual=0
+                assessment_seen=1
         elif [[ "$stripped" =~ ^[[:space:]]*reasoning[[:space:]]*[:=][[:space:]]*(.*)$ ]]; then
                 reasoning="${BASH_REMATCH[1]}"
                 reasoning="${reasoning#"${reasoning%%[![:space:]]*}"}"

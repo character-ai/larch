@@ -71,6 +71,19 @@ append_warning() {
         >/dev/null 2>&1 || true
 }
 
+resolve_feature_file() {
+    local design_feature="$DESIGN_TMPDIR/feature-description.txt"
+    if [[ -f "$design_feature" ]]; then
+        printf '%s' "$design_feature"
+        return 0
+    fi
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" && -f "$IMPLEMENT_TMPDIR/feature-description.txt" ]]; then
+        printf '%s' "$IMPLEMENT_TMPDIR/feature-description.txt"
+        return 0
+    fi
+    printf '%s' "$design_feature"
+}
+
 assessor_path_valid() {
     local candidate="$1" expected_basename="$2" candidate_dir=""
     [[ -n "$candidate" ]] || return 1
@@ -130,7 +143,7 @@ fi
 plan_original="$DESIGN_TMPDIR/plan.txt-original"
 plan_prev="$DESIGN_TMPDIR/plan-after-round-$((ROUND_NUM - 1)).txt"
 plan_current="$DESIGN_TMPDIR/plan.txt"
-feature_file="${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
+feature_file="$(resolve_feature_file)"
 
 for missing in "$plan_original" "$plan_prev" "$plan_current" "$feature_file"; do
     if [[ ! -f "$missing" ]]; then

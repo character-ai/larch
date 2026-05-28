@@ -98,11 +98,16 @@ grep -Fq 'plan-after-round-1.txt' "$TMP/execution-issues.md" || fail 'missing pr
 
 setup_round2
 printf 'stale\n' >"$TMP/claude-plan-assessor-round-2.txt"
+printf 'stale diag\n' >"$TMP/claude-plan-assessor-round-2.txt.diag"
+printf '{"stale":true}\n' >"$TMP/claude-plan-assessor-round-2.txt.json"
 printf 'stale\n' >"$TMP/assessor-verdict-round-2.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'round2 pipeline failed'
 [[ -f "$TMP/assessor-verdict-round-2.txt" ]] || fail 'missing verdict file'
 grep -Fqx 'WORSE: x x' "$TMP/assessor-verdict-round-2.txt" || fail 'stale verdict artifact was not replaced'
+grep -Fqx 'ASSESSMENT: WORSE' "$TMP/claude-plan-assessor-round-2.txt" || fail 'stale assessor txt artifact was not replaced'
+[[ ! -e "$TMP/claude-plan-assessor-round-2.txt.diag" ]] || fail 'stale assessor diag sidecar should be removed before dispatch'
+[[ ! -e "$TMP/claude-plan-assessor-round-2.txt.json" ]] || fail 'stale assessor json sidecar should be removed before dispatch'
 
 cat >"$TMP/mock-dispatch.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -252,5 +257,36 @@ rm -f "$TMP/execution-issues.md"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail 'dispatch path escape must degrade open'
 grep -Fqx 'NOT_WORSE' "$TMP/assessor-verdict-round-2.txt" || fail 'dispatch path escape must synthesize NOT_WORSE verdict'
+
+setup_round2
+mkdir -p "$TMP/implement-tmp"
+printf 'implement feature\n' >"$TMP/implement-tmp/feature-description.txt"
+printf 'design feature\n' >"$TMP/feature-description.txt"
+cat >"$TMP/mock-dispatch.sh" <<'STUB'
+#!/usr/bin/env bash
+DIR=""
+feature=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --design-tmpdir) DIR="${2:?}"; shift 2 ;;
+    --feature-file) feature="${2:?}"; shift 2 ;;
+    --round-num|--plan-original|--plan-prev|--plan-current|--codex-present|--cursor-present|--timeout) shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$feature" && -n "$DIR" ]] || exit 2
+printf 'DISPATCH_OK=true\n'
+printf 'CLAUDE_ASSESSOR_PATH=%s/claude-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CODEX_ASSESSOR_PATH=%s/codex-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
+printf '%s\n' "$feature" >"$DIR/feature-path-seen.txt"
+printf 'ASSESSMENT: TIE\nREASONING: q\nQUALIFICATIONS: z\n' >"$DIR/claude-plan-assessor-round-2.txt"
+printf 'ASSESSMENT: TIE\nREASONING: q\nQUALIFICATIONS: z\n' >"$DIR/codex-plan-assessor-round-2.txt"
+printf 'ASSESSMENT: TIE\nREASONING: q\nQUALIFICATIONS: z\n' >"$DIR/cursor-plan-assessor-round-2.txt"
+STUB
+chmod +x "$TMP/mock-dispatch.sh"
+out=$(IMPLEMENT_TMPDIR="$TMP/implement-tmp" LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'design feature preference path failed'
+grep -Fqx "$(cd "$TMP" && pwd -P)/feature-description.txt" "$TMP/feature-path-seen.txt" || fail 'design tmpdir feature-description.txt should win over implement tmpdir copy'
 
 pass 'assess-plan-round harness'
