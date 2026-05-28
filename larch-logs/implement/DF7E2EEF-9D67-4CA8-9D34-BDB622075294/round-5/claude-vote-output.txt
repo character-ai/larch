@@ -1,0 +1,24 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- snapshot-failure path intentionally duplicates convergence logic to produce correct terminal status without a second snapshot attempt
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing condition not meaningfully amplified by this diff; refactoring would be a separate effort
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- DEGRADED_PANEL is reset to _dispatch_degraded_panel at the start of _run_plan_review_round; other key globals are re-set before use
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- common inline-Python pattern in this codebase; tmpdir churn is minimal
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- SECURITY.md documents that security-tagged findings are excluded before auto-apply; the broader trust-boundary commentary is addressed in the plan design
+FINDING_14: EXONERATE CORRECTNESS=false SEVERITY=nit QUALITY=weak UNCERTAIN=false -- mv -f replaces a symlink with the file rather than following it; the stated redirect attack does not apply
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- REVISE_STATUS=ok accurately reflects the revise outcome; the post-apply failure is captured in LOOP_STATUS
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- emit-plan-failed is an infrastructure failure that surfaces before Gate B handles the plan; the stale-trailer scenario is theoretical
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- aborting on non-terminal snapshot failure is conservative and defensible; convergence and cap-hit terminal cases are specially annotated
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- bidirectional substring matching is an intentional documented trade-off in the plan
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- using complete for degraded-panel + zero-findings is more conservative than claiming convergence on a degraded result; REASON field distinguishes the case
+FINDING_21: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

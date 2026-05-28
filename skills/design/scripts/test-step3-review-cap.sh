@@ -33,6 +33,8 @@ grep -Fq "including \`LOOP_STATUS=panel-failed\`" "$SKILL_MD" \
     || fail "SKILL missing panel-failed counter-consumption prose"
 grep -Fq "MUST NOT persist when \`TALLY_PLAN_REVIEW_STATUS=tally-error\`" "$SKILL_MD" \
     || fail "SKILL missing tally-error non-consumption prose"
+grep -Fq 'WARN=Step 3: refusing to clean symlinked plan-review directory' "$SKILL_MD" \
+    || fail "SKILL missing symlinked plan-review cleanup warning"
 
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-step3-cap-test.XXXXXX")"
 TEST_HOME="$TMPROOT/home"
@@ -128,8 +130,29 @@ printf '1\n' >"$D3B/review-round-count.txt"
 write_loop_stub "$D3B" "printf 'LOOP_STATUS=weird-status\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\nVOTER_1_PARSE_RATE_STATUS=SKIPPED\n'; exit 1"
 run_guard "$D3B" >/tmp/larch-step3-cap.guard3b.out
 driver_out=$(run_driver "$D3B")
-printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=weird-status$' || fail "expected weird-status loop status"
+printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=panel-failed$' || fail "invalid loop status should be normalized to panel-failed"
 [[ "$(cat "$D3B/review-round-count.txt")" == "2" ]] || fail "unrecognized post-launch status should keep pending round consumed"
+
+echo "=== passive-summary statuses parse and persist across Step 3 entries ==="
+DP="$TMPROOT/passive-summary"
+write_common_inputs "$DP" HARD
+mkdir -p "$DP/plan-review/round-1" "$DP/plan-review/round-2"
+printf 'stale\n' >"$DP/plan-review/round-1/stale.txt"
+printf 'stale\n' >"$DP/plan-review/round-2/stale.txt"
+write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-1\"; printf 'fresh\n' >\"$DP/plan-review/round-1/new.txt\"; printf 'LOOP_STATUS=converged\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nREASON=streak\nREVISE_STATUS=ok\nCONVERGENCE_STREAK=2\nCOLLECT_OK_COUNT=1\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=$DP/voting-tally.md\nVOTER_1_PARSE_RATE_STATUS=ok\n'; exit 0"
+run_guard "$DP" >/tmp/larch-step3-cap.guardp1.out
+driver_out=$(run_driver "$DP")
+printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged passive-summary status"
+[[ "$(cat "$DP/review-round-count.txt")" == "1" ]] || fail "first passive-summary entry should persist round 1"
+[[ -f "$DP/plan-review/round-1/new.txt" ]] || fail "fresh round-1 artifact missing after first entry"
+[[ ! -e "$DP/plan-review/round-1/stale.txt" ]] || fail "stale round-1 artifact should be cleaned before launch"
+[[ ! -e "$DP/plan-review/round-2/stale.txt" ]] || fail "stale round-2 artifact should be cleaned before launch"
+write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-2\"; printf 'fresh\n' >\"$DP/plan-review/round-2/new.txt\"; printf 'LOOP_STATUS=cap-hit\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nREASON=cap-hit\nREVISE_STATUS=ok\nCONVERGENCE_STREAK=1\nCOLLECT_OK_COUNT=1\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=$DP/voting-tally.md\nVOTER_1_PARSE_RATE_STATUS=ok\n'; exit 0"
+run_guard "$DP" >/tmp/larch-step3-cap.guardp2.out
+driver_out=$(run_driver "$DP")
+printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=cap-hit$' || fail "expected cap-hit passive-summary status"
+[[ "$(cat "$DP/review-round-count.txt")" == "2" ]] || fail "second passive-summary entry should persist round 2"
+[[ -f "$DP/plan-review/round-2/new.txt" ]] || fail "fresh round-2 artifact missing after second entry"
 
 echo "=== tally-error does not consume the pending round ==="
 D4="$TMPROOT/tally-error"

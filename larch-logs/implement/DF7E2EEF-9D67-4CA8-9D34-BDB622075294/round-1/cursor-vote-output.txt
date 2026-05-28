@@ -1,0 +1,49 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- monolithic round helper is maintainability debt, not a correctness defect worth blocking.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- integration harness never runs design-log-publish despite plan promises.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- no --round-cap tally-error stub asserts LOOP_STATUS=tally-error and skipped revise.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan acceptance #8 multi-round scenarios largely absent from test-plan-review-loop.sh.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- DEGRADED_PANEL branch zeroes convergence_streak but leaves CONVERGENCE_STREAK stale in round-summary.env.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- panel-failed exits without _snapshot_round_dir/_write_round_summary unlike tally-error paths.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- per-round temp Python parser is acceptable overhead versus a larger refactor.
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- approval-gates already routes converged|cap-hit to passive-summary before auto-apply.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- relevant-checks lacks path arms for new plan-review harness targets.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate dispatch stub heredoc is minor test-harness DRY only.
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- zero-findings convergence ignores DEGRADED_PANEL set earlier in the round.
+FINDING_12: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Step 3 prose still implies Gate B always auto-applies despite converged|cap-hit passive-summary matrix.
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- converged|cap-hit passive-summary guard already documented above Presentation.
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- legacy single-pass tally-error→complete is explicit plan contract when --round-cap omitted.
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- post-apply terminal path passes revise_status=skipped after revise_status=ok.
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- validator exit leaves mutated plan but is an edge-case UX issue, not a loop bug.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_4 coverage-gap finding already accepted.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_2 publish-parity gap already accepted.
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- main-agent-vote-required exits without _snapshot_round_dir forensics.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_2 integration publish coverage gap.
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- test-design-multi-round-integration.md documents publish/symlink cases the .sh does not run.
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_4 missing multi-round test matrix.
+FINDING_23: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- allowlist harness covers representative basenames but not every documented pattern.
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates FINDING_9 relevant-checks routing gap.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- missing validator/size stubs are worthwhile but not load-bearing for this change set.
+FINDING_26: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- test-design-structure.sh has no pins for new LOOP_STATUS/passive-summary prose.
+FINDING_27: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- manual_gate_b test already stubs revise exit 99; legacy revise-skip proof is low value.
+FINDING_28: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Step 3 cleanup rm -rf round-* children without rejecting symlink targets.
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- sourcing handoff env is pre-existing trusted-session pattern, not introduced by this diff.
+FINDING_30: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- LARCH_PLAN_REVIEW_* overrides are intentional harness hooks documented in tests.
+FINDING_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cap env sourcing shares injection risk worth a follow-up issue when Step 3 is touched again.
+FINDING_32: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- panel-failed reuses uncleared _last_collect_out so COLLECT_OK_COUNT reflects prior round.
+FINDING_33: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- duplicates FINDING_19 main-agent snapshot gap.
+FINDING_34: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicates FINDING_6 panel-failed snapshot gap.
+FINDING_35: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- missing-diff-lines already sets LOOP_REASON=emit-plan-failed; distinct LOOP_STATUS is optional polish.
+FINDING_36: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- invoke-plan-validator under set -e can abort loop without plan-validator-defects terminal handling.
+FINDING_37: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- symlink snapshot skip with WARN matches plan fail-open forensic policy.
+FINDING_38: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- global awk line dedup in post-apply can strip intentional repeated plan content.
+FINDING_39: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- legacy tally-error→complete is specified behavior without --round-cap.
+FINDING_40: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_4 missing harness scenarios.
+FINDING_41: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_2 publish integration gap.
+FINDING_42: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- looser ACCEPTED_COUNT grep is unlikely to misfire on real ballots.
+FINDING_43: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- duplicates FINDING_15 revise_status misreport on post-apply exit.
+FINDING_44: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_4 plan acceptance #8 test gaps.
+FINDING_45: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_2 publish parity gap.
+FINDING_46: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates FINDING_21 doc/script coverage mismatch.
+FINDING_47: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates FINDING_9 relevant-checks mapping gap.
+FINDING_48: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- global _dedup_failed init is redundant but per-round reset at line 507 prevents stale state today.
+FINDING_49: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- nine duplicate focus-area anchor comments add noise without extra CI value.

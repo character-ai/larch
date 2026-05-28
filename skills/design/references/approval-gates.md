@@ -58,7 +58,7 @@ When the user picks **Ready for review**:
 
 ## Gate B — Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes — `accepted-plan-findings.md` (and `rejected-findings.md`, `oos.md`) have been written by the tally script. **The plan has NOT been revised yet** (Gate B is the only path that revises `plan.txt` from review findings).
+**When**: after Step 3 review completes — `accepted-plan-findings.md` (and `rejected-findings.md`, `oos.md`) have been written by the tally script. In legacy single-pass/manual branches the plan has **not** been revised yet; in multi-round `LOOP_STATUS=converged|cap-hit` branches the loop already revised `plan.txt` between rounds and Gate B is passive-summary only.
 
 ### Severity classification rubric
 
@@ -77,7 +77,20 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope f
 
 #### Gate B mode (auto-apply vs manual)
 
-Determine Gate B mode only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle. Resolve the mode defensively in this order: first, if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_gate_b=true` immediately; second, if the in-memory boolean `manual_requested` from Step 0b is still bound, let `manual_requested=true` force `manual_gate_b=true` without consulting `run-params.json`; third, read `manual_gate_b` from `$DESIGN_TMPDIR/run-params.json` using `jq -r '.manual_gate_b // false'` so missing/null coerces to `false`. The persisted value follows one canonical write rule from Step 0b recovery: `partition_requested` / `brainstorm_requested` are true-only merges, but `manual_gate_b` is overwritten from the current run's `manual_requested` value so omitting `--manual` clears stale persisted manual mode instead of preserving it accidentally. Session env and in-memory state are true-only overrides; persisted `run-params.json` remains the canonical source for proving `manual_gate_b=false`. If `run-params.json` cannot be read, `jq` is unavailable, or the mode cannot otherwise be confirmed from persisted state, print `**⚠ 3.5: Gate B — could not confirm manual_gate_b from persisted state (<reason>); defaulting to auto-apply unless a true-only manual override is already present.**`, append that warning under `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `append-tool-failure.sh` when possible, and continue with `manual_gate_b=false`.
+Determine Gate B mode only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle.
+
+**Multi-round loop outcomes** (read `$DESIGN_TMPDIR/.step3-plan-review-result.env` when present; see `plan-review.md` § Multi-round loop):
+
+- When `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, or `plan-validator-defects`, Gate B is **bypassed** — Step 3 already routed to Step 3b or the Step 2b.5 handler.
+- When `LOOP_STATUS` is `converged` or `cap-hit` and `manual_gate_b=false`, enter **passive-summary mode** (below) instead of the auto-apply path — findings were already applied inside `plan-review-loop.sh`.
+- When `LOOP_STATUS` is `revision-failed` or `emit-plan-failed`, use the full 3-option `AskUserQuestion` form so the operator can apply or inspect the final-round findings manually.
+- When `manual_gate_b=true`, always use the full 3-option form regardless of `LOOP_STATUS` (the loop exits after one round with `LOOP_STATUS=complete REASON=manual-gate-b` and does not auto-apply).
+
+#### Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)
+
+After parsing `.step3-plan-review-result.env` as data (read line-by-line and accept only the documented `KEY=value` schema; do not shell-source it), print `## Multi-round loop result` as a table with one row per `$DESIGN_TMPDIR/plan-review/round-N/round-summary.env` (columns: `ROUND_NUM`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `REVISE_STATUS`, `LOOP_STATUS`). End with: "All accepted findings were auto-applied across N rounds; `plan.txt` reflects the final state." Then fire `AskUserQuestion` with exactly two options: **Continue to Gate C** (Recommended) / **Switch to discussion mode**. Do **not** re-apply findings or run the shared post-apply pipeline — the loop already revised `plan.txt`.
+
+Resolve the mode defensively in this order: first, if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_gate_b=true` immediately; second, if the in-memory boolean `manual_requested` from Step 0b is still bound, let `manual_requested=true` force `manual_gate_b=true` without consulting `run-params.json`; third, read `manual_gate_b` from `$DESIGN_TMPDIR/run-params.json` using `jq -r '.manual_gate_b // false'` so missing/null coerces to `false`. The persisted value follows one canonical write rule from Step 0b recovery: `partition_requested` / `brainstorm_requested` are true-only merges, but `manual_gate_b` is overwritten from the current run's `manual_requested` value so omitting `--manual` clears stale persisted manual mode instead of preserving it accidentally. Session env and in-memory state are true-only overrides; persisted `run-params.json` remains the canonical source for proving `manual_gate_b=false`. If `run-params.json` cannot be read, `jq` is unavailable, or the mode cannot otherwise be confirmed from persisted state, print `**⚠ 3.5: Gate B — could not confirm manual_gate_b from persisted state (<reason>); defaulting to auto-apply unless a true-only manual override is already present.**`, append that warning under `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `append-tool-failure.sh` when possible, and continue with `manual_gate_b=false`.
 
 ### Presentation
 
@@ -87,7 +100,7 @@ When `manual_gate_b=false`, do **not** print the full review table above. The co
 
 ### Prompt
 
-When `manual_gate_b=false`, execute the auto-apply path:
+When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:
 
 1. Print a compact findings list under `## Plan Review Findings — Auto-applying`: one row per finding showing `FINDING_N | Severity | Reviewer(s) | <1-line concern excerpt>`. Use the same severity rubric and the same concern text source as the review table; truncate to the first 1-2 lines or 200 characters, whichever is shorter. Never paraphrase.
 2. Also print the rejected and OOS sections for context (same reads from `rejected-findings.md` / `oos.md` as the presentation table).

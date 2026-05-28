@@ -21,7 +21,7 @@ branch by:
 4. Running `larch-log.sh init` under `larch-logs/` in that worktree (schema v2
    `manifest.json` for skill `design`).
 5. Copying design artifacts: top-level regular files (maxdepth 1), the strict
-   `plan-review/round-<N>/findings-classification.tsv` allowlist, plus all
+   `plan-review/` round-artifact allowlist documented below, plus all
    regular files under `render-cache/` (recursive). Symlinks at the top level
    are skipped; `plan-review/` and `render-cache/` subtrees fail closed on any
    symlink anywhere in them.
@@ -147,11 +147,16 @@ it is fail-closed:
   replacement races, where a parent dir is swapped for a symlink between
   enumeration and stage, are not closed; this matches the residual race surface
   in `render-cache/`.
-- The relativized path must match the anchored regex
-  `^round-[1-9][0-9]*/findings-classification\.tsv$`. Round numbers are
-  positive integers with no leading zero; `round-0` and `round-01` are rejected.
-- Any unexpected file under `plan-review/` emits `larch_err` and
-  `PUBLISH_OK=false`.
+- Top-level round files must match `^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$` and pass
+  `design_round_artifact_included(basename)` from `scripts/lib-design-round-artifacts.sh`.
+- Files under `^round-[1-9][0-9]*/revise/[A-Za-z0-9._+-]+$` must pass
+  `design_round_revise_artifact_included(basename)`.
+- Any other path under `plan-review/` emits `larch_err` and `PUBLISH_OK=false`.
+- Round numbers are positive integers with no leading zero; `round-0` and `round-01` are rejected.
+
+Edit-in-sync: any allowlist change updates `lib-design-round-artifacts.sh`, this doc,
+`plan-review-loop.md`, `scripts/lib-design-round-artifacts.md`, and
+`scripts/test-lib-design-round-artifacts.sh` in the same change.
 
 Allowed files are staged through the same trim/redact pipeline as other design
 artifacts at `larch-logs/design/<RUN_ID>/plan-review/<relpath>`.

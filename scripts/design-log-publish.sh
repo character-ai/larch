@@ -31,6 +31,9 @@ source "$SCRIPT_DIR/lib-larch-log.sh"
 source "$SCRIPT_DIR/lib-redact.sh"
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
+# shellcheck source=scripts/lib-design-round-artifacts.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-design-round-artifacts.sh"
 
 DESIGN_TMPDIR=""
 RUN_ID=""
@@ -367,8 +370,26 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
                 ;;
         esac
         rel=${f#"$pr_root/"}
-        if ! [[ "$rel" =~ ^round-[1-9][0-9]*/findings-classification\.tsv$ ]]; then
-            larch_err "design-log-publish: unexpected file under plan-review: $rel"
+        if [[ "$rel" =~ ^round-[1-9][0-9]*/revise/[A-Za-z0-9._+-]+$ ]]; then
+            _base=$(basename "$rel")
+            if design_round_revise_artifact_included "$_base"; then
+                :
+            else
+                larch_err "design-log-publish: unexpected file under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
+                emit_publish_result false
+                exit 0
+            fi
+        elif [[ "$rel" =~ ^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$ ]]; then
+            _base=$(basename "$rel")
+            if design_round_artifact_included "$_base"; then
+                :
+            else
+                larch_err "design-log-publish: unexpected file under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
+                emit_publish_result false
+                exit 0
+            fi
+        else
+            larch_err "design-log-publish: unexpected path under plan-review (see scripts/lib-design-round-artifacts.md): $rel"
             emit_publish_result false
             exit 0
         fi

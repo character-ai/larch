@@ -1,6 +1,6 @@
 # plan-review-loop.sh
 
-**Consumer**: `/design` Step 3 — single-pass plan-review driver.
+**Consumer**: `/design` Step 3 — multi-round plan-review driver (legacy single-pass when `--round-cap` is omitted on argv).
 
 **Primary callers**: `skills/design/SKILL.md` Step 3 (foreground Bash block).
 
@@ -8,52 +8,73 @@
 
 Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before resolving the path with `cd ... && pwd -P`.
 
-- Writes session-root artifacts under `$DESIGN_TMPDIR/`: `ballot.txt`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md` (same names and parse contracts as the pre-refactor inline flow). `ballot.txt` is created or truncated on every exit path (including `panel-failed` and zero-finding short-circuit) so consumers avoid `ENOENT`.
-- Never revises `plan.txt` (Gate B owns plan revision).
+- Writes session-root artifacts under `$DESIGN_TMPDIR/`: `ballot.txt`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md`. `ballot.txt` is created or truncated on every exit path (including `panel-failed` and zero-finding short-circuit) so consumers avoid `ENOENT`. Never revises `plan.txt` in legacy mode; multi-round mode auto-applies via `revise-plan-with-waterfall.sh` when `manual_gate_b=false`.
+- In multi-round mode, `oos-accepted-design.md` is cumulative across settled rounds. Zero-finding, tally-error, and panel-failed branches preserve the prior cumulative file instead of truncating it, and only accepted OOS blocks are merged forward.
 - Honors `LARCH_AGGREGATOR_DISABLED=1` by skipping `aggregate-findings.sh` and setting `AGGREGATOR_STATUS=disabled`.
-- Emits stdout key/value lines: `LOOP_STATUS`, `ACCEPTED_COUNT`, `DEGRADED_PANEL`, `ROUNDS_COMPLETED`, `AGGREGATOR_STATUS`, `TALLY_PLAN_REVIEW_STATUS`, `VOTING_TALLY_FILE`, `VOTER_1_PARSE_RATE_STATUS`, plus optional `WARN=` lines. `DEGRADED_PANEL` factors in phase-2 fall-through relaunches via `COMBINED_FALLBACK_COUNT` from the panel waterfall (`> floor(slot_count/2)`), including on the no-findings short-circuit when tally is skipped. When no in-scope or OOS blocks remain after collection/dedup, tally is not invoked and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings` is emitted (distinct from a successful tally’s `ok`). Dedup failure sets `DEGRADED_PANEL=1` and a `WARN=` line while retaining raw findings. Non-zero `tally-plan-review.sh` exit still parses any stdout KVs, then forces `TALLY_PLAN_REVIEW_STATUS=tally-error` so `emit_loop_kvs` always runs. On non-zero tally exit, the loop ensures `voting-tally.md` exists with at least the degraded header (`# Plan Review Voting Tally` plus an abort note carrying `rc=<N>`) so downstream `ACTION=FINALIZE` is robust.
-- Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv`
-  for normal tally runs and writes a header-only TSV on empty-artifact exits
-  that bypass tally.
-- SKILL.md Step 3 owns cap enforcement, counter persistence, and writes `$DESIGN_TMPDIR/review-round-count.txt`; Gate C only reads that counter for UI-cap-aware prompting. `plan-review-loop.sh` is stateless and consumes the supplied `--round-num <int>` only for emitted KVs and round-N artifact paths.
+- Emits stdout KV lines documented below plus optional `WARN=` lines.
+- Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv` for normal tally runs; header-only TSV on empty-artifact exits.
+- Writes `$DESIGN_TMPDIR/.step3-plan-review-result.env` at every terminal exit (multi-round and legacy).
+- Per-round forensics allowlist: `scripts/lib-design-round-artifacts.md`.
+- Allowed snapshot inputs must be regular files. If an allowlisted session-root artifact resolves as a symlink, the new snapshot payload is discarded, pre-existing `round-N/revise/` forensics are preserved, and terminal statuses keep their original `LOOP_STATUS` while appending `snapshot-failed` to `REASON` when the failure happens after a terminal outcome has already been determined.
 
 ## Argv
 
-`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (default 1), `--codex-present`, `--cursor-present`, optional `--timeout` (panel + collect; default 1860), `--help`.
+`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (starting round; default 1), optional `--round-cap N` (enables multi-round when present on argv; default value from `LARCH_DESIGN_ROUND_CAP` only applies when the flag is passed), optional `--convergence-threshold N` (default `${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}`), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`.
 
-When `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, the driver materializes `$DESIGN_TMPDIR/plan-review-feature-context.txt` by concatenating the resolved feature file with a `## Brainstorm synthesis (additive; optional)` section, then uses that merged path for `scout-plan-archetypes-wrapper.sh` (`--description-file`) and `dispatch-plan-review-panel.sh` (`--feature-file`). When `brainstorm.md` is absent or empty, `--feature-file` (or the default `feature-description.txt`) is used unchanged.
+**Legacy contract**: omit `--round-cap` → single pass, `LOOP_STATUS=complete`, no inner revise loop.
 
-## Outline
+## Machine output (stdout)
 
-Scout → panel dispatch → collect → dirty-tree checkpoint → TSV → findings → dedup → split in-scope/OOS → aggregate (`--input-mode plan`) → ballot → `dispatch-plan-voters.sh` → dirty-tree checkpoint → `tally-plan-review.sh` → final KVs.
+| Key | When set |
+|-----|----------|
+| `LOOP_STATUS` | Always |
+| `ACCEPTED_COUNT` | Always |
+| `IMPORTANT_ACCEPTED_COUNT` | Always |
+| `DEGRADED_PANEL` | Always |
+| `ROUNDS_COMPLETED` | Always |
+| `AGGREGATOR_STATUS` | Always |
+| `TALLY_PLAN_REVIEW_STATUS` | Always |
+| `VOTING_TALLY_FILE` | Always |
+| `VOTER_1_PARSE_RATE_STATUS` | Always |
+| `CONVERGENCE_STREAK` | Multi-round |
+| `REASON` | When annotated (`zero-findings`, `zero-findings-degraded-panel`, `streak`, `cap-hit`, `revision-failed`, `manual-gate-b`, etc.) |
+| `REVISE_STATUS` | Multi-round revise path |
+| `COLLECT_OK_COUNT` / `COLLECT_FAILURE_COUNT` | Multi-round |
 
-The voter handoff binds `VOTER_N_PATH`, `VOTER_N_TOOL`, and `VOTER_N_STATUS`
-from `dispatch-plan-voters.sh` stdout for N=1..3. The loop does not use the
-legacy compacted `VOTER_PATHS_FILE` for the tally argv. For each non-failed
-slot with a path, it emits `--voter <SLOT>:<PATH>` in slot order plus
-`--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"`.
-`tally-plan-review.sh` keys the forensic TSV columns from the declared
-`--voter` slot labels, so misleading basenames cannot override the canonical
-`Claude -> v1`, `Codex -> v2`, `Cursor -> v3` mapping. Waterfall fallback tool
-identity remains visible via `vN_tool`.
+`LOOP_STATUS` values: `complete`, `converged`, `cap-hit`, `zero-findings-degraded-panel`, `revision-failed`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `emit-plan-failed`, `panel-failed`, `main-agent-vote-required`.
 
-If the 0-judge main-agent path reruns tally, it uses
-`--voter MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt`. Schema details and
-`vN_tool` semantics are owned by `tally-plan-review.md`.
+## Durable handoff: `.step3-plan-review-result.env`
 
-## Scope
+Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Values use a controlled vocabulary (no raw user content). See `plan-review-loop.sh` function `write_step3_result_env`.
 
-Introduced for #2676; absorbs aggregator use in /design (`aggregate-findings.sh` with `--input-mode plan` per dialectic DECISION_1) and Voter 1 subprocess launch via `dispatch-plan-voters.sh`.
+## `round-summary.env` schema
+
+Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `CONVERGENCE_STREAK`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `REVISE_WINNING_TIER`, `PLAN_HASH_BEFORE_REVISE`, `PLAN_HASH_AFTER_REVISE`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`.
+
+## Exit codes
+
+| Code | `LOOP_STATUS` |
+|------|----------------|
+| 0 | `converged`, `cap-hit`, `zero-findings-degraded-panel`, `revision-failed`, `main-agent-vote-required`, `complete`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `emit-plan-failed` |
+| 1 | `panel-failed` |
+| 2 | argv error |
+
+## Cross-links
+
+- `scripts/lib-design-round-artifacts.md` — snapshot/publish allowlist
+- `revise-plan-with-waterfall.md` — `REVISE_STATUS` contract
+- `aggregate-findings.md` — `--allow-findings-outside-tmpdir true`
+- `tally-plan-review.md`, `dispatch-plan-voters.md`
+
+## Cross-entry forensic limitation
+
+Each Step 3 entry clears `plan-review/round-*/` before launch (SKILL.md); prior Step 3 entry forensics are not retained across Gate C re-runs.
 
 ## Makefile
 
-`make test-plan-review-loop`
+`make test-plan-review-loop` — see `skills/design/scripts/test-plan-review-loop.sh`.
 
-## Harness
-
-`skills/design/scripts/test-plan-review-loop.sh` exercises argv validation, a stubbed end-to-end path (optional `LARCH_PLAN_REVIEW_SCOUT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH`, `LARCH_PLAN_REVIEW_COLLECT_SH`, `LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH`, `LARCH_PLAN_REVIEW_TALLY_SH` pointing at test doubles), zero-finding vs single-finding ballots with real `tally-plan-review.sh`, panel-failed header-only artifact materialization, tally failure recovery KVs, and degraded `voting-tally.md` materialization when the tally stub exits non-zero. It is not a full production panel simulation.
-
-Structural coverage: Step 3 must not pass `--round-num 1` unconditionally; supplied `--round-num 2` must produce round-2 artifact paths.
+`make test-design-multi-round-integration` — cross-script harness.
 
 ## Edit-in-sync
 

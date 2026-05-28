@@ -509,6 +509,16 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-check-main-sync.sh",
   "scripts/test-check-main-sync.md",
+  # scripts/test-lib-design-round-artifacts.sh and
+  # scripts/test-design-multi-round-integration.sh are Makefile-only
+  # regression harnesses for the /design plan-review round-artifact
+  # allowlist. The runtime library/script surfaces are referenced from
+  # skills/design/scripts/plan-review-loop.sh and scripts/design-log-publish.sh,
+  # but the harnesses themselves are not invoked from skill prose.
+  "scripts/test-lib-design-round-artifacts.sh",
+  "scripts/test-lib-design-round-artifacts.md",
+  "scripts/test-design-multi-round-integration.sh",
+  "scripts/test-design-multi-round-integration.md",
   # Recovery/helper harnesses introduced for manifest-schema recovery are
   # Makefile-only regression tests. They are documented in docs/linting.md and
   # their sibling contracts, but not invoked by skill runtime prose.

@@ -64,6 +64,25 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/scripts/plan-review-loop.sh|skills/design/scripts/plan-review-loop.md|skills/design/scripts/test-plan-review-loop.sh)
+                append_target_once test-plan-review-loop
+                append_target_once test-design-multi-round-integration
+                ;;
+        esac
+        case "$f" in
+            scripts/design-log-publish.sh|scripts/test-design-log-publish.sh|scripts/test-design-multi-round-integration.sh|scripts/test-design-multi-round-integration.md)
+                append_target_once test-design-log-publish
+                append_target_once test-design-multi-round-integration
+                ;;
+        esac
+        case "$f" in
+            scripts/lib-design-round-artifacts.sh|scripts/lib-design-round-artifacts.md|scripts/test-lib-design-round-artifacts.sh)
+                append_target_once test-lib-design-round-artifacts
+                append_target_once test-design-multi-round-integration
+                append_target_once test-design-log-publish
+                ;;
+        esac
+        case "$f" in
             scripts/collect-agent-results.sh|scripts/test-collect-agent-results.sh) # lint-foreground-markers: ok relevant-checks case pattern
                 append_target_once test-collect-agent-results
                 ;;

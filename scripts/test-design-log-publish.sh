@@ -242,6 +242,10 @@ printf '{"ok":1,"result":{"token":"x"}}\n' >"$TMP/design/voter-output-1.json"
 printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
 printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMP/design/plan-review/round-1/findings-classification.tsv"
+printf '### FINDING_1:\n' >"$TMP/design/plan-review/round-1/findings.md"
+mkdir -p "$TMP/design/plan-review/round-1/revise"
+printf 'prompt\n' >"$TMP/design/plan-review/round-1/revise/prompt.txt"
+printf 'patch\n' >"$TMP/design/plan-review/round-1/revise/codex-candidate.patch"
 # Files that MUST be denied by the suffix deny-list (mirrors /implement's
 # round_artifact_included deny patterns):
 printf 'noisy raw transcript\n' >"$TMP/design/codex-plan-arch-output.txt.sidecar"
@@ -267,6 +271,9 @@ git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan.txt" ]] || fail "plan.txt missing on main"
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings-classification.tsv" ]] || fail "plan-review classification TSV missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings.md" ]] || fail "plan-review findings.md missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/prompt.txt" ]] || fail "plan-review revise prompt.txt missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/codex-candidate.patch" ]] || fail "plan-review revise candidate patch missing"
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
 ! grep -q CMD_JSON "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "CMD_JSON should be stripped"
 ! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped from *-output*.json"
@@ -291,6 +298,15 @@ for denied in \
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.events.jsonl" ]] || fail "denied events basename leaked into render-cache"
+
+echo "=== revise allowlist rejects unexpected file under round-N/revise ==="
+printf 'nope\n' >"$TMP/design/plan-review/round-1/revise/extra.log"
+out_revise_bad=$(
+    (cd "$clone" && bash "$PUBLISH" --design-tmpdir "$TMP/design" --run-id "RUNPUBREV1" --issue 42 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_revise_bad" == *"PUBLISH_OK=false"* ]] || fail "unexpected revise file should fail publish"
+git -C "$clone" branch -D larch-log-design-RUNPUBREV1 >/dev/null 2>&1 || true
+rm -f "$TMP/design/plan-review/round-1/revise/extra.log"
 
 echo "=== pause reason stages .completed and manifest paused ==="
 TMPPAUSE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause.XXXXXX")

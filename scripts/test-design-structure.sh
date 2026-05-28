@@ -41,7 +41,12 @@ contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`'
 contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
 contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroughness**.' 'SKILL missing HARD designer emphasis'
 contains "$SKILL_MD" 'review-round-count.txt' 'SKILL missing review-round counter'
-contains "$SKILL_MD" "--round-num \"\${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}\"" 'SKILL must pass persisted Step 3 round number'
+# shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
+contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to plan-review-loop'
+# shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
+contains "$SKILL_MD" '--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"' 'SKILL must pass convergence-threshold to plan-review-loop'
+contains "$SKILL_MD" '.step3-plan-review-result.env' 'SKILL must source step3 plan-review result env'
+contains "$SKILL_MD" 'result env is a symlink; ignoring it and using stdout fallback only' 'SKILL missing symlink-safe step3 result env warning'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'
 contains "$SKILL_MD" 'read-design-classification.sh' 'SKILL missing classification reader'
 contains "$SKILL_MD" '.step3-review-cap.env' 'SKILL missing persisted Step 3 cap state file'
@@ -51,6 +56,10 @@ contains "$SKILL_MD" 'STEP3_REVIEW_ROUND_NUM=' 'SKILL missing persisted Step 3 r
 contains "$SKILL_MD" 'including `LOOP_STATUS=panel-failed`' 'SKILL missing panel-failed counter-consumption contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' 'SKILL missing tally-error counter-skip contract'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" '`LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode**' 'SKILL missing passive-summary branch matrix entry'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" '`LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure' 'SKILL missing emit-plan-failed branch matrix entry'
 contains "$SKILL_MD" 'review-round cap (' 'SKILL missing Step 3 cap breadcrumb prose'
 contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
 contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
@@ -75,6 +84,10 @@ absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must n
 contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:' 'approval-gates.md missing explicit converged/cap-hit auto-apply skip guard'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 're-fires the same Gate A `AskUserQuestion` minus the `See full plan` option, leaving exactly two options (`Ready for review` / `Discuss more`)' 'approval-gates.md missing Gate A See-full-plan re-prompt contract'
@@ -127,8 +140,8 @@ fi
 # SKILL.md because CI and prompt rendering scan the inline reviewer launch
 # blocks, while scriptable mechanics route through ACTION records.
 focus_anchor_count=$(grep -Fc 'Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security' "$SKILL_MD")
-[[ "$focus_anchor_count" == "10" ]] \
-  || fail "(14a) SKILL.md must keep 10 focus-area enum anchor comments; found $focus_anchor_count"
+[[ "$focus_anchor_count" == "1" ]] \
+  || fail "(14a) SKILL.md must keep exactly 1 focus-area enum anchor comment; found $focus_anchor_count"
 grep -Fq 'ACTION=EMIT_PLAN' "$SKILL_MD" \
   || fail "(14b1) SKILL.md missing ACTION=EMIT_PLAN emission"
 grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
@@ -529,7 +542,7 @@ grep -Fq 'if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_ga
 grep -Fq "jq -r '.manual_gate_b // false'" "$APPROVAL_MD" \
   || fail "(FINDING_9) approval-gates.md must pin jq -r '.manual_gate_b // false' for missing/null coercion"
 # shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'When `manual_gate_b=false`, execute the auto-apply path:' "$APPROVAL_MD" \
+grep -Fq 'When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:' "$APPROVAL_MD" \
   || fail "(2930) approval-gates.md missing unique auto-apply mode branch anchor"
 # shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
 grep -Fq 'When `manual_gate_b=true`, print a table under the header `## Plan Review Findings — Review`' "$APPROVAL_MD" \
@@ -564,7 +577,7 @@ grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit will p
 grep -Fq 'findings are surfaced to Gate B, which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_MD" \
   || fail "(FINDING_6) plan-review.md missing Gate B dual-mode application pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq 'When Gate B resolves `manual_gate_b=false`, it applies every accepted in-scope finding to `plan.txt`' "$SKILL_MD" \
+grep -Fq 'When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch.' "$SKILL_MD" \
   || fail "(FINDING_7) SKILL.md Step 3 missing auto-apply pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
 grep -Fq 'it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation' "$SKILL_MD" \
