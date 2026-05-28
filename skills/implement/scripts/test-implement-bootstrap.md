@@ -34,6 +34,7 @@
 | B5-coder-implicit-claude | Phase 4 implicit path with both external implementers unavailable emits `coder=claude` and `coder_fallback=true`. |
 | B5-coder-explicit-claude-happy | Explicit `--coder=claude` emits `coder=claude` without setting `coder_fallback=true`, even when both external implementers are unavailable. |
 | B5-coder-explicit-unavailable | Explicit unavailable `--coder=cursor` emits `IMPLEMENT_BAIL_REASON=coder-unavailable`, `STALL_TRACKING=true`, and no `coder`. |
+| B5-coder-skip-missing-plan | `--resume-plan-tail` with an adopted sentinel but missing `plan.txt` preserves the planned `PLAN_FILE` path and skips coder selection instead of emitting a fallback coder. |
 | B5-coder-skip-missing-feature-description | `--resume-plan-tail` with an adopted sentinel but missing `feature-description.txt` preserves the existing `PLAN_FILE` and skips coder selection instead of emitting a fallback coder. |
 | B5-plan-best-effort-failures | Non-fatal `run-step1-plan-log.sh`, `write-tally.sh`, and `tracking-issue-summary.sh` failures append Warnings and still return a green Phase 3 tail. |
 | B5-plan-goal-redaction-failure | Goal-text redaction fails closed to a placeholder and appends a Warning instead of logging the raw issue title. |

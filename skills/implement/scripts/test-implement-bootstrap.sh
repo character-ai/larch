@@ -1317,6 +1317,31 @@ else
 fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
+# --- B5-coder-skip-missing-plan ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCoderMissingPlan --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-plan setup plan exit 0"
+rm -f "$SANDBOX_TMP/plan.txt"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderMissingPlan --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-plan exit 0"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B5-coder-skip-missing-plan keeps plan file path"
+assert_line "coder=" "$out" "B5-coder-skip-missing-plan empty coder"
+assert_line "coder_fallback=" "$out" "B5-coder-skip-missing-plan empty fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-skip-missing-plan empty bail"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'gh issue view 123' || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B5-coder-skip-missing-plan no second gh"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B5-coder-skip-missing-plan no second gh"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
 # --- B5-plan-best-effort-failures ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox

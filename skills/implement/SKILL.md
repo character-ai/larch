@@ -406,7 +406,7 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 | Condition | Routing |
 |---|---|
 | `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty | Continue to Rebase Macro 1.r, then Step 2 with `--coder "$coder"`. |
-| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, re-run `_ib_run_bootstrap --resume-plan-tail` inside the existing tmpdir, then re-run `_ib_parse_bootstrap_out` before re-evaluating the routing table. |
+| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/session-env.sh`, then re-run `_ib_run_bootstrap --resume-plan-tail` inside the existing tmpdir and re-run `_ib_parse_bootstrap_out` before re-evaluating the routing table. Resume-tail reuses the persisted Step 0 availability keys from `session-env.sh`; it does not run fresh reviewer probes. |
 | `IMPLEMENT_BAIL_REASON=coder-unavailable` | `STALL_TRACKING=true`; skip to Step 18 cleanup. |
 | `IMPLEMENT_BAIL_REASON=adopted-issue-closed` or `adopted-issue-is-pr` | Skip to Step 18 cleanup. |
 | `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `run-flags-persist-failed`, or `branch-create-failed` | `STALL_TRACKING=true`; skip to Step 18 cleanup. |
@@ -416,6 +416,10 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 Dirty-tree recovery bootstrap fence:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" _ib_run_bootstrap --resume-plan-tail
 _ib_parse_bootstrap_out
 ```
@@ -730,8 +734,10 @@ Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory), th
 
 Print one of the following based on which path landed here, evaluated **in this exact order** (first match wins):
 - When `coder=claude` AND `coder_fallback=true`: `**⚠ Cursor and Codex unavailable — implementing with main agent.**`
-- When `coder=cursor`: `**⚠ Cursor selection drifted after Step 0; Step 2 fell back to the main agent.**` Also log `Step 2 — cursor selection drift: session-env no longer permits cursor, dispatcher returned claude_fallback` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
+- When `coder=codex`: `**⚠ Codex selection drifted after Step 0; Step 2 fell back to the main agent.**` Also log `Step 2 — codex selection drift: session-env no longer permits codex, dispatcher returned claude_fallback` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
 - When `coder=claude`: `**ℹ Implementing with main agent (coder=claude).**`
+
+If `coder=cursor` and Step 2 returned `STATUS=claude_fallback`, that is **not** a Step 2.4 messaging branch. Step 2 must already have failed closed before entering 2.4 because the bootstrap-selected Cursor path is not allowed to silently drift into Claude fallback.
 
 **Opportunistic questions**: before edits, if the plan leaves ambiguous choices — interpretations the plan does not pin down and the codebase does not unambiguously dictate — first consult `CLAUDE.md` when it may resolve the interpretation, then batch any remaining 1-4 into a single `AskUserQuestion`. Ask freely about plan ambiguities; do NOT ask about whether to do the plan, scope, or capacity (see "No mid-run scope re-litigation").
 

@@ -16,7 +16,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
 | `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. On availability mismatch emits the explicit-coder warning, sets `STALL_TRACKING=true`, and `IMPLEMENT_BAIL_REASON=coder-unavailable`. When omitted, `phase_coder_select` runs the Cursor → Codex → Claude waterfall. |
 | `--preflight-tmpdir` | with `--issue-number` when `--up-to-phase` is `plan`, `coder`, or `all` | path | Directory containing `plan-from-issue.txt` from Preflight. |
-| `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh`, re-runs the dirty-tree checkpoint, and resumes only the Phase 3 tail after that checkpoint succeeds. |
+| `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh`, re-runs the dirty-tree checkpoint, and resumes only the Phase 3 tail after that checkpoint succeeds. Reviewer availability is reloaded from the persisted session-env keys; no fresh reviewer probes run on this path. |
 
 ## Inputs (Phase 1)
 
@@ -99,7 +99,7 @@ Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_
 
 ## Phase-skip semantics
 
-Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there is no bail reason, no stall, and the repo is available. This intentionally allows `DEFERRED=true` paths such as forked targets and `POSTED=false` metadata defers so Step 2 still receives `feature-description.txt` and `plan.txt`. Phase 4's `should_run_post_tracking_phase` is equally permissive for deferred paths: it runs whenever there is no hard bail and no stall. `REPO_UNAVAILABLE` / missing-plan skip is enforced inside `phase_coder_select` itself; those paths return early without populating `coder=`.
+Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there is no bail reason, no stall, and the repo is available. This intentionally allows `DEFERRED=true` paths such as forked targets and `POSTED=false` metadata defers so Step 2 still receives `feature-description.txt` and `plan.txt`. Phase 4's `should_run_post_tracking_phase` is equally permissive for deferred paths: it runs whenever there is no hard bail and no stall. `REPO_UNAVAILABLE` / missing-plan skip is enforced inside `phase_coder_select` itself; those paths return early without populating `coder=`. For the coder gate, "missing-plan" includes empty / unreadable `PLAN_FILE` and missing `$IMPLEMENT_TMPDIR/feature-description.txt`.
 
 ## Behavior mapping (Step 0 SKILL.md)
 
