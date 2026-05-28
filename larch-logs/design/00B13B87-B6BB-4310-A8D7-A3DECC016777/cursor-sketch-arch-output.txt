@@ -1,0 +1,37 @@
+Exploring the codebase to ground the architecture proposal in current patterns and dependencies.
+## 1. Key architectural decisions
+
+Treat `plan-review-loop.sh` as the **workflow engine** and keep `SKILL.md` as a **thin orchestrator**: one foreground Step 3 invocation, N internal rounds. Refactor the existing single-pass body (scout → panel → collect → dedup → aggregate → voters → tally) into a `_run_plan_review_round()` (or equivalent) called from a `while` loop; do not add another top-level wrapper. The loop owns convergence (`LARCH_DESIGN_CONVERGENCE_THRESHOLD`), internal cap (`LARCH_DESIGN_ROUND_CAP` / `--round-cap`), zero-findings short-circuit, and between-round `revise-plan-with-waterfall.sh`; Step 3 keeps **tier cap** and `review-round-count.txt` for Gate C “Re-run review panel” only.
+
+Reuse existing libraries instead of new abstractions: `dispatch-plan-voters.sh` already supports per-round `--design-tmpdir` (`$DESIGN_TMPDIR/plan-review/round-N/`); `revise-plan-with-waterfall.sh` is the between-round mutator; `lib-findings-classification.sh` + `tally-plan-review.sh` stay the vote/TSV authority; `aggregate-findings.sh` should use per-round `agg-in-scope/` scratch with findings staged **under** `--review-tmpdir` (or `--allow-findings-outside-tmpdir true` where Piece 2 landed). For committed forensics, mirror `/implement`’s `larch-log.sh write-round` **policy** (basename allowlist + `stage_round_artifact` trim/redact) inside `design-log-publish.sh`—design logs do not call `write-round` directly today.
+
+**Artifact layering** is the main invariant: `$DESIGN_TMPDIR/plan-review/round-N/` holds round-scoped voter outputs, TSV, ballots, and distilled copies; session-root files (`plan.txt`, `accepted-plan-findings.md`, `voting-tally.md`, etc.) always reflect **final loop exit** state. After each round’s tally, compute `ACCEPTED_COUNT` and `IMPORTANT_ACCEPTED_COUNT` (grep `accepted-plan-findings.md` for in-scope `### FINDING_N:` with `- **Severity**: important`), extend `emit_loop_kvs` with convergence fields, and exit on two consecutive non-degraded low rounds, zero-finds (with collector evidence), cap, `revision-failed`, or hard errors. Final/convergence-round accepted findings stay in artifacts for Gate B—do not fold them into auto-apply inside the loop.
+
+## 2. Files/modules to modify and layering notes
+
+| Surface | Role |
+|--------|------|
+| `skills/design/scripts/plan-review-loop.sh` + `.md` | Inner loop, per-round dirs, convergence/revision gates, final KVs, round forensics staging |
+| `skills/design/SKILL.md` | Single `plan-review-loop.sh` call with `--round-cap` / `--convergence-threshold`; parse new KVs; drop orchestrator-side multi-pass; clarify tier cap vs internal cap |
+| `skills/design/references/plan-review.md` | Env vars, cap/convergence semantics, per-round layout |
+| `scripts/design-log-publish.sh` + `.md` | Widen `plan-review/` allowlist from lone `findings-classification.tsv` to recursive round subtree matching implement deny/trim rules |
+| `skills/design/scripts/test-plan-review-loop.sh` | Stubbed multi-round, convergence, revision-failed, cap paths |
+| `scripts/test-design-multi-round-integration.sh` + `.md` | New E2E harness (stub waterfall + tally) |
+
+**Boundary discipline:** `plan-review-loop.sh` must not read/write `review-round-count.txt` (today’s contract in `plan-review-loop.md` line 16). Gate B remains the user-facing apply surface; the loop only uses `revise-plan-with-waterfall.sh` for **inter-round** plan mutation. **SRP risk:** the script will grow past ~700 lines—mitigate with an extracted round function and a small shared helper for severity/convergence counting (bash or inline Python, matching existing dedup style), not a second orchestration script.
+
+**Publish vs session:** `design-log-publish.sh` currently allowlists only `round-<N>/findings-classification.tsv` (lines 363–364). Piece 5 should add a shared allowlist function aligned with `round_artifact_included()` in `scripts/larch-log.sh` (lines 67–101) so design round trees commit the same forensic class as implement rounds without duplicating divergent deny rules.
+
+## 3. Tradeoffs (maintainability vs convenience)
+
+**Monolithic loop script vs split modules:** Keeping everything in `plan-review-loop.sh` matches the approved direction and avoids orchestrator/script drift, but raises review and test cost. A private `_run_plan_review_round` plus round-end `_distill_round_forensics` is the minimum structure; resist extracting a “round driver” script unless tests force it.
+
+**Top-level overwrite vs per-round snapshots:** Overwriting `$DESIGN_TMPDIR/accepted-plan-findings.md` each round is simple for Gate B and Step 4 consumers but loses history unless every round copies into `plan-review/round-N/` before the next iteration. Prefer explicit copy-on-round-end over symlink tricks—publish already fails closed on symlinks under `plan-review/`.
+
+**Two caps, two revision paths:** Internal `LARCH_DESIGN_ROUND_CAP` (convergence loop) vs SKILL tier cap (`SIMPLE` 3 / `HARD` 5 on `review-round-count.txt`) serve different purposes; conflating them in one counter will break Gate C UX. Document clearly in `plan-review.md` and Step 3 prose.
+
+**Gate B after auto-apply default:** With `manual_gate_b=false`, Gate B still auto-applies **final** accepted findings after the loop; inter-round revision is waterfall-only. Step 2a should resolve whether Gate B becomes a passive summary on convergence (open question)—that affects whether Gate B duplicates work the loop already did.
+
+**Testing:** Unit stubs in `test-plan-review-loop.sh` stay fast; the new integration harness pays for cross-script KVs and publish allowlist behavior. Without it, regressions will show up only in live `/design` runs.
+
+**Dependencies:** Piece 5 assumes Pieces 1–4 (`--context-files` on `launch-claude-review.sh`, aggregator relaxation, per-round voter routing, `revise-plan-with-waterfall.sh`). Land or stub those contracts before expanding the loop, or multi-round tests will fail for the wrong reasons.

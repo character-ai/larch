@@ -1,0 +1,31 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/revise-plan-with-waterfall.sh:348-386	Plan treats revise failure as non-zero rc, but helper reports failed revisions via REVISE_STATUS while exiting 0	A failed/no-patch waterfall is interpreted as success, PLAN_HASH_AFTER_REVISE stays equal, accepted findings are not applied, and the loop can converge or cap-hit with silently unapplied findings	Parse revise stdout, require REVISE_STATUS=ok for success, branch revision-failed on any failed-* status, and add a regression where the helper exits 0 with REVISE_STATUS=failed-no-patch
+1	in_scope	important	risk-integration	skills/design/scripts/revise-plan-with-waterfall.sh:104-108; scripts/design-log-publish.sh:352-367	Plan disallows plan-review/round-N/revise while the revise helper writes there	Any successful auto-apply creates plan-review/round-N/revise artifacts, then design-log-publish fail-closes on the unexpected nested path during final publish	Either update revise-plan-with-waterfall.sh and its md/tests to write under DESIGN_TMPDIR/revise/round-N, or allow a constrained round-N/revise allowlist in design-log-publish and document it
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:368-377; skills/design/SKILL.md:1196-1223	Accepted OOS artifacts are overwritten each internal round with no cross-round merge	OOS accepted in round 1 disappears when round 2 rewrites oos-accepted-design.md, so Step 5b never files that accepted issue	Define and test a cross-round OOS union artifact, dedupe OOS IDs across rounds, and make Step 5b consume the union after the loop
+1	in_scope	important	security	skills/design/SKILL.md:917-993	Proposed stale-round cleanup uses rm -rf through an unchecked plan-review path	If DESIGN_TMPDIR/plan-review is a symlink or swapped path, rm -rf "$DESIGN_TMPDIR/plan-review/round-"* can delete round-* paths outside the session tree	Before cleanup, reject symlink/non-directory plan-review paths, resolve the physical root, and delete only validated child directories under that root
+1	in_scope	latent	architecture	skills/design/references/approval-gates.md:82-96; skills/design/scripts/plan-review-loop.md:7-16	Round summary schema omits fields Gate B is supposed to derive from it	Passive-summary mode promises per-round LOOP_STATUS, but round-summary.env lacks LOOP_STATUS/REASON/REVISE_STATUS and may record pre-failure DEGRADED_PANEL values	Add LOOP_STATUS, REASON, CONVERGENCE_STREAK, REVISE_STATUS, and revise tier/status fields to round-summary.env; write the final per-round state after revision outcome is known
+1	in_scope	important	risk-integration	skills/design/scripts/plan-review-loop.sh:24-58; skills/design/scripts/plan-review-loop.md:18-20	Round-cap defaults and single-pass compatibility are internally inconsistent	One part says --round-cap defaults to LARCH_DESIGN_ROUND_CAP, another says omitted --round-cap defaults to --round-num; existing callers may unexpectedly run multiple rounds or auto-revise when they expected a single complete pass	Add an explicit ROUND_CAP_ARG_SEEN/single_pass_mode contract: omitted --round-cap ignores env and preserves old complete/no-auto-loop behavior, while SKILL.md passes explicit production caps
+
+1. [correctness] `skills/design/scripts/revise-plan-with-waterfall.sh:348-386`
+Concern: the plan branches on `revise_rc != 0`, but the helper exits `0` even when `REVISE_STATUS=failed-no-patch`, `failed-validation`, or `failed-apply`.
+Suggested revision: parse the helper KVs and treat only `REVISE_STATUS=ok` as success.
+
+2. [risk-integration] `skills/design/scripts/revise-plan-with-waterfall.sh:104-108`, `scripts/design-log-publish.sh:352-367`
+Concern: the plan says to disallow `plan-review/round-N/revise`, but the existing revise helper writes exactly there.
+Suggested revision: either move revise forensics out of `plan-review/`, or publish a tightly constrained `revise/` allowlist.
+
+3. [correctness] `skills/design/scripts/tally-plan-review.sh:368-377`, `skills/design/SKILL.md:1196-1223`
+Concern: multi-round tally overwrites `oos-accepted-design.md`; earlier accepted OOS items can vanish before issue filing.
+Suggested revision: accumulate accepted OOS across rounds and make Step 5b consume the accumulated artifact.
+
+4. [security] `skills/design/SKILL.md:917-993`
+Concern: the proposed `rm -rf "$DESIGN_TMPDIR/plan-review/round-"*` cleanup is unsafe if `plan-review` is a symlink or swapped path.
+Suggested revision: validate the directory is real and under the session root before deleting validated `round-*` children.
+
+5. [architecture] `skills/design/references/approval-gates.md:82-96`, `skills/design/scripts/plan-review-loop.md:7-16`
+Concern: Gate B’s passive summary needs fields that the proposed `round-summary.env` schema does not contain.
+Suggested revision: include final `LOOP_STATUS`, `REASON`, `REVISE_STATUS`, and final degraded state per round.
+
+6. [risk-integration] `skills/design/scripts/plan-review-loop.sh:24-58`, `skills/design/scripts/plan-review-loop.md:18-20`
+Concern: `--round-cap` defaults conflict with the claimed single-pass compatibility.
+Suggested revision: define an explicit implicit-single-pass mode and test old callers separately from the new SKILL.md explicit-cap path.

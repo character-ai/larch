@@ -1,0 +1,50 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/revise-plan-with-waterfall.sh:348-386	Plan treats revise failure as nonzero rc, but helper reports failed-no-patch, failed-validation, and failed-apply via REVISE_STATUS while exiting 0	A failed waterfall is treated as success, PLAN_HASH_AFTER_REVISE is recorded, and the loop may converge or hit cap with accepted findings unapplied	Parse revise stdout and require REVISE_STATUS=ok; treat any other REVISE_STATUS as LOOP_STATUS=revision-failed, and update tests to stub status as well as rc
+1	in_scope	important	risk-integration	skills/design/scripts/revise-plan-with-waterfall.sh:104-108 scripts/design-log-publish.sh:352-367	Plan disallows plan-review/round-N/revise publishing, but the revise helper writes exactly that subtree	Every successful auto-apply creates plan-review/round-N/revise/*, then design-log-publish.sh fails closed on nested unexpected files	Update revise-plan-with-waterfall.sh and its md sibling to write forensics under DESIGN_TMPDIR/revise/round-N, or allow a constrained nested revise allowlist in design-log-publish.sh; make the plan choose one concrete contract
+1	in_scope	important	correctness	skills/design/scripts/plan-review-loop.sh:661-676 skills/design/scripts/tally-plan-review.sh:121-133	Outer-loop pseudocode has no tally-error branch before accepted-count, revision, and convergence logic	If tally fails before accepted-plan-findings.md is truncated, stale findings from a prior round can be revised again or counted as convergence/cap evidence	After each round, branch on TALLY_PLAN_REVIEW_STATUS=tally-error before snapshot/revise/convergence; emit KVs that let SKILL.md roll back review-round-count.txt and do not consume stale accepted artifacts
+1	in_scope	important	risk-integration	skills/design/SKILL.md:1037 skills/design/scripts/tally-plan-review.sh:103-105	Main-agent vote rerun is left unchanged, so tally defaults findings-classification-out to round-1	In internal round 2+, main-agent adjudication overwrites or misplaces the classification TSV and the round snapshot no longer matches the round that needed main-agent voting	Update the main-agent-vote-required path to pass --findings-classification-out "$DESIGN_TMPDIR/plan-review/round-$ROUNDS_COMPLETED/findings-classification.tsv" and define whether post-main-agent accepted findings are auto-applied or handled by Gate B
+1	in_scope	latent	architecture	skills/design/scripts/plan-review-loop.md:12-20 skills/design/scripts/plan-review-loop.sh:699-705	The plan promises backward-compatible single-pass complete behavior, but the new pseudocode has no reachable complete path once auto-apply/cap/converged logic runs	Existing callers/tests that omit --round-cap can see converged or cap-hit and plan revision side effects despite the documented compatibility contract	Introduce an explicit legacy_single_pass mode when --round-cap is omitted, or remove the compatibility promise and update all tests/docs/callers to the new status and auto-apply semantics
+1	in_scope	important	code-quality	Makefile:4-5	The plan creates scripts/test-design-multi-round-integration.sh but does not list Makefile as an updated file	New integration coverage is not run by make lint/test-harness shards, so the cross-script regression harness can silently rot	Add Makefile to the plan with a phony test-design-multi-round-integration target and shard wiring; update docs/linting.md if target docs are expected
+1	in_scope	latent	correctness	skills/design/scripts/plan-review-loop.sh:22 skills/design/scripts/plan-review-loop.sh:681-686	Refactor plan does not reset the current global _dedup_failed per internal round	A single dedup failure in round 1 can mark later clean rounds degraded, breaking convergence streaks and forcing unnecessary cap-hit runs	Move _dedup_failed initialization inside _run_plan_review_round before dedup runs, and add a regression where only the first round dedup fails
+
+1. **correctness** — `skills/design/scripts/revise-plan-with-waterfall.sh:348-386`
+
+The proposed loop checks `revise_rc != 0`, but the existing helper exits `0` even when it emits `REVISE_STATUS=failed-no-patch`, `failed-validation`, or `failed-apply`. That makes the planned `revision-failed` branch mostly unreachable.
+
+Suggested revision: parse the helper stdout and require `REVISE_STATUS=ok`. Treat any other status as `LOOP_STATUS=revision-failed`.
+
+2. **risk-integration** — `skills/design/scripts/revise-plan-with-waterfall.sh:104-108`, `scripts/design-log-publish.sh:352-367`
+
+The plan says to disallow `plan-review/round-N/revise/`, but the current revise helper writes all revise artifacts there. Publishing will fail closed once the loop auto-applies anything.
+
+Suggested revision: either move revise artifacts to `$DESIGN_TMPDIR/revise/round-N/` in the helper, or explicitly allow a constrained nested `revise/` subtree in publishing.
+
+3. **correctness** — `skills/design/scripts/plan-review-loop.sh:661-676`, `skills/design/scripts/tally-plan-review.sh:121-133`
+
+The pseudocode does not stop on `TALLY_PLAN_REVIEW_STATUS=tally-error`. Some tally errors happen before `accepted-plan-findings.md` is truncated, so a later count can see stale findings.
+
+Suggested revision: branch on `tally-error` before counting, revising, snapshotting as success, or checking convergence.
+
+4. **risk-integration** — `skills/design/SKILL.md:1037`, `skills/design/scripts/tally-plan-review.sh:103-105`
+
+The unchanged main-agent vote path reruns tally without `--findings-classification-out`, so tally defaults to `round-1`. That breaks internal round numbering.
+
+Suggested revision: pass the current completed round into the main-agent tally rerun and write classification into that round’s directory.
+
+5. **architecture** — `skills/design/scripts/plan-review-loop.md:12-20`, `skills/design/scripts/plan-review-loop.sh:699-705`
+
+The compatibility story is internally inconsistent. The plan says `complete` and single-pass behavior remain, but the pseudocode exits as `converged` or `cap-hit`.
+
+Suggested revision: define an explicit legacy single-pass mode, or update contracts/tests to accept the new statuses and side effects.
+
+6. **code-quality** — `Makefile:4-5`
+
+The new integration harness is not paired with a Makefile update in the plan.
+
+Suggested revision: add `Makefile` to the plan, wire the new target into a shard, and update lint docs if target documentation is expected.
+
+7. **correctness** — `skills/design/scripts/plan-review-loop.sh:22`, `skills/design/scripts/plan-review-loop.sh:681-686`
+
+`_dedup_failed` is currently global. The refactor plan does not say to reset it per round.
+
+Suggested revision: initialize it inside `_run_plan_review_round` so one degraded round does not poison later convergence checks.

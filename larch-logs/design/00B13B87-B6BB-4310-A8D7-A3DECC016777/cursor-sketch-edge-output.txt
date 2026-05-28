@@ -1,0 +1,47 @@
+Exploring the codebase for the plan-review loop, revision waterfall, and log publishing to ground edge-case analysis.
+## Edge-case / failure-mode analysis — multi-round plan-review loop (Piece 5)
+
+### 1. Key architectural decisions (defensive design)
+
+Refactor `plan-review-loop.sh` into an **outer state machine** plus an **inner single-pass body** (today’s scout → panel → collect → aggregate → voters → tally). The outer loop owns `--round-cap`, `--convergence-threshold`, `--round-num` as start index, exit predicates, and between-round revision. **Mirror `review-and-fix.sh` convergence semantics**: two consecutive **non-degraded** rounds with `ACCEPTED_COUNT <= threshold` and `IMPORTANT_ACCEPTED_COUNT == 0`, scanning only accepted in-scope `### FINDING_N:` blocks whose `- **Severity**: important` line matches (reuse or share the `important_findings_present` / severity regex family from `review-and-fix.sh:110-128`, adapted to plan-review’s markdown shape). **Degraded rounds break the streak** — same rule as implement Step 5 (`DEGRADED_PANEL=1`, tally-error, dedup failure, `<2` voters).
+
+**Per-round isolation is the core invariant.** Each iteration writes forensics under `$DESIGN_TMPDIR/plan-review/round-N/` (distill after each pass, like `larch-log.sh write-round`). Session-root artifacts (`plan.txt`, `accepted-plan-findings.md`, `voting-tally.md`, etc.) hold **final promoted state only** when the loop exits. Between non-terminal rounds, call `revise-plan-with-waterfall.sh` with that round’s **accepted** findings; on waterfall total failure, exit with `LOOP_STATUS=revision-failed`, `DEGRADED_PANEL=1`, restore `plan.txt` from the pre-revise snapshot (waterfall already does this per tier), and **do not** silently continue. **Terminal-round rule**: convergence-round and cap-hit **final** accepted findings must **not** be auto-applied by the waterfall — they flow to Gate B unchanged. Only intermediate rounds mutate `plan.txt` in place.
+
+Emit a **round summary KV file** per iteration (`plan-review/round-N/round.env`: `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, plan hash before/after). Convergence reads disk, not stdout alone. **Zero-findings short-circuit** must require collector evidence (non-empty OK slots or explicit empty structured rows), not an empty post-dedup `findings.md` after panel failure — otherwise a broken panel looks like convergence. **`main-agent-vote-required` must halt the outer loop** (exit 0, `LOOP_STATUS=main-agent-vote-required`); do not revise or advance rounds while adjudication is pending.
+
+### 2. Files to modify and fragile areas
+
+| Surface | Why | Fragility |
+|---------|-----|-----------|
+| `plan-review-loop.sh` + `.md` | Outer loop, round promotion, convergence, revision gate | Today writes **directly to `$DESIGN_TMPDIR/`** and only round TSV under `plan-review/round-$ROUND_NUM/`; multi-round will clobber `plan-review-slots.ndjson`, `findings.md`, `ballot.txt` unless each pass uses a round-scoped tmp or copies into `round-N/` before the next iteration |
+| `revise-plan-with-waterfall.sh` | Between-round plan mutation | Already canonicalizes to `DESIGN_TMPDIR/plan.txt`, snapshots, restores on invalid patch; caller must pass **accepted-only** findings and the correct `--round-num` for `round-N/revise/` forensics |
+| `SKILL.md` Step 3 | Single invocation, new KVs (`IMPORTANT_ACCEPTED_COUNT`, `LOOP_STATUS=converged\|revision-failed\|cap-hit`) | **`review-round-count.txt` must stay “one Step 3 entry = one external round”** — internal N rounds must not increment it; `scripts/test-design-structure.sh` already forbids the loop script touching that file. Tier cap (SIMPLE=3, HARD=5) is **Gate C re-run budget**, separate from `--round-cap` |
+| `design-log-publish.sh` + `.md` | Stage per-round subtree | Today allowlist is **only** `round-N/findings-classification.tsv` (`design-log-publish.sh:363`); broader staging needs an explicit allowlist (mirror `round_artifact_included` in `larch-log.sh:67-101`), symlink rejection, and per-file recheck — publish fails closed today |
+| `plan-review.md` | Convergence env vars, terminal-round Gate B contract | Must document that mid-loop revision ≠ Gate B auto-apply |
+| `test-plan-review-loop.sh` + new `test-design-multi-round-integration.sh` | Stub multi-round paths | Unit stubs cannot catch aggregator path or publish allowlist regressions; integration harness must cover promotion + publish |
+
+**Highest-risk couplings:** (a) `aggregate-findings.sh` input-root — use `--allow-findings-outside-tmpdir true` or stage `findings-in-scope.md` inside each round’s agg tmpdir; (b) **top-level vs round-scoped `--design-tmpdir`** for tally (documented in `tally-plan-review.md:87`) — multi-round must either pass per-round subdirs to tally or copy artifacts into `round-N/` after each pass; (c) Gate B’s auto-apply default (`approval-gates.md`) must receive **final-round** accepted findings only, not stale mid-loop snapshots.
+
+### 3. Main risks and mitigations
+
+**Dual-cap confusion.** External tier cap (`review-round-count.txt`, Gate C “Re-run review panel”) vs internal `--round-cap` can desync user expectations. *Mitigation:* document clearly in `SKILL.md` and `plan-review.md`; emit `ROUNDS_COMPLETED` = internal count and keep external counter unchanged per Step 3 entry; Gate C cap unchanged.
+
+**Silent artifact loss / stale Gate B input.** Later rounds overwrite root artifacts; Gate B may apply findings from round 2 while the plan reflects round 4. *Mitigation:* promote to root only on exit; append `cumulative-applied-findings.md` per successful waterfall; snapshot `plan.txt` hash each round; integration test asserts root matches last promoted round.
+
+**Convergence false positives.** Empty findings after dedup failure, all-failed collectors, or partial panel can mimic “zero findings.” *Mitigation:* zero-find exit requires `_paths_readable=1` plus collector OK evidence (mirroring R4/F7); degraded rounds never count toward streak; emit `WARN=` on ambiguous paths.
+
+**Revision failure mid-loop.** All waterfall tiers fail after round N accepted findings. *Mitigation:* `LOOP_STATUS=revision-failed`, preserve plan + findings, set `DEGRADED_PANEL=1`, exit non-zero or controlled exit 0 with explicit status; SKILL routes to Gate B with **unrevised** plan and visible warning — never pretend revision succeeded.
+
+**Important-severity scan drift.** Design counts `- **Severity**: important` in accepted blocks; TSV conversion defaults missing severity to `important` (`plan-review-loop.sh:338`), inflating `IMPORTANT_ACCEPTED_COUNT`. *Mitigation:* share one tested scanner (extract to `scripts/lib-important-findings.sh` or reuse review-and-fix helper); pin corpus tests in `test-design-multi-round-integration.sh`.
+
+**Publish regression.** Expanding `plan-review/` allowlist without symlink/escape guards breaks SECURITY.md contract. *Mitigation:* copy `larch-log.sh` deny patterns; regex allowlist per basename class; fail closed on unknown files; test publish with a full multi-round tmpdir fixture.
+
+**Long-run / partial failure.** N × ~1860s panel timeout can exceed session tolerance; crash mid-loop leaves `review-round-count.txt` persisted but internal state inconsistent. *Mitigation:* write `round-N/round.env` atomically after each settled round; on restart, Step 3 still consumes one external slot (current crash semantics) — document that internal progress is **not** resumable across Step 3 re-entries unless explicitly designed later; consider emitting progress breadcrumbs per internal round.
+
+**`main-agent-vote-required` / `tally-error` in a loop.** Orchestrator may re-enter tally inline today; multi-round must not auto-advance. *Mitigation:* outer loop breaks immediately; preserve `round-N/` forensics; SKILL keeps existing tally-error rollback for `review-round-count.txt` (`SKILL.md:1014-1016`).
+
+**Gate B vs convergence-round findings.** Auto-apply default applies **all** accepted findings — conflicts with “final/convergence round never auto-applied mid-loop.” *Mitigation:* loop applies via waterfall only for rounds `< terminal`; on convergence/cap exit, leave final accepted findings at root for Gate B; update Gate B wording to passive summary when loop already converged (open question in outline — resolve in Step 2a sketches before implement).
+
+---
+
+**Recommended implementation sequence:** (1) extract `run_plan_review_round()` with round-scoped staging; (2) add round env + promotion; (3) wire convergence + revision gate; (4) extend publish allowlist + integration harness; (5) slim SKILL Step 3 to single invocation and new KV parsing. Port convergence helpers from `review-and-fix.sh` rather than reimplementing — that path already encodes degraded exclusion, important scanning, and cap semantics battle-tested on `/implement` Step 5.
