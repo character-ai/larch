@@ -93,7 +93,11 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --manual-gate-b)
-            MANUAL_GATE_B="${2:?--manual-gate-b requires a value}"
+            if [[ $# -lt 2 || -z "${2-}" ]]; then
+                larch_err "write-run-params.sh: --manual-gate-b requires a value"
+                exit 2
+            fi
+            MANUAL_GATE_B="$2"
             shift 2
             ;;
         --help|-h)

@@ -103,6 +103,16 @@ if "$WRITER" \
     fail "invalid manual-gate-b was accepted"
 fi
 
+assert_rejected_with manual-gate-b-empty 'write-run-params.sh: --manual-gate-b requires a value' \
+    --classification SIMPLE \
+    --manual-gate-b "" \
+    --output "$TMPROOT/manual-gate-b-empty.json"
+
+assert_rejected_with manual-gate-b-missing 'write-run-params.sh: --manual-gate-b requires a value' \
+    --classification SIMPLE \
+    --output "$TMPROOT/manual-gate-b-missing.json" \
+    --manual-gate-b
+
 assert_rejected_with bad-sketch-budget 'invalid --sketch-budget: 5' \
     --classification SIMPLE \
     --sketch-budget 5 \
