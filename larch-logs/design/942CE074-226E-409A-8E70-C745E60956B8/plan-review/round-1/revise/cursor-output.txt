@@ -1,0 +1,33 @@
+Verifying call sites and manual-probe patterns so the revised plan reflects accurate caller-audit details.
+--- a/plan.txt
++++ b/plan.txt
+@@ -52,6 +52,17 @@
+ - Invariants: extend the boolean-flags bullet so it states that `--partition-requested` / `--brainstorm-requested` / `--manual-gate-b` each require a present, non-empty `true`/`false` value and reject missing or empty argv with `exit 2`. Contrast the nullable text flags above, which accept `""` → null.
+ - Harness: note that the missing/empty-value rejection cases now cover all three boolean flags, not just `--manual-gate-b`.
+ 
++### UPDATED: Caller audit (missing-value contract change)
++
++Audit of existing `write-run-params.sh` invocations for the `--partition-requested` / `--brainstorm-requested` rc/message change (`exit 1` + nounset message → `exit 2` + `requires a value`):
++
++- **`skills/design/SKILL.md` Step 0b**: passes explicit `true`/`false` for all three boolean flags; any non-zero writer exit is contract drift (SKILL exits **1**); does not branch on rc=1 vs rc=2 or stderr text.
++- **`scripts/test-write-run-params.sh`**: owns negative rc/message assertions; four new sibling cases plus existing `manual-gate-b-*` cases.
++- **`scripts/test-step0b-router-flag-recovery.sh`**: invokes writer only with valid boolean values; no missing/empty argv dependency.
++- **`scripts/test-lint-skill-md-flag-signature.sh`**: fixture lint compares SKILL flag names to script `usage:`; does not exercise missing-value paths.
++- **`scripts/test-design-structure.sh`**: greps SKILL.md signatures and Step 0b ordering; no rc/message contract dependency.
++
++No caller changes required.
++
+ ### Approach
+ 
+ - One shared `require_value` helper removes the three-way duplication and aligns the two sibling flags' exit code (1→2) and message with `--manual-gate-b`.
+@@ -81,7 +92,7 @@
+ 
+ - `bash scripts/test-write-run-params.sh` — must pass with the four new negative cases and all existing cases (valid writes, enum rejection, nullable fields, triple-flag persistence).
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — Bash 3.2 lint, shellcheck, `.md`-sibling check.
+-- Manual probe: run `scripts/write-run-params.sh --classification SIMPLE --partition-requested --output <abs-path>` and confirm `rc=2` with stderr line `write-run-params.sh: --partition-requested requires a value`.
++- Manual probe: run `scripts/write-run-params.sh --classification SIMPLE --output <abs-path> --partition-requested` (bare flag last, matching `partition-requested-missing` / `manual-gate-b-missing`) and confirm `rc=2` with stderr line `write-run-params.sh: --partition-requested requires a value`.
+ 
+ ### Diff size estimate
+ 
+-diff_lines: 40
++diff_lines: 52
