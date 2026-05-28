@@ -1,0 +1,69 @@
+### FINDING_1: Monolithic plan review round function
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: `_run_plan_review_round` remains a very large monolithic function, making future multi-round behavior hard to isolate, review, and test.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_2: Integration harness misses publish parity and fail-closed coverage
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `scripts/test-design-multi-round-integration.sh` does not exercise `design-log-publish` parity or fail-closed cases, so snapshot/publish allowlist drift, unknown files, symlink rejection, and cross-entry reset behavior can regress without CI signal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_3: Multi-round plan review harness lacks required branch coverage
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `skills/design/scripts/test-plan-review-loop.sh` is missing plan-required multi-round cases including streak convergence, revision-failed variants, tally-error under `--round-cap`, OOS accumulation/dedup, severity defaults, dedup reset, and durable result-env keys.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_4: Degraded panel state does not fully reset convergence reporting
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: When `DEGRADED_PANEL=1`, the shell variable `convergence_streak` is reset but exported/reporting value `CONVERGENCE_STREAK` can remain non-zero, causing misleading round summaries and stdout.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_5: Panel failure terminal path lacks clean per-round forensics
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: The multi-round `panel-failed` path omits round snapshot/summary behavior and may reuse stale collector evidence from a prior round, leaving misleading or incomplete artifacts for Gate B and publish.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_6: Collector evidence parsing uses per-call generated Python
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: `_parse_collect_records` rewrites and launches a temporary Python parser for each evidence count, adding avoidable temp-file, startup, and failure-mode noise.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_7: Gate B docs can double-apply already-applied findings
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Severity**: important
+- **Concern**: `SKILL.md` and `approval-gates.md` do not consistently exclude `converged`/`cap-hit` loop statuses from Gate B auto-apply, so an orchestrator may re-apply findings already handled by the inner loop.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_8: relevant-checks misses new design review harness targets
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `scripts/relevant-checks.sh` does not map edits to `plan-review-loop`, `design-log-publish`, or round artifact allowlist code to the new focused test targets, so relevant-checks-only workflows can skip important regression harnesses.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_9: Dispatch test helper duplicates heredoc logic
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `write_dispatch_combined_threshold` duplicates `write_dispatch` for a single key, increasing maintenance cost when dispatch stubs change.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_10: Zero-findings convergence ignores same-round degraded panel
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: important
+- **Concern**: A degraded panel round with `ACCEPTED_COUNT=0` and collectors OK can still exit as `LOOP_STATUS=converged` with `REASON=zero-findings`, masking degradation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
