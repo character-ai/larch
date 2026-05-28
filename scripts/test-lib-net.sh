@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic offline harness for scripts/lib-net.sh.
-# shellcheck disable=SC2329  # stubs and predicates are invoked via "$@" / by name
+# shellcheck disable=SC2329,SC2317  # test helpers are invoked indirectly via "$@" / by name
 
 set -uo pipefail
 
