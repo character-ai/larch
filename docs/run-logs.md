@@ -93,15 +93,18 @@ The source directory and every candidate file must resolve under
 `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
 `larch_log_breadcrumbs_under_session_tmp`; otherwise publication fails closed.
 
-Only regular `*.ndjson` files at depth 1 are staged. Each `foo.ndjson` is
-redacted through
+Regular `*.ndjson` files at depth 1 under the session `breadcrumbs/` directory
+and per-script `larch-quiet-<script>-<pid>.log` files at the session-tmpdir root
+are staged. Each accepted file is redacted through
 `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file <tmp>` and
-committed as `larch-logs/<skill>/<run-id>/breadcrumbs/foo.ndjson` after an
-atomic mktemp-plus-move of the staging directory. A missing source directory, a
-source path that exists but yields zero accepted `*.ndjson` files, or a source
-tree containing only silently skipped entries is a successful no-op: the helper
-returns 0 and does not create, replace, or clear an existing committed
-`breadcrumbs/` destination.
+committed as `larch-logs/<skill>/<run-id>/breadcrumbs/<basename>` after an
+atomic mktemp-plus-move of the staging directory. Quiet-log sourcing uses
+`dirname` of the breadcrumbs source path and runs even when `breadcrumbs/` was
+never created. Candidates must stay under the active session tmpdir, must not
+be symlinks, and must not be hardlinks. Legacy `*.ndjson` publication remains for
+forensics parity until later deprecation stages. When neither loop stages a
+file, the helper returns 0 and does not create, replace, or clear an existing
+committed `breadcrumbs/` destination.
 
 The enforced-reject and silent-skip split is documented in
 [SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction):

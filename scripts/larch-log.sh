@@ -133,6 +133,7 @@ larch_log_breadcrumb_source_dir() {
     root="$(larch_log_root)"
     case "$root" in
         */larch-logs)
+            # Returns session breadcrumbs/; quiet logs at session-root are staged via dirname in larch_log_publish_breadcrumbs_shared.
             session_root="${root%/larch-logs}"
             printf '%s/breadcrumbs\n' "$session_root"
             ;;

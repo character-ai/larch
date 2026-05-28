@@ -484,6 +484,7 @@ write_version_reasoning_fragment() {
         fi
         if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ "$LOG_WRITE_STATUS" = "ok" ]; then
             set +e
+            # commit also stages per-script quiet logs into breadcrumbs/ for forensics.
             out=$("$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id")
             rc=$?
             set +e
@@ -1343,6 +1344,7 @@ run_teardown() {
                 2>/dev/null || true
         fi
         if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ ! -e "$post_merge_sentinel" ]; then
+            # commit also stages per-script quiet logs into breadcrumbs/ for forensics.
             "$SCRIPT_DIR/larch-log.sh" commit \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \

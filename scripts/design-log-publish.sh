@@ -11,8 +11,11 @@
 # Usage:
 #   design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]
 #
-# Non-zero exits are reserved for unexpected shell failures; expected operational
-# failures still emit PUBLISH_OK=false and exit 0 so callers can parse stdout.
+# Expected operational failures emit PUBLISH_OK=false on stdout. Pre-validation and
+# pre-push failures exit 0 so callers can parse stdout. Post-push failures (git push,
+# gh pr create after push, gh pr merge) exit 1 while preserving PUBLISH_OK=false.
+# Per-script larch-quiet-*-*.log files are excluded from top-level staging; they are
+# published only under breadcrumbs/ via larch_log_publish_breadcrumbs_shared.
 
 set -euo pipefail
 
@@ -86,6 +89,7 @@ if [[ ! -d "$DESIGN_TMPDIR" ]]; then
     emit_publish_result false
     exit 0
 fi
+export DESIGN_TMPDIR
 
 if [[ "$DRY_RUN" == true ]]; then
     if ! command -v git >/dev/null 2>&1; then
@@ -227,7 +231,7 @@ design_artifact_excluded() {
         esac
     fi
     case "$name" in
-        *.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
+        larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
             return 0
             ;;
     esac
@@ -587,10 +591,10 @@ if ! git -C "$WT_DIR" push "${push_args[@]}" >/dev/null 2>&1; then
         larch_err "design-log-publish: local commit preserved on ref ${local_recovery_branch} ($commit_sha)"
         emit_publish_result false
         emit_kv RECOVERY_BRANCH "$local_recovery_branch"
-        exit 0
+        exit 1
     fi
     emit_publish_result false
-    exit 0
+    exit 1
 fi
 PUSH_DONE=true
 
@@ -620,7 +624,7 @@ if [[ -z "$PR_NUM" ]]; then
         larch_err "design-log-publish: remote branch may need manual cleanup: $WT_BRANCH"
         emit_publish_result false
         [[ "$PUSH_DONE" == true ]] && emit_kv RECOVERY_BRANCH "$WT_BRANCH"
-        exit 0
+        exit 1
     fi
     PR_URL=$(gh pr view "${gh_repo_args[@]}" "$PR_NUM" --json url --jq '.url' 2>/dev/null || true)
 fi
@@ -640,7 +644,7 @@ git -C "$REPO_ROOT" branch -D "larch-log-design-recovery-${RUN_ID}" >/dev/null 2
 if [[ "$merge_rc" -ne 0 ]]; then
     emit_publish_result false "$PR_NUM" "${PR_URL:-}"
     [[ "$PUSH_DONE" == true ]] && emit_kv RECOVERY_BRANCH "$WT_BRANCH"
-    exit 0
+    exit 1
 fi
 
 emit_publish_result true "$PR_NUM" "${PR_URL:-}"

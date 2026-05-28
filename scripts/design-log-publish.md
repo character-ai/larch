@@ -88,6 +88,19 @@ pushed branch that never had a valid PR body prepared.
 
 On stdout (parseable `KEY=value` lines):
 
+**Exit code**: `PUBLISH_OK=true|false` remains the stdout contract. Exit `0` on
+all expected failures before a successful `git push`, and on post-push paths
+that still parse cleanly via stdout alone. Exit `1` on `git push` failure,
+`gh pr create` failure after push (when list recovery also fails), and
+`gh pr merge` failure after a successful create — while still emitting
+`PUBLISH_OK=false` (and `RECOVERY_BRANCH=…` when applicable). Callers that
+already parse `PUBLISH_OK` need no change; callers that want fail-closed
+signaling can additionally check the exit code.
+
+Per-script `larch-quiet-*-*.log` files in `$DESIGN_TMPDIR` are excluded from
+top-level artifact staging (`design_artifact_excluded`); they are published
+exclusively under `breadcrumbs/` via `larch_log_publish_breadcrumbs_shared`.
+
 | Key | Meaning |
 |-----|---------|
 | `PUBLISH_OK` | `true` when the publish + merge tail succeeded; `false` on validation failure, init/copy/redact failure, git/gh errors, or merge refusal (`policy_denied`, etc.). |

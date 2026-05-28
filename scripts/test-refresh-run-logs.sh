@@ -361,6 +361,7 @@ EOF
     printf 'EXIT_CODE=0\n' > "$impl_tmpdir/breadcrumbs/refresh.status"
     printf 'surfaced\n' > "$impl_tmpdir/breadcrumbs/refresh.surfaced"
     printf '5\n' > "$impl_tmpdir/breadcrumbs/refresh.bc-offset"
+    printf 'refresh quiet log line\n' > "$impl_tmpdir/larch-quiet-refresh-run-logs.sh-24680.log"
 
     out=$(cd "$tmp" && CLAUDE_PLUGIN_ROOT="$SCRIPT_DIR/.." "$HELPER" \
         --state-file "$state_file" \
@@ -390,6 +391,12 @@ EOF
         pass "refresh breadcrumbs: committed breadcrumb redacts PEM payload"
     else
         fail "refresh breadcrumbs: expected redacted PEM payload"
+    fi
+    quiet_committed="$tmp/larch-logs/implement/$run_id/breadcrumbs/larch-quiet-refresh-run-logs.sh-24680.log"
+    if [ -f "$quiet_committed" ]; then
+        pass "refresh breadcrumbs: session-root quiet log committed"
+    else
+        fail "refresh breadcrumbs: missing committed session-root quiet log"
     fi
 
     rm -rf "$tmp"

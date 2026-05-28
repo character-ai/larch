@@ -86,6 +86,14 @@ if [[ "$1" == "pr" ]]; then
             exit 0
             ;;
         list)
+            if [[ "${GH_STUB_PR_LIST_EMPTY:-}" == "1" ]]; then
+                if printf '%s\n' "$*" | grep -q -- '--jq'; then
+                    echo 'null'
+                else
+                    echo '[]'
+                fi
+                exit 0
+            fi
             if printf '%s\n' "$*" | grep -q -- '--jq'; then
                 echo '101'
             else
@@ -169,10 +177,14 @@ out=$(
 [[ "$out" == *"PUBLISH_OK=true"* ]] || fail "dry-run missing PUBLISH_OK=true: $out"
 
 echo "=== invalid issue 0 ==="
+set +e
 out=$(
-    (cd "$DRYCLONE" && PATH="$STUBDR:$PATH" bash "$PUBLISH" --design-tmpdir "$DRYROOT/design" --run-id "RUN1AB" --issue 0 --dry-run) 2>/dev/null || true
+    (cd "$DRYCLONE" && PATH="$STUBDR:$PATH" bash "$PUBLISH" --design-tmpdir "$DRYROOT/design" --run-id "RUN1AB" --issue 0 --dry-run) 2>/dev/null
 )
+rc_issue0=$?
+set -e
 [[ "$out" == *"PUBLISH_OK=false"* ]] || fail "issue 0 should fail: $out"
+[[ "$rc_issue0" -eq 0 ]] || fail "pre-validation issue 0 should exit 0 (got $rc_issue0)"
 
 echo "=== invalid run-id ==="
 out=$(
@@ -343,7 +355,11 @@ echo "=== pause no-op fails when recovery branch is newer than default ==="
 (
     cd "$clone_pause_noop" || exit 1
     printf 'updated\n' >"$TMPPAUSE_NOOP/design/plan.txt"
+    set +e
     out_pause_recovery_seed=$(GH_STUB_MERGE_RC=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo)
+    rc_pause_recovery_seed=$?
+    set -e
+    [[ "$rc_pause_recovery_seed" -eq 1 ]] || fail "pause recovery seed should exit 1 on merge fail (got $rc_pause_recovery_seed)"
     [[ "$out_pause_recovery_seed" == *"PUBLISH_OK=false"* && "$out_pause_recovery_seed" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSENOOP1"* ]] || fail "pause recovery seed should preserve recovery branch: $out_pause_recovery_seed"
     git branch -D larch-log-design-RUNPAUSENOOP1 >/dev/null 2>&1 || true
     out_pause_stale_default=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_NOOP/design" --run-id "RUNPAUSENOOP1" --issue 42 --repo owner/repo)
@@ -373,7 +389,11 @@ printf 'p\n' >"$TMPPAUSE_REC/design/plan.txt"
 printf 'done\n' >"$TMPPAUSE_REC/design/.completed/step-1c"
 (
     cd "$clone_pause_rec" || exit 1
+    set +e
     seed_out=$(GH_STUB_MERGE_RC=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REC/design" --run-id "RUNPAUSEREC1" --issue 42 --repo owner/repo)
+    rc_seed_out=$?
+    set -e
+    [[ "$rc_seed_out" -eq 1 ]] || fail "pause recovery seed should exit 1 on merge fail (got $rc_seed_out)"
     [[ "$seed_out" == *"PUBLISH_OK=false"* && "$seed_out" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREC1"* ]] || fail "pause recovery seed should leave remote branch: $seed_out"
     git branch -D larch-log-design-RUNPAUSEREC1 >/dev/null 2>&1 || true
     out_pause_rec=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REC/design" --run-id "RUNPAUSEREC1" --issue 42 --repo owner/repo)
@@ -395,7 +415,11 @@ printf 'first\n' >"$TMPPAUSE_REUSE/design/plan.txt"
 printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
 (
     cd "$clone_pause_reuse" || exit 1
+    set +e
     seed_reuse=$(GH_STUB_MERGE_RC=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
+    rc_seed_reuse=$?
+    set -e
+    [[ "$rc_seed_reuse" -eq 1 ]] || fail "pause branch reuse seed should exit 1 on merge fail (got $rc_seed_reuse)"
     [[ "$seed_reuse" == *"PUBLISH_OK=false"* && "$seed_reuse" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREUSE1"* ]] || fail "pause branch reuse seed should leave remote branch: $seed_reuse"
     printf 'second\n' >"$TMPPAUSE_REUSE/design/plan.txt"
     reuse_out=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
@@ -487,6 +511,61 @@ out_rc=$(
 )
 [[ "$out_rc" == *"PUBLISH_OK=false"* ]] || fail "render-cache regular file should fail publish: $out_rc"
 
+echo "=== pr create failure after push exits 1 when list recovery fails ==="
+TMPCF=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail-hard.XXXXXX")
+clone_cf=$(setup_clone_with_origin_head "$TMPCF")
+stub_cf="$TMPCF/stub"
+GH_STUB_LOG_CF="$TMPCF/gh-createfail-hard.log"
+: >"$GH_STUB_LOG_CF"
+export GH_STUB_LOG="$GH_STUB_LOG_CF"
+make_gh_stub "$stub_cf"
+export PATH="$stub_cf:$PATH"
+export TEST_CLONE_ROOT="$clone_cf"
+export TEST_MERGE_BRANCH="larch-log-design-RUNCREATEFAIL1"
+export GH_STUB_CREATE_RC=1
+export GH_STUB_PR_LIST_EMPTY=1
+unset GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPCF/design"
+printf 'cf\n' >"$TMPCF/design/cf.txt"
+set +e
+out_cf=$(
+    (cd "$clone_cf" && bash "$PUBLISH" --design-tmpdir "$TMPCF/design" --run-id "RUNCREATEFAIL1" --issue 12 --repo owner/repo) 2>/dev/null
+)
+rc_cf=$?
+set -e
+[[ "$out_cf" == *"PUBLISH_OK=false"* ]] || fail "create-fail hard PUBLISH_OK: $out_cf"
+[[ "$rc_cf" -eq 1 ]] || fail "create-fail after push should exit 1 (got $rc_cf)"
+[[ "$out_cf" == *"RECOVERY_BRANCH=larch-log-design-RUNCREATEFAIL1"* ]] || fail "create-fail hard RECOVERY_BRANCH: $out_cf"
+unset GH_STUB_CREATE_RC GH_STUB_PR_LIST_EMPTY
+rm -rf "$TMPCF"
+
+echo "=== quiet logs excluded from top-level design artifacts ==="
+TMPQL=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-quiet-excl.XXXXXX")
+clone_ql=$(setup_clone_with_origin_head "$TMPQL")
+stub_ql="$TMPQL/stub"
+make_gh_stub "$stub_ql"
+export PATH="$stub_ql:$PATH"
+export TEST_CLONE_ROOT="$clone_ql"
+export TEST_MERGE_BRANCH="larch-log-design-RUNQUIETEXCL1"
+unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_MERGE_RC GH_STUB_PR_LIST_EMPTY
+mkdir -p "$TMPQL/design/breadcrumbs"
+printf 'larch:bc t=now d=0 p=1 s=test c=progress text=quiet-excl\n' >"$TMPQL/design/breadcrumbs/design.ndjson"
+printf 'top-level quiet must not duplicate\n' >"$TMPQL/design/larch-quiet-design-log-publish.sh-4242.log"
+set +e
+out_ql=$(
+    (cd "$clone_ql" && bash "$PUBLISH" --design-tmpdir "$TMPQL/design" --run-id "RUNQUIETEXCL1" --issue 13 --repo owner/repo) 2>/dev/null
+)
+rc_ql=$?
+set -e
+[[ "$rc_ql" -eq 0 ]] || fail "quiet exclusion publish should exit 0 (got $rc_ql)"
+[[ "$out_ql" == *"PUBLISH_OK=true"* ]] || fail "quiet exclusion PUBLISH_OK: $out_ql"
+if [ -f "$clone_ql/larch-logs/design/RUNQUIETEXCL1/larch-quiet-design-log-publish.sh-4242.log" ]; then
+    fail "quiet log must not appear as top-level design artifact"
+fi
+[ -f "$clone_ql/larch-logs/design/RUNQUIETEXCL1/breadcrumbs/larch-quiet-design-log-publish.sh-4242.log" ] \
+    || fail "quiet log missing from breadcrumbs"
+rm -rf "$TMPQL"
+
 echo "=== merge failure preserves PR lines and RECOVERY_BRANCH ==="
 TMPM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-merge.XXXXXX")
 clone_m=$(setup_clone_with_origin_head "$TMPM")
@@ -501,10 +580,14 @@ export TEST_MERGE_BRANCH="larch-log-design-RUNMERGE1"
 unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 mkdir -p "$TMPM/design"
 printf 'm\n' >"$TMPM/design/m.txt"
+set +e
 out_m=$(
-    (cd "$clone_m" && GH_STUB_MERGE_RC=1 bash "$PUBLISH" --design-tmpdir "$TMPM/design" --run-id "RUNMERGE1" --issue 3 --repo owner/repo) 2>/dev/null || true
+    (cd "$clone_m" && GH_STUB_MERGE_RC=1 bash "$PUBLISH" --design-tmpdir "$TMPM/design" --run-id "RUNMERGE1" --issue 3 --repo owner/repo) 2>/dev/null
 )
+rc_m=$?
+set -e
 [[ "$out_m" == *"PUBLISH_OK=false"* ]] || fail "merge fail PUBLISH_OK: $out_m"
+[[ "$rc_m" -eq 1 ]] || fail "merge fail should exit 1 (got $rc_m)"
 [[ "$out_m" == *"PR_NUMBER=101"* ]] || fail "merge fail PR_NUMBER: $out_m"
 [[ "$out_m" == *"RECOVERY_BRANCH=larch-log-design-RUNMERGE1"* ]] || fail "merge fail RECOVERY_BRANCH: $out_m"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected pr merge in stub log"
@@ -536,10 +619,14 @@ unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
 export GIT_STUB_FAIL_PUSH=1
 mkdir -p "$TMP_PUSH/design"
 printf 'p\n' >"$TMP_PUSH/design/pushfail.txt"
+set +e
 out_pf=$(
-    (cd "$clone_pf" && bash "$PUBLISH" --design-tmpdir "$TMP_PUSH/design" --run-id "RUNPUSHFAIL1" --issue 5 --repo owner/repo) 2>/dev/null || true
+    (cd "$clone_pf" && bash "$PUBLISH" --design-tmpdir "$TMP_PUSH/design" --run-id "RUNPUSHFAIL1" --issue 5 --repo owner/repo) 2>/dev/null
 )
+rc_pf=$?
+set -e
 [[ "$out_pf" == *"PUBLISH_OK=false"* ]] || fail "push fail PUBLISH_OK: $out_pf"
+[[ "$rc_pf" -eq 1 ]] || fail "push fail should exit 1 (got $rc_pf)"
 [[ "$out_pf" == *"RECOVERY_BRANCH=larch-log-design-recovery-RUNPUSHFAIL1"* ]] || fail "push fail should surface local recovery branch: $out_pf"
 git -C "$clone_pf" show-ref --verify --quiet "refs/heads/larch-log-design-recovery-RUNPUSHFAIL1" || fail "recovery branch missing"
 ! grep -q 'pr merge' "$GH_STUB_LOG_PF" || fail "gh pr merge should not run when push fails"
