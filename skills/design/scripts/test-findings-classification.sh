@@ -301,6 +301,7 @@ STUB_ROOT="$TMPROOT/stub-root"
 mkdir -p "$STUB_ROOT/scripts"
 cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh" "$STUB_ROOT/scripts/lib-quiet.sh"
 cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh" "$STUB_ROOT/scripts/lib-vote-tally.sh"
+cp "$CLAUDE_PLUGIN_ROOT/scripts/lib-design-tmpdir.sh" "$STUB_ROOT/scripts/lib-design-tmpdir.sh"
 cat > "$STUB_ROOT/scripts/parse-judge-vote-and-rating.sh" <<'EOF'
 #!/usr/bin/env bash
 cat <<'OUT'
