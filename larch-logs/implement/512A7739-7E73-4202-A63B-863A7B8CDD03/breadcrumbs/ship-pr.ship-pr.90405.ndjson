@@ -1,0 +1,3 @@
+larch:bc t=2026-05-28T00:23:14Z d=0 p=90434 s=ship-pr.sh c=progress text=→ ship-pr: checks
+larch:bc t=2026-05-28T00:24:06Z d=0 p=90434 s=ship-pr.sh c=progress text=→ ship-pr: version bump
+larch:bc t=2026-05-28T00:24:11Z d=0 p=18135 s=apply-bump.sh c=retry text=apply-bump: retry 1/10 origin/main=45.1.17 new-version=45.1.18
