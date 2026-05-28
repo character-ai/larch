@@ -1,0 +1,113 @@
+## Approach
+
+Address the three hardening items from OOS issue #3074 in one coherent change:
+
+1. **Item 1 — lib-voter-coverage plan-scope rename.** Rename the file and every public function via `git mv` so the old paths do not ship alongside the renamed ones. Plan-review-specific KV ordering becomes explicit at the symbol level; a future code-review caller hits a missing-symbol error rather than silent KV breakage.
+2. **Item 2 — shared `--design-tmpdir` validator, narrowly wired.** Add a new helper `larch_design_tmpdir_validate` that canonicalizes paths via nearest-existing-ancestor resolution (no `mkdir` of untrusted parents) and enforces a documented prefix allowlist (allowlist prefixes also canonicalized; macOS `/private` mapping handled). Wire it into the two OOS-named consumers only: `dispatch-plan-voters.sh` and `tally-plan-review.sh`. The broader `--design-tmpdir` sweep is deferred (reviewers FINDING_6 explicitly recommended deferral; OOS issue body only names these two scripts).
+3. **Item 3 — `emit_kv` newline reject.** Make the FD-3 contract robust by rejecting embedded `\n`/`\r` in values. Callers that legitimately need multi-line data must serialize themselves.
+
+All three changes preserve the public contract for well-behaved callers. Grep audit during implementation confirms no current `emit_kv` site passes multi-line values.
+
+The validator algorithm (per FINDING_3, FINDING_4, FINDING_10):
+
+1. Reject empty input with `larch_err` + return 2.
+2. Build the canonical allowlist once at first call: `${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions/`, `${TMPDIR%/}` (when set), and `/tmp`. Each prefix is itself canonicalized via `cd "$prefix" 2>/dev/null && pwd -P` when it exists, falling back to the literal string otherwise. Append a trailing `/` to each canonical prefix.
+3. Walk up the candidate path component-by-component until the deepest existing ancestor is found (`while [ ! -d "$ancestor" ]; do ancestor="${ancestor%/*}"; done`, with `/` as the floor).
+4. Canonicalize that ancestor explicitly: `if ! resolved_ancestor=$(cd "$ancestor" 2>/dev/null && pwd -P); then larch_err "parent resolution failed: $ancestor"; return 2; fi`.
+5. Concatenate the unresolved tail (the path components walked off) onto `resolved_ancestor` to form `resolved_candidate`. No `mkdir` of untrusted parents.
+6. If `resolved_candidate` already exists as a directory, canonicalize the leaf too (`if ! resolved_leaf=$(cd "$resolved_candidate" 2>/dev/null && pwd -P); then larch_err "leaf resolution failed: $resolved_candidate"; return 2; fi`) and use it. If it exists as a symlink to a non-directory, reject. This catches leaf-symlink escapes (FINDING_4).
+7. Compare `resolved_candidate` (or `resolved_leaf` when set) against each canonical allowlist prefix using `case "$resolved" in "$prefix"*)` — quoted prefix literal, only the trailing `*` unquoted (FINDING_9).
+8. On no match, `larch_err` naming the resolved path and the allowlist; return 2.
+
+The validator never modifies the filesystem. Callers `mkdir -p "$DESIGN_TMPDIR"` themselves only after validation succeeds.
+
+The `voter_coverage_*` rename uses `plan_voter_coverage_*` (full prefix replacement). One production sourcer needs updating. Both REWRITTEN entries are implemented as `git mv` operations so the old paths do not ship (FINDING_8).
+
+## Files to modify/create
+
+### NEW: `scripts/lib-design-tmpdir.sh`
+
+Source-only library exposing `larch_design_tmpdir_validate <dir>`. Implements the 8-step algorithm in Approach. Default allowlist built lazily on first call from `$XDG_CACHE_HOME` / `$HOME` / `$TMPDIR` / `/tmp` with explicit canonicalization. The function has no public flag arguments in this pass — callers always use the default allowlist. Use only Bash 3.2-compatible constructs (no `declare -A`, no `${var//pattern/$replace}` with capture variables; `case "$resolved" in "$prefix"*)` matching pattern).
+
+### NEW: `scripts/lib-design-tmpdir.md`
+
+Sibling doc: purpose, primary callers (`dispatch-plan-voters.sh`, `tally-plan-review.sh`), function signature, default allowlist sources (with macOS `/private` mapping note), resolution algorithm (nearest-existing-ancestor + canonicalized leaf, no mkdir), exit-code contract (0 valid, 2 invalid), invariants (no filesystem mutation; Bash 3.2-compatible; allowlist canonicalized at first call). Cross-link harness.
+
+### NEW: `scripts/test-lib-design-tmpdir.sh`
+
+Regression harness covering: allowed prefixes under each of `$HOME/.cache/larch/sessions/`, `$TMPDIR`, and `/tmp` (including macOS `/private/tmp` canonicalization); allowed prefix under `$XDG_CACHE_HOME` when set; disallowed prefix (`/etc/foo`, `/var/foo`); `..` traversal that escapes the allowlist; symlink parent redirection; **leaf symlink escape** (a directory under `/tmp` symlinked to `/etc/foo` — must be rejected); fully non-existent path with existing parent; nearest-existing-ancestor walk multiple levels up; empty input. Each case asserts exit code and `larch_err` text. Follow the `scripts/test-*.sh` style.
+
+### NEW: `scripts/test-lib-design-tmpdir.md`
+
+Sibling stub naming the primary script and the harness coverage matrix.
+
+### REWRITTEN: `scripts/lib-plan-voter-coverage.sh`
+
+Implement as `git mv scripts/lib-voter-coverage.sh scripts/lib-plan-voter-coverage.sh` followed by an edit (FINDING_8). Function renames: `voter_coverage_compute_effective_judges` → `plan_voter_coverage_compute_effective_judges`; `voter_coverage_emit_degraded_warning_if_needed` → `plan_voter_coverage_emit_degraded_warning_if_needed`; `voter_coverage_emit_status_block` → `plan_voter_coverage_emit_status_block`. Top comment marks the library as plan-review-specific and names the interleaved KV order as a binding contract. Body otherwise unchanged. No backward-compat shim under the old name.
+
+### REWRITTEN: `scripts/lib-plan-voter-coverage.md`
+
+Implement as `git mv scripts/lib-voter-coverage.md scripts/lib-plan-voter-coverage.md` followed by an edit. Function signature lines and top-of-file naming updated. Top of file adds a "Plan-review specific" note warning that the KV order in `plan_voter_coverage_emit_status_block` is plan-review only; future code-review reuse requires explicit caller-fork. All other content (Invariants, Harness) carries over with renamed symbols.
+
+### UPDATED: `scripts/lib-quiet.sh`
+
+Extend `emit_kv` to reject embedded `\n` or `\r` in the value before printing. Use a shell `case "$value" in *$'\n'*|*$'\r'*)` test. On match, call `larch_err` naming the offending key and return 2. The reject runs in both the `LARCH_QUIET_ACTIVE` and stdout-fallback branches.
+
+### UPDATED: `scripts/lib-quiet.md`
+
+Add a short "emit_kv newline contract" note: values must not contain `\n` or `\r`; the helper returns 2 with a `larch_err` on violation. Cross-link to `scripts/test-lib-quiet.sh` for the reject coverage.
+
+### UPDATED: `scripts/test-lib-quiet.sh`
+
+Add reject coverage for `emit_kv`: value with embedded LF; value with embedded CR; value with both; value with literal backslash-n (must pass — only actual control bytes are rejected); long single-line value (must pass — no length cap is added). Each negative case asserts exit code 2 and `larch_err` text on rejection; literal-backslash-n case asserts exit code 0.
+
+### UPDATED: `scripts/dispatch-plan-voters.sh`
+
+Three coupled changes: (a) source-line at the existing `source "$SCRIPT_DIR/lib-voter-coverage.sh"` line is updated to `lib-plan-voter-coverage.sh`; (b) function call sites that invoke `voter_coverage_*` are renamed to `plan_voter_coverage_*` (currently three sites: `voter_coverage_compute_effective_judges`, `voter_coverage_emit_degraded_warning_if_needed`, `voter_coverage_emit_status_block`); (c) source `lib-design-tmpdir.sh` and call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` after the existing argv validation block (immediately before the existing `mkdir -p "$DESIGN_TMPDIR"` line). The script already uses `larch_err` + `exit` for argv errors, so `exit $?` is consistent with the existing failure contract (FINDING_5 does not apply to this script).
+
+### UPDATED: `scripts/dispatch-plan-voters.md`
+
+Update function-call references from `voter_coverage_*` to `plan_voter_coverage_*`. Add one line noting that `--design-tmpdir` is validated via `lib-design-tmpdir.sh` before `mkdir -p`.
+
+### UPDATED: `skills/design/scripts/tally-plan-review.sh`
+
+Source `lib-design-tmpdir.sh` (using the script's existing `CLAUDE_PLUGIN_ROOT` or equivalent path resolution) and call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` after the existing argv validation block (after the `larch_err "tally-plan-review.sh: --design-tmpdir and --ballot-file are required"; usage; exit 2` block). The script already uses `larch_err` + `exit` for argv errors (FINDING_5 does not apply to this script).
+
+### UPDATED: `skills/design/scripts/tally-plan-review.md`
+
+Add one line in the Invariants section noting `--design-tmpdir` validation via the shared helper.
+
+### UPDATED: `SECURITY.md`
+
+Add a section (or extend an existing relevant section) covering: (a) the new `--design-tmpdir` allowlist (canonicalized prefixes; no parent mkdir; leaf symlink escape rejected); (b) the `emit_kv` single-line value contract (rejects embedded `\n`/`\r` to keep the FD-3 stream parseable). Frame both as defense-in-depth hardening against orchestrator misconfiguration, not as adversarial-input defense.
+
+## Edge cases
+
+- `--design-tmpdir` empty string. Validator returns 2 with `empty path` message; consumers' existing argv check already requires non-empty.
+- `..` segments. Nearest-existing-ancestor walk + canonicalize resolves them — e.g., `/tmp/foo/../etc` becomes `/etc` after canonicalization and fails the allowlist.
+- Parent symlink pointing outside the allowlist. Canonicalization via `cd && pwd -P` exposes the true location.
+- **Leaf symlink** pointing outside the allowlist. When the candidate leaf exists, the validator canonicalizes it explicitly (or rejects a symlink-to-non-directory leaf). FINDING_4 regression case included in the harness.
+- `$TMPDIR` unset. Allowlist skips that prefix; `$XDG_CACHE_HOME` / `$HOME/.cache/larch/sessions/` and `/tmp` still accepted.
+- `$XDG_CACHE_HOME` set to a non-standard location. Validator accepts paths under it.
+- macOS `/tmp` paths. `cd /tmp && pwd -P` returns `/private/tmp`; allowlist prefix is canonicalized the same way so they match.
+- Fully non-existent candidate path. Walk up to deepest existing ancestor; canonicalize that; append unresolved tail; check prefix. No `mkdir` happens.
+- All-existing-path. Leaf canonicalization runs and is used for the prefix check.
+- `emit_kv` value with literal `\n` text (two characters: backslash + lowercase n). Allowed; the reject is for actual control bytes only.
+- `emit_kv` long single-line value. Allowed; no length cap is added.
+- `emit_kv` value containing `=` characters. Allowed; consumers split on first `=`.
+
+## Failure modes
+
+1. **Trailing-slash mismatch in canonical prefix.** Canonical `$TMPDIR` may include a trailing slash on some shells. Normalize via `${tmpdir%/}/` at allowlist construction. Earliest warning: harness covers trailing-slash variants.
+2. **`emit_kv` reject breaks a hitherto-tolerant caller.** A caller might pass a value with a trailing newline. Mitigation: pre-flight `grep -rn 'emit_kv' scripts/ skills/` during implementation; fix any caller that constructs values from raw multi-line sources. Earliest warning: CI `make lint` and the extended `scripts/test-lib-quiet.sh` cases.
+3. **`git mv` rename misses a call-site or doc reference.** Post-rename `grep -rn 'voter_coverage_\|lib-voter-coverage' scripts/ skills/ docs/ .github/` audit; update every match. Earliest warning: `make lint` (drift-prone-prose hook) and reviewer audit during /implement.
+
+## Testing strategy
+
+- New `scripts/test-lib-design-tmpdir.sh` covering: allowed prefixes (HOME/.cache/larch/sessions, TMPDIR, /tmp, XDG_CACHE_HOME); macOS `/private/tmp` canonicalization; disallowed prefix; `..` traversal; parent-symlink redirection; **leaf symlink escape (FINDING_4 regression)**; fully non-existent path with existing parent; nearest-existing-ancestor multi-level walk; explicit `cd && pwd -P` failure path returning 2 (FINDING_10 regression); quoted-prefix `case` behavior with glob metacharacters in `$TMPDIR` (FINDING_9 regression); empty input.
+- Extended `scripts/test-lib-quiet.sh` with `emit_kv` reject cases for embedded LF, embedded CR, both, literal backslash-n (pass), and long single-line value (pass).
+- Existing `scripts/test-dispatch-plan-voters.sh` continues to validate the dispatcher stdout contract — confirms the `git mv` rename + function renames did not regress the byte-order-sensitive KV emission.
+- `bash scripts/relevant-checks.sh` after each implementer commit.
+- `make lint` exercises the broader hook set including bash32-portability, drift-prone-prose, and script-md-siblings invariants.
+
+diff_lines: 365

@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	scripts/lib-design-tmpdir.sh:1	Parent-only canonicalization still allows a final-component symlink	/tmp/design-session can be a symlink to an outside directory; the helper resolves only /tmp plus basename, passes the allowlist, and later callers write outside the approved tmp roots	Reject a symlink final component or canonicalize an existing final directory and re-check that resolved leaf against the allowlist; add a final-symlink regression case

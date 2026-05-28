@@ -1,0 +1,14 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt","fallback_group":"plan-arch"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt","fallback_group":"plan-arch"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt","fallback_group":"plan-edge"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt","fallback_group":"plan-edge"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt","fallback_group":"plan-innovation"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt","fallback_group":"plan-innovation"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt","fallback_group":"plan-pragmatic"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt","fallback_group":"plan-pragmatic"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt","fallback_group":"plan-requirements"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt","fallback_group":"plan-requirements"}
+{"slot":"dyn-cursor-plan-rename-propagation","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-rename-propagation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-rename-propagation.prompt","fallback_group":"plan-dyn-rename-propagation"}
+{"slot":"dyn-codex-plan-rename-propagation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-rename-propagation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-rename-propagation.prompt","fallback_group":"plan-dyn-rename-propagation"}
+{"slot":"dyn-cursor-plan-allowlist-logic","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-allowlist-logic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-allowlist-logic.prompt","fallback_group":"plan-dyn-allowlist-logic"}
+{"slot":"dyn-codex-plan-allowlist-logic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-allowlist-logic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-allowlist-logic.prompt","fallback_group":"plan-dyn-allowlist-logic"}
