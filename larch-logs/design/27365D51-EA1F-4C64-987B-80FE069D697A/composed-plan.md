@@ -1,0 +1,267 @@
+## Plan
+
+
+This is a SIMPLE-tier sweep that wires `larch_design_tmpdir_validate` into 17 production `--design-tmpdir` consumers following the canonical pattern established by `scripts/dispatch-plan-voters.sh` and `skills/design/scripts/tally-plan-review.sh`. The validator and its already-wired callers are untouched. Test harnesses (3 scripts) and the missing `emit-design-plan-preview.md` sibling are explicitly out of scope.
+
+Per the Round-3 plan-review panel, each consumer's validator failure path MUST preserve that script's existing error-reporting contract (KV stdout, exit-code semantics, warning-and-exit-0 degradation). Per-script adaptations are documented in the file subsections below.
+
+## Approach
+
+Two-line wiring per script:
+
+1. **Source** `lib-design-tmpdir.sh` adjacent to existing library sources. Use the path appropriate to the script location:
+   - `scripts/<name>.sh` → `source "$SCRIPT_DIR/lib-design-tmpdir.sh"` (with `# shellcheck source=scripts/lib-design-tmpdir.sh`).
+   - `skills/design/scripts/<name>.sh` → `source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"` when the script already uses that pattern, or `source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"` when it already binds `PLUGIN_ROOT`. Either matches the peer style in the same file.
+2. **Validate** with the per-script error path documented in each file subsection below. The default canonical pattern is `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?`, used only when the script has no structured KV/exit-code contract to preserve. Six scripts require a contract-preserving substitute (see FINDINGS 1, 2, 3, 4, 5, 7 below). The library is idempotent (guarded by `LARCH_LIB_DESIGN_TMPDIR_LOADED`), so duplicate sources are safe.
+
+Variable-name nuance: the validator call uses whichever variable the script binds from argv. Most scripts bind `DESIGN_TMPDIR`; `write-design-current-env.sh` and `render-plan-review-prompt.sh` bind `DESIGN_TMPDIR_ARG`; `emit-design-plan-preview.sh` binds the lowercase `design_tmpdir`. Per-file subsections name the exact variable.
+
+For sibling .md updates: each modified script's sibling `<basename>.md` gets a one-line note that the script now calls `larch_design_tmpdir_validate "$DESIGN_TMPDIR"` after argv parsing (or in each subcommand for `decompose-file-issues.md`). The missing `skills/design/scripts/emit-design-plan-preview.md` is not created in this PR (Round 1 decision: pre-existing sibling-rule gap is a separate concern).
+
+`SECURITY.md` is also updated to document the expanded `--design-tmpdir` validation coverage (FINDING_6).
+
+## Files to modify/create
+
+### UPDATED: `scripts/design-log-publish.sh`
+
+Source `lib-design-tmpdir.sh` near the existing `source` block (lines 21-28; pick a spot consistent with neighboring `source "$SCRIPT_DIR/lib-quiet.sh"` style). **Per FINDING_1**, validator failure MUST preserve the script's `PUBLISH_OK=false` structured-stdout contract:
+
+```bash
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || { emit_publish_result false; exit 0; }
+```
+
+Place this line between the required-arg check at lines 65-68 (`if [[ -z "$DESIGN_TMPDIR" || -z "$RUN_ID" || -z "$ISSUE" ]]; then usage; exit 1; fi`) and the `-d` check at lines 84-88. The `emit_publish_result false` helper is defined earlier in the file; verify it is in scope at the insertion point — if not, source/define it before the validator call. The validator's own stderr message ("design-tmpdir: path not under allowlist…") is preserved.
+
+### UPDATED: `scripts/design-pause-load.sh`
+
+Source `lib-design-tmpdir.sh` next to the existing `source "$SCRIPT_DIR/lib-larch-log.sh"` block (around line 13). Call:
+
+```bash
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-invalid"
+```
+
+immediately after line 86 (`[[ -n "$DESIGN_TMPDIR" ]] || emit_load_fail "tmpdir-unset"`) and before line 87 (`mkdir -p "$DESIGN_TMPDIR"`). The non-default error pattern preserves the script's `LOAD_OK=false ERROR=<token>` KV contract — `exit $?` would emit no KV lines and break downstream parsers.
+
+### UPDATED: `scripts/design-pause-save.sh`
+
+Source `lib-design-tmpdir.sh` next to `source "$SCRIPT_DIR/lib-quiet.sh"` (around line 9). **Per FINDING_2**, validator failure MUST route through `emit_fail` so callers see `PAUSE_OK=false` and `ERROR=tmpdir-invalid`:
+
+```bash
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_fail "tmpdir-invalid"
+```
+
+Place this line immediately after the required-arg block at lines 62-63 (`[[ -n "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-unset"` / `[[ -d "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-missing"`). The `tmpdir-unset` / `tmpdir-missing` cases still fire from the pre-existing checks before the validator.
+
+### UPDATED: `scripts/write-design-current-env.sh`
+
+Source `lib-design-tmpdir.sh` near the existing `source "$SCRIPT_DIR/lib-quiet.sh"` (around line 39). **Per FINDING_3**, the validator MUST run AFTER the existing absolute-path check at lines 113-116 (`if [[ "$DESIGN_TMPDIR_ARG" != /* ]]; then larch_err "ERROR=Invalid --design-tmpdir: must be an absolute path"; exit 1; fi`) so the existing relative-path diagnostic and rc 1 contract are preserved. Failure maps to argv exit 1, not the validator's default exit 2:
+
+```bash
+larch_design_tmpdir_validate "$DESIGN_TMPDIR_ARG" || exit 1
+```
+
+Place this line after the absolute-path check at line 116 and before the matching `OUTPUT` absolute-path check at line 118 (or after the `OUTPUT` check at line 121 if the orchestrator prefers to validate both argv args before the validator runs — either ordering preserves the rc 1 contract).
+
+### UPDATED: `skills/design/scripts/check-plan-size.sh`
+
+Source `lib-design-tmpdir.sh` next to `source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"` (around line 8). **Per FINDING_5**, the validator MUST NOT use the default `exit $?` because the validator returns 2 on validation failure, but rc 2 in this script is reserved for `PLAN_SIZE_STATUS=missing-plan` / `missing-diff-lines` (artifact failures). Validator failures are argv errors and map to rc 3:
+
+```bash
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit 3
+```
+
+Place this line immediately after the required-arg check at lines 42-46 (`if [[ -z "$DESIGN_TMPDIR" ]]; then larch_err ...; exit 3; fi`) and before the first read of `$DESIGN_TMPDIR/plan.txt`.
+
+### UPDATED: `skills/design/scripts/decompose-aggregator.sh`
+
+Source `lib-design-tmpdir.sh` after the existing `source "$PLUGIN_ROOT/scripts/lib-quiet.sh"` (around line 11) using the same `$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh` path. Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after line 43 (`[[ -n "$DESIGN_TMPDIR" ]] || fail "--design-tmpdir is required"`) and before the first `mkdir -p "$DECOMP_DIR"` (which lives under `$DESIGN_TMPDIR`).
+
+### UPDATED: `skills/design/scripts/decompose-file-issues.sh`
+
+Source `lib-design-tmpdir.sh` once after `source "$PLUGIN_ROOT/scripts/lib-quiet.sh"` (around line 11). Insert `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` in **each** of the three subcommand bodies, immediately after that subcommand's required-arg check:
+- `prepare` (after line 35 `[[ -n "$DESIGN_TMPDIR" ]] || { larch_err "prepare: --design-tmpdir required"; exit 2; }`, before line 40 `mkdir -p "$dec"`).
+- `annotate` (after line 209 `[[ -n "$DESIGN_TMPDIR" ]] || ...`, before line 215 `mkdir -p "$dec"`).
+- `close-original` (after line 288 `[[ -n "$DESIGN_TMPDIR" ]] || ...`; this subcommand does not `mkdir` but still reads/writes under `$DESIGN_TMPDIR`).
+
+### UPDATED: `skills/design/scripts/decompose-panel-dispatch.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$PLUGIN_ROOT/scripts/lib-quiet.sh"` (around line 11). Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after line 49 (`[[ -n "$DESIGN_TMPDIR" ]] || fail "--design-tmpdir is required"`) and before `mkdir -p "$DECOMP_DIR"` (line 57).
+
+### UPDATED: `skills/design/scripts/design-driver.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"` (around line 8). Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after the required-arg check at lines 48-52 (`if [[ -z "$DESIGN_TMPDIR" ]]; then ...; exit 2; fi`) and before `mkdir -p "$DESIGN_TMPDIR/.completed"` (line 56).
+
+### UPDATED: `skills/design/scripts/dispatch-plan-review-panel.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$PLUGIN_ROOT/scripts/lib-quiet.sh"` (around line 11). Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after line 45 (`[[ -n "$DESIGN_TMPDIR" ]] || fail "--design-tmpdir is required"`). The script reads from but does not `mkdir -p $DESIGN_TMPDIR` directly; the validate call still applies because subsequent operations read manifests under `$DESIGN_TMPDIR`.
+
+### UPDATED: `skills/design/scripts/emit-design-plan-preview.sh`
+
+This script has no `SCRIPT_DIR` definition. Add `SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)` immediately after `set -euo pipefail` (line 5). Then `# shellcheck source=scripts/lib-design-tmpdir.sh` + `source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"` on the following line.
+
+**Per FINDING_4**, validation MUST live INSIDE each variant branch, AFTER the existing `-z / ! -d` check, and route validator failure to that variant's existing warning-and-exit-0 path (preserving the graceful-degrade contract Step 3 and Gate C depend on). Do NOT call the validator at the top level of the script (a top-level `|| exit $?` would convert today's display-only warnings into hard exit-2 failures).
+
+For the `step3` branch — after the existing `-z` / `! -d` / `! -s plan.txt` warning-and-exit-0 checks, before reading `plan.txt`:
+
+```bash
+if ! larch_design_tmpdir_validate "$design_tmpdir"; then
+    printf '%s\n' '**⚠ 3: DESIGN_TMPDIR not under allowlist; cannot present plan candidate**'
+    exit 0
+fi
+```
+
+For the `gatec` branch — analogously, after the existing `-z` / `! -d` / `! -s plan.txt` warning-and-exit-0 checks, before reading `plan.txt`:
+
+```bash
+if ! larch_design_tmpdir_validate "$design_tmpdir"; then
+    printf '%s\n' '**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**'
+    exit 0
+fi
+```
+
+Both branches use the script's existing per-variant warning style (`**⚠ 3: ...**` / `**⚠ 4b: ...**`); the validator's own stderr message remains visible for diagnosis. No SKILL.md prose changes are needed because the existing warning-and-exit-0 contract is preserved.
+
+### UPDATED: `skills/design/scripts/emit-plan.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"` (around line 8). Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after the required-arg check at lines 37-41 (`if [[ -z "$DESIGN_TMPDIR" ]]; then ...; exit 2; fi`) and before the first read of `$DESIGN_TMPDIR/plan.txt`.
+
+### UPDATED: `skills/design/scripts/file-design-oos.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"` (around line 8). Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after the required-arg check at lines 459-462 (`if [[ -z "$PHASE" || -z "$DESIGN_TMPDIR" ]]; then usage; exit 2; fi`) and before the `case "$PHASE" in prepare) cmd_prepare ;; ...` dispatch. The validator runs once at top-level argv binding; both `cmd_prepare` and `cmd_annotate` rely on the same `$DESIGN_TMPDIR` (single argv parser, unlike `decompose-file-issues.sh`).
+
+### UPDATED: `skills/design/scripts/finalize-plan.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"` (around line 8). **Per FINDING_7**, validator failure MUST preserve the `FINALIZE_PLAN_STATUS` contract that callers already parse for `missing-design-tmpdir`:
+
+```bash
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || { emit_kv FINALIZE_PLAN_STATUS missing-design-tmpdir; exit 1; }
+```
+
+Place this line immediately after the required-arg check (`if [[ -z "$DESIGN_TMPDIR" ]]; then ...; exit 2; fi`, around lines 38-42) and before the existing `if [[ ! -d "$DESIGN_TMPDIR" ]]` check at lines 44-47 (the `-d` check still fires for non-existent directories and emits the same status). Reusing `missing-design-tmpdir` mirrors the existing emit-and-exit-1 path so callers see a uniform failure shape; if reviewers later want a distinct token (`invalid-design-tmpdir`), document and test it in a follow-up.
+
+### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+
+Source `lib-design-tmpdir.sh` after the existing `source "$PLUGIN_ROOT/scripts/lib-quiet.sh"` (around line 17). Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after the required-arg check at line 53 (`[[ -n "$DESIGN_TMPDIR" ]] || { usage; exit 2; }`) and before the `DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"` resolution at line 60 (validating the raw argv-supplied path matches the call-site contract of the two already-wired scripts).
+
+### UPDATED: `skills/design/scripts/render-plan-review-prompt.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"` (around line 10). The script binds `DESIGN_TMPDIR` from `DESIGN_TMPDIR_ARG` at the line `DESIGN_TMPDIR="${DESIGN_TMPDIR_ARG:-${DESIGN_TMPDIR:-}}"` (around line 93). Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after the existing `[[ -z "$DESIGN_TMPDIR" || ! -d "$DESIGN_TMPDIR" ]]` check (around lines 94-97) — validating the resolved value matches what subsequent reads will use.
+
+### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.sh`
+
+Source `lib-design-tmpdir.sh` after `source "$REPO_ROOT/scripts/lib-quiet.sh"` (around line 9) using the same `$REPO_ROOT/scripts/lib-design-tmpdir.sh` path. Call `larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?` immediately after the required-arg check at line 50 (`[[ -n "$DESIGN_TMPDIR" ]] || die_usage "--design-tmpdir is required"`) and before `mkdir -p "$REVISE_DIR"` at line 108.
+
+### UPDATED: `SECURITY.md`
+
+**Per FINDING_6**, update the existing `--design-tmpdir` allowlist paragraph (or add a one-paragraph sub-section under the `--design-tmpdir` heading if there is one) to note: "After this PR, every production `--design-tmpdir` argv consumer validates its tmpdir against the same allowlist via `larch_design_tmpdir_validate` (defined in `scripts/lib-design-tmpdir.sh`). Allowlist roots are unchanged: `${XDG_CACHE_HOME}/larch/sessions/`, `${TMPDIR}`, and `/tmp`. Per-script error contracts (`PUBLISH_OK=false`, `PAUSE_OK=false`, `LOAD_OK=false`, `FINALIZE_PLAN_STATUS`, `PLAN_SIZE_STATUS`, variant-specific warning-and-exit-0 paths) are preserved on validator failure." Match the existing prose style; do not introduce new sections unless the file currently lacks an allowlist paragraph.
+
+### UPDATED: `scripts/design-log-publish.md`
+
+Add a one-line note under the relevant existing section (typically Invariants / Validation): "Validates `$DESIGN_TMPDIR` is under the allowlist via `larch_design_tmpdir_validate` immediately after the required-arg check and before any worktree or log-root mkdir; failure routes through `emit_publish_result false; exit 0` to preserve `PUBLISH_OK=false`." Match the existing prose style of the file.
+
+### UPDATED: `scripts/design-pause-load.md`
+
+Add a one-line note: "On invalid `$DESIGN_TMPDIR` (outside the allowlist), the script calls `emit_load_fail "tmpdir-invalid"` and exits 0 with `LOAD_OK=false ERROR=tmpdir-invalid` so downstream KV parsers see a structured error."
+
+### UPDATED: `scripts/design-pause-save.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` is under the allowlist via `larch_design_tmpdir_validate` after the required-arg + directory-exists checks; failure routes through `emit_fail "tmpdir-invalid"` to preserve `PAUSE_OK=false`."
+
+### UPDATED: `scripts/write-design-current-env.md`
+
+Add a one-line note: "Validates the `--design-tmpdir` argument is under the allowlist via `larch_design_tmpdir_validate` after the existing absolute-path check; failure maps to argv exit 1 (preserving the script's exit-code contract)."
+
+### UPDATED: `skills/design/scripts/check-plan-size.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before reading `$DESIGN_TMPDIR/plan.txt`; failure maps to argv exit 3 (rc 2 remains reserved for `PLAN_SIZE_STATUS=missing-*`)."
+
+### UPDATED: `skills/design/scripts/decompose-aggregator.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before creating the decomposition working directory."
+
+### UPDATED: `skills/design/scripts/decompose-file-issues.md`
+
+Add a one-line note: "Each subcommand (`prepare`, `annotate`, `close-original`) validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after its required-arg check."
+
+### UPDATED: `skills/design/scripts/decompose-panel-dispatch.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before dispatching the panel."
+
+### UPDATED: `skills/design/scripts/design-driver.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before `mkdir -p $DESIGN_TMPDIR/.completed`."
+
+### UPDATED: `skills/design/scripts/dispatch-plan-review-panel.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before reading manifests under `$DESIGN_TMPDIR`."
+
+### UPDATED: `skills/design/scripts/emit-plan.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before reading `$DESIGN_TMPDIR/plan.txt`."
+
+### UPDATED: `skills/design/scripts/file-design-oos.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check and before dispatching to `cmd_prepare` / `cmd_annotate`."
+
+### UPDATED: `skills/design/scripts/finalize-plan.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check; failure emits `FINALIZE_PLAN_STATUS=missing-design-tmpdir` and exits 1 (preserving the existing KV contract). The existing `! -d $DESIGN_TMPDIR` check is preserved as an additive guard."
+
+### UPDATED: `skills/design/scripts/plan-review-loop.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before resolving the path with `cd ... && pwd -P`."
+
+### UPDATED: `skills/design/scripts/render-plan-review-prompt.md`
+
+Add a one-line note: "Validates the bound `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the existing `-z / ! -d` directory check."
+
+### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.md`
+
+Add a one-line note: "Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before `mkdir -p $REVISE_DIR`."
+
+## Edge cases
+
+- **Pre-existing in-progress runs**: the library guard `LARCH_LIB_DESIGN_TMPDIR_LOADED` prevents double-sourcing if a Bash subshell sources both an outer script and the library, so duplicate source lines are idempotent.
+- **`design-pause-load.sh` KV contract**: the validator fails with `exit 2` on validation error. Without adaptation, the script would exit 2 instead of emitting `LOAD_OK=false ERROR=<token>` and downstream callers (`design-pause-load.md` consumers, `/design` resume path in SKILL.md sub-step 2.5-bis) would observe a non-KV failure. The substitution `|| emit_load_fail "tmpdir-invalid"` preserves the contract.
+- **`design-log-publish.sh` and `design-pause-save.sh` KV contracts**: same shape as `design-pause-load.sh` — substitute the script-local emit helper (`emit_publish_result false; exit 0` or `emit_fail "tmpdir-invalid"`) for `exit $?` to preserve `PUBLISH_OK=false` / `PAUSE_OK=false`.
+- **`check-plan-size.sh` exit-code contract**: rc 2 is reserved for missing/malformed plan artifacts (with `PLAN_SIZE_STATUS=missing-*`); validator failures use rc 3 (argv error) to avoid conflating the two failure surfaces.
+- **`finalize-plan.sh` KV contract**: reuses the existing `FINALIZE_PLAN_STATUS=missing-design-tmpdir` token + exit 1 to keep failure shape uniform with the existing `! -d` check.
+- **`emit-design-plan-preview.sh` warning-and-exit-0 contract**: Step 3 and Gate C invoke this helper for display; they expect `exit 0` even when `DESIGN_TMPDIR` is missing/invalid (the helper prints a friendly warning instead of cascading failure). Top-level `|| exit $?` would break that contract; the fix puts validator failure inside each variant branch and routes to the existing warning-and-exit-0 path.
+- **`emit-design-plan-preview.sh` lacks `SCRIPT_DIR`**: adding the definition is a minimal additive change at line 5 only; no other line numbers shift relative to the existing argv parser at line 17.
+- **`write-design-current-env.sh` absolute-path ordering**: the existing absolute-path diagnostic ("ERROR=Invalid --design-tmpdir: must be an absolute path", exit 1) is more actionable than the validator's "path not under allowlist" message for relative-path inputs. Validate after the absolute-path check; failure maps to exit 1 (not the validator's default exit 2) to preserve the script's argv-error rc.
+- **Resolved vs. raw `$DESIGN_TMPDIR`**: `plan-review-loop.sh` resolves the path with `cd ... && pwd -P` at line 60. The validator handles both pre- and post-resolution paths correctly (its own canonical-prefix step independently normalizes). Validating before the resolution gives more informative error messages tied to operator input.
+
+## Failure modes
+
+- **Validator rejects a path used by an in-flight orchestrator run**: if an orchestrator passes a path outside `${XDG_CACHE_HOME}/larch/sessions/`, `${TMPDIR}`, or `/tmp` (e.g., a relative path or a path with `..` segments), the script now refuses. Earliest warning signal: an existing run that previously succeeded now fails with the script's structured-error contract (`PUBLISH_OK=false`, `PAUSE_OK=false`, `LOAD_OK=false`, `FINALIZE_PLAN_STATUS=missing-design-tmpdir`, `PLAN_SIZE_STATUS=missing-*` for adjacent rc 3 failures, or the variant warning-and-exit-0 for the preview helper) — plus the validator's stderr line. Mitigation: the failure is loud (structured KV stdout + stderr message + non-zero exit where applicable). Operators see the diagnostic and either pass a valid path or invoke `session-setup.sh` first.
+- **`design-pause-load.sh` resume path receives an invalid `--design-tmpdir`**: emits `LOAD_OK=false ERROR=tmpdir-invalid` (with `--repo` clearing the marker only when the second arg to `emit_load_fail` is `true`, which it is not for this error). SKILL.md sub-step 2.5-bis already handles `LOAD_OK=false` by falling through to a fresh-run path, so resume cleanly degrades.
+- **Pre-existing harness drift**: `scripts/test-lib-design-tmpdir.sh` covers the validator's allowlist logic but does not assert callers source the library. If a future PR drops a source line, the change would not break the existing harness. The 17 .sh edits in this PR are mechanically uniform, so a manual lint pass (grep for `larch_design_tmpdir_validate` across the 17 paths) is a sufficient guard for this PR; no new harness is added.
+
+## Testing strategy
+
+- **Validator coverage** is unchanged and remains under `scripts/test-lib-design-tmpdir.sh`.
+- **Per-script wiring verification (manual / CI lint)**:
+  - `command grep -nE 'lib-design-tmpdir|larch_design_tmpdir_validate' <each modified .sh>` should report both a source line and a validate call.
+  - Negative smoke checks for each contract-preserving script:
+    - `bash skills/design/scripts/check-plan-size.sh --design-tmpdir /etc/foo` → exit 3, stderr contains `design-tmpdir: path not under allowlist`.
+    - `bash skills/design/scripts/finalize-plan.sh --design-tmpdir /etc/foo` → exit 1, stdout contains `FINALIZE_PLAN_STATUS=missing-design-tmpdir`.
+    - `bash scripts/design-log-publish.sh --design-tmpdir /etc/foo --run-id valid --issue 1 --reason final` → exit 0, stdout contains `PUBLISH_OK=false`.
+    - `bash scripts/design-pause-save.sh --design-tmpdir /etc/foo --issue 1` → exit 0, stdout contains `PAUSE_OK=false ERROR=tmpdir-invalid`.
+    - `bash scripts/design-pause-load.sh --design-tmpdir /etc/foo --issue 1` → exit 0, stdout contains `LOAD_OK=false ERROR=tmpdir-invalid`.
+    - `bash scripts/write-design-current-env.sh --output /tmp/out --design-tmpdir /etc/foo --session-id X --claude-pid 1` → exit 1, stderr contains `design-tmpdir: path not under allowlist`.
+    - `bash skills/design/scripts/emit-design-plan-preview.sh --design-tmpdir /etc/foo --variant step3` → exit 0, stdout contains `**⚠ 3: DESIGN_TMPDIR not under allowlist`.
+- **No new offline harness** is added in this PR (SIMPLE minimum-change bias). If reviewers request a wiring-assertion harness, it can be filed as an OOS observation.
+- **`make lint` / `bash scripts/relevant-checks.sh`** are run after edits to catch shellcheck, sibling .md, and Bash 3.2 portability regressions.
+
+
+## Acceptance
+
+- All 17 production `--design-tmpdir` consumer scripts source `scripts/lib-design-tmpdir.sh` and call `larch_design_tmpdir_validate` per the per-script error contract documented above.
+- `scripts/dispatch-plan-voters.sh` and `skills/design/scripts/tally-plan-review.sh` are untouched.
+- The 3 test harnesses (`scripts/test-revise-plan-with-waterfall.sh`, `skills/design/scripts/test-design-pause-resume.sh`, `skills/design/scripts/test-plan-review-loop.sh`) are untouched.
+- `SECURITY.md` documents the expanded `--design-tmpdir` validation coverage.
+- 16 sibling `.md` files (one per modified `.sh` except `emit-design-plan-preview.md`, which does not exist and is OOS) are updated with a one-line note about the validator call.
+- Negative smoke checks (per the Testing strategy section) confirm each contract-preserving script exits with its documented rc/KV shape on an out-of-allowlist `--design-tmpdir`.
+- `make lint` / `bash scripts/relevant-checks.sh` pass.
+
+diff_lines: 110

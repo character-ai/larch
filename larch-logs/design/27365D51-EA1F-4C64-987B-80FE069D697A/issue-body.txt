@@ -1,0 +1,18 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: Panel (cursor-specialist-correctness, cursor-specialist-testing, cursor-specialist-security, cursor-specialist-edge-cases)
+**Phase**: implement
+**Vote tally**: FINDING_7 YES=3 NO=0 EXON=0
+
+## Description
+
+`scripts/dispatch-plan-voters.sh` and `skills/design/scripts/tally-plan-review.sh` now call `larch_design_tmpdir_validate` (added in the parent hardening PR, issue #3074). However, multiple other `--design-tmpdir` consumers do not yet call the validator, so misconfigured orchestrators or publish/preview paths can still write outside the allowlist. The parent issue plan explicitly deferred this broader sweep (FINDING_6) as out-of-scope for that PR.
+
+Affected callers include (but may not be limited to):
+- `skills/design/scripts/` scripts that accept `--design-tmpdir` but were not wired in the #3074 narrowed scope
+- Any other `design-tmpdir` consumers discoverable via `grep -rn -- '--design-tmpdir\|DESIGN_TMPDIR' skills/ scripts/`
+
+The fix is to source `scripts/lib-design-tmpdir.sh` and call `larch_design_tmpdir_validate "$DESIGN_TMPDIR"` after existing argv validation and before `mkdir -p "$DESIGN_TMPDIR"` in each remaining consumer, following the same pattern established in the two already-wired scripts.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
