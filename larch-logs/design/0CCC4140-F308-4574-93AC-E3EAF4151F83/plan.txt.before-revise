@@ -1,0 +1,165 @@
+## Plan
+
+## Files to modify/create
+
+### UPDATED: `scripts/lib-quiet.sh`
+Remove four helpers that have no remaining callers after callsite migration:
+- `larch_quiet_bc_valid_category` (lines 147-152)
+- `larch_quiet_write_breadcrumb_record` (lines 154-176)
+- `emit_breadcrumb` (lines 287-340)
+- `emit_breadcrumb_stderr` (lines 345-380)
+
+Drop the function bodies, their header comments, and the inline `larch_err` references inside them. Keep `larch_err`, `larch_errf`, `emit`, `emit_kv`, `sanitize_diagnostic_line`, `larch_quiet_truthy`, `larch_quiet_default_log`, `larch_quiet_fd3_is_visible`, `larch_quiet_init`, the paired-PID machinery (`larch_quiet_write_paired_pid_file`, `larch_quiet_warn_paired_pid_invalid`, `larch_quiet_source_larch_log_lib`), and the sentinel machinery (`larch_quiet__exit_write_done`, `larch_quiet__exit_combo`, `larch_quiet_append_done_trap`). `LARCH_BREADCRUMB_STREAM` env-var detection inside `larch_quiet_init` stays — it is consumed by `breadcrumb-monitor.sh` and the env-var plumbing is retained until Piece 3.
+
+### UPDATED: `scripts/lib-quiet.md`
+Drop the `emit_breadcrumb` and `emit_breadcrumb_stderr` API documentation sections plus the category-vocabulary table (`progress|warn|stall|retry|escalate|wait-ci|network-flake`). Trim the changelog / summary lines that named those APIs. Keep all other sections (paired-PID, sentinel, `larch_err`, `larch_errf`, `emit`, `emit_kv`, `larch_quiet_init`).
+
+### UPDATED: `scripts/test-lib-quiet.sh`
+Delete test cases #13 through #18 (lines 141-196) that exercise the removed APIs (`emit_breadcrumb_stderr` semantics, `emit_breadcrumb` stream behavior, category validation, payload-cap behavior). Renumber subsequent test cases to close the gaps (#19→#13, #20→#14, … #28→#22). All other tests stay intact: `emit` / `emit_kv` / `larch_err` / `sanitize_diagnostic_line` / paired-PID / `larch_quiet_init`.
+
+### UPDATED: `scripts/test-lib-quiet.md`
+Drop the documentation entries for deleted test cases #13-#18. Renumber subsequent entries to match.
+
+### UPDATED: `scripts/lib-larch-log.sh`
+In `larch_log_publish_breadcrumbs_shared` (lines 401-489), remove the legacy ndjson stream fallback:
+- Delete the `ndjson_source_ok` local-variable declaration (line 404).
+- Delete the `source_dir`-existence + path-safety block (lines 409-427) since only the quiet-log loop remains and `session_root` derivation moves up.
+- Delete the ndjson loop (lines 448-462).
+- Update the early-return guard on line 433 from `[ "$ndjson_source_ok" != true ] && [ "$quiet_source_ok" != true ]` to `[ "$quiet_source_ok" != true ]`.
+- Remove the `[ "$ndjson_source_ok" = true ]` guard on line 448 and the surrounding `if/fi`.
+
+Keep the function signature `(source_dir, dest_dir, on_error)`, `session_root="$(dirname "$source_dir")"` computation, the `larch_log_breadcrumbs_under_session_tmp "$session_root"` guard, the quiet-log loop (lines 464-478), the atomic-swap helper, and the `larch_log_breadcrumb_source_dir` helper (still used by `larch-log.sh commit` to derive `source_dir`).
+
+### UPDATED: `scripts/lib-larch-log.md`
+Drop any reference to the transitional ndjson fallback added in Stage 1. State that the quiet-log loop is the sole staging path; ndjson streams are no longer produced or staged.
+
+### UPDATED: `scripts/larch-log.md`
+Drop the same transitional-fallback sentence that was added in the Stage 1 plan's `## Updated` section for the Breadcrumb commit artifact paragraph. Note quiet-log-only behavior.
+
+### UPDATED: `scripts/ship-pr.sh`
+Convert 26 `emit_breadcrumb [--category=X] TEXT` callsites to `larch_err "TEXT"`: drop `--category=X`, preserve text verbatim including the leading visual prefix (⚠ ⛔ → 🟢 etc.). No `emit_breadcrumb_stderr` callsites in this file.
+
+### UPDATED: `scripts/ship-pr.md`
+Drop any sibling-doc references to `emit_breadcrumb` or category vocabulary in the breadcrumb-related sections.
+
+### UPDATED: `scripts/ci-wait.sh`
+Convert all 12 `emit_breadcrumb_stderr --category=X FORMAT args...` callsites to `larch_errf "FORMAT" args...`. Each existing format string either already ends in `\n` (lines 191, 207, 222, 238, 253, 255, 257, 259, 273, 284) or is a single dot for poll progress (line 270 `"."`, line 184 `"⏳ CI: waiting"`). For the two callsites that lack trailing newlines, add `\n` to preserve current visual behavior under operator stderr (line 184: `"⏳ CI: waiting\n"`; line 270: `".\n"`).
+
+### UPDATED: `scripts/ci-wait.md`
+Drop emit_breadcrumb_stderr references; note the script now uses `larch_errf`.
+
+### UPDATED: `scripts/collect-agent-results.sh`
+Convert 2 callsites: `emit_breadcrumb --category=retry "..." >&2` (lines 156, 171) → `larch_err "..."`. The `>&2` is dropped because `larch_err` already routes to stderr / FD-4.
+
+### UPDATED: `scripts/collect-agent-results.md`
+Drop emit_breadcrumb references.
+
+### UPDATED: `scripts/implement-finalize.sh`
+Convert 17 `emit_breadcrumb [--category=X] TEXT` callsites to `larch_err "TEXT"`.
+
+### UPDATED: `scripts/implement-finalize.md`
+Drop emit_breadcrumb references.
+
+### UPDATED: `scripts/implement-bootstrap.sh`
+Convert 7 `emit_breadcrumb [--category=X] TEXT` callsites to `larch_err "TEXT"`.
+
+### UPDATED: `scripts/implement-bootstrap.md`
+Drop emit_breadcrumb references.
+
+### UPDATED: `scripts/rebase-checkpoint-probe.sh`
+Convert 1 callsite.
+
+### UPDATED: `scripts/rebase-checkpoint-probe.md`
+Drop emit_breadcrumb references.
+
+### UPDATED: `scripts/phantom-probe-with-warn.sh`
+Convert 1 callsite.
+
+### UPDATED: `scripts/lib-voter-parse-rate.sh`
+Convert 1 callsite.
+
+### UPDATED: `scripts/generate-code-reviewer-agent.sh`
+Convert 1 callsite.
+
+### UPDATED: `scripts/generate-pre-rendered-reviewer-prompts.sh`
+Convert 1 callsite.
+
+### UPDATED: `skills/cleanup/scripts/cleanup.sh`
+Convert 4 callsites.
+
+### UPDATED: `skills/upgrade-larch/scripts/upgrade-larch.sh`
+Convert 20 callsites.
+
+### UPDATED: `skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.sh`
+Convert 9 callsites.
+
+### UPDATED: `skills/report-tokens/scripts/run-analysis.sh`
+Convert 3 callsites.
+
+### UPDATED: `skills/review/scripts/dispatch-panel.sh`
+Convert 1 callsite.
+
+### UPDATED: `skills/review/scripts/review-core.sh`
+Convert 4 callsites.
+
+### UPDATED: `skills/review-and-fix/scripts/review-and-fix.sh`
+Convert 20 callsites.
+
+### UPDATED: `skills/review-and-fix/scripts/review-implement-step5-loop.sh`
+Convert 3 callsites.
+
+### UPDATED: `.claude/skills/bump-version/scripts/apply-bump.sh`
+Convert 1 callsite.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+Delete the two `emit_breadcrumb() { :; }` stub definitions (lines 3532, 3585). They were no-op overrides during tests; with the function removed from lib-quiet.sh, the stubs are unnecessary. Replace any assertion that greps for `emit_breadcrumb` patterns in script output with the equivalent `larch_err` pattern.
+
+### UPDATED: `scripts/test-apply-bump.sh`
+Update the 1 `emit_breadcrumb`-related assertion to expect `larch_err`.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+Update the 1 `emit_breadcrumb`-related assertion to expect `larch_err`.
+
+### UPDATED: `skills/implement/scripts/test-implement-review-token-propagation.sh`
+Update the 1 `emit_breadcrumb`-related assertion to expect `larch_err`.
+
+### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+Update the 1 `emit_breadcrumb`-related assertion to expect `larch_err`.
+
+## Approach
+
+Single coherent diff in one PR. Order matters within the PR: all callsites are migrated first, then `lib-quiet.sh` drops the four helpers, then `lib-larch-log.sh` drops the ndjson loop. Per-file substitution is mechanical:
+
+- `emit_breadcrumb [--category=X] TEXT` → `larch_err "TEXT"` (drop `--category`, drop redundant `>&2`, preserve text verbatim)
+- `emit_breadcrumb_stderr --category=X FORMAT args...` → `larch_errf "FORMAT" args...` (printf semantics preserved; add `\n` to format string when missing)
+
+Drop the four lib-quiet helpers (`emit_breadcrumb`, `emit_breadcrumb_stderr`, `larch_quiet_write_breadcrumb_record`, `larch_quiet_bc_valid_category`) once no caller references them. Drop test cases #13-#18 in `test-lib-quiet.sh` and renumber the remaining cases. Trim sibling `.md` docs for changed scripts. Remove the ndjson loop and `ndjson_source_ok` plumbing from `larch_log_publish_breadcrumbs_shared`; the quiet-log loop is the only staging path.
+
+`breadcrumb-monitor.sh`, `lib-redact-streaming.sh`, the Family-B portion of `lint-foreground-markers.sh`, BASH_AUTHORING.md §4, AGENTS.md, SECURITY.md, `LARCH_BREADCRUMB_*` / `LARCH_DONE_SENTINEL` / `LARCH_STATUS_FILE` / `LARCH_PAIRED_PID_FILE` env plumbing all stay in place — they are Piece 3 scope.
+
+## Edge cases
+
+- Callsites with explicit `>&2`: drop the redirect since `larch_err` already writes to stderr / FD-4 via `larch_quiet_init`.
+- Callsites using command substitution in the message (e.g., `emit_breadcrumb "step ${i} of $(wc -l < x)"`): preserve the same `"…"` text after the function rename.
+- `emit_breadcrumb_stderr` callsites in `ci-wait.sh` line 184 (`"⏳ CI: waiting"`) and line 270 (`"."`) have no trailing `\n`; add `\n` when converting to `larch_errf` to preserve current visual behavior under operator stderr.
+- Tests that stub `emit_breadcrumb` (`scripts/test-ship-pr.sh:3532, 3585`): delete the stubs entirely — no replacement needed because the migrated callsites use `larch_err` which is a real lib-quiet function and behaves correctly in the test environment.
+- `larch_err` internal references inside the bodies of removed functions (e.g., `lib-quiet.sh:157`, `lib-quiet.sh:360`) disappear along with the function bodies.
+- `LARCH_BREADCRUMB_STREAM` / `LARCH_QUIET_BREADCRUMBS` / `LARCH_QUIET_BREADCRUMB_FD` env vars are referenced only inside the removed functions: their detection logic in `larch_quiet_init` stays untouched (Piece 3 owns env-plumbing removal).
+
+## Failure modes
+
+1. **Stale callsite at runtime → `emit_breadcrumb: command not found`.** A leftover callsite would fail at runtime after lib-quiet.sh drops the function. Earliest warning signal: `grep -rn 'emit_breadcrumb' --include='*.sh' --include='*.md' . | grep -v larch-logs/` at the end of the conversion pass; expected output is only Piece-3 surfaces (`breadcrumb-monitor.sh`, `lib-redact-streaming.sh`, `lint-foreground-markers.sh`, `BASH_AUTHORING.md`, `AGENTS.md`, `SECURITY.md`). Mitigation: run `make lint` / `bash scripts/relevant-checks.sh` which exercises affected scripts.
+2. **lib-larch-log publish regression.** Removing the ndjson loop while a session still has `*.ndjson` files in `$IMPLEMENT_TMPDIR/breadcrumbs/` from a pre-Stage-2 run would silently drop those files from the committed `larch-logs/**/breadcrumbs/` directory. Earliest warning signal: `scripts/test-larch-log.sh` (covers the publish helper). Mitigation: keep the quiet-log loop; old in-progress sessions are rare since `/implement` and `/design` sessions are short-lived, and lost ndjson breadcrumbs from a pre-Stage-2 session are not a correctness issue (forensics only).
+3. **test-lib-quiet renumbering drift.** If test cases #19-#28 are not renumbered after deleting #13-#18, the `# 19. …` comments no longer match `assert_eq` test-id strings or the documentation in `test-lib-quiet.md`. Earliest warning signal: side-by-side diff review. Mitigation: a single `sed` pass updates both header comments and any inline references; the sibling `test-lib-quiet.md` follows the same renumbering in the same commit.
+
+## Testing strategy
+
+- Run `bash scripts/test-lib-quiet.sh` — verifies the trimmed lib-quiet API surface (`emit`, `emit_kv`, `larch_err`, `larch_errf`, paired-PID, sentinels, `sanitize_diagnostic_line`) still passes.
+- Run `bash scripts/test-larch-log.sh` — verifies `larch_log_publish_breadcrumbs_shared` still stages quiet-log files into the committed `breadcrumbs/` directory after ndjson loop removal.
+- Run `bash scripts/test-design-log-publish.sh` — verifies publish path still functions end-to-end.
+- Run `bash scripts/test-ship-pr.sh` — verifies the largest callsite-migration target still passes after `emit_breadcrumb` stubs are removed.
+- Run `bash scripts/test-apply-bump.sh`, `bash scripts/test-implement-structure.sh`, `bash skills/review-and-fix/scripts/test-review-and-fix.sh`, `bash skills/implement/scripts/test-implement-review-token-propagation.sh` — covers the remaining test files updated in this pass.
+- Run `make lint` (which exercises `bash scripts/relevant-checks.sh` and the full pre-commit hook chain).
+- Final check: `grep -rn 'emit_breadcrumb\|larch_quiet_write_breadcrumb_record\|larch_quiet_bc_valid_category' --include='*.sh' . | grep -v larch-logs/` — expected output is the empty set (all surfaces in this stage's scope are migrated; Piece-3-deferred surfaces do not contain callsites in `*.sh` files).
+
+diff_lines: 580
