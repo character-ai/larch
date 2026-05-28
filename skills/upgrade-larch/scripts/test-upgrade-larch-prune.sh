@@ -535,4 +535,21 @@ run_case stat-garbage-fallback-mtime-zero
 [[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "stat-garbage-fallback-mtime-zero should keep latest"
 unset STAT_GNU_F_GARBAGE_VERSION
 
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+SESSION_PINNED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+SET_LARCH_SESSIONS_DIR=1
+unset FALLBACK_SESSION_ROOTS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL
+unset XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS RM_FAIL_VERSION STAT_FAIL_VERSION
+unset CACHE_MTIME_OVERRIDES
+run_case all-pinned-cap-overflow-warns
+[[ "$CASE_RC" -eq 0 ]] || fail "all-pinned-cap-overflow-warns exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "cache cap (8) exceeded" "all-pinned-cap-overflow-warns cap warning"
+for version in 29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "all-pinned-cap-overflow-warns should keep $version"
+done
+
 printf 'PASS: test-upgrade-larch-prune.sh\n'

@@ -99,19 +99,6 @@ get_installed_larch_version() {
     return 1
 }
 
-list_cached_versions() {
-    local dirs=()
-    local dir
-    shopt -s nullglob
-    dirs=("$LARCH_CACHE_DIR"/[0-9]*/)
-    shopt -u nullglob
-
-    for dir in "${dirs[@]}"; do
-        [ -d "$dir" ] || continue
-        basename "${dir%/}"
-    done | sort_versions
-}
-
 stat_mtime() {
     local file="$1"
     local mt
@@ -386,6 +373,9 @@ if [ "$VERIFIED_TARGET" = true ]; then
                 break
             fi
         done
+        if [ "${#SANITIZED_VERSIONS[@]}" -gt "$KEEP_LIMIT" ]; then
+            larch_err "Warning: cache cap (${KEEP_LIMIT}) exceeded — ${#SANITIZED_VERSIONS[@]} versions remain; pinned entries or prune failures blocked full trim."
+        fi
     else
         emit_breadcrumb --category=progress "  No old versions to prune."
     fi
