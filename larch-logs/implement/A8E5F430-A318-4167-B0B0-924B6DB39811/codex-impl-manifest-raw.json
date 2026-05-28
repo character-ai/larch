@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "scripts/lib-larch-log.sh", "lines_added": 102, "lines_removed": 61},
+    {"path": "scripts/design-log-publish.sh", "lines_added": 11, "lines_removed": 7},
+    {"path": "scripts/test-design-log-publish.sh", "lines_added": 90, "lines_removed": 3},
+    {"path": "scripts/test-larch-log.sh", "lines_added": 55, "lines_removed": 0},
+    {"path": "SECURITY.md", "lines_added": 16, "lines_removed": 8},
+    {"path": "docs/run-logs.md", "lines_added": 11, "lines_removed": 8},
+    {"path": "scripts/design-log-publish.md", "lines_added": 13, "lines_removed": 0},
+    {"path": "scripts/larch-log.md", "lines_added": 10, "lines_removed": 3},
+    {"path": "skills/design/SKILL.md", "lines_added": 2, "lines_removed": 2},
+    {"path": "scripts/test-implement-finalize.sh", "lines_added": 10, "lines_removed": 0},
+    {"path": "scripts/test-refresh-run-logs.sh", "lines_added": 7, "lines_removed": 0},
+    {"path": "scripts/implement-finalize.sh", "lines_added": 2, "lines_removed": 0},
+    {"path": "scripts/larch-log.sh", "lines_added": 1, "lines_removed": 0},
+    {"path": "scripts/refresh-run-logs.sh", "lines_added": 1, "lines_removed": 0}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-larch-log.sh",
+    "scripts/test-design-log-publish.sh",
+    "scripts/test-refresh-run-logs.sh",
+    "scripts/test-implement-finalize.sh"
+  ],
+  "summary_bullets": [
+    "Stage per-script quiet logs from the session tmpdir root into committed larch-logs breadcrumbs alongside legacy ndjson",
+    "Fail-closed design-log-publish with exit 1 on post-push git/gh failures while preserving PUBLISH_OK stdout parsing",
+    "Exclude design quiet logs from top-level artifact staging and document the forensics contract in SECURITY.md and run-logs.md"
+  ],
+  "commit_message": "Bridge quiet logs into committed breadcrumbs (deprecation stage 1)\n\nStage larch-quiet-*-*.log files from the session tmpdir root via larch_log_publish_breadcrumbs_shared even when breadcrumbs/ is absent; hard-exit design-log-publish after push failures; update /design publish callsites and harness coverage.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}

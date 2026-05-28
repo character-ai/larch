@@ -1,0 +1,24 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- redundant glob-matched case branch adds no behavior
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated SKILL.md one-liners are normal orchestrator prose maintenance
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- broad pre-existing || true pattern outside this change’s scope
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- quiet-log publication is an intentional redacted-forensics tradeoff
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- quiet-log sourcing rules are already documented in the primary breadcrumb section
+FINDING_15: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- states existing pause-save handling is already correct, not a defect
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms planned exit behavior rather than reporting a problem
+FINDING_18: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- scope note for FINDING_15, not a standalone issue
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- real gap but a SKILL.md shell-syntax harness is disproportionate here
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- unnecessary export is low practical risk in the short-lived publish subprocess
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- comparative context only, not its own defect
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch commit metadata, not code behavior
