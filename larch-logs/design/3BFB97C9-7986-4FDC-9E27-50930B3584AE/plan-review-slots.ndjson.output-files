@@ -1,0 +1,16 @@
+<TMPDIR>/cursor-plan-arch-output.txt
+<TMPDIR>/codex-primary-plan-arch-output.txt
+<TMPDIR>/cursor-plan-edge-output.txt
+<TMPDIR>/codex-primary-plan-edge-output.txt
+<TMPDIR>/cursor-plan-innovation-output.txt
+<TMPDIR>/codex-primary-plan-innovation-output.txt
+<TMPDIR>/cursor-plan-pragmatic-output.txt
+<TMPDIR>/codex-primary-plan-pragmatic-output.txt
+<TMPDIR>/cursor-plan-requirements-output.txt
+<TMPDIR>/codex-primary-plan-requirements-output.txt
+<TMPDIR>/cursor-plan-dyn-stdout-protocol-drift-output.txt
+<TMPDIR>/codex-primary-plan-dyn-stdout-protocol-drift-output.txt
+<TMPDIR>/cursor-plan-dyn-awk-boundary-guard-output.txt
+<TMPDIR>/codex-primary-plan-dyn-awk-boundary-guard-output.txt
+<TMPDIR>/cursor-plan-dyn-test-edge-gap-output.txt
+<TMPDIR>/codex-primary-plan-dyn-test-edge-gap-output.txt

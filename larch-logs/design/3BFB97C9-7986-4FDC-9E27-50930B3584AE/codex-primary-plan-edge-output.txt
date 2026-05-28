@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/test-plan-review-loop.sh:1664,1746 planned assertion	New unclosed-fence test asserts against the previous DDED fixture instead of the new fixture	The plan creates $TMP/unclosed-fence/plan.txt, then says to grep "$DDED/plan.txt"; that reads the section-aware test fixture from lines 1664-1702, so the regression either fails for the wrong reason or does not validate the proposed unclosed-fence output	Assert against the new fixture variable or path, for example "$UNCL/plan.txt", and make the grep pattern match the duplicate line written into that fixture
+
+1. **[correctness]** `skills/design/scripts/test-plan-review-loop.sh:1664,1746 planned assertion`
+
+Concern: the planned regression test creates a new `$TMP/unclosed-fence/plan.txt` fixture but asserts against `$DDED/plan.txt`, which is the prior section-aware fixture.
+
+Scenario or breakage: the test will inspect the wrong file. It can fail because the prior fixture lacks `^<duplicate-constraint>$`, or it can stop proving the unclosed-fence behavior if someone later changes the previous fixture.
+
+Suggested revision: name the new fixture dir, for example `UNCL="$TMP/unclosed-fence"`, set `DESIGN_TMPDIR="$UNCL"`, and assert with `grep -c ... "$UNCL/plan.txt"`.

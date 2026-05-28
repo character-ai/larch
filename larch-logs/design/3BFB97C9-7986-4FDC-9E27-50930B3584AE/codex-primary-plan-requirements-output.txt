@@ -1,0 +1,4 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:25-30	New regression test asserts against the old section-aware fixture path	The plan creates the unclosed-fence fixture under $TMP/unclosed-fence/plan.txt but tells the implementer to grep $DDED/plan.txt, so the new acceptance criterion may either fail for the wrong reason or not validate the proposed fixture at all	Assert against the unclosed-fence fixture directory used for DESIGN_TMPDIR, not $DDED from the prior test
+
+1. [correctness] `<TMPDIR>/plan.txt:25-30`: The test fixture path and assertion path drift. Revise the assertion to grep the new unclosed-fence fixture’s `plan.txt`.

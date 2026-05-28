@@ -1,0 +1,13 @@
+[OOS] Section-aware dedup: unclosed trailing code fence disables later Constraints protection
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor (specialist-edge-cases)
+**Phase**: implement
+**Vote tally**: YES=2 NO=1 EXON=0
+
+## Description
+
+`skills/design/scripts/plan-review-loop.sh` `_run_post_apply_pipeline`; the Python dedup tracks `in_fence` state by toggling on every line matching exactly ` ``` `; if a plan.txt ends with an unclosed fence, all content after the last fence-open is treated as inside the fence, which suppresses heading-state transitions; this means any `## Constraints` headings after an unclosed fence do not activate duplicate-preservation, so constraint duplicates that should be preserved may be collapsed. Suggested fix: two-pass approach (first count fences to detect balance), or track the last fence-open position and treat unclosed fences as closed at EOF; add a test case in `skills/design/scripts/test-plan-review-loop.sh` asserting that an unclosed fence does not disable Constraints protection for subsequent headings.
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

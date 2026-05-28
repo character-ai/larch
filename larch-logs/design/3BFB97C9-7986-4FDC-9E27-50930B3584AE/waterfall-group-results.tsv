@@ -1,0 +1,16 @@
+plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	cursor-plan-edge	cursor	<TMPDIR>/cursor-plan-edge-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	cursor-plan-requirements	cursor	<TMPDIR>/cursor-plan-requirements-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-stdout-protocol-drift	dyn-codex-plan-stdout-protocol-drift	codex	<TMPDIR>/codex-primary-plan-dyn-stdout-protocol-drift-output.txt	ok
+plan-dyn-awk-boundary-guard	dyn-codex-plan-awk-boundary-guard	codex	<TMPDIR>/codex-primary-plan-dyn-awk-boundary-guard-output.txt	ok
+plan-dyn-test-edge-gap	dyn-cursor-plan-test-edge-gap	cursor	<TMPDIR>/cursor-plan-dyn-test-edge-gap-output.txt	ok
+plan-dyn-test-edge-gap	dyn-codex-plan-test-edge-gap	codex	<TMPDIR>/codex-primary-plan-dyn-test-edge-gap-output.txt	ok
+plan-innovation	cursor-plan-innovation	codex	<TMPDIR>/cursor-plan-innovation-output.txt	reused	codex-plan-innovation
+plan-dyn-stdout-protocol-drift	dyn-cursor-plan-stdout-protocol-drift	codex	<TMPDIR>/cursor-plan-dyn-stdout-protocol-drift-output.txt	reused	dyn-codex-plan-stdout-protocol-drift
+plan-dyn-awk-boundary-guard	dyn-cursor-plan-awk-boundary-guard	codex	<TMPDIR>/cursor-plan-dyn-awk-boundary-guard-output.txt	reused	dyn-codex-plan-awk-boundary-guard
