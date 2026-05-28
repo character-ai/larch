@@ -1,0 +1,31 @@
+v1	mark	1779939373	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779939391	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1779939432	design	design Step 1d.7 — outline	-	-	-	-	-	-	-	-
+v1	mark	1779940154	design	design Step 1e — gate A	-	-	-	-	-	-	-	-
+v1	mark	1779940163	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1779940338	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779940431	design	design Step 2b.5 — plan size	-	-	-	-	-	-	-	-
+v1	mark	1779940440	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779940746	implement	-	codex	codex-phase1-dyn-codex-plan-regex-left-boundary	1779940643	1779940746	103	codex-primary-plan-dyn-regex-left-boundary-output.txt	0	complete
+v1	vendor	1779940753	implement	-	codex	codex-phase1-codex-plan-edge	1779940642	1779940753	111	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779940757	implement	-	codex	codex-phase1-dyn-codex-plan-bash32-safety	1779940642	1779940757	115	codex-primary-plan-dyn-bash32-safety-output.txt	0	complete
+v1	vendor	1779940764	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779940642	1779940764	122	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779940767	implement	-	codex	codex-phase1-dyn-codex-plan-sibling-doc-completeness	1779940643	1779940766	123	codex-primary-plan-dyn-sibling-doc-completeness-output.txt	0	complete
+v1	vendor	1779940768	implement	-	codex	codex-phase1-codex-plan-innovation	1779940642	1779940767	125	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779940775	implement	-	codex	codex-phase1-codex-plan-arch	1779940642	1779940775	133	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779940776	implement	-	codex	codex-phase1-codex-plan-requirements	1779940642	1779940776	134	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779940776	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779940642	1779940776	134	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779940787	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sibling-doc-completeness	1779940642	1779940787	145	cursor-plan-dyn-sibling-doc-completeness-output.txt	0	complete
+v1	vendor	1779940807	implement	-	cursor	cursor-phase1-dyn-cursor-plan-bash32-safety	1779940642	1779940807	165	cursor-plan-dyn-bash32-safety-output.txt	0	complete
+v1	vendor	1779940814	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779940642	1779940814	172	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779940825	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779940642	1779940825	183	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779940828	implement	-	cursor	cursor-phase1-dyn-cursor-plan-regex-left-boundary	1779940642	1779940828	186	cursor-plan-dyn-regex-left-boundary-output.txt	0	complete
+v1	vendor	1779940836	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779940642	1779940836	194	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779940855	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779940642	1779940855	213	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779940914	implement	-	codex	codex-phase1-aggregator	1779940863	1779940914	51	aggregator-output.txt	0	complete
+v1	vendor	1779941442	implement	-	codex	codex-phase1-voter-2	1779941341	1779941442	101	codex-vote-output.txt	0	complete
+v1	vendor	1779941473	implement	-	cursor	cursor-phase1-voter-3	1779941341	1779941473	132	cursor-vote-output.txt	0	complete
+v1	mark	1779941518	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779941725	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779941733	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779942029	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
