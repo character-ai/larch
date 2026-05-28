@@ -434,7 +434,7 @@ fence_has_monitor_rc_init_before() {
         line="${lines[$i]}"
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        if [[ "$line" =~ ^[[:space:]]*(local[[:space:]]+)?monitor_rc=[[:space:]]*[0-9]+([[:space:]]|$) ]]; then
+        if [[ "$line" =~ ^[[:space:]]*(local[[:space:]]+)?monitor_rc=[[:space:]]*0([[:space:]]|$) ]]; then
             return 0
         fi
         nonblank_seen=$((nonblank_seen + 1))
@@ -449,7 +449,7 @@ fence_has_monitor_rc_conditional_after() {
     local start_idx="$1"
     shift
     local -a lines=("$@")
-    local i line
+    local i line wait_ident
 
     for ((i = start_idx; i < ${#lines[@]}; i++)); do
         if line_is_heredoc_body_idx "$i" "${lines[@]}"; then
@@ -458,10 +458,15 @@ fence_has_monitor_rc_conditional_after() {
         line="${lines[$i]}"
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        wait_ident="$(extract_wait_ident "$line" || true)"
+        if [[ -n "$wait_ident" ]]; then
+            return 1
+        fi
         if ! line_starts_monitor_rc_conditional "$line"; then
             continue
         fi
-        conditional_opener_mentions_monitor_rc "$i" "${lines[@]}" && return 0
+        conditional_opener_mentions_monitor_rc "$i" "${lines[@]}"
+        return $?
     done
     return 1
 }

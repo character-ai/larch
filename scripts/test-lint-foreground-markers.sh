@@ -1582,7 +1582,7 @@ assert_stderr_lacks "monitor_rc init too far above monitor" "$stderr_file" \
     'missing "|| monitor_rc=$?"' \
     'missing conditional branching on monitor_rc'
 
-# 64 — later valid elif monitor_rc branch is accepted after an unrelated if.
+# 64 — later valid elif monitor_rc branch is rejected after an unrelated if.
 reset_tree
 write_md skills/monitor-rc-elif-later/SKILL.md <<'EOF'
 # Case 64
@@ -1608,7 +1608,7 @@ fi
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
-assert_case_clean "later elif monitor_rc branch" "$stderr_file" "$rc"
+assert_case_err "later elif monitor_rc branch rejected" "$stderr_file" "$rc" 'missing conditional branching on monitor_rc'
 
 # 65 — case "$monitor_rc" in is accepted.
 reset_tree
@@ -1664,6 +1664,35 @@ fi
 EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_err "quoted literal monitor_rc rejected" "$stderr_file" "$rc" 'missing conditional branching on monitor_rc'
+
+# 67 — non-literal monitor_rc init is rejected.
+reset_tree
+write_md skills/monitor-rc-nonliteral-init/SKILL.md <<'EOF'
+# Case 67
+
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
+
+```bash
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
+LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/fixture.pid.XXXXXX")"
+export LARCH_PAIRED_PID_FILE
+${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run &
+SHIP_PR_PID=$!
+monitor_rc=$?
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u --paired-pid-file "$LARCH_PAIRED_PID_FILE" || monitor_rc=$?
+if [ "$monitor_rc" -eq 0 ]; then
+    wait "$SHIP_PR_PID"
+else
+    wait "$SHIP_PR_PID" 2>/dev/null || true
+fi
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_err "non-literal monitor_rc init rejected" "$stderr_file" "$rc" 'missing monitor_rc= initialization'
+assert_stderr_lacks "non-literal monitor_rc init rejected" "$stderr_file" \
+    'missing "|| monitor_rc=$?"' \
+    'missing conditional branching on monitor_rc'
 
 # 16 — Family A: minimum run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {
