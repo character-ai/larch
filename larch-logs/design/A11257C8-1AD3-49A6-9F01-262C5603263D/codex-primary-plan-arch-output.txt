@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/plan-review-loop.sh:1261-1278	Proposed streak tests expect zero-finding rounds to continue through streak logic, but the loop exits immediately with REASON=zero-findings	Implementing the tests as written either fails the harness or forces a runtime behavior change beyond the plan's stated only behavior change	Revise the new streak tests so rounds meant to advance CONVERGENCE_STREAK emit non-important accepted findings; keep zero-finding coverage aligned with the existing zero-findings terminal path
+2	in_scope	latent	architecture	skills/design/scripts/plan-review-loop.sh:500-517	The dedup contract is internally inconsistent for Constraints subheadings	Following the proposed heading rule exits protected mode on ### Hard constraints, while the edge-case section says nested subheadings inside ## Constraints stay protected	Pick one minimum-change contract before implementation; either remove the nested-subheading promise or implement level-aware heading tracking and pin that behavior with the dedup regression test
+
+1. [correctness] `skills/design/scripts/plan-review-loop.sh:1261-1278`
+
+The three proposed streak tests conflict with the current zero-finding terminal path. A round with `ACCEPTED_COUNT=0`, collector OK, and non-degraded panel exits immediately as `LOOP_STATUS=converged REASON=zero-findings`; it does not continue to the later streak update. The tests in plan lines 51-53 would fail unless the implementation changes loop behavior, which violates the plan’s minimum-change contract.
+
+Suggested revision: use `ACCEPTED_COUNT=1` and `IMPORTANT_ACCEPTED_COUNT=0` for rounds meant to advance the streak. Keep zero-finding assertions on the existing `REASON=zero-findings` path.
+
+2. [architecture] `skills/design/scripts/plan-review-loop.sh:500-517`
+
+The proposed section-aware dedup rule says any new heading whose text does not start with `Constraints` resets the skip flag, but the edge cases say `### Hard constraints` under `## Constraints` remains protected. Those cannot both be true without heading-level state.
+
+Suggested revision: choose the simpler contract explicitly. If nested subheadings are required, add level-aware tracking and test it. If not, remove that edge-case promise so the implementer does not add extra state outside the SIMPLE-tier scope.

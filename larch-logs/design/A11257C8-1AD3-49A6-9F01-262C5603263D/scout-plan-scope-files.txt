@@ -1,0 +1,6 @@
+skills/design/scripts/plan-review-loop.sh
+scripts/lib-design-round-artifacts.sh
+scripts/lib-design-round-artifacts.md
+skills/design/references/plan-review.md
+scripts/test-lib-design-round-artifacts.sh
+skills/design/scripts/test-plan-review-loop.sh

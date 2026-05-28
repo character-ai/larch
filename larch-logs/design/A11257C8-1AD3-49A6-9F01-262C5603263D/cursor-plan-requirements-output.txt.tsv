@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	SECURITY.md:198	revise.env removal omits SECURITY.md sync; plan claims no other revise.env references	Design-log publish policy still lists revise.env while code and lib-design-round-artifacts stop including it	Add SECURITY.md:198 revise/ allowlist bullet to match lib-design-round-artifacts.md (or one-line UPDATED SECURITY.md in the plan Files list)

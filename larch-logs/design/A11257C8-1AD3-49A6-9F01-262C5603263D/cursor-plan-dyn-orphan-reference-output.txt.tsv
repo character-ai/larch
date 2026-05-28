@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:45-55 vs plan.txt:83-87	Files section lists three streak harness cases only; Testing strategy requires section-aware dedup regression	The only runtime behavior change (Constraints-aware dedup) can ship without the promised inside/outside-Constraints assertion	Add a fourth harness case (or fold into an existing case) in ### UPDATED skills/design/scripts/test-plan-review-loop.sh matching Testing strategy

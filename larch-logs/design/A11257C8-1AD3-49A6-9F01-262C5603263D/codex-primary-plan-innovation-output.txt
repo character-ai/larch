@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/plan-review-loop.sh:1261-1277	Planned streak tests assume zero-finding rounds advance the convergence streak, but the loop exits immediately on zero accepted findings	The proposed cases either fail as written or force a runtime behavior change, contradicting the plan's minimum-change claim	Keep the tests aligned with current behavior: use non-important accepted findings under threshold for streak/reset rounds, and leave zero-finding behavior to existing zero-findings tests
+
+1. **[correctness]** `skills/design/scripts/plan-review-loop.sh:1261-1277`
+
+The three proposed harness cases conflict with the current zero-finding short-circuit. A round with `ACCEPTED_COUNT=0` exits immediately as `LOOP_STATUS=converged REASON=zero-findings` or `zero-findings-degraded-panel`; it does not continue to later rounds or build `CONVERGENCE_STREAK` to 2.
+
+Revise the planned tests to use non-important accepted findings under the threshold for rounds meant to exercise streak behavior. For the degraded reset case, avoid `ACCEPTED_COUNT=0` on the degraded round. This keeps the PR in SIMPLE scope and avoids an unintended behavior change.
