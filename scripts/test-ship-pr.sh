@@ -4670,9 +4670,7 @@ chmod +x "$root/scripts/launch-cursor-ci.sh"
 cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'log refresh\n' >> ci-fix-log-only.txt
-git add ci-fix-log-only.txt
-git commit -q -m "Refresh run logs"
+exit 0
 STUB
 chmod +x "$root/scripts/refresh-run-logs.sh"
 cat > "$root/scripts/git-push.sh" <<'STUB'
@@ -4711,6 +4709,81 @@ if grep -qF 'vendor exit 0 with no commits; escalating to first-fixer-non-health
     ok "run_ship_pr_3134: warn breadcrumb on stdout"
 else
     fail "run_ship_pr_3134: missing warn breadcrumb on stdout"
+    sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Vendor exit 0 with no launcher commit but refresh-run-logs advances HEAD → success.
+root=$(make_repo run_ship_pr_3134_vendor_noop_refresh_commit)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3134e\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh"
+cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'log refresh\n' >> ci-fix-log-only.txt
+git add ci-fix-log-only.txt
+git commit -q -m "Refresh run logs"
+STUB
+chmod +x "$root/scripts/refresh-run-logs.sh"
+cat > "$root/scripts/git-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+exit 0
+STUB
+chmod +x "$root/scripts/git-push.sh"
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "LINT_FIX_STATUS=clean"
+exit 0
+STUB
+chmod +x "$root/scripts/lint-fix-loop.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3134e"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "run_ship_pr_3134_vendor_noop_refresh_commit: ship-pr exits 0"
+if grep -qxF 'BAIL_REASON=' "$tmp/ship-pr-state.sh" \
+    && ! grep -qF 'first-fixer-non-health' "$tmp/out" 2>/dev/null \
+    && git -C "$root" log -1 --pretty=%s 2>/dev/null | grep -qxF 'Refresh run logs'; then
+    ok "run_ship_pr_3134_vendor_noop_refresh_commit: refresh-run-logs HEAD advance stays on success path"
+else
+    fail "run_ship_pr_3134_vendor_noop_refresh_commit: expected refresh-run-logs success without first-fixer bail"
+    sed 's/^/    state: /' "$tmp/ship-pr-state.sh" 2>/dev/null || true
     sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
 fi
 rm -rf "$call_dir"

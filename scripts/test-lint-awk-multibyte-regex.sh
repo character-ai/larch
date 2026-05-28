@@ -98,6 +98,32 @@ assert_negative() {
     return 0
 }
 
+assert_clean_case() {
+    local label="$1"
+    local stderr_file="$2"
+    local rc="$3"
+    set +e
+
+    if [[ "$rc" -ne 0 ]]; then
+        printf 'FAIL [%s]: expected clean exit 0, got %s\n' "$label" "$rc" >&2
+        command grep -F . "$stderr_file" 2>/dev/null >&2 || true
+        FAIL=$((FAIL + 1))
+        set -e
+        return 0
+    fi
+    if [[ -s "$stderr_file" ]]; then
+        printf 'FAIL [%s]: expected empty stderr for clean fixture\n' "$label" >&2
+        command grep -F . "$stderr_file" 2>/dev/null >&2 || true
+        FAIL=$((FAIL + 1))
+        set -e
+        return 0
+    fi
+    printf 'PASS [%s]\n' "$label"
+    PASS=$((PASS + 1))
+    set -e
+    return 0
+}
+
 stderr_file="$(mktemp)"
 
 # 1. Clean fixture (ASCII-only).
@@ -105,7 +131,7 @@ reset_tree
 write_file "$TMPROOT/scripts/clean.sh" \
     "awk -v style='^plain ascii$' '\$0 ~ style { print }'"
 rc="$(run_lint "$stderr_file")"
-assert_negative "clean ascii-only" "$stderr_file" "$rc"
+assert_clean_case "clean ascii-only" "$stderr_file" "$rc"
 
 # 2. Rule 1 em-dash in -v value.
 reset_tree
@@ -232,7 +258,17 @@ assert_case "rule2 heredoc body" 1 "$stderr_file" "$rc" \
     "awk-body-nonascii-regex" \
     "scripts/rule2-heredoc.sh:2:"
 
-# 16. Rule 2 closes single-quoted bodies before pipeline suffixes.
+# 16. Rule 1 ignores non-awk heredoc bodies.
+reset_tree
+rule1_nonawk_heredoc_line="awk -v label='テスト' 'BEGIN { print label }'" # lint-awk-multibyte-regex: ok harness fixture
+write_file "$TMPROOT/scripts/rule1-nonawk-heredoc.sh" \
+    "cat <<'DOC'" \
+    "$rule1_nonawk_heredoc_line" \
+    "DOC"
+rc="$(run_lint "$stderr_file")"
+assert_clean_case "rule1 skips non-awk heredoc body" "$stderr_file" "$rc"
+
+# 17. Rule 2 closes single-quoted bodies before pipeline suffixes.
 reset_tree
 write_file "$TMPROOT/scripts/rule2-pipeline-close.sh" \
     "awk 'BEGIN {" \
@@ -244,7 +280,7 @@ assert_case "rule2 single-quote pipeline close" 1 "$stderr_file" "$rc" \
     "awk-body-nonascii-regex" \
     "scripts/rule2-pipeline-close.sh:2:"
 
-# 17. Rule 2 covers gsub/sub/split/!~ callsites.
+# 18. Rule 2 covers gsub/sub/split/!~ callsites.
 reset_tree
 write_file "$TMPROOT/scripts/rule2-callsite-tokens.sh" \
     "awk 'BEGIN {" \
@@ -261,7 +297,7 @@ assert_case "rule2 extra callsite tokens" 1 "$stderr_file" "$rc" \
     "scripts/rule2-callsite-tokens.sh:4:" \
     "scripts/rule2-callsite-tokens.sh:5:"
 
-# 18. Rule 2 ignores substr( but still catches trailing continuation at EOF.
+# 19. Rule 2 ignores substr( but still catches trailing continuation at EOF.
 reset_tree
 write_file "$TMPROOT/scripts/rule2-substr-eof.sh" \
     "awk 'BEGIN { \\" \

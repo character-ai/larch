@@ -140,6 +140,17 @@ scan_file() {
                 || line ~ /[[:space:]]~[[:space:]]/ || line ~ /[[:space:]]!~[[:space:]]/)
         }
 
+        function heredoc_delimiter(line,    token) {
+            if (!match(line, /<<[[:space:]]*-?['"'"']?([A-Za-z_][A-Za-z0-9_]*)['"'"']?/)) {
+                return ""
+            }
+            token = substr(line, RSTART + 2, RLENGTH - 2)
+            sub(/^[[:space:]]*-?/, "", token)
+            sub(/^['"'"']/, "", token)
+            sub(/['"'"']$/, "", token)
+            return token
+        }
+
         function extract_quoted_value(s, start,    q, i, c, out) {
             if (start > length(s)) {
                 return ""
@@ -268,12 +279,30 @@ scan_file() {
                 logical = pending " " logical
                 pending = ""
             }
-            check_rule1(logical, lineno)
+
+            if (in_generic_heredoc) {
+                if (logical ~ ("^[[:space:]]*" generic_heredoc_delim "[[:space:]]*$")) {
+                    in_generic_heredoc = 0
+                    generic_heredoc_delim = ""
+                }
+                next
+            }
 
             if (is_awk_file) {
+                check_rule1(logical, lineno)
                 check_rule2_line(logical, lineno)
                 next
             }
+
+            if (!awk_command_word(logical)) {
+                generic_heredoc_delim = heredoc_delimiter(logical)
+                if (generic_heredoc_delim != "") {
+                    in_generic_heredoc = 1
+                    next
+                }
+            }
+
+            check_rule1(logical, lineno)
 
             if (in_single_body) {
                 check_rule2_line(logical, lineno)
@@ -297,11 +326,8 @@ scan_file() {
             }
 
             if (awk_command_word(logical)) {
-                if (match(logical, /<<[[:space:]]*-?['"'"']?([A-Za-z_][A-Za-z0-9_]*)['"'"']?/)) {
-                    heredoc_delim = substr(logical, RSTART + 2, RLENGTH - 2)
-                    sub(/^-/, "", heredoc_delim)
-                    sub(/^['"'"']/, "", heredoc_delim)
-                    sub(/['"'"']$/, "", heredoc_delim)
+                heredoc_delim = heredoc_delimiter(logical)
+                if (heredoc_delim != "") {
                     in_heredoc = 1
                     check_rule2_line(logical, lineno)
                     next
@@ -318,11 +344,14 @@ scan_file() {
         }
         END {
             if (pending != "") {
+                if (in_generic_heredoc) {
+                    exit violations ? 1 : 0
+                }
                 check_rule1(pending, lineno)
                 if (is_awk_file || in_single_body || in_heredoc) {
                     check_rule2_line(pending, lineno)
                 } else if (awk_command_word(pending)) {
-                    if (match(pending, /<<[[:space:]]*-?['"'"']?([A-Za-z_][A-Za-z0-9_]*)['"'"']?/)) {
+                    if (heredoc_delimiter(pending) != "") {
                         check_rule2_line(pending, lineno)
                     } else if (open_single_quoted_body(pending)) {
                         check_rule2_line(pending, lineno)
