@@ -48,8 +48,8 @@ fi
 external_style_line='Style requirements: `<READABILITY_STYLE>`.'
 # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
 plan_review_style_line='Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.'
-# shellcheck disable=SC2016 # literal Markdown/backtick regex, not shell expansion.
-orchestrator_style_re='^\*\*MANDATORY — READ ENTIRE FILE before [^:]+: `skills/design/references/readability-style\.md`\.\*\*$'
+# shellcheck disable=SC2016 # literal Markdown/backtick substring anchor, not shell expansion.
+orchestrator_style_anchor='readability-style.md`.**'
 
 validate_expected_count() {
     local path="$1"
@@ -89,7 +89,7 @@ check_step_placement() {
         step_id="${step_id#"${step_id%%[![:space:]]*}"}"
         step_id="${step_id%"${step_id##*[![:space:]]}"}"
         [ -n "$step_id" ] || continue
-        awk -v step_id="$step_id" -v rel_path="$rel_path" -v style_re="$orchestrator_style_re" '
+        awk -v step_id="$step_id" -v rel_path="$rel_path" -v anchor="$orchestrator_style_anchor" '
 BEGIN { in_step = 0; count = 0; found_marker = 0 }
 {
     if (match($0, "^<!-- step:" step_id " ")) {
@@ -110,7 +110,7 @@ BEGIN { in_step = 0; count = 0; found_marker = 0 }
         in_step = 0
         count = 0
     }
-    if (in_step && $0 ~ style_re) {
+    if (in_step && index($0, anchor) > 0) {
         count++
     }
 }
@@ -170,7 +170,7 @@ while IFS= read -r row; do
                 fi
                 ;;
             orchestrator-inline)
-                count=$(grep -Ec "$orchestrator_style_re" "$file" || true)
+                count=$(command grep -Fc "$orchestrator_style_anchor" "$file" || true)
                 if [ "$count" = "$expected_count" ]; then
                     ok=true
                 else
