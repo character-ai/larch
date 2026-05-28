@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# audit-scan-run.sh — Run all scans from scans.tsv against one run-log directory.
+# audit-scan-run.sh — Run all scans from the selected per-skill registry against one run-log directory.
 #
 # Emits NDJSON (one compact JSON object per scan per line) to stdout.
 # Also emits category-stats and cross-cutting metadata objects.
 #
 # Usage:
 #   audit-scan-run.sh --run-dir PATH --pr N \
-#     --scans-tsv PATH --required-files-tsv PATH --current-version VER
+#     --skill <design|implement> --scans-tsv PATH \
+#     --required-files-tsv PATH --current-version VER
 
 set -euo pipefail
 
@@ -39,6 +40,21 @@ PR_NUM=""
 SCANS_TSV=""
 REQUIRED_FILES_TSV=""
 CURRENT_VERSION=""
+SKILL=""
+
+audit_scan_validate_skill() {
+    case "${1:-}" in
+        design|implement) return 0 ;;
+        "")
+            printf 'audit-scan-run.sh: --skill is required (allowed: design, implement)\n' >&2
+            return 1
+            ;;
+        *)
+            printf 'audit-scan-run.sh: --skill must be design or implement (got: %s)\n' "$1" >&2
+            return 1
+            ;;
+    esac
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -47,12 +63,17 @@ while [ $# -gt 0 ]; do
         --scans-tsv) SCANS_TSV="$2"; shift 2 ;;
         --required-files-tsv) REQUIRED_FILES_TSV="$2"; shift 2 ;;
         --current-version) CURRENT_VERSION="$2"; shift 2 ;;
+        --skill) SKILL="$2"; shift 2 ;;
         *)
             printf 'audit-scan-run.sh: unknown argument: %s\n' "$1" >&2
             exit 1
             ;;
     esac
 done
+
+if ! audit_scan_validate_skill "$SKILL"; then
+    exit 1
+fi
 
 for arg in RUN_DIR PR_NUM SCANS_TSV; do
     eval "val=\$$arg"
@@ -74,6 +95,29 @@ if [ ! -d "$RUN_DIR" ]; then
     jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" \
         '{scan:"run-dir-missing",pr:$pr,"incomplete":true,result:"error",detail:("run-dir not found: "+$rd)}'
     exit 1
+fi
+
+RUN_DIR_CANON="$(cd "$RUN_DIR" && pwd -P)"
+SKILL_LOG_ROOT_CANON=""
+if cd "$_audit_repo_root/larch-logs/$SKILL" 2>/dev/null; then
+    SKILL_LOG_ROOT_CANON="$(pwd -P)"
+fi
+if printf '%s/' "$RUN_DIR_CANON" | grep -q '/larch-logs/'; then
+    if [ -n "$SKILL_LOG_ROOT_CANON" ] && [ "$RUN_DIR_CANON" = "$SKILL_LOG_ROOT_CANON" ]; then
+        jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" \
+            '{scan:"run-dir-invalid",pr:$pr,"incomplete":true,result:"error",detail:("run-dir resolves to skill log root instead of a specific run: "+$rd)}'
+        exit 1
+    fi
+    if [ -n "$SKILL_LOG_ROOT_CANON" ]; then
+        case "$RUN_DIR_CANON/" in
+            "$SKILL_LOG_ROOT_CANON"/*) ;;
+            *)
+                jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" --arg root "$SKILL_LOG_ROOT_CANON" \
+                    '{scan:"run-dir-invalid",pr:$pr,"incomplete":true,result:"error",detail:("run-dir must live under the selected skill log root ("+$root+"): "+$rd)}'
+                exit 1
+                ;;
+        esac
+    fi
 fi
 
 if [ ! -f "$SCANS_TSV" ]; then
@@ -642,7 +686,7 @@ while IFS=$'\t' read -r scan_name _scan_type _rest; do
         trailing-content-no-issues-found) scan_trailing_content_no_issues_found ;;
         oos-silent-drop)              scan_oos_silent_drop ;;
         *)
-            emit "{\"scan\":\"$(jstr "$scan_name")\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"unknown scan name in scans.tsv (registry drift vs audit-scan-run.sh)\"}"
+            emit "{\"scan\":\"$(jstr "$scan_name")\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"unknown scan name in scans registry (registry drift vs audit-scan-run.sh)\"}"
             exit 1
             ;;
     esac
@@ -687,7 +731,11 @@ if [ -f "$JSONL" ]; then
         emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":false,\"canonical\":${canonical_count:-0},\"blank\":${blank_count:-0},\"mangled\":${mangled_count:-0},\"oos_blank\":${oos_blank:-0},\"rej_blank\":${rej_blank:-0}}"
     fi
 else
-    emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":true,\"partial_reason\":\"missing_review_findings_jsonl\",\"detail\":\"review-findings-full.jsonl not found\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
+    if [ "$SKILL" = "design" ]; then
+        emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":false,\"skip_reason\":\"design_run_has_no_review_findings_jsonl\",\"detail\":\"design runs intentionally omit review-findings-full.jsonl\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
+    else
+        emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":true,\"partial_reason\":\"missing_review_findings_jsonl\",\"detail\":\"review-findings-full.jsonl not found\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
+    fi
 fi
 
 # ---- Cross-cutting metadata ----

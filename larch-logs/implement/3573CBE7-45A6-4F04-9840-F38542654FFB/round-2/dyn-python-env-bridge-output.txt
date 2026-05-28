@@ -1,0 +1,14 @@
+Reviewing the branch diff and the bash–Python boundary in `run-analysis.sh` and related tests.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/report-tokens/scripts/run-analysis.sh:1052` — `create_report_issue` still defaults `LARCH_REPORT_TOKENS_SKILL` to `"implement"` when the env var is absent. On the supported path this cannot mis-title a design run: `--skill` is enum-validated at lines 80–83, `export LARCH_REPORT_TOKENS_SKILL="$SKILL"` runs at line 85 before the embedded analyzer is written or invoked, and the `--plot-from` branch (lines 1170–1195) never calls `create_report_issue`. The fallback only matters if the temp `analyze-token-reports.py` is executed outside `run-analysis.sh`.
+
+- **correctness** `skills/report-tokens/scripts/run-analysis.sh:1170-1195` — The `--plot-from` refactor is sound under `set -euo pipefail`: `gh` failure aborts before title/body extraction; title prefix is validated before `jq -r '.body'`; `ISSUE_JSON_FILE` lives under `$TMPROOT` and is removed by the existing `trap 'rm -rf "${TMPROOT:-}"' EXIT` at line 127. Cross-skill rejection is covered by `test-report-tokens-recompute.sh` (stub returns a JSON object with `title` and `body`, matching the new `jq -r '.title // empty'` parse).
+
+- **risk-integration** `.claude/skills/audit-runs/scripts/audit-preflight.sh:107-130` — The 5-minute concurrency guard keys off any recent `audit-report` label issue, not skill-specific titles. That matches the plan’s shared lock but means a design audit can be blocked right after an implement audit (and vice versa); operators need `--allow-concurrent` when intentionally running both back-to-back.
+
+**Branch context (3 commits since merge-base with `main`):** `561fd6cb` (feature), `f78f02eb` (implement run-log flush), `7ba0b3f7` (round-1 review fixes). Design PR-title regexes align with `scripts/design-log-publish.sh` (`chore(larch-logs): design run ${RUN_ID}` on `gh pr create`, not the `flush` commit subject).

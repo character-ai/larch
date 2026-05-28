@@ -5,7 +5,7 @@
 # Output KV (stdout): PREFLIGHT_OK=true|false  REASON=<msg>
 #
 # Usage:
-#   audit-preflight.sh --repo OWNER/NAME [--allow-concurrent]
+#   audit-preflight.sh --skill <design|implement> --repo OWNER/NAME [--allow-concurrent]
 #
 # Exit codes: 0 always (caller reads PREFLIGHT_OK from stdout).
 
@@ -13,17 +13,37 @@ set -euo pipefail
 
 REPO=""
 ALLOW_CONCURRENT=false
+SKILL=""
+
+audit_preflight_validate_skill() {
+    case "${1:-}" in
+        design|implement) return 0 ;;
+        "")
+            printf 'PREFLIGHT_OK=false\nREASON=--skill is required (allowed: design, implement)\n'
+            return 1
+            ;;
+        *)
+            printf 'PREFLIGHT_OK=false\nREASON=--skill must be design or implement (got: %s)\n' "$1"
+            return 1
+            ;;
+    esac
+}
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --repo) REPO="$2"; shift 2 ;;
         --allow-concurrent) ALLOW_CONCURRENT=true; shift ;;
+        --skill) SKILL="$2"; shift 2 ;;
         *)
             printf 'audit-preflight.sh: unknown argument: %s\n' "$1" >&2
             exit 1
             ;;
     esac
 done
+
+if ! audit_preflight_validate_skill "$SKILL"; then
+    exit 0
+fi
 
 if [ -z "$REPO" ]; then
     printf 'PREFLIGHT_OK=false\nREASON=--repo is required\n'
@@ -62,12 +82,10 @@ fi
 REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || true)
 GH_URL=$(gh repo view "$REPO" --json url --jq '.url' 2>/dev/null || true)
 
-# Strip https(s)://user:pass@ from URLs before logging (avoid leaking PATs from remote.origin.url).
 strip_url_userinfo() {
     printf '%s' "$1" | sed -E 's#^(https?://)[^/@]+@#\1#'
 }
 
-# Normalize both to owner/repo form
 normalize_repo() {
     printf '%s' "$1" \
         | sed -n 's|.*github\.com[:/]\([^/]*/[^/]*\)\.git|\1|p; s|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|p' \
@@ -86,9 +104,8 @@ if [ "$REMOTE_REPO" != "$GH_REPO" ]; then
     exit 0
 fi
 
-# Step 3: concurrency guard (skip when --allow-concurrent)
+# Step 3: concurrency guard (shared across skills; skip when --allow-concurrent)
 if [ "$ALLOW_CONCURRENT" = "false" ]; then
-    # macOS-portable: try -v-5M first, fall back to GNU -d
     if date -u -v-5M +"%Y-%m-%dT%H:%M:%SZ" >/dev/null 2>&1; then
         CUTOFF=$(date -u -v-5M +"%Y-%m-%dT%H:%M:%SZ")
     else

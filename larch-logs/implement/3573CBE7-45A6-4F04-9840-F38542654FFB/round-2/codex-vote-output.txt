@@ -1,0 +1,17 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- dev-only explicit override risk is real but production paths do not pass --log-root and canonicalization is more than this warrants
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- manual/test-only override mismatch is legitimate but not worth adding strict validation complexity here
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- shared short concurrency window is an explicit L1 tradeoff with an override and is not worth a follow-up issue
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this duplicates the actionable implement-filter concern already captured in FINDING_8
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is an exculpatory observation, not a concrete problem worth filing
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is an exculpatory observation confirming the guard works for skill roots
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- only a hypothetical title-generation divergence and already largely covered by the broader implement-filter concern

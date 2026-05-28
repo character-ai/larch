@@ -1,6 +1,8 @@
 # .claude/skills/audit-runs/scripts/audit-scan-run.sh — contract
 
-Runs all scans from `scans.tsv` against one run-log directory. Emits NDJSON (one compact JSON object per scan per line) to stdout.
+Requires `--skill <design|implement>` (enum-validated). SKILL.md passes this flag on every invocation.
+
+Runs all scans from the selected per-skill registry (`scans-design.tsv` or `scans-implement.tsv`) against one run-log directory. Emits NDJSON (one compact JSON object per scan per line) to stdout.
 
 ## Output
 
@@ -22,17 +24,17 @@ The first `cross-cutting` line illustrates **legacy `manifest.json` (schema_vers
 
 Missing `--run-dir` (not a directory): emits a `run-dir-missing` NDJSON line (`incomplete: true`, `result:"error"`, `detail` explains the path) to stdout and exits non-zero — **do not treat stdout as a complete scan set** for aggregation.
 
-Missing `scans.tsv` path: emits a `scans-registry` NDJSON line (`result:"error"`, `detail` explains the path problem) to stdout and exits non-zero.
+Missing `scans-$SKILL.tsv` path: emits a `scans-registry` NDJSON line (`result:"error"`, `detail` explains the path problem) to stdout and exits non-zero.
 
 Invalid `--pr` (non-decimal): emits an `audit-scan-run-args` NDJSON line (`result:"error"`) to stdout and exits non-zero.
 
 ## Scans implemented
 
-All scans in `scans.tsv`: `required-file-presence`, `exon-misclassification`, `oos-category-mangle`, `rej-category-blank`, `ns-retry-sidecars`, `cursor-ci-stall-causes`, `codex-round1-adherence`, `codex-generalist-waste`, `execution-issues-categories`, `cache-freshness`, `changelog-rebase-conflicts`, `coder-tool`, `trailing-content-no-issues-found`, `oos-silent-drop`. Plus synthetic `category-stats` and `cross-cutting` objects.
+Across `scans-design.tsv` and `scans-implement.tsv`, the supported scan names are `required-file-presence`, `exon-misclassification`, `oos-category-mangle`, `rej-category-blank`, `ns-retry-sidecars`, `cursor-ci-stall-causes`, `codex-round1-adherence`, `codex-generalist-waste`, `execution-issues-categories`, `cache-freshness`, `changelog-rebase-conflicts`, `coder-tool`, `trailing-content-no-issues-found`, and `oos-silent-drop`. Plus synthetic `category-stats` and `cross-cutting` objects.
 
 `required-file-presence` reads `docs/run-logs-required-files.tsv`-shaped rows: when the `condition` column is neither empty nor `always`, a missing file is ignored (informational) if `manifest.json` contains `"steps_ran": { "<condition>": false }` for that step key — committed runs that skipped Step 9a.1 may omit those batches without failing the scan. For `step9a1` specifically, direct TSV rows use that rule alone (default: enforce listed files unless `steps_ran.step9a1` is `false`). When `step9a1` is evaluated as part of the `step8` condition chain, the scan still uses the `run-statistics.md` / `oos-issues.ndjson` presence heuristic so `step8` does not widen from an empty run directory. The gate uses `jq -ne` (equivalently `jq -n -e`) so the boolean drives process exit status while stdin stays unused (TTY-safe in harnesses).
 
-A `name` in `scans.tsv` with no matching `case` arm emits an `{"scan":"<name>","result":"error",...}` NDJSON line and exits non-zero (registry drift vs this script).
+A `name` in the selected `scans-$SKILL.tsv` with no matching `case` arm emits an `{"scan":"<name>","result":"error",...}` NDJSON line and exits non-zero (registry drift vs this script).
 
 **`cursor-ci-stall-causes`**: reads `round-*/cursor-ci-stall-*.json` sidecars emitted when cursor-ci hits the stall threshold. With no matching files, emits `result:"pass"`, `count:0`, `parsed_files:0`, and empty `channels`. When one or more files exist, emits `result:"informational"` with `count` (glob file count), `parsed_files` (files that parse as JSON via `jq -e .`), `channels` (compact JSON histogram keyed by each file's `.channel`, defaulting to `UNKNOWN` when the field is missing or the file is not valid JSON), and optionally `channels_detail` when the histogram step failed but files were present (rolls `channels` up to `{"UNKNOWN": <count>}` so the bucket sum matches `count`, mirroring `ns-retry-sidecars`). NDJSON lines keep `channels` on one physical line (compact `jq` output).
 
@@ -52,4 +54,4 @@ A `name` in `scans.tsv` with no matching `case` arm emits an `{"scan":"<name>","
 
 ## Edit-in-sync
 
-When adding a scan to `scans.tsv`, add the corresponding `case` branch in this script and tests in `test-audit-runs.sh`.
+When adding a scan to `scans-$SKILL.tsv`, add the corresponding `case` branch in this script and tests in `test-audit-runs.sh`.

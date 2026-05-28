@@ -1,0 +1,12 @@
+Reviewing branch changes with focus on `audit-title-matcher.sh` sourcing and shell semantics.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **architecture** `.claude/skills/audit-runs/scripts/audit-title-matcher.md:20-25` and `.claude/skills/audit-runs/SKILL.md` (Scripts list) — Both list `audit-preflight.sh` as a `match_audit_report_title` consumer, but `audit-preflight.sh` never sources `audit-title-matcher.sh` and its concurrency guard keys only on the `audit-report` label plus `createdAt`, not per-skill title shapes. That is a documentation/plan drift item, not a shell-sourcing defect in the two actual consumers (`audit-resolve-prs.sh`, `audit-close-priors.sh`).
+
+- **code-quality** `.claude/skills/audit-runs/scripts/audit-title-matcher.sh:48-50` — With `set -e` active, a non-matching CLI invocation exits from the `match_audit_report_title "$@"` line before `exit $?` runs; exit status is still 1, so behavior is correct and the trailing `exit $?` is only meaningful on success.
+
+**Shell-semantics summary (reviewed, no defect):** Sourcing sites are `audit-resolve-prs.sh:25-26` and `audit-close-priors.sh:18-19`; both hosts already use `set -euo pipefail`, and the library’s re-`set` is idempotent. The `[[ "${BASH_SOURCE[0]}" == "${0}" ]]` guard is Bash 3.2–safe and correctly suppresses the CLI path when sourced. All production call sites use `if match_audit_report_title …; then` (`audit-resolve-prs.sh:170`, `audit-close-priors.sh:72`), which exempts exit status 1 from `errexit`; harnesses use `&& … || …` or an `if`/`else` wrapper (`test-audit-runs.sh:2609-2617`, `test-audit-title-matcher.sh:14-17`). `_match_audit_report_title_impl` / `match_audit_report_title` names do not collide with symbols in the sourcing hosts or `audit-scan-run-jstr.inc.bash`. `grep -qE` non-match propagates as function status 1 without aborting the host loop.

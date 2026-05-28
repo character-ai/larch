@@ -1,12 +1,14 @@
 # .claude/skills/audit-runs/scripts/audit-title.sh — contract
 
+Requires `--skill <design|implement>`. Emits `[Implement Run Logs Audit …]` or `[Design Run Logs Audit …]` title prefixes.
+
 Generates the audit report title string from a PR list and timestamp.
 
 ## Output KV (stdout)
 
 ```
-TITLE=[Run Logs Audit <timestamp> Report] PRs #X-#Y
-TITLE=[Run Logs Audit <timestamp> Report] PRs #X, #Y, #Z
+TITLE=[Implement Run Logs Audit <timestamp> Report] PRs #X-#Y
+TITLE=[Design Run Logs Audit <timestamp> Report] PRs #X, #Y, #Z
 ```
 
 ## Title rules
