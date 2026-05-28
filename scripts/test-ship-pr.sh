@@ -4372,7 +4372,7 @@ fi
 rm -rf "$call_dir"
 
 # 1) Cursor wins on first tier — Codex/Claude not invoked.
-# Touches a tracked file so the new ship-pr HEAD-non-advance check (issue #3134) does not reroute this happy-path test to first-fixer-non-health.
+# Keep a tracked launcher edit here: issue #3134 now bails when the vendor path leaves pre-refresh HEAD unchanged.
 root=$(make_repo ci_fix_vendor_tier_order_cursor_first)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/call.XXXXXX")
@@ -4460,7 +4460,7 @@ fi
 rm -rf "$call_dir"
 
 # 2) Cursor LAUNCHER_EXIT=1 → Codex succeeds; Claude not invoked.
-# Touches a tracked file so the new ship-pr HEAD-non-advance check (issue #3134) does not reroute this happy-path test to first-fixer-non-health.
+# Keep a tracked launcher edit here: issue #3134 now bails when the vendor path leaves pre-refresh HEAD unchanged.
 root=$(make_repo ci_fix_vendor_tier_order_falls_through_to_codex)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/call.XXXXXX")
@@ -4545,7 +4545,7 @@ fi
 rm -rf "$call_dir"
 
 # 3) Cursor and Codex LAUNCHER_EXIT=1 → Claude succeeds.
-# Touches a tracked file so the new ship-pr HEAD-non-advance check (issue #3134) does not reroute this happy-path test to first-fixer-non-health.
+# Keep a tracked launcher edit here: issue #3134 now bails when the vendor path leaves pre-refresh HEAD unchanged.
 root=$(make_repo ci_fix_vendor_tier_order_falls_through_to_claude)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/call.XXXXXX")
@@ -4713,7 +4713,7 @@ else
 fi
 rm -rf "$call_dir"
 
-# Vendor exit 0 with no launcher commit but refresh-run-logs advances HEAD → success.
+# Vendor exit 0 with no launcher commit and only refresh-run-logs advancing HEAD → first-fixer-non-health.
 root=$(make_repo run_ship_pr_3134_vendor_noop_refresh_commit)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/call.XXXXXX")
@@ -4776,13 +4776,13 @@ set +e
     --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 0 "run_ship_pr_3134_vendor_noop_refresh_commit: ship-pr exits 0"
-if grep -qxF 'BAIL_REASON=' "$tmp/ship-pr-state.sh" \
-    && ! grep -qF 'first-fixer-non-health' "$tmp/out" 2>/dev/null \
+assert_rc "$tmp/rc" 3 "run_ship_pr_3134_vendor_noop_refresh_commit: ship-pr exits 3"
+if grep -qxF 'BAIL_REASON=first-fixer-non-health' "$tmp/ship-pr-state.sh" \
+    && grep -qF 'vendor exit 0 with no commits; escalating to first-fixer-non-health' "$tmp/out" 2>/dev/null \
     && git -C "$root" log -1 --pretty=%s 2>/dev/null | grep -qxF 'Refresh run logs'; then
-    ok "run_ship_pr_3134_vendor_noop_refresh_commit: refresh-run-logs HEAD advance stays on success path"
+    ok "run_ship_pr_3134_vendor_noop_refresh_commit: refresh-run-logs-only HEAD advance still bails first-fixer-non-health"
 else
-    fail "run_ship_pr_3134_vendor_noop_refresh_commit: expected refresh-run-logs success without first-fixer bail"
+    fail "run_ship_pr_3134_vendor_noop_refresh_commit: expected refresh-run-logs-only path to bail first-fixer-non-health"
     sed 's/^/    state: /' "$tmp/ship-pr-state.sh" 2>/dev/null || true
     sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
 fi

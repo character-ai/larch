@@ -226,7 +226,7 @@ scan_file() {
             report("awk-body-nonascii-regex", lineno, line)
         }
 
-        function open_single_quoted_body(line,    pos, rest_start) {
+        function open_single_quoted_body(line,    pos, rest_start, quoted_value, closing_quote_pos) {
             if (!match(line, /awk/)) {
                 return 0
             }
@@ -240,11 +240,13 @@ scan_file() {
                 rest = substr(rest, RSTART + RLENGTH)
                 sub(/^[[:space:]]*=[[:space:]]*/, "", rest)
                 if (substr(rest, 1, 1) == sq) {
-                    extract_quoted_value(rest, 1)
-                    rest = substr(rest, index(rest, sq) + 1)
+                    quoted_value = extract_quoted_value(rest, 1)
+                    closing_quote_pos = length(quoted_value) + 2
+                    rest = substr(rest, closing_quote_pos + 1)
                 } else if (substr(rest, 1, 1) == dq) {
-                    extract_quoted_value(rest, 1)
-                    rest = substr(rest, index(rest, dq) + 1)
+                    quoted_value = extract_quoted_value(rest, 1)
+                    closing_quote_pos = length(quoted_value) + 2
+                    rest = substr(rest, closing_quote_pos + 1)
                 } else if (match(rest, /^[^[:space:]]+/)) {
                     rest = substr(rest, RSTART + RLENGTH)
                 }

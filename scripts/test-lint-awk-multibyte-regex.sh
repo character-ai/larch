@@ -306,7 +306,8 @@ rc="$(run_lint "$stderr_file")"
 assert_case "rule2 substr false positive and eof continuation" 1 "$stderr_file" "$rc" \
     "awk-body-nonascii-regex" \
     "scripts/rule2-substr-eof.sh:2:"
-assert_negative "rule2 substr false positive absent" "$stderr_file" 0 \
+clean_rc=0
+assert_negative "rule2 substr false positive absent" "$stderr_file" "$clean_rc" \
     "scripts/rule2-substr-eof.sh:1:"
 
 rm -f "$stderr_file"
