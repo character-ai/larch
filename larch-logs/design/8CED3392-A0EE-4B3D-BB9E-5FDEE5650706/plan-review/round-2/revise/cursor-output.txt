@@ -1,0 +1,211 @@
+Reviewing the codebase to align the revised plan with accepted findings.
+Checking the existing Gate B block in test-design-structure for insertion context:
+Building the revised plan and generating the unified diff.
+Generating the unified diff with a readonly Python script:
+--- a/plan.txt
++++ b/plan.txt
+@@ -5,7 +5,7 @@
+ stale Gate B prose on the two runtime-authoritative surfaces can regress silently,
+ `write-run-params.sh` `--manual-gate-b` empty/missing rejection is not on the explicit
+ exit-2 path `assert_rejected_with` expects, and the SKILL.md Step 0b jq-merge recovery
+-(including the write-failure path) has no automated harness. Sub-ask (1) "align surfaces"
++(success-path merge plus outer-guard false branch) has no automated harness. Sub-ask (1) "align surfaces"
+ is closed as verified-aligned per the Round 1 codebase scan and is intentionally out of scope.
+ 
+ ## Files to modify/create
+@@ -13,9 +13,9 @@
+ 
+ ### UPDATED: `scripts/write-run-params.sh`
+ 
+-Replace the `${2:?--manual-gate-b requires a value}` expansion (line 95-97) with the
+-same explicit missing/empty value check used for `--review-budget` / `--workflow-path`,
+-so rejection uses `larch_err` and `exit 2` before assignment. Apply the same pattern to
+-`--partition-requested` and `--brainstorm-requested` (lines 87-93) for sibling-flag
+-consistency:
++Replace only the `${2:?--manual-gate-b requires a value}` expansion (lines 95-97) with
++an explicit missing/empty value check so rejection uses `larch_err` and `exit 2` before
++assignment. Leave `--partition-requested` and `--brainstorm-requested` on `${2:?...}`
++unchanged in this PR (no matching empty/missing tests; out of scope for #3008):
+ 
+ ```bash
+         --manual-gate-b)
+@@ -28,12 +28,13 @@
+             ;;
+ ```
+ 
+-(Mirror for `--partition-requested` / `--brainstorm-requested` with their flag names.)
+-
+-Rationale: `${2:?...}` exits before the script's `larch_err`/`exit 2` path, so
+-`assert_rejected_with` (rc==2) would flake on empty/missing `--manual-gate-b` until the
+-parser is explicit. Empty string and end-of-argv missing token are both covered by
+-`[[ $# -lt 2 || -z "${2-}" ]]`.
++Rationale: only `--manual-gate-b` is required for `assert_rejected_with` (rc==2) on the
++empty/missing cases #3008 cites. `${2:?...}` exits before `larch_err`/`exit 2`. Do not cite
++`--review-budget` / `--workflow-path` as the empty-value model: `--workflow-path` rejects
++only missing values (`[[ $# -lt 2 ]]`), not empty strings. Empty string and end-of-argv
++missing token for `--manual-gate-b` are covered by `[[ $# -lt 2 || -z "${2-}" ]]`.
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ 
+@@ -62,6 +63,7 @@
+ pins the brainstorm arm at line 396 and Check 21 pins `manual_gate_b = $merge_m` at line
+ 506; this single pin closes the remaining partition-arm gap and prevents partial drift):
+ 
+ ```bash
++# shellcheck disable=SC2016 # jq filter literal
+ grep -Fq -- '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' "$SKILL_MD" \
+   || fail "(#3008) SKILL.md canonical Step 0b jq-merge filter must remain pinned for test-step0b-router-flag-recovery.sh"
+ ```
+@@ -95,10 +97,11 @@
+ 
+ ### NEW: `scripts/test-step0b-router-flag-recovery.sh`
+ 
+-New harness that exercises the SKILL.md Step 0b recovery path: the outer argv/jq guard,
+-the jq-merge on an existing `run-params.json`, and both successful-write and
+-write-failure shapes. Replicates the canonical shell from `skills/design/SKILL.md` Step
+-0b (merge expression + guard). CI pins the SKILL.md filter via the full jq pin in (2).
++New harness that exercises the SKILL.md Step 0b recovery guard and jq-merge on an
++**existing** `run-params.json` after a successful `write-run-params.sh` write — the
++shape `/design` can reach because Step 0b aborts on writer non-zero before the merge
++fence (FINDING_2). Replicates the canonical shell from `skills/design/SKILL.md` Step
++0b (merge expression + guard). CI pins the SKILL.md filter via the full jq pin in (2).
+ 
+ Structure:
+ 
+ ```bash
+ #!/usr/bin/env bash
+-# Regression harness for SKILL.md Step 0b router-flag jq-merge recovery.
++# Regression harness for SKILL.md Step 0b router-flag jq-merge recovery (success-path).
+ set -euo pipefail
+ export LARCH_QUIET_DISABLE=1
+ 
+@@ -117,6 +120,7 @@
+   local _rp_merge _rp_err
+   _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
+   _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
++  # shellcheck disable=SC2016 # jq filter literal
+   jq -c \
+     --argjson merge_p "$([[ "$partition_requested" == true ]] && echo true || echo false)" \
+     --argjson merge_b "$([[ "$brainstorm_requested" == true ]] && echo true || echo false)" \
+@@ -140,7 +144,7 @@
+   fi
+ }
+ 
+-# Case 1: successful write; manual-only argv => manual=true (FINDING_9 success path).
++# Case 1: successful write; manual-only argv => manual=true.
+ OUT1="$TMPROOT/case1.json"
+ "$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --manual-gate-b false --output "$OUT1" >/dev/null
+ recovery_merge_if_needed "$OUT1" false false true
+@@ -148,9 +152,7 @@
+   || fail "case1: manual-only argv merge produced $(cat "$OUT1")"
+ 
+ # Case 2: stored manual=true; argv partition=true + manual=false => manual=false when recovery runs.
+-# Reachable runtime shape: outer guard true because partition_requested=true; manual overwrite
+-# clears stale persisted manual (SKILL.md Step 0b rationale). Not the all-false-argv path.
+ OUT2="$TMPROOT/case2.json"
+ "$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --manual-gate-b true --output "$OUT2" >/dev/null
+ recovery_merge_if_needed "$OUT2" true false false
+@@ -158,7 +160,7 @@
+   || fail "case2: manual overwrite under reachable guard failed; got $(cat "$OUT2")"
+ 
+-# Case 3: stored partition=true; argv partition=false, brainstorm=true => OR-merge preserves partition.
++# Case 3: stored partition=true; argv brainstorm=true => OR-merge preserves partition.
+ OUT3="$TMPROOT/case3.json"
+ "$WRITER" --classification SIMPLE --partition-requested true --brainstorm-requested false --manual-gate-b false --output "$OUT3" >/dev/null
+ recovery_merge_if_needed "$OUT3" false true false
+@@ -172,24 +174,16 @@
+ jq -e '.brainstorm_requested == true and .partition_requested == true and .manual_gate_b == false' "$OUT4" >/dev/null \
+   || fail "case4: brainstorm OR-merge regressed; got $(cat "$OUT4")"
+ 
+-# Case 5: write-run-params.sh fails; seeded file survives; manual-only recovery sets manual=true.
++# Case 5: all-false argv => outer guard no-op; run-params.json unchanged.
+ OUT5="$TMPROOT/case5.json"
+ "$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --manual-gate-b false --output "$OUT5" >/dev/null
+-set +e
+-"$WRITER" --classification TRIVIAL_DOC_ONLY --partition-requested false --brainstorm-requested false --manual-gate-b false --output "$OUT5" >/dev/null 2>"$TMPROOT/case5-write.err"
+-write_rc=$?
+-set -e
+-[[ "$write_rc" != 0 ]] || fail "case5: expected write failure, got rc=0"
+-recovery_merge_if_needed "$OUT5" false false true
+-jq -e '.manual_gate_b == true' "$OUT5" >/dev/null \
+-  || fail "case5: post-failure manual-only recovery failed; got $(cat "$OUT5")"
++_before=$(cat "$OUT5")
++recovery_merge_if_needed "$OUT5" false false false
++[[ "$(cat "$OUT5")" == "$_before" ]] \
++  || fail "case5: all-false guard must not mutate run-params.json; got $(cat "$OUT5")"
+ 
+ echo "PASS: test-step0b-router-flag-recovery.sh"
+ ```
+ 
+ Five cases: (1) success-path manual-only, (2) manual overwrite under reachable guard,
+-(3) partition OR-merge, (4) brainstorm OR-merge, (5) write failure + manual-only recovery
+-on seeded `run-params.json` (#3008 degraded-path acceptance).
++(3) partition OR-merge, (4) brainstorm OR-merge, (5) all-false argv guard no-op.
+ 
+ ### NEW: `scripts/test-step0b-router-flag-recovery.md`
+ 
+@@ -199,14 +193,15 @@
+ # test-step0b-router-flag-recovery.sh
+ 
+ **Purpose**: regression harness for the `SKILL.md` Step 0b router-flag recovery guard
+-and jq-merge (success-path write + write-failure recovery on an existing file).
++and jq-merge on an existing `run-params.json` after successful write (FINDING_2: does
++not model writer-failure recovery because Step 0b aborts before the merge fence).
+ 
+ **Primary**: `scripts/write-run-params.sh` + `skills/design/SKILL.md` Step 0b.
+ 
+ **Edit-in-sync**: `merge_run_params()` and `recovery_merge_if_needed()` must match
+ `skills/design/SKILL.md` Step 0b. Drift is caught by the full jq-filter pin in
+ `scripts/test-design-structure.sh` (plus existing per-arm pins at lines 396 and 506).
+ 
+ **Run**: `bash scripts/test-step0b-router-flag-recovery.sh` or `make test-step0b-router-flag-recovery`.
+ 
+-**Coverage gap closed**: #3008 — `--manual-only` argv after write success (case 1) and
+-after `write-run-params.sh` failure with seeded `run-params.json` (case 5).
++**Coverage gap closed**: #3008 — manual-only argv OR-merge/overwrite on success path
++(cases 1–4) and all-false guard no-op (case 5).
+ ```
+ 
+ ### UPDATED: `Makefile`
+@@ -230,6 +225,7 @@
+   harness, Makefile registration. No new shared libraries.
+ - Stale-prose lint scopes only `$APPROVAL_MD` and `$SKILL_MD` (runtime Gate B surfaces).
+ - Recovery harness copies both the outer guard and inner jq merge from SKILL.md Step 0b.
++- Harness scope is success-path merge plus guard true/false fidelity only (FINDING_2 / FINDING_4).
+ - Full jq-filter structural pin (plus existing per-arm pins) limits drift claims to what
+   CI actually proves.
+ - `--manual-gate-b` rejection tests depend on the writer change landing first.
+@@ -245,8 +241,8 @@
+ - **Case 2 reachability**: recovery runs only when at least one argv router flag is true;
+   case 2 uses `partition_requested=true` to enter the guarded path while asserting manual
+   overwrite to `false`.
+-- **Case 5 write failure**: `TRIVIAL_DOC_ONLY` forces nonzero exit before overwriting the
+-  seeded JSON; recovery then sets `manual_gate_b` to `true` for manual-only argv.
++- **Case 5 guard no-op**: all-false argv must not mutate an existing `run-params.json`
++  (FINDING_4 false-branch coverage).
+ 
+ ## Failure modes
+ 
+@@ -254,6 +250,10 @@
+   are checked. Stale phrases in other canonical docs (including `SECURITY.md` or
+   `docs/configuration-and-permissions.md`) will **not** fail this harness — that is an
+   intentional SIMPLE-tier scope limit, not a silent guarantee for those paths.
++- **Write-failure recovery untested / unreachable today**: `skills/design/SKILL.md` Step 0b
++  instructs `exit 1` when `write-run-params.sh` fails (line 327) before the router-flag
++  merge fence; this PR does not reorder SKILL.md (FINDING_2). Do not claim degraded-path
++  coverage for writer-failure + `--manual` argv — out of scope for SIMPLE.
+ - **Recovery harness vs SKILL.md**: if SKILL.md changes the jq filter without updating
+   this harness, case assertions may still pass locally until the full-filter pin in
+   `test-design-structure.sh` fails. Warning signal: structural test failure on SKILL.md edit.
+@@ -265,7 +265,7 @@
+ 
+ - `bash scripts/test-design-structure.sh` — new `absent` checks + full jq-filter pin.
+ - `bash scripts/test-write-run-params.sh` — new `manual-gate-b-empty` / missing cases (rc 2).
+-- `bash scripts/test-step0b-router-flag-recovery.sh` — all five cases.
++- `bash scripts/test-step0b-router-flag-recovery.sh` — five cases including guard no-op.
+ - `make lint` — shell-strict-mode, script-md-siblings, repo invariants.
+ 
+ No new fixtures or seed files beyond harness `mktemp` dirs.
+ 
+-diff_lines: 385
++diff_lines: 353

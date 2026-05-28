@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:314-327; scripts/test-step0b-router-flag-recovery.sh:case5	Proposed case 5 tests a write-failure recovery path that the Step 0b contract aborts before running	`write-run-params.sh` failure is handled as contract drift with exit 1, so the later jq recovery block is not a real post-failure path; the new harness can pass while proving behavior `/design` will not execute	For SIMPLE scope, drop case 5 and the write-failure recovery claims, or explicitly update SKILL.md so recovery is invoked around a failed writer before aborting
+
+1. **[correctness]** `skills/design/SKILL.md:314-327`; proposed `scripts/test-step0b-router-flag-recovery.sh:case5`
+
+The plan adds a "write failure + manual-only recovery" harness case, but Step 0b currently treats any `write-run-params.sh` failure as contract drift and exits. That means the proposed test exercises a helper copy, not the runtime path.
+
+Suggested revision: keep the harness to successful-write merge cases only, or change the SKILL.md Step 0b contract so post-failure recovery actually runs before aborting. For this SIMPLE lane, dropping case 5 is the minimum-change fix.
