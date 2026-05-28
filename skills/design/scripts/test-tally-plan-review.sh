@@ -268,6 +268,13 @@ grep -q 'voter file is missing' /tmp/larch-tally-plan-review-fail.out || fail "m
 [[ $(grep -c '^TALLY_PLAN_REVIEW_STATUS=tally-error$' /tmp/larch-tally-plan-review-fail.out || true) -eq 1 ]] || fail "missing voter file should emit tally-error exactly once"
 [[ $(grep -c '^VOTING_TALLY_FILE=' /tmp/larch-tally-plan-review-fail.out || true) -eq 1 ]] || fail "missing voter file should emit VOTING_TALLY_FILE once"
 
+set +e
+out_invalid_tmpdir=$("$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V1" --design-tmpdir "$DESIGN/../escaped-dotdot" 2>&1)
+rc_invalid_tmpdir=$?
+set -e
+[[ "$rc_invalid_tmpdir" -eq 2 ]] || fail "dotdot tmpdir should be rejected before tally work starts"
+grep -Fq "must not contain '.' or '..' segments" <<< "$out_invalid_tmpdir" || fail "dotdot tmpdir diagnostic missing"
+
 echo "=== default findings-classification path and middle-slot preservation ==="
 DESIGN_CANONICAL="$TMPROOT/design-canonical"
 mkdir -p "$DESIGN_CANONICAL"

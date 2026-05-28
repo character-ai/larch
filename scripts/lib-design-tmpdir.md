@@ -23,8 +23,8 @@ Each prefix is canonicalized with `cd && pwd -P` when the path exists (macOS `/t
 
 ### `larch_design_tmpdir_validate <dir>`
 
-Returns 0 when the resolved path is under the allowlist; returns 2 with `larch_err` on empty input, parent resolution failure, symlink-to-non-directory leaf, or disallowed prefix.
+Returns 0 when the resolved path is under the allowlist; returns 2 with `larch_err` on empty input, newline/carriage-return bytes, any `.`/`..` path segment, parent resolution failure, non-directory existing leaves (including symlink-to-file), or disallowed prefix.
 
 ## Harness
 
-`scripts/test-lib-design-tmpdir.sh` covers allowed prefixes, traversal, symlink cases, and quoted-prefix `case` behavior. Wired through `make test-lib-design-tmpdir`.
+`scripts/test-lib-design-tmpdir.sh` covers allowed prefixes, unresolved dot-segment rejection, regular-file leaves, control-byte rejection, symlink cases, and quoted-prefix `case` behavior. Consumer wiring is pinned by `scripts/test-dispatch-plan-voters.sh` and `skills/design/scripts/test-tally-plan-review.sh`. Wired through `make test-lib-design-tmpdir`.

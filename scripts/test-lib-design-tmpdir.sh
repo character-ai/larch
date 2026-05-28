@@ -65,7 +65,7 @@ parent="$SCRATCH/parent"
 mkdir -p "$parent"
 assert_ok "nonexistent-tail" larch_design_tmpdir_validate "$parent/deep/nested/newdir"
 
-assert_ok "dotdot-traversal" larch_design_tmpdir_validate "$parent/../parent/allowed-via-dotdot"
+assert_fail "dotdot-traversal" larch_design_tmpdir_validate "$parent/../parent/allowed-via-dotdot"
 
 real_parent="$SCRATCH/real-parent"
 mkdir -p "$real_parent/nested"
@@ -73,15 +73,23 @@ link_parent="$SCRATCH/link-parent"
 ln -s "$real_parent" "$link_parent"
 assert_ok "parent-symlink" larch_design_tmpdir_validate "$link_parent/nested/child"
 
-mkdir -p "$sessions_root/leaf-escape"
+leaf_escape_root="$SCRATCH/leaf-escape"
+mkdir -p "$leaf_escape_root"
 if [[ -e /etc/passwd ]]; then
-    ln -sf /etc/passwd "$sessions_root/leaf-escape/file-symlink"
-    assert_fail "leaf-symlink-file" larch_design_tmpdir_validate "$sessions_root/leaf-escape/file-symlink"
+    ln -sf /etc/passwd "$leaf_escape_root/file-symlink"
+    assert_fail "leaf-symlink-file" larch_design_tmpdir_validate "$leaf_escape_root/file-symlink"
 fi
 
 file_ancestor="$SCRATCH/not-a-directory"
 printf 'x' >"$file_ancestor"
 assert_fail "parent-resolution-failed" larch_design_tmpdir_validate "$file_ancestor/child"
+
+regular_leaf="$SCRATCH/regular-leaf-$$"
+printf 'x' >"$regular_leaf"
+assert_fail "regular-file-leaf" larch_design_tmpdir_validate "$regular_leaf"
+
+assert_fail "newline-path" larch_design_tmpdir_validate "$sessions_root/line"$'\n'"break"
+assert_fail "carriage-return-path" larch_design_tmpdir_validate "$sessions_root/carriage"$'\r'"break"
 
 glob_tmp="${SCRATCH}/glob-bracket"
 mkdir -p "$glob_tmp"

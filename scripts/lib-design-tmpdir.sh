@@ -76,18 +76,55 @@ _larch_design_tmpdir_split_ancestor_tail() {
     printf '%s\n%s' "$path" "$tail"
 }
 
+_larch_design_tmpdir_reject_controls() {
+    local candidate="$1"
+
+    if [[ "$candidate" == *$'\n'* || "$candidate" == *$'\r'* ]]; then
+        _larch_design_tmpdir_err "design-tmpdir: path must not contain newline or carriage return"
+        return 2
+    fi
+    return 0
+}
+
+_larch_design_tmpdir_reject_dot_segments() {
+    local candidate="$1"
+    local segment
+
+    [[ -n "$candidate" ]] || return 0
+
+    IFS='/' read -r -a _larch_design_tmpdir_segments <<< "$candidate"
+    for segment in "${_larch_design_tmpdir_segments[@]}"; do
+        case "$segment" in
+            .|..)
+                _larch_design_tmpdir_err "design-tmpdir: path must not contain '.' or '..' segments"
+                return 2
+                ;;
+        esac
+    done
+    return 0
+}
+
 larch_design_tmpdir_validate() {
     local candidate="${1-}"
-    local ancestor tail resolved_ancestor resolved_candidate resolved prefix matched
+    local ancestor tail resolved_ancestor resolved_candidate resolved prefix matched split_output
 
     if [[ -z "$candidate" ]]; then
         _larch_design_tmpdir_err "design-tmpdir: path is required"
         return 2
     fi
 
+    _larch_design_tmpdir_reject_controls "$candidate" || return $?
+
     _larch_design_tmpdir_init_allowlist
 
-    IFS=$'\n' read -r ancestor tail <<< "$(_larch_design_tmpdir_split_ancestor_tail "$candidate")"
+    split_output="$(_larch_design_tmpdir_split_ancestor_tail "$candidate")"
+    ancestor="${split_output%%$'\n'*}"
+    if [[ "$split_output" == *$'\n'* ]]; then
+        tail="${split_output#*$'\n'}"
+    else
+        tail=""
+    fi
+    _larch_design_tmpdir_reject_dot_segments "$candidate" || return $?
 
     if ! resolved_ancestor=$(cd "$ancestor" 2>/dev/null && pwd -P); then
         _larch_design_tmpdir_err "design-tmpdir: parent resolution failed"
@@ -105,6 +142,10 @@ larch_design_tmpdir_validate() {
     if [[ -e "$candidate" ]]; then
         if [[ -L "$candidate" && ! -d "$candidate" ]]; then
             _larch_design_tmpdir_err "design-tmpdir: leaf symlink must resolve to a directory"
+            return 2
+        fi
+        if [[ ! -d "$candidate" ]]; then
+            _larch_design_tmpdir_err "design-tmpdir: path must name a directory"
             return 2
         fi
         if resolved=$(cd "$resolved_candidate" 2>/dev/null && pwd -P); then
