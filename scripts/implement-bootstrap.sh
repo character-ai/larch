@@ -28,6 +28,8 @@ UP_TO_PHASE=""
 CALLER_ENV_OPT=""
 ISSUE_NUMBER_OPT=""
 FORKED_TARGET=false
+EMERGENCY_REQUESTED=false
+EMERGENCY_REQUESTED_ARG_SEEN=false
 UPSTREAM_REPO_OPT=""
 RUN_ID_OPT=""
 PREFLIGHT_TMPDIR_OPT=""
@@ -73,7 +75,7 @@ coder=""
 coder_fallback=""
 
 usage() {
-    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--coder claude|codex|cursor] [--preflight-tmpdir PATH] [--resume-plan-tail]"
+    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--emergency-requested true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--coder claude|codex|cursor] [--preflight-tmpdir PATH] [--resume-plan-tail]"
 }
 
 die_usage() {
@@ -182,6 +184,234 @@ emit_plan_materialize_breadcrumbs_if_enabled() {
             emit_breadcrumb "→ step0: larch:plan posted"
         fi
     fi
+}
+
+persist_run_flags() {
+    local workflow_path=$1
+    local persist_rc
+
+    "$SCRIPT_DIR/persist-implement-run-flags.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+        --no-issues false \
+        --workflow-path "$workflow_path" \
+        --emergency-requested "$EMERGENCY_REQUESTED" \
+        >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
+        2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
+    persist_rc=$?
+    if [ "$persist_rc" -ne 0 ]; then
+        STALL_TRACKING=true
+        IMPLEMENT_BAIL_REASON=run-flags-persist-failed
+        return 1
+    fi
+    return 0
+}
+
+restore_emergency_requested_from_run_flags_if_unset() {
+    local prior_emergency=""
+    [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
+    [ -f "$IMPLEMENT_TMPDIR/run-flags.sh" ] || return 0
+    prior_emergency=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key EMERGENCY_REQUESTED --default "")
+    case "$prior_emergency" in
+        true) EMERGENCY_REQUESTED=true ;;
+        false)
+            [ "${EMERGENCY_REQUESTED_ARG_SEEN:-false}" = "true" ] || EMERGENCY_REQUESTED=false
+            ;;
+    esac
+}
+
+redact_file_best_effort() {
+    local input_file=$1 output_file=$2 redact_tmp rc
+    [ -f "$input_file" ] || return 1
+    redact_tmp="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-redact.XXXXXX")" || return 1
+    if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
+        if ! "$SCRIPT_DIR/redact-secrets.sh" <"$input_file" >"$redact_tmp" 2>/dev/null; then
+            rc=$?
+            rm -f "$redact_tmp"
+            return "$rc"
+        fi
+    else
+        cat "$input_file" >"$redact_tmp"
+    fi
+    if [ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ]; then
+        if ! "$SCRIPT_DIR/redact-tmpdir-paths.sh" <"$redact_tmp" >"$output_file" 2>/dev/null; then
+            rc=$?
+            rm -f "$redact_tmp"
+            return "$rc"
+        fi
+        rm -f "$redact_tmp"
+        return 0
+    fi
+    if mv "$redact_tmp" "$output_file"; then
+        return 0
+    fi
+    rc=$?
+    rm -f "$redact_tmp"
+    return "$rc"
+}
+
+append_emergency_bypass_log_if_present() {
+    local bypass_log append_rc expected_issue fallback_entry fallback_content fallback_rc kind issue redact_source
+    local consumed_sentinel
+
+    [ "${EMERGENCY_REQUESTED:-false}" = "true" ] || return 0
+
+    bypass_log="$PREFLIGHT_TMPDIR_OPT/emergency-bypass.log"
+    [ -s "$bypass_log" ] || return 0
+    consumed_sentinel="$IMPLEMENT_TMPDIR/.emergency-bypass-log-consumed"
+    [ -e "$consumed_sentinel" ] && return 0
+
+    local bypass_log_valid=true
+    local saw_bypass=false
+    expected_issue=""
+    if valid_issue_number "${ISSUE_NUMBER_RESOLVED:-}"; then
+        expected_issue=${ISSUE_NUMBER_RESOLVED}
+    elif valid_issue_number "${ISSUE_NUMBER_OPT:-}"; then
+        expected_issue=${ISSUE_NUMBER_OPT}
+    fi
+    while IFS= read -r _line || [ -n "$_line" ]; do
+        [ -n "$_line" ] || continue
+        case "$_line" in
+            BYPASS\ kind=*\ issue=*)
+                saw_bypass=true
+                kind=${_line#BYPASS kind=}
+                kind=${kind%% issue=*}
+                issue=${_line##* issue=}
+                case "$kind" in
+                    ""|*[!a-z0-9-]*) bypass_log_valid=false; break ;;
+                esac
+                case "$issue" in
+                    ""|*[!0-9]*) bypass_log_valid=false; break ;;
+                esac
+                if [ -n "$expected_issue" ] && [ "$issue" != "$expected_issue" ]; then
+                    bypass_log_valid=false
+                    break
+                fi
+                ;;
+            *)
+                bypass_log_valid=false
+                break
+                ;;
+        esac
+    done <"$bypass_log"
+    if [ "$saw_bypass" != "true" ]; then
+        bypass_log_valid=false
+    fi
+    if [ "$bypass_log_valid" != "true" ]; then
+        fallback_content="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass.XXXXXX")" || return 1
+        redact_source="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-source.XXXXXX")" || {
+            rm -f "$fallback_content"
+            return 1
+        }
+        if ! redact_file_best_effort "$bypass_log" "$redact_source"; then
+            printf '%s\n' '<redaction failed; raw emergency bypass log omitted>' >"$redact_source"
+        fi
+        {
+            printf '%s\n' 'Invalid emergency bypass log format. Expected one line per bypass:'
+            printf '%s\n\n' 'BYPASS kind=<lowercase-token> issue=<number>'
+            cat "$redact_source"
+        } >"$fallback_content"
+        rm -f "$redact_source"
+        bypass_log=$fallback_content
+        append_rc=99
+    else
+        append_rc=0
+    fi
+
+    if [ "$append_rc" -eq 0 ]; then
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "implement-bootstrap emergency-bypass-log" \
+            --tool "/implement --emergency preflight" \
+            --exit-code 0 \
+            --category Warnings \
+            --output-file "$bypass_log" \
+            --status-label bypassed \
+            --redact
+        append_rc=$?
+    fi
+
+    if [ "$append_rc" -ne 0 ]; then
+        fallback_entry="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-entry.XXXXXX")" || return 1
+        redact_source="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-fallback.XXXXXX")" || {
+            rm -f "$fallback_entry"
+            return 1
+        }
+        if ! redact_file_best_effort "$bypass_log" "$redact_source"; then
+            printf '%s\n' '<redaction failed; raw emergency bypass log omitted>' >"$redact_source"
+        fi
+        {
+            if [ "$append_rc" -eq 99 ]; then
+                printf '%s\n' '- **Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight invalid-format (exit 99)**:'
+            else
+                printf '%s\n' '- **Step implement-bootstrap emergency-bypass-log — /implement --emergency preflight bypassed (fallback append; helper failed)**:'
+            fi
+            printf '  ```\n'
+            cat "$redact_source"
+            if [ -s "$redact_source" ] && [ "$(tail -c 1 "$redact_source" | wc -c | tr -d ' ')" != "0" ]; then
+                printf '\n'
+            fi
+            printf '  ```\n'
+        } >"$fallback_entry"
+        "$SCRIPT_DIR/append-execution-issue.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --category Warnings \
+            --entry-file "$fallback_entry"
+        fallback_rc=$?
+        rm -f "$redact_source"
+        rm -f "$fallback_entry"
+        if [ "$fallback_rc" -ne 0 ]; then
+            rm -f "${fallback_content:-}"
+            return 1
+        fi
+    fi
+
+    : >"$consumed_sentinel"
+    rm -f "${fallback_content:-}"
+}
+
+post_tracking_metadata() {
+    local write_sentinel=$1 site=$2
+    local post_out post_rc posted failure_log
+    local args
+
+    args=(
+        --implement-tmpdir "$IMPLEMENT_TMPDIR"
+    )
+    if [ "$write_sentinel" = "true" ]; then
+        args+=(--issue-number "$ISSUE_NUMBER_RESOLVED")
+    fi
+    args+=(
+        --run-id "$RUN_ID"
+        --adopted true
+        --emergency-requested "$EMERGENCY_REQUESTED"
+    )
+
+    post_out=$("$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/post-tracking-issue.sh" \
+        "${args[@]}" \
+        2>"$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log")
+    post_rc=$?
+    posted=$(kv_value_from_block POSTED "$post_out")
+    if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
+        failure_log="$IMPLEMENT_TMPDIR/post-tracking-issue.failure.log"
+        {
+            [ -n "$post_out" ] && printf '%s\n' "$post_out"
+            if [ -s "$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log" ]; then
+                cat "$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log"
+            fi
+        } >"$failure_log"
+        "$SCRIPT_DIR/append-tool-failure.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "$site" \
+            --tool "post-tracking-issue.sh" \
+            --exit-code "$post_rc" \
+            --category Warnings \
+            --output-file "$failure_log" \
+            --redact || true
+        DEFERRED=true
+        [ "$write_sentinel" = "true" ] && rm -f "$IMPLEMENT_TMPDIR/parent-issue.md"
+        return 1
+    fi
+    return 0
 }
 
 should_run_post_tracking_phase() {
@@ -341,6 +571,7 @@ phase_infra() {
         SESSION_ID=$(tr -d '\r\n' <"$SESSION_TMPDIR/session-id" 2>/dev/null || true)
         IMPLEMENT_TMPDIR=$SESSION_TMPDIR
         export IMPLEMENT_TMPDIR
+        restore_emergency_requested_from_run_flags_if_unset
 
         REPO=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO --default "")
         REPO_UNAVAILABLE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO_UNAVAILABLE --default "false")
@@ -459,6 +690,8 @@ phase_infra() {
         LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
         LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
     fi
+
+    restore_emergency_requested_from_run_flags_if_unset
 
     if [ "$REPO_UNAVAILABLE" = "true" ]; then
         larch_err '**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**'
@@ -617,6 +850,8 @@ phase_tracking() {
                 RUN_ID=$sentinel_run_id
                 rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
+                persist_run_flags HARD || return 0
+                post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
                 emit_tracking_breadcrumb_if_enabled
                 return 0
             fi
@@ -669,19 +904,8 @@ phase_tracking() {
     fi
 
     run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 2 adopt" || return 0
-
-    post_out=$("$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/post-tracking-issue.sh" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-        --issue-number "$ISSUE_NUMBER_RESOLVED" \
-        --run-id "$RUN_ID" \
-        --adopted true 2>"$IMPLEMENT_TMPDIR/post-tracking-issue.stderr.log")
-    post_rc=$?
-    posted=$(kv_value_from_block POSTED "$post_out")
-    if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
-        DEFERRED=true
-        rm -f "$sentinel"
-        return 0
-    fi
+    persist_run_flags HARD || return 0
+    post_tracking_metadata true "Step 0 tracking adoption — Branch 2 adopt metadata post" || return 0
 
     emit_tracking_breadcrumb_if_enabled
     return 0
@@ -689,7 +913,6 @@ phase_tracking() {
 
 phase_plan_materialize() {
     local plan_src gh_issue_arg feature_file gh_rc gh_err
-    local persist_rc
     local issue_title slug branch_name_derived create_out create_rc create_err
     local branch_out branch_rc branch_value
     local goal_text_raw goal_text run_plan_rc run_plan_err goal_redact_rc goal_redact_err
@@ -711,6 +934,11 @@ phase_plan_materialize() {
         "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization" || true
         "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization" || true
 
+        if ! append_emergency_bypass_log_if_present; then
+            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+            emit_kv STEP_FAILED emergency-bypass-log
+            exit 2
+        fi
         plan_src="$PREFLIGHT_TMPDIR_OPT/plan-from-issue.txt"
         if ! cp "$plan_src" "$PLAN_FILE" 2>"$IMPLEMENT_TMPDIR/copy-plan.stderr.log"; then
             emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
@@ -739,17 +967,16 @@ phase_plan_materialize() {
 
         "$SCRIPT_DIR/timing-ledger.sh" workflow-path "HARD" || true
 
-        "$SCRIPT_DIR/persist-implement-run-flags.sh" \
-            --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-            --no-issues false \
-            --workflow-path HARD \
-            >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
-            2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
-        persist_rc=$?
-        if [ "$persist_rc" -ne 0 ]; then
-            STALL_TRACKING=true
-            IMPLEMENT_BAIL_REASON=run-flags-persist-failed
-            return 0
+        persist_run_flags HARD || return 0
+    else
+        if ! append_emergency_bypass_log_if_present; then
+            emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
+            emit_kv STEP_FAILED emergency-bypass-log
+            exit 2
+        fi
+        persist_run_flags HARD || return 0
+        if [ "${BRANCH_SELECTED:-}" = "branch-1-resume" ]; then
+            post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
         fi
     fi
     # Resume-tail idempotency: see implement-bootstrap.md § Resume-tail idempotency
@@ -1113,6 +1340,7 @@ emit_final_tail() {
     emit_kv BRANCH_NAME "${BRANCH_NAME:-}"
     emit_kv BRANCH_ACTION "${BRANCH_ACTION:-}"
     emit_kv PLAN_FILE "${PLAN_FILE:-}"
+    emit_kv EMERGENCY_REQUESTED "${EMERGENCY_REQUESTED:-false}"
     emit_kv coder "${coder:-}"
     emit_kv coder_fallback "${coder_fallback:-}"
     emit_kv IMPLEMENT_BAIL_REASON "${IMPLEMENT_BAIL_REASON:-}"
@@ -1141,6 +1369,14 @@ main() {
                 case "$2" in
                     true|false) FORKED_TARGET=$2 ;;
                     *) die_usage "--forked-target must be true or false" ;;
+                esac
+                shift 2
+                ;;
+            --emergency-requested)
+                [ $# -ge 2 ] || die_usage "--emergency-requested requires a value"
+                case "$2" in
+                    true|false) EMERGENCY_REQUESTED=$2; EMERGENCY_REQUESTED_ARG_SEEN=true ;;
+                    *) die_usage "--emergency-requested must be true or false" ;;
                 esac
                 shift 2
                 ;;

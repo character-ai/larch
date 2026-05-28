@@ -43,6 +43,7 @@ impl_dir="$TMP_ROOT/impl"
 mkdir -p "$impl_dir"
 printf 'ISSUE_NUMBER=12\nRUN_ID=run-1\nADOPTED=true\n' > "$impl_dir/parent-issue.md"
 printf 'REPO=owner/repo\nCODER=codex\n' > "$impl_dir/session-env.sh"
+printf 'EMERGENCY_REQUESTED=true\n' > "$impl_dir/run-flags.sh"
 
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args.log" \
       TRACKING_CONTENT_LOG="$TMP_ROOT/content.md" \
@@ -51,6 +52,42 @@ assert_contains 'POSTED=true' "$out" 'happy path posts'
 assert_contains 'COMMENT_URL=https://example.test/comment/1' "$out" 'happy path emits URL'
 assert_contains '<!-- larch:metadata v1 runid=run-1 -->' "$(cat "$TMP_ROOT/args.log")" 'marker passed'
 assert_contains "Coder: \`codex\`" "$(cat "$TMP_ROOT/content.md")" 'content includes coder from session-env'
+assert_contains "Larch version: \`9.9.9\`" "$(cat "$TMP_ROOT/content.md")" 'content includes version'
+
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-em.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content-em.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested true)
+assert_contains 'POSTED=true' "$out" 'emergency metadata posts'
+assert_contains 'Emergency: true' "$(cat "$TMP_ROOT/content-em.md")" 'emergency metadata includes line'
+
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-emf.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content-emf.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested false)
+assert_contains 'POSTED=true' "$out" 'non-emergency metadata posts'
+if grep -Fq 'Emergency: true' "$TMP_ROOT/content-emf.md"; then
+    pass 'persisted emergency keeps line when argv false'
+else
+    fail 'persisted emergency keeps line when argv false'
+fi
+
+printf 'EMERGENCY_REQUESTED=false\n' > "$impl_dir/run-flags.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-emf2.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content-emf2.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested false)
+assert_contains 'POSTED=true' "$out" 'explicit false metadata posts'
+if grep -Fq 'Emergency: true' "$TMP_ROOT/content-emf2.md"; then
+    fail 'explicit false without persisted emergency omits line'
+else
+    pass 'explicit false without persisted emergency omits line'
+fi
+
+set +e
+bad=$(CLAUDE_PLUGIN_ROOT="$plugin" "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested maybe 2>/dev/null)
+rc=$?
+set -e
+if [ "$rc" -eq 2 ]; then pass 'invalid emergency flag exits 2'; else fail 'invalid emergency flag exits 2'; fi
+assert_contains 'POSTED=false' "$bad" 'invalid emergency flag emits envelope'
+assert_contains 'ERROR=--emergency-requested must be true or false' "$bad" 'invalid emergency flag emits validation error'
 
 # Missing --implement-tmpdir
 set +e

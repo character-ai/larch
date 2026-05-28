@@ -53,6 +53,7 @@ EXEC_ISSUES=0
 WARNINGS=0
 RUN_LOGS_PATH=""
 NOTE_LINES_FILE=""
+EMERGENCY_REQUESTED=false
 PRINT_STDOUT=false
 OUTPUT_FILE=""
 COST_UNAVAILABLE=false
@@ -91,6 +92,7 @@ while [ $# -gt 0 ]; do
         --warnings) [ $# -ge 2 ] || { usage; exit 2; }; WARNINGS=$2; shift 2 ;;
         --run-logs-path) [ $# -ge 2 ] || { usage; exit 2; }; RUN_LOGS_PATH=$2; shift 2 ;;
         --note-lines-file) [ $# -ge 2 ] || { usage; exit 2; }; NOTE_LINES_FILE=$2; shift 2 ;;
+        --emergency-requested) [ $# -ge 2 ] || { usage; exit 2; }; EMERGENCY_REQUESTED=$2; shift 2 ;;
         --print-stdout) PRINT_STDOUT=true; shift ;;
         --output-file) [ $# -ge 2 ] || { usage; exit 2; }; OUTPUT_FILE=$2; shift 2 ;;
         --cost-unavailable) COST_UNAVAILABLE=true; shift ;;
@@ -104,6 +106,7 @@ done
 [ -n "$RUN_ID" ] || { usage; exit 2; }
 
 case "$SKILL" in implement|design) ;; *) usage; exit 2 ;; esac
+case "$EMERGENCY_REQUESTED" in true|false) ;; *) usage; exit 2 ;; esac
 
 na() { [ -z "$1" ] && printf 'N/A\n' || printf '%s\n' "$1"; }
 
@@ -232,6 +235,9 @@ trap cleanup EXIT
     case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
     printf -- '- **Mode**: %s\n' "$mode_disp"
     printf -- '- **Path**: %s\n' "$path_disp"
+    if [ "$EMERGENCY_REQUESTED" = "true" ]; then
+        printf -- '- Emergency: true\n'
+    fi
     printf -- '- **Duration**: %s\n' "$dur_disp"
     case "$tc" in N/A|"") printf -- '- **Cost**: N/A\n' ;;
         *) printf -- '- **Cost**: %s\n' "$(cost_bullet)" ;;

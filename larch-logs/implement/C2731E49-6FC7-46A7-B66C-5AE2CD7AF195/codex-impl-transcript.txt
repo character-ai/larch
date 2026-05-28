@@ -1,0 +1,13 @@
+Implemented and verified.
+
+I found the `--emergency` implementation was already mostly present on the branch. I made one production fix in [scripts/implement-bootstrap.sh](<OPERATOR_REPO_PATH>/scripts/implement-bootstrap.sh): Branch 1 resume now renames the tracking issue to implementing before `larch-log init`, and the post-tracking argv order is stable while still forwarding `--emergency-requested`.
+
+Verification passed:
+
+- `bash scripts/test-persist-implement-run-flags.sh`
+- `bash scripts/test-render-run-summary.sh`
+- `bash skills/implement/scripts/test-write-final-report.sh`
+- `bash skills/implement/scripts/test-implement-bootstrap.sh` (`PASS=426 FAIL=0`)
+- `bash scripts/relevant-checks.sh`
+
+Wrote the required `manifest.json` with `status=complete`. No `qa-pending.json` was written because QA is not needed.

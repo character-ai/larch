@@ -1,0 +1,8 @@
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (37m elapsed)
+⚠ codex agent: TIMED OUT after 30 minutes, killing
+❌ codex agent: TIMED OUT (exit code 124, 2249s elapsed, output 0 bytes)

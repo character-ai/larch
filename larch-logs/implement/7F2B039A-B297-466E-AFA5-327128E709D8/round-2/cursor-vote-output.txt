@@ -1,0 +1,20 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- harness B7 treats duplicate replay on resume as expected
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- triple persist is redundant but harmless and test-pinned
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- flags table plus mental-flag convention already imply emergency_requested
+FINDING_5: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- empty-body guard is prompt-only but specified for emergency fallback
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan phase requires --preflight-tmpdir so empty path cannot reach append
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- bootstrap die_usage already rejects non true|false at parse
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- write-final-report harness already covers omitted emergency line
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false -- SECURITY.md already documents raw-body emergency as untrusted trust-boundary downgrade
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false -- AUDIT=refuse bypass is explicit documented --emergency scope in SECURITY.md and SKILL.md
+FINDING_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- fail-open blocker reads are documented historical admission posture
+FINDING_20: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false

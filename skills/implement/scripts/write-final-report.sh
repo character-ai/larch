@@ -102,6 +102,17 @@ REPO="$(read_kv REPO "$SESSION_ENV")"
 REPO_UNAV="$(read_kv REPO_UNAVAILABLE "$SESSION_ENV")"; [ -n "$REPO_UNAV" ] || REPO_UNAV="false"
 
 NO_ISSUES="$(read_kv NO_ISSUES "$RUN_FLAGS")"; [ -n "$NO_ISSUES" ] || NO_ISSUES="false"
+EMERGENCY_REQUESTED="$(read_kv EMERGENCY_REQUESTED "$RUN_FLAGS")"; [ -n "$EMERGENCY_REQUESTED" ] || EMERGENCY_REQUESTED="false"
+EMERGENCY_REQUESTED_INVALID=false
+EMERGENCY_INVALID_VALUE=""
+case "$EMERGENCY_REQUESTED" in
+    true|false) ;;
+    *)
+        EMERGENCY_REQUESTED_INVALID=true
+        EMERGENCY_INVALID_VALUE=$EMERGENCY_REQUESTED
+        EMERGENCY_REQUESTED=false
+        ;;
+esac
 WORKFLOW_PATH="$(read_kv WORKFLOW_PATH "$RUN_FLAGS")"
 [ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="$(read_kv POST_PLAN_WORKFLOW_PATH "$SESSION_ENV")"
 [ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="N/A"
@@ -365,6 +376,9 @@ notes_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-notes.XXXXXX")"
     if [ "$TOKEN_REPORT_CORRUPT_ZERO" = true ]; then
         printf '%s\n' "$TOKEN_REPORT_CORRUPT_ZERO_WARNING"
     fi
+    if [ "$EMERGENCY_REQUESTED_INVALID" = true ]; then
+        printf '%s\n' "**⚠ Invalid \`EMERGENCY_REQUESTED\` value in \`run-flags.sh\`: \`${EMERGENCY_INVALID_VALUE:-<empty>}\`. Emergency status could not be rendered reliably.**"
+    fi
     if [ "$FORKED_TARGET" = "true" ]; then
         any_oos=false
         for f in "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" "$IMPLEMENT_TMPDIR/oos-accepted-design.md" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"; do
@@ -423,6 +437,7 @@ run_body_render() {
         --run-id "$RUN_ID" \
         --mode "$mode_str" \
         --workflow-path "$WORKFLOW_PATH" \
+        --emergency-requested "$EMERGENCY_REQUESTED" \
         --duration "$DURATION" \
         "${cost_args[@]}" \
         --issue-number "$ISSUE" \
@@ -447,6 +462,9 @@ compose_self_fallback() {
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${mode_str:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
+        if [ "${EMERGENCY_REQUESTED:-false}" = "true" ]; then
+            printf -- '- Emergency: true\n'
+        fi
         printf -- '- **Duration**: %s\n' "${DURATION:-N/A}"
         printf -- '- **Cost**: N/A\n'
         if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ]; then
@@ -486,6 +504,12 @@ compose_self_fallback() {
 
 set +e
 refresh_issue_counts
+if [ "$EMERGENCY_REQUESTED_INVALID" = true ]; then
+    emergency_warn_tmp="$(mktemp "${TMPDIR:-/tmp}/wfr-emergency-invalid.XXXXXX")"
+    printf 'Invalid EMERGENCY_REQUESTED value in run-flags.sh: %s\n' "${EMERGENCY_INVALID_VALUE:-<empty>}" >"$emergency_warn_tmp"
+    append_render_warning "implement final summary — run flags" "run-flags.sh" 0 "$emergency_warn_tmp"
+    rm -f "$emergency_warn_tmp"
+fi
 run_body_render "${notes_tmp}"
 rr=$?
 set -e

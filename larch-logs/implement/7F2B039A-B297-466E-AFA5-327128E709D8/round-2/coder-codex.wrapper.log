@@ -1,0 +1,21 @@
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+2026-05-27T20:07:56.203031Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/SECURITY.md:
+**`--emergency` downgrade scope**: operators may opt into bypassing exactly three Preflight gates that normally fail closed — missing/malformed issue-body `larch:plan`, `AUDIT=refuse`, and clarify-state pending paths that would otherwise post or wait on a clarification thread. Every triggered bypass emits a loud warning and appends a structured entry to `emergency-bypass.log`, which Step 0 folds into `execution-issues.md`; the bypass does **not** suppress the admission gate, semantic materiality stale-notice exit, or later dirty-tree / branch / tracking guardrails.
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+2026-05-27T20:11:19.426517Z ERROR codex_core::tools::router: error=agent ids must be non-empty
+⏳ codex agent: still running (7m elapsed)
+⏳ codex agent: still running (8m elapsed)
+⏳ codex agent: still running (9m elapsed)
+⏳ codex agent: still running (10m elapsed)
+⏳ codex agent: still running (11m elapsed)
+⏳ codex agent: still running (12m elapsed)
+⏳ codex agent: still running (13m elapsed)
+⏳ codex agent: still running (14m elapsed)
+⏳ codex agent: still running (15m elapsed)
+2026-05-27T20:19:59.167982Z ERROR codex_core::session: failed to record rollout items: thread 019e6b09-c4ee-7b93-b9d7-60a119c64f37 not found
+✓ codex agent: completed (exit code 0, 941s elapsed, output 134 bytes)

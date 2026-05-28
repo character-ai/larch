@@ -1,0 +1,125 @@
+### FINDING_1: resume-plan-tail skips emergency persistence and bypass audit
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: `scripts/implement-bootstrap.sh` resume-plan-tail paths can skip `persist-implement-run-flags.sh` and emergency bypass-log consumption, leaving stale or missing `EMERGENCY_REQUESTED` state and omitting emergency evidence from final summary or execution issues after partial/resumed runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_2: emergency metadata can diverge from run-flags/final summary
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: Emergency metadata may be posted or retained before run flags are persisted, or resume/adopt paths may skip metadata refresh, so `larch:metadata` can show `Emergency: true` while `run-flags.sh` or final summary omit it, or vice versa.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_3: SECURITY.md missing emergency bypass trust-boundary update
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: `SECURITY.md` still describes plan presence/adequacy as mechanically enforced and does not document `--emergency` bypass scope, non-bypassed gates, operator opt-in, or raw issue-body/prompt-injection risks.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_4: emergency-bypass.log lacks normative schema
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: `emergency-bypass.log` entries are described as structured but no fixed line format is normative, which can produce inconsistent audit lines and make `execution-issues.md` or future automation harder to consume.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_5: CLI discovery surfaces omit --emergency
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: README flag tables, `argument-hint`, and the positional issue structural test do not consistently include `[--emergency]`, so users and CLI discovery may miss the flag despite documentation elsewhere.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_6: final report duplicates emergency rendering logic
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `compose_self_fallback` duplicates Emergency line rendering instead of delegating to `render-run-summary.sh` or a shared helper, increasing format drift risk.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_7: --emergency flag not explicitly bound to emergency_requested
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: The Flags table documents `--emergency`, but does not explicitly say it sets `emergency_requested=true`, while downstream preflight/bootstrap defaults could otherwise imply the flag is ignored.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_8: preflight exit-code docs omit emergency AUDIT=refuse exception
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: The Preflight exit-code table implies all `AUDIT=refuse` cases exit 3, but emergency mode continues instead.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_9: emergency preflight semantics lack offline harness coverage
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: Emergency Preflight behavior lacks fixture or structural tests for mutual exclusion, empty-body fail-closed, missing-plan materialization, and `AUDIT=refuse` continuation, so SKILL edits can regress key bypass semantics while CI stays green.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_10: render-run-summary emergency false/omitted cases lack direct coverage
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `test-render-run-summary.sh` does not directly cover false or omitted `emergency-requested` handling, so renderer default behavior could regress without this test failing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_11: invalid bootstrap --emergency-requested value lacks harness coverage
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: No bootstrap harness verifies invalid `--emergency-requested` values, so bootstrap behavior may diverge from `persist-implement-run-flags.sh` exit-2 expectations.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_12: raw issue-body emergency fallback lacks trust-boundary wrapping
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: Emergency item 3 can materialize raw GitHub issue body as `plan.txt` without mechanical untrusted-data wrapping, so instruction-like issue content may be treated as a binding plan by implementers.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_13: emergency AUDIT=refuse bypass skips clarification gate
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: Emergency mode bypasses `clarify-state` on `AUDIT=refuse`, allowing Step 2 to proceed with vague, inadequate, or hostile plans without the normal clarification request and label gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_14: bypass-log append failure is silently ignored
+- **Reviewer(s)**: cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Emergency bypass-log persistence uses `append-tool-failure.sh || true`, so redaction or append failures can silently drop audit evidence from `execution-issues.md` while bootstrap continues.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_15: malformed-plan emergency fallback is prompt-only
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: The malformed-plan emergency fallback is documented in prompt text but not mechanized in shared script logic, so the agent may continue using `plan-block-read` output instead of the intended raw issue body fallback.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_16: SKILL stdout parse docs mention EMERGENCY_REQUESTED but scanner omits it
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: `SKILL.md` documents parsing `EMERGENCY_REQUESTED` from bootstrap stdout, but `_ib_kv_scan` does not parse that key, creating misleading future-orchestrator guidance.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_17: [OUT_OF_SCOPE] external implementer plan paths lack trust-boundary wrapping
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: External implementer launchers pass plan files by path without data-not-instructions wrapping. This is pre-existing, though emergency mode amplifies the exposure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_18: [OUT_OF_SCOPE] Preflight gh/API fail-open behavior is unchanged
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: Preflight admission can fail open on `gh` or API errors, admitting runs with undetected blockers regardless of `--emergency`; this is pre-existing and not introduced by the branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.

@@ -29,20 +29,14 @@
 | B5-plan | `larch-log.sh init` failure on `--up-to-phase plan` preserves `IMPLEMENT_BAIL_REASON=tracking-init-failed` and skips the phase-3 placeholder. |
 | B5-branch1 | Branch 1 sentinel resume with `larch-log.sh init` failure preserves the sentinel issue/run id while stalling tracking. |
 | B5-plan-green | Phase 3 green path copies the Preflight plan, composes issue context, persists run flags, creates/captures the derived branch, writes plan batches, upserts `larch:plan`, and covers three slug inputs. |
-| B5-coder-implicit-cursor | Phase 4 green path with both external implementers available emits `coder=cursor` and no `coder_fallback`. |
-| B5-coder-implicit-codex | Phase 4 implicit path with Cursor unavailable and Codex available emits `coder=codex`, prints the Cursor→Codex warning, and appends a Warning. |
-| B5-coder-implicit-claude | Phase 4 implicit path with both external implementers unavailable emits `coder=claude` and `coder_fallback=true`. |
-| B5-coder-explicit-claude-happy | Explicit `--coder=claude` emits `coder=claude` without setting `coder_fallback=true`, even when both external implementers are unavailable. |
-| B5-coder-explicit-unavailable | Explicit unavailable `--coder=cursor` emits `IMPLEMENT_BAIL_REASON=coder-unavailable`, `STALL_TRACKING=true`, and no `coder`. |
-| B5-coder-skip-missing-plan | `--resume-plan-tail` with an adopted sentinel but missing `plan.txt` preserves the planned `PLAN_FILE` path and skips coder selection instead of emitting a fallback coder. |
-| B5-coder-skip-missing-feature-description | `--resume-plan-tail` with an adopted sentinel but missing `feature-description.txt` preserves the existing `PLAN_FILE` and skips coder selection instead of emitting a fallback coder. |
+| B5-plan-emergency | Emergency plan materialization persists `EMERGENCY_REQUESTED=true`, refreshes tracking metadata with the same flag, and appends the bypass log once. |
+| B5-plan-emergency-invalid-format | Invalid bypass logs downgrade to a redacted invalid-format Warning entry instead of failing the run. |
 | B5-plan-best-effort-failures | Non-fatal `run-step1-plan-log.sh`, `write-tally.sh`, and `tracking-issue-summary.sh` failures append Warnings and still return a green Phase 3 tail. |
 | B5-plan-goal-redaction-failure | Goal-text redaction fails closed to a placeholder and appends a Warning instead of logging the raw issue title. |
 | B6-plan-flags | Any non-zero `persist-implement-run-flags.sh` exit emits `IMPLEMENT_BAIL_REASON=run-flags-persist-failed`, sets `STALL_TRACKING=true`, and stops subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree | `STATUS=dirty` and `STATUS=unknown` emit `IMPLEMENT_BAIL_REASON=dirty-tree` without setting `STALL_TRACKING`, and stop subsequent Phase 3 helpers. |
 | B7-plan-dirty-tree probe-failure | Dirty-tree checkpoint probe failure is treated as `STATUS=unknown`, preserving the `dirty-tree` bail and stopping the tail. |
-| B7-plan-dirty-tree resume-tail | `--resume-plan-tail` re-runs the dirty-tree checkpoint inside the same tmpdir after a prior dirty-tree bail: clean resumes the post-checkpoint tail, dirty/unknown preserves `IMPLEMENT_BAIL_REASON=dirty-tree`, and both paths avoid duplicate snapshot / `gh` work. |
-| B7-coder-dirty-tree resume tail | Dirty-tree recovery coverage reaches `--up-to-phase coder`: after a clean resume checkpoint, the harness verifies the coder phase runs and emits the selected implementer. |
+| B7-plan-dirty-tree resume-tail | `--resume-plan-tail` re-runs the dirty-tree checkpoint inside the same tmpdir after a prior dirty-tree bail: clean resumes the post-checkpoint tail, dirty/unknown preserves `IMPLEMENT_BAIL_REASON=dirty-tree`, both paths avoid duplicate snapshot / `gh` work, emergency resumes preserve prior `EMERGENCY_REQUESTED=true` when argv omits the flag, and bypass-log warnings are not replayed. |
 | B4-plan-dirty-resume | `POSTED=false` + dirty-tree bail resumes Phase 3 tail from existing plan artifacts without requiring a tracking sentinel, and still avoids duplicate snapshot / `gh` work. |
 | B8-plan-forked-target | Fork mode still materializes plan/feature files with upstream `gh --repo`, skips branch creation, captures the current branch, and skips the local `larch:plan` upsert. |
 | B9-plan-user-branch | Existing user branch skips branch creation but still writes the local `larch:plan` summary. |
@@ -66,6 +60,7 @@
 | B-issue-required-for-resume | Existing sentinel without argv `--issue-number` exits 2 with `STEP_FAILED=issue-number-required-for-resume`. |
 | B-fork-missing-issue | `--forked-target true --upstream-repo OWNER/REPO` without `--issue-number` exits 2 with a usage error. |
 | B-invalid-run-id-arg | Invalid `--run-id` exits 2 with a usage error. |
+| B-invalid-emergency-requested-arg | Invalid `--emergency-requested` exits 2 with a usage error. |
 | B-invalid-upstream-repo-arg | Invalid `--upstream-repo` exits 2 with a usage error. |
 | Edge-NEVER14 | Static grep on live `scripts/implement-bootstrap.sh` forbids append / `cat` heredoc writes to `session-env.sh`. |
 | Edge-breadcrumb-count | `LARCH_QUIET_BREADCRUMBS=1` + `LARCH_QUIET_BREADCRUMB_FD=1` → exactly one `→ step0: infra ready` line. |

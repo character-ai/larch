@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Large inline helper is real but extraction is optional maintainability, not a correctness defect.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Preflight bypass/warn/exit/audit behavior is prose- and grep-pinned only; bootstrap harness does not exercise orchestrator Preflight items 3-5.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate calls mirror initial vs resume-plan-tail branches and invoke the same helper; divergence risk is low.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Tracking-phase and plan-phase persists serve different resume/adopt paths; extra writes are redundant but intentional.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Branch mixes unrelated changes, but that is a review-scope/process note rather than an emergency-flag defect.
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- post-tracking-issue.sh is argv-only today, yet bootstrap always forwards --emergency-requested on current call sites.
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- test-plan-adequacy-audit.sh already greps both _ib_emergency case blocks; gap is narrow, not absent forwarding.
+FINDING_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- branch-1-resume and resume-plan-tail call post_tracking_metadata false || true, masking gh/metadata upsert failures.
+FINDING_9: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- No harness drives --emergency-requested true with a valid plan and no emergency-bypass.log.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Flags table names --emergency and Emergency mode prose uses emergency_requested; binding is implied though not spelled in the table row.
+FINDING_11: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- Mutex and non-emergency missing-plan contracts are only static grep checks in test-plan-adequacy-audit.sh.
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Explicit --emergency-requested false is honored via EMERGENCY_REQUESTED_ARG_SEEN; missing test, not demonstrated downgrade bug.
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Section header says replay while assertions verify no replay.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=weak UNCERTAIN=false -- Raw-body plan path is intentional --emergency behavior with explicit untrusted-data warnings in SKILL.md.
+FINDING_15: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- append_emergency_bypass_log_if_present always writes .emergency-bypass-log-consumed without checking append-execution-issue.sh success.
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Loss before phase_plan_materialize is possible, but B11 shows bypass audit survives later copy-plan failure once consumption runs.
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Empty raw-body guard lives in Preflight prose; bootstrap copy-plan lacks defense-in-depth only.
+OOS_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- implement SKILL.md gained unrelated Bash block prelude documentation in the same emergency diff.
+OOS_19: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Admission blocker checks fail open by documented design in blocker-helpers.sh, not a new regression.
+OOS_20: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- feature-description.txt already copies full issue bodies pre-emergency; worth a separate hardening issue.
+OOS_21: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- resume-plan-tail can run plan-phase tail without a prior plan.txt if an early bail interrupted first-pass materialization.
+OOS_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Branch diff versus main includes substantial non-#3041 work; reviewers should scope to emergency-touched paths.
+OOS_23: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- Prompt-only Preflight orchestration is an acknowledged operational model; bootstrap harness already covers shell-side emergency wiring.

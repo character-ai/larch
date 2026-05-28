@@ -31,6 +31,7 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
     --run-id RUN-X \
     --mode '--quick' \
     --workflow-path SIMPLE \
+    --emergency-requested true \
     --duration '00:01:00' \
     --claude-tokens 1000000 \
     --codex-tokens 2000000 \
@@ -64,6 +65,7 @@ grep -Fq '<!-- larch:run-summary v=1 -->' "$TMP" || fail 'missing sentinel'
 grep -Fq '## /implement run RUN-X — merged' "$TMP" || fail 'missing title outcome'
 if grep -Fq '**Outcome**:' "$TMP"; then fail 'merged run must not emit Outcome bullet'; fi
 grep -Fq '**PR**:' "$TMP" || fail 'missing PR bullet when URL known'
+grep -Fq -- '- Emergency: true' "$TMP" || fail 'missing emergency line when requested'
 grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
 pass 'render body shape + sentinel + notes + cost'
@@ -109,6 +111,7 @@ grep -Fq "Claude \$0.80" "$TMP_DEF" || fail 'all-defaulted Claude slot'
 grep -Fq "Codex \$2.00" "$TMP_DEF" || fail 'all-defaulted Codex slot'
 grep -Fq "Cursor \$1.50" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
 if grep -Fq '**Tokens**:' "$TMP_DEF"; then fail 'legacy Tokens bullet must not appear'; fi
+if grep -Fq 'Emergency: true' "$TMP_DEF"; then fail 'omitted emergency state must not render emergency line'; fi
 pass 'all-defaulted cost semantics (shipped blended defaults)'
 
 # Explicit Claude rate only; zero-token lanes show $0.00 (defaults still apply for rates).
@@ -150,6 +153,7 @@ LARCH_CLAUDE_RATE_PER_M=2 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER
 grep -Fq "TOTAL ~\$2.00" "$TMP_PART" || fail 'Claude-only priced total'
 grep -Fq "Codex \$0.00" "$TMP_PART" || fail 'zero-token codex slot'
 grep -Fq "Cursor \$0.00" "$TMP_PART" || fail 'zero-token cursor slot'
+if grep -Fq 'Emergency: true' "$TMP_PART"; then fail 'explicit non-emergency case must not render emergency line'; fi
 pass "priced Claude + zero-token lanes at \$0.00"
 
 # stderr envelope pins (quiet diagnostics; not mixed into markdown file).
@@ -381,5 +385,20 @@ sk=$?
 set -e
 test "$sk" -eq 2 || fail '--skill foo must exit 2'
 pass 'reject unknown --skill'
+
+set +e
+"$HELPER" --skill implement --outcome approved --run-id X --mode m --workflow-path w --duration d \
+    --emergency-requested maybe \
+    --claude-tokens 0 --codex-tokens 0 --cursor-tokens 0 \
+    --claude-input-tokens 0 --claude-cache-read-tokens 0 --claude-cache-write-5m-tokens 0 --claude-cache-write-1h-tokens 0 --claude-output-tokens 0 \
+    --codex-input-tokens 0 --codex-cached-input-tokens 0 --codex-output-tokens 0 \
+    --cursor-input-tokens 0 --cursor-cache-read-tokens 0 --cursor-output-tokens 0 \
+    --issue-number 0 --issue-url N/A --pr-number 0 --pr-url N/A \
+    --plan-review-line N/A --code-review-line N/A --oos-count 0 --oos-urls '' \
+    --exec-issues 0 --warnings 0 --run-logs-path N/A --output-file "$TMP_DES_OUT" >/dev/null 2>&1
+sk=$?
+set -e
+test "$sk" -eq 2 || fail '--emergency-requested maybe must exit 2'
+pass 'reject invalid --emergency-requested'
 
 printf 'PASS=%s\n' "$PASS"

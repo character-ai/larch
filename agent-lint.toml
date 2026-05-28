@@ -825,6 +825,11 @@ exclude = [
   # (sibling contract).
   "scripts/test-render-run-summary.sh",
   "scripts/test-render-run-summary.md",
+  # scripts/test-persist-implement-run-flags.sh is the offline harness for
+  # scripts/persist-implement-run-flags.sh. Referenced from Makefile
+  # (test-persist-implement-run-flags target) and its sibling contract.
+  "scripts/test-persist-implement-run-flags.sh",
+  "scripts/test-persist-implement-run-flags.md",
   "scripts/test-token-cost.sh",
   "scripts/test-token-cost.md",
   "scripts/test-render-cost-line.sh",

@@ -18,6 +18,7 @@
 .PHONY: test-design-pause-resume
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
+.PHONY: test-persist-implement-run-flags
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -71,7 +72,7 @@ test-harnesses-6: test-add-blocked-by test-blocked-by-issue test-ci-status test-
 
 test-harnesses-7: test-agent-model-args test-body-file-title test-ci-wait test-compose-pr-summary test-dispatch-panel-reuse test-flush-execution-issues test-implement-bootstrap test-implement-finalize test-launch-claude-review test-log-phase test-relevant-checks-helper-failure test-review-core test-session-entry-gate test-synthesis-subagent test-write-tally
 
-test-harnesses-8: test-aggregate-findings test-cache-key-discipline test-ci-wait-exit-trap test-compose-review-findings test-dispatch-plan-voters test-gather-context test-implement-fork-env test-launch-claude-subprocess test-merge-pr test-post-tracking-issue test-relevant-checks-validation test-review-relevant-checks-helper test-session-env-roundtrip test-tally-code-votes
+test-harnesses-8: test-aggregate-findings test-cache-key-discipline test-ci-wait-exit-trap test-compose-review-findings test-dispatch-plan-voters test-gather-context test-implement-fork-env test-launch-claude-subprocess test-merge-pr test-persist-implement-run-flags test-post-tracking-issue test-relevant-checks-validation test-review-relevant-checks-helper test-session-env-roundtrip test-tally-code-votes
 
 test-harnesses-9: test-alias-structure test-cache-root-validation test-clarify-comment test-create-pr test-dispatch-with-waterfall test-revise-plan-with-waterfall test-generate-code-flow-diagram test-launch-codex-ci test-mermaid-fragments test-preflight-args test-render-findings-batch test-review-structure test-session-setup-presence-defaults test-tally-plan-review test-findings-classification test-review-findings-classification test-plan-review-loop test-step3-review-cap
 
@@ -626,6 +627,9 @@ test-implement-finalize:
 
 test-implement-bootstrap:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-bootstrap.sh
+
+test-persist-implement-run-flags:
+	bash scripts/harness-timer.sh $@ bash scripts/test-persist-implement-run-flags.sh
 
 test-step-8a-changelog:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-8a-changelog.sh

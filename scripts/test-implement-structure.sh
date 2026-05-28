@@ -270,7 +270,8 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SH
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
 # shellcheck disable=SC2016
-grep -Fq -- '--workflow-path HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+{ grep -Fq -- '--workflow-path HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh" || \
+  grep -Fq 'persist_run_flags HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh"; } \
   || fail "implement-bootstrap.sh must persist HARD workflow path"
 # Post-cutover: /implement no longer accepts --hard, so hard_mode references must be gone.
 ! grep -Fq 'hard_mode' "$SKILL_MD" \
@@ -383,7 +384,7 @@ grep -Fq '1. **Admission gate**' "$SKILL_MD" \
 grep -Fq '**Preflight — admission gate known limitation (D3)**' "$SKILL_MD" \
   || fail "SKILL.md must document admission gate fail-open limitation (D3)"
 # shellcheck disable=SC2016
-grep -Fq '6. **On `AUDIT=pass` — semantic materiality (comment-only)**' "$SKILL_MD" \
+grep -Fq '6. **On `AUDIT=pass` or emergency-bypassed `AUDIT=refuse` — semantic materiality (comment-only)**' "$SKILL_MD" \
   || fail "SKILL.md Preflight must retain semantic materiality step (item 6)"
 grep -Fq 'semantic stale notice posted at Preflight item 6' "$SKILL_MD" \
   || fail "SKILL.md exit table must pin Preflight item 6 semantic stale path"
@@ -414,11 +415,26 @@ read -r preflight_wire_line <<'EOF'
 EOF
 grep -Fq "$preflight_wire_line" "$SKILL_MD" \
   || fail "SKILL.md must wire PREFLIGHT_TMPDIR through _ib_preflight"
+grep -Fq '_ib_emergency=()' "$SKILL_MD" \
+  || fail "SKILL.md must retain the _ib_emergency argv array"
+read -r emergency_wire_line <<'EOF'
+case "${emergency_requested:-}" in
+  true|false) _ib_emergency+=(--emergency-requested "$emergency_requested") ;;
+esac
+EOF
+grep -Fq "$emergency_wire_line" "$SKILL_MD" \
+  || fail "SKILL.md must conditionally wire emergency_requested through _ib_emergency"
 read -r preflight_expand_line <<'EOF'
 "${_ib_preflight[@]+"${_ib_preflight[@]}"}"
 EOF
 if [ "$(grep -cF "$preflight_expand_line" "$SKILL_MD" || true)" -lt 1 ]; then
   fail "SKILL.md must expand _ib_preflight in the bootstrap invocation"
+fi
+read -r emergency_expand_line <<'EOF'
+"${_ib_emergency[@]+"${_ib_emergency[@]}"}"
+EOF
+if [ "$(grep -cF "$emergency_expand_line" "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must expand _ib_emergency in both bootstrap invocations"
 fi
 grep -Fq -- '--resume-plan-tail' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document --resume-plan-tail"
@@ -428,7 +444,8 @@ grep -Fq '## Step 0 — Session Setup' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 0 Session Setup heading"
 grep -Fq "**⚠ Foreground required — do NOT set \`run_in_background: true\`.**" "$SKILL_MD" \
   || fail "SKILL.md must retain the Step 0 foreground-required warning"
-grep -Fq 'Dirty-tree recovery bootstrap fence:' "$SKILL_MD" \
+{ grep -Fq 'Dirty-tree recovery bootstrap fence:' "$SKILL_MD" || \
+  grep -Fq 'Step 0 dirty-tree recovery gate:' "$SKILL_MD"; } \
   || fail "SKILL.md must retain the dirty-tree recovery bootstrap fence"
 grep -Fq 'Resume-tail idempotency' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document resume-tail idempotency invariant"

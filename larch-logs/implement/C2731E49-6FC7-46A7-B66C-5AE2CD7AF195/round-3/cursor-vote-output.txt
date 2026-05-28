@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- large helper is real but acceptable for a focused bootstrap path with harness coverage
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- orthogonal TOKEN_REPORT change is real but normal branch scope, not a functional regression risk
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Emergency-mode preamble already pins BYPASS grammar; item 5 only omits repetition
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bootstrap, persist, and plan-adequacy harnesses already cover major emergency paths
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- SKILL wires _ib_emergency on both bootstrap calls; omission is a static-pin gap only
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- append_rc=99 is an intentional invalid-format branch, not an unexplained sentinel
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- branch mixes readability-preamble lint with emergency work, increasing review conflation risk
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- redact_file_best_effort mirrors existing pipeline but is small local DRY debt, not a defect
+FINDING_9: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- test-plan-adequacy-audit.sh pins emergency prose but not the non-emergency BLOCK_PRESENT=false exit-2 refusal
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- pre-seeded plan is harness scaffolding; dedicated copy-plan failure coverage is optional
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- copy-plan exits before append_emergency_bypass_log_if_present, so copy failure can drop bypass audit persistence
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- invalid --emergency-requested is validated upstream in persist-implement-run-flags.sh
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- render-run-summary already exercises true/false/omitted paths; invalid argv is rejected earlier
+FINDING_14: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- SECURITY.md claims invalid bypass logs fail closed at bootstrap but code warns, redacts, and continues
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- untrusted issue-body fallback is intentional; SKILL already mandates untrusted-data warnings
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- audit-refuse emergency carve-out is documented in SKILL.md and SECURITY.md
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- CLI-only emergency authorization matches the planned opt-in operator model
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- feature-description.txt always materializes full issue title/body for external implementers, not emergency-specific
+FINDING_19: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- admission blocker detection remains fail-open on gh/API errors per documented D3 posture
+FINDING_20: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- --resume-plan-tail tracking path returns before post_tracking_metadata, so metadata can stay stale after emergency recovery
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- best-effort bypass persistence before plan materialization is already documented in the plan edge cases
+FINDING_22: YES CORRECTNESS=true SEVERITY=important QUALITY=excellent UNCERTAIN=false -- test-implement-structure.sh still greps the old AUDIT=pass-only item 6 heading while SKILL.md uses the emergency-bypassed variant
