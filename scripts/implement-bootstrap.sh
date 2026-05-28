@@ -160,16 +160,16 @@ resolve_run_id() {
     printf '%s\n' "$candidate"
 }
 
-emit_skip_breadcrumb_if_enabled() {
+emit_skip_breadcrumb() {
     local reason=$1
     larch_err "⏩ step0: tracking — skip ($reason)"
 }
 
-emit_tracking_breadcrumb_if_enabled() {
+emit_tracking_breadcrumb() {
     larch_err "→ step0: tracking adopted #${ISSUE_NUMBER_RESOLVED:-} (run=${RUN_ID:-} branch=${BRANCH_SELECTED:-})"
 }
 
-emit_plan_materialize_breadcrumbs_if_enabled() {
+emit_plan_materialize_breadcrumbs() {
     if [ "${RUN_PLAN_LOGGED:-false}" = "true" ]; then
         larch_err "→ step0: branch ${BRANCH_NAME:-} + plan logged"
     else
@@ -735,7 +735,7 @@ phase_tracking() {
     if [ "${REPO_UNAVAILABLE:-}" = "true" ]; then
         BRANCH_SELECTED=repo-unavailable-skip
         DEFERRED=true
-        emit_skip_breadcrumb_if_enabled repo-unavailable
+        emit_skip_breadcrumb repo-unavailable
         return 0
     fi
 
@@ -763,7 +763,7 @@ phase_tracking() {
                     --redact || true
             fi
         fi
-        emit_skip_breadcrumb_if_enabled forked-target
+        emit_skip_breadcrumb forked-target
         return 0
     fi
 
@@ -844,7 +844,7 @@ phase_tracking() {
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 persist_run_flags HARD || return 0
                 post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
-                emit_tracking_breadcrumb_if_enabled
+                emit_tracking_breadcrumb
                 return 0
             fi
         else
@@ -899,7 +899,7 @@ phase_tracking() {
     persist_run_flags HARD || return 0
     post_tracking_metadata true "Step 0 tracking adoption — Branch 2 adopt metadata post" || return 0
 
-    emit_tracking_breadcrumb_if_enabled
+    emit_tracking_breadcrumb
     return 0
 }
 
@@ -1132,7 +1132,7 @@ phase_plan_materialize() {
         fi
     fi
 
-    emit_plan_materialize_breadcrumbs_if_enabled
+    emit_plan_materialize_breadcrumbs
     return 0
 }
 
@@ -1163,7 +1163,7 @@ phase_coder_select() {
         _phase_coder_implicit
     fi
 
-    emit_coder_breadcrumb_if_enabled
+    emit_coder_breadcrumb
     return 0
 }
 
@@ -1273,7 +1273,7 @@ _phase_coder_manifest_fallback() {
         --field coder_fallback=true >/dev/null 2>&1 || true
 }
 
-emit_coder_breadcrumb_if_enabled() {
+emit_coder_breadcrumb() {
     if [ -z "${coder:-}" ] || [ -n "${IMPLEMENT_BAIL_REASON:-}" ]; then
         return 0
     fi

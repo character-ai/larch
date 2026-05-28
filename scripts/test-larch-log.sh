@@ -303,7 +303,7 @@ _bc_no_bc_out="$(cd "$_bc_no_bc_repo" && "$LARCH_LOG" commit --log-root "$_bc_no
 _bc_no_bc_quiet="$_bc_no_bc_repo/larch-logs/implement/$_bc_no_bc_run/breadcrumbs/larch-quiet-bar.sh-67890.log"
 if [ -f "$_bc_no_bc_quiet" ]; then pass "commit publishes quiet log without breadcrumbs dir"; else fail "commit publishes quiet log without breadcrumbs dir (missing $_bc_no_bc_quiet; out=$_bc_no_bc_out)"; fi
 
-echo "=== commit rejects symlinked session-root quiet log ==="
+echo "=== commit rejects traversal-backed session-root quiet log ==="
 _bc_quiet_symlink_repo="$TMP/breadcrumb-quiet-symlink-repo"
 _bc_quiet_symlink_staging="$TMP/breadcrumb-quiet-symlink-staging"
 _bc_quiet_symlink_run="breadcrumbquietsymlink123"
@@ -379,6 +379,8 @@ _bc_source_link_run="breadcrumbsourcelink123"
 _outside_ql="$TMP/outside-quiet-log.log"
 mkdir -p "$_bc_source_link_staging/breadcrumbs"
 printf 'outside quiet\n' > "$_outside_ql"
+mkdir -p "$TMP/breadcrumbs"
+printf 'outside quiet\n' > "$TMP/larch-quiet-outside.sh-1.log"
 git init "$_bc_source_link_repo" >/dev/null 2>&1
 git -C "$_bc_source_link_repo" config user.email "ci@test"
 git -C "$_bc_source_link_repo" config user.name "Test CI"
@@ -389,7 +391,8 @@ git -C "$_bc_source_link_repo" checkout -q -b feature-breadcrumb-source-link
 (cd "$_bc_source_link_repo" && "$LARCH_LOG" init --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" --issue 42) >/dev/null
 (cd "$_bc_source_link_repo" && "$LARCH_LOG" write --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
 _bc_source_link_rc=0
-(cd "$_bc_source_link_repo" && with_implement_tmpdir "$_bc_source_link_staging" "$LARCH_LOG" commit --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" >/dev/null 2>&1) || _bc_source_link_rc=$?
+(cd "$_bc_source_link_repo" && IMPLEMENT_TMPDIR="$_bc_source_link_staging" LARCH_BREADCRUMB_SOURCE_DIR="$TMP/breadcrumbs" \
+    "$LARCH_LOG" commit --log-root "$_bc_source_link_staging/larch-logs" --skill implement --run-id "$_bc_source_link_run" >/dev/null 2>&1) || _bc_source_link_rc=$?
 if [ "$_bc_source_link_rc" -eq 0 ] && [ ! -e "$_bc_source_link_repo/larch-logs/implement/$_bc_source_link_run/breadcrumbs/larch-quiet-outside.sh-1.log" ]; then
     pass "quiet log outside session tmpdir is not published"
 else

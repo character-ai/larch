@@ -366,8 +366,9 @@ is discussing, but the body still refuses to emit structured reviewer records.
 EOF
 printf '0\n' > "${OUT_NSS}.done"
 write_meta "$OUT_NSS" "$STRUCTURED_SUCCESS_HELPER"
+STDERR_NSS="$TMPROOT/case-nss.stderr"
 RESULT_NSS=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
-    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode --structured-reviewer-validation "$OUT_NSS" 2>/dev/null)
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode --structured-reviewer-validation "$OUT_NSS" 2>"$STDERR_NSS")
 assert_line "C_NSS retry file selected (publish to orig)" "REVIEWER_FILE=$OUT_NSS" "$RESULT_NSS"
 assert_line "C_NSS retry status OK" "STATUS=OK" "$RESULT_NSS"
 assert_line "C_NSS structured sidecar emitted (orig path)" "STRUCTURED_SIDECAR=${OUT_NSS}.tsv" "$RESULT_NSS"
@@ -392,6 +393,16 @@ if grep -Fq "NO_ISSUES_FOUND" "$NSS_RETRY_OUTPUT" 2>/dev/null; then
     ok "C_NSS retry artifact retained"
 else
     fail "C_NSS retry artifact missing retry content"
+fi
+if grep -Fq 'ns-retry: first-pass content preserved at cursor-specialist-structured-output-first-pass.txt' "$STDERR_NSS" 2>/dev/null; then
+    ok "C_NSS stderr surfaces first-pass preservation breadcrumb"
+else
+    fail "C_NSS stderr missing first-pass preservation breadcrumb"
+fi
+if grep -Fq 'ns-retry: published retry content to cursor-specialist-structured-output.txt; retry artifact retained at cursor-specialist-structured-output-ns-retry.txt' "$STDERR_NSS" 2>/dev/null; then
+    ok "C_NSS stderr surfaces retry publish breadcrumb"
+else
+    fail "C_NSS stderr missing retry publish breadcrumb"
 fi
 
 # C_NS_FP_SUCCESS: NS-retry success path produces a -first-pass.txt sidecar.

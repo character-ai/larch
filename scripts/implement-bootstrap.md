@@ -151,7 +151,7 @@ Audit of the `phase_plan_materialize` checkpoint-and-tail region around lines ~7
 | `write-tally.sh --phase plan-review` (~851) | Same session tmpdir; atomic compose+write of a tally batch. Idempotent within the same tmpdir. |
 | `tracking-issue-summary.sh upsert-summary --marker "<!-- larch:plan v1 runid=$RUN_ID -->"` (~898) | Marker-based upsert; idempotent by construction (finds existing marker and replaces the comment). |
 | `append-tool-failure.sh` (~804, ~817, ~831, ~865, ~888, ~902) | Failure-only paths gated on the helper above returning non-zero. NOT independently idempotent if forced to re-run (each call appends to `execution-issues.md`). On the canonical flow each fires at most once because gating helpers are idempotent and the first-pass bail prevents the surrounding block from running twice. Revisit the audit if a future change makes failure paths reachable on resume. |
-| `emit_plan_materialize_breadcrumbs_if_enabled` (~915) | Conditional breadcrumb emitter at function tail; reads env state, emits only when enabled. Safe to re-run. |
+| `emit_plan_materialize_breadcrumbs` (~915) | Breadcrumb emitter at function tail; reads env state and emits the applicable Step 0 progress lines. Safe to re-run. |
 
 **`phase_tracking` cross-reference (lines ~545–587):** On `RESUME_PLAN_TAIL=true`, `phase_tracking` short-circuits before `rename_to_implementing`, `run_larch_log_init`, or `post-tracking-issue.sh` can re-run, so the duplicate tracking-metadata concern in issue #2977 is already mitigated there.
 

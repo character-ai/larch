@@ -117,7 +117,17 @@ grep -q '^user-visible$' "$SCRATCH/larch_err.err" || fail "larch_err not on stde
 grep -q '^noisy$' "$log" || fail "larch_err noisy not logged"
 grep -q '^user-visible$' "$log" || fail "larch_err not mirrored to quiet log"
 
-# 10b. Breadcrumb category validation allows only the documented categories.
+# 10b. larch_errf preserves formatting/newlines on stderr and in the quiet log.
+helper="$SCRATCH/larch_errf.sh"
+log="$SCRATCH/larch_errf.log"
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; larch_errf "prefix:%s\\nsecond line\\n" "value"; emit_kv STATUS ok'
+"$helper" "$log" >"$SCRATCH/larch_errf.out" 2>"$SCRATCH/larch_errf.err"
+assert_eq "$(cat "$SCRATCH/larch_errf.out")" "STATUS=ok" "larch_errf contract stdout"
+assert_eq "$(cat "$SCRATCH/larch_errf.err")" $'prefix:value\nsecond line' "larch_errf stderr formatting"
+assert_file_contains "$log" "prefix:value" "larch_errf mirrored first line"
+assert_file_contains "$log" "second line" "larch_errf mirrored second line"
+
+# 10c. Breadcrumb category validation allows only the documented categories.
 helper="$SCRATCH/bc-categories.sh"
 write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; larch_quiet_init; for category in progress warn stall retry escalate wait-ci network-flake invalid ""; do if larch_quiet_bc_valid_category "$category"; then printf "VALID=%s\n" "$category"; else printf "INVALID=%s\n" "$category"; fi; done'
 out=$("$helper")

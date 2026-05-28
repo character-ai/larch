@@ -2507,7 +2507,7 @@ if section_runs step5-starting-round; then
     pass "step5-starting-round entry-prior-deg-nonnumeric"
 fi  # end section: step5-starting-round
 
-# Breadcrumb pin: round entry and coder dispatch breadcrumbs appear when LARCH_QUIET_BREADCRUMBS=1.
+# Breadcrumb pin: round entry and coder dispatch breadcrumbs surface via stderr capture.
 if section_runs dispatch; then
 work_breadcrumb_round="$TMP/breadcrumb-round-entry"
 make_work_repo "$work_breadcrumb_round"

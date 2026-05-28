@@ -915,8 +915,8 @@ assert_contains "tracking-issue-write rename --issue 123 --state implementing" "
 assert_order "tracking-issue-write rename --issue 123 --state implementing" "post-tracking-issue --implement-tmpdir $SANDBOX_TMP --issue-number 123 --run-id runD --adopted true" "$invoke" "B4-all rename before post-tracking-issue"
 assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
-assert_not_contains '→ step0: coder=' "$out" "B4-all no coder breadcrumb without breadcrumbs enabled"
-assert_not_contains '→ step0: coder=' "$err" "B4-all no coder breadcrumb on stderr without breadcrumbs enabled"
+assert_not_contains '→ step0: coder=' "$out" "B4-all coder breadcrumb stays off stdout"
+assert_contains '→ step0: coder=cursor' "$err" "B4-all coder breadcrumb surfaces on stderr"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4-all-breadcrumb POSTED=false deferred guard ---
@@ -1605,7 +1605,7 @@ issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "Step 0 plan materialization — larch:plan summary redaction" "$issues" "B5-plan-summary-redaction-failure warning"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-summary-redaction-failure summary invoked"
-assert_not_contains '→ step0: larch:plan posted' "$out" "B5-plan-summary-redaction-failure no breadcrumb without breadcrumbs enabled"
+assert_not_contains '→ step0: larch:plan posted' "$out" "B5-plan-summary-redaction-failure no breadcrumb on stdout"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B6-plan-flags ---

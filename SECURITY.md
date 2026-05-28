@@ -29,11 +29,12 @@ Committed breadcrumb publication stages only session-root quiet logs whose
 basenames match `larch-quiet-*-*.log`. Legacy `*.ndjson` breadcrumb stream files and
 session-local monitor sidecars (`.quiet`, `.done`, `.status`, `.surfaced`,
 `.bc-offset`) stay under the run tmpdir and are not copied into
-`larch-logs/.../breadcrumbs/`; attempted breadcrumb publication still fails
-closed on symlinks, hardlinks, or redaction errors. A source-dir hint outside
-the active session tmpdir is skipped as a no-op; fail-closed rejection happens
-at per-file staging and redaction time rather than by rejecting the hint
-directory up front.
+`larch-logs/.../breadcrumbs/`; attempted quiet-log publication still fails
+closed on staged-file symlinks, hardlinks, or redaction errors. The shared
+helper now treats its input as a breadcrumbs-directory hint only: a hint outside
+the active session tmpdir is a no-op, and the fail-closed enforcement happens at
+per-file staging/redaction time for matched `larch-quiet-*-*.log` files rather
+than by applying the removed source-directory-wide rejection rules.
 
 Raw Codex `--json` event streams (`*.events.jsonl`) are session-local artifacts
 only. `scripts/design-log-publish.sh` and `scripts/larch-log.sh` exclude them

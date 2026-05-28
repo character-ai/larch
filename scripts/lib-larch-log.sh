@@ -399,12 +399,12 @@ larch_log_publish_breadcrumbs_stage_file() {
 }
 
 larch_log_publish_breadcrumbs_shared() {
-    local source_dir="$1" dest_dir="$2" on_error="$3"
+    local source_hint_dir="$1" dest_dir="$2" on_error="$3"
     local staging_parent staging_dir f base found_any=false
     local session_root quiet_source_ok=false
 
-    [ -n "$source_dir" ] || return 0
-    session_root="$(dirname "$source_dir")"
+    [ -n "$source_hint_dir" ] || return 0
+    session_root="$(dirname "$source_hint_dir")"
 
     if larch_log_breadcrumbs_under_session_tmp "$session_root"; then
         quiet_source_ok=true
