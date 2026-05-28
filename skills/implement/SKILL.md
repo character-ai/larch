@@ -428,6 +428,8 @@ _ib_parse_bootstrap_out
 
 The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash blocks that need ledgers must rehydrate `IMPLEMENT_TMPDIR`, `CLAUDE_PLUGIN_ROOT`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh`.
 
+### Cross-Skill Presence Propagation
+
 ## Phantom Untracked Probe
 
 At selected `/implement` boundaries, detect non-ignored untracked files that appeared after the Step 0 tracking adoption session baseline. This is advisory only: phantoms are logged to Execution Issues, never cleaned automatically.
