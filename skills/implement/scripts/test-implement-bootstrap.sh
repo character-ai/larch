@@ -616,6 +616,19 @@ assert_occurrences 'timing-ledger mark Step 0 — tracking issue' "$invoke" 1 "G
 assert_contains "post-tracking-issue --emergency-requested false" "$invoke" "GP2 metadata refresh clears emergency"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- GP2-persisted-emergency sentinel resume keeps emergency metadata ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=123\nRUN_ID=resume1\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=true\n' > "$SANDBOX_TMP/run-flags.sh"
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --emergency-requested false 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP2-persisted-emergency exit 0"
+assert_contains "EMERGENCY_REQUESTED=true" "$out" "GP2-persisted-emergency stdout KV"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "GP2-persisted-emergency metadata stays true"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- GP2-emergency sentinel resume refreshes metadata ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
@@ -1048,6 +1061,7 @@ issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "implement-bootstrap emergency-bypass-log" "$issues" "B5-plan-emergency warning site"
 assert_contains "BYPASS kind=missing-plan issue=123" "$issues" "B5-plan-emergency warning content"
 assert_contains "EMERGENCY_REQUESTED=true" "$(cat "$SANDBOX_TMP/run-flags.sh")" "B5-plan-emergency run flags"
+assert_contains "Plan from issue" "$(cat "$SANDBOX_TMP/plan.txt")" "B5-plan-emergency plan.txt materialized"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan-emergency-malformed-plan ---
@@ -1060,6 +1074,7 @@ out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyM
 assert_rc "$rc" 0 "B5-plan-emergency-malformed-plan exit 0"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "BYPASS kind=malformed-plan issue=123" "$issues" "B5-plan-emergency-malformed-plan warning content"
+assert_contains "Plan from issue" "$(cat "$SANDBOX_TMP/plan.txt")" "B5-plan-emergency-malformed-plan plan.txt materialized"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan-emergency-audit-refuse ---
@@ -1072,6 +1087,7 @@ out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyA
 assert_rc "$rc" 0 "B5-plan-emergency-audit-refuse exit 0"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "BYPASS kind=audit-refuse issue=123" "$issues" "B5-plan-emergency-audit-refuse warning content"
+assert_contains "Plan from issue" "$(cat "$SANDBOX_TMP/plan.txt")" "B5-plan-emergency-audit-refuse plan.txt materialized"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan-emergency-clean ---
@@ -1087,6 +1103,7 @@ assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --n
 assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "B5-plan-emergency-clean metadata arg"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_not_contains "implement-bootstrap emergency-bypass-log" "$issues" "B5-plan-emergency-clean no bypass warning"
+assert_contains "Plan from issue" "$(cat "$SANDBOX_TMP/plan.txt")" "B5-plan-emergency-clean plan.txt materialized"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan-bypass-log ignored when emergency false ---
@@ -1440,6 +1457,31 @@ issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "invalid-format" "$issues" "B5-plan-emergency-invalid-format status"
 assert_contains "BYPASS kind=<lowercase-token> issue=<number>" "$issues" "B5-plan-emergency-invalid-format grammar"
 assert_contains "unexpected bypass text" "$issues" "B5-plan-emergency-invalid-format captured content"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-emergency-empty-log-invalid-format ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+printf '\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyEmpty --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency-empty-log-invalid-format exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "invalid-format" "$issues" "B5-plan-emergency-empty-log-invalid-format status"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan-emergency-issue-mismatch-invalid-format ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+printf 'BYPASS kind=missing-plan issue=999\n' >"$SANDBOX/preflight/emergency-bypass.log"
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyIssueMismatch --preflight-tmpdir "$SANDBOX/preflight" --emergency-requested true 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan-emergency-issue-mismatch-invalid-format exit 0"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_contains "invalid-format" "$issues" "B5-plan-emergency-issue-mismatch-invalid-format status"
+assert_contains "issue=999" "$issues" "B5-plan-emergency-issue-mismatch-invalid-format captured content"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan-emergency-invalid-format-redacts-secrets ---

@@ -208,12 +208,14 @@ persist_run_flags() {
 
 restore_emergency_requested_from_run_flags_if_unset() {
     local prior_emergency=""
-    [ "${EMERGENCY_REQUESTED_ARG_SEEN:-false}" = "true" ] && return 0
     [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
     [ -f "$IMPLEMENT_TMPDIR/run-flags.sh" ] || return 0
     prior_emergency=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/run-flags.sh" --key EMERGENCY_REQUESTED --default "")
     case "$prior_emergency" in
-        true|false) EMERGENCY_REQUESTED=$prior_emergency ;;
+        true) EMERGENCY_REQUESTED=true ;;
+        false)
+            [ "${EMERGENCY_REQUESTED_ARG_SEEN:-false}" = "true" ] || EMERGENCY_REQUESTED=false
+            ;;
     esac
 }
 
@@ -248,7 +250,7 @@ redact_file_best_effort() {
 }
 
 append_emergency_bypass_log_if_present() {
-    local bypass_log append_rc fallback_entry fallback_content fallback_rc kind issue redact_source
+    local bypass_log append_rc expected_issue fallback_entry fallback_content fallback_rc kind issue redact_source
     local consumed_sentinel
 
     [ "${EMERGENCY_REQUESTED:-false}" = "true" ] || return 0
@@ -259,10 +261,18 @@ append_emergency_bypass_log_if_present() {
     [ -e "$consumed_sentinel" ] && return 0
 
     local bypass_log_valid=true
+    local saw_bypass=false
+    expected_issue=""
+    if valid_issue_number "${ISSUE_NUMBER_RESOLVED:-}"; then
+        expected_issue=${ISSUE_NUMBER_RESOLVED}
+    elif valid_issue_number "${ISSUE_NUMBER_OPT:-}"; then
+        expected_issue=${ISSUE_NUMBER_OPT}
+    fi
     while IFS= read -r _line || [ -n "$_line" ]; do
         [ -n "$_line" ] || continue
         case "$_line" in
             BYPASS\ kind=*\ issue=*)
+                saw_bypass=true
                 kind=${_line#BYPASS kind=}
                 kind=${kind%% issue=*}
                 issue=${_line##* issue=}
@@ -272,6 +282,10 @@ append_emergency_bypass_log_if_present() {
                 case "$issue" in
                     ""|*[!0-9]*) bypass_log_valid=false; break ;;
                 esac
+                if [ -n "$expected_issue" ] && [ "$issue" != "$expected_issue" ]; then
+                    bypass_log_valid=false
+                    break
+                fi
                 ;;
             *)
                 bypass_log_valid=false
@@ -279,6 +293,9 @@ append_emergency_bypass_log_if_present() {
                 ;;
         esac
     done <"$bypass_log"
+    if [ "$saw_bypass" != "true" ]; then
+        bypass_log_valid=false
+    fi
     if [ "$bypass_log_valid" != "true" ]; then
         fallback_content="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass.XXXXXX")" || return 1
         redact_source="$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-emergency-bypass-source.XXXXXX")" || {

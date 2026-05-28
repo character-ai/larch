@@ -58,6 +58,7 @@ case "$RUN_ID_ARG" in ""|*[!A-Za-z0-9._-]*) [ -z "$RUN_ID_ARG" ] || fail_usage "
 
 SESSION_ENV="$IMPLEMENT_TMPDIR/session-env.sh"
 PARENT_ISSUE="$IMPLEMENT_TMPDIR/parent-issue.md"
+RUN_FLAGS="$IMPLEMENT_TMPDIR/run-flags.sh"
 
 if [ -n "$ISSUE_NUMBER_ARG" ]; then
     ISSUE="$ISSUE_NUMBER_ARG"
@@ -71,6 +72,10 @@ RUN_ID="$RUN_ID_ARG"
 REPO="$(read_kv REPO "$SESSION_ENV")"
 AGENT="$(read_kv AGENT "$SESSION_ENV")"; [ -n "$AGENT" ] || AGENT="claude"
 CODER="$(read_kv CODER "$SESSION_ENV")"; [ -n "$CODER" ] || CODER="claude"
+PERSISTED_EMERGENCY="$(read_kv EMERGENCY_REQUESTED "$RUN_FLAGS")"
+if [ "$EMERGENCY_REQUESTED" = "false" ] && [ "$PERSISTED_EMERGENCY" = "true" ]; then
+    EMERGENCY_REQUESTED="true"
+fi
 
 [ -n "$ISSUE" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER not found in parent-issue.md"; exit 1; }
 [ -n "$RUN_ID" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID not found in parent-issue.md, session-id, or session-env LARCH_TOKEN_SESSION_ID"; exit 1; }

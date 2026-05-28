@@ -43,6 +43,7 @@ impl_dir="$TMP_ROOT/impl"
 mkdir -p "$impl_dir"
 printf 'ISSUE_NUMBER=12\nRUN_ID=run-1\nADOPTED=true\n' > "$impl_dir/parent-issue.md"
 printf 'REPO=owner/repo\nCODER=codex\n' > "$impl_dir/session-env.sh"
+printf 'EMERGENCY_REQUESTED=true\n' > "$impl_dir/run-flags.sh"
 
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args.log" \
       TRACKING_CONTENT_LOG="$TMP_ROOT/content.md" \
@@ -64,9 +65,20 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-emf.log" \
       "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested false)
 assert_contains 'POSTED=true' "$out" 'non-emergency metadata posts'
 if grep -Fq 'Emergency: true' "$TMP_ROOT/content-emf.md"; then
-    fail 'non-emergency metadata omits line'
+    pass 'persisted emergency keeps line when argv false'
 else
-    pass 'non-emergency metadata omits line'
+    fail 'persisted emergency keeps line when argv false'
+fi
+
+printf 'EMERGENCY_REQUESTED=false\n' > "$impl_dir/run-flags.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_ARGS_LOG="$TMP_ROOT/args-emf2.log" \
+      TRACKING_CONTENT_LOG="$TMP_ROOT/content-emf2.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir" --emergency-requested false)
+assert_contains 'POSTED=true' "$out" 'explicit false metadata posts'
+if grep -Fq 'Emergency: true' "$TMP_ROOT/content-emf2.md"; then
+    fail 'explicit false without persisted emergency omits line'
+else
+    pass 'explicit false without persisted emergency omits line'
 fi
 
 set +e
