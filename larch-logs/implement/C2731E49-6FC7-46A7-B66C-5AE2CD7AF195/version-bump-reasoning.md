@@ -1,7 +1,7 @@
 # Version Bump Reasoning
 
-- **Base commit**: `866915fd9` (Bump version to 45.1.4 (#3054))
-- **Current version**: `45.1.20`
+- **Base commit**: `74203ced1` (Fixes #3059: Count phase-2 waterfall relaunches in fallback warning (#3098))
+- **Current version**: `45.1.21`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: MINOR
