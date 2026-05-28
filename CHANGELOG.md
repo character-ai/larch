@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [45.3.4] - 2026-05-28
+
+### Changed
+
+- Add regression coverage for nospace pseudo-heading plus empty-merge attestation rejection (#3003)
+- Lock in all-OOS input with attestation-only empty merge accepting REASON=ok (#3003)
+- Escape-aware double-quoted contains pins and cross-skill relevant-checks routing to test-check-contains-pins
+- Shared lint-readability-preamble.tsv manifest with sketch line-anchoring and per-step placement enforcement
+- Harness coverage for escape fixtures, Bash 3.2 smoke, TSV drift guards, and routing regressions
+
 ## [45.3.3] - 2026-05-27
 
 ### Changed
