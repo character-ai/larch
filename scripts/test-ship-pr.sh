@@ -2491,6 +2491,102 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+root=$(make_repo rebump_same_version_legacy_replaces)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-same.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+cp "$REPO_ROOT/scripts/drop-bump-commit.sh" "$root/scripts/drop-bump-commit.sh"
+cp "$REPO_ROOT/scripts/drop-changelog-commit.sh" "$root/scripts/drop-changelog-commit.sh"
+cp "$REPO_ROOT/scripts/commit-changelog.sh" "$root/scripts/commit-changelog.sh"
+cp "$REPO_ROOT/scripts/git-commit.sh" "$root/scripts/git-commit.sh"
+chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/drop-changelog-commit.sh" \
+    "$root/scripts/commit-changelog.sh" "$root/scripts/git-commit.sh"
+mkdir -p "$root/.claude-plugin"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.2"}
+JSON
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add .claude-plugin/plugin.json CHANGELOG.md
+git -C "$root" commit -q -m "Prepare version fixtures"
+git -C "$root" update-ref refs/remotes/origin/main HEAD
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.3"}
+JSON
+git -C "$root" add .claude-plugin/plugin.json
+git -C "$root" commit -q -m "Bump version to 1.2.3"
+# Empty body on `## [1.2.3]` so changelog_extract_version_body yields no
+# bullets and `ship_pr_commit_changelog_after_rebump` takes the legacy
+# (non-bullets) path with old_version == new_version (#3102).
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.3] - 2026-01-01
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add CHANGELOG.md
+git -C "$root" commit -q -m "Update CHANGELOG for 1.2.3"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+printf '# reasoning\n' > "$reasoning_file"
+echo "CURRENT_VERSION=1.2.2"
+echo "NEW_VERSION=1.2.3"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+new_version=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --new-version) new_version=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '{"version":"%s"}\n' "$new_version" > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to $new_version"
+echo "APPLIED=true"
+echo "COMMIT_SHA=$(git rev-parse HEAD)"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
+         "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-same" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-same"
+set -e
+assert_rc "$tmp/rc-rebump-same" 0 "run_rebase_rebump (#3102): completes when dropped bump == classified version on legacy path"
+rebump_same_log=$(git -C "$root" log --format=%s)
+if [[ "$rebump_same_log"$'\n' == *$'Bump version to 1.2.3\n'* ]] &&
+   [[ "$rebump_same_log"$'\n' == *$'Update CHANGELOG for 1.2.3\n'* ]] &&
+   grep -q '^## \[1.2.3\] - ' "$root/CHANGELOG.md"; then
+    ok "run_rebase_rebump (#3102): produces fresh bump+changelog commits at the same version"
+else
+    fail "run_rebase_rebump (#3102): expected fresh bump+changelog commits with ## [1.2.3] heading"
+    git -C "$root" log --oneline --max-count=6 | sed 's/^/    log: /' || true
+    sed 's/^/    changelog: /' "$root/CHANGELOG.md" || true
+fi
+rm -rf "$sentinel_dir"
+
 root=$(make_repo rebump_flush_suppressed)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-suppressed.XXXXXX)

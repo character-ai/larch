@@ -686,8 +686,31 @@ ship_pr_commit_changelog_after_rebump() {
     # section. Only pass --replaces-version on the legacy path where a stale
     # `## [OLD]` heading is still on-branch from a replayed Update CHANGELOG
     # commit (drop-changelog-commit refused or was skipped).
-    if [ "$used_bullets" = "false" ] && [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]]; then
-        commit_args+=(--replaces-version "$old_version")
+    if [ "$used_bullets" = "false" ]; then
+        local _changelog_replaces=""
+        if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]]; then
+            _changelog_replaces="$old_version"
+        else
+            # old_version is unusable as --replaces-version (empty/invalid or
+            # equals new_version on a re-run where origin/main has not
+            # advanced past the prior bump base). Without --replaces-version,
+            # commit-changelog.sh skips its awk retitle/insert and emits
+            # COMMITTED=false when CHANGELOG.md has no working-tree diff
+            # (e.g. the rebase resolved CHANGELOG.md by taking upstream which
+            # lacks `## [new_version]`) — stalling run_rebase_rebump
+            # (issue #3102). Fall back to origin/main's plugin version so the
+            # awk has a target to retitle or, when origin's heading is
+            # absent, falls back to insert_version_heading.
+            local _origin_ver
+            _origin_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null \
+                | jq -r '.version // empty' 2>/dev/null || echo "")
+            if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$_origin_ver" != "$new_version" ]]; then
+                _changelog_replaces="$_origin_ver"
+            fi
+        fi
+        if [ -n "$_changelog_replaces" ]; then
+            commit_args+=(--replaces-version "$_changelog_replaces")
+        fi
     fi
 
     set +e
