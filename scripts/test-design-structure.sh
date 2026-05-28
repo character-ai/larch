@@ -59,13 +59,18 @@ contains "$SKILL_MD" 'the four primary options are **Approve final design** / **
 contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**' 'SKILL missing Gate C cap-omission prose with See full plan'
 contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL missing full-panel Step 3 contract'
 
-absent "$SKILL_MD" 'sketch_budget=0' 'SKILL must not pin v1 sketch_budget=0'
+contains "$SKILL_MD" 'sketch_budget=0' 'SKILL must pin SIMPLE sketch_budget=0'
 absent "$SKILL_MD" 'review_budget=quick' 'SKILL must not pin v1 review_budget=quick'
 absent "$SKILL_MD" 'invoke-plan-validator-if-not-quick.sh' 'SKILL must not reference old validator helper'
 absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old budget reader'
 absent "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_TRIVIAL' 'SKILL must not reference old trivial sentinel'
 absent "$SKILL_MD" 'plan-review-quick.md' 'SKILL must not reference deleted quick review reference'
 absent "$SKILL_MD" 'design-l3-velocity-notified-2670' 'SKILL must not retain Step 5d velocity comment sentinel'
+contains "$SKILL_MD" 'contract drift' 'SKILL missing Step 0b contract-drift abort prose'
+contains "$SKILL_MD" 'aborting before silent tier downgrade' 'SKILL missing silent tier downgrade abort pin'
+contains "$SKILL_MD" 'bash scripts/test-write-run-params.sh' 'SKILL missing contract-drift repro command'
+contains "$SKILL_MD" 'refusing to recreate it with fallback defaults' 'SKILL missing no-fallback run-params warning'
+absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
 
 contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
@@ -488,8 +493,12 @@ grep -Fq 'append `--manual-requested true` only when `manual_requested=true`' "$
 grep -Fq -- 'manual_gate_b = $merge_m' "$SKILL_MD" \
   || fail "(FINDING_14) SKILL.md jq merge must overwrite manual_gate_b from current argv state"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
-grep -Fq -- '--manual-gate-b "${manual_requested:-false}"' "$SKILL_MD" \
-  || fail "(2930) SKILL.md fallback write-run-params call missing --manual-gate-b"
+grep -Fq 'refusing to recreate it with fallback defaults' "$SKILL_MD" \
+  || fail "(2930) SKILL.md fallback-missing path must refuse to recreate run-params with defaults"
+# shellcheck disable=SC2016 # literal shell snippet anchor in SKILL.md
+if grep -Fq -- '--manual-gate-b "${manual_requested:-false}"' "$SKILL_MD"; then
+  fail "(2930) SKILL.md must not retain fallback write-run-params --manual-gate-b call"
+fi
 grep -Fq 'partition, brainstorm, and/or manual requested but jq is unavailable' "$SKILL_MD" \
   || fail "(2930) SKILL.md jq-unavailable warning missing manual"
 # shellcheck disable=SC2016 # flags.md list marker uses backticks

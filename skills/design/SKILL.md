@@ -277,8 +277,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    - Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv **or** auto-enabled by the Step 0b Brainstorm title-prefix check, else `false`.
    - Set mental boolean `manual_requested` to `true` when `--manual` or `-m` was parsed on argv, else `false`.
    - Immediately refresh `$DESIGN_TMPDIR/source-env.sh` via `write-design-current-env.sh` so subsequent Bash blocks can source `ISSUE_NUMBER` and `MANUAL_REQUESTED` from the stable session-env file instead of relying on prompt-local argv memory. Pass `--issue-number "$ISSUE_NUMBER"` on that follow-up invocation, and append `--manual-requested true` only when `manual_requested=true` (omit the flag entirely when `manual_requested=false`). Keep the existing `--output`, `--design-tmpdir`, `--session-id`, and `--claude-pid "$PPID"` arguments.
-   - `simple`: `design_classification=SIMPLE`.
-   - `hard`: `design_classification=HARD`.
+   - `simple`: `design_classification=SIMPLE`, `design_classification_reason="argv tier: --simple"`, `design_classification_source=caller-forwarded`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`.
+   - `hard`: `design_classification=HARD`, `design_classification_reason="argv tier: --hard"`, `design_classification_source=caller-forwarded`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`.
    Set `design_classification_source=caller-forwarded` (the orchestrator forwards tier selection; `run-params.json` is not re-derived from argv here).
 
 ```bash
@@ -296,6 +296,21 @@ if [[ "$manual_requested" == true ]]; then
 fi
 "${_wdce_step0b_args[@]}"
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+if [[ "$design_classification" == SIMPLE ]]; then
+  design_classification_reason="argv tier: --simple"
+  design_classification_source=caller-forwarded
+  # SIMPLE skips the sketch phase; Step 2a consumes 0 as the no-sketch sentinel.
+  sketch_budget=0
+  review_budget=full
+  workflow_path=SIMPLE
+elif [[ "$design_classification" == HARD ]]; then
+  design_classification_reason="argv tier: --hard"
+  design_classification_source=caller-forwarded
+  # HARD always runs the four personality sketch slots before dialectic.
+  sketch_budget=4
+  review_budget=full
+  workflow_path=HARD
+fi
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --classification "$design_classification" \
   --reason "$design_classification_reason" \
@@ -309,7 +324,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --output "$DESIGN_TMPDIR/run-params.json"
 ```
 
-If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue.
+If the helper exits non-zero, treat it as **contract drift** between SKILL.md and `scripts/write-run-params.sh` (issue #3077). Print `**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**` to stderr and exit 1. `$DESIGN_TMPDIR` is preserved (Step 6 cleanup is gated on `PLAN_WRITE_OK=true`, which is not set on this path).
 
 **Router-flag persistence on write failure**: when argv-derived `partition_requested`, `brainstorm_requested`, **or** `manual_requested` is `true` and `command -v jq` succeeds, ensure all three flags persist so Step **1d.5** / Step **2b.5** / Gate B still see them after a subshell re-read. Use one canonical merge rule: `partition_requested` and `brainstorm_requested` are true-only OR-merges, while `manual_gate_b` is overwritten from the current argv-derived `manual_requested` value because this run's Gate B mode must be authoritative and a stale persisted `true` must not silently force manual mode after the operator omitted `--manual`.
 
@@ -331,17 +346,7 @@ if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$man
       rm -f "$_rp_merge" "$_rp_err"
     fi
   else
-    "${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh" \
-      --classification "${design_classification:-HARD}" \
-      --reason "${design_classification_reason:-run-params write failed; router-flag recovery}" \
-      --source caller-forwarded \
-      --sketch-budget "${sketch_budget:-4}" \
-      --review-budget "${review_budget:-full}" \
-      --workflow-path "${workflow_path:-HARD}" \
-      --partition-requested "${partition_requested:-false}" \
-      --brainstorm-requested "${brainstorm_requested:-false}" \
-      --manual-gate-b "${manual_requested:-false}" \
-      --output "$DESIGN_TMPDIR/run-params.json" >/dev/null 2>&1 || true
+    printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
   fi
 elif [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]]; then
   printf '%s\n' "**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**"

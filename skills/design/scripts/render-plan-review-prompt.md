@@ -10,6 +10,7 @@
 - Both Cursor and Codex prompts include the full `full_role` personality prose and a TSV structured-record block contract so all archetype outputs can pass through `collect-agent-results.sh --structured-reviewer-validation`.
 - `--design-tmpdir <path>` or `DESIGN_TMPDIR` is required. The renderer reads `run-params.json` through `scripts/read-design-classification.sh`.
 - The renderer reads `skills/design/references/readability-style.md` (or `READABILITY_STYLE_FILE` in tests) and substitutes every `<READABILITY_STYLE>` token before writing stdout. If the file is missing or empty, it warns on stderr and leaves the prompt otherwise valid.
+- Prompt-token replacements use `%%` / `##` split joins rather than `${var//pattern/$replacement}` so file-derived content containing `&` renders consistently on bash 3.2 and bash 5.x.
 - The output order is `<role-line>\n<tier-emphasis>\n<rest-of-prompt>`. `dispatch-plan-review-panel.sh` strips only line 1 with `tail -n +2`, preserving the tier emphasis for dynamic prompts.
 - If `run-params.json` is missing or invalid, classification defaults to HARD and the reader prints a warning to stderr.
 - Invalid arguments exit 2 with diagnostics on stderr.
