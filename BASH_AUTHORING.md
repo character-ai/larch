@@ -4,13 +4,28 @@ Behavioral guidelines for authoring Bash commands. Merge with project-specific i
 
 ## 1. Exit-Code Safety for Bash Probes
 
-**Probe commands should not create false error rows.**
+**Probe commands should not create false error rows, and bare `grep` is not safe at the top level of a Bash tool block.**
 
-For orchestrator-generated grep-family probes where "no match" is informational, guard the command so Bash transcripts stay clean:
-- Use `|| true` to suppress the non-zero exit (works for all grep variants, including `grep -c` which already prints `0` on no-match).
-- Use `|| echo 0` only for probes that produce **no stdout** on no-match — not for `grep -c`, which already emits a count before exiting 1.
+### Wrapped-grep trap (Claude Code Bash tool)
 
-Do not add these guards to conditionals like `if grep -q PATTERN file; then`, where exit 1 is the branch signal.
+Inside an orchestrator Bash tool block, `grep` is **not** the system `/usr/bin/grep`. It is a Claude Code shell function that rewrites the call into the `claude` CLI in `ugrep` mode (`( exec -a ugrep "$CLAUDE_CODE_EXECPATH" -G ... )`). When that subshell exits non-zero at the top level of the script, the harness treats the top-level `claude` subprocess exit as a fatal tool error and terminates the **whole** Bash tool block — even with `|| true`, `|| echo NO_MATCH`, `if grep ...; then`, or `{ grep ...; } || X` guards. Subsequent lines never run; the orchestrator sees `Exit code 1` and the next step starts mid-state. Issue #3104 captures the full reproduction; the canonical bug shape is `grep -q PATTERN FILE || echo X` aborting before `echo X` runs.
+
+Two patterns are safe and equivalent in semantics to bare `grep`:
+
+- **`command grep PATTERN FILE || X`** — `command` bypasses the function and runs the system binary directly. Preferred (no wrapper detour, no extra subshell). Use this for `if command grep -q ...; then`, `command grep -v ... > tmp`, and any other probe shape.
+- **`( grep PATTERN FILE ) || X`** — explicit subshell wraps the function's inner exec subshell so the harness sees a normal subshell exit, not a top-level `claude` exit. Useful when you specifically want the function's `ugrep`-mode behavior (e.g. ignoring `.git/`); otherwise prefer `command grep`.
+
+Piped grep (`printf X | grep Y`, `cat file | grep Y`) is safe — the pipeline already runs grep in a subshell. Plain `grep` *inside* a `bash script.sh` invocation is also safe: the wrapper function is not exported, so child `bash` processes see the real `grep`. The hazard is specific to top-level `grep` lines in Markdown bash/sh/shell fences (and direct Bash tool blocks).
+
+A static lint (`scripts/lint-bare-grep-probe.sh`, wired into pre-commit) scans orchestrator-facing Markdown for bare top-level grep probes and rejects them. Suppress fixture or intentional lines only with a trailing `# lint-bare-grep-probe: ok <reason>` comment.
+
+### Probe stdout guards (still required after the safe form is chosen)
+
+For grep-family probes where "no match" is informational, keep the original guidance so Bash transcripts stay clean:
+- `... || true` to suppress the non-zero exit (works for all grep variants, including `grep -c` which already prints `0` on no-match).
+- `... || echo 0` only for probes that produce **no stdout** on no-match — not for `grep -c`, which already emits a count before exiting 1.
+
+Apply these guards on top of the safe form, e.g. `command grep -q PATTERN file || true` or `( grep -c PATTERN file ) || true`. In `if` conditionals where exit 1 is the branch signal, `command grep` alone is sufficient — no extra `|| true`.
 
 User-facing logs should not show error messages for expected no-match probes.
 

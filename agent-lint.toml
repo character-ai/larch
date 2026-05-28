@@ -140,6 +140,11 @@ suppress = [
 # file-backed GitHub CLI body payloads. scripts/test-lint-gh-body-inline.sh is
 # its black-box harness. Same reachability pattern as lint-readability-preamble.
 #
+# scripts/lint-bare-grep-probe.sh is a pre-commit / Makefile-only lint that
+# rejects bare top-level grep probes in orchestrator-facing markdown fences
+# (closes #3104). scripts/test-lint-bare-grep-probe.sh is its black-box
+# harness. Same reachability pattern as the other lint family above.
+#
 # scripts/test-parse-prose-blockers.sh is the regression harness for
 # scripts/parse-prose-blockers.sh (Makefile `test-parse-prose-blockers`).
 # scripts/parse-prose-blockers.sh is invoked only from scripts/blocker-helpers.sh
@@ -870,6 +875,10 @@ exclude = [
   "scripts/lint-gh-body-inline.md",
   "scripts/test-lint-gh-body-inline.sh",
   "scripts/test-lint-gh-body-inline.md",
+  "scripts/lint-bare-grep-probe.sh",
+  "scripts/lint-bare-grep-probe.md",
+  "scripts/test-lint-bare-grep-probe.sh",
+  "scripts/test-lint-bare-grep-probe.md",
   "scripts/test-parse-prose-blockers.sh",
   "scripts/parse-prose-blockers.sh",
   "scripts/blocker-helpers.sh",

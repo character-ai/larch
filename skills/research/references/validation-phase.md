@@ -27,7 +27,7 @@ Otherwise, surgically update only the `VALIDATION_*` slice (preserve `RESEARCH_*
 ```bash
 LANE_STATUS_FILE="$RESEARCH_TMPDIR/lane-status.txt"
 LANE_STATUS_TMP="$(mktemp "${LANE_STATUS_FILE}.XXXXXX")"
-grep -v '^VALIDATION_' "$LANE_STATUS_FILE" > "$LANE_STATUS_TMP"
+command grep -v '^VALIDATION_' "$LANE_STATUS_FILE" > "$LANE_STATUS_TMP" || true
 cat >> "$LANE_STATUS_TMP" <<'EOF'
 VALIDATION_CODE_STATUS=ok
 VALIDATION_CODE_REASON=
@@ -232,7 +232,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call. The 
 ```bash
 LANE_STATUS_FILE="$RESEARCH_TMPDIR/lane-status.txt"
 LANE_STATUS_TMP="$(mktemp "${LANE_STATUS_FILE}.XXXXXX")"
-grep -v '^VALIDATION_' "$LANE_STATUS_FILE" > "$LANE_STATUS_TMP"
+command grep -v '^VALIDATION_' "$LANE_STATUS_FILE" > "$LANE_STATUS_TMP" || true
 cat >> "$LANE_STATUS_TMP" <<'EOF'
 VALIDATION_CODE_STATUS=ok
 VALIDATION_CODE_REASON=
