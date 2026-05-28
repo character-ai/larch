@@ -1,0 +1,2 @@
+skills/design/scripts/plan-review-loop.sh
+skills/design/scripts/test-plan-review-loop.sh

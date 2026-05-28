@@ -1,0 +1,97 @@
+Reviewing the implementation and tests so the revised plan matches the codebase and accepted findings.
+Drafting the revised plan incorporating all four findings, then producing the unified diff.
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,7 +1,7 @@
+ ## Implementation Plan
+ 
+-This is a SIMPLE-tier bug fix: an unclosed code fence in `plan.txt` currently makes the post-apply dedup pipeline treat the rest of the file as inside a fence, which silently disables `## Constraints` duplicate-preservation. Fix the Python heredoc inside `_run_post_apply_pipeline` to derive in-fence membership from balanced opener/closer pairs only, then add one regression test.
++This is a SIMPLE-tier bug fix: an unclosed code fence in `plan.txt` currently makes the post-apply dedup pipeline treat the rest of the file as inside a fence, which silently disables `## Constraints` duplicate-preservation. Fix the Python heredoc inside `_run_post_apply_pipeline` to derive in-fence membership from balanced opener/closer pairs only, add a minimal stdout guard in the shell wrapper, then add one regression test.
+ 
+ ## Files to modify/create
+ 
+@@ -10,11 +10,11 @@
+ Inside the Python heredoc in `_run_post_apply_pipeline` (the `python3 - "$plan_path" "$dedup_tmp" <<'PY' ... PY` block):
+ 
+ - Replace the stateful single-pass walk that toggles `in_fence` inside `update_section_state` with a two-pass approach.
+-- Read the file into a list of lines once. Pass 1: walk the list, push fence-opener line indices (and their `ticks` count) onto a stack; when a line is a bare closer whose tick count is at least the top opener's `ticks` and whose suffix is empty, pop the stack and add every line index strictly between opener and closer to a set `in_fence_lines`. At EOF, unmatched openers remain on the stack and are silently dropped — their content is treated as plain text.
+-- Pass 2: iterate the same list with a 0-based index `i`. The existing `update_section_state(line)` is split into two parts: keep the heading state-machine portion (`inside_constraints` / `constraints_level` logic), but consult `i in in_fence_lines` instead of mutating an `in_fence` flag.
+-- Heading reset rule (`if m and not in_fence: prev_key = None`) and the protected-line rule (`protected = inside_constraints and not in_fence`) both consume the precomputed lookup.
+-- Do not change the closer rule for balanced fences (a closer needs `ticks >= fence_len` and an empty suffix). The pass-1 stack uses the same rule.
+-- Do not change the surrounding shell wrapper (the `mktemp` dest, the `mv -f`, the `ACTION=EMIT_PLAN` driver call, the validator dispatch). The Python's stdout still prints the integer `removed` count consumed by `${dedup_removed:-0}`.
++- Read the file into a list of lines once. Pass 1: walk the list with a single-slot opener record (at most one unmatched opener: index + `ticks`). On a fence-marker line: if the slot is empty and the line is an opener, occupy the slot; if the slot is occupied, try the existing closer rule (`ticks >= opener_ticks` and empty suffix) — on match, add every line index strictly between opener and closer to a set `in_fence_lines`, then clear the slot; non-matching markers while the slot is occupied are ignored (same as today). At EOF, an occupied slot is silently dropped — its trailing content is plain text.
++- Pass 2: iterate the same list with a 0-based index `i`. Split `update_section_state(line)`: keep the heading state-machine portion (`inside_constraints` / `constraints_level` logic), but consult `i in in_fence_lines` instead of mutating an `in_fence` flag.
++- Heading reset rule (`if m and not in_fence: prev_key = None`) and the protected-line rule (`protected = inside_constraints and not in_fence`) both consume the precomputed lookup (`in_fence` becomes `i in in_fence_lines` in pass 2).
++- Do not change the closer rule for balanced fences (a closer needs `ticks >= fence_len` and an empty suffix). Pass 1 uses the same rule against the single occupied opener.
++- Immediately after the heredoc assignment, capture the Python exit status and validate `dedup_removed` matches `^[0-9]+$`; on non-zero status or non-numeric stdout, `rm -f` the temp dedup file, restore `plan_backup` when set, and `return 1` before `mv -f`. Keep the existing `mktemp` dest, `mv -f`, `ACTION=EMIT_PLAN` driver call, and validator dispatch unchanged; on success the Python still prints the integer `removed` count consumed by `dedup_removed` and the `dedup-sweep: removed N duplicate line(s)` log line.
+ - Keep the test-extractor invariant: do not introduce a top-level `}` line inside the function body — the awk range `/^_run_post_apply_pipeline\(\)/,/^}$/` in `test-plan-review-loop.sh` would otherwise truncate early.
+ 
+ ### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+@@ -24,38 +24,38 @@
+ Add one new test case immediately before the trailing `printf '%s\n' "test-plan-review-loop: ok"` line, after the existing `=== post-apply: section-aware duplicate-line dedup ===` case:
+ 
+ - Title: `=== post-apply: unclosed fence does not disable Constraints protection ===`.
+-- Reuse the existing `dedup-emit-driver.sh` and `dedup-validate.sh` stubs and the awk-extract pattern used by the section-aware test (no need to re-create them — they are still on disk from the prior case).
+-- Build a plan fixture under `$TMP/unclosed-fence/plan.txt` with:
+-  - A `## Intro` section followed by a code-fence opener (` ```bash `) and one or two body lines, with no closing ` ``` ` line.
+-  - A `## Constraints` heading after the unclosed opener, followed by two identical duplicate constraint bullets.
+-  - A trailing `diff_lines: 1` line.
+-- Set `DESIGN_TMPDIR` to the fixture dir, export the stub `DESIGN_DRIVER_SH` / `INVOKE_PLAN_VALIDATOR_SH` / `CHECK_PLAN_SIZE_SH` and `CLAUDE_PLUGIN_ROOT`, source `lib-quiet.sh`, run `_run_post_apply_pipeline 1` via the same awk-extract `bash -c '...'` pattern as the section-aware test.
+-- Assert: the duplicate constraint bullet survives — `grep -c '^<duplicate-constraint>$' "$DDED/plan.txt"` equals `2`. Asserting the survival count is sufficient; a separate "removed-count" assertion is not required because pass-1 fence semantics affect which duplicates the dedup considers, not how many it touches.
++- Reuse the existing `dedup-emit-driver.sh` and `dedup-validate.sh` stubs and the awk-extract pattern from the section-aware test (still on disk from the prior case).
++- `DUNCLOSED="$TMP/unclosed-fence"`; `mkdir -p "$DUNCLOSED"`; write `$DUNCLOSED/plan.txt` with:
++  - A `## Intro` section, a fence opener (` ```bash `), one or two body lines, and no closing ` ``` ` line.
++  - A `## Constraints` heading after the unclosed opener, then two identical lines `duplicate inside constraints` (same bullet text as the section-aware fixture).
++  - Trailing `diff_lines: 1`.
++- `export DESIGN_TMPDIR="$DUNCLOSED"` plus the same stub exports (`DESIGN_DRIVER_SH`, `INVOKE_PLAN_VALIDATOR_SH`, `CHECK_PLAN_SIZE_SH`, `CLAUDE_PLUGIN_ROOT`); source `lib-quiet.sh`; capture `dedup_log` via the same awk-extract `bash -c '...'` / `_run_post_apply_pipeline 1` pattern.
++- Assert stdout protocol: `printf '%s\n' "$dedup_log" | grep -q 'dedup-sweep: removed 0 duplicate line(s) from plan.txt'` (fixture has no removable duplicates outside `## Constraints`).
++- Assert duplicate survival against the new fixture: `grep -c '^duplicate inside constraints$' "$DUNCLOSED/plan.txt"` equals `2`.
+ 
+ ## Approach
+ 
+-The current bug is a state-machine leak: an opener flips `in_fence` to `True`, and without a closer the flag never returns to `False`, so heading detection is silenced through EOF. Replacing the toggle with a precomputed set makes the in-fence predicate a pure function of position, removing the leak.
++The bug is a state-machine leak: an opener flips `in_fence` to `True`, and without a closer the flag never returns to `False`, so heading detection is silenced through EOF. Replacing the toggle with a precomputed set makes the in-fence predicate a pure function of line index.
+ 
+-Stack-based pass-1 mirrors the existing closer rule (`ticks >= fence_len` and empty suffix) so balanced fences continue to behave exactly as today. The only behavior change is for unbalanced openers: today they suppress headings; after the fix they are inert text.
++Pass 1 mirrors today's single-slot fence tracking (`if not in_fence: open` else try close) and the same closer rule, so balanced fences behave exactly as today. The only behavior change is unbalanced openers: today they suppress headings through EOF; after the fix they are inert text.
+ 
+-The dedup remains a streaming-like loop in pass 2 (read the buffered list line by line), so the `removed` count printed to stdout still matches the `dedup-sweep: removed N duplicate line(s)` shell-side log.
++The shell wrapper now rejects empty or non-numeric Python stdout before `mv -f`, so a heredoc/runtime failure cannot masquerade as `dedup-sweep: removed 0` when called under `if ! _run_post_apply_pipeline ...` (the caller does not enable `errexit` inside the function body).
++
++Pass 2 still walks the buffered list once; the `removed` count printed to stdout still drives the `dedup-sweep` log line.
+ 
+ ## Edge cases
+ 
+ - Empty plan: no openers, `in_fence_lines` is empty, dedup behaves as if there were no fence logic.
+-- Fence opener as the final line of the file: stack ends non-empty, opener is dropped at EOF, no lines added to `in_fence_lines`. Heading detection works for nothing afterward (file already ended).
+-- Multiple unbalanced openers (e.g., ` ```a ` then later ` ```b ` with no closers): both remain on the stack and are dropped at EOF; all interleaved content is treated as text.
+-- Mixed balanced and unbalanced fences: each balanced pair contributes its inclusive-exclusive range to `in_fence_lines`; later unbalanced openers do not pollute earlier pairs.
+-- Fence with language tag (` ```python `): pass 1 records it as an opener but never matches a closer with a non-empty suffix, mirroring the existing rule.
+-- Closer with mismatched ticks: pass 1 leaves the opener on the stack until a properly sized closer arrives, mirroring the existing rule (a smaller closer is not a real closer).
+-- Nested-looking fences (` ```` ` inside a `` ``` `` block): the existing rule says only a single opener is honored at a time (`if not in_fence: open`); pass 1's "only push when stack is empty (or the new ticks count is strictly greater than the top)" can be simplified to "only push when stack is empty" because the original code never tracked nesting either. Preserve that behavior — push only when the stack is empty; otherwise treat the inner marker as a candidate closer using the existing rule.
++- Fence opener as the final line: slot occupied at EOF, dropped with no range added; nothing follows.
++- Multiple unbalanced openers (e.g., ` ```a ` then later ` ```b ` with no closers): only the first occupies the slot; the second is a failed closer attempt (non-matching suffix or ticks), not a second opener — interleaved content stays plain text, matching today's toggle.
++- Mixed balanced and unbalanced fences: each balanced pair adds its strict-between range to `in_fence_lines`; a later unclosed opener after a balanced close starts with an empty slot.
++- Fence with language tag (` ```python `): pass 1 occupies the slot as an opener; no closer with non-empty suffix matches.
++- Closer with mismatched ticks: pass 1 keeps the opener in the slot until a valid closer arrives (smaller tick lines are ignored).
++- Nested-looking fences (` ```` ` inside a `` ``` `` block): pass 1 only occupies the slot when empty; otherwise treat the marker as a closer candidate — same as `if not in_fence: open`.
+ 
+ ## Failure modes
+ 
+-1. **Heredoc parse failure.** A mistyped quote inside the new Python block could break the `<<'PY' ... PY` boundary and crash every Step 3 round. Earliest signal: `make test-plan-review-loop` fails with a Python `SyntaxError` or shell `unexpected EOF`. Mitigation: keep the heredoc delimiter `PY` unchanged and run `bash -n plan-review-loop.sh` (already invoked at the top of `test-plan-review-loop.sh`).
+-2. **Off-by-one in the in-fence range.** Including the opener or closer line index in `in_fence_lines` would mark fence-marker lines as fence-content. Earliest signal: the existing section-aware test would not regress (fence-marker lines are not headings or content with `prev_key` repetition), but a hand-crafted opener-as-duplicate fixture would. Mitigation: range strictly between opener+1 and closer-1; add a comment naming the invariant. Test coverage: existing test plus new test exercise both opener and closer paths.
+-3. **Regression in balanced-fence dedup.** A two-pass rewrite could accidentally change the behavior of balanced fences (e.g., fenced duplicates no longer collapsing). Earliest signal: the existing `=== post-apply: section-aware duplicate-line dedup ===` test fails its `fenced_count == 1` / `tagged_fenced_count == 1` / `lookalike_count == 1` assertions. Mitigation: do not touch the closer rule; run `make test-plan-review-loop` after every change.
++1. **Heredoc / Python runtime failure.** A syntax error or crash can leave `dedup_removed` empty; without a guard, `${dedup_removed:-0}` logs `removed 0` and `mv -f` still runs because `_run_post_apply_pipeline` is invoked under `if !` (no `errexit` inside the function). Earliest signal: `make test-plan-review-loop` fails on the new stdout assertion or the numeric guard returns 1 in a harness that checks exit status. Mitigation: keep the `PY` delimiter unchanged; validate `^[0-9]+$` and non-zero Python rc before `mv -f`; run `bash -n plan-review-loop.sh` (already at the top of `test-plan-review-loop.sh`).
++2. **Off-by-one in the in-fence range.** Including opener or closer indices in `in_fence_lines` would misclassify fence markers. Mitigation: add indices strictly between opener+1 and closer-1 only; comment the invariant. Coverage: existing section-aware test plus the new unclosed-fence test.
++3. **Regression in balanced-fence dedup.** Earliest signal: section-aware test `fenced_count` / `tagged_fenced_count` / `lookalike_count` assertions fail. Mitigation: unchanged closer rule; run `make test-plan-review-loop` after every change.
+ 
+ ## Testing strategy
+ 
+-- Add the new test case described above in `skills/design/scripts/test-plan-review-loop.sh`. With the current buggy code the new test should fail (duplicate would collapse to 1). After the fix the new test passes (duplicate count stays 2).
+-- Re-run the existing `=== post-apply: section-aware duplicate-line dedup ===` test to confirm balanced-fence behavior is unchanged: outside-Constraints duplicates collapse, inside-Constraints duplicates survive, fenced duplicates collapse, tagged-fenced duplicates collapse, nested-Constraints duplicates survive, `Constraints-related notes` lookalike-prefixed heading is not protected.
++- Add the unclosed-fence test above. Current code should fail (duplicate collapses to 1 and/or stdout shows removed > 0); after the fix, duplicate count stays 2 and stdout shows `removed 0`.
++- Re-run `=== post-apply: section-aware duplicate-line dedup ===` for balanced-fence regression coverage.
+ - Run `make test-plan-review-loop` and `make lint` after the edits.
+ 
+-diff_lines: 95
++diff_lines: 64

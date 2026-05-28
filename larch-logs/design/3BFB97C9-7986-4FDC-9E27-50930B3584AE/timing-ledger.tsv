@@ -1,0 +1,36 @@
+v1	mark	1779999953	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1780003755	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1780003783	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1780003811	design	design Step 1d.7 — outline	-	-	-	-	-	-	-	-
+v1	mark	1780003913	design	design Step 1e — gate A	-	-	-	-	-	-	-	-
+v1	mark	1780003922	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1780003922	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1780004080	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1780004136	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1780004372	implement	-	codex	codex-phase1-dyn-codex-plan-awk-boundary-guard	1780004310	1780004372	62	codex-primary-plan-dyn-awk-boundary-guard-output.txt	0	complete
+v1	vendor	1780004383	implement	-	codex	codex-phase1-codex-plan-innovation	1780004310	1780004383	73	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1780004384	implement	-	codex	codex-phase1-codex-plan-requirements	1780004310	1780004384	74	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1780004401	implement	-	codex	codex-phase1-codex-plan-arch	1780004310	1780004401	91	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1780004414	implement	-	codex	codex-phase1-codex-plan-edge	1780004310	1780004414	104	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1780004421	implement	-	codex	codex-phase1-dyn-codex-plan-stdout-protocol-drift	1780004310	1780004421	111	codex-primary-plan-dyn-stdout-protocol-drift-output.txt	0	complete
+v1	vendor	1780004422	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780004310	1780004422	112	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780004432	implement	-	codex	codex-phase1-codex-plan-pragmatic	1780004310	1780004432	122	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780004433	implement	-	cursor	cursor-phase1-dyn-cursor-plan-test-edge-gap	1780004310	1780004433	123	cursor-plan-dyn-test-edge-gap-output.txt	0	complete
+v1	vendor	1780004435	implement	-	codex	codex-phase1-dyn-codex-plan-test-edge-gap	1780004310	1780004435	125	codex-primary-plan-dyn-test-edge-gap-output.txt	0	complete
+v1	vendor	1780004455	implement	-	cursor	cursor-phase1-dyn-cursor-plan-awk-boundary-guard	1780004310	1780004455	145	cursor-plan-dyn-awk-boundary-guard-output.txt	0	complete
+v1	vendor	1780004464	implement	-	cursor	cursor-phase1-dyn-cursor-plan-stdout-protocol-drift	1780004310	1780004464	154	cursor-plan-dyn-stdout-protocol-drift-output.txt	0	complete
+v1	vendor	1780004471	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780004310	1780004471	161	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780004492	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780004310	1780004492	182	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780004493	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780004310	1780004493	183	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780004565	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780004310	1780004565	255	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780004611	implement	-	codex	codex-phase1-aggregator	1780004571	1780004611	40	aggregator-output.txt	0	complete
+v1	vendor	1780004945	implement	-	codex	codex-phase1-voter-2	1780004894	1780004945	51	codex-vote-output.txt	0	complete
+v1	vendor	1780004996	implement	-	cursor	cursor-phase1-voter-3	1780004894	1780004996	102	cursor-vote-output.txt	0	complete
+v1	vendor	1780005063	implement	-	codex	codex-review	1780005002	1780005063	61	codex-output.txt	0	complete
+v1	vendor	1780005345	implement	-	cursor	cursor-review	1780005064	1780005345	281	cursor-output.txt	0	complete
+v1	mark	1780005885	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1780005898	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1780005915	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1780007961	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1780007961	design	design Step 5b — oos filing	-	-	-	-	-	-	-	-
+v1	mark	1780008033	design	design Step 5c.5 — diagrams upsert	-	-	-	-	-	-	-	-

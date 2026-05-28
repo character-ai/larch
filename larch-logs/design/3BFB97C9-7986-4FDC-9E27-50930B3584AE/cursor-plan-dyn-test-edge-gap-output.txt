@@ -1,0 +1,32 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:44-48	Multiple-unbalanced-openers bullet assumes a multi-entry stack dropped at EOF, but the nested-fence bullet mandates push-only-when-stack-is-empty (single slot)	Implementer may push every opener and change pass-1 semantics for ```a then ```b without closers; diverges from current toggle at plan-review-loop.sh:526-533	Align bullet 44 with bullet 48: only the first unmatched opener occupies the stack; a later ```b with non-empty suffix is a failed closer attempt, not a second stack entry
+2	in_scope	latent	correctness	plan.txt:53	Failure mode 2 claims existing plus new tests exercise opener and closer paths for in_fence_lines range bugs	Section-aware fixture never asserts marker-line indices; new test has no closer; plan line 53 admits section-aware would not regress off-by-one	In failure mode 2, state off-by-one has no automated detector (comment plus manual review only); drop the overstated test-coverage sentence
+3	out_of_scope	latent	risk-integration	skills/design/scripts/test-plan-review-loop.sh:1682-1692	Nested-tick and mismatched-tick-closer behaviors are specified in plan edge cases but neither the new unclosed-fence test nor section-aware dedup exercises them	Section-aware only uses balanced ``` and ```bash pairs; a pass-1 stack off-by-one or empty-stack-push mistake in nested ``` / ```` interaction could ship without harness signal	Track as follow-up harness only if post-merge incidents appear; not required for this SIMPLE fix
+
+**1. [correctness]** `plan.txt:44-48` — The “multiple unbalanced openers” bullet says both openers “remain on the stack,” but the nested-fence bullet (and current code at `plan-review-loop.sh:526-533`) use at most one active fence: a second `` ```b `` line with a non-empty suffix is not pushed, it is evaluated as a failed closer. **Suggested revision:** Rewrite bullet 44 so it matches single-slot semantics (one unmatched opener at EOF; later tagged openers are closer attempts, not stack entries).
+
+**2. [correctness]** `plan.txt:53` — Failure mode 2 simultaneously says the section-aware test “would not regress” on off-by-one and that “existing test plus new test exercise both opener and closer paths.” The new test is opener-only (no closer); the section-aware case does not assert fence-marker line indices. **Suggested revision:** Document that off-by-one is comment-guarded only, not regression-tested.
+
+**3. [OUT_OF_SCOPE] [risk-integration]** `skills/design/scripts/test-plan-review-loop.sh:1682-1692` — Nested-looking (```` inside ```) and mismatched-tick closers are described in `plan.txt:47-48` but are not covered by the planned new test or the existing section-aware fixture (balanced ``` / ```bash only). Acceptable for SIMPLE scope; no additional test requested here.
+
+### Edge-case vs test mapping (plan assessment)
+
+| Edge case (`plan.txt`) | New unclosed-fence test | Section-aware test (`test-plan-review-loop.sh:1666-1745`) |
+|---|---|---|
+| Empty plan | No | No |
+| Opener as last line | No (Constraints follows opener) | No |
+| Multiple unbalanced openers | No | No |
+| Mixed balanced + unbalanced | No | No (balanced only) |
+| Language-tagged opener (unclosed) | No | Partial — balanced ` ```bash ` only |
+| Mismatched-tick closer | No | No |
+| Nested-looking fences | No | No (`nested_count` is heading nesting, not fence nesting) |
+
+The testing strategy (`plan.txt:56-60`) does not explicitly list which edge cases are out of scope for the new test; exclusion is implicit (one regression + re-run section-aware). That is consistent with SIMPLE minimum change and is exonerated as a nit.
+
+### Failure modes vs detectable signals
+
+| Failure mode | Stated signal | Actually tied to a test? |
+|---|---|---|
+| Heredoc parse failure | `make test-plan-review-loop` / `bash -n` | Yes (`test-plan-review-loop.sh:28`) |
+| Off-by-one range | Section-aware + new test | No (overstated at line 53) |
+| Balanced-fence regression | `fenced_count` / `tagged_fenced_count` / `lookalike_count` | Yes (lines 1740-1745) |

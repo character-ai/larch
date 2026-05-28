@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly chose to skip stdout assertion with a defensible rationale; survival count is a sufficient primary signal for the bug being fixed
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SIMPLE-tier scope makes limited test coverage an accepted design tradeoff; adding a coverage note is helpful but the plan is not defective without it
