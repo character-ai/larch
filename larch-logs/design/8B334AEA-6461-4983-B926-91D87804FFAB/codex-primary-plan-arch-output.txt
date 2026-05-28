@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	.pre-commit-config.yaml:1-6	New lint is not added to the pre-commit source of truth	CI lint runs make lint-only and relevant-checks delegates to pre-commit, so the proposed lint only runs under local make lint and can miss PR-time violations	Add a local always_run pre-commit hook for scripts/lint-awk-multibyte-regex.sh beside lint-bare-grep-probe
+
+1. [risk-integration] `.pre-commit-config.yaml:1-6`
+
+Concern: The plan wires `lint-awk-multibyte-regex` into `Makefile`, but not into `.pre-commit-config.yaml`, which this repo declares as the linter source of truth. CI’s lint job runs `make lint-only`, and `scripts/relevant-checks.sh` delegates to `pre-commit run --files`, so the new lint will not run in those paths.
+
+Suggested revision: Add a local `always_run: true`, `pass_filenames: false` pre-commit hook for `bash scripts/lint-awk-multibyte-regex.sh` alongside `lint-bare-grep-probe`.

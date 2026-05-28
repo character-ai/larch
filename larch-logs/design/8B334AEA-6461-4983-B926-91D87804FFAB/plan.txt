@@ -1,0 +1,189 @@
+## Files to modify/create
+
+### NEW: `scripts/lint-awk-multibyte-regex.sh`
+Static lint that scans repo-wide `*.sh` and `*.awk` files for multi-byte UTF-8 characters inside dynamic awk regex contexts. Mirrors the `lint-bare-grep-probe.sh` skeleton: `--root PATH` flag (defaults to the repo root via `cd .. && pwd`), git-ls-files enumeration with `find` fallback for non-git roots, exit codes `0` clean / `1` violations / `2` CLI errors. Detects two patterns:
+
+- **Rule 1 — `awk -v VAR=<value>` with non-ASCII byte in value.** Detected by scanning each line for an awk-invocation token (`awk` as a command word) followed by one or more `-v NAME=VALUE` arguments whose VALUE contains any byte outside `[\x00-\x7F]`. The matcher handles single-token (`-v VAR=val`) and split-token (`-v VAR =val`) forms, plus the multi-arg form (`awk -v A=x -v B=y '...'`). Continuation lines (trailing `\\`) join into the logical command before matching.
+- **Rule 2 — non-ASCII inside an awk body at a regex callsite.** Detected by tracking the `awk` body span — between an opening `awk ... '` and the matching closing `'` (or, for heredoc form `awk ... <<'AWK' ... AWK`, between the opener and the close-delimiter line) — and flagging any line within the span that contains BOTH a non-ASCII byte AND one of the regex-callsite tokens: `match(`, `gsub(`, `sub(`, `split(`, ` ~ `, ` !~ ` (whitespace around `~` / `!~` to reduce false positives on identifiers like `~root`).
+
+Same-line pragma `# lint-awk-multibyte-regex: ok <reason>` suppresses the flag, where `<reason>` is non-empty (the pragma without a reason is rejected to preserve grep-ability of suppressions, matching the `lint-bare-grep-probe.sh` convention).
+
+Output one violation per finding to stderr: `lint-awk-multibyte-regex: <relpath>:<line>: <rule-id>: <snippet>` where `<rule-id>` is `awk-v-nonascii` (Rule 1) or `awk-body-nonascii-regex` (Rule 2). The snippet is the line content trimmed to 120 bytes with non-printable characters replaced by `?` (the byte position of the first non-ASCII run is preserved in the snippet for operator orientation).
+
+Excludes: `node_modules/`, `larch-logs/`, `.git/` prefixes; symlinks; binary files (detected via `file --mime` heuristic on the first 4 KB).
+
+### NEW: `scripts/lint-awk-multibyte-regex.md`
+Sibling contract document. Sections: title, purpose, scope (repo-wide `.sh` + `.awk`), the two detection rules with one historical example each (the em-dash `—` inside `match($0, "^<!-- step:" step_id "([[:space:]]|—)")` from commit `dac0d00c` for Rule 2; the em-dash inside `orchestrator_style_re` passed as `awk -v style_re=...` in the same file for Rule 1), suppression pragma grammar with the required `<reason>`, exit codes, references to issue #3134 and PR character-ai/larch#3144. Same Markdown shape as `scripts/lint-bare-grep-probe.md`.
+
+### NEW: `scripts/test-lint-awk-multibyte-regex.sh`
+Regression harness. Fixture cases under a per-test `mktemp -d`:
+
+- **Clean fixture (ASCII-only)**: `awk -v style='^plain ascii$' '$0 ~ style { print }'` → exit 0, empty stderr.
+- **Rule 1 — em-dash in `-v` value**: `awk -v style_re='^prefix — suffix$' 'BEGIN { print style_re }'` → exit 1, stderr contains `awk-v-nonascii`.
+- **Rule 1 — multi-byte CJK in `-v` value**: `awk -v label='テスト' '...'` → exit 1, stderr contains `awk-v-nonascii`.
+- **Rule 2 — em-dash in `match()` string literal inside awk body**: `awk 'match($0, "^<!-- step:" id "([[:space:]]|—)")'` → exit 1, stderr contains `awk-body-nonascii-regex`.
+- **Rule 2 — em-dash on a `$0 ~ var` line (non-ASCII visible in the body)**: a body where the regex variable assignment contains `—` → exit 1.
+- **Rule 2 false-positive guard — non-ASCII inside a `printf` format string (no regex token on the line)**: → exit 0.
+- **Suppression pragma with reason**: `awk -v label='テスト' # lint-awk-multibyte-regex: ok display-only` → exit 0.
+- **Suppression pragma without reason**: `awk -v label='テスト' # lint-awk-multibyte-regex: ok` → exit 1.
+- **Excluded prefix fixtures under `node_modules/` and `larch-logs/`** → exit 0 (not scanned).
+- **Standalone `.awk` file** with a non-ASCII regex literal at a `match(` line → exit 1.
+
+Each case asserts the lint exit code AND a specific needle in stderr (rule-id + filename:line where applicable). Assertions use `command grep -F` to avoid awk in the harness itself.
+
+### NEW: `scripts/test-lint-awk-multibyte-regex.md`
+Sibling test-doc. Lists fixture cases, expected exits, mapping back to PR #3144's em-dash family (the merged fix in `orchestrator_style_anchor` plus the surrounding `awk -v ...` and `match($0, "..." VAR "..."—...)` patterns). Drops the `dac0d00c` reference for testing strategy because that commit was based on the wrong hypothesis (mawk POSIX-class portability) and the lint does not target `[[:` patterns — see plan Non-goals. Same Markdown shape as `scripts/test-lint-bare-grep-probe.md`.
+
+### UPDATED: `.pre-commit-config.yaml`
+Add a `lint-awk-multibyte-regex` local hook immediately after the existing `lint-bare-grep-probe` block:
+
+```yaml
+      - id: lint-awk-multibyte-regex
+        name: lint multi-byte UTF-8 in dynamic awk regex
+        entry: bash scripts/lint-awk-multibyte-regex.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+```
+
+This makes the new lint enforceable through `pre-commit run` (`make lint-only`) and through `scripts/relevant-checks.sh`, matching the sibling pattern. `pass_filenames: false` + `always_run: true` mirrors the `lint-bare-grep-probe` entry exactly so the hook performs the repo-wide scan itself rather than receiving a file list from pre-commit.
+
+### UPDATED: `agent-lint.toml`
+Add the four new paths to the existing path allowlist alongside the `lint-bare-grep-probe.*` block (near line 878):
+
+```toml
+  "scripts/lint-awk-multibyte-regex.sh",
+  "scripts/lint-awk-multibyte-regex.md",
+  "scripts/test-lint-awk-multibyte-regex.sh",
+  "scripts/test-lint-awk-multibyte-regex.md",
+```
+
+Add a short comment block matching the `lint-bare-grep-probe` allowlist explanation (near line 143): "scripts/lint-awk-multibyte-regex.sh is a pre-commit / Makefile-only lint for non-ASCII bytes inside dynamic awk regex contexts (closes #3134). scripts/test-lint-awk-multibyte-regex.sh is its black-box harness."
+
+### UPDATED: `docs/linting.md`
+Add a row to the linter table (near line 20) describing the new lint, mirroring the `lint-bare-grep-probe` row's shape:
+
+| Pattern | Surfaces | Detection |
+| Non-ASCII bytes in dynamic awk regex | `*.sh`, `*.awk` repo-wide (excluding `node_modules/`, `larch-logs/`, `.git/`) | `scripts/lint-awk-multibyte-regex.sh` scans for `awk -v VAR=...` values containing non-ASCII bytes (Rule 1) and for awk-body lines that combine a non-ASCII byte with a regex-callsite token `match(`, `gsub(`, `sub(`, `split(`, ` ~ `, ` !~ ` (Rule 2). Some Ubuntu CI awk builds emit silent warnings to stderr on multi-byte UTF-8 in dynamic regex patterns; the resulting non-empty stderr can break `assert_lint_ok`-style harnesses — see issue #3134 and PR #3144. Suppress fixture lines only with a trailing `# lint-awk-multibyte-regex: ok <reason>` pragma. Run via `make lint-awk-multibyte-regex`, pre-commit hook `lint-awk-multibyte-regex`, local `make lint`, and `scripts/test-lint-awk-multibyte-regex.sh`. |
+
+Also add the Makefile harness row (near line 235) for `make test-lint-awk-multibyte-regex` summarizing the fixture cases.
+
+### UPDATED: `scripts/ship-pr.sh`
+Add HEAD-non-advance detection inside `run_ci_fix_vendor` so a vendor that exits 0 without producing any commit is classified as `first-fixer-non-health` (Exit 3 → autonomous main-agent fallback) instead of looping `FIX_ATTEMPTS++` to a silent `STALL_STEP=10-max-retries`.
+
+Changes inside `run_ci_fix_vendor` (around lines 1824–1924 in the current tree):
+
+- Immediately after `capture_tracked_dirty_paths > "$baseline_tracked_file"` and the sibling baseline captures, add `local baseline_head; baseline_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)`.
+- After the existing `for tier in cursor codex claude; do ... done` loop and the existing early return `if [ -z "$winning_tier" ] || [ "$wrapper_rc" -ne 0 ] || [ "${launcher_exit:-0}" -ne 0 ]; then return 1; fi`, after `_verify_failed_jobs_locally` succeeds, gate the entire HEAD-non-advance logic on a successful `_stage_and_push_ci_fixes`:
+
+  ```bash
+  if _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"; then
+      local final_head detail_log
+      final_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+      if [ "$baseline_head" != "unknown" ] && [ "$final_head" != "unknown" ] && [ "$baseline_head" = "$final_head" ]; then
+          detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
+          {
+              printf 'vendor=%s\n' "$winning_tier"
+              printf 'launcher_exit=0\n'
+              printf 'baseline_head=%s\n' "$baseline_head"
+              printf 'final_head=%s\n' "$final_head"
+              printf 'reason=vendor exited 0 but produced no commit; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
+          } > "$detail_log"
+          emit_breadcrumb --category=warn "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
+          state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+          record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
+          return 1
+      fi
+      return 0
+  else
+      return 1
+  fi
+  ```
+
+- The existing direct call `_stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"` at the tail of `run_ci_fix_vendor` is removed and folded into the `if` above.
+- When `baseline_head=unknown` OR `final_head=unknown` (rare: not on a named branch, repo corruption), the HEAD-equality branch does not fire and the function returns 0 from the success branch of the `if`. The existing detached-HEAD guard in `run_evaluate_failure` (line 2227) already covers the not-on-named-branch path before `run_ci_fix_vendor` is entered.
+- The success path now ends with an explicit `return 0`, not a fall-off-the-end of `_stage_and_push_ci_fixes`'s result.
+
+No new state keys. No change to `_stage_and_push_ci_fixes`. No change to `_verify_failed_jobs_locally`. No change to the launcher waterfall.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+Two coordinated edits in the fix-loop section (`if section_runs fix-loop`, lines ~1977–4592):
+
+1. **Add the new regression case** `run_ship_pr_3134_vendor_exit0_no_commits` after the existing tier-order cases (after `ci_fix_vendor_tier_order_falls_through_to_codex` and siblings).
+
+   Setup mirroring the sibling fix-loop cases (`vendor_verify_local_pass` around line 3437):
+   - `make_repo` then patch the persisted state file to seed `TRANSIENT_RETRIES=1` and `FAILED_RUN_ID=run3134` BEFORE running ship-pr (mirrors `vendor_verify_local_pass`).
+   - Stub `scripts/ci-wait.sh` to emit `ACTION=evaluate_failure CI_STATUS=fail BEHIND_COUNT=0 FAILED_RUN_ID=run3134 BAIL_REASON= ITERATION=0 ELAPSED=1` on the first call, then `ACTION=merge CI_STATUS=pass ...` on the second.
+   - Stub `scripts/launch-cursor-ci.sh` so it `printf 'LAUNCHER_EXIT=0\n'` to **stdout** (not just to `--output`) — matching the existing sibling stubs around line 4389 — writes the token-record file to `${output}.token-record`, AND does NOT modify any tracked or untracked file. (This is the "I checked, no fix needed" case.)
+   - Stub `scripts/run-relevant-checks-captured.sh` to print `RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full` and exit 0 (so `_verify_failed_jobs_locally` and the stage-and-push lint-fix-loop pass locally — the local environment doesn't reproduce the failure).
+   - Stub `scripts/git-push.sh` to exit 0 (so the success branch of `_stage_and_push_ci_fixes` is reachable).
+   - Stub `scripts/lint-fix-loop.sh` to exit 0 with no diff (so the lint-fix-loop step inside `_stage_and_push_ci_fixes` makes no commits).
+   - Export `LARCH_QUIET_BREADCRUMBS=1` before invoking ship-pr so warn breadcrumbs are emitted to captured stdout (sibling pattern around `vendor_verify_local_pass`).
+   - Run `ship-pr.sh` via the existing `run_subject` helper.
+
+   Assertions:
+   - `ship-pr` exit code is `3`.
+   - `BAIL_REASON=first-fixer-non-health` in the persisted state file.
+   - `BAIL_FAILURE_DETAIL_LOG` references a non-empty `ci-fix-no-commit-*.log` capture.
+   - The warn breadcrumb `vendor exit 0 with no commits; escalating to first-fixer-non-health` appears in captured stdout.
+   - Cleanup via the existing trap.
+
+2. **Update existing tier-order happy-path cases** that currently rely on a vendor that exits 0 without modifying the tree (the cases reachable through `ci_fix_vendor_tier_order_cursor_first` and the sibling `..._falls_through_to_codex` / `..._falls_through_to_claude` cases around line 4357 and following). For each such case where the assertion is `ship-pr exits 0`, modify the winning-tier launcher stub so it ALSO touches a tracked file (`printf 'X\n' >> "$root/sentinel-fix.txt"`) and override `scripts/git-commit.sh` with a stub that runs the real `git commit -m "Fix CI failure" -a` so HEAD advances. This preserves the launcher-order assertions while letting the new HEAD-non-advance branch stay dormant on the happy path. Audit and update all sibling cases in the fix-loop section that share the no-edit launcher pattern AND assert `rc=0` (the harness already has `vendor_verify_local_pass` at line 3437 as the precedent; mirror its `git-commit.sh` stub shape).
+
+   Document at the top of each modified case why the launcher now touches the tree: `# Touches a tracked file so the new ship-pr HEAD-non-advance check (issue #3134) does not reroute this happy-path test to first-fixer-non-health.`
+
+### UPDATED: `Makefile`
+- Add `lint-awk-multibyte-regex test-lint-awk-multibyte-regex` to the existing `.PHONY:` aggregation (alongside `lint-bare-grep-probe test-lint-bare-grep-probe`).
+- Add a `lint-awk-multibyte-regex:` target that runs `bash scripts/lint-awk-multibyte-regex.sh`.
+- Add `lint-awk-multibyte-regex` to the `lint:` umbrella target between `lint-bare-grep-probe` and `lint-only`.
+- Add a `test-lint-awk-multibyte-regex:` target that runs `bash scripts/harness-timer.sh $@ bash scripts/test-lint-awk-multibyte-regex.sh`.
+- Append `test-lint-awk-multibyte-regex` to an existing `test-harnesses-N:` shard. Recommended shard: `test-harnesses-5` (already contains `test-lint-readability-preamble`, the closest sibling).
+
+### UPDATED: `CHANGELOG.md`
+One bullet under the next version: "Add `lint-awk-multibyte-regex` to catch non-ASCII characters inside `awk -v VAR=...` values and inside awk-body regex callsites (`match`, `gsub`, `sub`, `split`, `~`, `!~`); wired into `make lint`, the pre-commit hook chain, `docs/linting.md`, and `agent-lint.toml`. Add ship-pr `run_ci_fix_vendor` HEAD-non-advance detection so a vendor that exits 0 without producing any commit is classified as `first-fixer-non-health`, routing the run to Exit 3 → autonomous main-agent CI-fix; existing tier-order happy-path tests updated to produce real commits so they remain rc 0. Fixes #3134."
+
+## Approach
+
+Keep each surface change surgical:
+
+- The lint reuses the `lint-bare-grep-probe.sh` skeleton (enumeration, scope handling, pragma grammar, exit codes). The only new logic is the two-rule textual matcher; awk is not parsed structurally — Rule 1 keys off the `-v NAME=VALUE` token shape and a non-ASCII test on VALUE; Rule 2 keys off a non-ASCII test conjoined with a regex-callsite token on the same line within an `awk` body span.
+- The lint is wired into ALL enforcement surfaces consistent with `lint-bare-grep-probe`: `Makefile` lint umbrella, `.pre-commit-config.yaml` hook, `docs/linting.md` row, and `agent-lint.toml` allowlist. `scripts/relevant-checks.sh` picks the new lint up automatically via pre-commit.
+- The ship-pr change reuses the existing `BAIL_REASON=first-fixer-non-health` plumbing (already wired in the cursor-launcher-failure path at line 1903 and in the Exit 3 router at line 2332). The new branch adds a HEAD-equality check gated on `_stage_and_push_ci_fixes` success; no new state keys, no new caller contract.
+- The HEAD check is bracketed by an `if _stage_and_push_ci_fixes ...; then ... fi` so a stage-and-push failure propagates as `return 1` without setting `first-fixer-non-health`. The success branch ends in an explicit `return 0` so the function does not return the negation of the equality test by accident.
+- The regression test uses the existing fix-loop harness scaffolding (`make_repo`, `make_tmpdir`, stub patterns) and mirrors `vendor_verify_local_pass`'s precondition seeding (`TRANSIENT_RETRIES=1`, `FAILED_RUN_ID=run3134`, `LARCH_QUIET_BREADCRUMBS=1`).
+- Existing tier-order happy-path tests get a one-line modification each so the winning launcher actually advances HEAD; without this, the new no-commit detection would reroute those tests through first-fixer-non-health and fail their `rc 0` assertions.
+
+## Edge cases
+
+- **Heredoc awk bodies**: `awk '...' <<'AWK' ... AWK` and `awk ... <<-AWK ... AWK`. Initial scope recognizes single-quoted `awk '...'` bodies and standalone `.awk` files. Heredoc form is conservatively scanned: when the line containing `<<` is preceded by `awk` as a command word, the heredoc body lines up to the close-delimiter line are treated as the awk body for Rule 2 purposes. Detached heredocs (where the redirection is on a separate line from the `awk` invocation) are not in scope; the same-line pragma is the escape.
+- **`-v VAR=$(command_substitution)` or `-v VAR="$shell_var"`**: VALUE here is the literal shell token, which the lint scans byte-by-byte. If a shell variable expands to non-ASCII at runtime, the lint cannot see it. The same-line pragma is again the escape for legitimate cases; the bug class we are catching is the embedded-literal case.
+- **Multi-byte inside an awk-body comment**: Rule 2 only triggers when the line ALSO contains a regex-callsite token. A pure comment line with non-ASCII (e.g., `# em-dash — example`) does not trigger.
+- **HEAD-non-advance check when the lint-fix-loop made commits independently of the vendor**: the comparison uses `git rev-parse HEAD` after `_stage_and_push_ci_fixes` returns. If lint-fix-loop staged and committed anything, HEAD advanced; the new branch does not fire. The detection fires only when nothing — vendor work, lint-fix-loop work, post-success cleanup — produced a commit.
+- **HEAD-non-advance check when `_stage_and_push_ci_fixes` fails**: the wrapping `if _stage_and_push_ci_fixes ...; then` returns 1 without consulting the HEAD comparison, so stage/push failures (lint-fix failure, push rejection, etc.) propagate as ordinary vendor failure rather than misclassifying as first-fixer-non-health.
+- **`baseline_head=unknown` (defensive)**: the equality branch does not fire; the success branch returns 0. The detached-HEAD guard in `run_evaluate_failure` (line 2227) already runs before `run_ci_fix_vendor`, so this branch is unreachable on the documented path; the check exists only to avoid silent misclassification if a callsite is added later.
+
+## Non-goals
+
+- **Detect `[[:class:]]` POSIX character classes in dynamic awk regex.** The original #3134 hypothesis pointed at mawk POSIX-class portability, but PR #3144 confirmed the actual root cause was multi-byte UTF-8 chars (em-dash) in dynamic patterns — applying the POSIX-class fix did not resolve the CI failure. Any future mawk POSIX-class portability concerns are deferred to a follow-up issue. The lint name (`lint-awk-multibyte-regex`) reflects the actual scope.
+- Re-fix the upstream `lint-readability-preamble.sh` em-dash pattern — PR #3144 owns that. The new lint will catch any future regression of the same byte pattern.
+- Add a mawk-vs-gawk CI smoke test. The failure mode is multi-byte handling per awk build, not "mawk uses different regex syntax." The new lint catches the source pattern at commit time.
+- Strengthen the fixer prompt with a local-reproduce-and-iterate loop. The existing `LOCAL_REPRO` invariant in `launch-{cursor,codex,claude}-ci.sh` stays.
+- Touch `_verify_failed_jobs_locally` or `lint-bash32.sh` semantics.
+
+## Failure modes
+
+1. **False positives from the new lint blocking unrelated PRs.** Earliest signal: a green-on-`main` working tree fails the new lint locally. Mitigation: Rule 1 keys off the awk-invocation token, not arbitrary `-v` substrings; Rule 2 requires both non-ASCII AND a regex-callsite token on the same line. The same-line pragma (with required reason) is the escape for legitimately non-regex non-ASCII (display strings, format args). Test fixtures include the printf-format false-positive guard.
+2. **HEAD-non-advance detection misfires.** Earliest signal: a CI run that legitimately had nothing to fix gets classified as `first-fixer-non-health`. Mitigation: the detection is reachable only after CI was observed failing in `run_evaluate_failure`; the vendor is dispatched specifically because CI is red. If the vendor decides there is nothing to do and exits 0, escalation to the autonomous main-agent fallback IS the correct outcome — that path can fetch richer context and decide whether to bail with `design-flaw` or continue. The branch does not fire when `baseline_head=unknown` or when `_stage_and_push_ci_fixes` returns non-zero.
+3. **Existing happy-path vendor tests trip the new no-commit branch.** Earliest signal: `make test-ship-pr-fix-loop` fails on the existing `ci_fix_vendor_tier_order_*` cases that currently assert `rc=0` despite the stub Cursor not modifying the tree. Mitigation: the test plan explicitly enumerates the audit-and-update of these sibling cases as part of `### UPDATED: scripts/test-ship-pr.sh`; the implementer must update them in lockstep with the ship-pr.sh change. Without the lockstep update, the test suite is the canary.
+
+## Testing strategy
+
+- `scripts/test-lint-awk-multibyte-regex.sh` covers fixture-driven detection: clean, Rule 1 em-dash and CJK in `-v` value, Rule 2 em-dash in `match()` and on a `$0 ~ var` line, Rule 2 false-positive guard for printf-format, suppression pragma with and without reason, excluded directories, standalone `.awk` file. Each case asserts exit code and a needle in stderr.
+- `scripts/test-ship-pr.sh --section fix-loop` gains one case where the stub Cursor exits 0 and stages nothing; assertions confirm ship-pr exit 3, `BAIL_REASON=first-fixer-non-health` in persisted state, `BAIL_FAILURE_DETAIL_LOG` points at a non-empty capture, and the warn breadcrumb is visible in captured stdout (`LARCH_QUIET_BREADCRUMBS=1` is set so the breadcrumb routes to captured stdout per the sibling `vendor_verify_local_pass` pattern).
+- `scripts/test-ship-pr.sh --section fix-loop` existing tier-order happy-path cases (`ci_fix_vendor_tier_order_cursor_first`, `..._falls_through_to_codex`, `..._falls_through_to_claude`, plus any sibling that asserts `rc=0` with a no-edit stub launcher) are updated so the winning launcher actually touches a tracked file and the `git-commit.sh` stub commits, ensuring HEAD advances and the existing assertions still pass.
+- The pre-commit hook entry (`lint-awk-multibyte-regex`) makes the lint runnable via `pre-commit run lint-awk-multibyte-regex` and via `scripts/relevant-checks.sh` so any PR touching the relevant surfaces gets immediate feedback.
+- `make agent-lint` is exercised end-to-end with the four new paths in the allowlist; without the `agent-lint.toml` update, the agent-lint job in CI would fail on the new files.
+
+## Diff size estimate
+
+diff_lines: 520

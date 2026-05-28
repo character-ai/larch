@@ -1,0 +1,12 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	.pre-commit-config.yaml:145-169	New awk lint is not added to the enforced pre-commit surface	CI runs make lint-only, while the plan only wires lint-awk-multibyte-regex into local make lint; the harness proves fixtures but the actual repo scan can be skipped on PRs	Add a local pre-commit hook beside lint-bare-grep-probe with pass_filenames false and always_run true, or otherwise make the CI lint job invoke the new repo scan
+
+1. [risk-integration] `.pre-commit-config.yaml:145-169`
+
+The plan adds `lint-awk-multibyte-regex` to `make lint`, but CI’s lint job runs `make lint-only`, which delegates to pre-commit. The new harness will run in the test matrix, but that only tests fixtures; it does not scan the real repo for newly introduced awk multibyte regex hazards.
+
+Suggested revision: add a local pre-commit hook next to `lint-bare-grep-probe`:
+
+`entry: bash scripts/lint-awk-multibyte-regex.sh`, `language: system`, `pass_filenames: false`, `always_run: true`.
+
+That keeps the change minimal and puts the new lint on the same enforced path as the sibling static lints.

@@ -1,0 +1,8 @@
+scripts/lint-awk-multibyte-regex.sh
+scripts/lint-awk-multibyte-regex.md
+scripts/test-lint-awk-multibyte-regex.sh
+scripts/test-lint-awk-multibyte-regex.md
+scripts/ship-pr.sh
+scripts/test-ship-pr.sh
+Makefile
+CHANGELOG.md
