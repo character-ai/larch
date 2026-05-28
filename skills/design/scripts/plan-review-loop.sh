@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# plan-review-loop.sh — Single-pass /design plan-review driver (scout → panel → collect → ballot → aggregate → voters → tally).
+# plan-review-loop.sh — Multi-round /design plan-review driver (legacy single-pass when --round-cap omitted).
 # --round-num is a stateless integer supplied by the caller; this script does
 # not read or write review-round-count.txt.
 
@@ -13,6 +13,10 @@ PLAN_REVIEW_DISPATCH_PANEL_SH="${LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH:-$PLUGIN_RO
 PLAN_REVIEW_COLLECT_SH="${LARCH_PLAN_REVIEW_COLLECT_SH:-$PLUGIN_ROOT/scripts/collect-agent-results.sh}"
 PLAN_REVIEW_DISPATCH_VOTERS_SH="${LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-plan-voters.sh}"
 PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh}"
+PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$PLUGIN_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
+DESIGN_DRIVER_SH="$PLUGIN_ROOT/skills/design/scripts/design-driver.sh"
+CHECK_PLAN_SIZE_SH="$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh"
+INVOKE_PLAN_VALIDATOR_SH="$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -21,20 +25,47 @@ source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 # shellcheck source=skills/design/scripts/lib-findings-classification.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-findings-classification.sh"
-_dedup_failed=0
+# shellcheck source=scripts/lib-design-round-artifacts.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
 
 usage() {
-    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
+    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] [--convergence-threshold N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
 }
 
 DESIGN_TMPDIR=""
 PLAN_FILE=""
 FEATURE_FILE=""
 ROUND_NUM="1"
+ROUND_CAP="${LARCH_DESIGN_ROUND_CAP:-5}"
+CONVERGENCE_THRESHOLD="${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"
+ROUND_CAP_ARG_SEEN=0
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
 COLLECT_TIMEOUT="1860"
 PANEL_TIMEOUT="1860"
+_dedup_failed=0
+_paths_readable=0
+loop_status_override=""
+collect_ok_count=0
+collect_failure_count=0
+revise_status=""
+revise_winning_tier=""
+LOOP_REASON=""
+IMPORTANT_ACCEPTED_COUNT=0
+CONVERGENCE_STREAK=0
+COLLECT_OK_COUNT=0
+COLLECT_FAILURE_COUNT=0
+PLAN_HASH_BEFORE_REVISE=""
+PLAN_HASH_AFTER_REVISE=""
+TALLY_PLAN_REVIEW_STATUS=""
+VOTING_TALLY_FILE=""
+AGGREGATOR_STATUS=""
+ACCEPTED_COUNT=0
+DEGRADED_PANEL=0
+VOTER_1_PARSE_RATE_STATUS=""
+LOOP_STATUS="complete"
+_last_collect_out=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -42,6 +73,8 @@ while [[ $# -gt 0 ]]; do
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?}"; shift 2 ;;
+        --round-cap) ROUND_CAP="${2:?}"; ROUND_CAP_ARG_SEEN=1; shift 2 ;;
+        --convergence-threshold) CONVERGENCE_THRESHOLD="${2:?}"; shift 2 ;;
         --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
         --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
         --timeout) PANEL_TIMEOUT="${2:?}"; COLLECT_TIMEOUT="${2:?}"; shift 2 ;;
@@ -58,6 +91,13 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-num mu
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "plan-review-loop.sh: --round-num must be a positive integer"; exit 2; }
 case "$COLLECT_TIMEOUT" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --timeout must be a positive integer"; exit 2 ;; esac
+if (( ROUND_CAP_ARG_SEEN )); then
+    case "$ROUND_CAP" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2 ;; esac
+    ROUND_CAP=$((10#$ROUND_CAP))
+    (( ROUND_CAP > 0 )) || { larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2; }
+    case "$CONVERGENCE_THRESHOLD" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --convergence-threshold must be a non-negative integer"; exit 2 ;; esac
+    CONVERGENCE_THRESHOLD=$((10#$CONVERGENCE_THRESHOLD))
+fi
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
@@ -82,19 +122,47 @@ if [[ -f "$_brainstorm_file" && -s "$_brainstorm_file" ]]; then
 fi
 
 emit_loop_kvs() {
-    local loop_status="$1" accepted_count="$2" degraded_panel="$3" aggregator_status="$4" tally_status="$5" voting_tally_file="$6" voter1_parse="$7"
+    local loop_status="$1" accepted_count="$2" degraded_panel="$3" aggregator_status="$4" tally_status="$5" voting_tally_file="$6" voter1_parse="$7" rounds_completed="${8:-$ROUND_NUM}"
     emit_kv LOOP_STATUS "$loop_status"
     emit_kv ACCEPTED_COUNT "$accepted_count"
+    emit_kv IMPORTANT_ACCEPTED_COUNT "${IMPORTANT_ACCEPTED_COUNT:-0}"
     emit_kv DEGRADED_PANEL "$degraded_panel"
-    emit_kv ROUNDS_COMPLETED "$ROUND_NUM"
+    emit_kv ROUNDS_COMPLETED "$rounds_completed"
     emit_kv AGGREGATOR_STATUS "$aggregator_status"
     emit_kv TALLY_PLAN_REVIEW_STATUS "$tally_status"
     emit_kv VOTING_TALLY_FILE "$voting_tally_file"
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
+    emit_kv CONVERGENCE_STREAK "${CONVERGENCE_STREAK:-0}"
+    emit_kv REASON "${LOOP_REASON:-}"
+    emit_kv REVISE_STATUS "${revise_status:-}"
+    emit_kv COLLECT_OK_COUNT "${COLLECT_OK_COUNT:-0}"
+    emit_kv COLLECT_FAILURE_COUNT "${COLLECT_FAILURE_COUNT:-0}"
+}
+
+write_step3_result_env() {
+    local out="$DESIGN_TMPDIR/.step3-plan-review-result.env"
+    local tmp="${out}.tmp"
+    {
+        printf 'LOOP_STATUS=%s\n' "${LOOP_STATUS:-}"
+        printf 'ACCEPTED_COUNT=%s\n' "${ACCEPTED_COUNT:-0}"
+        printf 'IMPORTANT_ACCEPTED_COUNT=%s\n' "${IMPORTANT_ACCEPTED_COUNT:-0}"
+        printf 'DEGRADED_PANEL=%s\n' "${DEGRADED_PANEL:-0}"
+        printf 'ROUNDS_COMPLETED=%s\n' "${1:-$ROUND_NUM}"
+        printf 'REASON=%s\n' "${LOOP_REASON:-}"
+        printf 'REVISE_STATUS=%s\n' "${revise_status:-}"
+        printf 'CONVERGENCE_STREAK=%s\n' "${CONVERGENCE_STREAK:-0}"
+        printf 'AGGREGATOR_STATUS=%s\n' "${AGGREGATOR_STATUS:-}"
+        printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "${TALLY_PLAN_REVIEW_STATUS:-}"
+        printf 'VOTING_TALLY_FILE=%s\n' "${VOTING_TALLY_FILE:-}"
+        printf 'VOTER_1_PARSE_RATE_STATUS=%s\n' "${VOTER_1_PARSE_RATE_STATUS:-}"
+        printf 'COLLECT_OK_COUNT=%s\n' "${COLLECT_OK_COUNT:-0}"
+        printf 'COLLECT_FAILURE_COUNT=%s\n' "${COLLECT_FAILURE_COUNT:-0}"
+    } >"$tmp"
+    mv -f "$tmp" "$out"
 }
 
 write_empty_review_artifacts() {
-    local tally_note="$1"
+    local tally_note="$1" round_num="${2:-$ROUND_NUM}"
     : > "$DESIGN_TMPDIR/accepted-plan-findings.md"
     : > "$DESIGN_TMPDIR/rejected-findings.md"
     : > "$DESIGN_TMPDIR/oos.md"
@@ -103,9 +171,257 @@ write_empty_review_artifacts() {
         printf '# Plan Review Voting Tally\n\n'
         printf '%s\n' "$tally_note"
     } > "$DESIGN_TMPDIR/voting-tally.md"
-    _fc_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
+    _fc_out="$DESIGN_TMPDIR/plan-review/round-${round_num}/findings-classification.tsv"
     mkdir -p "$(dirname "$_fc_out")"
     emit_findings_classification_header > "$_fc_out"
+}
+
+_count_important_findings() {
+    local path="$1"
+    [[ -f "$path" ]] || { printf '0'; return 0; }
+    awk '
+        /^### FINDING_[0-9]+:/ { in_block=1; important=0; next }
+        in_block && /^- \*\*Severity\*\*: important/ { important=1 }
+        in_block && /^### / { if (important) c++; in_block=0; important=0; next }
+        END { if (in_block && important) c++; print c+0 }
+    ' "$path"
+}
+
+_count_collector_evidence() {
+    collect_ok_count=0
+    collect_failure_count=0
+    local rec st
+    while IFS= read -r rec || [[ -n "$rec" ]]; do
+        [[ -z "$rec" ]] && continue
+        IFS=$'\x1f' read -r _rf _tool st _xc _fr <<< "$rec" || true
+        case "$st" in
+            OK) collect_ok_count=$((collect_ok_count + 1)) ;;
+            *) collect_failure_count=$((collect_failure_count + 1)) ;;
+        esac
+    done < <(_parse_collect_records "$_last_collect_out")
+    COLLECT_OK_COUNT=$collect_ok_count
+    COLLECT_FAILURE_COUNT=$collect_failure_count
+}
+
+_parse_collect_records() {
+    local _parse_py="$DESIGN_TMPDIR/.plan-review-loop-parse-collect-inline.py"
+    cat > "$_parse_py" <<'PY'
+import sys
+
+def main():
+    text = sys.stdin.read()
+    for para in text.split("\n\n"):
+        lines = [ln.strip() for ln in para.splitlines() if ln.strip()]
+        if not lines:
+            continue
+        d = {}
+        for ln in lines:
+            if "=" not in ln:
+                continue
+            k, v = ln.split("=", 1)
+            d[k] = v
+        if "REVIEWER_FILE" in d or "STATUS" in d:
+            sys.stdout.write(
+                "%s\x1f%s\x1f%s\x1f%s\x1f%s\n"
+                % (
+                    d.get("REVIEWER_FILE", ""),
+                    d.get("TOOL", ""),
+                    d.get("STATUS", ""),
+                    d.get("EXIT_CODE", "0"),
+                    d.get("FAILURE_REASON", ""),
+                )
+            )
+
+if __name__ == "__main__":
+    main()
+PY
+    printf '%s' "${1:-}" | python3 "$_parse_py"
+    rm -f "$_parse_py"
+}
+
+_clear_session_root_review_artifacts() {
+    local f
+    for f in findings.md findings-in-scope.md findings-oos.md accepted-plan-findings.md \
+        rejected-findings.md oos.md oos-this-round.md ballot.txt voting-tally.md; do
+        : >"$DESIGN_TMPDIR/$f"
+    done
+}
+
+_snapshot_round_dir() {
+    local round_num="$1"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}"
+    mkdir -p "$dest"
+    local name src
+    for src in "$DESIGN_TMPDIR"/*; do
+        [[ -f "$src" ]] || continue
+        name=$(basename "$src")
+        design_round_artifact_included "$name" || continue
+        if [[ -L "$src" ]]; then
+            emit_kv WARN "plan-review-snapshot: refusing symlink source $name"
+            continue
+        fi
+        cp -f "$src" "$dest/$name"
+    done
+    if [[ -d "$dest/revise" ]]; then
+        local rname rsrc
+        for rsrc in "$dest/revise"/*; do
+            [[ -f "$rsrc" ]] || continue
+            rname=$(basename "$rsrc")
+            design_round_revise_artifact_included "$rname" || rm -f "$rsrc"
+        done
+    fi
+}
+
+_write_round_summary() {
+    local round_num="$1" loop_status="${2:-}" reason="${3:-}" revise_st="${4:-}"
+    local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}/round-summary.env"
+    mkdir -p "$(dirname "$dest")"
+    local tmp="${dest}.tmp"
+    {
+        printf 'ROUND_NUM=%s\n' "$round_num"
+        printf 'LOOP_STATUS=%s\n' "$loop_status"
+        printf 'REASON=%s\n' "$reason"
+        printf 'CONVERGENCE_STREAK=%s\n' "${CONVERGENCE_STREAK:-0}"
+        printf 'ACCEPTED_COUNT=%s\n' "${ACCEPTED_COUNT:-0}"
+        printf 'IMPORTANT_ACCEPTED_COUNT=%s\n' "${IMPORTANT_ACCEPTED_COUNT:-0}"
+        printf 'DEGRADED_PANEL=%s\n' "${DEGRADED_PANEL:-0}"
+        printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "${TALLY_PLAN_REVIEW_STATUS:-}"
+        printf 'AGGREGATOR_STATUS=%s\n' "${AGGREGATOR_STATUS:-}"
+        printf 'REVISE_STATUS=%s\n' "$revise_st"
+        printf 'REVISE_WINNING_TIER=%s\n' "${revise_winning_tier:-}"
+        printf 'PLAN_HASH_BEFORE_REVISE=%s\n' "${PLAN_HASH_BEFORE_REVISE:-}"
+        printf 'PLAN_HASH_AFTER_REVISE=%s\n' "${PLAN_HASH_AFTER_REVISE:-}"
+        printf 'COLLECT_OK_COUNT=%s\n' "${COLLECT_OK_COUNT:-0}"
+        printf 'COLLECT_FAILURE_COUNT=%s\n' "${COLLECT_FAILURE_COUNT:-0}"
+    } >"$tmp"
+    mv -f "$tmp" "$dest"
+}
+
+_accumulate_round_oos() {
+    local round_num="$1"
+    local round_oos="$DESIGN_TMPDIR/plan-review/round-${round_num}/oos.md"
+    [[ -f "$DESIGN_TMPDIR/oos.md" ]] && cp -f "$DESIGN_TMPDIR/oos.md" "$round_oos"
+    [[ -f "$round_oos" && -s "$round_oos" ]] || return 0
+    local cum="$DESIGN_TMPDIR/oos-accepted-design.md"
+    touch "$cum"
+    python3 - "$round_oos" "$cum" <<'PY'
+import re, sys
+
+round_path, cum_path = sys.argv[1:3]
+text = open(round_path, encoding="utf-8", errors="replace").read()
+blocks = [m.group(0).strip() for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", text)]
+if not blocks:
+    raise SystemExit(0)
+
+def desc_key(block):
+    m = re.search(r"\*\*Description\*\*:\s*(.+?)(?:\n|$)", block, re.S)
+    return (m.group(1).strip().lower() if m else block.strip().lower())
+
+existing = open(cum_path, encoding="utf-8", errors="replace").read() if True else ""
+existing_keys = []
+for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", existing):
+    existing_keys.append(desc_key(m.group(0)))
+
+out_parts = [existing.rstrip()] if existing.strip() else []
+for blk in blocks:
+    dk = desc_key(blk)
+    dup = False
+    for ek in existing_keys:
+        if dk in ek or ek in dk:
+            dup = True
+            break
+    if dup:
+        continue
+    existing_keys.append(dk)
+    out_parts.append(blk)
+
+body = "\n\n".join(p for p in out_parts if p.strip())
+if body:
+    body += "\n\n"
+open(cum_path, "w", encoding="utf-8").write(body)
+PY
+}
+
+_run_revise_with_status_parse() {
+    local round_num="$1"
+    revise_status="failed-no-patch"
+    revise_winning_tier=""
+    local revise_out rc
+    set +e
+    revise_out=$("$PLAN_REVIEW_REVISE_SH" \
+        --design-tmpdir "$DESIGN_TMPDIR" \
+        --plan-file "$PLAN_FILE" \
+        --findings-file "$DESIGN_TMPDIR/accepted-plan-findings.md" \
+        --feature-file "$FEATURE_FILE" \
+        --round-num "$round_num" \
+        --codex-present "$CODEX_PRESENT" \
+        --cursor-present "$CURSOR_PRESENT" \
+        --timeout "$COLLECT_TIMEOUT")
+    rc=$?
+    set -e
+    local k v
+    while IFS= read -r _ln || [[ -n "$_ln" ]]; do
+        [[ -z "$_ln" ]] && continue
+        k="${_ln%%=*}"
+        v="${_ln#*=}"
+        case "$k" in
+            REVISE_STATUS) revise_status="$v" ;;
+            REVISE_WINNING_TIER) revise_winning_tier="$v" ;;
+        esac
+    done <<<"$revise_out"
+    if (( rc != 0 )); then
+        revise_status="failed-apply"
+        return 1
+    fi
+    [[ "$revise_status" == "ok" ]] && return 0
+    return 1
+}
+
+_run_post_apply_pipeline() {
+    local round_num="$1"
+    export DESIGN_TMPDIR
+    export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
+    local plan_path="$DESIGN_TMPDIR/plan.txt"
+    local removed=0
+    if [[ -f "$plan_path" ]]; then
+        removed=$(awk 'NF { if (seen[$0]++) dup++; else keep[++n]=$0 } END { print dup+0 }' "$plan_path" 2>/dev/null || printf '0')
+        awk '!seen[$0]++' "$plan_path" >"${plan_path}.dedup.tmp" && mv -f "${plan_path}.dedup.tmp" "$plan_path"
+    fi
+    printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "$removed"
+    local emit_out
+    emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")
+    local emit_st
+    emit_st=$(printf '%s\n' "$emit_out" | awk -F= '$1 == "EMIT_PLAN_STATUS" { print $2; found=1 } END { if (!found) print "" }')
+    if [[ "$emit_st" == "missing-diff-lines" ]]; then
+        LOOP_STATUS=plan-size-trigger
+        LOOP_REASON=emit-plan-failed
+        return 1
+    fi
+    local val_out val_st
+    val_out=$("$INVOKE_PLAN_VALIDATOR_SH" "$plan_path")
+    val_st=$(printf '%s\n' "$val_out" | awk -F= '$1 == "VALIDATE_STATUS" { print $2; found=1 } END { if (!found) print "" }')
+    if [[ "$val_st" == "defects-found" ]]; then
+        LOOP_STATUS=plan-validator-defects
+        LOOP_REASON=validator-defects
+        return 1
+    fi
+    local size_out hard
+    size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path")
+    hard=$(printf '%s\n' "$size_out" | awk -F= '$1 == "HARD_TRIGGER_FIRED" { print $2; found=1 } END { if (!found) print "false" }')
+    if [[ "$hard" == "true" ]]; then
+        LOOP_STATUS=plan-size-trigger
+        LOOP_REASON=plan-size-hard
+        return 1
+    fi
+    return 0
+}
+
+_terminal_exit() {
+    local rc="$1" rounds_completed="$2"
+    write_step3_result_env "$rounds_completed"
+    emit_loop_kvs "$LOOP_STATUS" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$AGGREGATOR_STATUS" \
+        "$TALLY_PLAN_REVIEW_STATUS" "$VOTING_TALLY_FILE" "$VOTER_1_PARSE_RATE_STATUS" "$rounds_completed"
+    exit "$rc"
 }
 
 plan_review_voter_tool_label() {
@@ -190,6 +506,11 @@ if __name__ == "__main__":
 PY
 }
 
+_run_plan_review_round() {
+    local round_num="$1"
+    _dedup_failed=0
+    loop_status_override=""
+
 # --- Step 2: scout (fail-open) ---
 "$PLAN_REVIEW_SCOUT_SH" \
     --plan-file "$PLAN_FILE" \
@@ -240,10 +561,16 @@ if [[ -n "$PANEL_PATHS_FILE" && -f "$PANEL_PATHS_FILE" && -s "$PANEL_PATHS_FILE"
 fi
 
 if [[ "$_paths_readable" -eq 0 ]]; then
-    write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**"
+    write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**" "$round_num"
     : > "$DESIGN_TMPDIR/ballot.txt"
-    emit_loop_kvs panel-failed 0 1 skipped panel-failed "" SKIPPED
-    exit 1
+    TALLY_PLAN_REVIEW_STATUS=panel-failed
+    AGGREGATOR_STATUS=skipped
+    ACCEPTED_COUNT=0
+    DEGRADED_PANEL=1
+    VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+    VOTER_1_PARSE_RATE_STATUS=SKIPPED
+    LOOP_STATUS=panel-failed
+    return 1
 fi
 
 # --- Step 5: collect ---
@@ -253,6 +580,7 @@ _collect_out=$("$PLAN_REVIEW_COLLECT_SH" \
     --validation-mode \
     --structured-reviewer-validation \
     --paths-file "$PANEL_PATHS_FILE")
+_last_collect_out="$_collect_out"
 
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
 _slot_lines=()
@@ -353,7 +681,7 @@ oi = 1
 def emit_finding(n, slot, sev, focus, loc, what, scen, fix):
     print("### FINDING_%d:" % n)
     print("- **Reviewer(s)**: %s" % slot)
-    print("- **Severity**: %s" % (sev or "important"))
+    print("- **Severity**: %s" % (sev or "nit"))
     print("- **Focus area**: %s" % focus)
     print("- **Location**: %s" % loc)
     print("- **Concern**: %s. Scenario: %s" % (what, scen))
@@ -365,7 +693,7 @@ def emit_oos(n, slot, sev, focus, loc, what, scen, fix):
     print("### OOS_%d:" % n)
     print("- **Description**: %s. Scenario: %s" % (what, scen))
     print("- **Reviewer**: %s" % slot)
-    print("- **Severity**: %s" % (sev or "important"))
+    print("- **Severity**: %s" % (sev or "nit"))
     print("- **Focus area**: %s" % focus)
     print("- **Location**: %s" % loc)
     print("- **Phase**: design")
@@ -534,12 +862,18 @@ fi
 rm -f "$_dedup_py"
 
 if ! grep -qE '^### (FINDING|OOS)_[0-9]+:' "$DESIGN_TMPDIR/findings.md" 2>/dev/null; then
-    write_empty_review_artifacts "No findings were raised — voting was not needed."
+    write_empty_review_artifacts "No findings were raised — voting was not needed." "$round_num"
     : > "$DESIGN_TMPDIR/ballot.txt"
     _short_circuit_degraded="$_dispatch_degraded_panel"
     [[ "$_dedup_failed" -eq 1 ]] && _short_circuit_degraded=1
-    emit_loop_kvs complete 0 "$_short_circuit_degraded" skipped-empty-input skipped-empty-findings "$DESIGN_TMPDIR/voting-tally.md" SKIPPED
-    exit 0
+    TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings
+    AGGREGATOR_STATUS=skipped-empty-input
+    ACCEPTED_COUNT=0
+    DEGRADED_PANEL="$_short_circuit_degraded"
+    VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+    VOTER_1_PARSE_RATE_STATUS=SKIPPED
+    LOOP_STATUS=complete
+    return 0
 fi
 
 python3 - "$DESIGN_TMPDIR/findings.md" "$DESIGN_TMPDIR/findings-in-scope.md" "$DESIGN_TMPDIR/findings-oos.md" <<'PY'
@@ -571,7 +905,8 @@ else
         --mode description \
         --plan-file "$PLAN_FILE" \
         --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
-        --input-mode plan)
+        --input-mode plan \
+        --allow-findings-outside-tmpdir true)
     AGGREGATED="false"
     REASON="ok"
     while IFS= read -r _ln; do
@@ -649,7 +984,7 @@ append_plan_review_voter_arg 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$VOTER_1_STATUS"
 append_plan_review_voter_arg 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$VOTER_2_STATUS"
 append_plan_review_voter_arg 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$VOTER_3_STATUS"
 
-_findings_classification_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
+_findings_classification_out="$DESIGN_TMPDIR/plan-review/round-${round_num}/findings-classification.tsv"
 mkdir -p "$(dirname "$_findings_classification_out")"
 
 _tally_cmd=(
@@ -693,7 +1028,10 @@ fi
 
 printf '%s\n' "$_tally_raw"
 
-ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || printf '0')
+ACCEPTED_COUNT=0
+if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
+    ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
+fi
 
 DEGRADED_PANEL="$_dispatch_degraded_panel"
 [[ "${VOTER_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=1
@@ -708,14 +1046,160 @@ if (( _nonfailed_voters < 2 )); then
 fi
 
 LOOP_STATUS="complete"
-[[ "$TALLY_PLAN_REVIEW_STATUS" == "main-agent-vote-required" ]] && LOOP_STATUS="main-agent-vote-required"
+[[ "$TALLY_PLAN_REVIEW_STATUS" == "main-agent-vote-required" ]] && LOOP_STATUS="main-agent-vote-required" && loop_status_override="main-agent-vote-required"
 
 [[ -z "$VOTER_1_PARSE_RATE_STATUS" ]] && VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+return 0
+}
 
-emit_loop_kvs "$LOOP_STATUS" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$AGGREGATOR_STATUS" "$TALLY_PLAN_REVIEW_STATUS" "$VOTING_TALLY_FILE" "$VOTER_1_PARSE_RATE_STATUS"
-
-if [[ "$LOOP_STATUS" == "main-agent-vote-required" ]]; then
-    exit 0
+# --- Legacy single-pass (no --round-cap on argv) ---
+if (( ROUND_CAP_ARG_SEEN == 0 )); then
+    set +e
+    _run_plan_review_round "$ROUND_NUM"
+    _round_rc=$?
+    set -e
+    if (( _round_rc != 0 )); then
+        LOOP_STATUS=panel-failed
+        IMPORTANT_ACCEPTED_COUNT=0
+        _terminal_exit 1 "$ROUND_NUM"
+    fi
+    IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
+    _count_collector_evidence
+    if [[ "$TALLY_PLAN_REVIEW_STATUS" == "main-agent-vote-required" ]]; then
+        LOOP_STATUS=main-agent-vote-required
+    else
+        LOOP_STATUS=complete
+    fi
+    _terminal_exit 0 "$ROUND_NUM"
 fi
-exit 0
+
+# --- Multi-round mode ---
+round_num=$ROUND_NUM
+convergence_streak=0
+CONVERGENCE_STREAK=0
+manual_mode=false
+if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
+    _mg=$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf 'false')
+    [[ "$_mg" == "true" ]] && manual_mode=true
+fi
+
+while (( round_num <= ROUND_CAP )); do
+    _clear_session_root_review_artifacts
+    set +e
+    _run_plan_review_round "$round_num"
+    _round_rc=$?
+    set -e
+
+    if [[ "$loop_status_override" == "main-agent-vote-required" ]]; then
+        LOOP_STATUS=main-agent-vote-required
+        IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
+        _count_collector_evidence
+        _write_round_summary "$round_num" main-agent-vote-required "" skipped
+        _terminal_exit 0 "$round_num"
+    fi
+
+    if (( _round_rc != 0 )); then
+        LOOP_STATUS=panel-failed
+        IMPORTANT_ACCEPTED_COUNT=0
+        _count_collector_evidence
+        write_step3_result_env "$round_num"
+        emit_loop_kvs panel-failed 0 1 skipped panel-failed "" SKIPPED "$round_num"
+        exit 1
+    fi
+
+    if [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]]; then
+        LOOP_STATUS=tally-error
+        LOOP_REASON=tally-error
+        revise_status=skipped
+        IMPORTANT_ACCEPTED_COUNT=0
+        _count_collector_evidence
+        _snapshot_round_dir "$round_num"
+        _write_round_summary "$round_num" tally-error tally-error skipped
+        _terminal_exit 0 "$round_num"
+    fi
+
+    _accumulate_round_oos "$round_num"
+    _count_collector_evidence
+    ACCEPTED_COUNT=0
+    if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
+        ACCEPTED_COUNT=$(grep -cE '^### FINDING_' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
+    fi
+    IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
+    PLAN_HASH_BEFORE_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
+
+    if [[ "$ACCEPTED_COUNT" -eq 0 ]]; then
+        if [[ "$collect_ok_count" -eq 0 ]]; then
+            LOOP_STATUS=degraded-empty-collector
+            LOOP_REASON=degraded-empty-collector
+            DEGRADED_PANEL=1
+            revise_status=skipped
+            _snapshot_round_dir "$round_num"
+            _write_round_summary "$round_num" degraded-empty-collector degraded-empty-collector skipped
+            _terminal_exit 0 "$round_num"
+        fi
+        LOOP_STATUS=converged
+        LOOP_REASON=zero-findings
+        revise_status=skipped
+        _snapshot_round_dir "$round_num"
+        _write_round_summary "$round_num" converged zero-findings skipped
+        _terminal_exit 0 "$round_num"
+    fi
+
+    if [[ "$manual_mode" == true ]]; then
+        LOOP_STATUS=complete
+        LOOP_REASON=manual-gate-b
+        revise_status=skipped
+        _snapshot_round_dir "$round_num"
+        _write_round_summary "$round_num" complete manual-gate-b skipped
+        _terminal_exit 0 "$round_num"
+    fi
+
+    if ! _run_revise_with_status_parse "$round_num"; then
+        DEGRADED_PANEL=1
+        PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
+        LOOP_STATUS=revision-failed
+        LOOP_REASON=revision-failed
+        _snapshot_round_dir "$round_num"
+        _write_round_summary "$round_num" revision-failed revision-failed "${revise_status:-failed-no-patch}"
+        _terminal_exit 0 "$round_num"
+    fi
+    PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
+    revise_status=ok
+
+    if ! _run_post_apply_pipeline "$round_num"; then
+        _snapshot_round_dir "$round_num"
+        _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" skipped
+        _terminal_exit 0 "$round_num"
+    fi
+
+    _snapshot_round_dir "$round_num"
+
+    if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
+        convergence_streak=0
+    elif [[ "$ACCEPTED_COUNT" -le "$CONVERGENCE_THRESHOLD" && "$IMPORTANT_ACCEPTED_COUNT" -eq 0 ]]; then
+        convergence_streak=$((convergence_streak + 1))
+        CONVERGENCE_STREAK=$convergence_streak
+        if (( convergence_streak >= 2 )); then
+            LOOP_STATUS=converged
+            LOOP_REASON=streak
+            _write_round_summary "$round_num" converged streak ok
+            _terminal_exit 0 "$round_num"
+        fi
+    else
+        convergence_streak=0
+        CONVERGENCE_STREAK=0
+    fi
+
+    if (( round_num == ROUND_CAP )); then
+        LOOP_STATUS=cap-hit
+        LOOP_REASON=cap-hit
+        _write_round_summary "$round_num" cap-hit cap-hit ok
+        _terminal_exit 0 "$round_num"
+    fi
+
+    _write_round_summary "$round_num" "" "" ok
+    round_num=$((round_num + 1))
+done
+
+_terminal_exit 0 "$ROUND_CAP"

@@ -305,7 +305,13 @@ EOS
 
 run_loop() {
     local d="$1"
-    local round_num="${2:-1}"
+    local round_num="1"
+    if [[ "${2:-}" =~ ^[0-9]+$ ]]; then
+        round_num="$2"
+        shift 2
+    else
+        shift 1
+    fi
     export CLAUDE_PLUGIN_ROOT="$ROOT"
     export LARCH_QUIET_DISABLE=1
     export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
@@ -313,6 +319,7 @@ run_loop() {
     export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
     export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
     export LARCH_PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$ROOT/skills/design/scripts/tally-plan-review.sh}"
+    export LARCH_PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
     export LARCH_AGGREGATOR_DISABLED=1
     bash "$PLR" \
         --design-tmpdir "$d" \
@@ -320,7 +327,8 @@ run_loop() {
         --feature-file "$d/feature-description.txt" \
         --codex-present true \
         --cursor-present true \
-        --round-num "$round_num"
+        --round-num "$round_num" \
+        "$@"
 }
 
 echo "=== stubbed driver: COMBINED_FALLBACK_COUNT degrades zero-findings path ==="
@@ -520,5 +528,112 @@ for a, b in zip(nums, nums[1:]):
         print(f"not strictly increasing: {nums}", file=sys.stderr)
         sys.exit(1)
 PY
+
+echo "=== legacy single-pass: no --round-cap → LOOP_STATUS=complete ==="
+DL="$TMP/legacy"
+mkdir -p "$DL"
+printf 'plan v1\n\ndiff_lines: 1\n' >"$DL/plan.txt"
+printf 'feat\n' >"$DL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+out_legacy=$(run_loop "$DL" 1)
+printf '%s\n' "$out_legacy" | grep -q '^LOOP_STATUS=complete$' || fail "legacy mode expected complete"
+[[ -f "$DL/.step3-plan-review-result.env" ]] || fail "legacy missing step3 result env"
+! grep -q '^REASON=manual-gate-b$' "$DL/.step3-plan-review-result.env" || fail "legacy should not be manual-gate-b"
+
+echo "=== multi-round: zero findings + collector OK → converged zero-findings ==="
+DZ="$TMP/mrz"
+mkdir -p "$DZ"
+printf 'plan\n\ndiff_lines: 1\n' >"$DZ/plan.txt"
+printf 'feat\n' >"$DZ/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect empty
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\n'
+exit 0
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_z=$(run_loop "$DZ" 1 --round-cap 3 --convergence-threshold 3)
+printf '%s\n' "$out_z" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged zero-findings"
+printf '%s\n' "$out_z" | grep -q '^REASON=zero-findings$' || fail "expected zero-findings reason"
+
+echo "=== multi-round: zero findings + no collector OK → degraded-empty-collector ==="
+DZ0="$TMP/mrz0"
+mkdir -p "$DZ0"
+printf 'plan\n\ndiff_lines: 1\n' >"$DZ0/plan.txt"
+printf 'feat\n' >"$DZ0/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 1
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" >"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=failed\nEXIT_CODE=1\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
+write_voters_three
+out_z0=$(run_loop "$DZ0" 1 --round-cap 3)
+printf '%s\n' "$out_z0" | grep -q '^LOOP_STATUS=degraded-empty-collector$' || fail "expected degraded-empty-collector"
+
+echo "=== multi-round: manual_gate_b → complete manual-gate-b, revise not required ==="
+DM="$TMP/manual"
+mkdir -p "$DM"
+printf 'plan\n\ndiff_lines: 1\n' >"$DM/plan.txt"
+printf 'feat\n' >"$DM/feature-description.txt"
+printf '{"manual_gate_b":true}\n' >"$DM/run-params.json"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+_revise_called=false
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "revise should not run" >&2
+exit 99
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_m=$(run_loop "$DM" 1 --round-cap 5)
+printf '%s\n' "$out_m" | grep -q '^LOOP_STATUS=complete$' || fail "manual mode expected complete"
+printf '%s\n' "$out_m" | grep -q '^REASON=manual-gate-b$' || fail "manual mode expected manual-gate-b reason"
+
+echo "=== snapshot allowlist: raw reviewer output excluded from round-1 ==="
+DS="$TMP/snap"
+mkdir -p "$DS"
+printf 'plan\n\ndiff_lines: 1\n' >"$DS/plan.txt"
+printf 'feat\n' >"$DS/feature-description.txt"
+printf 'sentinel raw\n' >"$DS/cursor-plan-arch-output.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\n'
+exit 0
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_s=$(run_loop "$DS" 1 --round-cap 1)
+printf '%s\n' "$out_s" | grep -q '^LOOP_STATUS=cap-hit$' || fail "cap 1 expected cap-hit"
+[[ -f "$DS/plan-review/round-1/findings.md" ]] || fail "findings.md should snapshot"
+[[ ! -f "$DS/plan-review/round-1/cursor-plan-arch-output.txt" ]] || fail "raw reviewer output must not snapshot"
 
 printf '%s\n' "test-plan-review-loop: ok"

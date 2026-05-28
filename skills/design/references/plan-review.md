@@ -43,6 +43,23 @@ Step 3 **may** extend the fixed 10-slot static panel with up to 6 scout-proposed
 
 ---
 
+## Multi-round loop
+
+When `plan-review-loop.sh` is invoked with explicit `--round-cap` on argv (SKILL.md Step 3 passes `"${LARCH_DESIGN_ROUND_CAP:-5}"`), the driver runs an inner loop: scout → panel → collect → tally → auto-apply via `revise-plan-with-waterfall.sh` → post-apply pipeline, up to the cap. Convergence requires **two consecutive non-degraded rounds** with `ACCEPTED_COUNT <= ${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}` and `IMPORTANT_ACCEPTED_COUNT == 0` (only `### FINDING_N:` blocks marked `- **Severity**: important` in `accepted-plan-findings.md` count). Zero-findings convergence additionally requires `COLLECT_OK_COUNT > 0` (collector `STATUS=OK` evidence); otherwise the loop exits `LOOP_STATUS=degraded-empty-collector`. `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before revise/convergence checks.
+
+- **Env vars**: `LARCH_DESIGN_ROUND_CAP` (default 5), `LARCH_DESIGN_CONVERGENCE_THRESHOLD` (default 3).
+- **Manual Gate B**: when `manual_gate_b=true` in `run-params.json`, the loop runs one round and exits `LOOP_STATUS=complete REASON=manual-gate-b` without inner auto-apply; Gate B applies findings per the normal manual/auto contract.
+- **Revision failures**: non-zero revise rc or `REVISE_STATUS` other than `ok` → `LOOP_STATUS=revision-failed`; Gate B falls back to the 3-option prompt.
+- **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
+- **Dedup divergence**: the loop's post-apply pipeline uses regex duplicate-line removal in bash; Gate B uses LLM-driven dedup in the shared post-apply pipeline.
+- **Artifacts**: per-round forensics under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `scripts/lib-design-round-artifacts.md`. Gate B passive-summary reads `round-summary.env` when `LOOP_STATUS=converged|cap-hit` (see `approval-gates.md`).
+
+## Legacy single-pass mode
+
+Callers that **omit** `--round-cap` on argv get exactly the pre-multi-round contract: one panel pass, `LOOP_STATUS=complete`, no inner auto-apply, no `converged`/`cap-hit` emissions. `--round-cap 1` is **not** legacy mode — it is multi-round with a one-round cap (auto-apply still runs when findings exist).
+
+---
+
 ## Claude Code Reviewer Subagent archetype (fallback reviewers)
 
 Claude is NOT a primary plan reviewer — the external panel is the default path (5 Cursor + 5 Codex static slots, plus optional dynamic `dyn-*` pairs when scouting succeeds). Claude participates as **per-slot fallback** when both external tools are unavailable for a reviewer slot (subagent_type: `larch:code-reviewer`, model: `"sonnet"`).
