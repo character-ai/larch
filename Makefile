@@ -20,6 +20,7 @@
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: test-persist-implement-run-flags
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe
+.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
