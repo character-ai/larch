@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/create-pr.sh:27,201-203	Plan uses a bare with_transient_retry call shape in scripts that run with set -e	The helper returns non-zero on non-transient or exhausted transient failures, so set -e exits before callers can read _WTR_RC and preserve existing error handling	Require every errexit caller to invoke the helper in an if/set+e guarded shape before reading _WTR_RC, or make the shared wrapper contract return 0 and communicate status only through _WTR_RC
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:2385-2391,3067-3088	The proposed ship_pr_with_transient_retry wrapper returns success for exhausted rc=0 envelope transients	ci-wait.sh and merge-pr.sh report transient failures through stdout envelopes while exiting 0; after three retries the lifted helper would return _WTR_RC=0, and the proposed wrapper's early rc==0 return would let ship-pr accept ACTION=bail or MERGE_RESULT=error/admin_failed instead of exiting transient	Change the wrapper to re-run the passed predicate against the final fail_file content before any rc==0 return, and call exit_transient_net when the predicate still marks the envelope transient
+
+1. [correctness] `scripts/create-pr.sh:27,201-203`
+
+The plan’s canonical call shape is unsafe for the many target scripts that use `set -euo pipefail`. A non-zero `with_transient_retry` return will abort the script before the existing branch reads `_WTR_RC` and emits its current diagnostics or fallback behavior.
+
+Suggested revision: make the plan require a guarded call shape for `set -e` scripts, such as an `if with_transient_retry ...; then :; else :; fi` block followed by `rc=$_WTR_RC`, or define the shared helper to always return 0 and use `_WTR_RC` as the sole status channel.
+
+2. [risk-integration] `scripts/ship-pr.sh:2385-2391,3067-3088`
+
+The proposed `ship_pr_with_transient_retry` wrapper preserves non-zero transient exhaustion, but not rc=0 envelope exhaustion. `ci-wait.sh` and `merge-pr.sh` intentionally return 0 while reporting transient failures in stdout keys. With the proposed wrapper, the third transient envelope attempt leaves `_WTR_RC=0`, hits `[ "$rc" -eq 0 ] && return 0`, and ship-pr continues on a failed envelope.
+
+Suggested revision: have `ship_pr_with_transient_retry` inspect the final envelope with the predicate before returning success, then call `exit_transient_net` when that predicate still matches.
