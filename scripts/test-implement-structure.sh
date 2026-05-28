@@ -430,6 +430,42 @@ grep -Fq "**⚠ Foreground required — do NOT set \`run_in_background: true\`.*
   || fail "SKILL.md must retain the Step 0 foreground-required warning"
 grep -Fq 'Dirty-tree recovery bootstrap fence:' "$SKILL_MD" \
   || fail "SKILL.md must retain the dirty-tree recovery bootstrap fence"
+grep -Fq 'Resume-tail idempotency' "$REPO_ROOT/scripts/implement-bootstrap.md" \
+  || fail "implement-bootstrap.md must document resume-tail idempotency invariant"
+grep -Fq 'the first pass bails at this checkpoint' "$REPO_ROOT/scripts/implement-bootstrap.md" \
+  || fail "implement-bootstrap.md must pin the dirty-tree first-pass-bail-before-helpers invariant"
+read -r caller_env_expand_line <<'EOF'
+"${_ib_caller_env[@]+"${_ib_caller_env[@]}"}"
+EOF
+grep -Fq "$caller_env_expand_line" "$SKILL_MD" \
+  || fail "SKILL.md must expand _ib_caller_env in the bootstrap wrapper"
+if [ "$(grep -oF '_ib_caller_env[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
+  fail "SKILL.md must expand _ib_caller_env in both bootstrap invocations"
+fi
+read -r issue_expand_line <<'EOF'
+"${_ib_issue[@]+"${_ib_issue[@]}"}"
+EOF
+grep -Fq "$issue_expand_line" "$SKILL_MD" \
+  || fail "SKILL.md must expand _ib_issue in the bootstrap wrapper"
+if [ "$(grep -oF '_ib_issue[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
+  fail "SKILL.md must expand _ib_issue in both bootstrap invocations"
+fi
+read -r fork_expand_line <<'EOF'
+"${_ib_fork[@]+"${_ib_fork[@]}"}"
+EOF
+grep -Fq "$fork_expand_line" "$SKILL_MD" \
+  || fail "SKILL.md must expand _ib_fork in the bootstrap wrapper"
+if [ "$(grep -oF '_ib_fork[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
+  fail "SKILL.md must expand _ib_fork in both bootstrap invocations"
+fi
+read -r run_id_expand_line <<'EOF'
+"${_ib_run_id[@]+"${_ib_run_id[@]}"}"
+EOF
+grep -Fq "$run_id_expand_line" "$SKILL_MD" \
+  || fail "SKILL.md must expand _ib_run_id in the bootstrap wrapper"
+if [ "$(grep -oF '_ib_run_id[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
+  fail "SKILL.md must expand _ib_run_id in both bootstrap invocations"
+fi
 grep -Fq '_ib_run_bootstrap() {' "$SKILL_MD" \
   || fail "SKILL.md must retain the Step 0 bootstrap wrapper"
 grep -Fq '_ib_parse_bootstrap_out() {' "$SKILL_MD" \

@@ -133,6 +133,29 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 
 This script **must not** append or overwrite `$IMPLEMENT_TMPDIR/session-env.sh` via raw shell redirection (`>>`, `cat > … <<`). Only `write-session-env.sh` writes the file. The offline harness greps the live source for forbidden patterns.
 
+## Resume-tail idempotency
+
+Audit of `phase_plan_materialize` (lines ~750–911) on `--resume-plan-tail` re-entry.
+
+**Load-bearing invariant:** `run_dirty_tree_checkpoint` runs at the top of `phase_plan_materialize` after the resume-skip block (`RESUME_PLAN_TAIL=true` skips copy/gh/persist at lines ~708–754). On the canonical dirty-tree-then-resume sequence, the first pass bails at this checkpoint (`IMPLEMENT_BAIL_REASON=dirty-tree`, return 0) **before** any helper at lines ~759–915 runs. Those post-checkpoint helpers therefore execute exactly once across the dirty-tree-then-resume sequence, not twice.
+
+**Post-checkpoint helpers** (idempotency if re-run):
+
+| Helper | Idempotency |
+|--------|-------------|
+| `create-branch.sh --branch <name>` (~765) | NOT idempotent in isolation — exits 1 with `ERROR: Branch already exists` when the branch exists. Safe on the canonical flow because the first-pass dirty-tree bail prevents this line from running twice. |
+| `git-current-branch.sh` (~780) | Read-only; idempotent. |
+| `redact-secrets.sh` \| `redact-tmpdir-paths.sh` pipelines (~800, ~847, ~887) | Read-only filters; stable output from stable input. Safe to re-run. |
+| `run-step1-plan-log.sh` write (~814) | Writes under `$IMPLEMENT_TMPDIR/larch-logs/` (session-scoped tmpdir). Idempotent within the same tmpdir. |
+| `write-tally.sh --phase plan-review` (~851) | Same session tmpdir; atomic compose+write of a tally batch. Idempotent within the same tmpdir. |
+| `tracking-issue-summary.sh upsert-summary --marker "<!-- larch:plan v1 runid=$RUN_ID -->"` (~898) | Marker-based upsert; idempotent by construction (finds existing marker and replaces the comment). |
+| `append-tool-failure.sh` (~804, ~817, ~831, ~865, ~888, ~902) | Failure-only paths gated on the helper above returning non-zero. NOT independently idempotent if forced to re-run (each call appends to `execution-issues.md`). On the canonical flow each fires at most once because gating helpers are idempotent and the first-pass bail prevents the surrounding block from running twice. Revisit the audit if a future change makes failure paths reachable on resume. |
+| `emit_plan_materialize_breadcrumbs_if_enabled` (~915) | Conditional breadcrumb emitter at function tail; reads env state, emits only when enabled. Safe to re-run. |
+
+**`phase_tracking` cross-reference (lines ~545–587):** On `RESUME_PLAN_TAIL=true`, `phase_tracking` short-circuits before `rename_to_implementing`, `run_larch_log_init`, or `post-tracking-issue.sh` can re-run, so the duplicate tracking-metadata concern in issue #2977 is already mitigated there.
+
+**Scope:** This audit covers the canonical “dirty-tree bail → single resume” sequence (exercised by `test-implement-bootstrap.sh` case B7-plan-dirty-tree resume tail). Multi-resume sequences (resume → dirty-tree → resume again) are out of scope.
+
 ## Edit-in-sync
 
 - `skills/implement/SKILL.md` Step 0 call site and KV parsing.
