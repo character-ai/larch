@@ -41,6 +41,7 @@ contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`'
 contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
 contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroughness**.' 'SKILL missing HARD designer emphasis'
 contains "$SKILL_MD" 'review-round-count.txt' 'SKILL missing review-round counter'
+# A1 (#3091): double-quoted contains pin above is verified by check-contains-pins escape-aware scanner.
 contains "$SKILL_MD" "--round-num \"\${STEP3_REVIEW_ROUND_NUM:?missing Step 3 round number}\"" 'SKILL must pass persisted Step 3 round number'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'
 contains "$SKILL_MD" 'read-design-classification.sh' 'SKILL missing classification reader'

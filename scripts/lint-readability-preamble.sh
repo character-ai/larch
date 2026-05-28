@@ -38,33 +38,97 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-manifest_rows=(
-    "skills/design/SKILL.md:orchestrator-inline:4"
-    "skills/design/references/design-outline.md:orchestrator-inline:1"
-    "skills/design/references/brainstorm.md:orchestrator-inline:1"
-    "skills/design/references/sketch-launch.md:orchestrator-inline:1"
-    "skills/design/references/dialectic-execution.md:orchestrator-inline:1"
-    "skills/design/references/approval-gates.md:orchestrator-inline:1"
-    "skills/design/references/discussion-rounds.md:orchestrator-inline:1"
-    "skills/design/references/brainstorm-prompts.md:external-prompt:3:standard"
-    "skills/design/references/sketch-prompts.md:external-prompt:4:sketch"
-    "skills/design/references/dialectic-debate.md:external-prompt:2:standard"
-    "skills/design/references/plan-review.md:external-prompt:1:plan-review"
-)
+manifest_tsv="$ROOT/scripts/lint-readability-preamble.tsv"
+if [ ! -f "$manifest_tsv" ]; then
+    printf '%s\n' "lint-readability-preamble.sh: manifest not found: $manifest_tsv" >&2
+    exit 2
+fi
 
 # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
 external_style_line='Style requirements: `<READABILITY_STYLE>`.'
 # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
 plan_review_style_line='Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.'
+# shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
+sketch_style_line='Style requirements: <READABILITY_STYLE>.'
 # shellcheck disable=SC2016 # literal Markdown/backtick regex, not shell expansion.
 orchestrator_style_re='^\*\*MANDATORY — READ ENTIRE FILE before [^:]+: `skills/design/references/readability-style\.md`\.\*\*$'
 
+validate_expected_count() {
+    local path="$1"
+    local expected_count="$2"
+    case "$expected_count" in
+        ''|*[!0-9]*)
+            printf '%s\n' "lint-readability-preamble.sh: invalid expected_count in $manifest_tsv for row $path" >&2
+            exit 2
+            ;;
+    esac
+}
+
+check_step_placement() {
+    local file="$1"
+    local rel_path="$2"
+    local step_markers="$3"
+    local step_id
+
+    IFS=',' read -r -a step_ids <<< "$step_markers"
+    for step_id in "${step_ids[@]}"; do
+        step_id="${step_id#"${step_id%%[![:space:]]*}"}"
+        step_id="${step_id%"${step_id##*[![:space:]]}"}"
+        [ -n "$step_id" ] || continue
+        awk -v step_id="$step_id" -v rel_path="$rel_path" -v style_re="$orchestrator_style_re" '
+BEGIN { in_step = 0; count = 0; found_marker = 0 }
+{
+    if (match($0, "^<!-- step:" step_id "([[:space:]]|—)")) {
+        if (in_step && found_marker && count < 1) {
+            printf "%s: step \"%s\": expected >=1 orchestrator-inline readability-style directive in step body, found 0\n", rel_path, step_id > "/dev/stderr"
+            exit 1
+        }
+        in_step = 1
+        found_marker = 1
+        count = 0
+        next
+    }
+    if (in_step && match($0, "^<!-- step:")) {
+        if (count < 1) {
+            printf "%s: step \"%s\": expected >=1 orchestrator-inline readability-style directive in step body, found 0\n", rel_path, step_id > "/dev/stderr"
+            exit 1
+        }
+        in_step = 0
+        count = 0
+    }
+    if (in_step && $0 ~ style_re) {
+        count++
+    }
+}
+END {
+    if (!found_marker) {
+        printf "%s: step \"%s\": orchestrator-inline step marker not found\n", rel_path, step_id > "/dev/stderr"
+        exit 1
+    }
+    if (in_step && count < 1) {
+        printf "%s: step \"%s\": expected >=1 orchestrator-inline readability-style directive in step body, found 0\n", rel_path, step_id > "/dev/stderr"
+        exit 1
+    }
+}
+        ' "$file" || return 1
+    done
+    return 0
+}
+
 missing=0
 
-for row in "${manifest_rows[@]}"; do
-    IFS=':' read -r path variant expected_count prompt_kind <<EOF
-$row
-EOF
+while IFS= read -r row; do
+    path="${row%%$'\t'*}"
+    rest="${row#*$'\t'}"
+    variant="${rest%%$'\t'*}"
+    rest="${rest#*$'\t'}"
+    expected_count="${rest%%$'\t'*}"
+    rest="${rest#*$'\t'}"
+    prompt_kind="${rest%%$'\t'*}"
+    step_markers="${rest#*$'\t'}"
+
+    validate_expected_count "$path" "$expected_count"
+
     file="$ROOT/$path"
     ok=false
     count=0
@@ -78,26 +142,31 @@ EOF
                         count=$(grep -Fxc "$plan_review_style_line" "$file" || true)
                         ;;
                     sketch)
-                        count=$(grep -Foc '<READABILITY_STYLE>' "$file" || true)
+                        count=$(grep -Fc "$sketch_style_line" "$file" || true)
                         ;;
                     *)
                         count=$(grep -Fxc "$external_style_line" "$file" || true)
                         ;;
                 esac
-                if [ "$count" = "${expected_count:-1}" ]; then
+                if [ "$count" = "$expected_count" ]; then
                     ok=true
                 else
-                    printf '%s\n' "$path: expected ${expected_count:-1} external-prompt readability-style directives, found ${count:-0}" >&2
+                    printf '%s\n' "$path: expected $expected_count external-prompt readability-style directives, found ${count:-0}" >&2
                     count_message_emitted=true
                 fi
                 ;;
             orchestrator-inline)
                 count=$(grep -Ec "$orchestrator_style_re" "$file" || true)
-                if [ "$count" = "${expected_count:-1}" ]; then
+                if [ "$count" = "$expected_count" ]; then
                     ok=true
                 else
-                    printf '%s\n' "$path: expected ${expected_count:-1} orchestrator-inline readability-style directives, found ${count:-0}" >&2
+                    printf '%s\n' "$path: expected $expected_count orchestrator-inline readability-style directives, found ${count:-0}" >&2
                     count_message_emitted=true
+                fi
+                if [ "$ok" = true ] && [ -n "$step_markers" ]; then
+                    if ! check_step_placement "$file" "$path" "$step_markers"; then
+                        ok=false
+                    fi
                 fi
                 ;;
             *)
@@ -113,6 +182,10 @@ EOF
         fi
         missing=1
     fi
-done
+done < <(
+    awk -F '\t' 'NF >= 1 && $1 !~ /^#/ && $0 != "" {
+        printf "%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, $5
+    }' "$manifest_tsv"
+)
 
 exit "$missing"

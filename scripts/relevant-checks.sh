@@ -64,6 +64,16 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/check-contains-pins.sh|scripts/check-contains-pins.md|scripts/test-check-contains-pins.sh|scripts/test-check-contains-pins.md|scripts/test-design-structure.sh)
+                append_target_once test-check-contains-pins
+                ;;
+        esac
+        case "$f" in
+            skills/*/SKILL.md|skills/*/references/*.md)
+                append_target_once test-check-contains-pins
+                ;;
+        esac
+        case "$f" in
             scripts/collect-agent-results.sh|scripts/test-collect-agent-results.sh) # lint-foreground-markers: ok relevant-checks case pattern
                 append_target_once test-collect-agent-results
                 ;;

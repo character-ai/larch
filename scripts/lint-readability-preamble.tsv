@@ -1,0 +1,12 @@
+# path	variant	expected_count	prompt_kind	step_markers
+skills/design/SKILL.md	orchestrator-inline	4		2b,3b,4,5
+skills/design/references/design-outline.md	orchestrator-inline	1		
+skills/design/references/brainstorm.md	orchestrator-inline	1		
+skills/design/references/sketch-launch.md	orchestrator-inline	1		
+skills/design/references/dialectic-execution.md	orchestrator-inline	1		
+skills/design/references/approval-gates.md	orchestrator-inline	1		
+skills/design/references/discussion-rounds.md	orchestrator-inline	1		
+skills/design/references/brainstorm-prompts.md	external-prompt	3	standard	
+skills/design/references/sketch-prompts.md	external-prompt	4	sketch	
+skills/design/references/dialectic-debate.md	external-prompt	2	standard	
+skills/design/references/plan-review.md	external-prompt	1	plan-review	

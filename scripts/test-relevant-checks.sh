@@ -335,8 +335,8 @@ setup_design_reference_repo "$REPO_3E"
 make_stub_dir "$STUB_3E" present absent
 run_checks "$REPO_3E" "$(controlled_path "$STUB_3E")"
 assert_exit_eq "3e: design reference routes direct target with missing pin verifier" "$RUN_EXIT" 0
-assert_stdout_contains "3e: design reference routes test-design-structure" "$RUN_OUT" "=== Running direct relevant make target(s): test-lint-foreground-markers test-design-structure ==="
-assert_stdout_contains "3e: direct targets invoked through make" "$RUN_OUT" "make stub: test-lint-foreground-markers test-design-structure"
+assert_stdout_contains "3e: design reference routes test-design-structure" "$RUN_OUT" "=== Running direct relevant make target(s): test-lint-foreground-markers test-design-structure test-check-contains-pins ==="
+assert_stdout_contains "3e: direct targets invoked through make" "$RUN_OUT" "make stub: test-lint-foreground-markers test-design-structure test-check-contains-pins"
 assert_stdout_contains "3e: missing pin verifier warning" "$RUN_OUT" "WARNING: scripts/check-contains-pins.sh not found"
 
 REPO_3F="$TMPROOT/repo-design-reference-with-pins"
@@ -376,6 +376,76 @@ assert_exit_eq "3g: failing pin verifier exit propagates" "$RUN_EXIT" 1
 assert_stdout_contains "3g: failing pin verifier invoked" "$RUN_OUT" "pin verifier stub: --changed-files"
 assert_stdout_not_contains "3g: agent-lint must not run after pin verifier failure" "$RUN_OUT" "agent-lint stub:"
 assert_repo_status_eq "3g: relevant-checks stays read-only on pin verifier failure" "$REPO_3G" "$STATUS_3G_BEFORE"
+
+setup_verifier_source_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b verifier-source-change
+        mkdir -p scripts
+        printf '%s\n' "# pin verifier" > scripts/check-contains-pins.sh
+        git add scripts/check-contains-pins.sh
+        git commit -q -m "touch pin verifier"
+    )
+}
+
+setup_other_skill_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b other-skill-change
+        mkdir -p skills/implement
+        printf '%s\n' "# implement skill" > skills/implement/SKILL.md
+        git add skills/implement/SKILL.md
+        git commit -q -m "touch non-design skill"
+    )
+}
+
+setup_parse_codex_usage_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b parse-codex-change
+        mkdir -p scripts
+        printf '%s\n' "# parse codex usage harness" > scripts/test-parse-codex-usage.sh
+        git add scripts/test-parse-codex-usage.sh
+        git commit -q -m "touch parse codex usage harness"
+    )
+}
+
+echo "=== Section 3h: verifier-source routing ==="
+
+REPO_3H="$TMPROOT/repo-verifier-source"
+STUB_3H="$TMPROOT/stub-verifier-source"
+setup_verifier_source_repo "$REPO_3H"
+make_stub_dir "$STUB_3H" present absent
+run_checks "$REPO_3H" "$(controlled_path "$STUB_3H")"
+assert_exit_eq "3h: verifier source change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3h: routes test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
+
+echo "=== Section 3i: cross-skill pin routing ==="
+
+REPO_3I="$TMPROOT/repo-other-skill"
+STUB_3I="$TMPROOT/stub-other-skill"
+setup_other_skill_repo "$REPO_3I"
+make_stub_dir "$STUB_3I" present absent
+run_checks "$REPO_3I" "$(controlled_path "$STUB_3I")"
+assert_exit_eq "3i: non-design skill change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3i: routes test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
+assert_stdout_not_contains "3i: does not route test-design-structure" "$RUN_OUT" "test-design-structure"
+
+echo "=== Section 3j: negative routing for parse-codex-usage ==="
+
+REPO_3J="$TMPROOT/repo-parse-codex-usage"
+STUB_3J="$TMPROOT/stub-parse-codex-usage"
+setup_parse_codex_usage_repo "$REPO_3J"
+make_stub_dir "$STUB_3J" present absent
+run_checks "$REPO_3J" "$(controlled_path "$STUB_3J")"
+assert_exit_eq "3j: parse codex usage change exits 0" "$RUN_EXIT" 0
+assert_stdout_not_contains "3j: does not route test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
 
 echo "=== Section 4: preflight failure ==="
 
