@@ -1,0 +1,26 @@
+Reviewing the branch diff and related shell logic for correctness.
+Checking the test harness and pinning logic for the new scenario.
+**Branch commits** (since `main`):
+
+- `34036134b` — upgrade-larch: warn on cap overflow and drop dead `list_cached_versions`
+- `6c2f56a7d` — chore(larch-logs): flush implement run
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+**Verification summary (shell-correctness):**
+
+1. **Guard placement** — The post-loop check at `skills/upgrade-larch/scripts/upgrade-larch.sh:376-378` sits inside the outer `if [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]` block (`:332-378`), immediately after the `while` loop (`:334-375`) and before the `else` that emits “No old versions to prune.” (`:379-380`). Caches that never exceed the cap never enter this branch.
+
+2. **`VERSION_COUNT` vs `${#SANITIZED_VERSIONS[@]}`** — `VERSION_COUNT` is initialized from the array at `:331`. The only mutation path decrements `VERSION_COUNT` by 1 in the same branch that rebuilds `SANITIZED_VERSIONS` from `UPDATED_VERSIONS` (`:361-368`). Pin skips, `rm` failures, and `continue 2` paths leave both unchanged. When the loop exits because `REMOVED_VERSION=false` with count still above the cap, array length and `VERSION_COUNT` stay aligned, so the guard using `${#SANITIZED_VERSIONS[@]}` matches the loop’s notion of retained versions. A successful trim to exactly 8 suppresses the warning (`8 > 8` is false).
+
+3. **Warning trigger conditions** — Fires when the trim loop cannot reach `KEEP_LIMIT` because every candidate is pinned (`LATEST_STABLE`, `ACTIVE_SESSION_VERSIONS`, executing `INSTALLED_VERSION`) or listed in `PRUNE_FAILED_VERSIONS`; does not fire when the loop drains to ≤8. Matches acceptance and the `all-pinned-cap-overflow-warns` fixture (9 session pins + stable `29.1.30` + executing `29.1.21` → 10 retained, warning substring asserted).
+
+4. **`list_cached_versions()` removal** — Function is gone; no `list_cached_versions(` call sites remain in `*.sh`. Prune listing uses only `list_cached_versions_by_mtime` (`:287`). `sort_versions()` remains for `version_gt()` and `collect_active_session_versions()` — consistent with the revised plan.
+
+### Out-of-Scope Observations
+
+- **`skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh:437-455`** — `cap-prune-rm-failure-skips-retry` ends at exactly 8 retained versions, so it never exercises the new summary warning. A stuck-above-cap scenario driven only by `PRUNE_FAILED_VERSIONS` (multiple `RM_FAIL_VERSION`s) is untested; that is a coverage gap, not a script logic error in this diff.
+
+- **Branch hygiene** — The second commit adds `larch-logs/implement/7C50577A-.../` artifacts unrelated to the upgrade-larch behavior change; no shell-correctness impact.

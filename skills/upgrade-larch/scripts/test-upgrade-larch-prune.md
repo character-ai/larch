@@ -19,6 +19,8 @@ Covered cases:
 - mtime tiebreaker: when multiple oldest entries have the same mtime, remove the lexicographically earliest version basename first
 - stat fallback: `STAT_FAIL_VERSION` makes the PATH-shimmed `stat` fail both GNU `-c` and BSD `-f` probes for one version, which should sort as mtime `0` and prune first without crashing
 - stat garbage fallback: `STAT_GNU_F_GARBAGE_VERSION` makes the GNU probe fail and the BSD fallback print non-numeric garbage, which should also sort as mtime `0` and prune first without crashing
+- all-pinned cap-overflow warning: when every cached version is session-pinned and the cache exceeds the cap after install, the cap-trim loop exits without eviction and emits a stderr warning naming the retained count
+- rm-fail cap-overflow warning: when the only removable candidate fails `rm -rf` and all others are session-pinned, the loop exits without eviction and emits the same cap-overflow warning
 
 Existing cache-cap cases seed directory mtimes with explicit `touch -t` values so assertions do not depend on filesystem creation timing. The harness installs a PATH-local `stat` shim through `write_stub_stat` to exercise cross-platform fallback behavior while delegating ordinary calls to `/usr/bin/stat`.
 

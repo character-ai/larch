@@ -535,4 +535,41 @@ run_case stat-garbage-fallback-mtime-zero
 [[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "stat-garbage-fallback-mtime-zero should keep latest"
 unset STAT_GNU_F_GARBAGE_VERSION
 
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+SESSION_PINNED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+SET_LARCH_SESSIONS_DIR=1
+unset FALLBACK_SESSION_ROOTS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL
+unset XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS RM_FAIL_VERSION STAT_FAIL_VERSION
+unset CACHE_MTIME_OVERRIDES
+run_case all-pinned-cap-overflow-warns
+[[ "$CASE_RC" -eq 0 ]] || fail "all-pinned-cap-overflow-warns exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "cache cap (8) exceeded" "all-pinned-cap-overflow-warns cap warning"
+for version in 29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "all-pinned-cap-overflow-warns should keep $version"
+done
+
+GH_OUTPUT=$'10.0.9\n10.0.8\n'
+INITIAL_INSTALLED_VERSION="10.0.2"
+PLUGIN_ROOT_VERSION="10.0.2"
+INSTALL_RESULT_VERSION="10.0.9"
+CACHED_VERSIONS="10.0.1 10.0.2 10.0.3 10.0.4 10.0.5 10.0.6 10.0.7 10.0.8"
+SESSION_PINNED_VERSIONS="10.0.2 10.0.3 10.0.4 10.0.5 10.0.6 10.0.7 10.0.8"
+SET_LARCH_SESSIONS_DIR=1
+RM_FAIL_VERSION="10.0.1"
+unset FALLBACK_SESSION_ROOTS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL
+unset XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS STAT_FAIL_VERSION
+unset CACHE_MTIME_OVERRIDES
+run_case rm-fail-cap-overflow-warns
+[[ "$CASE_RC" -eq 0 ]] || fail "rm-fail-cap-overflow-warns exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "cache cap (8) exceeded" "rm-fail-cap-overflow-warns cap warning"
+[[ -d "$CASE_CACHE_ROOT/10.0.1" ]] || fail "rm-fail-cap-overflow-warns should retain rm-failed version"
+for version in 10.0.2 10.0.3 10.0.4 10.0.5 10.0.6 10.0.7 10.0.8 10.0.9; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "rm-fail-cap-overflow-warns should keep $version"
+done
+unset RM_FAIL_VERSION
+
 printf 'PASS: test-upgrade-larch-prune.sh\n'
