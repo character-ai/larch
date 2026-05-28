@@ -79,12 +79,17 @@ cat > "$STUB_BIN/cp" <<'STUB'
 real_cp="${LARCH_TEST_REAL_CP:-/bin/cp}"
 counter="${CP_STUB_FAIL_COUNTER:-}"
 target_contains="${CP_STUB_FAIL_TARGET_CONTAINS:-}"
+fail_max=1
+case "${CP_STUB_FAIL_COUNT:-}" in
+    ''|*[!0-9]*) ;;
+    *) fail_max="$CP_STUB_FAIL_COUNT" ;;
+esac
 if [[ "${1:-}" == "-p" && -n "$counter" && -n "$target_contains" && "$*" == *"$target_contains"* ]]; then
     n=0
     [[ -f "$counter" ]] && n=$(cat "$counter" 2>/dev/null || echo 0)
     case "$n" in ''|*[!0-9]*) n=0 ;; esac
     printf '%s\n' "$((n + 1))" > "$counter"
-    if [[ "$n" -eq 0 ]]; then
+    if [[ "$n" -lt "$fail_max" ]]; then
         exit 73
     fi
 fi
@@ -230,6 +235,9 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$codex_log" "$REPO_ROOT/scripts/dis
     --competition-notice-file "$notice" \
     --timeout 5)
 assert_line "DISPATCH_OK=true" "$out"
+grep -Fq 'AGENT_FILE=' "$TMPROOT/competition-slot.txt.prompt" || { echo "FAIL: competition-notice prompt sidecar missing AGENT_FILE (launch-review --agent-file)" >&2; exit 1; }
+grep -Fq 'agents/reviewer-structure.md' "$TMPROOT/competition-slot.txt.prompt" || { echo "FAIL: competition-notice prompt sidecar missing agent path" >&2; cat "$TMPROOT/competition-slot.txt.prompt" >&2; exit 1; }
+grep -Fq 'Structure, KISS, and Maintainability' "$codex_log" || { echo "FAIL: competition-notice codex argv missing rendered agent body" >&2; cat "$codex_log" >&2; exit 1; }
 grep -Fq 'Competition notice' "$codex_log" || { echo "FAIL: missing competition notice block" >&2; exit 1; }
 grep -Fq 'Custom notice text' "$codex_log" || { echo "FAIL: missing competition notice file contents" >&2; exit 1; }
 
@@ -579,6 +587,70 @@ grep -Fq 'fresh cp-fail-b-phase2.txt' "$TMPROOT/cp-fail-c.txt" || { echo "FAIL: 
 [[ ! -f "$TMPROOT/cp-fail-b.txt.dedup" ]] || { echo "FAIL: relaunched slot must not keep a dedup sidecar" >&2; exit 1; }
 [[ -f "$TMPROOT/cp-fail-c.txt.dedup" ]] || { echo "FAIL: later slot should dedup against relaunched output" >&2; exit 1; }
 grep -Fxq 'DEDUPE_REUSED_FROM=cp-fail-b' "$TMPROOT/cp-fail-c.txt.dedup" || { echo "FAIL: most recent ok row should supersede stale donor" >&2; cat "$TMPROOT/cp-fail-c.txt.dedup" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-dedup-cp-fail-double.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/cp-fail2-a.txt" --arg pf "$prompt" \
+        '{slot:"cp-fail2-a",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-fail2-g"}'
+    jq -cn --arg out "$TMPROOT/cp-fail2-b.txt" --arg pf "$prompt" \
+        '{slot:"cp-fail2-b",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-fail2-g"}'
+    jq -cn --arg out "$TMPROOT/cp-fail2-c.txt" --arg pf "$prompt" \
+        '{slot:"cp-fail2-c",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"cp-fail2-g"}'
+} >"$manifest"
+codex_cp_fail2_log="$TMPROOT/codex-cp-fail2.log"
+codex_cp_fail2_counter="$TMPROOT/codex-cp-fail2.count"
+cp_fail2_counter="$TMPROOT/cp-fail2.count"
+out=$(PATH="$STUB_BIN:$PATH" \
+    LARCH_TEST_REAL_CP="$REAL_CP" \
+    CP_STUB_FAIL_COUNTER="$cp_fail2_counter" \
+    CP_STUB_FAIL_TARGET_CONTAINS="cp-fail2-" \
+    CP_STUB_FAIL_COUNT=2 \
+    CURSOR_STUB_RESULT_CONTENT='narration only' \
+    CODEX_STUB_RESULT_INCLUDE_BASENAME=true \
+    CODEX_STUB_LOG="$codex_cp_fail2_log" \
+    CODEX_STUB_COUNTER="$codex_cp_fail2_counter" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
+    --timeout 5)
+assert_line "FALLBACK_COUNT=0" "$out"
+assert_line "PHASE2_RELAUNCH_COUNT=2" "$out"
+assert_line "COMBINED_FALLBACK_COUNT=2" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+[[ "$(counter_value "$cp_fail2_counter")" == "2" ]] || { echo "FAIL: cp shim should fail exactly two reuse copies" >&2; exit 1; }
+
+persist_counter="$TMPROOT/persist.count"
+printf '3\n' >"$persist_counter"
+manifest="$TMPROOT/slots-fallback-counter-persist.ndjson"
+{
+    jq -cn --arg out "$TMPROOT/persist-p2.txt" --arg pf "$prompt" \
+        '{slot:"persist-p2",tool:"cursor",output:$out,prompt_file:$pf,fallback_group:"persist-g"}'
+    jq -cn --arg out "$TMPROOT/persist-p3.txt" --arg pf "$prompt" \
+        '{slot:"persist-p3",tool:"codex",output:$out,prompt_file:$pf,fallback_group:"persist-g"}'
+} >"$manifest"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_FAIL=true \
+    CURSOR_STUB_FAIL=true \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --fallback-counter-file "$persist_counter" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5)
+fb=$(grep -E '^FALLBACK_COUNT=' <<<"$out" | head -1 | cut -d= -f2-)
+p2=$(grep -E '^PHASE2_RELAUNCH_COUNT=' <<<"$out" | head -1 | cut -d= -f2-)
+case "$fb" in ''|*[!0-9]*) fb=0 ;; esac
+case "$p2" in ''|*[!0-9]*) p2=0 ;; esac
+expected_persist=$((3 + fb + p2))
+[[ "$(cat "$persist_counter")" == "$expected_persist" ]] || {
+    echo "FAIL: fallback-counter-file should persist prior + combined fallback ($expected_persist)" >&2
+    printf 'file=%s fb=%s p2=%s\n' "$(cat "$persist_counter")" "$fb" "$p2" >&2
+    exit 1
+}
 
 manifest="$TMPROOT/slots-dedup-cp-warn.ndjson"
 {

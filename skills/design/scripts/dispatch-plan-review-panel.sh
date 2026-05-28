@@ -154,6 +154,7 @@ _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
 
 DISPATCH_OK=""
 FALLBACK_COUNT=""
+COMBINED_FALLBACK_COUNT=""
 STATIC_DISPATCH_OK=""
 ALL_OUTPUT_FILES_PATH=""
 
@@ -164,6 +165,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
     case "$_key" in
         DISPATCH_OK) DISPATCH_OK="$_value" ;;
         FALLBACK_COUNT) FALLBACK_COUNT="$_value" ;;
+        COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
         STATIC_DISPATCH_OK) STATIC_DISPATCH_OK="$_value" ;;
         ALL_OUTPUT_FILES_PATH) ALL_OUTPUT_FILES_PATH="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
@@ -182,9 +184,10 @@ done <"$_manifest"
 
 floor_half=$((slot_count / 2))
 case "$FALLBACK_COUNT" in ''|*[!0-9]*) FALLBACK_COUNT=0 ;; esac
+case "$COMBINED_FALLBACK_COUNT" in ''|*[!0-9]*) COMBINED_FALLBACK_COUNT="$FALLBACK_COUNT" ;; esac
 DEGRADED_ROUND=false
 [[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_ROUND=true
-if (( 10#$FALLBACK_COUNT > floor_half )); then
+if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
     DEGRADED_ROUND=true
 fi
 

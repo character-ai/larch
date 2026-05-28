@@ -208,6 +208,7 @@ PANEL_PATHS_FILE=""
 ALL_OUTPUT_FILES_PATH=""
 STATIC_DISPATCH_OK="true"
 FALLBACK_COUNT="0"
+COMBINED_FALLBACK_COUNT=""
 DEGRADED_ROUND="false"
 DYNAMIC_SLOT_COUNT="0"
 while IFS= read -r _line || [[ -n "$_line" ]]; do
@@ -219,6 +220,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         ALL_OUTPUT_FILES_PATH) ALL_OUTPUT_FILES_PATH="$_value" ;;
         STATIC_DISPATCH_OK) STATIC_DISPATCH_OK="$_value" ;;
         FALLBACK_COUNT) FALLBACK_COUNT="$_value" ;;
+        COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
         DEGRADED_ROUND) DEGRADED_ROUND="$_value" ;;
         DYNAMIC_SLOT_COUNT) DYNAMIC_SLOT_COUNT="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
@@ -255,6 +257,18 @@ while IFS= read -r _srow || [[ -n "$_srow" ]]; do
     _slot=$(printf '%s' "$_srow" | jq -r '.slot // empty')
     [[ -n "$_slot" ]] && _slot_lines+=("$_slot")
 done < "$_manifest"
+
+slot_count="${#_slot_lines[@]}"
+floor_half=$((slot_count / 2))
+case "$FALLBACK_COUNT" in ''|*[!0-9]*) FALLBACK_COUNT=0 ;; esac
+case "$COMBINED_FALLBACK_COUNT" in ''|*[!0-9]*) COMBINED_FALLBACK_COUNT="$FALLBACK_COUNT" ;; esac
+_dispatch_degraded_panel=0
+[[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && _dispatch_degraded_panel=1
+[[ "${PANEL_DISPATCH_OK:-true}" == "false" ]] && _dispatch_degraded_panel=1
+[[ "${DEGRADED_ROUND:-false}" == "true" ]] && _dispatch_degraded_panel=1
+if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
+    _dispatch_degraded_panel=1
+fi
 
 _dirty_out=$("$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh" --mode checkpoint || true)
 if grep -qE '^STATUS=(dirty|unknown)$' <<< "$_dirty_out"; then
@@ -518,7 +532,7 @@ rm -f "$_dedup_py"
 if ! grep -qE '^### (FINDING|OOS)_[0-9]+:' "$DESIGN_TMPDIR/findings.md" 2>/dev/null; then
     write_empty_review_artifacts "No findings were raised — voting was not needed."
     : > "$DESIGN_TMPDIR/ballot.txt"
-    emit_loop_kvs complete 0 0 skipped-empty-input skipped-empty-findings "$DESIGN_TMPDIR/voting-tally.md" SKIPPED
+    emit_loop_kvs complete 0 "$_dispatch_degraded_panel" skipped-empty-input skipped-empty-findings "$DESIGN_TMPDIR/voting-tally.md" SKIPPED
     exit 0
 fi
 
@@ -675,19 +689,10 @@ printf '%s\n' "$_tally_raw"
 
 ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || printf '0')
 
-slot_count="${#_slot_lines[@]}"
-floor_half=$((slot_count / 2))
-case "$FALLBACK_COUNT" in ''|*[!0-9]*) FALLBACK_COUNT=0 ;; esac
-DEGRADED_PANEL=0
-[[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=1
-[[ "${PANEL_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=1
+DEGRADED_PANEL="$_dispatch_degraded_panel"
 [[ "${VOTER_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=1
-[[ "${DEGRADED_ROUND:-false}" == "true" ]] && DEGRADED_PANEL=1
 [[ "$_dedup_failed" -eq 1 ]] && DEGRADED_PANEL=1
 : "${DYNAMIC_SLOT_COUNT:-0}"
-if (( 10#$FALLBACK_COUNT > floor_half )); then
-    DEGRADED_PANEL=1
-fi
 _nonfailed_voters=0
 [[ "$VOTER_1_STATUS" != "failed" && -s "$VOTER_1_PATH" ]] && _nonfailed_voters=$((_nonfailed_voters + 1))
 [[ "$VOTER_2_STATUS" != "failed" && -s "$VOTER_2_PATH" ]] && _nonfailed_voters=$((_nonfailed_voters + 1))

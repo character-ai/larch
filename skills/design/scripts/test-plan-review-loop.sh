@@ -65,7 +65,32 @@ cp "$FEATURE_FILE" "$DESIGN_TMPDIR/feature-file-seen.txt"
 printf '%s\n' "$FEATURE_FILE" >"$DESIGN_TMPDIR/feature-file-path.txt"
 PATHS="$DESIGN_TMPDIR/panel-paths.txt"
 printf '%s\n' "$OUT" >"$PATHS"
-printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_dispatch_combined_threshold() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file|--feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
+PROMPT="$DESIGN_TMPDIR/render-plan-cursor-arch.prompt"
+printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'","prompt_file":"'"$PROMPT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+: >"$OUT"
+: >"$PROMPT"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+printf '%s\n' "$OUT" >"$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=1\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
 EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
@@ -104,7 +129,7 @@ PATHS="$DESIGN_TMPDIR/panel-paths.txt"
     printf '%s\n' '{"slot":"cursor-plan-innov","tool":"cursor","output":"'"$OUT3"'","prompt_file":"'"$PROMPT3"'"}'
 } >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
 printf '%s\n' "$OUT1" "$OUT2" "$OUT3" >"$PATHS"
-printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
 EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
@@ -113,7 +138,7 @@ write_dispatch_fail() {
     cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'DISPATCH_OK=false\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\n'
+printf 'DISPATCH_OK=false\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\n'
 EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
@@ -297,6 +322,19 @@ run_loop() {
         --cursor-present true \
         --round-num "$round_num"
 }
+
+echo "=== stubbed driver: COMBINED_FALLBACK_COUNT degrades zero-findings path ==="
+DC="$TMP/zc"
+mkdir -p "$DC"
+printf 'plan\n' >"$DC/plan.txt"
+printf 'feat\n' >"$DC/feature-description.txt"
+write_scout
+write_dispatch_combined_threshold
+write_collect empty
+write_voters_three
+outc=$(run_loop "$DC")
+printf '%s\n' "$outc" | grep -q '^DEGRADED_PANEL=1$' || fail "expected DEGRADED_PANEL=1 when COMBINED_FALLBACK_COUNT crosses threshold on zero-findings path"
+printf '%s\n' "$outc" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings with combined threshold"
 
 echo "=== stubbed driver: zero findings (empty TSV) ==="
 D0="$TMP/z0"
