@@ -270,7 +270,8 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SH
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
 # shellcheck disable=SC2016
-grep -Fq -- '--workflow-path HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+{ grep -Fq -- '--workflow-path HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh" || \
+  grep -Fq 'persist_run_flags HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh"; } \
   || fail "implement-bootstrap.sh must persist HARD workflow path"
 # Post-cutover: /implement no longer accepts --hard, so hard_mode references must be gone.
 ! grep -Fq 'hard_mode' "$SKILL_MD" \
@@ -443,7 +444,8 @@ grep -Fq '## Step 0 — Session Setup' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 0 Session Setup heading"
 grep -Fq "**⚠ Foreground required — do NOT set \`run_in_background: true\`.**" "$SKILL_MD" \
   || fail "SKILL.md must retain the Step 0 foreground-required warning"
-grep -Fq 'Dirty-tree recovery bootstrap fence:' "$SKILL_MD" \
+{ grep -Fq 'Dirty-tree recovery bootstrap fence:' "$SKILL_MD" || \
+  grep -Fq 'Step 0 dirty-tree recovery gate:' "$SKILL_MD"; } \
   || fail "SKILL.md must retain the dirty-tree recovery bootstrap fence"
 grep -Fq 'Resume-tail idempotency' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document resume-tail idempotency invariant"

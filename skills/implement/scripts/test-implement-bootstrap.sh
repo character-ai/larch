@@ -1118,9 +1118,11 @@ issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_not_contains "BYPASS kind=missing-plan issue=123" "$issues" "B5-plan-bypass-log ignored when emergency false no warning content"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
-# --- B5-plan-emergency-invalid-format ---
-
-
+# --- B5-coder-implicit-cursor ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCursor --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-implicit-cursor exit 0"
 assert_line "coder=cursor" "$out" "B5-coder-implicit-cursor coder"
@@ -1538,6 +1540,11 @@ else
 fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
+# --- B5-coder-skip-missing-plan ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
 out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCoderMissingPlan --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-skip-missing-plan setup plan exit 0"
 rm -f "$SANDBOX_TMP/plan.txt"

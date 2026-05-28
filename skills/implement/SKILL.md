@@ -423,7 +423,7 @@ _ib_kv_scan() {
       BRANCH_ACTION=*) BRANCH_ACTION=${_ib_tok#BRANCH_ACTION=} ;;
       PLAN_FILE=*) PLAN_FILE=${_ib_tok#PLAN_FILE=} ;;
       EMERGENCY_REQUESTED=*) EMERGENCY_REQUESTED=${_ib_tok#EMERGENCY_REQUESTED=} ;;
-      IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;;
+      coder=*) coder=${_ib_tok#coder=} ;; coder_fallback=*) coder_fallback=${_ib_tok#coder_fallback=} ;; IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;;
       codex_available=*) codex_available=${_ib_tok#codex_available=} ;;
       cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
     esac
@@ -460,6 +460,8 @@ Step 0 dirty-tree recovery gate:
 3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase plan --resume-plan-tail` with the same Step 0 args (`--caller-env`, `--issue-number`, `--forked-target`, `--upstream-repo`, `--run-id`, `--preflight-tmpdir`, `--emergency-requested`). The resumed bootstrap tail re-runs `check-mid-run-dirty-tree.sh --mode checkpoint` internally before any Phase 3 tail helper; if that internal re-probe returns `STATUS=dirty` or `STATUS=unknown`, stay in recovery mode and do not branch/log. Re-parse the resumed bootstrap stdout with the same `_ib_kv_scan` + `export` block shown above before continuing so `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` come from the resumed tail rather than the pre-recovery pass. Use this shape:
 
 ```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
