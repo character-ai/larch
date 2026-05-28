@@ -1,0 +1,62 @@
++ set -euo pipefail
++++ dirname <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/plan-review-loop.sh
+++ cd <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts
+++ pwd -P
++ SCRIPT_DIR=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts
+++ cd <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/../../..
+++ pwd -P
++ REPO_ROOT=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9
++ PLUGIN_ROOT=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9
++ [[ ! -f <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts/lib-design-tmpdir.sh ]]
++ PLAN_REVIEW_SCOUT_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/scout-plan-archetypes-wrapper.sh
++ PLAN_REVIEW_DISPATCH_PANEL_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/dispatch-plan-review-panel.sh
++ PLAN_REVIEW_COLLECT_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts/collect-agent-results.sh
++ PLAN_REVIEW_DISPATCH_VOTERS_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts/dispatch-plan-voters.sh
++ PLAN_REVIEW_TALLY_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/tally-plan-review.sh
++ PLAN_REVIEW_REVISE_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/revise-plan-with-waterfall.sh
++ DESIGN_DRIVER_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/design-driver.sh
++ CHECK_PLAN_SIZE_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/check-plan-size.sh
++ INVOKE_PLAN_VALIDATOR_SH=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/invoke-plan-validator.sh
++ source <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts/lib-quiet.sh
+++ '[' '' = 1 ']'
+++ LARCH_LIB_QUIET_LOADED=1
+++++ dirname <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts/lib-quiet.sh
++++ cd <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts
++++ pwd -P
+++ LARCH_LIB_QUIET_DIR=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts
++ larch_quiet_init
++ local log_file log_dir
++ larch_quiet_truthy ''
++ case "${1:-}" in
++ return 1
++ larch_quiet_truthy ''
++ case "${1:-}" in
++ return 1
++ '[' '' = 14670 ']'
++ log_file=
++ '[' -z '' ']'
+++ larch_quiet_default_log
+++ local base script tmp
+++ base=plan-review-loop.sh
+++ script=plan-review-loop.sh
+++ '[' -n '' ']'
+++ '[' -n '' ']'
+++ '[' -n <TMPDIR> ']'
+++ '[' -d <TMPDIR> ']'
+++ tmp=<TMPDIR>
+++ printf '%s/larch-quiet-%s-%s.log\n' <TMPDIR> plan-review-loop.sh 14670
++ log_file=<TMPDIR>/larch-quiet-plan-review-loop.sh-14670.log
++ case "$log_file" in
++ log_dir=<TMPDIR>
++ '[' -n <TMPDIR> ']'
++ mkdir -p <TMPDIR>
++ :
++ exec
++ exec
++ export LARCH_QUIET_ACTIVE=1
++ LARCH_QUIET_ACTIVE=1
++ export LARCH_QUIET_PID=14670
++ LARCH_QUIET_PID=14670
++ export LARCH_QUIET_LOG_FILE=<TMPDIR>/larch-quiet-plan-review-loop.sh-14670.log
++ LARCH_QUIET_LOG_FILE=<TMPDIR>/larch-quiet-plan-review-loop.sh-14670.log
++ exec

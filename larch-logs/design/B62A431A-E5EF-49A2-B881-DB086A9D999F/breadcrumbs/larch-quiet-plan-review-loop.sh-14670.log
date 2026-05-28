@@ -1,0 +1,57 @@
++ '[' -n '' ']'
++ source <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/scripts/lib-design-tmpdir.sh
+++ [[ -n '' ]]
+++ LARCH_LIB_DESIGN_TMPDIR_LOADED=1
+++ _larch_design_tmpdir_allowlist=()
++ source <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/lib-findings-classification.sh
+++ [[ '' == \1 ]]
+++ LARCH_FINDINGS_CLASSIFICATION_LIB_LOADED=1
++ source <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/../../../scripts/lib-design-round-artifacts.sh
++ DESIGN_TMPDIR=
++ PLAN_FILE=
++ FEATURE_FILE=
++ ROUND_NUM=1
++ ROUND_CAP=5
++ CONVERGENCE_THRESHOLD=3
++ ROUND_CAP_ARG_SEEN=0
++ CODEX_PRESENT=
++ CURSOR_PRESENT=
++ COLLECT_TIMEOUT=1860
++ PANEL_TIMEOUT=1860
++ _dedup_failed=0
++ _paths_readable=0
++ loop_status_override=
++ collect_ok_count=0
++ collect_failure_count=0
++ revise_status=
++ revise_winning_tier=
++ LOOP_REASON=
++ IMPORTANT_ACCEPTED_COUNT=0
++ CONVERGENCE_STREAK=0
++ COLLECT_OK_COUNT=0
++ COLLECT_FAILURE_COUNT=0
++ PLAN_HASH_BEFORE_REVISE=
++ PLAN_HASH_AFTER_REVISE=
++ TALLY_PLAN_REVIEW_STATUS=
++ VOTING_TALLY_FILE=
++ AGGREGATOR_STATUS=
++ ACCEPTED_COUNT=0
++ DEGRADED_PANEL=0
++ VOTER_1_PARSE_RATE_STATUS=
++ LOOP_STATUS=complete
++ _last_collect_out=
++ [[ 14 -gt 0 ]]
++ case "$1" in
++ DESIGN_TMPDIR=<TMPDIR>
++ shift 2
++ [[ 12 -gt 0 ]]
++ case "$1" in
++ PLAN_FILE=<TMPDIR>/plan.txt
++ shift 2
++ [[ 10 -gt 0 ]]
++ case "$1" in
++ FEATURE_FILE=<TMPDIR>/feature-description.txt
++ shift 2
++ [[ 8 -gt 0 ]]
++ case "$1" in
+<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/45.3.9/skills/design/scripts/plan-review-loop.sh: line 82: 2: parameter null or not set
