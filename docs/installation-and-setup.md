@@ -203,6 +203,10 @@ For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD
 | PreToolUse hooks | `block-submodule-edit.sh` blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project |
 | SessionStart hook | `sessionstart-health.sh` — at session start/resume/clear/compact, probes `jq` and `git` on `PATH`; if either is missing, injects an advisory into session context so the issue is visible before the first `Edit`/`Write`. Non-blocking (always exits 0); silent when both tools are present |
 
+### SIMPLE-tier `/design` cost
+
+With the multi-round plan-review loop landed, `/design --simple` runs the full plan-review panel and up to `LARCH_DESIGN_ROUND_CAP`-bounded inner rounds with the plan-revision waterfall between rounds. Real-world runs therefore take roughly tens of minutes (panel size and inner-round count are operator-tunable via `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD`; the Step 3 review-run counter caps Gate C re-entries separately at the tier-derived cap of `3` for SIMPLE). See [configuration-and-permissions.md](configuration-and-permissions.md) § Environment Variables for the env var contracts.
+
 ## `scripts/relevant-checks.sh` — required consumer contract
 
 > **Important:** `/implement` and `/review` run `scripts/relevant-checks.sh` after code changes when the file exists. If your repo omits it, orchestrators observe `RELEVANT_CHECKS_SKIPPED=true` (exit 0) from `run-relevant-checks-captured.sh` — treat that as explicit observability that local checks did **not** run; it is not equivalent to a green `make lint` / CI result.

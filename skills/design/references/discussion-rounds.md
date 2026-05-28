@@ -89,7 +89,7 @@ After the plan has been reviewed (and possibly partially revised via Gate B), st
 Read the following artifacts:
 - `$DESIGN_TMPDIR/discussion-round1.md` — If it exists and is non-empty, use it to identify decisions already covered in Round 1 (avoid re-asking). **If it does not exist or is empty** (Round 1 short-circuited or was skipped), treat all candidate decisions as uncovered by Round 1 and proceed normally.
 - `$DESIGN_TMPDIR/plan.txt` — The latest implementation plan (initial Step 2b write, or with any Gate B applied findings on a post-plan re-entry). Read this file instead of retrieving the plan from conversation context.
-- `$DESIGN_TMPDIR/accepted-plan-findings.md` — If it exists and is non-empty, use it to identify decisions that reviewers challenged as suboptimal or that required plan revision.
+- `$DESIGN_TMPDIR/accepted-plan-findings.md` — If it exists and is non-empty, use it to identify decisions that reviewers challenged as suboptimal or that required plan revision. This file is the **final-round** artifact of the multi-round plan-review loop when Step 3 used `plan-review-loop.sh` with `--round-cap`; see `plan-review.md` § Multi-round loop for within-loop cumulation and Gate C re-run overwrite semantics.
 - `$DESIGN_TMPDIR/contested-decisions.md` — Decisions that sketch agents disagreed on.
 - `$DESIGN_TMPDIR/dialectic-resolutions.md` — How contested decisions were resolved.
 

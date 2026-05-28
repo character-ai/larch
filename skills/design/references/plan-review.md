@@ -52,6 +52,8 @@ When `plan-review-loop.sh` is invoked with explicit `--round-cap` on argv (SKILL
 - **Revision failures**: non-zero revise rc or `REVISE_STATUS` other than `ok` → `LOOP_STATUS=revision-failed`; Gate B falls back to the 3-option prompt.
 - **Post-apply failures**: failed `ACTION=EMIT_PLAN` → `LOOP_STATUS=emit-plan-failed` (Gate B warning/manual handling); validator defects → `LOOP_STATUS=plan-validator-defects`; hard size threshold → `LOOP_STATUS=plan-size-trigger`.
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
+- **`oos-accepted-design.md` cumulation**: within a single multi-round loop, `oos-accepted-design.md` accumulates across rounds via the in-script `_accumulate_round_oos` helper. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across review runs** covers cross-Gate-C-re-run behavior only).
+- **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification rubric** for the **Severity precedence rule** used by Gate B presentation.
 - **Dedup divergence**: the loop's post-apply pipeline uses regex duplicate-line removal in bash; Gate B uses LLM-driven dedup in the shared post-apply pipeline.
 - **Artifacts**: per-round forensics under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `scripts/lib-design-round-artifacts.md`. Gate B passive-summary reads `round-summary.env` when `LOOP_STATUS=converged|cap-hit` (see `approval-gates.md`).
 
@@ -254,9 +256,15 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 
 ```markdown
 ### FINDING_N: <title>
+- **Reviewer(s)**: <attribution>
+- **Severity**: important|latent|nit
+- **Focus area**: <focus>
+- **Location**: <location>
 - **Concern**: <what was raised>
 - **Proposed resolution**: <suggested change to the plan; surfaced to Step 3.5 Gate B for application per `manual_gate_b` mode>
 ```
+
+When the TSV row omits `severity`, `plan-review-loop.sh` renders `- **Severity**: nit` (see **Severity default** under Multi-round loop).
 
 ### Accepted OOS format (byte-preserved)
 
@@ -264,7 +272,9 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 ### OOS_N: <short title>
 - **Description**: <full description of the observation; include affected repo-relative file paths and line ranges when applicable>
 - **Reviewer**: <attribution>
-- **Vote tally**: <YES/NO/EXONERATE counts>
+- **Severity**: important|latent|nit
+- **Focus area**: <focus>
+- **Location**: <location>
 - **Phase**: design
 ```
 

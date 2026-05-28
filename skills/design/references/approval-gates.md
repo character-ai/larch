@@ -62,7 +62,15 @@ When the user picks **Ready for review**:
 
 ### Severity classification rubric
 
-For each accepted in-scope finding in `$DESIGN_TMPDIR/accepted-plan-findings.md`, the orchestrator assigns one severity bucket based on the finding's `**Concern**:` text:
+**All-or-nothing precedence**: inspect every accepted in-scope `### FINDING_N:` block in `$DESIGN_TMPDIR/accepted-plan-findings.md`. When **every** block carries a `- **Severity**:` line whose value is `important`, `latent`, or `nit`, Gate B presentation uses the structured mapping below for the **entire** findings set (no per-finding hybrid):
+
+- `important → High`
+- `latent → Medium`
+- `nit → Low`
+
+When **any** accepted finding lacks that structured `- **Severity**:` line (or the value is not one of `important|latent|nit`), fall back to the Concern-text rubric below for **all** findings in the set.
+
+**Concern-text rubric** (legacy fallback — applies to the whole set when the structured field is absent on any accepted finding): for each finding, assign one bucket based on the finding's `**Concern**:` text:
 
 - **Critical** — would cause data loss, security breach, build/CI breakage on landing, or a regression a downstream consumer would detect within one release.
 - **High** — would cause functional incorrectness in a primary code path, missing required documentation contract, or violates a stated invariant in the plan.
@@ -113,7 +121,12 @@ When `manual_gate_b=true`, fire the `AskUserQuestion` block below verbatim.
 - **Apply all** — Execute `### Apply-all body` verbatim. The dedup-sweep, shared post-apply pipeline, `ACTION=EMIT_PLAN`, validator invocation, and Step 2b.5 all run there.
 - **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path). Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below; the Step 2b.5 call fires **once** per Gate B settled path, not once per per-finding apply.
 - **Switch to discussion mode** — Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
-Question text: `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"` Header: `"Plan findings"`. Substitute the actual counts before asking.
+Question text depends on which rubric applies (see **Severity classification rubric**):
+
+- **Structured severity on every accepted finding** — `"Plan review returned N findings (H high / M medium / L low). How would you like to handle them?"` (counts map from `important`/`latent`/`nit`; there is no structured Critical bucket).
+- **Concern-text fallback** (any accepted finding lacks structured `- **Severity**:`) — `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"`
+
+Header: `"Plan findings"`. Substitute the actual counts before asking.
 
 ### Apply-all body
 
@@ -186,8 +199,8 @@ When the user picks **Approve final design**, proceed to Step 5b. The skill no l
 
 1. **Latest plan to reviewers**: Step 3 (whether first-time or re-entry from Gate C(c)) always reads `$DESIGN_TMPDIR/plan.txt` as written by the most recent of: Step 2b initial plan write, or Gate B applied-set revision. No "ghost" prior-version plan is ever submitted to reviewers.
 
-2. **No preserved findings across review runs**: when Step 3 is re-entered from Gate C(c), the prior `accepted-plan-findings.md` / `rejected-findings.md` / `oos.md` / `voting-tally.md` are overwritten by the new run. Gate B operates on the latest run's artifacts only.
+2. **No preserved findings across review runs**: when Step 3 is re-entered from Gate C(c), the prior `accepted-plan-findings.md` / `rejected-findings.md` / `oos.md` / `voting-tally.md` are overwritten by the new run; `oos-accepted-design.md` and per-round forensics under `plan-review/round-<N>/` from the prior review run are overwritten as well. Gate B operates on the latest run's artifacts only. **Within-loop carve-out**: during a single multi-round `plan-review-loop.sh` invocation, `oos-accepted-design.md` accumulates across inner rounds and per-round forensics under `plan-review/round-<N>/` accumulate across those rounds — see `plan-review.md` § Multi-round loop.
 
 3. **Discussion outputs accumulate**: `discussion-round1.md` is written by Step 1d. Step 1d.7 writes the approved outline separately to `design-outline.md`. `discussion-round2.md` accumulates entries across all Gate A re-entries from Gate B(c) / Gate C(b). All three files remain readable inputs to subsequent plan revisions.
 
-4. **Gate B apply contract**: in default auto-apply mode (no `--manual` flag), Gate B revises `plan.txt` by applying every accepted in-scope finding after the compact findings list, with no user prompt. In manual mode (`--manual` set), Gate B revises `plan.txt` only when the user explicitly picks option (a) Apply all or option (b) per-finding Apply. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. The mode is sticky for the entire `/design` run with this precedence chain: sourced `MANUAL_REQUESTED=true` override, then in-memory `manual_requested=true` override, then persisted `run-params.json` as the authority when it is readable, else the default auto-apply contract (`manual_gate_b=false`) remains in force.
+4. **Gate B apply contract**: in default auto-apply mode (no `--manual` flag), Gate B revises `plan.txt` by applying every accepted in-scope finding after the compact findings list, with no user prompt. In manual mode (`--manual` set), Gate B revises `plan.txt` only when the user explicitly picks option (a) Apply all or option (b) per-finding Apply. Gate A and Gate C never auto-revise `plan.txt`; Gate A may still revise `plan.txt` directly for user-resolved discussion outcomes per `discussion-rounds.md`, but Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifact files only; it does not revise `plan.txt`. **Loop-internal carve-out**: the multi-round plan-review loop auto-applies accepted findings between inner rounds via `revise-plan-with-waterfall.sh`, bounded by `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD` — this mechanical loop-internal revision is distinct from Gate B's user-driven apply contract. The mode is sticky for the entire `/design` run with this precedence chain: sourced `MANUAL_REQUESTED=true` override, then in-memory `manual_requested=true` override, then persisted `run-params.json` as the authority when it is readable, else the default auto-apply contract (`manual_gate_b=false`) remains in force.

@@ -519,6 +519,13 @@ exclude = [
   "scripts/test-lib-design-round-artifacts.md",
   "scripts/test-design-multi-round-integration.sh",
   "scripts/test-design-multi-round-integration.md",
+  # scripts/test-revise-plan-with-waterfall.sh is the Makefile-only regression
+  # harness for skills/design/scripts/revise-plan-with-waterfall.sh. Referenced
+  # only from Makefile (test-revise-plan-with-waterfall target) and
+  # scripts/test-revise-plan-with-waterfall.md (sibling contract), matching the
+  # same Makefile-only pattern as test-design-multi-round-integration.sh above.
+  "scripts/test-revise-plan-with-waterfall.sh",
+  "scripts/test-revise-plan-with-waterfall.md",
   # Recovery/helper harnesses introduced for manifest-schema recovery are
   # Makefile-only regression tests. They are documented in docs/linting.md and
   # their sibling contracts, but not invoked by skill runtime prose.
