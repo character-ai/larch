@@ -59,6 +59,7 @@ Stdout keys:
 - `ALL_OUTPUT_TOOLS`
 - `FALLBACK_COUNT`
 - `PHASE2_RELAUNCH_COUNT`
+- `COMBINED_FALLBACK_COUNT` = `FALLBACK_COUNT` + `PHASE2_RELAUNCH_COUNT` (the same value the WARN compares against `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD`)
 - `WARN=cost-fallback-exceeded-threshold` when combined phase-2 fall-through + phase-3 Claude count exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD` (default 3)
 - `DISPATCH_OK=true|false`
 

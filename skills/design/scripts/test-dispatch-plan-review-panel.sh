@@ -38,10 +38,16 @@ n=$(grep -c . "$slots" || echo 0)
 case "$n" in ''|*[!0-9]*) n=0 ;; esac
 fc="${W_STUB_FALLBACK_COUNT:-0}"
 case "$fc" in ''|*[!0-9]*) fc=0 ;; esac
+cfc="${W_STUB_COMBINED_FALLBACK_COUNT:-$fc}"
+case "$cfc" in ''|*[!0-9]*) cfc="$fc" ;; esac
+p2="${W_STUB_PHASE2_RELAUNCH_COUNT:-0}"
+case "$p2" in ''|*[!0-9]*) p2=0 ;; esac
 half=$((n / 2))
 static_ok="${W_STUB_STATIC_OK:-true}"
 printf 'DISPATCH_OK=true\n'
 printf 'FALLBACK_COUNT=%s\n' "$fc"
+printf 'PHASE2_RELAUNCH_COUNT=%s\n' "$p2"
+printf 'COMBINED_FALLBACK_COUNT=%s\n' "$cfc"
 printf 'STATIC_DISPATCH_OK=%s\n' "$static_ok"
 printf 'DYNAMIC_DISPATCH_OK=true\n'
 printf 'ALL_OUTPUT_FILES=%s/a.txt\n' "$(dirname "$log")"
@@ -192,6 +198,27 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --plan-file "$D5/plan.txt" \
     --timeout 60 >"$D5/out.env"
 grep -Fq 'DEGRADED_ROUND=true' "$D5/out.env" || fail "static dispatch false should degrade"
+
+echo "=== DEGRADED_ROUND from COMBINED_FALLBACK_COUNT only (14 slots, half=7) ==="
+D7="$TMP/s7"
+prep "$D7"
+cp "$D2/scout-plan-manifest.json" "$D7/scout-plan-manifest.json"
+log7="$D7/wf.log"
+: >"$log7"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    WATERFALL_STUB_LOG="$log7" \
+    WATERFALL_STUB_PATHS_OUT="$D7/paths.out" \
+    W_STUB_FALLBACK_COUNT=0 \
+    W_STUB_COMBINED_FALLBACK_COUNT=8 \
+    W_STUB_STATIC_OK=true \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D7" \
+    --codex-present true \
+    --cursor-present true \
+    --plan-file "$D7/plan.txt" \
+    --timeout 60 >"$D7/out.env"
+grep -Fq 'DEGRADED_ROUND=true' "$D7/out.env" || fail "COMBINED_FALLBACK_COUNT=8 with FALLBACK_COUNT=0 should degrade on 14 slots"
 
 echo "=== quoted tmpdir path keeps ndjson valid ==="
 D6="$TMP/quote\"dir"

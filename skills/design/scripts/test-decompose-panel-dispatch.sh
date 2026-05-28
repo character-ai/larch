@@ -54,9 +54,16 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     printf '%s\n' "$out" >>"$paths_out"
 done <"$slots"
 fc="${W_STUB_FALLBACK_COUNT:-0}"
+case "$fc" in ''|*[!0-9]*) fc=0 ;; esac
+cfc="${W_STUB_COMBINED_FALLBACK_COUNT:-$fc}"
+case "$cfc" in ''|*[!0-9]*) cfc="$fc" ;; esac
+p2="${W_STUB_PHASE2_RELAUNCH_COUNT:-0}"
+case "$p2" in ''|*[!0-9]*) p2=0 ;; esac
 static_ok="${W_STUB_STATIC_OK:-true}"
 printf 'DISPATCH_OK=true\n'
 printf 'FALLBACK_COUNT=%s\n' "$fc"
+printf 'PHASE2_RELAUNCH_COUNT=%s\n' "$p2"
+printf 'COMBINED_FALLBACK_COUNT=%s\n' "$cfc"
 printf 'STATIC_DISPATCH_OK=%s\n' "$static_ok"
 printf 'DYNAMIC_DISPATCH_OK=true\n'
 printf 'ALL_OUTPUT_FILES_PATH=%s\n' "$paths_out"
@@ -246,5 +253,28 @@ esac
 [[ -f "$first_output" ]] || fail "resolved phase-2 path does not exist: $first_output"
 grep -Fq '## Recommendation' "$first_output" \
     || fail "resolved phase-2 file missing Recommendation heading"
+
+echo "=== DEGRADED_PANEL from COMBINED_FALLBACK_COUNT only (8 slots, half=4) ==="
+D6="$TMP/m6"
+prep_common "$D6"
+STUB6="$TMP/stub6.sh"
+make_stub >"$STUB6"
+chmod +x "$STUB6"
+: >"$D6/wf.log"
+DECOMPOSE_PANEL_WATERFALL_SH="$STUB6" \
+    WATERFALL_STUB_LOG="$D6/wf.log" \
+    WATERFALL_STUB_PATHS_OUT="$D6/paths.out" \
+    W_STUB_FALLBACK_COUNT=0 \
+    W_STUB_COMBINED_FALLBACK_COUNT=5 \
+    W_STUB_STATIC_OK=true \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D6" \
+    --codex-present true \
+    --cursor-present true \
+    --mode plan \
+    --plan-file "$D6/plan.txt" \
+    --timeout 30 >"$D6/out.kv"
+grep -Fq 'DEGRADED_PANEL=true' "$D6/out.kv" || fail "COMBINED_FALLBACK_COUNT=5 with FALLBACK_COUNT=0 should degrade on 8 slots"
 
 echo "PASS: test-decompose-panel-dispatch.sh"
