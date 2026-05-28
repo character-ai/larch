@@ -27,12 +27,15 @@ merge_run_params() {
 }
 
 # Replicates SKILL.md Step 0b outer guard: recovery runs only when at least one argv flag
-# is true and jq exists, and only merges when the output file already exists.
+# is true and jq exists; when the output file is missing it warns and does not recreate it.
 recovery_merge_if_needed() {
   local out="$1" partition_requested="$2" brainstorm_requested="$3" manual_requested="$4"
   if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]] && command -v jq >/dev/null 2>&1; then
-    [[ -f "$out" ]] || fail "recovery_merge_if_needed: missing $out"
-    merge_run_params "$out" "$partition_requested" "$brainstorm_requested" "$manual_requested"
+    if [[ -f "$out" ]]; then
+      merge_run_params "$out" "$partition_requested" "$brainstorm_requested" "$manual_requested"
+    else
+      printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
+    fi
   fi
 }
 
@@ -76,5 +79,12 @@ after_sum=$(shasum -a 256 "$OUT5" | awk '{print $1}')
 [[ "$before_sum" == "$after_sum" ]] || fail "case5: all-false guard mutated file; before=$before_sum after=$after_sum"
 jq -e '.partition_requested == false and .brainstorm_requested == false and .manual_gate_b == false' "$OUT5" >/dev/null \
   || fail "case5: all-false post-state mismatch"
+
+# Case 6: missing run-params.json under a true argv flag warns and does not recreate fallback defaults.
+OUT6="$TMPROOT/case6.json"
+warning_case6=$(recovery_merge_if_needed "$OUT6" true false false)
+[[ ! -e "$OUT6" ]] || fail "case6: missing-file degraded path recreated $OUT6"
+[[ "$warning_case6" == "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**" ]] \
+  || fail "case6: missing-file degraded warning drifted; got: $warning_case6"
 
 echo "PASS: test-step0b-router-flag-recovery.sh"

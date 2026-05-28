@@ -1087,6 +1087,7 @@ exclude = [
   "scripts/test-review-structure.sh",
   "scripts/test-render-reviewer-prompt.sh",
   "scripts/test-step0b-router-flag-recovery.sh",
+  "scripts/test-step0b-router-flag-recovery.md",
   # scripts/test-render-specialist-prompt.sh is the regression harness for
   # scripts/render-specialist-prompt.sh (the specialist reviewer prompt
   # renderer for /review's 5-specialist panel). The renderer itself
