@@ -1,0 +1,9 @@
+scripts/dispatch-with-waterfall.sh
+scripts/dispatch-with-waterfall.md
+skills/design/scripts/dispatch-plan-review-panel.sh
+skills/design/scripts/dispatch-plan-review-panel.md
+skills/design/scripts/plan-review-loop.sh
+skills/design/scripts/plan-review-loop.md
+skills/design/scripts/decompose-panel-dispatch.sh
+skills/design/scripts/decompose-panel-dispatch.md
+scripts/test-dispatch-with-waterfall.sh
