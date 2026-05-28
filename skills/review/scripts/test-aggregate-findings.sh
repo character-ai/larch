@@ -219,6 +219,16 @@ Aggregator narrative: tight ###FINDING_ typo should fail validation.
 
 EOF
                 ;;
+            zero_findings_nospace_pseudo_heading_with_attestation)
+                cat > "$out" <<'EOF'
+Aggregator narrative: tight ###FINDING_ typo combined with attestation must fail validation.
+
+###FINDING_1: not a strict heading (no space after ###)
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                ;;
             zero_findings_prose_finding_ids)
                 cat > "$out" <<'EOF'
 Aggregator narrative: empty merge; prose mentions FINDING_ids.
@@ -764,6 +774,41 @@ grep -Fq 'MERGED_COUNT=2' "$TMP/out-oos-shared.env" || fail "oos-shared MERGED_C
 [[ "$(grep -c '^### FINDING_' "$TMP/in-oos-shared-work.md" | tr -d '[:space:]')" == "2" ]] || fail "expected two FINDING blocks after OOS shared-slot merge"
 grep -Fq '[OUT_OF_SCOPE]' "$TMP/in-oos-shared-work.md" || fail "expected [OUT_OF_SCOPE] preserved in OOS shared-slot merge"
 
+echo "=== all-OOS input + attestation-only output accepted: oos_only_slots enforcement does not fire (#3003) ==="
+cat > "$TMP/in-all-oos.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] **code-quality** [`x`]
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: oos x
+- **Suggested revision**: n/a
+
+### FINDING_2: [OUT_OF_SCOPE] **correctness** [`y`]
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: oos y
+- **Suggested revision**: n/a
+
+### FINDING_3: [OUT_OF_SCOPE] **architecture** [`z`]
+- **Reviewer**: cursor-c-output.txt
+- **Concern**: oos z
+- **Suggested revision**: n/a
+
+EOF
+cp "$TMP/in-all-oos.md" "$TMP/in-all-oos-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_pure_attest \
+"$AGG" \
+    --findings-file "$TMP/in-all-oos-work.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-all-oos.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-all-oos.env" || fail "all-OOS+attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-all-oos.env" || fail "all-OOS+attest REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-all-oos.env" || fail "all-OOS+attest MERGED_COUNT"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=' "$TMP/aggregator-validate.stderr" 2>/dev/null && fail "all-OOS+attest success must not emit validation failure token"
+assert_whitespace_only "$TMP/in-all-oos-work.md" "all-OOS+attest findings.md must be whitespace-only after attested empty merge"
+
 echo "=== zero output FINDING blocks with attestation succeeds when input had findings (#2536 #2939) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero.md"
 write_stub_dispatch
@@ -918,6 +963,23 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_nospace_pseudo_heading \
     --mode diff >"$TMP/out-nospace-pseudo.env"
 grep -Fq 'AGGREGATED=false' "$TMP/out-nospace-pseudo.env" || fail "nospace-pseudo AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-nospace-pseudo.env" || fail "nospace-pseudo REASON"
+
+echo "=== zero_findings_nospace_pseudo_heading_with_attestation: validation-exhausted (#3003) ==="
+cp "$TMP/in3.md" "$TMP/in3-nospace-pseudo-attest.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_nospace_pseudo_heading_with_attestation \
+"$AGG" \
+    --findings-file "$TMP/in3-nospace-pseudo-attest.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-nospace-pseudo-attest.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-nospace-pseudo-attest.env" || fail "nospace-pseudo+attest AGGREGATED"
+grep -Fq 'REASON=validation-exhausted' "$TMP/out-nospace-pseudo-attest.env" || fail "nospace-pseudo+attest REASON"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=nonconforming_heading_with_attestation' "$TMP/aggregator-validate.stderr" || fail "expected nonconforming_heading_with_attestation token for nospace pseudo-heading"
+cmp -s "$TMP/in3.md" "$TMP/in3-nospace-pseudo-attest.md" || fail "findings unchanged on nospace-pseudo+attest validator rejection"
 
 echo "=== zero_findings_prose_finding_ids: validation-failed ==="
 cp "$TMP/in3.md" "$TMP/in3-finding-ids-prose.md"
