@@ -30,6 +30,8 @@ run_redactor() {
 assert_eq "$(run_redactor '/tmp/claude-implement-AbC123')" '<TMPDIR>' "/tmp session path redacted"
 assert_eq "$(run_redactor '/private/tmp/larch-review-xyz_789')" '<TMPDIR>' "/private/tmp session path redacted"
 assert_eq "$(run_redactor '/tmp/claude-implement-larch1-G2GITf')" '<TMPDIR>' "clone-tagged session path redacted"
+assert_eq "$(run_redactor '/tmp/larch-design-breadcrumbs.ABC123/private.txt')" '<TMPDIR>/private.txt' "dotted tmpdir session path redacted"
+assert_eq "$(run_redactor '/tmp/claude-501/larch-design-breadcrumbs.ABC123/private.txt')" '<TMPDIR>/private.txt' "nested tmp root session path redacted"
 assert_eq "$(run_redactor '/Users/example/.cache/larch/sessions/claude-design-cache123')" '<TMPDIR>' "cache session path redacted"
 assert_eq "$(run_redactor '/Users/example/larch3/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path redacted"
 assert_eq "$(run_redactor '/Users/example/my.repo/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path with dotted repo name redacted"
