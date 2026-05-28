@@ -264,7 +264,7 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 - **Proposed resolution**: <suggested change to the plan; surfaced to Step 3.5 Gate B for application per `manual_gate_b` mode>
 ```
 
-When the TSV row omits `severity`, `plan-review-loop.sh` renders `- **Severity**: nit` (see **Severity default** under Multi-round loop).
+When the TSV row omits `severity`, `plan-review-loop.sh` renders `- **Severity**: nit` (see **Severity default** under Multi-round loop). The loop also appends `. Scenario: <text>` to the `- **Concern**:` line when the TSV row includes a non-empty scenario column; manually authored blocks that omit this suffix are still valid.
 
 ### Accepted OOS format (byte-preserved)
 
@@ -277,6 +277,8 @@ When the TSV row omits `severity`, `plan-review-loop.sh` renders `- **Severity**
 - **Location**: <location>
 - **Phase**: design
 ```
+
+The loop appends `. Scenario: <text>` to the `- **Description**:` line when the TSV row includes a non-empty scenario column; manually authored blocks that omit this suffix are still valid.
 
 ---
 

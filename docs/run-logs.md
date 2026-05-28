@@ -197,6 +197,7 @@ Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each inner round of t
 - `plan-voter-slots.ndjson`
 - `scout-plan-manifest.json`
 - `*-vote-output.txt`
+- `*-vote-output-first-pass.txt`
 - `voter*-diag.txt`
 - `plan.txt` (per-round snapshot)
 
