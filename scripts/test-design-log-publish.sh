@@ -443,9 +443,13 @@ export GH_STUB_CREATE_RC=1
 unset GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPCR/design"
 printf 'c\n' >"$TMPCR/design/c.txt"
+set +e
 out_cr=$(
-    (cd "$clone_cr" && bash "$PUBLISH" --design-tmpdir "$TMPCR/design" --run-id "RUNCREATE1" --issue 11 --repo owner/repo) 2>/dev/null || true
+    (cd "$clone_cr" && bash "$PUBLISH" --design-tmpdir "$TMPCR/design" --run-id "RUNCREATE1" --issue 11 --repo owner/repo) 2>/dev/null
 )
+rc_cr=$?
+set -e
+[[ "$rc_cr" -eq 0 ]] || fail "create-fail recovery must exit 0: rc=$rc_cr"
 [[ "$out_cr" == *"PUBLISH_OK=true"* ]] || fail "create-fail recovery PUBLISH_OK: $out_cr"
 [[ "$out_cr" == *"PR_NUMBER=101"* ]] || fail "create-fail recovery PR_NUMBER: $out_cr"
 grep -q 'pr create' "$GH_STUB_LOG_CR" || fail "expected pr create attempt in log"

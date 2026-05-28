@@ -654,6 +654,27 @@ else
     fail "empty breadcrumb source must not delete committed breadcrumbs"
 fi
 
+echo "=== non-regular ndjson in breadcrumbs dir does not trigger false-positive found_any ==="
+_bc_nonreg_run="breadcrumbnonreg123"
+_bc_nonreg_staging="$TMP/breadcrumb-nonreg-staging"
+_bc_nonreg_repo="$TMP/breadcrumb-nonreg-repo"
+mkdir -p "$_bc_nonreg_staging/breadcrumbs"
+mkdir -p "$_bc_nonreg_staging/breadcrumbs/fake.ndjson"
+git init "$_bc_nonreg_repo" >/dev/null 2>&1
+git -C "$_bc_nonreg_repo" config user.email "ci@test"
+git -C "$_bc_nonreg_repo" config user.name "Test CI"
+touch "$_bc_nonreg_repo/.gitkeep"
+git -C "$_bc_nonreg_repo" add .
+git -C "$_bc_nonreg_repo" commit -q -m "init"
+git -C "$_bc_nonreg_repo" checkout -q -b feature-breadcrumb-nonreg
+(cd "$_bc_nonreg_repo" && "$LARCH_LOG" init --log-root "$_bc_nonreg_staging/larch-logs" --skill implement --run-id "$_bc_nonreg_run" --issue 42) >/dev/null
+(cd "$_bc_nonreg_repo" && with_implement_tmpdir "$_bc_nonreg_staging" "$LARCH_LOG" commit --log-root "$_bc_nonreg_staging/larch-logs" --skill implement --run-id "$_bc_nonreg_run") >/dev/null 2>&1 || true
+if [ ! -e "$_bc_nonreg_repo/larch-logs/implement/$_bc_nonreg_run/breadcrumbs" ]; then
+    pass "non-regular ndjson in breadcrumbs dir does not publish empty breadcrumbs"
+else
+    fail "non-regular ndjson in breadcrumbs dir must not publish empty breadcrumbs (found_any false-positive)"
+fi
+
 echo "=== commit does not include orphan stale-run directories ==="
 _saved_log_root="$LARCH_LOG_ROOT"
 unset LARCH_LOG_ROOT
