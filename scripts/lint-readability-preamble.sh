@@ -48,8 +48,6 @@ fi
 external_style_line='Style requirements: `<READABILITY_STYLE>`.'
 # shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
 plan_review_style_line='Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`.'
-# shellcheck disable=SC2016 # literal prompt token pattern, not shell expansion.
-sketch_style_line='Style requirements: <READABILITY_STYLE>.'
 # shellcheck disable=SC2016 # literal Markdown/backtick regex, not shell expansion.
 orchestrator_style_re='^\*\*MANDATORY — READ ENTIRE FILE before [^:]+: `skills/design/references/readability-style\.md`\.\*\*$'
 
@@ -62,6 +60,22 @@ validate_expected_count() {
             exit 2
             ;;
     esac
+}
+
+count_sketch_style_lines() {
+    local file="$1"
+    awk '
+        $0 == "Style requirements: <READABILITY_STYLE>." {
+            count++
+            next
+        }
+        $0 ~ /\\nStyle requirements: <READABILITY_STYLE>\.\x22`$/ {
+            count++
+        }
+        END {
+            print count + 0
+        }
+    ' "$file"
 }
 
 check_step_placement() {
@@ -142,7 +156,7 @@ while IFS= read -r row; do
                         count=$(grep -Fxc "$plan_review_style_line" "$file" || true)
                         ;;
                     sketch)
-                        count=$(grep -Fc "$sketch_style_line" "$file" || true)
+                        count=$(count_sketch_style_lines "$file")
                         ;;
                     *)
                         count=$(grep -Fxc "$external_style_line" "$file" || true)

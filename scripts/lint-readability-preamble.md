@@ -33,7 +33,7 @@ For `external-prompt` `standard`, the file must contain this exact line (repeate
 Style requirements: `<READABILITY_STYLE>`.
 ```
 
-For `sketch`, the file must contain this exact line (no backticks):
+For `sketch`, the file must contain this exact prompt line (no backticks). The byte-preserved sketch prompt file may satisfy that either as a literal standalone line or as the escaped `\n...` tail inside a quoted prompt body:
 
 ```
 Style requirements: <READABILITY_STYLE>.

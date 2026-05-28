@@ -27,7 +27,7 @@ Both `lint-readability-preamble.sh` and `test-lint-readability-preamble.sh` MUST
 ## Semantics
 
 - **orchestrator-inline**: file-level count of the MANDATORY readability directive regex; when `step_markers` is non-empty, each listed step body (from `<!-- step:<id>` until the next `<!-- step:`) must contain at least one match.
-- **external-prompt**: exact-line counts — `standard` and `plan-review` use backticked style lines; `sketch` uses the bare `Style requirements: <READABILITY_STYLE>.` line (no backticks).
+- **external-prompt**: exact prompt-line counts — `standard` and `plan-review` use backticked style lines; `sketch` uses the bare `Style requirements: <READABILITY_STYLE>.` line (no backticks), either as a literal line or as the escaped `\n...` tail in the byte-preserved sketch prompt bodies.
 
 ## Edit in sync
 

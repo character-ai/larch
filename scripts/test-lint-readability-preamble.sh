@@ -42,6 +42,18 @@ repeat_line() {
     done
 }
 
+validate_expected_count() {
+    local manifest="$1"
+    local path="$2"
+    local expected_count="$3"
+    case "$expected_count" in
+        ''|*[!0-9]*)
+            printf '%s\n' "test-lint-readability-preamble.sh: invalid expected_count in $manifest for row $path" >&2
+            exit 2
+            ;;
+    esac
+}
+
 read_manifest_rows() {
     local tsv="$1"
     awk -F '\t' 'NF >= 1 && $1 !~ /^#/ && $0 != "" {
@@ -76,6 +88,7 @@ write_skill_md_with_steps() {
 
 populate_fixture() {
     local root="$1"
+    local manifest_src="${MANIFEST_TSV}"
     local missing_external="${2:-}"
     local missing_orchestrator="${3:-}"
     local partial_orchestrator="${4:-}"
@@ -83,7 +96,7 @@ populate_fixture() {
     local row path variant expected_count prompt_kind step_markers
     local rel body
 
-    stage_manifest "$root"
+    stage_manifest "$root" "$manifest_src"
 
     while IFS= read -r row; do
         path="${row%%$'\t'*}"
@@ -94,6 +107,7 @@ populate_fixture() {
         rest="${rest#*$'\t'}"
         prompt_kind="${rest%%$'\t'*}"
         step_markers="${rest#*$'\t'}"
+        validate_expected_count "$manifest_src" "$path" "$expected_count"
 
         rel="$path"
         if [ "$variant" = "external-prompt" ]; then
@@ -134,7 +148,7 @@ populate_fixture() {
             fi
             write_file "$root" "$rel" "$(repeat_line "$orchestrator_style_line" "$expected_count")"
         fi
-    done < <(read_manifest_rows "$MANIFEST_TSV")
+    done < <(read_manifest_rows "$manifest_src")
 }
 
 assert_lint_ok() {
@@ -187,10 +201,12 @@ orchestrator_bad="$TMPROOT/orchestrator-bad"
 orchestrator_partial="$TMPROOT/orchestrator-partial"
 orchestrator_missing_file="$TMPROOT/orchestrator-missing-file"
 sketch_bare="$TMPROOT/sketch-bare-token-rejected"
+sketch_escaped="$TMPROOT/sketch-escaped"
 placement_missing="$TMPROOT/placement-missing-step"
 placement_ok="$TMPROOT/placement-correct"
 b6_extended="$TMPROOT/b6-extended"
 b6_negative="$TMPROOT/b6-negative"
+sketch_substring="$TMPROOT/sketch-substring"
 
 populate_fixture "$compliant"
 populate_fixture "$external_bad" "skills/design/references/brainstorm-prompts.md"
@@ -210,6 +226,9 @@ write_file "$external_bad" "skills/design/references/brainstorm-prompts.md" "$(r
 
 populate_fixture "$sketch_bare"
 write_file "$sketch_bare" "skills/design/references/sketch-prompts.md" "$(repeat_line '<READABILITY_STYLE>' 4)"
+
+populate_fixture "$sketch_escaped"
+write_file "$sketch_escaped" "skills/design/references/sketch-prompts.md" "$(repeat_line '"Prompt body.\nStyle requirements: <READABILITY_STYLE>."`' 4)"
 
 populate_fixture "$placement_missing"
 {
@@ -234,6 +253,9 @@ populate_fixture "$b6_negative"
 stage_manifest "$b6_negative" "$extra_tsv"
 # Deliberately omit skills/design/references/extra-fixture.md despite the extra TSV row.
 
+populate_fixture "$sketch_substring"
+write_file "$sketch_substring" "skills/design/references/sketch-prompts.md" "$(repeat_line "Prefix Style requirements: <READABILITY_STYLE>. suffix" 4)"
+
 malformed_tsv_file="$TMPROOT/bad-manifest.tsv"
 malformed_tsv_root="$TMPROOT/malformed-tsv-root"
 cp "$MANIFEST_TSV" "$malformed_tsv_file"
@@ -247,6 +269,8 @@ assert_lint_fails_for orchestrator-bad "$orchestrator_bad" "skills/design/SKILL.
 assert_lint_fails_for orchestrator-partial "$orchestrator_partial" "skills/design/SKILL.md: expected 4 orchestrator-inline readability-style directives, found 3" "skills/design/SKILL.md: missing orchestrator-inline readability-style directive"
 assert_lint_fails_for orchestrator-missing-file "$orchestrator_missing_file" "skills/design/SKILL.md: missing orchestrator-inline readability-style directive" "skills/design/SKILL.md: expected 4 orchestrator-inline readability-style directives"
 assert_lint_fails_for sketch-bare-token-rejected "$sketch_bare" "skills/design/references/sketch-prompts.md: expected 4 external-prompt readability-style directives, found 0"
+assert_lint_ok sketch-escaped "$sketch_escaped"
+assert_lint_fails_for sketch-substring "$sketch_substring" "skills/design/references/sketch-prompts.md: expected 4 external-prompt readability-style directives, found 0"
 assert_lint_fails_for placement-missing-step "$placement_missing" 'skills/design/SKILL.md: step "4": expected >=1 orchestrator-inline readability-style directive in step body, found 0'
 assert_lint_ok placement-correct "$placement_ok"
 

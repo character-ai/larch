@@ -14,7 +14,7 @@ Primary callers are the `agent-sync` job in `.github/workflows/ci.yaml`, the loc
 - Parses `.claude/rules/topology-generation.md` frontmatter with `yaml.safe_load`; this avoids unsafe Python object construction but resolves anchors, aliases, and merge keys before validation.
 - Requires frontmatter `paths` to be a `list[str]`.
 - Validates TSV row shape, rejects CRLF, requires non-empty columns 1, 2, and 4, and allows an empty column 3.
-- Validates TSV runtime-authority path grammar with the same repo-relative checks as `scripts/generate-topology-docs.sh::validate_repo_path`, plus an explicit leading/trailing whitespace rejection.
+- Validates TSV runtime-authority path grammar with the same repo-relative checks as `scripts/generate-topology-docs.sh::validate_repo_path`, plus an explicit leading/trailing whitespace rejection and a resolved-path containment check so symlink escapes cannot leave the repo root.
 - Performs a one-directional subset check: `skills/shared/topology.tsv` runtime authorities must be contained in rule `paths`; extra rule paths are allowed.
 - Rejects an empty TSV with no data rows.
 - Exits 0 silently on success and exits 1 with stderr diagnostics on any error.

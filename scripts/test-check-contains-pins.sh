@@ -395,6 +395,19 @@ RUN_ERR=$(cat "$dir/stderr-bash32.txt")
 set -e
 assert_exit_eq "BASH_COMPAT=3.2 matches baseline exit" "$RUN_EXIT" "$baseline_exit"
 
+echo "=== Section 7: production-surface smoke ==="
+
+dir="$(new_fixture production-scope)"
+printf '%s\n' "scripts/test-design-structure.sh" > "$dir/changed.txt"
+set +e
+RUN_OUT=$(cd "$REPO_ROOT" && LARCH_QUIET_DISABLE=1 HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" bash scripts/check-contains-pins.sh --changed-files "$dir/changed.txt" 2>"$dir/stderr-production.txt")
+RUN_EXIT=$?
+RUN_ERR=$(cat "$dir/stderr-production.txt")
+set -e
+assert_exit_eq "production-scope exits 0" "$RUN_EXIT" 0
+assert_not_contains "production-scope has no defects" "DEFECT:" "$RUN_OUT"
+assert_not_contains "production-scope has no unresolved vars" "UNRESOLVED_VAR:" "$RUN_ERR"
+
 echo ""
 echo "=== Summary ==="
 echo "PASS=$PASS"
