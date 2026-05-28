@@ -1,0 +1,10 @@
+{"type":"mark","step":"design Step 0 — session setup","ts":"2026-05-28T00:27:32Z"}
+{"type":"vendor","vendor":"codex","input":35896,"output":2059,"cache_read":112512,"cache_create":0,"total":150467,"raw":"codex_review","ts":"2026-05-28T00:46:39Z"}
+{"type":"vendor","vendor":"codex","input":50380,"output":2369,"cache_read":199296,"cache_create":0,"total":252045,"raw":"codex_review","ts":"2026-05-28T00:46:58Z"}
+{"type":"vendor","vendor":"codex","input":61471,"output":2506,"cache_read":293760,"cache_create":0,"total":357737,"raw":"codex_review","ts":"2026-05-28T00:46:58Z"}
+{"type":"vendor","vendor":"codex","input":61714,"output":2479,"cache_read":499072,"cache_create":0,"total":563265,"raw":"codex_review","ts":"2026-05-28T00:47:06Z"}
+{"type":"vendor","vendor":"codex","input":62551,"output":3041,"cache_read":483200,"cache_create":0,"total":548792,"raw":"codex_review","ts":"2026-05-28T00:47:16Z"}
+{"type":"vendor","vendor":"codex","input":64075,"output":5810,"cache_read":667264,"cache_create":0,"total":737149,"raw":"codex_review","ts":"2026-05-28T00:48:07Z"}
+{"type":"vendor","vendor":"codex","input":5124,"output":786,"cache_read":11136,"cache_create":0,"total":17046,"raw":"codex_review","ts":"2026-05-28T01:00:46Z"}
+{"type":"vendor","vendor":"codex","input":64232,"output":1585,"cache_read":125184,"cache_create":0,"total":191001,"raw":"codex_review","ts":"2026-05-28T01:03:27Z"}
+{"type":"vendor","vendor":"codex","input":54673,"output":1702,"cache_read":168576,"cache_create":0,"total":224951,"raw":"codex_review","ts":"2026-05-28T01:04:29Z"}
