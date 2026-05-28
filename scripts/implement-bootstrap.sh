@@ -752,6 +752,7 @@ phase_plan_materialize() {
             return 0
         fi
     fi
+    # Resume-tail idempotency: see implement-bootstrap.md § Resume-tail idempotency
     if ! run_dirty_tree_checkpoint; then
         return 0
     fi
