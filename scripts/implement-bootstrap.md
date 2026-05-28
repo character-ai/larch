@@ -58,9 +58,9 @@ Machine-readable `KEY=value` lines. `LARCH_QUIET_DISABLE=1` is forced for this s
 
 All of the above use `larch_err` (never raw `printf`/`echo` to stderr after `larch_quiet_init`) per `lint-no-raw-stderr-after-quiet-init`.
 
-### Breadcrumbs (`LARCH_QUIET_BREADCRUMBS=1`)
+### Breadcrumbs (stderr via `larch_err`)
 
-Emits exactly one operator-visible line via `larch_err` per guarded callsite:
+Emits operator-visible progress lines on stderr via `larch_err`:
 
 `→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)`
 
@@ -68,12 +68,11 @@ Tracking phase may also emit:
 
 - `→ step0: tracking adopted #<N> (run=<RUN_ID> branch=<branch-1-resume|branch-2-adopt>)`
 - `⏩ step0: tracking — skip (repo-unavailable|forked-target)`
+- `→ step0: branch $BRANCH_NAME + plan logged` or `→ step0: branch $BRANCH_NAME`
+- `→ step0: larch:plan posted`
+- `→ step0: coder=<claude|codex|cursor>`
 
-Set `LARCH_QUIET_BREADCRUMB_FD` to a numeric descriptor when you need breadcrumbs on a dedicated stream. When breadcrumbs are enabled but `LARCH_QUIET_BREADCRUMB_FD` is unset or non-numeric, the line is emitted via `larch_err` (stderr / quiet FD4) so stdout remains KV-only under `LARCH_QUIET_DISABLE=1`.
-
-Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged` when `run-step1-plan-log.sh` succeeds, otherwise `→ step0: branch $BRANCH_NAME`. `→ step0: larch:plan posted` is emitted only when the `tracking-issue-summary.sh upsert-summary` call succeeds.
-
-`phase_coder_select` emits `→ step0: coder=<claude|codex|cursor>` from a shared tail after explicit and implicit selection. It is gated on `larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"`, `coder` being non-empty, and `IMPLEMENT_BAIL_REASON` being empty. `coder-unavailable`, `REPO_UNAVAILABLE`, and missing-plan early-return paths skip this breadcrumb.
+`LARCH_QUIET_DISABLE=1` keeps stdout readable for KV parsing, but these breadcrumbs still surface on stderr. `LARCH_QUIET_BREADCRUMB_FD` matters only when the caller explicitly wants a separate breadcrumb stream; otherwise `larch_err` writes to stderr / quiet FD4. `coder-unavailable`, `REPO_UNAVAILABLE`, and missing-plan early-return paths skip the coder breadcrumb because `coder` is never selected there.
 
 ## Exit codes
 

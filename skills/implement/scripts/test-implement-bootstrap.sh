@@ -886,7 +886,10 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
-out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-b4-all.XXXXXX")
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD --preflight-tmpdir "$SANDBOX/preflight" 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
 assert_rc "$rc" 0 "B4-all exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-all deferred"
 assert_line "coder=cursor" "$out" "B4-all coder"
@@ -913,6 +916,7 @@ assert_order "tracking-issue-write rename --issue 123 --state implementing" "pos
 assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
 assert_not_contains '→ step0: coder=' "$out" "B4-all no coder breadcrumb without breadcrumbs enabled"
+assert_not_contains '→ step0: coder=' "$err" "B4-all no coder breadcrumb on stderr without breadcrumbs enabled"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4-all-breadcrumb POSTED=false deferred guard ---

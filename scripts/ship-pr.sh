@@ -1043,7 +1043,7 @@ exit_stall() {
 }
 
 exit_transient_net() {
-    larch_err --category=network-flake "⚠ ship-pr: transient network failure"
+    larch_err "⚠ ship-pr: transient network failure"
     # Truncate to first line to keep BAIL_REASON a single KEY=value line in state.
     local reason
     reason=$(printf '%s' "$1" | head -1 | cut -c1-200)

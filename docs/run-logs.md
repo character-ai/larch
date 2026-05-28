@@ -43,7 +43,7 @@ larch-logs/
       execution-issues.ndjson
       session-transcript.jsonl
       breadcrumbs/
-        *.ndjson
+        larch-quiet-<script>-<pid>.log
       round-<N>/
         findings.md
         findings-classification.tsv
@@ -89,7 +89,10 @@ the session tmpdir
 
 Source resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (which must still
 be under an active session tmpdir), else the log-root parent's `breadcrumbs/`.
-The source directory and every candidate file must resolve under
+That directory is a hint only: publication derives the session root with
+`dirname` and stages matching `larch-quiet-<script>-<pid>.log` files from the
+session root rather than scanning committed inputs from `breadcrumbs/` itself.
+The source hint and every staged file must resolve under
 `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
 `larch_log_breadcrumbs_under_session_tmp`; otherwise publication fails closed.
 

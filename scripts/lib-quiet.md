@@ -18,9 +18,9 @@ source the library and run `larch_quiet_init` after strict-mode setup and
 - `emit TEXT` writes one line of contract output to the caller-visible stream.
 - `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream. Values must not contain `\n` or `\r`; the helper returns 2 with `larch_err` on violation. See `scripts/test-lib-quiet.sh` for reject coverage.
 - `larch_quiet_bc_valid_category NAME` validates breadcrumb category tokens for
-  `scripts/breadcrumb-monitor.sh` (Piece 3 removal deferred). Runtime scripts use
-  `larch_err` / `larch_errf` for operator-visible progress instead of
-  `emit_breadcrumb` / `emit_breadcrumb_stderr`.
+  `scripts/breadcrumb-monitor.sh`. Runtime scripts surface operator-visible
+  progress via `larch_err` / `larch_errf`; the legacy breadcrumb emit helpers
+  are no longer part of the runtime authoring path.
 - `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
   original stderr (FD 4 after init) so harnesses and operators still see them
   while incidental `echo`/`printf` chatter stays in the quiet log.
@@ -34,8 +34,9 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   `WARN paired-pid-file-invalid` and return 0 so callers under `set -e` do not
   abort.
 
-`LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses that
-assert legacy stdout may use that override during migration.
+`LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses use that
+override when they need direct access to stdout/stderr without quiet-log
+redirection.
 
 ## Authoring Rule
 

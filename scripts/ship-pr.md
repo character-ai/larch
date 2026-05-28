@@ -180,13 +180,6 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 - `⚠ ship-pr: transient network failure` — on every `exit_transient_net` call
 - `⛔ ship-pr: stalled at step N` — on every `mark_stall` call (covers all `exit_stall` codes)
 
-When `LARCH_BREADCRUMB_STREAM` is inherited from a foreground-monitor pair,
-each breadcrumb carries an explicit category from the fixed vocabulary:
-`progress` for ordinary phase movement, `warn` for warnings, `stall` for stalled
-handoffs, `network-flake` for transient network exits, and `escalate` for
-rebase/conflict recovery handoffs. Sourced helpers must preserve the inherited
-stream and use the same vocabulary.
-
 `ship-pr.sh` is a top-level Family B writer for `LARCH_PAIRED_PID_FILE`; it
 writes its own PID after quiet/done-trap setup and unsets the env var before
 invoking nested synchronous `ci-wait.sh`.

@@ -5,7 +5,8 @@ set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
 # Hermetic harness: callers (e.g. Claude Code) may export LARCH_QUIET_BREADCRUMB_FD
-# so breadcrumbs route to a non-stdout FD; this test suite greps captured stdout.
+# so breadcrumbs route to a non-stdout FD; this test suite checks stdout for
+# KV envelopes and stderr for operator breadcrumbs.
 unset LARCH_QUIET_BREADCRUMB_FD
 unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE
 
@@ -1319,9 +1320,9 @@ awk '
 ' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
 assert_rc "$tmp/rc" 0 "ci-watch skip path exits 0"
-if grep -qF '→ ship-pr: CI watch (ci-merge)' "$tmp/stdout"; then
+if grep -qF '→ ship-pr: CI watch (ci-merge)' "$tmp/stderr"; then
     fail "ci-watch skip path should not emit CI watch breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 else
     ok "ci-watch skip path omits CI watch breadcrumb"
 fi
@@ -1338,11 +1339,11 @@ if [ -f "$tmp/post-merge-sentinel" ]; then
 else
     fail "version_already_published + merged PR should write post-merge-sentinel"
 fi
-if grep -qF '→ ship-pr: merged' "$tmp/stdout"; then
+if grep -qF '→ ship-pr: merged' "$tmp/stderr"; then
     ok "version_already_published + merged PR emits merged breadcrumb"
 else
     fail "version_already_published + merged PR should emit merged breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
 root=$(make_repo version_published_pr_open)
@@ -1419,11 +1420,11 @@ assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: ci-
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: ci-wait already_merged clears STALL_TRACKING"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: ci-wait already_merged clears STALL_STEP"
 assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: ci-wait already_merged leaves final-bail-reason.txt empty"
-if grep -qF '→ ship-pr: merged' "$tmp/stdout"; then
+if grep -qF '→ ship-pr: merged' "$tmp/stderr"; then
     ok "already_merged path emits merged breadcrumb"
 else
     fail "already_merged path should emit merged breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
 root=$(make_repo malformed)
