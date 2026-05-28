@@ -20,6 +20,7 @@ REASON=mktemp failed
 ## Behavior
 
 1. Lists all open issues with label `audit-report` in `--repo`.
+   Invalid `gh issue list` JSON is treated as a hard failure (`ISSUE_LIST_FAILED=true`, `REASON=gh issue list returned invalid JSON`).
 2. Skips `--new-issue-number` (the just-filed report).
 3. For each remaining issue: posts `Superseded by #N` from a temp file via `gh issue comment --body-file`, then closes via `gh issue close`.
 4. Idempotent: already-closed issues are not listed by `gh issue list --state open`, so they are naturally skipped.

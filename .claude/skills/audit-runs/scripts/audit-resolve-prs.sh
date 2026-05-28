@@ -92,9 +92,7 @@ filter_prs_for_skill() {
             '
             ;;
         implement)
-            printf '%s' "$json" | jq '
-                [.[] | select((.title // "") | test("^chore\\(larch-logs\\): flush implement run [0-9A-Fa-f-]+$"))]
-            '
+            printf '%s' "$json"
             ;;
     esac
 }
@@ -106,7 +104,7 @@ pr_matches_skill() {
             printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'
             ;;
         implement)
-            printf '%s' "$title" | grep -qE '^chore\(larch-logs\): flush implement run [0-9A-Fa-f-]+$'
+            return 0
             ;;
     esac
 }

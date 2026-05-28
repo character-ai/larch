@@ -669,7 +669,7 @@ while IFS=$'\t' read -r scan_name _scan_type _rest; do
         trailing-content-no-issues-found) scan_trailing_content_no_issues_found ;;
         oos-silent-drop)              scan_oos_silent_drop ;;
         *)
-            emit "{\"scan\":\"$(jstr "$scan_name")\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"unknown scan name in scans.tsv (registry drift vs audit-scan-run.sh)\"}"
+            emit "{\"scan\":\"$(jstr "$scan_name")\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"unknown scan name in scans registry (registry drift vs audit-scan-run.sh)\"}"
             exit 1
             ;;
     esac

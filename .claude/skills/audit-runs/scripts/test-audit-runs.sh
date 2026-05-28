@@ -619,9 +619,9 @@ if [[ "${1:-}" == "api" ]]; then
     done
     if [[ "$url" == repos/*/pulls* ]]; then
         raw='[
-          {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
-          {"number":20,"merged_at":"2025-06-02T00:00:00Z","title":"chore(larch-logs): flush implement run 22222222-2222-2222-2222-222222222222","base":{"ref":"main"}},
-          {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
+          {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"feature: regular merged implement PR","base":{"ref":"main"}},
+          {"number":20,"merged_at":"2025-06-02T00:00:00Z","title":"feature: second merged implement PR","base":{"ref":"main"}},
+          {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"feature: third merged implement PR","base":{"ref":"main"}}
         ]'
         printf '%s' "$raw" | jq -c "$jq_filter"
         exit 0
@@ -647,7 +647,7 @@ EOSH19
 
     r19_last=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 2 PRs")
     pl19L=$(printf '%s' "$r19_last" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pl19L" "20,30" "[19d] last 2 PRs slices merged PRs before implement filtering"
+    assert_equal "$pl19L" "20,30" "[19d] last 2 PRs keeps ordinary implement merges"
 
     r19_iso=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
     pl19i=$(printf '%s' "$r19_iso" | sed -n 's/^PR_LIST=//p')
@@ -656,8 +656,8 @@ EOSH19
     cat >"$GH19/gh" <<'EOSH19P'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
-    printf '%s\n' 'chore(larch-logs): flush implement run 55555555-5555-5555-5555-555555555555'
+    if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+        printf '%s\n' 'feature: ordinary implement PR title'
     exit 0
 fi
 printf 'fake gh: unsupported %s\n' "$*" >&2
@@ -666,7 +666,7 @@ EOSH19P
     chmod +x "$GH19/gh"
     r19_pound=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "#501")
     pl19p=$(printf '%s' "$r19_pound" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pl19p" "501" "[19f] #N form without gh"
+    assert_equal "$pl19p" "501" "[19f] #N form accepts ordinary implement PR title"
 
     jq -nc --arg body "$PRIOR_BODY" '[
       {number:801,title:"[Implement Run Logs Audit 2026-01-01T00:00:00Z Report] implement prior",body:$body,createdAt:"2026-01-01T00:00:00Z"},
@@ -703,9 +703,9 @@ if [[ "${1:-}" == "api" ]]; then
     done
     if [[ "$url" == repos/*/pulls* ]]; then
         raw='[
-          {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"chore(larch-logs): flush implement run 11111111-1111-1111-1111-111111111111","base":{"ref":"main"}},
+          {"number":10,"merged_at":"2025-01-01T00:00:00Z","title":"feature: older merged implement PR","base":{"ref":"main"}},
           {"number":20,"merged_at":"2025-06-02T00:00:00Z","title":"chore(larch-logs): design run 90628862-9A18-4A56-8420-63DE723F9D81","base":{"ref":"main"}},
-          {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"chore(larch-logs): flush implement run 33333333-3333-3333-3333-333333333333","base":{"ref":"main"}}
+          {"number":30,"merged_at":"2025-12-01T00:00:00Z","title":"feature: newer merged implement PR","base":{"ref":"main"}}
         ]'
         printf '%s' "$raw" | jq -c "$jq_filter"
         exit 0
@@ -721,9 +721,15 @@ EOSH19B
     assert_equal "$prior19d" "802" "[19i] design since-last picks design audit report"
     assert_equal "$pl19d" "20" "[19j] design since-last keeps only design log PRs"
 
+    r19_impl_since=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "since last audit")
+    prior19impl=$(printf '%s' "$r19_impl_since" | sed -n 's/^PRIOR_REPORT_NUMBER=//p')
+    pl19impl_since=$(printf '%s' "$r19_impl_since" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$prior19impl" "801" "[19k] implement since-last picks implement-prefixed audit report"
+    assert_equal "$pl19impl_since" "20,30" "[19l] implement since-last keeps ordinary merged PRs after prior audit"
+
     r19_impl=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --skill implement --repo character-ai/larch --verbal-description "last 3 PRs")
     pl19impl=$(printf '%s' "$r19_impl" | sed -n 's/^PR_LIST=//p')
-    assert_equal "$pl19impl" "10,30" "[19k] implement last-N keeps only implement log flushes from sliced merges"
+    assert_equal "$pl19impl" "10,20,30" "[19m] implement last-N keeps ordinary merged PRs without title filtering"
 
     cat >"$GH19/gh" <<'EOSH19C'
 #!/usr/bin/env bash
@@ -749,12 +755,12 @@ EOSH19C
     case "$er19jq" in
         *gh\ api\ failed\ listing\ merged\ PRs*)
             PASS=$((PASS + 1))
-            echo "  ok: [19l] invalid gh api JSON fails loudly"
+            echo "  ok: [19n] invalid gh api JSON fails loudly"
             ;;
         *)
             FAIL=$((FAIL + 1))
-            FAILED_TESTS+=("[19l] expected loud gh api failure, got: $er19jq")
-            echo "  FAIL: [19l] expected loud gh api failure, got: $er19jq" >&2
+            FAILED_TESTS+=("[19n] expected loud gh api failure, got: $er19jq")
+            echo "  FAIL: [19n] expected loud gh api failure, got: $er19jq" >&2
             ;;
     esac
 
@@ -1827,6 +1833,57 @@ EOSH45
     n45=$(printf '%s' "$c45" | grep -c '^CLOSED_NUMBER=101$' || true)
     assert_equal "$n45" "1" "[45] prior issue 101 closed; new issue skipped"
     rm -rf "$GH45"
+
+    GH45D=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-close45d-XXXXXX")
+    cat > "$GH45D/gh" <<'EOSH45D'
+#!/usr/bin/env bash
+set -euo pipefail
+LOG="${GH45D_LOG:?}"
+if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
+    printf '%s\n' '[{"number":301,"title":"[Design Run Logs Audit 2026-03-01 Report] old design"},{"number":302,"title":"[Implement Run Logs Audit 2026-03-02 Report] open implement"},{"number":303,"title":"[Design Run Logs Audit 2026-03-03 Report] newest design"}]'
+    exit 0
+fi
+if [[ "${1:-}" == "issue" && "${2:-}" == "comment" ]]; then
+    printf 'comment:%s\n' "${3:-}" >>"$LOG"
+    exit 0
+fi
+if [[ "${1:-}" == "issue" && "${2:-}" == "close" ]]; then
+    printf 'close:%s\n' "${3:-}" >>"$LOG"
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSH45D
+    chmod +x "$GH45D/gh"
+    GH45D_LOG="$GH45D/log.txt"
+    : >"$GH45D_LOG"
+    c45d=$(PATH="$GH45D:$PATH" GH45D_LOG="$GH45D_LOG" bash "$CLOSE_SCRIPT" --skill design --new-issue-number 303 --repo character-ai/larch)
+    n45d=$(printf '%s' "$c45d" | grep -c '^CLOSED_NUMBER=301$' || true)
+    impl45d=$(grep -c '^close:302$' "$GH45D_LOG" || true)
+    assert_equal "$n45d" "1" "[45b] design close-priors closes matching design prior"
+    assert_equal "$impl45d" "0" "[45c] design close-priors leaves implement audit report open"
+    rm -rf "$GH45D"
+
+    GH45E=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-close45e-XXXXXX")
+    cat > "$GH45E/gh" <<'EOSH45E'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
+    printf '%s\n' 'not-json'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSH45E
+    chmod +x "$GH45E/gh"
+    set +e
+    c45e=$(PATH="$GH45E:$PATH" bash "$CLOSE_SCRIPT" --skill design --new-issue-number 303 --repo character-ai/larch)
+    rc45e=$?
+    set -e
+    reason45e=$(printf '%s' "$c45e" | sed -n 's/^REASON=//p')
+    assert_equal "$rc45e" "1" "[45d] close-priors invalid gh JSON exits non-zero"
+    assert_equal "$reason45e" "gh issue list returned invalid JSON" "[45e] close-priors surfaces invalid JSON reason"
+    rm -rf "$GH45E"
 else
     echo "  SKIP: audit-close-priors.sh not executable (not found at $CLOSE_SCRIPT)"
 fi
@@ -2634,8 +2691,39 @@ if [ -x "$RESOLVE_SCRIPT" ]; then
     assert_equal "$rc_bad" "1" "[69b] invalid --skill enum exits non-zero"
 fi
 
+PREFLIGHT_SCRIPT="${PREFLIGHT_SCRIPT:-$SCRIPT_DIR/audit-preflight.sh}"
+if [ -x "$PREFLIGHT_SCRIPT" ]; then
+    pf69b1=$(bash "$PREFLIGHT_SCRIPT" --repo character-ai/larch 2>/dev/null)
+    pf69b2=$(bash "$PREFLIGHT_SCRIPT" --skill bogus --repo character-ai/larch 2>/dev/null)
+    ok69b1=$(printf '%s' "$pf69b1" | sed -n 's/^PREFLIGHT_OK=//p')
+    ok69b2=$(printf '%s' "$pf69b2" | sed -n 's/^PREFLIGHT_OK=//p')
+    assert_equal "$ok69b1" "false" "[69b1] preflight missing --skill reports PREFLIGHT_OK=false"
+    assert_equal "$ok69b2" "false" "[69b2] preflight invalid --skill reports PREFLIGHT_OK=false"
+fi
+
+CLOSE_SCRIPT="${CLOSE_SCRIPT:-$SCRIPT_DIR/audit-close-priors.sh}"
+if [ -x "$CLOSE_SCRIPT" ]; then
+    set +e
+    bash "$CLOSE_SCRIPT" --new-issue-number 1 --repo character-ai/larch >/dev/null 2>/dev/null
+    rc69b3=$?
+    bash "$CLOSE_SCRIPT" --skill bogus --new-issue-number 1 --repo character-ai/larch >/dev/null 2>/dev/null
+    rc69b4=$?
+    set -e
+    assert_equal "$rc69b3" "1" "[69b3] close-priors missing --skill exits non-zero"
+    assert_equal "$rc69b4" "1" "[69b4] close-priors invalid --skill exits non-zero"
+fi
+
 MAP_SCRIPT="${MAP_SCRIPT:-$SCRIPT_DIR/audit-map-runs.sh}"
 if [ -x "$MAP_SCRIPT" ]; then
+    set +e
+    bash "$MAP_SCRIPT" --pr-list "1" --log-root "/tmp" >/dev/null 2>/dev/null
+    rc69b5=$?
+    bash "$MAP_SCRIPT" --skill bogus --pr-list "1" --log-root "/tmp" >/dev/null 2>/dev/null
+    rc69b6=$?
+    set -e
+    assert_equal "$rc69b5" "1" "[69b5] map-runs missing --skill exits non-zero"
+    assert_equal "$rc69b6" "1" "[69b6] map-runs invalid --skill exits non-zero"
+
     GH69=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map69-XXXXXX")
     cat > "$GH69/gh" <<'EOSGH69'
 #!/usr/bin/env bash
@@ -2675,6 +2763,26 @@ EOSGH69
         echo "  FAIL: [69g] lowercase design run title should match regex" >&2
     fi
     rm -rf "$GH69" "$MAP69"
+
+    GH69L=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map69l-XXXXXX")
+    cat > "$GH69L/gh" <<'EOSGH69L'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' 'chore(larch-logs): design run 90628862-9a18-4a56-8420-63de723f9d81'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH69L
+    chmod +x "$GH69L/gh"
+    MAP69L=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map69l-log-XXXXXX")
+    mkdir -p "$MAP69L/90628862-9A18-4A56-8420-63DE723F9D81"
+    printf '%s\n' '{"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$MAP69L/90628862-9A18-4A56-8420-63DE723F9D81/manifest.json"
+    row69l=$(PATH="$GH69L:$PATH" bash "$MAP_SCRIPT" --skill design --pr-list "9002" --log-root "$MAP69L")
+    rid69l=$(printf '%s' "$row69l" | cut -f2)
+    assert_equal "$rid69l" "90628862-9A18-4A56-8420-63DE723F9D81" "[69g1] design map normalizes lowercase run id to uppercase"
+    rm -rf "$GH69L" "$MAP69L"
 fi
 
 if [ -x "$MAP_SCRIPT" ]; then
@@ -2683,6 +2791,38 @@ if [ -x "$MAP_SCRIPT" ]; then
     rc69f=$?
     set -e
     assert_equal "$rc69f" "1" "[69f] explicit cross-skill --log-root rejected"
+
+    GH69F2=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map69f2-XXXXXX")
+    cat > "$GH69F2/gh" <<'EOSGH69F2'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' 'chore(larch-logs): design run 90628862-9A18-4A56-8420-63DE723F9D81'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH69F2
+    chmod +x "$GH69F2/gh"
+    ROOT69F2=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map69f2-root-XXXXXX")
+    mkdir -p "$ROOT69F2/larch-logs/design/90628862-9A18-4A56-8420-63DE723F9D81"
+    printf '%s\n' '{"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$ROOT69F2/larch-logs/design/90628862-9A18-4A56-8420-63DE723F9D81/manifest.json"
+    row69f2=$(PATH="$GH69F2:$PATH" bash "$MAP_SCRIPT" --skill design --pr-list "1" --log-root "$ROOT69F2/larch-logs")
+    rid69f2=$(printf '%s' "$row69f2" | cut -f2)
+    assert_equal "$rid69f2" "90628862-9A18-4A56-8420-63DE723F9D81" "[69f2] explicit larch-logs root resolves to skill-specific child"
+    rm -rf "$GH69F2" "$ROOT69F2"
+fi
+
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    set +e
+    bash "$SCAN_SCRIPT" --run-dir /tmp --pr 1 --scans-tsv /tmp/x.tsv --required-files-tsv /tmp/y.tsv --current-version 1.0.0 >/dev/null 2>/dev/null
+    rc69b7=$?
+    bash "$SCAN_SCRIPT" --skill bogus --run-dir /tmp --pr 1 --scans-tsv /tmp/x.tsv --required-files-tsv /tmp/y.tsv --current-version 1.0.0 >/dev/null 2>/dev/null
+    rc69b8=$?
+    set -e
+    assert_equal "$rc69b7" "1" "[69b7] scan-run missing --skill exits non-zero"
+    assert_equal "$rc69b8" "1" "[69b8] scan-run invalid --skill exits non-zero"
 fi
 
 if [ -x "$RESOLVE_SCRIPT" ]; then
@@ -2703,12 +2843,12 @@ EOSGH69G
     case "$e69g" in
         *does\ not\ match\ --skill=design*)
             PASS=$((PASS + 1))
-            echo "  ok: [69g] single-PR design resolution rejects implement PR title"
+            echo "  ok: [69g2] single-PR design resolution rejects implement PR title"
             ;;
         *)
             FAIL=$((FAIL + 1))
-            FAILED_TESTS+=("[69g] expected single-PR skill mismatch error, got: $e69g")
-            echo "  FAIL: [69g] expected single-PR skill mismatch error, got: $e69g" >&2
+            FAILED_TESTS+=("[69g2] expected single-PR skill mismatch error, got: $e69g")
+            echo "  FAIL: [69g2] expected single-PR skill mismatch error, got: $e69g" >&2
             ;;
     esac
     rm -rf "$GH69G"

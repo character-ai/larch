@@ -4,6 +4,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 FIX_SRC="$REPO/skills/report-tokens/scripts/fixtures/recompute-run"
 RUN_DIR="$REPO/larch-logs/implement/AAAA-report-tokens-recompute-fixture"
+DESIGN_RUN="$REPO/larch-logs/design/BBBB-report-tokens-design-fixture"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
@@ -15,7 +16,7 @@ unset LARCH_BREADCRUMB_STREAM LARCH_BREADCRUMBS_SURFACED_FILE 2>/dev/null || tru
 
 export LARCH_REPORT_TOKENS_REPO="${LARCH_REPORT_TOKENS_REPO:-fixture/local}"
 
-cleanup() { rm -rf "$RUN_DIR" "${GH_STUB_DIR:-}"; }
+cleanup() { rm -rf "$RUN_DIR" "$DESIGN_RUN" "${GH_STUB_DIR:-}" "${GH_DESIGN_STUB:-}"; }
 trap cleanup EXIT
 rm -rf "$RUN_DIR"
 mkdir -p "$RUN_DIR"
@@ -90,7 +91,6 @@ grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh issue create --bod
 ! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh issue create should not use inline --body" # lint-gh-body-inline: ok gh-stub assertion fixture
 pass 'issue creation uses body-file with redacted tmpdir content'
 
-DESIGN_RUN="$REPO/larch-logs/design/BBBB-report-tokens-design-fixture"
 rm -rf "$DESIGN_RUN"
 mkdir -p "$DESIGN_RUN"
 cp "$FIX_SRC/manifest.json" "$DESIGN_RUN/"

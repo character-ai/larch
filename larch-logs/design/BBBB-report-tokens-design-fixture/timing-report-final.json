@@ -1,0 +1,33 @@
+{
+  "vendors": ["claude", "codex", "cursor"],
+  "claude": {
+    "totals": {
+      "input": 1000,
+      "cache_read": 1000000,
+      "cache_create": 0,
+      "cache_create_5m": 0,
+      "cache_create_1h": 0,
+      "output": 500,
+      "total": 1001500
+    },
+    "per_step": []
+  },
+  "codex": {
+    "totals": {"input": 0, "output": 0, "total": 0},
+    "per_step": []
+  },
+  "cursor": {
+    "totals": {"input": 0, "output": 0, "total": 0},
+    "per_step": []
+  },
+  "BUCKETS_claude": {
+    "input": 1000,
+    "cache_read": 1000000,
+    "cache_create_5m": 0,
+    "cache_create_1h": 0,
+    "output": 500,
+    "total": 1001500
+  },
+  "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0, "total": 0},
+  "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0, "total": 0}
+}

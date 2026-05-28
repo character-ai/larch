@@ -1,8 +1,8 @@
 # .claude/skills/audit-runs/scripts/audit-map-runs.sh — contract
 
-Requires `--skill <design|implement>`. Default log root is `larch-logs/$SKILL`. Design maps PR title `chore(larch-logs): design run <RUN_ID>` to run dirs and leaves `closes_issue` empty. Implement behavior is unchanged.
+Requires `--skill <design|implement>`. Default log root is `larch-logs/$SKILL`. When an explicit `--log-root` points at the shared `larch-logs` parent, the script resolves it to `larch-logs/$SKILL` before scanning.
 
-Maps each PR in `--pr-list` to its run-log directory under `larch-logs/implement/`.
+Maps each PR in `--pr-list` to its run-log directory under `larch-logs/$SKILL/`.
 
 ## Output
 
@@ -18,6 +18,7 @@ Fields are empty strings when a PR cannot be mapped.
 
 1. **Primary**: on `gh pr view` failure, prints `MAP_GH_PR_VIEW_FAILED=true` with a `REASON=` fragment to stderr, then emits an empty mapping row (no manifest fallback on `gh` failure). On success, read the PR body, then derive `N` with **keyword-priority** closing lines: scan **Closes** `#…` first (case-insensitive); if none, **Fixes**; if none, **Resolves**. Within one keyword class, all matches must agree on a single issue number; if that class lists multiple distinct numbers, prints `MAP_PR_BODY_CLOSING_AMBIGUOUS=true` to stderr (with `KEYWORD=`) and does **not** use the PR body for mapping (falls through to manifest fallback when possible). When a single `N` resolves, match `parent-issue.md` files whose `ISSUE_NUMBER` equals `N`. When multiple run directories match, the newest `manifest.json` `started_at` wins; if that is still ambiguous, prints `MAP_PARENT_ISSUE_AMBIGUOUS=true` to stderr and leaves `run_id` empty.
 2. **Fallback** (older runs with `pr_number` recorded in `manifest.json`): scan `larch-logs/implement/*/manifest.json` for `"pr_number": N`, choosing the **newest** row by `started_at` using ISO-8601 parsing (`jq` `fromdateiso8601`), not raw string ordering.
+3. **Design mode**: read PR title `chore(larch-logs): design run <RUN_ID>`, normalize the parsed UUID to uppercase, and look for `manifest.json` under `larch-logs/design/<RUN_ID>/`. `closes_issue` remains empty for design rows.
 
 ## Edit-in-sync
 

@@ -21,7 +21,6 @@ Exit **0** when the title matches the skill’s allowed shapes; **1** otherwise.
 
 - `audit-resolve-prs.sh` (prior-report discovery for `since last audit`)
 - `audit-close-priors.sh` (which open reports to supersede)
-- `audit-preflight.sh` (when skill-specific prior-report checks apply)
 - `/audit-runs` SKILL.md noise-exclusion for bug-issue keyword search
 
 ## Edit-in-sync

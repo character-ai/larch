@@ -59,6 +59,9 @@ if [ -z "$LOG_ROOT" ]; then
     LOG_ROOT="larch-logs/$SKILL"
 elif [ "$LOG_ROOT_EXPLICIT" = true ]; then
     case "$LOG_ROOT" in
+        larch-logs|*/larch-logs)
+            LOG_ROOT="$LOG_ROOT/$SKILL"
+            ;;
         larch-logs/design|larch-logs/implement|*/larch-logs/design|*/larch-logs/implement)
             case "$LOG_ROOT" in
                 larch-logs/"$SKILL"|*/larch-logs/"$SKILL") ;;
@@ -101,7 +104,7 @@ extract_closing_issue_from_pr_body() {
 parse_design_run_id_from_pr_title() {
     local title="$1"
     if printf '%s' "$title" | grep -qE '^chore\(larch-logs\): design run [0-9A-Fa-f-]+$'; then
-        printf '%s' "$title" | sed -n 's/^chore(larch-logs): design run \([0-9A-Fa-f-]*\)$/\1/p'
+        printf '%s' "$title" | sed -n 's/^chore(larch-logs): design run \([0-9A-Fa-f-]*\)$/\1/p' | tr '[:lower:]' '[:upper:]'
         return 0
     fi
     return 1

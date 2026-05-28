@@ -63,6 +63,11 @@ if ! OPEN_ISSUES_JSON=$(gh issue list --state open --limit 100000 --label audit-
     exit 1
 fi
 
+if ! printf '%s' "$OPEN_ISSUES_JSON" | jq -e 'if type == "array" then . else error("not-array") end' >/dev/null 2>&1; then
+    printf 'ISSUE_LIST_FAILED=true\nREASON=gh issue list returned invalid JSON\n'
+    exit 1
+fi
+
 OPEN_ISSUES=""
 while IFS= read -r row; do
     [ -z "$row" ] && continue
@@ -72,7 +77,7 @@ while IFS= read -r row; do
     if match_audit_report_title --skill "$SKILL" --title "$title"; then
         OPEN_ISSUES="${OPEN_ISSUES}${num}"$'\n'
     fi
-done < <(printf '%s' "$OPEN_ISSUES_JSON" | jq -c '.[]' 2>/dev/null || true)
+done < <(printf '%s' "$OPEN_ISSUES_JSON" | jq -c '.[]')
 
 if [ -z "$OPEN_ISSUES" ]; then
     exit 0
