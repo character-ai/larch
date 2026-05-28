@@ -11,6 +11,7 @@ import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT_RESOLVED = REPO_ROOT.resolve()
 TOPOLOGY_TSV = REPO_ROOT / "skills/shared/topology.tsv"
 RULE_FILE = REPO_ROOT / ".claude/rules/topology-generation.md"
 RULE_PATH = ".claude/rules/topology-generation.md"
@@ -48,6 +49,11 @@ def validate_repo_path(row: int, path: str) -> None:
         fail(f"row {row}: runtime_authority must not contain parent traversal: {path}")
     if path_has_segment(path, "."):
         fail(f"row {row}: runtime_authority must not contain . path segments: {path}")
+    resolved = (REPO_ROOT / path).resolve(strict=False)
+    try:
+        resolved.relative_to(REPO_ROOT_RESOLVED)
+    except ValueError:
+        fail(f"row {row}: runtime_authority must resolve within repo root: {path}")
 
 
 def read_topology_authorities() -> set[str]:

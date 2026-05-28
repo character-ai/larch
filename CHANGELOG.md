@@ -71,6 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add regression coverage for nospace pseudo-heading plus empty-merge attestation rejection (#3003)
 - Lock in all-OOS input with attestation-only empty merge accepting REASON=ok (#3003)
+- Escape-aware double-quoted contains pins and cross-skill relevant-checks routing to test-check-contains-pins
+- Shared lint-readability-preamble.tsv manifest with sketch line-anchoring and per-step placement enforcement
+- Harness coverage for escape fixtures, Bash 3.2 smoke, TSV drift guards, and routing regressions
 
 ## [45.3.2] - 2026-05-27
 

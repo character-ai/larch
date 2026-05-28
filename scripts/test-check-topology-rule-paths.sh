@@ -208,6 +208,15 @@ write_tsv "$dir" 'key\tvalue\tcomposition\tskills/foo.md \n'
 write_rule_flow "$dir" "skills/foo.md "
 assert_failure_contains "trailing whitespace" "$dir" "leading or trailing whitespace"
 
+# h3. Symlink escapes are rejected even when the manifest path is repo-relative.
+dir="$(new_fixture symlink-escape)"
+mkdir -p "$dir/skills"
+printf 'outside\n' >"$TMP_ROOT/outside.md"
+ln -s "$TMP_ROOT/outside.md" "$dir/skills/link.md"
+write_valid_tsv "$dir" "skills/link.md"
+write_rule_flow "$dir" "skills/link.md"
+assert_failure_contains "symlink escape" "$dir" "must resolve within repo root"
+
 # i. Missing paths key.
 dir="$(new_fixture missing-paths)"
 write_valid_tsv "$dir" "skills/foo.md"

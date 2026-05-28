@@ -304,6 +304,110 @@ assert_not_contains "no line-array helper usage" "${map_prefix}${map_suffix}" "$
 assert_not_contains "no uppercase parameter expansion" "${caret_char}${caret_char}" "$subject_source"
 assert_not_contains "no append-all redirect" "${append_prefix}${append_suffix}" "$subject_source"
 
+echo "=== Section 5: double-quoted escape paths ==="
+
+dir="$(new_fixture escape-dollar-only)"
+# shellcheck disable=SC2016 # literal dollar in fixture target text
+printf '%s\n' 'cost is $5' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+contains "$TARGET" "cost is \$5" 'escape dollar pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "escape-dollar-only exits 0" "$RUN_EXIT" 0
+
+dir="$(new_fixture escape-quotes-only)"
+printf '%s\n' 'say "hello"' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+contains "$TARGET" "say \"hello\"" 'escape quote pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "escape-quotes-only exits 0" "$RUN_EXIT" 0
+
+dir="$(new_fixture escape-backslash)"
+printf '%s\n' 'path\to\file' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+contains "$TARGET" "path\\to\\file" 'escape backslash pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "escape-backslash exits 0" "$RUN_EXIT" 0
+
+dir="$(new_fixture escape-defect)"
+# shellcheck disable=SC2016 # literal dollar in fixture target text
+printf '%s\n' 'cost is $5' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+contains "$TARGET" "cost is \$6" 'escape defect pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "escape-defect exits 1" "$RUN_EXIT" 1
+assert_contains "escape-defect reports defect" "literal 'cost is \$6' not found" "$RUN_OUT"
+
+dir="$(new_fixture escape-with-bare-dollar)"
+printf '%s\n' 'mixed literal' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+contains "$TARGET" "prefix \$SAFE suffix $BARE" 'mixed dollar pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "escape-with-bare-dollar exits 0" "$RUN_EXIT" 0
+assert_contains "escape-with-bare-dollar warns skip" "SKIPPED_NON_CANONICAL: scripts/test-fixture.sh:5" "$RUN_ERR"
+
+dir="$(new_fixture escape-quote-inside-literal)"
+printf '%s\n' 'token "inner" tail' > "$dir/docs/target.md"
+cat > "$dir/scripts/test-fixture.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+TARGET="$REPO_ROOT/docs/target.md"
+contains "$TARGET" "token \"inner\" tail" 'escape quote inside pin'
+EOF
+run_checker "$dir"
+assert_exit_eq "escape-quote-inside-literal exits 0" "$RUN_EXIT" 0
+
+echo "=== Section 6: Bash 3.2 compatibility smoke (informational) ==="
+
+dir="$(new_fixture bash32-smoke)"
+write_single_pin "$dir" "portable literal"
+run_checker "$dir"
+baseline_exit="$RUN_EXIT"
+set +e
+RUN_OUT=$(cd "$dir" && LARCH_QUIET_DISABLE=1 HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" BASH_COMPAT=3.2 bash scripts/check-contains-pins.sh 2>"$dir/stderr-bash32.txt")
+RUN_EXIT=$?
+RUN_ERR=$(cat "$dir/stderr-bash32.txt")
+set -e
+assert_exit_eq "BASH_COMPAT=3.2 matches baseline exit" "$RUN_EXIT" "$baseline_exit"
+
+echo "=== Section 7: production-surface smoke ==="
+
+dir="$(new_fixture production-scope)"
+printf '%s\n' "scripts/test-design-structure.sh" > "$dir/changed.txt"
+set +e
+RUN_OUT=$(cd "$REPO_ROOT" && LARCH_QUIET_DISABLE=1 HOME="$dir/home" GIT_CONFIG_GLOBAL="$dir/gitconfig" bash scripts/check-contains-pins.sh --changed-files "$dir/changed.txt" 2>"$dir/stderr-production.txt")
+RUN_EXIT=$?
+RUN_ERR=$(cat "$dir/stderr-production.txt")
+set -e
+assert_exit_eq "production-scope exits 0" "$RUN_EXIT" 0
+assert_not_contains "production-scope has no defects" "DEFECT:" "$RUN_OUT"
+assert_not_contains "production-scope has no unresolved vars" "UNRESOLVED_VAR:" "$RUN_ERR"
+
 echo ""
 echo "=== Summary ==="
 echo "PASS=$PASS"
