@@ -570,16 +570,16 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 434,
-          "output": 70420,
-          "total": 70854
+          "input": 496,
+          "output": 80480,
+          "total": 80976
         }
       }
     ],
     "totals": {
-      "input": 5059720,
-      "output": 570021,
-      "total": 61150190
+      "input": 5059782,
+      "output": 580081,
+      "total": 61160312
     }
   },
   "BUCKETS_claude": {
@@ -597,9 +597,9 @@
     "total": 34887276
   },
   "BUCKETS_cursor": {
-    "input": 5059720,
+    "input": 5059782,
     "cache_read": 55520449,
-    "output": 570021,
-    "total": 61150190
+    "output": 580081,
+    "total": 61160312
   }
 }
