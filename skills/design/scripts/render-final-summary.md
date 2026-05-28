@@ -1,5 +1,7 @@
 # render-final-summary.sh
 
+**Allowlist validation**: Sources `scripts/lib-design-tmpdir.sh` and calls `larch_design_tmpdir_validate "$DESIGN_TMPDIR"` after the required-env check and before any tmpdir reads; failure maps to exit `$?` (env-based `DESIGN_TMPDIR` consumers use raw exit rather than a KV-emitting wrapper).
+
 **Purpose**: `/design` terminal summary dispatcher. Gathers token/timing JSON,
 parses `execution-issues.md`, `voting-tally.md`, accepted findings, and OOS URLs,
 then invokes `scripts/render-run-summary.sh --skill design` and (post-publish
