@@ -22,6 +22,11 @@ printf '%s\n' "$out2" | grep -Fq 'already exists' || fail 'second write-original
 
 "$SUBJECT" write-after --design-tmpdir "$TMP" --round 1 >/dev/null
 [[ -f "$TMP/plan-after-round-1.txt" ]] || fail 'missing plan-after-round-1'
+printf 'snapshot v1\n' >"$TMP/plan-after-round-1.txt"
+printf 'plan v2\n' >"$TMP/plan.txt"
+out3=$("$SUBJECT" write-after --design-tmpdir "$TMP" --round 1 2>&1) || fail 'write-after second failed'
+printf '%s\n' "$out3" | grep -Fq 'already exists' || fail 'second write-after must preserve'
+[[ "$(cat "$TMP/plan-after-round-1.txt")" == "snapshot v1" ]] || fail 'write-after idempotence must preserve existing snapshot'
 
 cursor=$("$SUBJECT" read-cursor --design-tmpdir "$TMP")
 printf '%s\n' "$cursor" | grep -Fq 'ROUND_CURSOR=1' || fail 'default cursor not 1'
@@ -37,5 +42,20 @@ printf '%s\n' "$warn" | grep -Fq 'ROUND_CURSOR=1' || fail 'malformed cursor must
 
 "$SUBJECT" write-cursor --design-tmpdir "$TMP" --value 3 >/dev/null
 [[ "$(cat "$TMP/plan-review-round-cursor.txt")" == "3" ]] || fail 'write-cursor failed'
+"$SUBJECT" write-cursor --design-tmpdir "$TMP" --value 0004 >/dev/null
+[[ "$(cat "$TMP/plan-review-round-cursor.txt")" == "4" ]] || fail 'write-cursor must normalize leading zeros'
+
+rm -f "$TMP/plan.txt"
+if "$SUBJECT" write-after --design-tmpdir "$TMP" --round 2 >/tmp/larch-snapshot-fail.out 2>&1; then
+  fail 'write-after without plan.txt must fail closed'
+fi
+[[ ! -e "$TMP/plan-after-round-2.txt" ]] || fail 'failed write-after must not create destination snapshot'
+
+if "$SUBJECT" write-after --design-tmpdir "$TMP" >/tmp/larch-snapshot-argv.out 2>&1; then
+  fail 'write-after without round should fail closed'
+fi
+if "$SUBJECT" write-cursor --design-tmpdir "$TMP" --value 0 >/tmp/larch-snapshot-argv2.out 2>&1; then
+  fail 'write-cursor zero should fail closed'
+fi
 
 pass 'snapshot-plan-round harness'

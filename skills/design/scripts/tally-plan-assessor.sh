@@ -31,31 +31,30 @@ parse_assessment() {
     local file="$1"
     local line verdict="" reasoning="" qualifications="" in_reason=0 in_qual=0
     [[ -f "$file" && -s "$file" ]] || return 1
+    shopt -s nocasematch
     while IFS= read -r line || [[ -n "$line" ]]; do
         local stripped
         stripped=$(strip_md_bold "$line")
-        case "$stripped" in
-            ASSESSMENT:*|Assessment:*|assessment:*)
-                verdict="${stripped#*:}"
+        if [[ "$stripped" =~ ^[[:space:]]*assessment[[:space:]]*[:=][[:space:]]*(.*)$ ]]; then
+                verdict="${BASH_REMATCH[1]}"
                 verdict="${verdict#"${verdict%%[![:space:]]*}"}"
                 verdict="${verdict%"${verdict##*[![:space:]]}"}"
                 verdict=$(printf '%s' "$verdict" | tr '[:lower:]' '[:upper:]')
+                reasoning=""
+                qualifications=""
                 in_reason=0
                 in_qual=0
-                ;;
-            REASONING:*)
-                reasoning="${stripped#*:}"
+        elif [[ "$stripped" =~ ^[[:space:]]*reasoning[[:space:]]*[:=][[:space:]]*(.*)$ ]]; then
+                reasoning="${BASH_REMATCH[1]}"
                 reasoning="${reasoning#"${reasoning%%[![:space:]]*}"}"
                 in_reason=1
                 in_qual=0
-                ;;
-            QUALIFICATIONS:*)
-                qualifications="${stripped#*:}"
+        elif [[ "$stripped" =~ ^[[:space:]]*qualifications[[:space:]]*[:=][[:space:]]*(.*)$ ]]; then
+                qualifications="${BASH_REMATCH[1]}"
                 qualifications="${qualifications#"${qualifications%%[![:space:]]*}"}"
                 in_qual=1
                 in_reason=0
-                ;;
-            *)
+        else
                 if [[ "$in_reason" -eq 1 ]]; then
                     if [[ -n "$reasoning" ]]; then reasoning="$reasoning "; fi
                     reasoning="$reasoning$line"
@@ -63,9 +62,9 @@ parse_assessment() {
                     if [[ -n "$qualifications" ]]; then qualifications="$qualifications "; fi
                     qualifications="$qualifications$line"
                 fi
-                ;;
-        esac
+        fi
     done <"$file"
+    shopt -u nocasematch
     case "$verdict" in
         BETTER|WORSE|TIE)
             ASSESS_VERDICT="$verdict"
@@ -164,6 +163,9 @@ if [[ "$worse_majority" == true ]]; then
     qual_summary="${qual_summary:-WORSE-majority assessors supplied no qualifications.}"
 else
     qual_summary="${qual_summary:-Assessors found no WORSE-majority consensus.}"
+fi
+if [[ ${#qual_summary} -gt 240 ]]; then
+    qual_summary="${qual_summary:0:237}..."
 fi
 {
     printf 'ASSESSOR_VERDICT=%s\n' "$assessor_verdict"

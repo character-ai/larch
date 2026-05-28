@@ -21,6 +21,19 @@ usage() {
     larch_err "Usage: assess-plan-round.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false [--timeout SECS]"
 }
 
+read_workflow_path() {
+    local params="$DESIGN_TMPDIR/run-params.json"
+    local parsed=""
+    [[ -f "$params" ]] || return 0
+    if command -v jq >/dev/null 2>&1; then
+        parsed=$(jq -r '.workflow_path // ""' "$params" 2>/dev/null || echo "")
+    fi
+    if [[ -z "$parsed" ]]; then
+        parsed=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$params" | head -1)
+    fi
+    printf '%s' "$parsed"
+}
+
 read_round_cursor() {
     local snap_sh="${LARCH_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
     local out
@@ -91,10 +104,7 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
 ROUND_NUM=1
 
-workflow_path=""
-if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-    workflow_path=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo "")
-fi
+workflow_path="$(read_workflow_path)"
 if [[ "$workflow_path" != "HARD" ]]; then
     emit "⏩ assessor: workflow_path=${workflow_path:-<unset>}; skipped"
     emit_assessor_kv skipped skipped 0 "" ""
@@ -145,8 +155,10 @@ export LARCH_BREADCRUMB_STREAM="$bc_dir/assessor-round-${ROUND_NUM}.ndjson"
 export LARCH_DONE_SENTINEL="$bc_dir/assessor-round-${ROUND_NUM}.done"
 export LARCH_STATUS_FILE="$bc_dir/assessor-round-${ROUND_NUM}.status"
 export LARCH_QUIET_LOG_FILE="$bc_dir/assessor-round-${ROUND_NUM}.quiet.log"
+DISPATCH_KV_FILE="$bc_dir/assessor-round-${ROUND_NUM}.dispatch.kv"
 export LARCH_BREADCRUMBS_SURFACED_FILE="$bc_dir/assessor-round-${ROUND_NUM}.surfaced"
 export LARCH_PAIRED_PID_FILE="$bc_dir/assessor-round-${ROUND_NUM}.paired.pid"
+rm -f "$DISPATCH_KV_FILE"
 
 DISPATCH_SH="${LARCH_DISPATCH_PLAN_ASSESSORS_SH:-$PLUGIN_ROOT/skills/design/scripts/dispatch-plan-assessors.sh}"
 MONITOR_SH="${LARCH_BREADCRUMB_MONITOR_SH:-$PLUGIN_ROOT/scripts/breadcrumb-monitor.sh}"
@@ -162,7 +174,7 @@ set +e
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
     --timeout "$TIMEOUT" \
-    >"$LARCH_QUIET_LOG_FILE" 2>&1 &
+    >"$DISPATCH_KV_FILE" 2>"$LARCH_QUIET_LOG_FILE" &
 dispatch_pid=$!
 monitor_rc=0
 "$MONITOR_SH" \
@@ -183,7 +195,7 @@ fi
 set -e
 
 dispatch_out=""
-[[ -f "$LARCH_QUIET_LOG_FILE" ]] && dispatch_out=$(cat "$LARCH_QUIET_LOG_FILE" 2>/dev/null || true)
+[[ -f "$DISPATCH_KV_FILE" ]] && dispatch_out=$(cat "$DISPATCH_KV_FILE" 2>/dev/null || true)
 
 DISPATCH_OK=false
 CLAUDE_ASSESSOR_PATH="$DESIGN_TMPDIR/claude-plan-assessor-round-${ROUND_NUM}.txt"
@@ -202,9 +214,15 @@ done <<<"$dispatch_out"
 
 if [[ "$DISPATCH_OK" != "true" || "$dispatch_rc" -ne 0 ]]; then
     cap=$(mktemp "${TMPDIR:-/tmp}/assessor-dispatch.XXXXXX")
-    printf '%s\n' "$dispatch_out" >"$cap"
+    {
+        printf 'dispatch_rc=%s\n' "${dispatch_rc:-1}"
+        printf '%s\n' "$dispatch_out"
+        [[ -f "$LARCH_QUIET_LOG_FILE" ]] && cat "$LARCH_QUIET_LOG_FILE"
+    } >"$cap"
     append_warning "$cap" "${dispatch_rc:-1}"
     rm -f "$cap"
+    write_default_verdict_artifacts
+    exit 0
 fi
 
 verdict_file="$DESIGN_TMPDIR/assessor-verdict-round-${ROUND_NUM}.txt"

@@ -63,6 +63,10 @@ write_params SIMPLE
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'SIMPLE must skip'
 
+write_params TRIVIAL
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'TRIVIAL must skip'
+
 write_params HARD
 printf '1\n' >"$TMP/plan-review-round-cursor.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
@@ -102,8 +106,56 @@ STUB
 chmod +x "$TMP/mock-dispatch.sh"
 setup_round2
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
-printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'degraded dispatch should still tally usable assessor outputs'
-grep -Fq 'EFFECTIVE_ASSESSORS=2' "$TMP/assessor-verdict-round-2.txt.env" || fail 'degraded dispatch tally should record two effective assessors'
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail 'dispatch failure must degrade open'
+grep -Fq 'ASSESSOR_VERDICT=not-worse' "$TMP/assessor-verdict-round-2.txt.env" || fail 'dispatch failure should synthesize not-worse verdict env'
+grep -Fq 'EFFECTIVE_ASSESSORS=0' "$TMP/assessor-verdict-round-2.txt.env" || fail 'dispatch failure should not tally partial outputs'
+
+cat >"$TMP/mock-dispatch.sh" <<'STUB'
+#!/usr/bin/env bash
+DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --design-tmpdir) DIR="${2:?}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'DISPATCH_OK=true\n'
+printf 'CLAUDE_ASSESSOR_PATH=%s/claude-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CODEX_ASSESSOR_PATH=%s/codex-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
+STUB
+chmod +x "$TMP/mock-dispatch.sh"
+setup_round2
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail '0/3 effective assessors must degrade open'
+grep -Fq 'EFFECTIVE_ASSESSORS=0' "$TMP/assessor-verdict-round-2.txt.env" || fail '0/3 effective assessors must record zero'
+
+cat >"$TMP/mock-dispatch.sh" <<'STUB'
+#!/usr/bin/env bash
+DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --design-tmpdir) DIR="${2:?}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'DISPATCH_OK=true\n'
+printf 'CLAUDE_ASSESSOR_PATH=%s/claude-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CODEX_ASSESSOR_PATH=%s/codex-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
+printf 'ASSESSMENT: WORSE\nREASONING: c\nQUALIFICATIONS: cq\n' >"$DIR/claude-plan-assessor-round-2.txt"
+STUB
+chmod +x "$TMP/mock-dispatch.sh"
+cat >"$TMP/mock-monitor.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 6
+STUB
+chmod +x "$TMP/mock-monitor.sh"
+setup_round2
+printf 'stale worse\n' >"$TMP/assessor-verdict-round-2.txt"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail 'monitor failure must degrade open'
+grep -Fqx 'NOT_WORSE' "$TMP/assessor-verdict-round-2.txt" || fail 'monitor failure must overwrite stale verdict artifact'
 
 cat >"$TMP/mock-tally.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -116,5 +168,42 @@ setup_round2
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=degraded-default-open' || fail 'tally failure should degrade open'
 grep -Fq 'ASSESSOR_VERDICT=not-worse' "$TMP/assessor-verdict-round-2.txt.env" || fail 'tally failure should synthesize verdict env'
+
+cat >"$TMP/mock-dispatch.sh" <<'STUB'
+#!/usr/bin/env bash
+DIR="" ROUND="" 
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --design-tmpdir) DIR="${2:?}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'DISPATCH_OK=true\n'
+printf 'CLAUDE_ASSESSOR_PATH=%s/claude-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CODEX_ASSESSOR_PATH=%s/codex-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
+printf 'ASSESSMENT: TIE\nREASONING: q\nQUALIFICATIONS: z\n' >"$DIR/claude-plan-assessor-round-2.txt"
+STUB
+chmod +x "$TMP/mock-dispatch.sh"
+cat >"$TMP/mock-monitor.sh" <<'STUB'
+#!/usr/bin/env bash
+quiet=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --quiet-log) quiet="${2:?}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$quiet" && -f "$quiet" ]] || exit 8
+exit 0
+STUB
+chmod +x "$TMP/mock-monitor.sh"
+export LARCH_TALLY_PLAN_ASSESSOR_SH="$ROOT/skills/design/scripts/tally-plan-assessor.sh"
+setup_round2
+rm -f "$TMP/breadcrumbs/assessor-round-2.dispatch.kv" "$TMP/breadcrumbs/assessor-round-2.quiet.log"
+out=$("$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'production quiet-mode wiring path failed'
+[[ -f "$TMP/breadcrumbs/assessor-round-2.dispatch.kv" ]] || fail 'dispatch kv file missing'
+[[ -f "$TMP/breadcrumbs/assessor-round-2.quiet.log" ]] || fail 'quiet log missing'
 
 pass 'assess-plan-round harness'

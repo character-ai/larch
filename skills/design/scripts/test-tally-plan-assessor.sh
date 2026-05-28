@@ -72,6 +72,22 @@ write_assessor "$TMP/claude.txt" TIE
 : >"$TMP/codex.txt"
 body=$(run_tally)
 printf '%s\n' "$body" | grep -Fxq 'NOT_WORSE' || fail '(0,1,0) expected NOT_WORSE'
+grep -Fq 'EFFECTIVE_ASSESSORS=1' "$TMP/v.txt.env" || fail 'single effective assessor count missing'
+
+write_assessor "$TMP/claude.txt" TIE
+write_assessor "$TMP/cursor.txt" TIE
+write_assessor "$TMP/codex.txt" TIE
+body=$(run_tally)
+printf '%s\n' "$body" | grep -Fxq 'NOT_WORSE' || fail 'all-TIE should be NOT_WORSE'
+grep -Fq 'TIE_VOTES=3' "$TMP/v.txt.env" || fail 'all-TIE tie count missing'
+
+: >"$TMP/claude.txt"
+: >"$TMP/cursor.txt"
+: >"$TMP/codex.txt"
+body=$(run_tally)
+printf '%s\n' "$body" | grep -Fxq 'NOT_WORSE' || fail 'zero-effective should degrade open to NOT_WORSE'
+grep -Fq 'EFFECTIVE_ASSESSORS=0' "$TMP/v.txt.env" || fail 'zero-effective assessor count missing'
+grep -Fq 'DEGRADED_DEFAULT_OPEN=true' "$TMP/v.txt.env" || fail 'zero-effective should mark degraded default open'
 
 write_assessor "$TMP/claude.txt" WORSE
 printf '**ASSESSMENT: WORSE**\nREASONING: md\nQUALIFICATIONS: mdqual\n' >"$TMP/cursor.txt"
@@ -88,6 +104,19 @@ EOF
 : >"$TMP/codex.txt"
 run_tally >/dev/null
 grep -Fq 'QUALIFICATIONS_SUMMARY=WORSE-majority assessors supplied no qualifications.' "$TMP/v.txt.env" || fail 'worse-majority fallback summary missing'
+
+cat >"$TMP/claude.txt" <<'EOF'
+assessment = tie
+reasoning = earlier
+ASSESSMENT: WORSE
+REASONING: later
+QUALIFICATIONS: q1
+EOF
+: >"$TMP/cursor.txt"
+: >"$TMP/codex.txt"
+body=$(run_tally)
+printf '%s\n' "$body" | grep -Fq 'WORSE:' || fail 'duplicate assessment block should honor final verdict'
+grep -Fq 'QUALIFICATIONS_SUMMARY=q1' "$TMP/v.txt.env" || fail 'duplicate assessment block must reset stale qualification state'
 
 grep -Fq 'QUALIFICATIONS_SUMMARY=' "$TMP/v.txt.env" || fail 'missing env sidecar'
 

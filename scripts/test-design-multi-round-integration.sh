@@ -210,6 +210,10 @@ grep -q '^LOOP_STATUS=converged$' "$TMP/design/plan-review/round-3/round-summary
 cmp -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-3/plan.txt" || fail "round-3 snapshot plan must match final plan"
 [[ -f "$TMP/design/plan-review/round-3/findings-classification.tsv" ]] || fail "round-3 classification TSV missing"
 assert_env_has_keys "$TMP/design/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS CONVERGENCE_STREAK AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
+printf 'original snapshot\n' >"$TMP/design/plan.txt-original"
+printf 'round 1 snapshot\n' >"$TMP/design/plan-after-round-1.txt"
+printf 'round 2 snapshot\n' >"$TMP/design/plan-after-round-2.txt"
+printf '3\n' >"$TMP/design/plan-review-round-cursor.txt"
 
 # shellcheck source=scripts/lib-design-round-artifacts.sh
 source "$ROOT/scripts/lib-design-round-artifacts.sh"
@@ -239,6 +243,8 @@ git -C "$clone" pull -q origin main
 expected_paths=$(expected_round_paths "$TMP/design")
 actual_paths=$(published_round_paths "$clone" "RUNMRINT1")
 [[ "$expected_paths" == "$actual_paths" ]] || fail "published plan-review file list must match loop snapshot"
+grep -Fxq '3' "$clone/larch-logs/design/RUNMRINT1/plan-review-round-cursor.txt" || fail "published assessor round cursor missing"
+cmp -s "$TMP/design/plan-after-round-2.txt" "$clone/larch-logs/design/RUNMRINT1/plan-after-round-2.txt" || fail "published assessor snapshot mismatch"
 
 echo "=== publish fails closed on unknown.bin ==="
 printf 'x\n' >"$TMP/design/plan-review/round-1/unknown.bin"
