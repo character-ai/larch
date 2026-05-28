@@ -125,4 +125,14 @@ if ! out_empty=$("$SUBJECT" --design-tmpdir '' --variant step3); then
 fi
 printf '%s\n' "$out_empty" | grep -Fq '**⚠ 3: DESIGN_TMPDIR missing or invalid' || fail "empty tmpdir should warn"
 
+# Disallowed tmpdir: validate before step3 sentinel short-circuit or missing-plan sentinel writes.
+d9=$(mktemp -d "$SCRIPT_DIR/emit-design-plan-preview-disallowed.XXXXXX")
+trap 'rm -rf "$TMPROOT" "$d9"' EXIT
+out9=$("$SUBJECT" --design-tmpdir "$d9" --variant step3)
+printf '%s\n' "$out9" | grep -Fq '**⚠ 3: DESIGN_TMPDIR not under allowlist' || fail "step3 should validate allowlist before early exits"
+[[ ! -e "$d9/.step3-entry-plan-printed" ]] || fail "step3 should not write sentinel before allowlist validation"
+touch "$d9/.step3-entry-plan-printed"
+out9b=$("$SUBJECT" --design-tmpdir "$d9" --variant step3)
+printf '%s\n' "$out9b" | grep -Fq '**⚠ 3: DESIGN_TMPDIR not under allowlist' || fail "existing sentinel must not bypass allowlist validation"
+
 echo "PASS: test-emit-design-plan-preview.sh"
