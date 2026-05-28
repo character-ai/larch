@@ -334,11 +334,13 @@ extract_unified_diff_candidates_from_source() {
 }
 
 extract_unified_diff_candidates() {
-    local output="$1" patch="$2" tmpdir found_file block_dir block count first candidate_dir candidate_file
+    local output="$1" patch="$2" tmpdir found_file block_dir block count first candidate_dir candidate_file list_file
     tmpdir=$(mktemp -d "${TMPDIR:-/tmp}/revise-unified.XXXXXX")
     found_file="$tmpdir/found"
     block_dir="$tmpdir/blocks"
+    list_file="${patch}.list"
     mkdir -p "$block_dir"
+    : >"$list_file"
 
     awk -v outdir="$block_dir" '
         BEGIN { in_block = 0; count = 0 }
@@ -378,14 +380,17 @@ extract_unified_diff_candidates() {
             if [[ -z "$first" ]]; then
                 first="$candidate_file"
                 cp "$candidate_file" "$patch"
+                printf '%s\n' "$patch" >>"$list_file"
             else
                 printf -v candidate_file_suffix '%03d' "$count"
                 cp "$candidate_file" "${patch%.patch}-${candidate_file_suffix}.patch"
+                printf '%s\n' "${patch%.patch}-${candidate_file_suffix}.patch" >>"$list_file"
             fi
         done
     done
     if [[ -z "$first" ]]; then
         : >"$patch"
+        rm -f "$list_file"
     fi
     rm -rf "$tmpdir"
 }
@@ -397,12 +402,23 @@ extract_file_replacement_candidate() {
             block_len = 0
             trailer_idx = 0
         }
-        function capture_candidate(    idx) {
+        function is_fence_open(line) {
+            return line ~ /^```([[:alnum:]_-]+)?[[:space:]]*$/
+        }
+        function capture_candidate(    idx, start_idx, end_idx) {
             if (trailer_idx == 0) {
                 return
             }
             candidate_len = 0
-            for (idx = 1; idx <= trailer_idx; idx++) {
+            start_idx = 1
+            end_idx = trailer_idx
+            if (start_idx <= end_idx && is_fence_open(block[start_idx])) {
+                start_idx++
+                if (start_idx <= end_idx && block[end_idx] == "```") {
+                    end_idx--
+                }
+            }
+            for (idx = start_idx; idx <= end_idx; idx++) {
                 candidate[++candidate_len] = block[idx]
             }
         }
@@ -419,11 +435,9 @@ extract_file_replacement_candidate() {
             reset_block()
         }
         in_block {
-            if ($0 != "```") {
-                block[++block_len] = $0
-                if ($0 ~ /^diff_lines:[[:space:]]*[0-9]+[[:space:]]*$/) {
-                    trailer_idx = block_len
-                }
+            block[++block_len] = $0
+            if ($0 ~ /^diff_lines:[[:space:]]*[0-9]+[[:space:]]*$/) {
+                trailer_idx = block_len
             }
         }
         END {
@@ -527,7 +541,7 @@ launch_tier() {
 }
 
 attempt_tier() {
-    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count candidate candidate_ok
+    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count candidate candidate_ok candidate_list
 
     if [[ "$tier" == "codex" && "$CODEX_PRESENT" == "false" ]]; then
         set_tier_status "$ordinal" skipped-not-present
@@ -550,7 +564,8 @@ attempt_tier() {
 
     output_name=$(basename "$output")
     patch_file="$REVISE_DIR/${output_name%.txt}-candidate.patch"
-    rm -f "$patch_file"
+    candidate_list="${patch_file}.list"
+    rm -f "$patch_file" "$candidate_list" "$REVISE_DIR/${output_name%.txt}-candidate"-*.patch
     extract_patch "$output" "$patch_file"
     if [[ ! -s "$patch_file" ]]; then
         set_tier_status "$ordinal" no-patch
@@ -559,20 +574,38 @@ attempt_tier() {
 
     if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
         candidate_ok=false
-        for candidate in "$REVISE_DIR/${output_name%.txt}-candidate"*.patch; do
-            [[ -e "$candidate" ]] || break
-            if ! validate_unified_headers "$candidate"; then
-                continue
-            fi
-            if ! check_git_apply "$candidate"; then
-                continue
-            fi
-            if [[ "$candidate" != "$patch_file" ]]; then
-                cp "$candidate" "$patch_file"
-            fi
-            candidate_ok=true
-            break
-        done
+        if [[ -f "$candidate_list" ]]; then
+            while IFS= read -r candidate || [[ -n "$candidate" ]]; do
+                [[ -n "$candidate" ]] || continue
+                [[ -e "$candidate" ]] || continue
+                if ! validate_unified_headers "$candidate"; then
+                    continue
+                fi
+                if ! check_git_apply "$candidate"; then
+                    continue
+                fi
+                if [[ "$candidate" != "$patch_file" ]]; then
+                    cp "$candidate" "$patch_file"
+                fi
+                candidate_ok=true
+                break
+            done <"$candidate_list"
+        else
+            for candidate in "$REVISE_DIR/${output_name%.txt}-candidate"*.patch; do
+                [[ -e "$candidate" ]] || break
+                if ! validate_unified_headers "$candidate"; then
+                    continue
+                fi
+                if ! check_git_apply "$candidate"; then
+                    continue
+                fi
+                if [[ "$candidate" != "$patch_file" ]]; then
+                    cp "$candidate" "$patch_file"
+                fi
+                candidate_ok=true
+                break
+            done
+        fi
         if [[ "$candidate_ok" != "true" ]]; then
             set_tier_status "$ordinal" invalid-patch
             restore_plan_or_die

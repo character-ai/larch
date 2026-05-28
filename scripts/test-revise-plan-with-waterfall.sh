@@ -602,6 +602,49 @@ out4=$(DESIGN_TMPDIR="$C4" run_case "$C4")
 assert_kv "$out4" REVISE_STATUS ok-fallback
 assert_kv "$out4" REVISE_TIER_4_STATUS ok
 grep -q '^final replacement$' "$C4/plan.txt" || fail "case4 should keep the last complete replacement plan"
+grep -q '^```$' "$C4/plan.txt" || fail "case4 should preserve literal standalone fences inside the plan body"
+
+echo "=== stale unified-diff candidates from an earlier run are ignored ==="
+C4B="$TMP/case4b"
+setup_case "$C4B"
+cp "$COMMON/launch-review.sh" "$C4B/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C4B/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C4B/design-driver.sh"
+mkdir -p "$C4B/responses" "$C4B/plan-review/round-1/revise"
+cat >"$C4B/plan-review/round-1/revise/codex-output-candidate-002.patch" <<'EOF'
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++stale patch
+ diff_lines: 1
+EOF
+cat >"$C4B/responses/codex.txt" <<'EOF'
+```diff
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1 @@
+-bad
++still bad
+```
+EOF
+cat >"$C4B/responses/cursor.txt" <<'EOF'
+```diff
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++fresh cursor
+ diff_lines: 1
+```
+EOF
+out4b=$(run_case "$C4B")
+assert_kv "$out4b" REVISE_STATUS ok
+assert_kv "$out4b" REVISE_TIER_1_STATUS invalid-patch
+assert_kv "$out4b" REVISE_TIER_2_STATUS ok
+grep -q '^fresh cursor$' "$C4B/plan.txt" || fail "case4b should ignore stale extracted candidates from earlier runs"
 
 echo "=== no candidate patch downgrades to no-patch and continues ==="
 C5="$TMP/case5"
@@ -878,6 +921,119 @@ out8d=$(DESIGN_TMPDIR="$C8D" run_case "$C8D")
 assert_kv "$out8d" REVISE_STATUS ok-fallback
 assert_kv "$out8d" REVISE_TIER_4_STATUS ok
 grep -q '^replacement after long line$' "$C8D/plan.txt" || fail "case8d should survive the long-line corrupt patch path"
+
+echo "=== tier-4 fallback can skip codex and let cursor win ==="
+C8E="$TMP/case8e"
+setup_case "$C8E"
+cp "$COMMON/launch-claude-review.sh" "$C8E/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C8E/design-driver.sh"
+mkdir -p "$C8E/responses"
+cat >"$C8E/launch-review.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+tool="${LARCH_TOOL_OVERRIDE:-}"
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --tool) tool="${2:?}"; shift 2 ;;
+        --output) output="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$tool" && -n "$output" ]] || exit 2
+if [[ -f "${DESIGN_TMPDIR:?}/.tier4" ]]; then
+    if [[ "$output" == *"/cursor-output.txt" ]]; then
+        cat >"$output" <<'INNER'
+## Plan
+cursor tier4
+diff_lines: 1
+INNER
+    else
+        : >"$output"
+    fi
+elif [[ -f "${RESPONSE_DIR:?}/${tool}.txt" ]]; then
+    cp "${RESPONSE_DIR:?}/${tool}.txt" "$output"
+else
+    : >"$output"
+fi
+if [[ "$output" == *"/claude-output.txt" ]]; then
+    : >"${DESIGN_TMPDIR:?}/.tier4"
+fi
+EOF
+chmod +x "$C8E/launch-review.sh"
+cat >"$C8E/responses/codex.txt" <<'EOF'
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1 @@
+-bad
++still bad
+EOF
+cp "$C8E/responses/codex.txt" "$C8E/responses/cursor.txt"
+cp "$C8E/responses/codex.txt" "$C8E/responses/claude.txt"
+out8e=$(DESIGN_TMPDIR="$C8E" run_case "$C8E")
+assert_kv "$out8e" REVISE_STATUS ok-fallback
+assert_kv "$out8e" REVISE_TIER_1_STATUS invalid-patch
+assert_kv "$out8e" REVISE_TIER_2_STATUS invalid-patch
+assert_kv "$out8e" REVISE_TIER_3_STATUS invalid-patch
+assert_kv "$out8e" REVISE_TIER_4_STATUS ok
+assert_kv "$out8e" REVISE_WINNING_TIER cursor
+grep -q '^cursor tier4$' "$C8E/plan.txt" || fail "case8e should allow cursor to win inside tier-4 fallback"
+
+echo "=== tier-4 fallback can skip codex and cursor and let claude win ==="
+C8F="$TMP/case8f"
+setup_case "$C8F"
+cp "$COMMON/launch-claude-review.sh" "$C8F/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C8F/design-driver.sh"
+mkdir -p "$C8F/responses"
+cat >"$C8F/launch-review.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+tool="${LARCH_TOOL_OVERRIDE:-}"
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --tool) tool="${2:?}"; shift 2 ;;
+        --output) output="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$tool" && -n "$output" ]] || exit 2
+if [[ -f "${DESIGN_TMPDIR:?}/.tier4" ]]; then
+    : >"$output"
+elif [[ -f "${RESPONSE_DIR:?}/${tool}.txt" ]]; then
+    cp "${RESPONSE_DIR:?}/${tool}.txt" "$output"
+else
+    : >"$output"
+fi
+if [[ "$output" == *"/claude-output.txt" && -f "${DESIGN_TMPDIR:?}/.tier4" ]]; then
+    cat >"$output" <<'INNER'
+## Plan
+claude tier4
+diff_lines: 1
+INNER
+fi
+if [[ "$output" == *"/claude-output.txt" ]]; then
+    : >"${DESIGN_TMPDIR:?}/.tier4"
+fi
+EOF
+chmod +x "$C8F/launch-review.sh"
+cat >"$C8F/responses/codex.txt" <<'EOF'
+--- a/notes.txt
++++ b/notes.txt
+@@ -1 +1 @@
+-bad
++still bad
+EOF
+cp "$C8F/responses/codex.txt" "$C8F/responses/cursor.txt"
+cp "$C8F/responses/codex.txt" "$C8F/responses/claude.txt"
+out8f=$(DESIGN_TMPDIR="$C8F" run_case "$C8F")
+assert_kv "$out8f" REVISE_STATUS ok-fallback
+assert_kv "$out8f" REVISE_TIER_1_STATUS invalid-patch
+assert_kv "$out8f" REVISE_TIER_2_STATUS invalid-patch
+assert_kv "$out8f" REVISE_TIER_3_STATUS invalid-patch
+assert_kv "$out8f" REVISE_TIER_4_STATUS ok
+assert_kv "$out8f" REVISE_WINNING_TIER claude
+grep -q '^claude tier4$' "$C8F/plan.txt" || fail "case8f should allow claude to win inside tier-4 fallback"
 
 echo "=== codex absence is reported and cursor can still win ==="
 C9="$TMP/case9"
