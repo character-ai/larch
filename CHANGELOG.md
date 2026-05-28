@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `scripts/ship-pr.sh` `ship_pr_commit_changelog_after_rebump` no longer stalls with `commit-changelog.sh reported COMMITTED=false before CHANGELOG.md was verified` on the legacy (non-bullets) path when the dropped bump version equals the freshly classified version. When `old_version == new_version` (or `old_version` is otherwise unusable), it derives `--replaces-version` from `origin/main`'s `.claude-plugin/plugin.json` so `commit-changelog.sh`'s awk has a target to retitle (or to insert if absent). Only origin versions distinct from `new_version` are used; bullets path semantics are unchanged. Closes #3102.
 - `skills/review/scripts/aggregate-findings.sh` now accepts attestation-only duplicate merges as `REASON=ok` with a whitespace-only persisted ballot instead of `REASON=validation-exhausted`. Pseudo-headings combined with attestation are explicitly rejected via the new `nonconforming_heading_with_attestation` narrow-trigger. Closes #2939; reverses the #2782-encoded behavior and completes the #2881 plan.
 - `scripts/ship-pr.sh` `run_rebase_rebump` no longer dead-locks in a CHANGELOG.md conflict loop when `OLD_VERSION == NEW_VERSION` (origin/main advanced via non-bump commits so classify-bump returned the same version we just dropped). After `drop-bump-commit.sh` removes the stale bump, the new `ship_pr_stage_rebump_bullets` helper extracts the `## [OLD]` body to `$IMPLEMENT_TMPDIR/.rrr-rebump-bullets.md` and invokes the new `scripts/drop-changelog-commit.sh` primitive to strip the companion `Update CHANGELOG for OLD` commit before the rebase replays. `ship_pr_commit_changelog_after_rebump` then reconstructs the entry under the new version via `write_changelog_entry` (hoisted from `scripts/implement-finalize.sh` to `scripts/lib-changelog.sh` so both callers share it), and falls back to the legacy commit-changelog.sh insertion when origin/main already published `## [NEW]` to keep the duplicate-heading guard from firing. Closes #2952 Bug A.
 - `scripts/ship-pr.sh` `run_rebase_rebump` now calls `scripts/refresh-run-logs.sh` before `drop-bump-commit.sh` so any pending tracked `larch-logs/` writes are committed first. This closes the Guard-1 false-positive window where a prior step left a tracked log file modified-but-uncommitted, making the dropper refuse with `DROPPED=false` and a Guard-1 warning that the stall handler routed to `exit_stall`. Closes #2952 Bug B.
@@ -27,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
+
+## [45.2.2] - 2026-05-27
+
+### Changed
+
+- Closed: #3102
 
 ## [45.2.1] - 2026-05-27
 
