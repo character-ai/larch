@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- absent() guards live in harness scripts (test-design-structure.sh), not check-contains-pins.sh scope; adding absent support is separate work
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan explicitly describes E2E repro as manual; no offline hermetic harness can run a live /design session
+FINDING_5: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- require_enum catches non-numeric before jq so jq-failure claim is inaccurate, but the test coverage gap for non-numeric strings is real
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- cross-field tuple validation not in plan scope and adds complexity; SKILL.md guarantees consistent combinations on normal flows
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

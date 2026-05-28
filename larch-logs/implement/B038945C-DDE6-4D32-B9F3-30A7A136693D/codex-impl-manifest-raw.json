@@ -1,0 +1,44 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": ".pre-commit-config.yaml", "lines_added": 14, "lines_removed": 0},
+    {"path": "BASH_AUTHORING.md", "lines_added": 2, "lines_removed": 0},
+    {"path": "Makefile", "lines_added": 15, "lines_removed": 2},
+    {"path": "agent-lint.toml", "lines_added": 13, "lines_removed": 0},
+    {"path": "docs/linting.md", "lines_added": 6, "lines_removed": 2},
+    {"path": "scripts/lint-renderer-substitution-safety.md", "lines_added": 30, "lines_removed": 0},
+    {"path": "scripts/lint-renderer-substitution-safety.sh", "lines_added": 100, "lines_removed": 0},
+    {"path": "scripts/lint-skill-md-flag-signature.md", "lines_added": 32, "lines_removed": 0},
+    {"path": "scripts/lint-skill-md-flag-signature.sh", "lines_added": 208, "lines_removed": 0},
+    {"path": "scripts/test-lint-renderer-substitution-safety.md", "lines_added": 7, "lines_removed": 0},
+    {"path": "scripts/test-lint-renderer-substitution-safety.sh", "lines_added": 151, "lines_removed": 0},
+    {"path": "scripts/test-lint-skill-md-flag-signature.md", "lines_added": 7, "lines_removed": 0},
+    {"path": "scripts/test-lint-skill-md-flag-signature.sh", "lines_added": 157, "lines_removed": 0},
+    {"path": "scripts/test-write-run-params.sh", "lines_added": 98, "lines_removed": 1},
+    {"path": "scripts/write-run-params.md", "lines_added": 5, "lines_removed": 4},
+    {"path": "scripts/write-run-params.sh", "lines_added": 78, "lines_removed": 2},
+    {"path": "skills/design/SKILL.md", "lines_added": 18, "lines_removed": 3},
+    {"path": "skills/design/references/flags.md", "lines_added": 5, "lines_removed": 3},
+    {"path": "skills/design/scripts/render-plan-review-prompt.md", "lines_added": 1, "lines_removed": 0},
+    {"path": "skills/design/scripts/render-plan-review-prompt.sh", "lines_added": 9, "lines_removed": 3}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-lint-renderer-substitution-safety.sh",
+    "scripts/test-lint-skill-md-flag-signature.sh",
+    "scripts/test-write-run-params.sh",
+    "skills/design/scripts/test-plan-review-prompt.sh"
+  ],
+  "summary_bullets": [
+    "Extend write-run-params.sh to schema v3 with tier metadata fields and nullable optional flags",
+    "Update /design Step 0b to persist explicit SIMPLE/HARD tier mappings and abort on writer contract drift",
+    "Replace remaining plan-review renderer variable substitutions with bash 3.2/5.x-safe split joins",
+    "Add renderer substitution safety and SKILL.md flag-signature linters with hermetic harnesses",
+    "Wire the new lint checks into Makefile, pre-commit, docs, and agent-lint exclusions"
+  ],
+  "commit_message": "Fix design run-params drift and renderer substitution safety\n\nExtend the /design run-params writer to schema v3, persist tier metadata, and make Step 0b fail loudly on script/prompt contract drift. Replace remaining prompt renderer variable substitutions with split joins and add regression linters for unsafe renderer substitutions plus SKILL.md script flag drift.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {"questions": []}
+}
