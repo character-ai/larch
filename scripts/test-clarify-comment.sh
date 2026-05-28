@@ -30,6 +30,14 @@ if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
     exit 0
 fi
 if [ "$1" = "issue" ] && [ "$2" = "comment" ]; then
+    if [ -n "${GH_COMMENT_FAIL_COUNT:-}" ] && [ -n "${GH_COMMENT_COUNT_FILE:-}" ]; then
+        count=$(( $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+        printf '%s\n' "$count" > "$GH_COMMENT_COUNT_FILE"
+        if [ "$count" -le "${GH_COMMENT_FAIL_COUNT}" ]; then
+            printf '%s\n' 'Could not resolve host: api.github.com' >&2
+            exit 1
+        fi
+    fi
     i=1
     while [ "$i" -le "$#" ]; do
         eval "a=\${$i}"
@@ -95,6 +103,16 @@ expect_kv "$out" COMMENT_ID 7001
 expect_kv "$out" COMMENT_URL "https://github.com/owner/repo/issues/42#issuecomment-7001"
 expect_kv "$out" MARKER "<!-- larch:clarify-response id=1 -->"
 expect_body_file "$CAPTURE" "<!-- larch:clarify-response id=1 -->"
+
+echo "=== request retries transient gh failure ==="
+export GH_COMMENT_FAIL_COUNT=2
+export GH_COMMENT_COUNT_FILE="$TMP/comment-count"
+rm -f "$CAPTURE"
+out="$(PATH="$STUB:$ORIG_PATH" "$POST" --issue 42 --kind request --id 2 --content-file "$CONTENT" --repo owner/repo)"
+expect_kv "$out" POSTED true
+expect_kv "$out" COMMENT_ID 7001
+[[ "$(cat "$GH_COMMENT_COUNT_FILE")" == "3" ]] || fail "transient clarify retry count mismatch: $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo missing)"
+unset GH_COMMENT_FAIL_COUNT GH_COMMENT_COUNT_FILE
 
 echo "=== invalid id 0 ==="
 set +e

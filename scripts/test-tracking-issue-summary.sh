@@ -3,6 +3,8 @@
 
 set -euo pipefail
 
+export LARCH_QUIET_DISABLE=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 SUMMARY="$SCRIPT_DIR/tracking-issue-summary.sh"
 
@@ -23,6 +25,14 @@ if [ "$1" = "repo" ]; then
     exit 0
 fi
 if [ "$1" = "issue" ] && [ "$2" = "comment" ]; then
+    if [ -n "${GH_COMMENT_FAIL_COUNT:-}" ] && [ -n "${GH_COMMENT_COUNT_FILE:-}" ]; then
+        count=$(( $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+        printf '%s\n' "$count" > "$GH_COMMENT_COUNT_FILE"
+        if [ "$count" -le "${GH_COMMENT_FAIL_COUNT}" ]; then
+            printf '%s\n' 'Could not resolve host: api.github.com' >&2
+            exit 1
+        fi
+    fi
     for ((i=1; i<=$#; i++)); do
         if [ "${!i}" = "--body-file" ]; then
             next=$((i + 1))
@@ -91,6 +101,14 @@ out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:plan v1 runid=ab
 [[ "$out" == *"UPDATED=false"* ]] || { echo "FAIL: create did not report UPDATED=false: $out" >&2; exit 1; }
 grep -q '^<!-- larch:plan v1 runid=abc123 -->$' "$BODY_CAPTURE"
 grep -q '<REDACTED-TOKEN>' "$BODY_CAPTURE"
+
+echo "=== create path retries transient comment failure ==="
+export GH_COMMENT_FAIL_COUNT=2
+export GH_COMMENT_COUNT_FILE="$TMP/comment-count"
+out="$("$SUMMARY" upsert-summary --issue 7 --marker '<!-- larch:plan v1 runid=abc123 -->' --content-file "$content" --repo owner/repo)"
+[[ "$out" == *"UPDATED=false"* ]] || { echo "FAIL: transient create did not report UPDATED=false: $out" >&2; exit 1; }
+[[ "$(cat "$GH_COMMENT_COUNT_FILE")" == "3" ]] || { echo "FAIL: transient create retry count mismatch: $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo missing)" >&2; exit 1; }
+unset GH_COMMENT_FAIL_COUNT GH_COMMENT_COUNT_FILE
 
 echo "=== update path ==="
 build_stub "$TMP/stub-one" one

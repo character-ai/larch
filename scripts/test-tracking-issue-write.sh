@@ -37,6 +37,14 @@ if [ "$1" = "issue" ] && [ "$2" = "create" ]; then
     exit 0
 fi
 if [ "$1" = "issue" ] && [ "$2" = "comment" ]; then
+    if [ -n "${GH_COMMENT_FAIL_COUNT:-}" ] && [ -n "${GH_COMMENT_COUNT_FILE:-}" ]; then
+        count=$(( $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+        printf '%s\n' "$count" > "$GH_COMMENT_COUNT_FILE"
+        if [ "$count" -le "${GH_COMMENT_FAIL_COUNT}" ]; then
+            printf '%s\n' 'Could not resolve host: api.github.com' >&2
+            exit 1
+        fi
+    fi
     for ((i=1; i<=$#; i++)); do
         if [ "${!i}" = "--body-file" ]; then
             next=$((i + 1))
@@ -83,6 +91,14 @@ printf 'comment\n' > "$body"
 out="$("$WRITE" append-comment --issue 42 --body-file "$body" --lifecycle-marker pr-opened --repo owner/repo)"
 [[ "$out" == *"COMMENT_ID=7001"* ]] || fail "append COMMENT_ID missing: $out"
 grep -q '^<!-- larch:lifecycle-marker:pr-opened -->$' "$BODY_CAPTURE" || fail "lifecycle marker missing"
+
+echo "=== append-comment retries transient gh failure ==="
+export GH_COMMENT_FAIL_COUNT=2
+export GH_COMMENT_COUNT_FILE="$TMP/comment-count"
+out="$("$WRITE" append-comment --issue 42 --body-file "$body" --repo owner/repo)"
+[[ "$out" == *"COMMENT_ID=7001"* ]] || fail "append transient COMMENT_ID missing: $out"
+[[ "$(cat "$GH_COMMENT_COUNT_FILE")" == "3" ]] || fail "append transient retry count mismatch: $(cat "$GH_COMMENT_COUNT_FILE" 2>/dev/null || echo missing)"
+unset GH_COMMENT_FAIL_COUNT GH_COMMENT_COUNT_FILE
 
 echo "=== lifecycle marker rejects comment terminator ==="
 set +e
@@ -270,6 +286,7 @@ FAKE_MISSING="$TMP/fake-missing-redact"
 mkdir -p "$FAKE_MISSING/scripts"
 cp "$WRITE" "$FAKE_MISSING/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_MISSING/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_MISSING/scripts/lib-net.sh"
 STUB_MISSING="$TMP/stubs-missing-redact"
 mkdir -p "$STUB_MISSING"
 secret_missing='sk-ant-FAKESECRET-MISSING-1234'
@@ -298,6 +315,7 @@ FAKE_FAILING="$TMP/fake-failing-redact"
 mkdir -p "$FAKE_FAILING/scripts"
 cp "$WRITE" "$FAKE_FAILING/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_FAILING/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_FAILING/scripts/lib-net.sh"
 printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_FAILING/scripts/redact-tmpdir-paths.sh"
 chmod +x "$FAKE_FAILING/scripts/redact-tmpdir-paths.sh"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$FAKE_FAILING/scripts/redact-secrets.sh"
@@ -329,6 +347,7 @@ FAKE_TRUNC_TOKEN="$TMP/fake-trunc-token-redact"
 mkdir -p "$FAKE_TRUNC_TOKEN/scripts"
 cp "$WRITE" "$FAKE_TRUNC_TOKEN/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TRUNC_TOKEN/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_TRUNC_TOKEN/scripts/lib-net.sh"
 printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_TRUNC_TOKEN/scripts/redact-tmpdir-paths.sh"
 chmod +x "$FAKE_TRUNC_TOKEN/scripts/redact-tmpdir-paths.sh"
 trunc_marker='[content truncated — unterminated PEM block; tail of body dropped for safety]'
@@ -367,6 +386,7 @@ FAKE_TRUNC_OK="$TMP/fake-trunc-ok-redact"
 mkdir -p "$FAKE_TRUNC_OK/scripts"
 cp "$WRITE" "$FAKE_TRUNC_OK/scripts/tracking-issue-write.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TRUNC_OK/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_TRUNC_OK/scripts/lib-net.sh"
 printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_TRUNC_OK/scripts/redact-tmpdir-paths.sh"
 chmod +x "$FAKE_TRUNC_OK/scripts/redact-tmpdir-paths.sh"
 secret_trunc_ok='sk-ant-FAKETRUNC-OK-1234567890123456789AB'

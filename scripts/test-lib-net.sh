@@ -182,6 +182,17 @@ set -e
 assert_eq "ship_pr envelope exit" 6 "$ship_rc"
 assert_eq "ship_pr envelope msg" "Transient envelope exhausted" "$(cat "$EXIT_TRANSIENT_LOG" 2>/dev/null || true)"
 
+# --- ship_pr_with_transient_retry rc!=0 transient exhaustion ---
+: >"$EXIT_TRANSIENT_LOG"
+: >"$ATTEMPT_LOG"
+ff="$TMPROOT/ship-transient.ff"
+set +e
+( ship_pr_with_transient_retry transient_envelope_predicate_none "$ff" wtr_transient_fail "$ff" 1 )
+ship_rc=$?
+set -e
+assert_eq "ship_pr transient exit" 6 "$ship_rc"
+assert_eq "ship_pr transient msg" "Transient retries exhausted" "$(cat "$EXIT_TRANSIENT_LOG" 2>/dev/null || true)"
+
 if [[ "$FAIL" -eq 0 ]]; then
     echo "lib-net OK"
     exit 0

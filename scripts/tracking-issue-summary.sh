@@ -32,6 +32,24 @@ redact_text() {
     printf '%s' "$1" | "$REDACT" || fail 3 "redaction failed"
 }
 
+redact_gh_error() {
+    local err_text="$1"
+    local redacted
+    local status=0
+    redacted=$(redact_text "$err_text") || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
+    fi
+    case "$redacted" in
+        *'[content truncated'*)
+            printf '%s' 'gh failure: redaction unavailable'
+            return 0
+            ;;
+    esac
+    printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+}
+
 normalize_first_line() {
     local line=$1
     if [[ "${line:0:3}" == $'\xef\xbb\xbf' ]]; then
@@ -108,14 +126,16 @@ case "$cmd" in
         printf '%s' "$body" > "$tmp"
         if [ "$count" -eq 0 ]; then
             comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-summary-comment.XXXXXX")
-            if out=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp" 2>"$comment_fail_file"); then
+            if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp"; then
                 comment_rc=0
             else
-                comment_rc=$?
+                comment_rc=$_WTR_RC
             fi
+            out=$_WTR_OUT
             comment_err=$(cat "$comment_fail_file" 2>/dev/null || true)
             rm -f "$comment_fail_file"
-            [ "$comment_rc" -eq 0 ] || fail 2 "gh issue comment failed: $(redact_text "$comment_err" | tr '\n' ' ' | head -c 500)"
+            [ "$comment_rc" -eq 0 ] || fail 2 "gh issue comment failed: $(redact_gh_error "$comment_err")"
             url="$(printf '%s\n' "$out" | grep -oE 'https?://[^[:space:]]+' | tail -1 || true)"
             emit_kv COMMENT_ID ""
             emit_kv COMMENT_URL "$url"

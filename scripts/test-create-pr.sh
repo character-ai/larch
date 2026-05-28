@@ -236,4 +236,30 @@ set -e
 [[ "$rc_dirty_untracked" -ne 0 ]] || fail "dirty untracked file should abort push (exit non-zero)"
 grep -q 'Uncommitted working-tree changes' "$TMPROOT/dirty-untracked.err" || fail "dirty untracked error should mention uncommitted changes, got: $(cat "$TMPROOT/dirty-untracked.err")"
 
+# Test: push failure diagnostics are redacted before logging.
+repo_push_redact=$(setup_repo push-redact)
+push_stub_dir="$TMPROOT/bin-push-redact"
+mkdir -p "$push_stub_dir"
+REAL_GIT="$(command -v git)"
+cat > "$push_stub_dir/git" <<'GIT'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "push" ]]; then
+    printf '%s\n' 'fatal: could not read from https://x-access-token:ghp_123456789012345678901234567890123456@example.invalid/repo.git' >&2
+    exit 1
+fi
+exec "$REAL_GIT" "$@"
+GIT
+chmod +x "$push_stub_dir/git"
+set +e
+(cd "$repo_push_redact" && GH_LOG="$TMPROOT/push-redact-gh.log" GH_MODE=create PATH="$push_stub_dir:$stub_dir:$PATH" REAL_GIT="$REAL_GIT" "$SCRIPT" --title "Push redact" --body-file body.md --repo fork/repo) \
+    >"$TMPROOT/push-redact.out" 2>"$TMPROOT/push-redact.err"
+rc_push_redact=$?
+set -e
+[[ "$rc_push_redact" -ne 0 ]] || fail "push redaction test should fail"
+grep -q '<REDACTED-TOKEN>' "$TMPROOT/push-redact.err" || fail "push redaction stderr missing token placeholder: $(cat "$TMPROOT/push-redact.err")"
+if grep -q 'ghp_123456789012345678901234567890123456' "$TMPROOT/push-redact.err"; then
+    fail "push redaction stderr leaked raw token: $(cat "$TMPROOT/push-redact.err")"
+fi
+
 echo "PASS: test-create-pr.sh"

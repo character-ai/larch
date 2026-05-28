@@ -33,6 +33,14 @@ fi
 if [[ "$1" == "pr" ]]; then
     case "$2" in
         create)
+            if [[ -n "${GH_STUB_CREATE_FAIL_COUNT:-}" && -n "${GH_STUB_CREATE_COUNT_FILE:-}" ]]; then
+                create_count=$(( $(cat "${GH_STUB_CREATE_COUNT_FILE}" 2>/dev/null || echo 0) + 1 ))
+                printf '%s\n' "$create_count" > "${GH_STUB_CREATE_COUNT_FILE}"
+                if [[ "$create_count" -le "${GH_STUB_CREATE_FAIL_COUNT}" ]]; then
+                    echo "Could not resolve host: api.github.com" >&2
+                    exit 1
+                fi
+            fi
             body_file=""
             prev=""
             for arg in "$@"; do
@@ -480,6 +488,28 @@ grep -q 'pr create' "$GH_STUB_LOG_CR" || fail "expected pr create attempt in log
 grep -q 'pr merge' "$GH_STUB_LOG_CR" || fail "expected pr merge after list recovery"
 unset GH_STUB_CREATE_RC
 
+echo "=== pr create succeeds after transient retries ==="
+TMPCRT=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-create-transient.XXXXXX")
+clone_crt=$(setup_clone_with_origin_head "$TMPCRT")
+stub_crt="$TMPCRT/stub"
+GH_STUB_LOG_CRT="$TMPCRT/gh-create-transient.log"
+: >"$GH_STUB_LOG_CRT"
+export GH_STUB_LOG="$GH_STUB_LOG_CRT"
+make_gh_stub "$stub_crt"
+export PATH="$stub_crt:$PATH"
+export TEST_CLONE_ROOT="$clone_crt"
+export TEST_MERGE_BRANCH="larch-log-design-RUNCREATETR1"
+export GH_STUB_CREATE_FAIL_COUNT=2
+export GH_STUB_CREATE_COUNT_FILE="$TMPCRT/create-count"
+mkdir -p "$TMPCRT/design"
+printf 'crt\n' >"$TMPCRT/design/c.txt"
+out_crt=$(
+    cd "$clone_crt" && bash "$PUBLISH" --design-tmpdir "$TMPCRT/design" --run-id "RUNCREATETR1" --issue 15 --repo owner/repo
+)
+[[ "$out_crt" == *"PUBLISH_OK=true"* ]] || fail "create transient recovery PUBLISH_OK: $out_crt"
+[[ "$(cat "$GH_STUB_CREATE_COUNT_FILE")" == "3" ]] || fail "create transient retry count mismatch: $(cat "$GH_STUB_CREATE_COUNT_FILE" 2>/dev/null || echo missing)"
+unset GH_STUB_CREATE_FAIL_COUNT GH_STUB_CREATE_COUNT_FILE
+
 wt_lines=$(git -C "$clone" worktree list | wc -l | tr -d ' ')
 [[ "$wt_lines" == "1" ]] || fail "expected single worktree, got: $(git -C "$clone" worktree list)"
 [[ $(git -C "$clone" branch --list 'larch-log-design-*' | wc -l | tr -d ' ') -eq 0 ]] || fail "unexpected local larch-log-design-* branch after publish"
@@ -595,8 +625,9 @@ set -e
 [[ "$out_clf" == *"PUBLISH_OK=false"* ]] || fail "create-fail list-probe failure PUBLISH_OK: $out_clf"
 [[ "$rc_clf" -eq 1 ]] || fail "create-fail list-probe failure should exit 1 (got $rc_clf)"
 [[ "$out_clf" == *"RECOVERY_BRANCH=larch-log-design-RUNCREATEFAIL2"* ]] || fail "create-fail list-probe failure RECOVERY_BRANCH: $out_clf"
-git -C "$clone_clf" ls-remote --exit-code --heads origin larch-log-design-RUNCREATEFAIL2 >/dev/null 2>&1 \
-    || fail "create-fail list-probe failure should preserve remote branch for recovery"
+if git -C "$clone_clf" ls-remote --exit-code --heads origin larch-log-design-RUNCREATEFAIL2 >/dev/null 2>&1; then
+    fail "create-fail list-probe failure should delete remote branch after inconclusive recovery"
+fi
 unset GH_STUB_CREATE_RC GH_STUB_PR_LIST_RC
 rm -rf "$TMPCLF"
 

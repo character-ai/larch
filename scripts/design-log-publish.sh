@@ -687,7 +687,7 @@ if [[ -z "$PR_NUM" ]]; then
         else
             larch_err "design-log-publish: gh pr create failed: ${create_out:-unknown}"
         fi
-        if [[ "$create_rc" -ne 0 && "$recovery_probe_ok" == true ]]; then
+        if [[ "$create_rc" -ne 0 ]]; then
             git -C "$WT_DIR" push origin --delete "$WT_BRANCH" >/dev/null 2>&1 || true
         fi
         rm -f "$list_fail_file"
