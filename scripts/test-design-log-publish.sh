@@ -299,6 +299,15 @@ done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.events.jsonl" ]] || fail "denied events basename leaked into render-cache"
 
+echo "=== revise allowlist rejects unexpected file under round-N/revise ==="
+printf 'nope\n' >"$TMP/design/plan-review/round-1/revise/extra.log"
+out_revise_bad=$(
+    (cd "$clone" && bash "$PUBLISH" --design-tmpdir "$TMP/design" --run-id "RUNPUBREV1" --issue 42 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_revise_bad" == *"PUBLISH_OK=false"* ]] || fail "unexpected revise file should fail publish"
+git -C "$clone" branch -D larch-log-design-RUNPUBREV1 >/dev/null 2>&1 || true
+rm -f "$TMP/design/plan-review/round-1/revise/extra.log"
+
 echo "=== pause reason stages .completed and manifest paused ==="
 TMPPAUSE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause.XXXXXX")
 clone_pause=$(setup_clone_with_origin_head "$TMPPAUSE")

@@ -9,11 +9,13 @@
 Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before resolving the path with `cd ... && pwd -P`.
 
 - Writes session-root artifacts under `$DESIGN_TMPDIR/`: `ballot.txt`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md`. `ballot.txt` is created or truncated on every exit path (including `panel-failed` and zero-finding short-circuit) so consumers avoid `ENOENT`. Never revises `plan.txt` in legacy mode; multi-round mode auto-applies via `revise-plan-with-waterfall.sh` when `manual_gate_b=false`.
+- In multi-round mode, `oos-accepted-design.md` is cumulative across settled rounds. Zero-finding, tally-error, and panel-failed branches preserve the prior cumulative file instead of truncating it, and only accepted OOS blocks are merged forward.
 - Honors `LARCH_AGGREGATOR_DISABLED=1` by skipping `aggregate-findings.sh` and setting `AGGREGATOR_STATUS=disabled`.
 - Emits stdout KV lines documented below plus optional `WARN=` lines.
 - Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv` for normal tally runs; header-only TSV on empty-artifact exits.
 - Writes `$DESIGN_TMPDIR/.step3-plan-review-result.env` at every terminal exit (multi-round and legacy).
 - Per-round forensics allowlist: `scripts/lib-design-round-artifacts.md`.
+- Allowed snapshot inputs must be regular files. If an allowlisted session-root artifact resolves as a symlink, the round snapshot is deleted and the loop fails closed with `LOOP_STATUS=panel-failed`.
 
 ## Argv
 

@@ -17,7 +17,7 @@ design_round_artifact_included() {
         findings.md|findings-in-scope.md|findings-oos.md|findings-classification.tsv)
             return 0
             ;;
-        accepted-plan-findings.md|rejected-findings.md|oos.md|ballot.txt|voting-tally.md)
+        accepted-plan-findings.md|rejected-findings.md|oos.md|oos-accepted-design.md|ballot.txt|voting-tally.md)
             return 0
             ;;
         plan-review-slots.ndjson|plan-voter-slots.ndjson|scout-plan-manifest.json|round-summary.env|plan.txt)

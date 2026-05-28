@@ -182,7 +182,10 @@ out=$(run_loop_fixture "$TMP/design")
 printf '%s\n' "$out" | grep -q '^LOOP_STATUS=cap-hit$' || fail "expected cap-hit from integration loop"
 
 [[ -d "$TMP/design/plan-review/round-1" ]] || fail "round-1 missing"
+[[ -d "$TMP/design/plan-review/round-2" ]] || fail "round-2 missing"
 [[ -f "$TMP/design/plan-review/round-1/round-summary.env" ]] || fail "round-summary missing"
+grep -q '^LOOP_STATUS=cap-hit$' "$TMP/design/plan-review/round-2/round-summary.env" || fail "round-2 summary should record cap-hit"
+cmp -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-2/plan.txt" || fail "round-2 snapshot plan must match final plan"
 
 # shellcheck source=scripts/lib-design-round-artifacts.sh
 source "$ROOT/scripts/lib-design-round-artifacts.sh"
@@ -221,6 +224,15 @@ printf 'x\n' >"$TMP/design/plan-review/round-1/unknown.bin"
     [[ "$publish_bad" == *"PUBLISH_OK=false"* ]] || fail "unknown.bin should fail publish"
 )
 rm -f "$TMP/design/plan-review/round-1/unknown.bin"
+
+echo "=== publish fails closed on unexpected revise artifact ==="
+printf 'x\n' >"$TMP/design/plan-review/round-1/revise/extra.log"
+(
+    cd "$clone" || exit 1
+    publish_revise_bad=$(bash "$PUBLISH" --design-tmpdir "$TMP/design" --run-id "RUNMRREV1" --issue 42 --repo owner/repo 2>/dev/null || true)
+    [[ "$publish_revise_bad" == *"PUBLISH_OK=false"* ]] || fail "unexpected revise artifact should fail publish"
+)
+rm -f "$TMP/design/plan-review/round-1/revise/extra.log"
 
 echo "=== publish fails closed on symlink inside plan-review ==="
 ln -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-1/linked.txt"

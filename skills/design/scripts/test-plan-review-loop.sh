@@ -21,6 +21,19 @@ trap 'rm -rf "$TMP"' EXIT
 STUB="$TMP/stub-bin"
 mkdir -p "$STUB"
 
+set +e
+"$PLR" \
+    --design-tmpdir "$TMP" \
+    --plan-file "$ROOT/README.md" \
+    --feature-file "$ROOT/README.md" \
+    --codex-present true \
+    --cursor-present true \
+    --round-num 3 \
+    --round-cap 2 >/dev/null 2>&1
+rc=$?
+set -e
+[[ "$rc" == 2 ]] || fail "expected exit 2 when --round-num exceeds --round-cap, got $rc"
+
 write_scout() {
     cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -202,6 +215,69 @@ EOS
     chmod +x "$STUB/collect-agent-results.sh"
 }
 
+write_collect_with_oos_votes() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 1
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    {
+        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+        printf '%s\n' "in_scope	important	correctness	src/a	Accepted finding	scenario	fix"
+        printf '%s\n' "out_of_scope	important	correctness	src/oos1	Accepted OOS problem	scenario accepted	fix accepted"
+        printf '%s\n' "out_of_scope	important	correctness	src/oos2	Rejected OOS problem	scenario rejected	fix rejected"
+    } >"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
+write_collect_distinct_oos_per_round() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 1
+state_file="$(dirname "$paths")/.collect-round-count"
+round=1
+if [[ -f "$state_file" ]]; then
+    round=$(( $(cat "$state_file") + 1 ))
+fi
+printf '%s\n' "$round" >"$state_file"
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    {
+        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+        printf '%s\n' "in_scope	important	correctness	src/a	Round ${round} finding	scenario ${round}	fix ${round}"
+        printf '%s\n' "out_of_scope	important	correctness	src/oos${round}	Round ${round} accepted OOS	scenario ${round}	fix ${round}"
+    } >"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
 write_voters_three() {
     cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -231,6 +307,64 @@ printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
 printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
 EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
+}
+
+write_voters_with_oos_split() {
+    cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+v1="$DESIGN_TMPDIR/vstub1.txt"
+v2="$DESIGN_TMPDIR/vstub2.txt"
+v3="$DESIGN_TMPDIR/vstub3.txt"
+vp="$DESIGN_TMPDIR/voter-paths.list"
+_vote_body=$'FINDING_1: YES\nOOS_1: YES\nOOS_2: NO\n'
+for f in "$v1" "$v2" "$v3"; do
+    printf '%s' "$_vote_body" >"$f"
+done
+printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
+EOS
+    chmod +x "$STUB/dispatch-plan-voters.sh"
+}
+
+write_tally_main_agent_stub() {
+    cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--findings-classification-out|--voter) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+cat >"$DESIGN_TMPDIR/oos-accepted-design.md" <<'INNER'
+### OOS_1:
+- **Description**: Main-agent branch OOS. Scenario: branch coverage
+- **Reviewer**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: src/oos
+- **Phase**: design
+
+INNER
+printf 'TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nVOTING_TALLY_FILE=%s\n' "$DESIGN_TMPDIR/voting-tally.md"
+EOS
+    chmod +x "$STUB/tally-plan-review.sh"
 }
 
 write_voters_slot2_failed() {
@@ -618,6 +752,43 @@ write_voters_three
 out_z0=$(run_loop "$DZ0" 1 --round-cap 3)
 printf '%s\n' "$out_z0" | grep -q '^LOOP_STATUS=degraded-empty-collector$' || fail "expected degraded-empty-collector"
 
+echo "=== multi-round: accepted OOS accumulation excludes rejected OOS ==="
+DOOS="$TMP/mr-oos-filter"
+mkdir -p "$DOOS"
+printf 'plan\n\ndiff_lines: 1\n' >"$DOOS/plan.txt"
+printf 'feat\n' >"$DOOS/feature-description.txt"
+printf '{"manual_gate_b":true}\n' >"$DOOS/run-params.json"
+write_scout
+write_dispatch_one_slot
+write_collect_with_oos_votes
+write_voters_with_oos_split
+out_oos=$(run_loop "$DOOS" 1 --round-cap 2)
+printf '%s\n' "$out_oos" | grep -q '^LOOP_STATUS=complete$' || fail "manual OOS filter path should complete"
+grep -q 'Accepted OOS problem' "$DOOS/oos-accepted-design.md" || fail "accepted OOS must remain in cumulative file"
+if grep -q 'Rejected OOS problem' "$DOOS/oos-accepted-design.md"; then
+    fail "rejected OOS must not enter cumulative file"
+fi
+
+echo "=== multi-round: cumulative accepted OOS survives later rounds ==="
+DOOSC="$TMP/mr-oos-cumulative"
+mkdir -p "$DOOSC"
+printf 'plan\n\ndiff_lines: 1\n' >"$DOOSC/plan.txt"
+printf 'feat\n' >"$DOOSC/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_distinct_oos_per_round
+write_voters_with_oos_split
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_oosc=$(run_loop "$DOOSC" 1 --round-cap 2 --convergence-threshold 0)
+printf '%s\n' "$out_oosc" | grep -q '^LOOP_STATUS=cap-hit$' || fail "two accepted rounds should cap-hit"
+grep -q 'Round 1 accepted OOS' "$DOOSC/oos-accepted-design.md" || fail "round 1 accepted OOS missing from cumulative file"
+grep -q 'Round 2 accepted OOS' "$DOOSC/oos-accepted-design.md" || fail "round 2 accepted OOS missing from cumulative file"
+
 echo "=== multi-round: manual_gate_b → complete manual-gate-b, revise not required ==="
 DM="$TMP/manual"
 mkdir -p "$DM"
@@ -639,6 +810,22 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_m=$(run_loop "$DM" 1 --round-cap 5)
 printf '%s\n' "$out_m" | grep -q '^LOOP_STATUS=complete$' || fail "manual mode expected complete"
 printf '%s\n' "$out_m" | grep -q '^REASON=manual-gate-b$' || fail "manual mode expected manual-gate-b reason"
+
+echo "=== multi-round: main-agent-vote-required preserves accepted OOS artifact ==="
+DMA="$TMP/mr-main-agent"
+mkdir -p "$DMA"
+printf 'plan\n\ndiff_lines: 1\n' >"$DMA/plan.txt"
+printf 'feat\n' >"$DMA/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+write_tally_main_agent_stub
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out_ma=$(run_loop "$DMA" 1 --round-cap 2)
+unset LARCH_PLAN_REVIEW_TALLY_SH
+printf '%s\n' "$out_ma" | grep -q '^LOOP_STATUS=main-agent-vote-required$' || fail "main-agent stub should surface main-agent-vote-required"
+grep -q 'Main-agent branch OOS' "$DMA/oos-accepted-design.md" || fail "main-agent branch must preserve accepted OOS artifact"
 
 echo "=== multi-round: tally-error exits before revise ==="
 DTM="$TMP/mr-tally"
@@ -789,5 +976,29 @@ out_s=$(run_loop "$DS" 1 --round-cap 1)
 printf '%s\n' "$out_s" | grep -q '^LOOP_STATUS=cap-hit$' || fail "cap 1 expected cap-hit"
 [[ -f "$DS/plan-review/round-1/findings.md" ]] || fail "findings.md should snapshot"
 [[ ! -f "$DS/plan-review/round-1/cursor-plan-arch-output.txt" ]] || fail "raw reviewer output must not snapshot"
+
+echo "=== snapshot fails closed on allowlisted symlink source ==="
+DSS="$TMP/snap-symlink"
+mkdir -p "$DSS"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSS/plan.txt"
+printf 'feat\n' >"$DSS/feature-description.txt"
+ln -s "$DSS/feature-description.txt" "$DSS/plan-voter-slots.ndjson"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+set +e
+out_ss=$(run_loop "$DSS" 1 --round-cap 1)
+rc_ss=$?
+set -e
+[[ "$rc_ss" -eq 1 ]] || fail "allowlisted symlink source should fail snapshot closed"
+printf '%s\n' "$out_ss" | grep -q '^LOOP_STATUS=panel-failed$' || fail "symlink snapshot failure should surface panel-failed"
+[[ ! -f "$DSS/plan-review/round-1/plan.txt" ]] || fail "failed snapshot must not preserve copied snapshot artifacts"
 
 printf '%s\n' "test-plan-review-loop: ok"

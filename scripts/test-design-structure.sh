@@ -577,7 +577,7 @@ grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit will p
 grep -Fq 'findings are surfaced to Gate B, which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_MD" \
   || fail "(FINDING_6) plan-review.md missing Gate B dual-mode application pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq 'When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed|emit-plan-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only' "$SKILL_MD" \
+grep -Fq 'When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch.' "$SKILL_MD" \
   || fail "(FINDING_7) SKILL.md Step 3 missing auto-apply pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
 grep -Fq 'it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation' "$SKILL_MD" \

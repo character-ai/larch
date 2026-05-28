@@ -95,6 +95,10 @@ if (( ROUND_CAP_ARG_SEEN )); then
     case "$ROUND_CAP" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2 ;; esac
     ROUND_CAP=$((10#$ROUND_CAP))
     (( ROUND_CAP > 0 )) || { larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2; }
+    if (( ROUND_NUM > ROUND_CAP )); then
+        larch_err "plan-review-loop.sh: --round-num must not exceed --round-cap"
+        exit 2
+    fi
     case "$CONVERGENCE_THRESHOLD" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --convergence-threshold must be a non-negative integer"; exit 2 ;; esac
     CONVERGENCE_THRESHOLD=$((10#$CONVERGENCE_THRESHOLD))
 fi
@@ -166,7 +170,6 @@ write_empty_review_artifacts() {
     : > "$DESIGN_TMPDIR/accepted-plan-findings.md"
     : > "$DESIGN_TMPDIR/rejected-findings.md"
     : > "$DESIGN_TMPDIR/oos.md"
-    : > "$DESIGN_TMPDIR/oos-accepted-design.md"
     {
         printf '# Plan Review Voting Tally\n\n'
         printf '%s\n' "$tally_note"
@@ -251,17 +254,22 @@ _snapshot_round_dir() {
     local round_num="$1"
     local dest="$DESIGN_TMPDIR/plan-review/round-${round_num}"
     mkdir -p "$dest"
-    local name src
+    local name src failed=0
     for src in "$DESIGN_TMPDIR"/*; do
         [[ -f "$src" ]] || continue
         name=$(basename "$src")
         design_round_artifact_included "$name" || continue
         if [[ -L "$src" ]]; then
             emit_kv WARN "plan-review-snapshot: refusing symlink source $name"
+            failed=1
             continue
         fi
         cp -f "$src" "$dest/$name"
     done
+    if (( failed != 0 )); then
+        rm -rf "$dest"
+        return 1
+    fi
     if [[ -d "$dest/revise" ]]; then
         local rname rsrc
         for rsrc in "$dest/revise"/*; do
@@ -297,18 +305,29 @@ _write_round_summary() {
     mv -f "$tmp" "$dest"
 }
 
+_restore_prior_round_oos() {
+    local prior_cum="$1"
+    if [[ -f "$prior_cum" ]]; then
+        cp -f "$prior_cum" "$DESIGN_TMPDIR/oos-accepted-design.md"
+    else
+        rm -f "$DESIGN_TMPDIR/oos-accepted-design.md"
+    fi
+}
+
 _accumulate_round_oos() {
-    local round_num="$1"
-    local round_oos="$DESIGN_TMPDIR/plan-review/round-${round_num}/oos.md"
-    [[ -f "$DESIGN_TMPDIR/oos.md" ]] && cp -f "$DESIGN_TMPDIR/oos.md" "$round_oos"
-    [[ -f "$round_oos" && -s "$round_oos" ]] || return 0
-    local cum="$DESIGN_TMPDIR/oos-accepted-design.md"
-    touch "$cum"
-    python3 - "$round_oos" "$cum" <<'PY'
+    local round_num="$1" prior_cum="$2"
+    local round_accepted="$DESIGN_TMPDIR/oos-accepted-design.md"
+    local round_snapshot="$DESIGN_TMPDIR/plan-review/round-${round_num}/oos-accepted-design.md"
+    [[ -f "$round_accepted" ]] && cp -f "$round_accepted" "$round_snapshot"
+    if [[ ! -f "$round_accepted" || ! -s "$round_accepted" ]]; then
+        _restore_prior_round_oos "$prior_cum"
+        return 0
+    fi
+    python3 - "$prior_cum" "$round_accepted" <<'PY'
 import re, sys
 
-round_path, cum_path = sys.argv[1:3]
-text = open(round_path, encoding="utf-8", errors="replace").read()
+prior_path, current_path = sys.argv[1:3]
+text = open(current_path, encoding="utf-8", errors="replace").read()
 blocks = [m.group(0).strip() for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", text)]
 if not blocks:
     raise SystemExit(0)
@@ -317,7 +336,10 @@ def desc_key(block):
     m = re.search(r"\*\*Description\*\*:\s*(.+?)(?:\n|$)", block, re.S)
     return (m.group(1).strip().lower() if m else block.strip().lower())
 
-existing = open(cum_path, encoding="utf-8", errors="replace").read() if True else ""
+try:
+    existing = open(prior_path, encoding="utf-8", errors="replace").read()
+except OSError:
+    existing = ""
 existing_keys = []
 for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", existing):
     existing_keys.append(desc_key(m.group(0)))
@@ -338,7 +360,7 @@ for blk in blocks:
 body = "\n\n".join(p for p in out_parts if p.strip())
 if body:
     body += "\n\n"
-open(cum_path, "w", encoding="utf-8").write(body)
+open(current_path, "w", encoding="utf-8").write(body)
 PY
 }
 
@@ -641,42 +663,6 @@ if grep -qE '^STATUS=(dirty|unknown)$' <<< "$_dirty_out"; then
     emit_kv WARN "plan-review-collection: dirty tree detected"
 fi
 
-_parse_py="$DESIGN_TMPDIR/.plan-review-loop-parse-collect.py"
-cat > "$_parse_py" <<'PY'
-import sys
-
-def main():
-    text = sys.stdin.read()
-    blocks = []
-    for para in text.split("\n\n"):
-        lines = [ln.strip() for ln in para.splitlines() if ln.strip()]
-        if not lines:
-            continue
-        d = {}
-        for ln in lines:
-            if "=" not in ln:
-                continue
-            k, v = ln.split("=", 1)
-            d[k] = v
-        if "REVIEWER_FILE" in d or "STATUS" in d:
-            blocks.append(d)
-    for b in blocks:
-        sys.stdout.write(
-            "%s\x1f%s\x1f%s\x1f%s\x1f%s\n"
-            % (
-                b.get("REVIEWER_FILE", ""),
-                b.get("TOOL", ""),
-                b.get("STATUS", ""),
-                b.get("EXIT_CODE", "0"),
-                b.get("FAILURE_REASON", ""),
-            )
-        )
-
-
-if __name__ == "__main__":
-    main()
-PY
-
 _findings_tmp="$DESIGN_TMPDIR/findings.md.tmp"
 : > "$_findings_tmp"
 while IFS= read -r _rec || [[ -n "$_rec" ]]; do
@@ -776,8 +762,7 @@ PY
         fi
         rm -f "$_frag"
     fi
-done < <(printf '%s' "$_collect_out" | python3 "$_parse_py")
-rm -f "$_parse_py"
+done < <(_parse_collect_records "$_collect_out")
 
 _dedup_py="$DESIGN_TMPDIR/.plan-review-loop-dedup.py"
 cat > "$_dedup_py" <<'PY'
@@ -1120,6 +1105,12 @@ fi
 while (( round_num <= ROUND_CAP )); do
     _clear_session_root_review_artifacts
     _last_collect_out=""
+    _prior_cum_oos="$DESIGN_TMPDIR/.oos-accepted-design.prev.md"
+    if [[ -f "$DESIGN_TMPDIR/oos-accepted-design.md" ]]; then
+        cp -f "$DESIGN_TMPDIR/oos-accepted-design.md" "$_prior_cum_oos"
+    else
+        rm -f "$_prior_cum_oos"
+    fi
     set +e
     _run_plan_review_round "$round_num"
     _round_rc=$?
@@ -1129,34 +1120,51 @@ while (( round_num <= ROUND_CAP )); do
         LOOP_STATUS=main-agent-vote-required
         IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
         _count_collector_evidence
-        _snapshot_round_dir "$round_num"
+        _accumulate_round_oos "$round_num" "$_prior_cum_oos"
+        if ! _snapshot_round_dir "$round_num"; then
+            LOOP_STATUS=panel-failed
+            LOOP_REASON=snapshot-failed
+            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
+            _terminal_exit 1 "$round_num"
+        fi
         _write_round_summary "$round_num" main-agent-vote-required "" skipped
         _terminal_exit 0 "$round_num"
     fi
 
     if (( _round_rc != 0 )); then
+        _restore_prior_round_oos "$_prior_cum_oos"
         LOOP_STATUS=panel-failed
         LOOP_REASON=panel-failed
         revise_status=skipped
         IMPORTANT_ACCEPTED_COUNT=0
         _count_collector_evidence
-        _snapshot_round_dir "$round_num"
+        if ! _snapshot_round_dir "$round_num"; then
+            LOOP_REASON=snapshot-failed
+            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
+            _terminal_exit 1 "$round_num"
+        fi
         _write_round_summary "$round_num" panel-failed panel-failed skipped
         _terminal_exit 1 "$round_num"
     fi
 
     if [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]]; then
+        _restore_prior_round_oos "$_prior_cum_oos"
         LOOP_STATUS=tally-error
         LOOP_REASON=tally-error
         revise_status=skipped
         IMPORTANT_ACCEPTED_COUNT=0
         _count_collector_evidence
-        _snapshot_round_dir "$round_num"
+        if ! _snapshot_round_dir "$round_num"; then
+            LOOP_STATUS=panel-failed
+            LOOP_REASON=snapshot-failed
+            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
+            _terminal_exit 1 "$round_num"
+        fi
         _write_round_summary "$round_num" tally-error tally-error skipped
         _terminal_exit 0 "$round_num"
     fi
 
-    _accumulate_round_oos "$round_num"
+    _accumulate_round_oos "$round_num" "$_prior_cum_oos"
     _count_collector_evidence
     ACCEPTED_COUNT=0
     if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
@@ -1171,7 +1179,12 @@ while (( round_num <= ROUND_CAP )); do
             LOOP_REASON=degraded-empty-collector
             DEGRADED_PANEL=1
             revise_status=skipped
-            _snapshot_round_dir "$round_num"
+            if ! _snapshot_round_dir "$round_num"; then
+                LOOP_STATUS=panel-failed
+                LOOP_REASON=snapshot-failed
+                _write_round_summary "$round_num" panel-failed snapshot-failed skipped
+                _terminal_exit 1 "$round_num"
+            fi
             _write_round_summary "$round_num" degraded-empty-collector degraded-empty-collector skipped
             _terminal_exit 0 "$round_num"
         fi
@@ -1183,7 +1196,12 @@ while (( round_num <= ROUND_CAP )); do
             LOOP_REASON=zero-findings
         fi
         revise_status=skipped
-        _snapshot_round_dir "$round_num"
+        if ! _snapshot_round_dir "$round_num"; then
+            LOOP_STATUS=panel-failed
+            LOOP_REASON=snapshot-failed
+            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
+            _terminal_exit 1 "$round_num"
+        fi
         _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" skipped
         _terminal_exit 0 "$round_num"
     fi
@@ -1192,7 +1210,12 @@ while (( round_num <= ROUND_CAP )); do
         LOOP_STATUS=complete
         LOOP_REASON=manual-gate-b
         revise_status=skipped
-        _snapshot_round_dir "$round_num"
+        if ! _snapshot_round_dir "$round_num"; then
+            LOOP_STATUS=panel-failed
+            LOOP_REASON=snapshot-failed
+            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
+            _terminal_exit 1 "$round_num"
+        fi
         _write_round_summary "$round_num" complete manual-gate-b skipped
         _terminal_exit 0 "$round_num"
     fi
@@ -1202,7 +1225,12 @@ while (( round_num <= ROUND_CAP )); do
         PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
         LOOP_STATUS=revision-failed
         LOOP_REASON=revision-failed
-        _snapshot_round_dir "$round_num"
+        if ! _snapshot_round_dir "$round_num"; then
+            LOOP_STATUS=panel-failed
+            LOOP_REASON=snapshot-failed
+            _write_round_summary "$round_num" panel-failed snapshot-failed "${revise_status:-failed-no-patch}"
+            _terminal_exit 1 "$round_num"
+        fi
         _write_round_summary "$round_num" revision-failed revision-failed "${revise_status:-failed-no-patch}"
         _terminal_exit 0 "$round_num"
     fi
@@ -1210,12 +1238,22 @@ while (( round_num <= ROUND_CAP )); do
     revise_status=ok
 
     if ! _run_post_apply_pipeline "$round_num"; then
-        _snapshot_round_dir "$round_num"
+        if ! _snapshot_round_dir "$round_num"; then
+            LOOP_STATUS=panel-failed
+            LOOP_REASON=snapshot-failed
+            _write_round_summary "$round_num" panel-failed snapshot-failed "${revise_status:-ok}"
+            _terminal_exit 1 "$round_num"
+        fi
         _write_round_summary "$round_num" "$LOOP_STATUS" "${LOOP_REASON:-}" "${revise_status:-ok}"
         _terminal_exit 0 "$round_num"
     fi
 
-    _snapshot_round_dir "$round_num"
+    if ! _snapshot_round_dir "$round_num"; then
+        LOOP_STATUS=panel-failed
+        LOOP_REASON=snapshot-failed
+        _write_round_summary "$round_num" panel-failed snapshot-failed ok
+        _terminal_exit 1 "$round_num"
+    fi
 
     if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
         convergence_streak=0
