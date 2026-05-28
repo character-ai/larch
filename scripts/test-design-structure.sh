@@ -127,6 +127,14 @@ contains "$APPROVAL_MD" '### Apply-all body' 'approval-gates.md missing Apply-al
 contains "$APPROVAL_MD" 'Execute `### Apply-all body` verbatim' 'approval-gates.md missing Apply-all body delegate prose'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$FLAGS_MD" '`--manual` / `-m`:' 'flags.md missing --manual/-m bullet anchor'
+absent "$APPROVAL_MD" 'no auto-apply' 'approval-gates.md: stale "no auto-apply" prose contradicts default auto-apply rule'
+absent "$SKILL_MD"    'no auto-apply' 'SKILL.md: stale "no auto-apply" prose contradicts default auto-apply rule'
+absent "$APPROVAL_MD" 'user is always prompted' 'approval-gates.md: stale "user is always prompted" prose contradicts default auto-apply rule'
+absent "$SKILL_MD"    'user is always prompted' 'SKILL.md: stale "user is always prompted" prose contradicts default auto-apply rule'
+absent "$APPROVAL_MD" 'Gate B always prompts' 'approval-gates.md: stale "Gate B always prompts" prose contradicts default auto-apply rule'
+absent "$SKILL_MD"    'Gate B always prompts' 'SKILL.md: stale "Gate B always prompts" prose contradicts default auto-apply rule'
+absent "$APPROVAL_MD" 'fail-closed to manual' 'approval-gates.md: stale "fail-closed to manual" prose contradicts degraded-mode auto-apply default'
+absent "$SKILL_MD"    'fail-closed to manual' 'SKILL.md: stale "fail-closed to manual" prose contradicts degraded-mode auto-apply default'
 
 # Check 15d: design SKILL must not chat-print token/timing summaries.
 if grep -nF 'token-report.sh --summary' "$SKILL_MD" | grep -q .; then
@@ -505,6 +513,9 @@ grep -Fq 'append `--manual-requested true` only when `manual_requested=true`' "$
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- 'manual_gate_b = $merge_m' "$SKILL_MD" \
   || fail "(FINDING_14) SKILL.md jq merge must overwrite manual_gate_b from current argv state"
+# shellcheck disable=SC2016 # jq filter literal: $merge_p/$merge_b/$merge_m are jq vars, not shell vars.
+grep -Fq -- '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' "$SKILL_MD" \
+  || fail "(#3008) SKILL.md canonical Step 0b jq-merge filter must remain pinned for test-step0b-router-flag-recovery.sh"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq 'refusing to recreate it with fallback defaults' "$SKILL_MD" \
   || fail "(2930) SKILL.md fallback-missing path must refuse to recreate run-params with defaults"
