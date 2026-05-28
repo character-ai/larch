@@ -145,13 +145,68 @@ compose_prompt() {
 tier1_status=""
 tier2_status=""
 tier3_status=""
+tier4_status=""
 winner=""
+winner_is_fallback=false
+
+merge_tier4_status() {
+    local new="$1"
+    if [[ -z "$tier4_status" ]]; then
+        tier4_status="$new"
+        return
+    fi
+    if [[ "$tier4_status" == "ok" ]]; then
+        return
+    fi
+    if [[ "$new" == "ok" ]]; then
+        tier4_status=ok
+        return
+    fi
+    case "$tier4_status:$new" in
+        not-attempted:*|*:not-attempted)
+            case "$new" in
+                ok|emit-plan-failed|apply-failed|invalid-patch|no-patch|skipped-not-present) tier4_status="$new" ;;
+            esac
+            ;;
+        skipped-not-present:*|*:skipped-not-present)
+            case "$new" in
+                ok|emit-plan-failed|apply-failed|invalid-patch|no-patch) tier4_status="$new" ;;
+                skipped-not-present) tier4_status=skipped-not-present ;;
+            esac
+            ;;
+        no-patch:*|*:no-patch)
+            case "$new" in
+                ok|emit-plan-failed|apply-failed|invalid-patch) tier4_status="$new" ;;
+                no-patch|skipped-not-present) tier4_status=no-patch ;;
+            esac
+            ;;
+        invalid-patch:*|*:invalid-patch)
+            case "$new" in
+                ok|emit-plan-failed|apply-failed) tier4_status="$new" ;;
+                invalid-patch|no-patch|skipped-not-present) tier4_status=invalid-patch ;;
+            esac
+            ;;
+        apply-failed:*|*:apply-failed)
+            case "$new" in
+                ok|emit-plan-failed) tier4_status="$new" ;;
+                apply-failed|invalid-patch|no-patch|skipped-not-present) tier4_status=apply-failed ;;
+            esac
+            ;;
+        emit-plan-failed:*|*:emit-plan-failed)
+            case "$new" in
+                ok) tier4_status=ok ;;
+                emit-plan-failed|apply-failed|invalid-patch|no-patch|skipped-not-present) tier4_status=emit-plan-failed ;;
+            esac
+            ;;
+    esac
+}
 
 set_tier_status() {
     case "$1" in
         1) tier1_status="$2" ;;
         2) tier2_status="$2" ;;
         3) tier3_status="$2" ;;
+        4) merge_tier4_status "$2" ;;
         *) return 1 ;;
     esac
 }
@@ -161,6 +216,7 @@ get_tier_status() {
         1) printf '%s\n' "$tier1_status" ;;
         2) printf '%s\n' "$tier2_status" ;;
         3) printf '%s\n' "$tier3_status" ;;
+        4) printf '%s\n' "$tier4_status" ;;
         *) return 1 ;;
     esac
 }
@@ -181,11 +237,20 @@ last_nonblank_line() {
 }
 
 extract_patch() {
-    local output="$1" patch="$2" first_line last_line
-    first_line=$(sed -n '1p' "$output")
-    last_line=$(sed -n '$p' "$output")
-    if [[ "$PATCH_FORMAT" == "unified-diff" && "$first_line" == '```diff' && "$last_line" == '```' ]]; then
-        sed '1d;$d' "$output" >"$patch"
+    local output="$1" patch="$2"
+    if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
+        awk '
+            BEGIN { started=0 }
+            !started {
+                if ($0 ~ /^```diff$/) { next }
+                if ($0 ~ /^diff --git / || $0 ~ /^--- / || $0 ~ /^\+\+\+ / || $0 ~ /^@@ /) {
+                    started=1
+                    print
+                }
+                next
+            }
+            $0 != "```" { print }
+        ' "$output" >"$patch"
     else
         cp "$output" "$patch"
     fi
@@ -236,14 +301,14 @@ validate_file_replacement() {
 check_git_apply() {
     local patch="$1" plan_dir
     plan_dir=$(dirname "$PLAN_FILE")
-    (cd "$plan_dir" && git apply --check --whitespace=nowarn "$patch") >/dev/null 2>&1
+    (cd "$plan_dir" && git apply --check --recount --whitespace=nowarn "$patch") >/dev/null 2>&1
 }
 
 apply_patch_file() {
     local patch="$1" plan_dir tmp
     if [[ "$PATCH_FORMAT" == "unified-diff" ]]; then
         plan_dir=$(dirname "$PLAN_FILE")
-        (cd "$plan_dir" && git apply --whitespace=nowarn "$patch") >/dev/null 2>&1
+        (cd "$plan_dir" && git apply --recount --whitespace=nowarn "$patch") >/dev/null 2>&1
     else
         tmp=$(mktemp "$PLAN_FILE.replacement.XXXXXX")
         cp "$patch" "$tmp"
@@ -350,23 +415,31 @@ attempt_tier() {
 }
 
 finalize() {
-    local status1 status2 status3 final_status hash_after patch_path
+    local status1 status2 status3 status4 final_status hash_after patch_path all_statuses revise_status
     status1=$(get_tier_status 1)
     status2=$(get_tier_status 2)
     status3=$(get_tier_status 3)
+    status4=$(get_tier_status 4)
     [[ -n "$status1" ]] || status1=not-attempted
     [[ -n "$status2" ]] || status2=not-attempted
     [[ -n "$status3" ]] || status3=not-attempted
+    [[ -n "$status4" ]] || status4=not-attempted
 
     emit_kv REVISE_TIER_1_STATUS "$status1"
     emit_kv REVISE_TIER_2_STATUS "$status2"
     emit_kv REVISE_TIER_3_STATUS "$status3"
+    emit_kv REVISE_TIER_4_STATUS "$status4"
 
     if [[ -n "$winner" ]]; then
         hash_after=$(sha256_file "$PLAN_FILE")
         patch_path="$REVISE_DIR/$winner-output.txt"
         rm -f "$SNAPSHOT"
-        emit_kv REVISE_STATUS ok
+        if [[ "$winner_is_fallback" == "true" ]]; then
+            revise_status=ok-fallback
+        else
+            revise_status=ok
+        fi
+        emit_kv REVISE_STATUS "$revise_status"
         emit_kv REVISE_TIER "$winner"
         emit_kv REVISE_PATCH_PATH "$patch_path"
         emit_kv REVISE_PLAN_HASH_BEFORE "$HASH_BEFORE"
@@ -374,9 +447,10 @@ finalize() {
         exit 0
     fi
 
-    if [[ "$status1 $status2 $status3" != *"invalid-patch"* && "$status1 $status2 $status3" != *"apply-failed"* && "$status1 $status2 $status3" != *"emit-plan-failed"* ]]; then
+    all_statuses="$status1 $status2 $status3 $status4"
+    if [[ "$all_statuses" != *"invalid-patch"* && "$all_statuses" != *"apply-failed"* && "$all_statuses" != *"emit-plan-failed"* ]]; then
         final_status=failed-no-patch
-    elif [[ "$status1 $status2 $status3" == *"invalid-patch"* ]]; then
+    elif [[ "$all_statuses" == *"invalid-patch"* ]]; then
         final_status=failed-validation
     else
         final_status=failed-apply
@@ -398,6 +472,19 @@ elif attempt_tier 2 cursor "$REVISE_DIR/cursor-output.txt"; then
     :
 else
     attempt_tier 3 claude "$REVISE_DIR/claude-output.txt" || true
+fi
+
+if [[ "$PATCH_FORMAT" == "unified-diff" && -z "$winner" ]]; then
+    PATCH_FORMAT="file-replacement"
+    winner_is_fallback=true
+    compose_prompt
+    if attempt_tier 4 codex "$REVISE_DIR/codex-output.txt"; then
+        :
+    elif attempt_tier 4 cursor "$REVISE_DIR/cursor-output.txt"; then
+        :
+    else
+        attempt_tier 4 claude "$REVISE_DIR/claude-output.txt" || true
+    fi
 fi
 
 finalize

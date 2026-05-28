@@ -485,7 +485,7 @@ _run_revise_with_status_parse() {
         revise_status="failed-apply"
         return 1
     fi
-    [[ "$revise_status" == "ok" ]] && return 0
+    [[ "$revise_status" == "ok" || "$revise_status" == "ok-fallback" ]] && return 0
     return 1
 }
 
@@ -1374,7 +1374,7 @@ while (( round_num <= ROUND_CAP )); do
         _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-failed-no-patch}"
     fi
     PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
-    revise_status=ok
+    revise_status="${revise_status:-ok}"
 
     if ! _run_post_apply_pipeline "$round_num" "$_pre_revise_plan_backup"; then
         _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"

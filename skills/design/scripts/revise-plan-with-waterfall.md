@@ -47,17 +47,26 @@ KVs are emitted in this order on every logical invocation:
 1. `REVISE_TIER_1_STATUS`: Codex status.
 2. `REVISE_TIER_2_STATUS`: Cursor status.
 3. `REVISE_TIER_3_STATUS`: Claude status.
-4. `REVISE_STATUS`: `ok`, `failed-no-patch`, `failed-validation`, or `failed-apply`.
-5. `REVISE_TIER`: winning tier name, or empty on failure.
-6. `REVISE_PATCH_PATH`: winning raw output path, or empty on failure.
-7. `REVISE_PLAN_HASH_BEFORE`: SHA-256 of the original plan.
-8. `REVISE_PLAN_HASH_AFTER`: SHA-256 after a successful revision, or the original hash on failure.
+4. `REVISE_TIER_4_STATUS`: tier-4 file-replacement fallback status (see below).
+5. `REVISE_STATUS`: `ok`, `ok-fallback`, `failed-no-patch`, `failed-validation`, or `failed-apply`.
+6. `REVISE_TIER`: winning tier name, or empty on failure.
+7. `REVISE_PATCH_PATH`: winning raw output path, or empty on failure.
+8. `REVISE_PLAN_HASH_BEFORE`: SHA-256 of the original plan.
+9. `REVISE_PLAN_HASH_AFTER`: SHA-256 after a successful revision, or the original hash on failure.
 
-Per-tier status values are `skipped-not-present`, `not-attempted`, `no-patch`, `invalid-patch`, `apply-failed`, `emit-plan-failed`, and `ok`. The ordinal mapping is part of the public contract: 1 is always Codex, 2 is always Cursor, and 3 is always Claude.
+`ok-fallback` means the tier-4 file-replacement fallback applied successfully after all unified-diff tiers failed.
+
+Per-tier status values are `skipped-not-present`, `not-attempted`, `no-patch`, `invalid-patch`, `apply-failed`, `emit-plan-failed`, and `ok`. The ordinal mapping is part of the public contract: 1 is always Codex, 2 is always Cursor, 3 is always Claude, and 4 is the file-replacement fallback mini-waterfall (Codex → Cursor → Claude) that runs only when unified-diff tiers 1–3 all fail.
+
+## Tier 4 (file-replacement fallback)
+
+When `--patch-format` is `unified-diff` (the default) and tiers 1–3 produce no winner, the script switches to `file-replacement`, re-renders `prompt.txt`, and runs an internal Codex → Cursor → Claude mini-waterfall as tier 4. Tier 4 reuses the same artifact names (`<tool>-output.txt`, `prompt.txt`); tier-1..3 raw outputs are overwritten when tier 4 fires, but per-tier 1..3 statuses remain in `REVISE_TIER_1/2/3_STATUS`.
+
+`merge_tier4_status` aggregates tier-4 attempts with severity precedence (best → worst): `ok` > `emit-plan-failed` > `apply-failed` > `invalid-patch` > `no-patch` > `skipped-not-present` > `not-attempted`. Once tier 4 records `ok`, later attempts cannot downgrade it; otherwise the worst recorded status wins so a later `no-patch` never masks an earlier `invalid-patch`.
 
 ## Patch Validator
 
-In `unified-diff` mode, the candidate may be raw diff text or wrapped in one outer ```diff fence. Header validation requires every file header path to be exactly `a/plan.txt` or `b/plan.txt`, and every `diff --git` header to be exactly `a/plan.txt b/plan.txt`. No other path form is accepted. The script then runs `git apply --check --whitespace=nowarn` from `dirname "$plan_file"` and classifies any failure there as `invalid-patch`; only a failing live `git apply --whitespace=nowarn` is reported as `apply-failed`. The script never uses `--unsafe-paths`.
+In `unified-diff` mode, `extract_patch` strips leading prose and optional ```diff fences until the first diff header (`diff --git`, `---`, `+++`, or `@@`). Header validation requires every file header path to be exactly `a/plan.txt` or `b/plan.txt`, and every `diff --git` header to be exactly `a/plan.txt b/plan.txt`. No other path form is accepted. The script then runs `git apply --check --recount --whitespace=nowarn` from `dirname "$plan_file"` and classifies any failure there as `invalid-patch`; only a failing live `git apply --recount --whitespace=nowarn` is reported as `apply-failed`. The script never uses `--unsafe-paths`.
 
 In `file-replacement` mode, the candidate must be non-empty and its last non-blank line must be `diff_lines: <N>` with numeric `N`.
 
