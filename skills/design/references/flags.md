@@ -40,6 +40,15 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 
 **`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to the **Split-path** even if no hard threshold fired. That path runs the **real decomposition panel** (8 external slots via `scripts/dispatch-with-waterfall.sh`). Full procedure, idempotent sentinels, and filing semantics live in `skills/design/references/decompose-panel.md`.
 
+## Multi-round loop env vars
+
+Normative argv validation lives in `skills/design/scripts/plan-review-loop.sh` (`--round-cap`, `--convergence-threshold`). SKILL.md Step 3 passes `"${LARCH_DESIGN_ROUND_CAP:-5}"` and `"${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"` when the env vars are unset or empty. Invalid explicit values cause `plan-review-loop.sh` argv validation to fail before any review round launches. Step 3 normalizes that failure to the `panel-failed` branch, skips Gate B, and proceeds to Step 3b / Step 4 / Gate C with the pre-review `plan.txt` unchanged. There is no silent fallback or clamping. See `docs/configuration-and-permissions.md` § Environment Variables.
+
+| Variable | Default (unset/empty) | Invalid explicit values | Semantics |
+|---|---|---|---|
+| `LARCH_DESIGN_ROUND_CAP` | `5` | Non-numeric or non-positive → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b (Gate B skipped) | Upper bound on **inner** plan-review rounds inside one Step 3 `plan-review-loop.sh` invocation. The Step 3 **review-run counter** (tier-derived cap: SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately — `LARCH_DESIGN_ROUND_CAP` is **not** clamped against that tier cap; the two layers compose. |
+| `LARCH_DESIGN_CONVERGENCE_THRESHOLD` | `3` | Non-numeric or negative → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b (Gate B skipped) | Per-round `ACCEPTED_COUNT` bound that, combined with zero `IMPORTANT_ACCEPTED_COUNT` across two consecutive non-degraded rounds, triggers convergence. |
+
 ## Helper output — `TRIGGER_REASONS`
 
 The helper emits comma-separated reason tokens in **fixed priority order** `plan-body-lines`, `diff-lines` (the order hard thresholds are evaluated — **not** lexicographic).

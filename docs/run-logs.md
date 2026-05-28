@@ -171,6 +171,49 @@ Slot semantics:
 See [skills/design/scripts/tally-plan-review.md](skills/design/scripts/tally-plan-review.md)
 for the authoritative producer contract and harness coverage.
 
+### design plan-review per-round artifacts
+
+Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each inner round of the multi-round plan-review loop produces forensic artifacts. The list below is a **representative** selection grouped by producer — `scripts/lib-design-round-artifacts.md` is the **authoritative** allowlist for the complete file set, and the `SECURITY.md` design-log publish-allowlist paragraph enforces what may be committed.
+
+#### Findings
+
+- `findings.md`
+- `findings-in-scope.md`
+- `findings-oos.md`
+- `findings-classification.tsv`
+
+#### Voting
+
+- `accepted-plan-findings.md`
+- `rejected-findings.md`
+- `oos.md`
+- `oos-accepted-design.md`
+- `ballot.txt`
+- `voting-tally.md`
+
+#### Manifests and voter diagnostics
+
+- `plan-review-slots.ndjson`
+- `plan-voter-slots.ndjson`
+- `scout-plan-manifest.json`
+- `*-vote-output.txt`
+- `*-vote-output-first-pass.txt`
+- `voter*-diag.txt`
+- `plan.txt` (per-round snapshot)
+
+#### Loop forensics
+
+- `round-summary.env`
+
+#### Revise sub-tree (`round-<N>/revise/`)
+
+- `codex-output.txt`
+- `cursor-output.txt`
+- `claude-output.txt`
+- `revise.env`
+- `prompt.txt`
+- `*-candidate.patch`
+
 ### code-review `findings-classification.tsv`
 
 `/implement` review rounds publish

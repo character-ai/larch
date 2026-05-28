@@ -52,6 +52,8 @@ When `plan-review-loop.sh` is invoked with explicit `--round-cap` on argv (SKILL
 - **Revision failures**: non-zero revise rc or `REVISE_STATUS` other than `ok` → `LOOP_STATUS=revision-failed`; Gate B falls back to the 3-option prompt.
 - **Post-apply failures**: failed `ACTION=EMIT_PLAN` → `LOOP_STATUS=emit-plan-failed` (Gate B warning/manual handling); validator defects → `LOOP_STATUS=plan-validator-defects`; hard size threshold → `LOOP_STATUS=plan-size-trigger`.
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
+- **`oos-accepted-design.md` cumulation**: within a single multi-round loop, `oos-accepted-design.md` accumulates across rounds via the in-script `_accumulate_round_oos` helper. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across review runs** covers cross-Gate-C-re-run behavior only).
+- **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification rubric** for the **Severity precedence rule** used by Gate B presentation.
 - **Dedup divergence**: the loop's post-apply pipeline uses regex duplicate-line removal in bash; Gate B uses LLM-driven dedup in the shared post-apply pipeline.
 - **Artifacts**: per-round forensics under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `scripts/lib-design-round-artifacts.md`. Gate B passive-summary reads `round-summary.env` when `LOOP_STATUS=converged|cap-hit` (see `approval-gates.md`).
 
@@ -242,7 +244,7 @@ Axis tokens must precede any optional `-- reason`; the parser ignores axis-looki
 
 If any in-scope findings were **accepted by vote**:
 1. Print them under a `## Plan Review Findings (Voted In)` header with vote counts.
-2. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Gate B — Post-Review Chooser) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`. **Do NOT revise `$DESIGN_TMPDIR/plan.txt`** in this step — findings are surfaced to Gate B, which applies them per `manual_gate_b` mode as documented in `approval-gates.md` §Gate B. Step 3 only collects findings; it never applies them directly.
+2. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Gate B — Post-Review Chooser) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`. **Finalize Plan Review itself does not revise `$DESIGN_TMPDIR/plan.txt`.** In legacy/manual Step 3 outcomes, findings are surfaced to Gate B, which applies them per `manual_gate_b` mode as documented in `approval-gates.md` §Gate B. In multi-round auto-apply outcomes, `plan-review-loop.sh` may already have revised `plan.txt` between rounds before Finalize writes the settled artifacts. Treat Finalize as artifact publication only; do not run an extra plan rewrite here.
 
 **OOS items accepted by vote**: These are accepted for GitHub issue filing, NOT for plan revision. Write accepted OOS items to `$DESIGN_TMPDIR/oos-accepted-design.md` using the `oos-accepted-design.md` format block below, excluding security-tagged findings. Security-tagged findings are held locally and NEVER written to this public OOS issue artifact (per SECURITY.md). The canonical token match is `focus-area\s*=\s*security` anywhere inside the accepted `### OOS_N:` block, case-insensitively, with optional whitespace around `=`; if prose indicates security without the literal token, apply the same "if uncertain whether security, do not file publicly" guidance. **Match discrimination (false-positive guard)**: for every literal occurrence of the canonical token in the block, classify as **fenced** when inside an inline backtick code span or triple-backtick fenced code region, and **unfenced** otherwise. Route as security only when at least one unfenced occurrence exists; if every occurrence is fenced, the block is meta-discussion and routes through the normal public OOS path. **Security counter-invariant**: real security findings MUST include at least one unfenced occurrence.
 
@@ -254,9 +256,15 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 
 ```markdown
 ### FINDING_N: <title>
+- **Reviewer(s)**: <attribution>
+- **Severity**: important|latent|nit
+- **Focus area**: <focus>
+- **Location**: <location>
 - **Concern**: <what was raised>
 - **Proposed resolution**: <suggested change to the plan; surfaced to Step 3.5 Gate B for application per `manual_gate_b` mode>
 ```
+
+When the TSV row omits `severity`, `plan-review-loop.sh` renders `- **Severity**: nit` (see **Severity default** under Multi-round loop). The loop also appends `. Scenario: <text>` to the `- **Concern**:` line when the TSV row includes a non-empty scenario column; manually authored blocks that omit this suffix are still valid.
 
 ### Accepted OOS format (byte-preserved)
 
@@ -264,9 +272,13 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 ### OOS_N: <short title>
 - **Description**: <full description of the observation; include affected repo-relative file paths and line ranges when applicable>
 - **Reviewer**: <attribution>
-- **Vote tally**: <YES/NO/EXONERATE counts>
+- **Severity**: important|latent|nit
+- **Focus area**: <focus>
+- **Location**: <location>
 - **Phase**: design
 ```
+
+The loop appends `. Scenario: <text>` to the `- **Description**:` line when the TSV row includes a non-empty scenario column; manually authored blocks that omit this suffix are still valid.
 
 ---
 

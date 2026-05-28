@@ -787,5 +787,32 @@ grep -Fq 'delete <DESIGN_REENTRY_MARKER_PATH> to override.' "$SKILL_MD" \
   || fail "(26) SKILL.md must document DESIGN_REENTRY_MARKER_PATH in the session-cache banner literal"
 echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
 
+# Check FINDING_2667 (#2667): Gate B severity precedence prose in approval-gates.md.
+contains "$APPROVAL_MD" 'important → High' '(FINDING_2667) approval-gates.md missing important → High mapping'
+contains "$APPROVAL_MD" 'latent → Medium' '(FINDING_2667) approval-gates.md missing latent → Medium mapping'
+contains "$APPROVAL_MD" 'nit → Low' '(FINDING_2667) approval-gates.md missing nit → Low mapping'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'When **any** accepted finding lacks that structured `- **Severity**:` line' \
+  '(FINDING_2667) approval-gates.md missing all-or-nothing Concern-text fallback when structured Severity absent'
+echo "PASS: FINDING_2667 — Gate B severity precedence prose OK"
+
+# Check FINDING_2667_TEMPLATE (#2667): Accepted FINDING_N template field labels in plan-review.md.
+finding_template_start=$(grep -n '^### Accepted FINDING_N template' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
+finding_template_end=$(grep -n '^### Accepted OOS format' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$finding_template_start" && -n "$finding_template_end" && "$finding_template_end" -gt "$finding_template_start" ]] \
+  || fail "(FINDING_2667_TEMPLATE) could not locate FINDING_N template block in plan-review.md"
+finding_template_block=$(sed -n "${finding_template_start},${finding_template_end}p" "$PLAN_REVIEW_MD")
+for _label in \
+  '- **Reviewer(s)**:' \
+  '- **Severity**:' \
+  '- **Focus area**:' \
+  '- **Location**:' \
+  '- **Concern**:' \
+  '- **Proposed resolution**:'; do
+  grep -Fq -- "$_label" <<< "$finding_template_block" \
+    || fail "(FINDING_2667_TEMPLATE) plan-review.md FINDING_N template missing label: $_label"
+done
+echo "PASS: FINDING_2667_TEMPLATE — FINDING_N template six-field label set OK"
+
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0
