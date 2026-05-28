@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/plan-review-loop.sh:518-522	Zero-finding exit still hardcodes DEGRADED_PANEL=0	The proposed final COMBINED_FALLBACK_COUNT comparison is bypassed when collection yields no findings, so a no-finding round with excessive phase-2 relaunches reports DEGRADED_PANEL=0	Compute the panel degradation value before the zero-finding short-circuit or use DEGRADED_ROUND there instead of hardcoded 0
+1	in_scope	important	correctness	scripts/test-dispatch-with-waterfall.sh:77-90	Item B-1 needs two reuse-copy failures but the cp stub can only fail one matching copy	The proposed PHASE2_RELAUNCH_COUNT=2 scenario cannot be expressed with the current single CP_STUB_FAIL_TARGET_CONTAINS plus one-shot counter behavior	Extend the stub minimally to support two explicit fail target substrings or revise the fixture to include that stub change in the plan
+
+1. **[correctness] [important]** `skills/design/scripts/plan-review-loop.sh:518-522`  
+   Concern: the no-findings exit still emits `DEGRADED_PANEL=0` directly.  
+   Scenario: if the panel has no accepted rows but `COMBINED_FALLBACK_COUNT > floor_half`, the new comparison near the end of the script never runs. The loop silently reports a non-degraded panel.  
+   Suggested revision: compute the degraded value before this short-circuit, or pass through `DEGRADED_ROUND` there instead of hardcoding `0`.
+
+2. **[correctness] [important]** `scripts/test-dispatch-with-waterfall.sh:77-90`  
+   Concern: Item B-1 asks for two phase-2 reuse-copy failures, but the existing `cp` stub supports only one target substring and only fails the first matching copy.  
+   Scenario: the proposed `PHASE2_RELAUNCH_COUNT=2` fixture cannot be implemented as described without changing stub behavior.  
+   Suggested revision: explicitly include the minimal stub change needed for two target substrings, or rewrite the fixture around a concrete supported mechanism.
