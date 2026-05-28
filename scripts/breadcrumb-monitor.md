@@ -2,10 +2,11 @@
 
 `scripts/breadcrumb-monitor.sh` is the foreground consumer paired with every
 Family B background launch (see `BASH_AUTHORING.md` §4). It surfaces breadcrumbs
-written to `LARCH_BREADCRUMB_STREAM` to its stdout and, crucially, blocks the
-orchestrator's foreground Bash turn until the monitored script has actually
-exited. The blocking semantic is what prevents step-jumping: while a Family B
-script is still running, the next orchestrator step cannot start.
+emitted on the monitored script's operator-visible stderr/quiet FD4 and,
+crucially, blocks the orchestrator's foreground Bash turn until the monitored
+script has actually exited. The blocking semantic is what prevents
+step-jumping: while a Family B script is still running, the next orchestrator
+step cannot start.
 
 ## Callers
 
@@ -24,9 +25,6 @@ Every Family B `# Background pair required` fence in:
 Six env vars are allocated by paired callers before launching the monitor (the
 launcher fences do this via `mktemp` under the calling skill's session
 tmpdir):
-
-- `LARCH_BREADCRUMB_STREAM` — append-only NDJSON-ish stream the monitored
-  script writes via `emit_breadcrumb`.
 - `LARCH_DONE_SENTINEL` — **signaled when non-empty.** The monitored
   script's `larch_quiet_append_done_trap` writes `EXIT_CODE=N` here on
   exit; the monitor's polling loop breaks when this file becomes

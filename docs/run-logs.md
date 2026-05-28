@@ -94,7 +94,9 @@ That directory is a hint only: publication derives the session root with
 session root rather than scanning committed inputs from `breadcrumbs/` itself.
 The source hint and every staged file must resolve under
 `IMPLEMENT/DESIGN/REVIEW/RESEARCH_TMPDIR` via
-`larch_log_breadcrumbs_under_session_tmp`; otherwise publication fails closed.
+`larch_log_breadcrumbs_under_session_tmp`; otherwise publication skips
+breadcrumb staging and returns success without creating or replacing the
+committed `breadcrumbs/` directory.
 
 Per-script session-root quiet logs whose basenames match exactly
 `larch-quiet-<script>-<pid>.log` are staged. Each accepted file is redacted

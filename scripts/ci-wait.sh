@@ -246,7 +246,7 @@ while true; do
 
     # 3. If not wait, stop and return
     if [[ "$ACTION" != "wait" ]]; then
-        if [[ -z "${LARCH_BREADCRUMB_STREAM:-}" ]]; then
+        if [[ "$checks" -gt 0 ]]; then
             larch_errf "\n"
         fi
         if [[ "$ACTION" == "merge" ]]; then

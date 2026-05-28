@@ -305,11 +305,12 @@ assert_line "C_IT2 status is NOT_SUBSTANTIVE" "STATUS=NOT_SUBSTANTIVE" "$RESULT_
 # artifact/result instead of treating launch as best-effort.
 echo "# Case: NOT_SUBSTANTIVE output with CMD_JSON .meta — retry succeeds"
 OUT_NSR="$TMPROOT/cursor-specialist-structure-output.txt"
+STDERR_NSR="$TMPROOT/case-nsr.stderr"
 printf 'Reading the ballot file and gathering diff context.\n' > "$OUT_NSR"
 printf '0\n' > "${OUT_NSR}.done"
 write_meta "$OUT_NSR" "$SUCCESS_HELPER"
 RESULT_NSR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
-    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>/dev/null)
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>"$STDERR_NSR")
 assert_line "C_NSR retry file selected (publish to orig)" "REVIEWER_FILE=$OUT_NSR" "$RESULT_NSR"
 assert_line "C_NSR retry status OK" "STATUS=OK" "$RESULT_NSR"
 if grep -Fq "$RETRY_CONTENT" "$OUT_NSR" 2>/dev/null; then
@@ -336,6 +337,16 @@ if grep -Fq "NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN" "$NSR_RETRY_META" 2>/dev/
     ok "C_NSR_REASON ns-retry .meta has NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN"
 else
     fail "C_NSR_REASON ns-retry .meta missing NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN (meta: $(cat "$NSR_RETRY_META" 2>/dev/null || echo '<missing>'))"
+fi
+if grep -Fq 'ns-retry: first-pass content preserved at cursor-specialist-structure-output-first-pass.txt' "$STDERR_NSR" 2>/dev/null; then
+    ok "C_NSR stderr surfaces first-pass preservation breadcrumb"
+else
+    fail "C_NSR stderr missing first-pass preservation breadcrumb"
+fi
+if grep -Fq 'ns-retry: published retry content to cursor-specialist-structure-output.txt; retry artifact retained at cursor-specialist-structure-output-ns-retry.txt' "$STDERR_NSR" 2>/dev/null; then
+    ok "C_NSR stderr surfaces retry publish breadcrumb"
+else
+    fail "C_NSR stderr missing retry publish breadcrumb"
 fi
 
 # C_NS_STRUCTURED: section 3.6 downgrade must re-run structured validation

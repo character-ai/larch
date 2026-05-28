@@ -269,8 +269,8 @@ write_ci_decide_stub "$root"
 STUB_STATUSES=pass run_subject "$root" "$root/.rc" --timeout 60
 assert_rc "$root/.rc" 0 "breadcrumb stderr: exits 0"
 assert_stdout_contains "$root" "ACTION=merge" "breadcrumb stderr: ACTION=merge"
-assert_stderr_contains "$root" "⏳ CI: waiting" "breadcrumb stderr: waiting message written"
-assert_stderr_contains "$root" "✓ CI passed" "breadcrumb stderr: success message written"
+assert_stderr_compact_matches "$root" '^⏳ CI: waiting✓ CI passed \([0-9]+s, 0 polls\)$' \
+    "breadcrumb stderr: immediate pass stays inline without stray newline"
 
 # --- Case 6: inline dot progress on stderr across pending polls ---
 root=$(make_env breadcrumb_stderr_pending_dots)
@@ -280,13 +280,8 @@ write_noop_sleep_stub "$root"
 STUB_STATUSES=pending:pending:pass run_subject "$root" "$root/.rc" --timeout 60
 assert_rc "$root/.rc" 0 "breadcrumb dots: exits 0"
 assert_stdout_contains "$root" "ACTION=merge" "breadcrumb dots: ACTION=merge"
-dot_count=$(grep -o '\.' "$root/.stderr" 2>/dev/null | wc -l | tr -d ' ')
-if [[ "$dot_count" -eq 2 ]]; then
-    ok "breadcrumb dots: writes one dot per pending poll on stderr"
-else
-    fail "breadcrumb dots: expected 2 dots on stderr, got $dot_count"
-    sed 's/^/    stderr: /' "$root/.stderr"
-fi
+assert_stderr_compact_matches "$root" '^⏳ CI: waiting\.\.✓ CI passed \([0-9]+s, 2 polls\)$' \
+    "breadcrumb dots: pending dots stay inline until success banner"
 
 # --- Case 7: timeout bail warning on stderr ---
 root=$(make_env breadcrumb_stderr_timeout_bail)

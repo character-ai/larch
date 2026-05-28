@@ -19,6 +19,6 @@ Each case copies `rebase-checkpoint-probe.sh`, `lib-quiet.sh`, and `lib-phantom-
 9–12. Phantom `STATUS` variants: `clean`, `tracked-only`, `phantom`, `unknown` (stubbed `check-phantom-dirty.sh`).
 13. `--base-remote` / `--base-ref` pass-through to `rebase-push` argv (assert via stub sidecar file).
 14. Regex rejection — real `rebase-push.sh` + real git repo, invalid `--base-remote` with spaces → exit 3 + `REBASE_ERROR`.
-15. Breadcrumb count — `export LARCH_QUIET_BREADCRUMBS=1` in harness; exactly one `→ rebase-probe:` line on stdout.
+15. Breadcrumb count — exactly one `→ rebase-probe:` line on stderr.
 16. Library idempotency — double-`source` of `lib-phantom-probe.sh` before invoking the wrapper.
 17. Executable-bit assertion on the production `rebase-checkpoint-probe.sh` path at entry.

@@ -1318,7 +1318,7 @@ awk '
   /^MERGE=/ { print "MERGE=false"; next }
   { print }
 ' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
 assert_rc "$tmp/rc" 0 "ci-watch skip path exits 0"
 if grep -qF '→ ship-pr: CI watch (ci-merge)' "$tmp/stderr"; then
     fail "ci-watch skip path should not emit CI watch breadcrumb"
@@ -1330,7 +1330,7 @@ fi
 root=$(make_repo version_published_pr_merged)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-merge
-PATH="$root/scripts:$PATH" LARCH_QUIET_BREADCRUMBS=1 STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED run_subject "$root" "$tmp" "$tmp/rc"
+PATH="$root/scripts:$PATH" STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "version_already_published + merged PR exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "version_already_published + merged PR records already_merged"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "version_already_published + merged PR completes postmerge"
@@ -1412,7 +1412,7 @@ root=$(make_repo stale_stall_state_cleared_on_already_merged)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-merge
 seed_stale_stall_state "$tmp/ship-pr-state.sh"
-LARCH_QUIET_BREADCRUMBS=1 STUB_CI_ACTION=already_merged run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+STUB_CI_ACTION=already_merged run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
 assert_rc "$tmp/rc" 0 "stale stall state: ci-wait already_merged exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "stale stall state: ci-wait already_merged records already_merged"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: ci-wait already_merged completes postmerge"
@@ -2293,7 +2293,7 @@ chmod +x "$root/scripts/cursor" \
          "$root/scripts/git-sync-local-main.sh" \
          "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
-LARCH_QUIET_BREADCRUMBS=1 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "second rebase conflict stalls after recovery waterfall exhausts (exit_stall)"
 if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
     ok "second rebase conflict sets CALLER_KIND=ship_pr_pre_push"
@@ -5459,11 +5459,11 @@ else
 fi
 assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 dispatch persists RESUME_PHASE"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 dispatch persists CALLER_KIND"
-if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stderr"; then
     ok "phase14 dispatch breadcrumb mentions aggregator-dispatch/conflict-resolution"
 else
-    fail "stdout missing phase14 aggregator-dispatch breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+    fail "stderr missing phase14 aggregator-dispatch breadcrumb"
+    sed 's/^/    stderr: /' "$tmp/stderr" | head -n 20
 fi
 if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
     fail "phase14 handoff must not record keep-on-conflict rebase failure before resolution"
@@ -5513,11 +5513,11 @@ else
 fi
 assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 deep CSV persists RESUME_PHASE"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 deep CSV persists CALLER_KIND"
-if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
-    ok "phase14 deep CSV stdout mentions aggregator-dispatch/conflict-resolution"
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stderr"; then
+    ok "phase14 deep CSV stderr mentions aggregator-dispatch/conflict-resolution"
 else
-    fail "phase14 deep CSV stdout missing aggregator-dispatch breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+    fail "phase14 deep CSV stderr missing aggregator-dispatch breadcrumb"
+    sed 's/^/    stderr: /' "$tmp/stderr" | head -n 20
 fi
 if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
     fail "phase14 deep CSV must not record keep-on-conflict execution-issues line before resolution"

@@ -14,18 +14,6 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 larch_quiet_append_done_trap
 
-ensure_breadcrumb_fd() {
-    if [[ -z "${LARCH_QUIET_BREADCRUMB_FD:-}" ]]; then
-        if [[ "${LARCH_QUIET_PID:-}" == "$$" ]]; then
-            exec 5>&3
-        else
-            exec 5>&1
-        fi
-        export LARCH_QUIET_BREADCRUMB_FD=5
-    fi
-}
-ensure_breadcrumb_fd
-
 # lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
 # directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.
 SCRIPT_DIR="$PLUGIN_ROOT/scripts"

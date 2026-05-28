@@ -293,6 +293,9 @@ through the redaction and publication path described here.
    breadcrumbs path and are staged independently of whether `breadcrumbs/`
    exists. Each quiet-log candidate must stay under the session tmpdir, must
    not be a symlink, and must not be a hardlink.
+   A source hint outside the active session tmpdir is treated as a no-op:
+   breadcrumb staging is skipped and the helper returns success without
+   creating, replacing, or clearing the committed destination.
    Missing sources, empty sources, or sources whose entries are all silently
    skipped are successful no-ops and do not create, replace, or clear an
    existing committed `breadcrumbs/` destination.

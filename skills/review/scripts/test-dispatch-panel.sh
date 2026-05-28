@@ -7,7 +7,7 @@ set -euo pipefail
 # These harness cases create their own temp roots and should not try to write
 # breadcrumb or quiet logs into a parent /implement session directory.
 unset LARCH_BREADCRUMB_STREAM \
-    LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
+    LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_PID \
     LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
     LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_PAIRED_PID_FILE \
     LARCH_BREADCRUMBS_SURFACED_FILE LARCH_DONE_OWNER_PID \
@@ -126,14 +126,15 @@ grep -Fq 'DISPATCH_OK=true' <<< "$out"
 [[ ! -e "$TMP/simple/codex-union-output.txt" ]] \
     || { echo "FAIL: simple panel must not create codex-union-output.txt" >&2; exit 1; }
 
-out=$(PATH="$STUB_BIN:$PATH" LARCH_QUIET_BREADCRUMBS=1 "$SCRIPT" \
+simple_breadcrumbs_err="$TMP/simple-breadcrumbs.stderr"
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/simple-breadcrumbs" \
     --codex-available true \
     --cursor-available true \
     --panel simple \
-    --plan-file "$plan_file")
-grep -Fq '→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)' <<< "$out"
+    --plan-file "$plan_file" 2>"$simple_breadcrumbs_err")
+grep -Fq '→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)' "$simple_breadcrumbs_err"
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \

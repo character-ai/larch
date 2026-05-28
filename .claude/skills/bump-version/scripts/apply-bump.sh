@@ -165,8 +165,9 @@ _backup_rewrite_stage() {
 }
 
 # Steps 3–5: backup, rewrite, stage, then fetch-and-verify in a retry loop.
-# On a same-version or version-regression collision, silently re-classify and
-# retry up to _max_retries times before bailing loudly.
+# On a same-version or version-regression collision, re-classify and retry up
+# to _max_retries times. Retry diagnostics stay operator-visible on stderr via
+# larch_err; stdout remains the machine-readable contract surface.
 INITIAL_NEW_VERSION="$NEW_VERSION"
 _retry_count=0
 _max_retries=10

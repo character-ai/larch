@@ -72,7 +72,7 @@ Tracking phase may also emit:
 - `→ step0: larch:plan posted`
 - `→ step0: coder=<claude|codex|cursor>`
 
-`LARCH_QUIET_DISABLE=1` keeps stdout readable for KV parsing, but these breadcrumbs still surface on stderr. `LARCH_QUIET_BREADCRUMB_FD` matters only when the caller explicitly wants a separate breadcrumb stream; otherwise `larch_err` writes to stderr / quiet FD4. `coder-unavailable`, `REPO_UNAVAILABLE`, and missing-plan early-return paths skip the coder breadcrumb because `coder` is never selected there.
+`LARCH_QUIET_DISABLE=1` keeps stdout readable for KV parsing, but these breadcrumbs still surface on stderr via `larch_err` / quiet FD4. `coder-unavailable`, `REPO_UNAVAILABLE`, and missing-plan early-return paths skip the coder breadcrumb because `coder` is never selected there.
 
 ## Exit codes
 
