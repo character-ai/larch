@@ -255,38 +255,102 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 14,
-          "cache_read": 1698230,
-          "cache_create": 10460,
-          "cache_create_5m": 10460,
+          "input": 19,
+          "cache_read": 2148466,
+          "cache_create": 15434,
+          "cache_create_5m": 15434,
           "cache_create_1h": 0,
-          "output": 7534,
-          "total": 1716238
+          "output": 12223,
+          "total": 2176142
         },
         "skills": [
           {
             "skill": "inferred:Step 8b — rebase",
             "totals": {
-              "input": 14,
-              "cache_read": 1698230,
-              "cache_create": 10460,
-              "cache_create_5m": 10460,
+              "input": 19,
+              "cache_read": 2148466,
+              "cache_create": 15434,
+              "cache_create_5m": 15434,
               "cache_create_1h": 0,
-              "output": 7534,
-              "total": 1716238
+              "output": 12223,
+              "total": 2176142
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 2,
+          "cache_read": 309398,
+          "cache_create": 4229,
+          "cache_create_5m": 4229,
+          "cache_create_1h": 0,
+          "output": 1076,
+          "total": 314705
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 16 — rejected findings",
+            "totals": {
+              "input": 2,
+              "cache_read": 309398,
+              "cache_create": 4229,
+              "cache_create_5m": 4229,
+              "cache_create_1h": 0,
+              "output": 1076,
+              "total": 314705
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 35,
+          "cache_read": 6131451,
+          "cache_create": 54213,
+          "cache_create_5m": 54213,
+          "cache_create_1h": 0,
+          "output": 19639,
+          "total": 6205338
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 17 — final report",
+            "totals": {
+              "input": 25,
+              "cache_read": 4289068,
+              "cache_create": 28311,
+              "cache_create_5m": 28311,
+              "cache_create_1h": 0,
+              "output": 14612,
+              "total": 4332016
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 10,
+              "cache_read": 1842383,
+              "cache_create": 25902,
+              "cache_create_5m": 25902,
+              "cache_create_1h": 0,
+              "output": 5027,
+              "total": 1873322
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 46,
-      "cache_read": 5002056,
-      "cache_create": 280851,
-      "cache_create_5m": 280851,
+      "input": 88,
+      "cache_read": 11893141,
+      "cache_create": 344267,
+      "cache_create_5m": 344267,
       "cache_create_1h": 0,
-      "output": 23363,
-      "total": 5306316
+      "output": 48767,
+      "total": 12286263
     }
   },
   "codex": {
@@ -381,6 +445,22 @@
       },
       {
         "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
         "totals": {
           "input": 0,
           "output": 0,
@@ -491,6 +571,22 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -500,12 +596,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 46,
-    "cache_read": 5002056,
-    "cache_create_5m": 280851,
+    "input": 88,
+    "cache_read": 11893141,
+    "cache_create_5m": 344267,
     "cache_create_1h": 0,
-    "output": 23363,
-    "total": 5306316
+    "output": 48767,
+    "total": 12286263
   },
   "BUCKETS_codex": {
     "input": 494826,

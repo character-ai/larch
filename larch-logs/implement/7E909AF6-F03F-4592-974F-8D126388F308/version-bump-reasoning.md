@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `77c2d807` (Fixes #3025: Enforce monitor_rc propagation in Family B lint (#3086))
-- **Current version**: `45.1.19`
+- **Base commit**: `74203ced` (Fixes #3059: Count phase-2 waterfall relaunches in fallback warning (#3098))
+- **Current version**: `45.1.21`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.1.20`
+- **New version**: `45.1.22`
 
 ### PATCH rationale
 
