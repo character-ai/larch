@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `b9a01bef` (chore(larch-logs): flush design run BA402E7A-89E4-4D39-ACB6-0048D940BC35 [skip ci] (#3128))
-- **Current version**: `45.3.1`
+- **Base commit**: `6d2f913c` (Bump version to 45.3.2 (#3127))
+- **Current version**: `45.3.2`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.3.2`
+- **New version**: `45.3.3`
 
 ### PATCH rationale
 
