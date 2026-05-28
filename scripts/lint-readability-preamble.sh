@@ -92,7 +92,7 @@ check_step_placement() {
         awk -v step_id="$step_id" -v rel_path="$rel_path" -v style_re="$orchestrator_style_re" '
 BEGIN { in_step = 0; count = 0; found_marker = 0 }
 {
-    if (match($0, "^<!-- step:" step_id "([[:space:]]|—)")) {
+    if (match($0, "^<!-- step:" step_id " ")) {
         if (in_step && found_marker && count < 1) {
             printf "%s: step \"%s\": expected >=1 orchestrator-inline readability-style directive in step body, found 0\n", rel_path, step_id > "/dev/stderr"
             exit 1
