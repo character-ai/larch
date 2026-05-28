@@ -10,6 +10,8 @@ export LARCH_QUIET_DISABLE
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 usage() {
     larch_err "Usage: dispatch-plan-review-panel.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false --plan-file PATH [--feature-file PATH] [--timeout SEC] [--competition-notice-file PATH]"
@@ -48,6 +50,8 @@ fail() {
 [[ -n "$PLAN_FILE" ]] || fail "--plan-file is required"
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found: $PLAN_FILE"
 case "$TIMEOUT" in ''|*[!0-9]*|0) fail "--timeout must be a positive integer" ;; esac
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 

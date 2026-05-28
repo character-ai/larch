@@ -4,6 +4,8 @@
 
 ## Invariants
 
+Validates the bound `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the existing `-z / ! -d` directory check.
+
 - `--vendor claude` is intentionally unsupported; Claude fallback reviewers use `skills/shared/reviewer-templates.md` through `skills/design/references/plan-review.md`.
 - Every prompt includes the slash-separated focus-area enum `code-quality / risk-integration / correctness / architecture / security`.
 - Every prompt includes `{"no_issues_found": true}` as the canonical no-findings sentinel instruction. `NO_ISSUES_FOUND` remains validator-supported only for backward compatibility.

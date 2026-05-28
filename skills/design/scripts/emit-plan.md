@@ -12,6 +12,8 @@
 
 ## Invariants
 
+Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before reading `$DESIGN_TMPDIR/plan.txt`.
+
 - `plan.txt` must be non-empty.
 - The final non-empty line must be exactly `diff_lines: <N>` where `<N>` is a non-negative integer.
 - Missing or malformed diff lines fail closed with `EMIT_PLAN_STATUS=missing-diff-lines` and exit 1.

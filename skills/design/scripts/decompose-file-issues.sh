@@ -10,6 +10,8 @@ export LARCH_QUIET_DISABLE
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
 APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
 
@@ -33,6 +35,7 @@ cmd_prepare() {
         esac
     done
     [[ -n "$DESIGN_TMPDIR" ]] || { larch_err "prepare: --design-tmpdir required"; exit 2; }
+    larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
     [[ -n "$partition_file" ]] || { larch_err "prepare: --partition-file required"; exit 2; }
     [[ -f "$partition_file" ]] || { larch_err "prepare: partition file not found"; exit 2; }
     DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
@@ -207,6 +210,7 @@ cmd_annotate() {
         esac
     done
     [[ -n "$DESIGN_TMPDIR" ]] || { larch_err "annotate: --design-tmpdir required"; exit 2; }
+    larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
     [[ -n "$stdout_file" ]] || { larch_err "annotate: --issue-stdout-file required"; exit 2; }
     [[ -f "$stdout_file" ]] || { larch_err "annotate: stdout capture missing"; exit 2; }
     DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
@@ -286,6 +290,7 @@ cmd_close_original() {
         esac
     done
     [[ -n "$DESIGN_TMPDIR" ]] || { larch_err "close-original: --design-tmpdir required"; exit 2; }
+    larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
     [[ -n "$original" ]] || { larch_err "close-original: --original-issue required"; exit 2; }
     [[ -n "$repo" ]] || { larch_err "close-original: --repo required"; exit 2; }
     DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)

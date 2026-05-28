@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
+
 usage() {
     printf '%s\n' \
         'usage: emit-design-plan-preview.sh --design-tmpdir DIR --variant step3|gatec' \
@@ -100,6 +104,10 @@ case "$variant" in
             touch "$design_tmpdir/.step3-entry-plan-printed" || true
             exit 0
         fi
+        if ! larch_design_tmpdir_validate "$design_tmpdir"; then
+            printf '%s\n' '**⚠ 3: DESIGN_TMPDIR not under allowlist; cannot present plan candidate**'
+            exit 0
+        fi
         printf '\n## Plan Candidate for Review\n\n'
         emit_plan_body "$design_tmpdir/plan.txt" "$_large_note_step3"
         touch "$design_tmpdir/.step3-entry-plan-printed" || true
@@ -111,6 +119,10 @@ case "$variant" in
         fi
         if [[ ! -s "$design_tmpdir/plan.txt" ]]; then
             printf '%s\n' '**⚠ 4b: plan.txt missing or empty; cannot present final design plan**'
+            exit 0
+        fi
+        if ! larch_design_tmpdir_validate "$design_tmpdir"; then
+            printf '%s\n' '**⚠ 4b: DESIGN_TMPDIR not under allowlist; cannot present final design plan**'
             exit 0
         fi
         printf '\n## Final Design Plan\n\n'

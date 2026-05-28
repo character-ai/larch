@@ -2,6 +2,8 @@
 
 Stages accepted design-phase OOS (`$DESIGN_TMPDIR/oos-accepted-design.md`) for `/larch:issue` batch filing and annotates per-block `- **Filed URL**:` lines plus the `$DESIGN_TMPDIR/oos-issues-created.md` sentinel.
 
+Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check and before dispatching to `cmd_prepare` / `cmd_annotate`.
+
 ## Invocation
 
 ```text

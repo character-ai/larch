@@ -4,6 +4,8 @@
 
 Between-round /design plan revision driver. It is a standalone library script for the Codex -> Cursor -> Claude revision waterfall; `skills/design/scripts/plan-review-loop.sh` is the intended primary caller in the next integration piece, and ad-hoc use is supported when `--plan-file` resolves to `$DESIGN_TMPDIR/plan.txt`.
 
+Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before `mkdir -p $REVISE_DIR`.
+
 ## Argv
 
 | Flag | Required | Meaning |

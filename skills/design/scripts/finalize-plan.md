@@ -11,6 +11,8 @@
 
 ## Invariants
 
+Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check; failure emits `FINALIZE_PLAN_STATUS=missing-design-tmpdir` and exits 1 (preserving the existing KV contract). The existing `! -d $DESIGN_TMPDIR` check is preserved as an additive guard.
+
 - `rejected-findings.md`, `accepted-plan-findings.md`, `oos.md`, and `voting-tally.md` are required manifest artifacts but may be empty. The script creates missing regular files for those names.
 - `plan.txt` and `diff-lines.txt` must exist and be non-empty.
 - May-be-empty artifact paths must be regular files, not symlinks or directories.

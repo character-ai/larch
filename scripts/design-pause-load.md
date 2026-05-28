@@ -13,6 +13,8 @@ design-pause-load.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]
 
 ## Behavior
 
+On invalid `$DESIGN_TMPDIR` (outside the allowlist), the script calls `emit_load_fail "tmpdir-invalid"` and exits 0 with `LOAD_OK=false ERROR=tmpdir-invalid` so downstream KV parsers see a structured error.
+
 The loader reads the issue body, extracts the marker payload, and validates all
 git-sensitive values before any fetch:
 

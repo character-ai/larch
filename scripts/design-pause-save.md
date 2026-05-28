@@ -19,6 +19,8 @@ first step whose `.completed/step-<id>` sentinel is absent. The marker payload
 also binds the snapshot to `ISSUE_NUMBER=<argv --issue>` and, when repository
 identity can be resolved through `scripts/resolve-repo.sh`, `REPO=<owner/repo>`.
 
+Validates `$DESIGN_TMPDIR` is under the allowlist via `larch_design_tmpdir_validate` after the required-arg + directory-exists checks; failure routes through `emit_fail "tmpdir-invalid"` to preserve `PAUSE_OK=false`.
+
 ## Output Contract
 
 - Success: `PAUSE_OK=true`, `STEP=<id>`, `RUN_ID=<id>`, exit 0.

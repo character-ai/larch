@@ -9,6 +9,8 @@ export LARCH_QUIET_DISABLE
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-design-tmpdir.sh
+source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
 ARCHETYPE=""
 VENDOR=""
@@ -95,6 +97,8 @@ if [[ -z "$DESIGN_TMPDIR" || ! -d "$DESIGN_TMPDIR" ]]; then
     larch_err "render-plan-review-prompt.sh: --design-tmpdir or DESIGN_TMPDIR must name a directory"
     exit 2
 fi
+
+larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 classification=$("$SCRIPT_DIR/../../../scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")
 case "$classification" in

@@ -4,6 +4,8 @@
 
 **Edge-extraction rules**: `prepare` parses each piece's `- Dependencies:` line. When the line contains `blocked-by`, the remainder is split on commas or `and`; each non-empty segment must fullmatch `Piece <N>` (case-insensitive). One edge is emitted per unique blocker number (duplicate entries on the same line are deduped). Any non-`Piece <N>` segment (including the deferred plural shape `Pieces 1, 2, 3`), any unknown blocker number, or an empty segment list after parsing aborts with `DECOMPOSE_PARTITION_STATUS=bad-dependency-ref` exit 2 and emits no batch artifacts.
 
+Each subcommand (`prepare`, `annotate`, `close-original`) validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after its required-arg check.
+
 **Primary caller**: `/design` Split-path filing sequence in `skills/design/references/decompose-panel.md`.
 
 **Security**: `close-original` always pipes the composed body through `scripts/redact-secrets.sh` before GitHub publication.

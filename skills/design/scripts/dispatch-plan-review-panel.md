@@ -4,6 +4,8 @@
 
 **Primary callers**: `skills/design/SKILL.md` Step 3.
 
+Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before reading manifests under `$DESIGN_TMPDIR`.
+
 **Environment override**: `DISPATCH_PLAN_REVIEW_WATERFALL_SH` may point to a stub `dispatch-with-waterfall.sh` for harnesses.
 
 **Extra stdout KVs** (after the waterfall block): `DYNAMIC_SLOT_COUNT`, `DEGRADED_ROUND` (`true` when `STATIC_DISPATCH_OK=false` or `COMBINED_FALLBACK_COUNT > floor(slot_count/2)`), `PANEL_PATHS_FILE` (same role as `ALL_OUTPUT_FILES_PATH`).
