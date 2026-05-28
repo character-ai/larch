@@ -136,6 +136,10 @@ suppress = [
 # and their `test-*` companions are black-box harnesses. Exclude them with their
 # sibling contracts like the adjacent lint harnesses.
 #
+# scripts/lint-gh-body-inline.sh is a pre-commit / Makefile-only lint for
+# file-backed GitHub CLI body payloads. scripts/test-lint-gh-body-inline.sh is
+# its black-box harness. Same reachability pattern as lint-readability-preamble.
+#
 # scripts/test-parse-prose-blockers.sh is the regression harness for
 # scripts/parse-prose-blockers.sh (Makefile `test-parse-prose-blockers`).
 # scripts/parse-prose-blockers.sh is invoked only from scripts/blocker-helpers.sh
@@ -857,6 +861,10 @@ exclude = [
   "scripts/lint-skill-md-flag-signature.md",
   "scripts/test-lint-skill-md-flag-signature.sh",
   "scripts/test-lint-skill-md-flag-signature.md",
+  "scripts/lint-gh-body-inline.sh",
+  "scripts/lint-gh-body-inline.md",
+  "scripts/test-lint-gh-body-inline.sh",
+  "scripts/test-lint-gh-body-inline.md",
   "scripts/test-parse-prose-blockers.sh",
   "scripts/parse-prose-blockers.sh",
   "scripts/blocker-helpers.sh",

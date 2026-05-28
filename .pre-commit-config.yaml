@@ -115,6 +115,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: lint-gh-body-inline
+        name: Lint inline gh --body / --notes (.sh/.py)
+        entry: bash scripts/lint-gh-body-inline.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^.*\.(sh|py)$
+
       - id: lint-bash32
         name: Lint Bash 3.2 portability of shell scripts
         entry: bash scripts/lint-bash32.sh

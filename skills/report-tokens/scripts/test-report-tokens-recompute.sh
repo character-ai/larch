@@ -76,7 +76,7 @@ chmod +x "$GH_STUB_DIR/gh"
 unset LARCH_REPORT_TOKENS_NO_ISSUE
 PATH="$GH_STUB_DIR:$PATH" GH_STUB_LOG="$GH_STUB_LOG" "$REPO/skills/report-tokens/scripts/run-analysis.sh" >/dev/null
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh issue create --body-file in log"
-! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh issue create should not use inline --body"
+! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh issue create should not use inline --body" # lint-gh-body-inline: ok gh-stub assertion fixture
 pass 'issue creation uses body-file with redacted tmpdir content'
 
 printf 'PASS: test-report-tokens-recompute.sh\n'
