@@ -1,0 +1,23 @@
+v1	mark	1779990221	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779990558	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779990446	1779990558	112	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779990558	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779990446	1779990558	112	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779990560	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779990446	1779990560	114	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779990560	implement	-	cursor	cursor-phase1-dyn-cursor-plan-cross-doc-integrity	1779990447	1779990560	113	cursor-plan-dyn-cross-doc-integrity-output.txt	0	complete
+v1	vendor	1779990569	implement	-	cursor	cursor-phase1-dyn-cursor-plan-script-ground-truth	1779990447	1779990569	122	cursor-plan-dyn-script-ground-truth-output.txt	0	complete
+v1	vendor	1779990570	implement	-	codex	codex-phase1-codex-plan-innovation	1779990446	1779990570	124	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779990572	implement	-	codex	codex-phase1-dyn-codex-plan-test-pin-adequacy	1779990447	1779990572	125	codex-primary-plan-dyn-test-pin-adequacy-output.txt	0	complete
+v1	vendor	1779990572	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779990447	1779990572	125	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779990581	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779990446	1779990581	135	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779990581	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779990446	1779990581	135	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779990588	implement	-	codex	codex-phase1-codex-plan-arch	1779990446	1779990588	142	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779990589	implement	-	cursor	cursor-phase1-dyn-cursor-plan-test-pin-adequacy	1779990447	1779990589	142	cursor-plan-dyn-test-pin-adequacy-output.txt	0	complete
+v1	vendor	1779990600	implement	-	codex	codex-phase1-dyn-codex-plan-script-ground-truth	1779990447	1779990600	153	codex-primary-plan-dyn-script-ground-truth-output.txt	0	complete
+v1	vendor	1779990621	implement	-	codex	codex-phase1-dyn-codex-plan-cross-doc-integrity	1779990447	1779990621	174	codex-primary-plan-dyn-cross-doc-integrity-output.txt	0	complete
+v1	vendor	1779990621	implement	-	codex	codex-phase1-codex-plan-requirements	1779990447	1779990621	174	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779990629	implement	-	codex	codex-phase1-codex-plan-edge	1779990446	1779990629	183	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779990697	implement	-	codex	codex-phase1-aggregator	1779990637	1779990697	60	aggregator-output.txt	0	complete
+v1	vendor	1779990863	implement	-	cursor	cursor-phase1-voter-3	1779990811	1779990863	52	cursor-vote-output.txt	0	complete
+v1	vendor	1779990902	implement	-	codex	codex-phase1-voter-2	1779990811	1779990902	91	codex-vote-output.txt	0	complete
+v1	vendor	1779990963	implement	-	codex	codex-phase2-voter-3	1779990903	1779990963	60	cursor-vote-output-phase2.txt	0	complete
+v1	vendor	1779991057	implement	-	codex	codex-review	1779990967	1779991057	90	codex-output.txt	0	complete
+v1	vendor	1779991149	implement	-	cursor	cursor-review	1779991058	1779991149	91	cursor-output.txt	0	complete

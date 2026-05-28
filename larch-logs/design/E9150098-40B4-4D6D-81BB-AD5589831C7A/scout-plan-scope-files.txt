@@ -1,0 +1,10 @@
+skills/design/references/plan-review.md
+skills/design/references/approval-gates.md
+skills/design/references/discussion-rounds.md
+skills/design/references/flags.md
+docs/configuration-and-permissions.md
+SECURITY.md
+docs/run-logs.md
+docs/installation-and-setup.md
+agent-lint.toml
+scripts/test-design-structure.sh

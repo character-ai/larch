@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:935-1012; skills/design/scripts/plan-review-loop.sh:98-107	Plan documents env-var fallback and SIMPLE clamping that the current launcher does not enforce	With LARCH_DESIGN_ROUND_CAP=abc, Step 3 passes abc directly and plan-review-loop exits 2 instead of falling back. With LARCH_DESIGN_ROUND_CAP=5 on SIMPLE, the inner loop can still run up to 5 rounds; the Step 3 counter only gates later Step 3 entries.	For the minimum-change lane, document the current fail-closed/no-inner-clamp behavior. If fallback/clamping is intended, add explicit normalization before invoking plan-review-loop and cover it with an existing harness.
+1	in_scope	latent	risk-integration	scripts/lib-design-round-artifacts.sh:17-30	Per-round artifact doc plan omits allowlisted artifacts while claiming to enumerate the allowlist	The proposed docs/run-logs.md section would omit plan-review-slots.ndjson, plan-voter-slots.ndjson, scout-plan-manifest.json, plan.txt, vote output files, and voter diagnostics, so operators cannot reconcile committed design logs with the documented artifact list.	Add the omitted allowlisted basenames/patterns, or narrow the prose to say it lists selected artifacts and point to scripts/lib-design-round-artifacts.sh as the mechanical authority.
+
+1. [correctness] `skills/design/SKILL.md:935-1012`; `skills/design/scripts/plan-review-loop.sh:98-107`
+
+Concern: the plan says the new env-var docs should promise fallback on invalid values and SIMPLE-tier clamping, but the current path does neither. Step 3 passes the env values directly, and `plan-review-loop.sh` rejects invalid values.
+
+Suggested revision: keep this docs-only by documenting the current fail-closed behavior and separating the Step 3 entry cap from the inner loop cap.
+
+2. [risk-integration] `scripts/lib-design-round-artifacts.sh:17-30`
+
+Concern: the plan says `docs/run-logs.md` will enumerate artifacts allowlisted by `scripts/lib-design-round-artifacts.sh`, but the proposed list omits several allowlisted files and patterns.
+
+Suggested revision: add the missing entries, or say the section lists selected artifacts and make the `.sh` allowlist the explicit authority.

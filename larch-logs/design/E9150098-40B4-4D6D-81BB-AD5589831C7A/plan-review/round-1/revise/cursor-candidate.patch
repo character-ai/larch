@@ -1,0 +1,107 @@
+Incorporating accepted findings into the plan; verifying script behavior and the allowlist against the codebase.
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ ## Summary
+ 
+-Reconcile larch reference docs and contracts with the now-landed multi-round design plan-review loop (PR #3142 / INT-2871). Scope is narrowed to gaps that survived the integration: surface the structured `- **Severity**: important|latent|nit` field in Gate B presentation prose, document the patch-apply security surface introduced by `revise-plan-with-waterfall.sh`, enumerate per-round artifacts under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/` in `docs/run-logs.md`, document the new env vars, register a missing test harness, and add two prose-presence structure-test assertions. Pure documentation/configuration; no behavior changes.
++Reconcile larch reference docs and contracts with the now-landed multi-round design plan-review loop (PR #3142 / INT-2871). Scope is narrowed to gaps that survived the integration: surface the structured `- **Severity**: important|latent|nit` field in Gate B presentation prose, document the patch-apply security surface introduced by `revise-plan-with-waterfall.sh`, summarize per-round artifacts under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/` in `docs/run-logs.md` (with the script allowlist as mechanical authority), document the new env vars per current `plan-review-loop.sh` validation (no aspirational fallback/clamping), register a missing test harness, and add two prose-presence structure-test assertions. Pure documentation/configuration; no behavior changes.
+ 
+ ## Files to modify/create
+ 
+@@ -28,8 +28,10 @@
+ 
+ ### UPDATED: `skills/design/references/flags.md`
+ 
+-- Add a new sub-section under **Plan-size thresholds (Step 2b.5)** (or as a peer section, whichever placement preserves the table-of-contents order) titled `## Multi-round loop env vars` with two normative rows:
+-  - `LARCH_DESIGN_ROUND_CAP` — default `5`; SIMPLE tier caps at `3` total review rounds via the SKILL.md Step 3 review-round counter (the env var overrides the tier-derived default upward but not above 5).
+-  - `LARCH_DESIGN_CONVERGENCE_THRESHOLD` — default `3`; bounds the per-round `ACCEPTED_COUNT` that, combined with zero `IMPORTANT_ACCEPTED_COUNT` across two consecutive non-degraded rounds, triggers convergence.
++- Add a new sub-section under **Plan-size thresholds (Step 2b.5)** (or as a peer section, whichever placement preserves the table-of-contents order) titled `## Multi-round loop env vars` with two normative rows grounded in `plan-review-loop.sh`:
++  - `LARCH_DESIGN_ROUND_CAP` — default `5` when Step 3 passes `--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"`. Multi-round mode requires `--round-cap` on argv; env-only `LARCH_DESIGN_ROUND_CAP` does **not** enable multi-round (legacy single-pass when the flag is omitted). When `--round-cap` is present, the driver validates a **positive** integer; empty/unset shell expansion before argv construction uses `5`; invalid explicit values exit `2` (no silent fallback and no upper-bound clamp in the loop script). **Distinct from** the Step 3 / Gate C **review-round cap** (`review-round-count.txt`: SIMPLE = 3, HARD = 5) in `approval-gates.md`.
++  - `LARCH_DESIGN_CONVERGENCE_THRESHOLD` — default `3`; bounds per-round `ACCEPTED_COUNT` for convergence together with zero `IMPORTANT_ACCEPTED_COUNT` across two consecutive non-degraded rounds. Validated as a **non-negative** integer when passed; invalid explicit values exit `2` (no silent fallback).
+ - Cross-reference `docs/configuration-and-permissions.md` Environment Variables section.
+ 
+ ### UPDATED: `docs/configuration-and-permissions.md`
+ 
+-- Under the existing **Environment Variables** section, add two peers to the existing `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` sub-section: `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD`. Each sub-section includes the default value, validation rule (positive integer, fall back to default on invalid/empty/non-numeric), and a one-line cross-reference to `skills/design/references/flags.md` and `skills/design/references/plan-review.md` Multi-round loop section.
++- Under the existing **Environment Variables** section, add two peers to the existing `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` sub-section: `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD`. Each sub-section documents the default when unset (`5` / `3`), argv validation in `plan-review-loop.sh` (positive round cap; non-negative convergence threshold; invalid explicit numeric values exit `2` — **not** the silent fallback pattern used by `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`), the legacy rule that omitting `--round-cap` on argv keeps single-pass mode regardless of env, and a one-line cross-reference to `skills/design/references/flags.md` and `skills/design/references/plan-review.md` Multi-round loop section. Note explicitly that the Gate C **review-round cap** is separate from loop `--round-cap`.
+ 
+ ### UPDATED: `SECURITY.md`
+ 
+@@ -39,7 +41,7 @@
+   - Plan-file canonical-path constraint: `--plan-file` must resolve to `$DESIGN_TMPDIR/plan.txt` (basename `plan.txt`). Mismatch exits 2 before any launcher fires.
+   - Pre-revision snapshot at `<plan-file>.before-revise` is created before any patch attempt; snapshot is removed only on `REVISE_STATUS=ok`. On failure (`failed-no-patch`, `failed-validation`, `failed-apply`), the snapshot stays in place so the operator or loop driver can roll back.
+   - Per-tier launcher timeout is bounded by `--timeout` (default 1800s) and forwarded uniformly to Codex, Cursor, and Claude launchers.
+-  - Outputs are confined to `$DESIGN_TMPDIR/plan-review/round-<N>/revise/`; allowlist is enforced at design-log publish time per the existing publish-allowlist paragraph.
++  - Launcher outputs, prompts, and candidate patches are confined to `$DESIGN_TMPDIR/plan-review/round-<N>/revise/`; allowlist is enforced at design-log publish time per the existing publish-allowlist paragraph. The rollback snapshot `<plan-file>.before-revise` is intentionally written as a sibling of `plan.txt` under `$DESIGN_TMPDIR` (outside `revise/`) and may remain after failed apply paths.
+ 
+ ### UPDATED: `docs/run-logs.md`
+ 
+-- Under **design plan-review findings-classification.tsv**, add a new sibling sub-section **design plan-review per-round artifacts** that enumerates the artifacts allowlisted by `scripts/lib-design-round-artifacts.sh` under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`. Group them by producer:
++- Under **design plan-review findings-classification.tsv**, add a new sibling sub-section **design plan-review per-round artifacts** that groups common artifacts allowlisted by `scripts/lib-design-round-artifacts.sh` under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/` (the section is a summary; `scripts/lib-design-round-artifacts.md` is the exhaustive allowlist). Group them by producer:
+   - Findings: `findings.md`, `findings-in-scope.md`, `findings-oos.md`, `findings-classification.tsv`.
+   - Voting: `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `ballot.txt`, `voting-tally.md`.
++  - Manifests: `plan-review-slots.ndjson`, `plan-voter-slots.ndjson`, `scout-plan-manifest.json`, `plan.txt`.
++  - Voter diagnostics: `*-vote-output.txt`, `*-vote-output-first-pass.txt`, `voter*-diag.txt`.
+   - Loop forensics: `round-summary.env`.
+   - Revise sub-tree (`round-<N>/revise/`): `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`, `revise.env`, `prompt.txt`, `*-candidate.patch`.
+ - Reference `scripts/lib-design-round-artifacts.md` as the authoritative allowlist.
+@@ -55,7 +57,7 @@
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ 
+-- Add one structure-test assertion: `approval-gates.md` Severity classification rubric block contains the literal substrings `important → High`, `latent → Medium`, `nit → Low` AND a sentence indicating Concern-text fallback when the structured `- **Severity**:` line is absent.
+-- Add one structure-test assertion: `plan-review.md` Accepted FINDING_N template block contains all of `- **Reviewer(s)**:`, `- **Severity**:`, `- **Focus area**:`, `- **Location**:`.
++- Add one structure-test assertion: `approval-gates.md` Severity classification rubric block contains the literal substrings `important → High`, `latent → Medium`, `nit → Low` AND a sentence indicating Concern-text fallback when the structured `- **Severity**:` line is absent on any accepted finding (all-or-nothing Gate B rule).
++- Add one structure-test assertion: `plan-review.md` Accepted FINDING_N template block contains all of `- **Reviewer(s)**:`, `- **Severity**:`, `- **Focus area**:`, `- **Location**:`, `- **Concern**:`, and `- **Proposed resolution**:`.
+ - Use unique check identifiers consistent with the existing numbering style in the file (e.g., a `# Check FINDING_2667` or `# Check 22 (#2667)` token); do not renumber existing checks.
+ 
+ ## Approach
+@@ -63,7 +65,7 @@
+ 1. Pure documentation/configuration changes. No behavior changes. No new scripts.
+-2. Each `### UPDATED:` surface is grounded in inspection of the currently landed code (`plan-review-loop.sh::emit_finding` / `emit_oos`, `lib-design-round-artifacts.sh`, `revise-plan-with-waterfall.sh`, existing `approval-gates.md` and `plan-review.md` content).
++2. Each `### UPDATED:` surface is grounded in inspection of the currently landed code (`plan-review-loop.sh::emit_finding` / `emit_oos` and argv validation, `lib-design-round-artifacts.sh`, `revise-plan-with-waterfall.sh`, existing `approval-gates.md` and `plan-review.md` content). Env-var prose documents exit-`2` validation, not fallback/clamping, unless a follow-up explicitly adds code.
+ 3. Drift mitigation: the two new structure-test assertions catch future regressions of the severity-precedence prose and the FINDING_N template field set. CI's existing structure-test framework runs these on every PR.
+ 4. Stylistic constraints honored: no hardcoded counts in prose (e.g., do not hardcode "5 Cursor reviewers" — defer to `skills/shared/topology.tsv`); no line-number references in prose; refer by section header or symbol; no machine-local absolute paths.
+ 5. Topology TSV is **not** modified. Inspection confirms `skills/shared/topology.tsv` carries panel-composition counts, not a script catalog; adding rows for `plan-review-loop.sh` or `revise-plan-with-waterfall.sh` would not fit the existing row schema. Original #2667 plan's directive on this is moot.
+@@ -71,9 +73,8 @@
+ 
+ - Severity field absent on every finding in a given round: Gate B falls back to the existing Concern-text rubric (Critical/High/Medium/Low). The precedence rule documents this explicitly so operators understand which rubric drives the question header text.
+-- Severity field present on some findings but absent on others: Gate B uses the structured rubric for findings that carry the field and the Concern-text rubric for the rest. The bucket counts in the question header use whichever rubric applies per-finding. Document this as the per-finding fallback rule.
++- Severity field present on some but not all accepted findings: Gate B uses the Concern-text rubric (Critical/High/Medium/Low) for the `AskUserQuestion` header and per-finding presentation — structured bucket counts (`H high / M medium / L low`) apply only when **every** accepted finding carries `- **Severity**:` (all-or-nothing rule).
+ - `oos-accepted-design.md` cumulative artifact behavior on legacy single-pass plan-review runs (callers that omit `--round-cap`): the loop runs one round and writes a non-cumulative `oos-accepted-design.md`; the within-loop cumulation prose remains correct because one-round = trivially-cumulative.
+-- `LARCH_DESIGN_ROUND_CAP` set above the tier cap by the operator: SIMPLE tier still enforces the 3-round ceiling via the SKILL.md Step 3 review-round counter. Document that env-var values above the tier cap are clamped, not honored above the cap.
++- Operator sets a high `LARCH_DESIGN_ROUND_CAP` on SIMPLE tier: loop `--round-cap` may exceed 3, but Step 3 / Gate C **review-round cap** (3 for SIMPLE) limits how many times the panel can be re-entered from Gate C; document both limits as orthogonal — do not describe env-var clamping against the tier cap.
+ 
+ ## Failure modes
+ 
+@@ -81,6 +82,7 @@
+ 2. **`docs/run-logs.md` per-round enumeration drifts from `scripts/lib-design-round-artifacts.sh` allowlist.** Adding/removing an allowlisted basename without updating the doc is the typical drift pattern. **Earliest signal**: post-merge operator notices a committed log artifact that the doc does not mention. **Mitigation**: explicitly cross-reference `scripts/lib-design-round-artifacts.md` as the authoritative allowlist; future contributors editing the allowlist see the doc-cross-link contract in `.claude/rules/drift-prone-prose-in-docs.md`.
+ 3. **`SECURITY.md` patch-apply paragraph drifts from `revise-plan-with-waterfall.sh` behavior.** Future patch-format or snapshot-path changes can invalidate the prose. **Earliest signal**: a follow-up PR adds a new patch format or relocates `.before-revise`. **Mitigation**: keep the paragraph narrow (canonical-plan-file check, snapshot lifecycle, allowlisted output directory) and rely on the existing structure-test patterns for `revise-plan-with-waterfall.md` sibling-doc invariants.
++4. **Env-var prose drifts toward `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`-style silent fallback.** **Mitigation**: configuration doc and `flags.md` explicitly contrast exit-`2` loop validation with the summary-threshold fallback pattern.
+ 
+ ## Testing strategy
+ 
+@@ -99,14 +101,15 @@
+ - `skills/design/references/plan-review.md` OOS_N template matches the actual `emit_oos` output (Description / Reviewer / Severity / Focus area / Location / Phase).
+ - `skills/design/references/plan-review.md` Multi-round loop section documents `oos-accepted-design.md` within-loop cumulation and the Gate C re-run overwrite behavior, with a cross-reference to `approval-gates.md` State invariants.
+ - `skills/design/references/approval-gates.md` Severity classification rubric documents both the structured-field precedence (`important → High`, `latent → Medium`, `nit → Low`) and the Concern-text legacy fallback.
+-- `skills/design/references/approval-gates.md` Gate B `AskUserQuestion` text uses structured-severity bucket counts when the field is present and falls back to Concern-text rubric otherwise.
++- `skills/design/references/approval-gates.md` Gate B `AskUserQuestion` text uses structured-severity bucket counts only when **every** accepted finding carries `- **Severity**:`; otherwise Concern-text rubric counts (including Critical).
+ - `skills/design/references/approval-gates.md` State invariants carve out within-loop cumulation and loop-internal mechanical revision.
+-- `skills/design/references/flags.md` documents `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD`.
+-- `docs/configuration-and-permissions.md` Environment Variables section gains sibling entries for the same two env vars.
+-- `SECURITY.md` includes the new patch-apply paragraph for `revise-plan-with-waterfall.sh`.
+-- `docs/run-logs.md` enumerates the per-round artifacts under `plan-review/round-<N>/`.
++- `skills/design/references/flags.md` documents `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD` per `plan-review-loop.sh` validation (defaults, exit-`2` on invalid explicit values, legacy `--round-cap` requirement, review-round cap distinct).
++- `docs/configuration-and-permissions.md` Environment Variables section gains sibling entries for the same two env vars with matching validation semantics.
++- `SECURITY.md` includes the patch-apply paragraph for `revise-plan-with-waterfall.sh` with revise-subtree confinement and explicit `.before-revise` sibling snapshot prose.
++- `docs/run-logs.md` summarizes per-round artifacts under `plan-review/round-<N>/` and points to `scripts/lib-design-round-artifacts.md` as exhaustive.
+ - `docs/installation-and-setup.md` notes the SIMPLE-tier cost change.
+ - `agent-lint.toml` registers `scripts/test-revise-plan-with-waterfall.sh` and its sibling `.md`.
+-- `scripts/test-design-structure.sh` gains the two new structure-test assertions and passes locally and in CI.
++- `scripts/test-design-structure.sh` gains the two new structure-test assertions (severity all-or-nothing + full FINDING_N field set including Concern and Proposed resolution) and passes locally and in CI.
+ - `make lint` passes; `bash scripts/test-design-structure.sh` exits 0.
+ 
+-diff_lines: 220
++diff_lines: 248
