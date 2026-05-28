@@ -164,6 +164,9 @@ scan_file() {
         }
 
         function check_rule1(line, lineno) {
+            if (line ~ /^[[:space:]]*#/) {
+                return
+            }
             if (pragma_suppresses(line)) {
                 return
             }
@@ -211,7 +214,7 @@ scan_file() {
             report("awk-body-nonascii-regex", lineno, line)
         }
 
-        function open_single_quoted_body(line,    pos) {
+        function open_single_quoted_body(line,    pos, rest_start) {
             if (!match(line, /awk/)) {
                 return 0
             }
@@ -236,13 +239,19 @@ scan_file() {
             }
             sub(/^[[:space:]]+/, "", rest)
             if (substr(rest, 1, 1) == sq) {
+                rest_start = length(line) - length(rest) + 1
+                single_body_open_pos = rest_start
                 return 1
             }
             return 0
         }
 
-        function close_single_quoted_body(line) {
-            return (line ~ /'"'"'[[:space:]]*(;|$|#)/ || line ~ /'"'"'[[:space:]]*\\/) 
+        function close_single_quoted_body(line, opened_here,    rest) {
+            if (!opened_here) {
+                return (index(line, sq) > 0)
+            }
+            rest = substr(line, single_body_open_pos + 1)
+            return (index(rest, sq) > 0)
         }
 
         {
@@ -267,7 +276,7 @@ scan_file() {
 
             if (in_single_body) {
                 check_rule2_line(logical, lineno)
-                if (close_single_quoted_body(logical) || logical ~ /'"'"'$/) {
+                if (close_single_quoted_body(logical, 0) || logical ~ /'"'"'$/) {
                     in_single_body = 0
                 }
                 next
@@ -279,6 +288,10 @@ scan_file() {
                     in_heredoc = 0
                     heredoc_delim = ""
                 }
+                next
+            }
+
+            if (!is_awk_file && logical ~ /^[[:space:]]*#/) {
                 next
             }
 
@@ -295,7 +308,7 @@ scan_file() {
                 if (open_single_quoted_body(logical)) {
                     in_single_body = 1
                     check_rule2_line(logical, lineno)
-                    if (close_single_quoted_body(logical) || logical ~ /'"'"'$/) {
+                    if (close_single_quoted_body(logical, 1) || logical ~ /'"'"'$/) {
                         in_single_body = 0
                     }
                     next

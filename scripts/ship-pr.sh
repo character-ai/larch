@@ -1828,16 +1828,22 @@ run_ci_fix_vendor() {
     local gh_logs_capture_redacted _failure_log_args=()
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
     local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
-    local final_head detail_log
+    local baseline_tracked_diff_file baseline_staged_diff_file
+    local vendor_tracked_file vendor_untracked_file vendor_staged_file vendor_head detail_log
+    local vendor_tracked_diff_file vendor_staged_diff_file
 
     emit_breadcrumb --category=warn "⚠ ship-pr: CI failed; dispatching fix"
 
     baseline_tracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-tracked.txt"
     baseline_untracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-untracked.txt"
     baseline_staged_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-staged.txt"
+    baseline_tracked_diff_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-tracked.diff"
+    baseline_staged_diff_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-staged.diff"
     capture_tracked_dirty_paths > "$baseline_tracked_file"
     capture_untracked_dirty_paths > "$baseline_untracked_file"
     { git diff --name-only --cached 2>/dev/null || true; } > "$baseline_staged_file"
+    { git diff --binary --no-ext-diff HEAD 2>/dev/null || true; } > "$baseline_tracked_diff_file"
+    { git diff --binary --cached --no-ext-diff 2>/dev/null || true; } > "$baseline_staged_diff_file"
     baseline_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
     gh_logs_capture_redacted=""
@@ -1912,6 +1918,35 @@ run_ci_fix_vendor() {
         return 1
     fi
 
+    vendor_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+    vendor_tracked_file="$IMPLEMENT_TMPDIR/ci-fix-vendor-${phase}-$$-tracked.txt"
+    vendor_untracked_file="$IMPLEMENT_TMPDIR/ci-fix-vendor-${phase}-$$-untracked.txt"
+    vendor_staged_file="$IMPLEMENT_TMPDIR/ci-fix-vendor-${phase}-$$-staged.txt"
+    vendor_tracked_diff_file="$IMPLEMENT_TMPDIR/ci-fix-vendor-${phase}-$$-tracked.diff"
+    vendor_staged_diff_file="$IMPLEMENT_TMPDIR/ci-fix-vendor-${phase}-$$-staged.diff"
+    capture_tracked_dirty_paths > "$vendor_tracked_file"
+    capture_untracked_dirty_paths > "$vendor_untracked_file"
+    { git diff --name-only --cached 2>/dev/null || true; } > "$vendor_staged_file"
+    { git diff --binary --no-ext-diff HEAD 2>/dev/null || true; } > "$vendor_tracked_diff_file"
+    { git diff --binary --cached --no-ext-diff 2>/dev/null || true; } > "$vendor_staged_diff_file"
+    if [ "$baseline_head" = "$vendor_head" ] \
+        && cmp -s "$baseline_tracked_diff_file" "$vendor_tracked_diff_file" \
+        && cmp -s "$baseline_untracked_file" "$vendor_untracked_file" \
+        && cmp -s "$baseline_staged_diff_file" "$vendor_staged_diff_file"; then
+        detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
+        {
+            printf 'vendor=%s\n' "$winning_tier"
+            printf 'launcher_exit=0\n'
+            printf 'baseline_head=%s\n' "$baseline_head"
+            printf 'vendor_head=%s\n' "$vendor_head"
+            printf 'reason=vendor exited 0 but produced no commit; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
+        } > "$detail_log"
+        emit_breadcrumb --category=warn "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
+        state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+        record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
+        return 1
+    fi
+
     checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
     _verify_failed_jobs_locally "$phase" "$failed_jobs_tsv"
     verify_rc=$?
@@ -1922,21 +1957,6 @@ run_ci_fix_vendor() {
         *) return 1 ;;
     esac
     if _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"; then
-        final_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
-        if [ "$baseline_head" != "unknown" ] && [ "$final_head" != "unknown" ] && [ "$baseline_head" = "$final_head" ]; then
-            detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
-            {
-                printf 'vendor=%s\n' "$winning_tier"
-                printf 'launcher_exit=0\n'
-                printf 'baseline_head=%s\n' "$baseline_head"
-                printf 'final_head=%s\n' "$final_head"
-                printf 'reason=vendor exited 0 but produced no commit; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
-            } > "$detail_log"
-            emit_breadcrumb --category=warn "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
-            state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
-            record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
-            return 1
-        fi
         return 0
     fi
     return 1

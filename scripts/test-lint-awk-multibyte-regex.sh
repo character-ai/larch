@@ -127,8 +127,9 @@ assert_case "rule1 cjk in -v" 1 "$stderr_file" "$rc" \
 
 # 4. Rule 2 em-dash in match() inside awk body.
 reset_tree
+# shellcheck disable=SC2016
 write_file "$TMPROOT/scripts/rule2-match.sh" \
-    'awk '\''match($0, "^<!-- step:" id "([[:space:]]|—)")'\''' # lint-awk-multibyte-regex: ok harness fixture # shellcheck disable=SC2016
+    'awk '\''match($0, "^<!-- step:" id "([[:space:]]|—)")'\''' # lint-awk-multibyte-regex: ok harness fixture
 rc="$(run_lint "$stderr_file")"
 assert_case "rule2 em-dash in match" 1 "$stderr_file" "$rc" \
     "awk-body-nonascii-regex" \
@@ -185,8 +186,9 @@ assert_negative "excluded larch-logs" "$stderr_file" "$rc" \
 
 # 11. Standalone .awk file with non-ASCII at match(.
 reset_tree
+# shellcheck disable=SC2016
 write_file "$TMPROOT/scripts/bad.awk" \
-    'BEGIN { if (match($0, "—")) print "hit" }' # lint-awk-multibyte-regex: ok harness fixture # shellcheck disable=SC2016
+    'BEGIN { if (match($0, "—")) print "hit" }' # lint-awk-multibyte-regex: ok harness fixture
 rc="$(run_lint "$stderr_file")"
 assert_case "standalone awk file" 1 "$stderr_file" "$rc" \
     "awk-body-nonascii-regex" \
@@ -199,6 +201,62 @@ rc=$?
 set -e
 assert_case "invalid --root" 2 "$stderr_file" "$rc" \
     "is not a directory"
+
+# 13. Rule 1 ignores shell comments that mention awk.
+reset_tree
+write_file "$TMPROOT/scripts/commented-example.sh" \
+    "# awk -v label='テスト' 'BEGIN { print label }'" # lint-awk-multibyte-regex: ok harness fixture
+rc="$(run_lint "$stderr_file")"
+assert_negative "rule1 skips shell comments" "$stderr_file" "$rc" \
+    "awk-v-nonascii"
+
+# 14. Rule 1 joins backslash continuations and split = assignment.
+reset_tree
+write_file "$TMPROOT/scripts/rule1-continuation.sh" \
+    "awk -v label = \\" \
+    "  'テスト' 'BEGIN { print label }'" # lint-awk-multibyte-regex: ok harness fixture
+rc="$(run_lint "$stderr_file")"
+assert_case "rule1 continuation split assignment" 1 "$stderr_file" "$rc" \
+    "awk-v-nonascii" \
+    "scripts/rule1-continuation.sh:2:"
+
+# 15. Rule 2 detects heredoc awk bodies.
+reset_tree
+# shellcheck disable=SC2016
+write_file "$TMPROOT/scripts/rule2-heredoc.sh" \
+    "awk -f - <<'AWK'" \
+    'BEGIN { if (match($0, "—")) print "hit" }' \
+    "AWK" # lint-awk-multibyte-regex: ok harness fixture
+rc="$(run_lint "$stderr_file")"
+assert_case "rule2 heredoc body" 1 "$stderr_file" "$rc" \
+    "awk-body-nonascii-regex" \
+    "scripts/rule2-heredoc.sh:2:"
+
+# 16. Rule 2 closes single-quoted bodies before pipeline suffixes.
+reset_tree
+write_file "$TMPROOT/scripts/rule2-pipeline-close.sh" \
+    "awk 'BEGIN {" \
+    "  if (match(\$0, \"—\")) print \"hit\" # lint-awk-multibyte-regex: ok harness fixture" \
+    "}' | cat" \
+    "printf 'ascii only\\n'"
+rc="$(run_lint "$stderr_file")"
+assert_case "rule2 single-quote pipeline close" 1 "$stderr_file" "$rc" \
+    "awk-body-nonascii-regex" \
+    "scripts/rule2-pipeline-close.sh:2:"
+
+# 17. Rule 2 covers gsub/sub/split/!~ callsites.
+reset_tree
+write_file "$TMPROOT/scripts/rule2-callsite-tokens.sh" \
+    "awk 'BEGIN {" \
+    "  if (\$0 !~ \"—\") print \"not match\" # lint-awk-multibyte-regex: ok harness fixture" \
+    "  gsub(\"—\", \"-\", \$0) # lint-awk-multibyte-regex: ok harness fixture" \
+    "  sub(\"—\", \"-\", \$0) # lint-awk-multibyte-regex: ok harness fixture" \
+    "  split(\$0, parts, \"—\") # lint-awk-multibyte-regex: ok harness fixture" \
+    "}'" # lint-awk-multibyte-regex: ok harness fixture
+rc="$(run_lint "$stderr_file")"
+assert_case "rule2 extra callsite tokens" 1 "$stderr_file" "$rc" \
+    "awk-body-nonascii-regex" \
+    "scripts/rule2-callsite-tokens.sh:2:"
 
 rm -f "$stderr_file"
 

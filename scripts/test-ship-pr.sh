@@ -250,8 +250,9 @@ case "$(basename "$0")" in
     if [[ -n "${output:-}" ]]; then
       printf 'TOKENS=1\n' > "${output}.token-record" 2>/dev/null || true
     fi
-    # Touches a tracked file so ship-pr HEAD-non-advance check (issue #3134) stays dormant on happy-path vendor tests.
-    printf 'X\n' >> README.md
+    printf 'vendor fix\n' >> README.md
+    git add README.md
+    git commit -q -m "Fix CI failure"
     printf 'LAUNCHER_EXIT=0\n'
     ;;
 esac
@@ -3653,6 +3654,7 @@ cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' launcher >> "$call_dir/order.txt"
+printf 'vendor change\n' >> README.md
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/git-push.sh" <<STUB
@@ -3723,6 +3725,7 @@ STUB
 cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'vendor change\n' >> README.md
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/lint-fix-loop.sh" "$root/scripts/launch-cursor-ci.sh"
@@ -3777,6 +3780,7 @@ STUB
 cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'vendor change\n' >> README.md
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/lint-fix-loop.sh" "$root/scripts/launch-cursor-ci.sh"
@@ -3839,6 +3843,7 @@ set -euo pipefail
 printf '%s\n' launcher >> "$call_dir/order.txt"
 rm -f "$call_dir/verified-count"
 printf 'fixed\n' > "$call_dir/vendor-fixed"
+printf 'vendor change\n' >> README.md
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/git-push.sh" <<STUB
@@ -4662,6 +4667,15 @@ printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREA
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 chmod +x "$root/scripts/launch-cursor-ci.sh"
+cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'refresh %s\n' "$(date +%s)" >> README.md
+git add README.md
+git commit -q -m "chore(larch-logs): flush run logs"
+exit 0
+STUB
+chmod +x "$root/scripts/refresh-run-logs.sh"
 cat > "$root/scripts/git-push.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4671,6 +4685,9 @@ chmod +x "$root/scripts/git-push.sh"
 cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+printf 'lint-fix %s\n' "$(date +%s)" >> README.md
+git add README.md
+git commit -q -m "Fix CI failure"
 echo "LINT_FIX_STATUS=applied"
 exit 0
 STUB
