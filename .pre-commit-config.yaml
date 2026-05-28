@@ -170,6 +170,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: lint-awk-multibyte-regex
+        name: lint multi-byte UTF-8 in dynamic awk regex
+        entry: bash scripts/lint-awk-multibyte-regex.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
   - repo: local
     hooks:
       - id: lint-foreground-markers

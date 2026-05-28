@@ -1,0 +1,139 @@
+### FINDING_1: Pre-stage vendor no-op bail skips later fix/commit paths
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: No-commit detection now runs before local verification and `_stage_and_push_ci_fixes`, using baseline/vendor tree equality instead of the plan’s post-stage `HEAD` comparison. That can misclassify a vendor exit 0 with no immediate tree delta as `first-fixer-non-health`, skipping lint-fix-loop or staging paths that could still commit a fix, and it also creates plan/docs/acceptance drift.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_2: Missing guard for unknown HEAD equality
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: If both `baseline_head` and `vendor_head` resolve to the literal `unknown`, the equality branch can fire and falsely classify the run as `first-fixer-non-health`. The equality check should require known SHA values before treating matching heads as a no-op vendor result.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_3: Unused tracked-file snapshots in vendor no-op check
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `vendor_tracked_file` and `baseline_tracked_file` are captured but not used, adding extra `git diff --name-only` work on each vendor attempt without affecting control flow.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_4: Changelog categorizes new lint under Fixed
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: The new lint entry is listed under `Fixed` rather than `Added` or `Changed`, which may mislead changelog readers about the release content.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_5: Awk multibyte scanner has high-maintenance parsing limits
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: The embedded awk scanner has fragile heredoc/body tracking and can miss split-line dynamic regex patterns or close a single-quoted awk body early when an apostrophe appears inside a continuation line.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_6: Ship-pr #3134 test contains dead committing stubs
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: The #3134 test stubs `lint-fix-loop` or `refresh-run-logs` to commit even though the current early bail never reaches them. This adds noise and could mask a regression if the implementation is refactored back toward post-stage gating.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_7: Missing harness for vendor exit 0 with uncommitted tracked edits
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: There is no test covering a vendor launcher that exits 0 after modifying tracked files without committing. That path should continue into staging rather than bail as a no-op.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_8: Default ship-pr test launchers commit too much by default
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: Default `write_stubs` launchers auto-commit, so many fix-loop tests do not exercise the staging/commit path after vendor edits. This can leave staging bugs under-tested.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_9: Awk lint harness docs lag added cases
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/test-lint-awk-multibyte-regex.md` still lists 12 harness cases even though the script now has 17, so future harness edits may drop newer cases without doc review catching it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_10: Double-quoted awk programs bypass Rule 2 body tracking
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Rule 2 does not inspect double-quoted awk program bodies, so non-ASCII dynamic regex added inside `awk "..."` invocation forms can bypass the lint.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_11: Vendor no-op breadcrumb wording implies commit-level semantics
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: The breadcrumb/detail log says “no commits,” but the current detection is pre-commit working-tree identity. Operators may read the log as commit-level semantics even when the predicate is working-tree based.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_12: has_nonascii can flag ASCII control bytes
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: `has_nonascii` appears to flag ASCII control characters even though the plan targets bytes outside 7-bit ASCII only, which could create false positives.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_13: Tier-order tests use README.md instead of sentinel fixture name
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Tier-order happy-path tests use `README.md` rather than the plan’s `sentinel-fix.txt`, which is functionally harmless but reduces traceability to the plan.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_14: [OUT_OF_SCOPE] ship-pr contract doc omits vendor no-commit bail
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/ship-pr.md` does not document the new no-commit vendor bail, so operators relying on the contract doc alone may miss the #3134 routing behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_15: [OUT_OF_SCOPE] Awk lint does not catch POSIX character classes in dynamic regex
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: The lint targets multibyte regex issues and does not detect mawk POSIX class patterns such as `[[:space:]]` in dynamic regexes, which was treated as a plan non-goal but may still deserve a follow-up.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_16: [OUT_OF_SCOPE] Rule 2 docs cite outdated POSIX-class example
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/lint-awk-multibyte-regex.md` cites a POSIX-class hypothesis commit even though the plan non-goals point toward the #3144 em-dash family.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_17: [OUT_OF_SCOPE] docs/linting harness table omits newer cases
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: `docs/linting.md` under-describes the awk multibyte regex harness because cases 13-17 are not reflected in the harness table.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_18: [OUT_OF_SCOPE] lint --root can scan arbitrary directories
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/lint-awk-multibyte-regex.sh --root PATH` can scan arbitrary `*.sh` and `*.awk` trees when invoked outside the default pre-commit path, which matters if callers ever pass untrusted roots.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_19: [OUT_OF_SCOPE] lint path construction lacks root escape protection
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `path="$ROOT/$rel"` does not canonicalize `..` or reject repo-internal symlinks that resolve outside the root, so a malicious tree entry could cause the linter to read unexpected files.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_20: [OUT_OF_SCOPE] Global make_repo launcher stubs auto-commit beyond plan scope
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: Global `make_repo` launcher stubs now auto-commit beyond the plan’s enumerated tier-order edits, broadening harness behavior in a way that may need documentation or narrowing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.

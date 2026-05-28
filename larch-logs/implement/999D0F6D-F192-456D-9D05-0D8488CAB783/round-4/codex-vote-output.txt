@@ -1,0 +1,37 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- future-only shell side-channel risk is not worth adding an out-parameter now
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- default stub behavior is a low-risk test-helper fidelity issue
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- double-quoted awk bodies are a real gap but outside the planned narrow scanner
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- concern itself says to defer the abstraction
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- example wording is slightly confusing but too small for a follow-up issue
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan mismatch is real, but treating run-log-only commits as health would weaken the no-fix detection
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cross-line dataflow is a deliberate limitation for this lightweight lint
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the double-quoted awk-body gap and outside the narrow planned scanner
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- whitespace around ~ was an explicit false-positive tradeoff in the plan
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the miss requires rare shell quote assembly inside a single-quoted awk body
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate low-risk default-stub fidelity concern
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate changelog categorization issue is too small as a separate OOS follow-up
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale issue narrative is real but not worth a separate follow-up issue
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate double-quoted awk-body gap outside the planned narrow scanner
+FINDING_17: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- POSIX-class detection was explicitly a non-goal and the residual mawk failure is not substantiated here
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the deliberate whitespace-around-tilde tradeoff
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate low-risk default-stub fidelity concern
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale unsourced include is not worth filing as a separate follow-up
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a security attestation, not a code-review finding
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a security attestation, not a code-review finding
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a security attestation, not a code-review finding
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a security attestation, not a code-review finding
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a security attestation, not a code-review finding
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate double-quoted awk-body gap outside the planned narrow scanner
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate future-only shell side-channel concern
+FINDING_29: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_30: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- rare shell quote assembly edge case is not worth complicating the scanner
+FINDING_31: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate low-risk default-stub fidelity concern
+FINDING_32: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_33: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cosmetic pre-existing naming ambiguity is not worth a follow-up issue
+FINDING_34: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan mismatch is real but the helper side effect is bounded and lower risk than refactoring
+FINDING_35: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan mismatch is real, but effective-head semantics intentionally avoid counting run-log-only commits as fixes
+FINDING_36: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- binary-heuristic wording mismatch is too small to raise
+FINDING_37: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

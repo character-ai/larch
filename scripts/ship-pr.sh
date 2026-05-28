@@ -56,6 +56,7 @@ USAGE
 
 LAST_LINT_FIX_DELTA_PATHS_FILE=""
 ALL_LINT_FIX_DELTA_PATHS_FILE=""
+LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=""
 
 capture_dirty_paths() {
     {
@@ -1755,6 +1756,8 @@ _stage_and_push_ci_fixes() {
     local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
     local tracked_dirty_paths_file untracked_dirty_paths_file delta_paths_file
 
+    LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=""
+
     fail_file=$(failure_capture_path "$phase")
     "$SCRIPT_DIR/append-token-record.sh" --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
     rc=$?
@@ -1806,7 +1809,7 @@ _stage_and_push_ci_fixes() {
             fi
         fi
     fi
-
+    LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
     fail_file=$(failure_capture_path "$phase")
     "$SCRIPT_DIR/refresh-run-logs.sh" \
         --state-file "$STATE_FILE" \
@@ -1827,7 +1830,8 @@ run_ci_fix_vendor() {
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     local gh_logs_capture_redacted _failure_log_args=()
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
-    local baseline_tracked_file baseline_untracked_file baseline_staged_file
+    local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
+    local detail_log pre_refresh_head
 
     emit_breadcrumb --category=warn "⚠ ship-pr: CI failed; dispatching fix"
 
@@ -1837,6 +1841,7 @@ run_ci_fix_vendor() {
     capture_tracked_dirty_paths > "$baseline_tracked_file"
     capture_untracked_dirty_paths > "$baseline_untracked_file"
     { git diff --name-only --cached 2>/dev/null || true; } > "$baseline_staged_file"
+    baseline_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
     gh_logs_capture_redacted=""
     if [ "$gh_logs_rc" -eq 0 ] && [ -n "$gh_logs_capture" ] && [ -s "$gh_logs_capture" ]; then
@@ -1919,7 +1924,27 @@ run_ci_fix_vendor() {
         4) return 4 ;;
         *) return 1 ;;
     esac
-    _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"
+    if _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"; then
+        pre_refresh_head=${LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD:-}
+        if [[ "$baseline_head" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ "$pre_refresh_head" =~ ^[0-9a-f]{40}$ ]] \
+            && [ "$baseline_head" = "$pre_refresh_head" ]; then
+            detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
+            {
+                printf 'vendor=%s\n' "$winning_tier"
+                printf 'launcher_exit=0\n'
+                printf 'baseline_head=%s\n' "$baseline_head"
+                printf 'pre_refresh_head=%s\n' "$pre_refresh_head"
+                printf 'reason=vendor exited 0 and CI-fix staging/push left HEAD unchanged; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
+            } > "$detail_log"
+            emit_breadcrumb --category=warn "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
+            state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+            record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
+            return 1
+        fi
+        return 0
+    fi
+    return 1
 }
 
 _PJA_ARGV=()

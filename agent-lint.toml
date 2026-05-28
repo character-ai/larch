@@ -145,6 +145,10 @@ suppress = [
 # (closes #3104). scripts/test-lint-bare-grep-probe.sh is its black-box
 # harness. Same reachability pattern as the other lint family above.
 #
+# scripts/lint-awk-multibyte-regex.sh is a pre-commit / Makefile-only lint for
+# non-ASCII bytes inside dynamic awk regex contexts (closes #3134).
+# scripts/test-lint-awk-multibyte-regex.sh is its black-box harness.
+#
 # scripts/test-parse-prose-blockers.sh is the regression harness for
 # scripts/parse-prose-blockers.sh (Makefile `test-parse-prose-blockers`).
 # scripts/parse-prose-blockers.sh is invoked only from scripts/blocker-helpers.sh
@@ -896,6 +900,10 @@ exclude = [
   "scripts/lint-bare-grep-probe.md",
   "scripts/test-lint-bare-grep-probe.sh",
   "scripts/test-lint-bare-grep-probe.md",
+  "scripts/lint-awk-multibyte-regex.sh",
+  "scripts/lint-awk-multibyte-regex.md",
+  "scripts/test-lint-awk-multibyte-regex.sh",
+  "scripts/test-lint-awk-multibyte-regex.md",
   "scripts/test-parse-prose-blockers.sh",
   "scripts/parse-prose-blockers.sh",
   "scripts/blocker-helpers.sh",

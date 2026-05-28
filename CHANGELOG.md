@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `lint-awk-multibyte-regex` catches non-ASCII characters inside `awk -v VAR=...` values and inside awk-body regex callsites (`match`, `gsub`, `sub`, `split`, `~`, `!~`); wired into `make lint`, the pre-commit hook chain, `docs/linting.md`, and `agent-lint.toml`. Add ship-pr `run_ci_fix_vendor` HEAD-non-advance detection so a vendor that exits 0 without producing any commit is classified as `first-fixer-non-health`, routing the run to Exit 3 → autonomous main-agent CI-fix; existing tier-order happy-path tests updated to produce real commits so they remain rc 0. Fixes #3134.
+
 ### Fixed
 - `scripts/ship-pr.sh` `ship_pr_commit_changelog_after_rebump` no longer stalls with `commit-changelog.sh reported COMMITTED=false before CHANGELOG.md was verified` on the legacy (non-bullets) path when the dropped bump version equals the freshly classified version. When `old_version == new_version` (or `old_version` is otherwise unusable), it derives `--replaces-version` from `origin/main`'s `.claude-plugin/plugin.json` so `commit-changelog.sh`'s awk has a target to retitle (or to insert if absent). Only origin versions distinct from `new_version` are used; bullets path semantics are unchanged. Closes #3102.
 - `skills/review/scripts/aggregate-findings.sh` now accepts attestation-only duplicate merges as `REASON=ok` with a whitespace-only persisted ballot instead of `REASON=validation-exhausted`. Pseudo-headings combined with attestation are explicitly rejected via the new `nonconforming_heading_with_attestation` narrow-trigger. Closes #2939; reverses the #2782-encoded behavior and completes the #2881 plan.
@@ -32,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Removed `skills/report-tokens/scripts/test-report-tokens-recompute.sh`, `skills/report-tokens/scripts/test-rate-assertions.sh`, `skills/report-tokens/scripts/test-rate-assertions.md`, and the `skills/report-tokens/scripts/fixtures/recompute-run/` fixture directory. The harnesses wrote fixture run directories into the live `larch-logs/implement/` and `larch-logs/design/` working-tree paths, which risked cross-talk with real run logs. They are deleted rather than migrated to `${TMPDIR}` per project preference: `run-analysis.sh` is intentionally not test-covered. Makefile recipes (`test-rate-assertions`, `test-report-tokens-recompute`) and their `test-harnesses-13` / `test-harnesses-20` shard prerequisites are removed; the matching `agent-lint.toml` exclude entry and `docs/linting.md` row are dropped; the dangling rate-harness sentence in `skills/report-tokens/SKILL.md` is trimmed. Closes #3121.
+
+## [45.3.12] - 2026-05-28
+
+### Changed
+
+- Add lint-awk-multibyte-regex to catch non-ASCII bytes in dynamic awk regex contexts at commit time
+- Classify ship-pr vendor exit-0 with no commits as first-fixer-non-health for autonomous CI-fix fallback
+- Wire the lint through Makefile, pre-commit, docs/linting.md, and agent-lint.toml; extend fix-loop harness coverage
 
 ## [45.3.11] - 2026-05-28
 
