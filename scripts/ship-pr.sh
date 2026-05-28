@@ -1827,7 +1827,8 @@ run_ci_fix_vendor() {
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     local gh_logs_capture_redacted _failure_log_args=()
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
-    local baseline_tracked_file baseline_untracked_file baseline_staged_file
+    local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
+    local final_head detail_log
 
     emit_breadcrumb --category=warn "⚠ ship-pr: CI failed; dispatching fix"
 
@@ -1837,6 +1838,7 @@ run_ci_fix_vendor() {
     capture_tracked_dirty_paths > "$baseline_tracked_file"
     capture_untracked_dirty_paths > "$baseline_untracked_file"
     { git diff --name-only --cached 2>/dev/null || true; } > "$baseline_staged_file"
+    baseline_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 
     gh_logs_capture_redacted=""
     if [ "$gh_logs_rc" -eq 0 ] && [ -n "$gh_logs_capture" ] && [ -s "$gh_logs_capture" ]; then
@@ -1919,7 +1921,25 @@ run_ci_fix_vendor() {
         4) return 4 ;;
         *) return 1 ;;
     esac
-    _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"
+    if _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"; then
+        final_head=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+        if [ "$baseline_head" != "unknown" ] && [ "$final_head" != "unknown" ] && [ "$baseline_head" = "$final_head" ]; then
+            detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
+            {
+                printf 'vendor=%s\n' "$winning_tier"
+                printf 'launcher_exit=0\n'
+                printf 'baseline_head=%s\n' "$baseline_head"
+                printf 'final_head=%s\n' "$final_head"
+                printf 'reason=vendor exited 0 but produced no commit; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
+            } > "$detail_log"
+            emit_breadcrumb --category=warn "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
+            state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+            record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
+            return 1
+        fi
+        return 0
+    fi
+    return 1
 }
 
 _PJA_ARGV=()

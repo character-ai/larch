@@ -19,12 +19,12 @@
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: test-persist-implement-run-flags
-.PHONY: lint-bare-grep-probe test-lint-bare-grep-probe
+.PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-foreground-markers lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-only
+lint: test-harnesses lint-bash32 lint-foreground-markers lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-awk-multibyte-regex lint-only
 
 lint-only:
 	pre-commit run --all-files
@@ -40,6 +40,9 @@ lint-skill-md-flag-signature:
 
 lint-bare-grep-probe:
 	bash scripts/lint-bare-grep-probe.sh
+
+lint-awk-multibyte-regex:
+	bash scripts/lint-awk-multibyte-regex.sh
 
 # Balanced regression-harness shards (closes #1294, #1585, #1911, #2080, #2252, #2262, #2291, #2349, #2366, #2386 — rebalance after
 # slow harnesses pushed shards 2/3/5 over the 20s target, resharded to 10, then resharded to 11,
@@ -71,7 +74,7 @@ test-harnesses-3: test-dispatch-code-voters-happy
 
 test-harnesses-4: test-dispatch-code-voters-edge-and-r3-claude
 
-test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-lint-readability-preamble test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths test-stall-recovery-report
+test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-lint-readability-preamble test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-lint-awk-multibyte-regex test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths test-stall-recovery-report
 
 test-harnesses-6: test-add-blocked-by test-blocked-by-issue test-ci-status test-compose-plan-goals-test test-dispatch-panel-limits test-implement-cleanup-script test-larch-logs-manifest test-local-cleanup test-read-design-classification test-relevant-checks-byte-budget test-review-and-fix-dispatch test-review-and-fix-parsers test-sentinel-write test-subskill-anchors test-write-run-params test-write-design-current-env
 
@@ -487,6 +490,9 @@ test-lint-skill-md-flag-signature:
 
 test-lint-bare-grep-probe:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lint-bare-grep-probe.sh
+
+test-lint-awk-multibyte-regex:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-awk-multibyte-regex.sh
 
 test-scout-plan-archetypes-wrapper:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-scout-plan-archetypes-wrapper.sh
