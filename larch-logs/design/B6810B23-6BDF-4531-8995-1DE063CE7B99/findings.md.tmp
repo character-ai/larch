@@ -1,0 +1,120 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:501-520
+- **Concern**: Plan initializes phase2_relaunch_count next to fallback_count after the grouped phase-2 reuse path, but increments it inside that earlier path. Scenario: Under set -u, a reuse copy failure reaches the increment before initialization and aborts with an unbound variable instead of relaunching the slot
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before the grouped phase-2 loop, before any possible increment; keep fallback_count=0 at the phase-3 loop if desired
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:501-520
+- **Concern**: Plan initializes phase2_relaunch_count next to fallback_count after the grouped phase-2 reuse path, but increments it inside that earlier path. Scenario: Under set -u, a reuse copy failure reaches the increment before initialization and aborts with an unbound variable instead of relaunching the slot
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before the grouped phase-2 loop, before any possible increment; keep fallback_count=0 at the phase-3 loop if desired
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:501-520
+- **Concern**: The plan initializes phase2_relaunch_count next to fallback_count after the grouped phase-2 loop, but the proposed increment runs in the reuse_slot_result fall-through inside that loop.. Scenario: Under set -u, a cp reuse failure executes arithmetic on an unset variable before reaching the initializer, so the dispatcher aborts instead of relaunching and emitting the warning KVs.
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before grouped phase-2 processing, for example before phase2_grouped_failed=(), and leave fallback_count=0 where it is.
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:501-520
+- **Concern**: The plan initializes phase2_relaunch_count next to fallback_count after the grouped phase-2 loop, but the proposed increment runs in the reuse_slot_result fall-through inside that loop.. Scenario: Under set -u, a cp reuse failure executes arithmetic on an unset variable before reaching the initializer, so the dispatcher aborts instead of relaunching and emitting the warning KVs.
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before grouped phase-2 processing, for example before phase2_grouped_failed=(), and leave fallback_count=0 where it is.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:479-520
+- **Concern**: Plan ties `phase2_relaunch_count=0` to the `fallback_count=0` line immediately above the phase-3 loop, but the increment runs in the grouped phase-2 loop earlier. Scenario: With `set -u`, the first fall-through `phase2_relaunch_count=$((phase2_relaunch_count + 1))` aborts before phase 3; harness scenarios fail or emit no KVs
+- **Proposed resolution**: Initialize `phase2_relaunch_count=0` before the grouped phase-2 loop (~479); keep `combined_fallback` after phase-3 collect as planned
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:479-520
+- **Concern**: Plan initializes phase2_relaunch_count beside fallback_count after the grouped phase-2 fall-through path that will increment it. Scenario: A reuse copy failure reaches the planned phase2_relaunch_count=$((phase2_relaunch_count + 1)) before assignment; with set -u, bash exits with an unbound variable instead of relaunching the slot
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before the grouped phase-2 loop, for example near phase2_grouped_failed=(), and keep fallback_count=0 at the phase-3 loop
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:479-520
+- **Concern**: Plan initializes phase2_relaunch_count next to fallback_count=0 at line 520, after the grouped phase-2 loop that must increment it. Scenario: Grouped loop (479-515) runs first; a zero assignment at 520 wipes increments (or set -u aborts on first increment if the variable was never declared), so PHASE2_RELAUNCH_COUNT stays 0, combined_fallback equals fallback_count only, and the new threshold/cp-fail tests fail
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 once before the phase2_grouped loop (~479); increment only in the reuse_slot_result fall-through branch; never reset it alongside fallback_count=0
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:499-520
+- **Concern**: Plan initializes phase2_relaunch_count next to fallback_count after the grouped phase-2 relaunch path that increments it. Scenario: With set -u, the first reuse_slot_result failure reaches phase2_relaunch_count=$((phase2_relaunch_count + 1)) before the variable exists, so dispatch exits instead of relaunching the slot or emitting the warning
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before the grouped phase-2 loop can execute, for example before phase2_grouped_failed=(), and leave fallback_count at the phase-3 loop
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:479-520
+- **Concern**: Plan places phase2_relaunch_count=0 next to fallback_count=0 above the phase-3 loop, but the increment runs in the grouped phase-2 loop at lines 501-508. Scenario: Under set -euo pipefail, the first reuse_slot_result fall-through runs phase2_relaunch_count=$((phase2_relaunch_count + 1)) before that initializer and aborts with an unbound variable, so relaunches and WARN/KV emission never happen
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before the grouped phase-2 loop (e.g. before phase2_grouped_failed=() at line 479); keep fallback_count=0 at line 520 and compute combined_fallback after phase-3 collect
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:479-508
+- **Concern**: The plan initializes phase2_relaunch_count next to fallback_count, but the proposed increment runs earlier in the grouped phase-2 loop.. Scenario: With set -u, the first reuse_slot_result fall-through executes phase2_relaunch_count=$((phase2_relaunch_count + 1)) before initialization and exits with an unbound variable instead of relaunching.
+- **Proposed resolution**: Revise the plan to initialize phase2_relaunch_count=0 before the grouped phase-2 processing loop, for example before line 479, then keep fallback_count=0 where it is for phase-3 Claude counting.
+
+### OOS_1:
+- **Description**: WARN bullet still says Phase 3 fallback count drives threshold. Scenario: After the plan lands, /review can emit WARN=cost-fallback-exceeded-threshold when combined phase-2 fall-through plus phase-3 exceeds the threshold while FALLBACK_COUNT stays phase-3-only; readers of dispatch-panel.md will mis-tune LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD or mis-debug logs
+- **Reviewer**: Cursor-dyn-kv-consumer-sync
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/review/scripts/dispatch-panel.md:17
+- **Phase**: design
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-kv-consumer-sync
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:505-520
+- **Concern**: Plan initializes phase2_relaunch_count next to the current fallback_count assignment, but the planned increment site is earlier in the grouped phase-2 loop. Scenario: With set -u, a stale reuse fall-through would evaluate phase2_relaunch_count before it is assigned and abort instead of relaunching the slot
+- **Proposed resolution**: Initialize phase2_relaunch_count before the grouped phase-2 loop, for example before phase2_grouped_failed=(), and keep combined_fallback computation after phase-3 collect
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-kv-consumer-sync
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: skills/review/scripts/dispatch-panel.md:17
+- **Concern**: Plan omits a stale WARN contract sentence that still says the threshold is based only on Phase 3 fallback count. Scenario: After the change, WARN=cost-fallback-exceeded-threshold can fire from phase-2 reuse fall-through relaunches even when FALLBACK_COUNT remains 0, so this contract misleads callers
+- **Proposed resolution**: Update the WARN sentence to say the threshold uses the combined phase-2 fall-through relaunch count plus phase-3 Claude count while keeping the DISPATCH_OK Phase 3 failure wording unchanged
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-increment-placement
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:481-520
+- **Concern**: Plan initializes phase2_relaunch_count next to fallback_count=0, but that line is after the grouped phase-2 reuse loop where the increment must run. The reuse control flow is if reuse_slot_result at 501, then continue at 502, closing fi at 503, and launch_slot at 508, so immediately before launch_slot means after fi in the fall-through path.. Scenario: If implemented as written, a fall-through increment before line 508 reads phase2_relaunch_count before initialization under set -u, or a later initialization at line 520 would reset the count before combined_fallback is computed.
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before the grouped phase-2 loop, for example before phase2_grouped_failed=() at line 479, and keep the increment after fi and immediately before launch_slot at line 508. Leave fallback_count=0 at line 520; it is top-level, not in a subshell or function, and remains visible after the phase-3 loop.
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-increment-placement
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:481-520
+- **Concern**: Plan initializes phase2_relaunch_count next to fallback_count=0, but that line is after the grouped phase-2 reuse loop where the increment must run. The reuse control flow is if reuse_slot_result at 501, then continue at 502, closing fi at 503, and launch_slot at 508, so immediately before launch_slot means after fi in the fall-through path.. Scenario: If implemented as written, a fall-through increment before line 508 reads phase2_relaunch_count before initialization under set -u, or a later initialization at line 520 would reset the count before combined_fallback is computed.
+- **Proposed resolution**: Initialize phase2_relaunch_count=0 before the grouped phase-2 loop, for example before phase2_grouped_failed=() at line 479, and keep the increment after fi and immediately before launch_slot at line 508. Leave fallback_count=0 at line 520; it is top-level, not in a subshell or function, and remains visible after the phase-3 loop.
+
