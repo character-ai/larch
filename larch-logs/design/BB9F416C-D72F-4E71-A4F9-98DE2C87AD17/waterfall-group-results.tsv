@@ -1,0 +1,16 @@
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	cursor-plan-edge	cursor	<TMPDIR>/cursor-plan-edge-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	cursor-plan-requirements	cursor	<TMPDIR>/cursor-plan-requirements-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-ci-propagation	dyn-codex-plan-ci-propagation	codex	<TMPDIR>/codex-primary-plan-dyn-ci-propagation-output.txt	ok
+plan-dyn-doc-sync	dyn-codex-plan-doc-sync	codex	<TMPDIR>/codex-primary-plan-dyn-doc-sync-output.txt	ok
+plan-dyn-test-inc-bash	dyn-cursor-plan-test-inc-bash	cursor	<TMPDIR>/cursor-plan-dyn-test-inc-bash-output.txt	ok
+plan-dyn-test-inc-bash	dyn-codex-plan-test-inc-bash	codex	<TMPDIR>/codex-primary-plan-dyn-test-inc-bash-output.txt	ok
+plan-arch	cursor-plan-arch	codex	<TMPDIR>/cursor-plan-arch-output.txt	reused	codex-plan-arch
+plan-dyn-ci-propagation	dyn-cursor-plan-ci-propagation	codex	<TMPDIR>/cursor-plan-dyn-ci-propagation-output.txt	reused	dyn-codex-plan-ci-propagation
+plan-dyn-doc-sync	dyn-cursor-plan-doc-sync	codex	<TMPDIR>/cursor-plan-dyn-doc-sync-output.txt	reused	dyn-codex-plan-doc-sync

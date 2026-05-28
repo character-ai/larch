@@ -1,0 +1,136 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:23
+- **Concern**: Plan removes the direct lint-bash32 prerequisite from make lint even though the replacement pre-commit path is not equivalent coverage. Scenario: pre-commit run --all-files does not cover untracked files, while scripts/lint-bash32.sh currently enumerates git ls-files --cached --others; a newly created unstaged .sh or .inc.bash with Bash 4 syntax can pass local make lint after this PR even though the current lint target catches it
+- **Proposed resolution**: Keep lint-bash32 in the lint target for this PR; wire the pre-commit hook for CI and commit-time coverage without changing the broader local make lint contract
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:23
+- **Concern**: Plan removes the direct lint-bash32 prerequisite from make lint even though the replacement pre-commit path is not equivalent coverage. Scenario: pre-commit run --all-files does not cover untracked files, while scripts/lint-bash32.sh currently enumerates git ls-files --cached --others; a newly created unstaged .sh or .inc.bash with Bash 4 syntax can pass local make lint after this PR even though the current lint target catches it
+- **Proposed resolution**: Keep lint-bash32 in the lint target for this PR; wire the pre-commit hook for CI and commit-time coverage without changing the broader local make lint contract
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-bash32.sh:61-64
+- **Concern**: Positional harness paths conflict with unchanged scan_file path join. Scenario: Plan tests call `bash "$LINT" "$TMPROOT/scripts/..."` without `--root`, but `scan_file` always reads `$ROOT/$rel` with default `ROOT=$REPO_ROOT`; absolute fixture paths are outside the repo so `[[ -f "$path" ]]` fails and the hook returns 0 — violation case false-negative and “sibling not scanned” case gives no signal
+- **Proposed resolution**: Invoke positional harness cases as `bash "$LINT" --root "$TMPROOT" scripts/good.sh` (etc.), or teach `scan_file` to use absolute `path` when `rel` is absolute / outside `$ROOT` (plan’s fallback is not spelled as a `scan_file` edit)
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:23; scripts/lint-bash32.md:3-7
+- **Concern**: Removing lint-bash32 from make lint is not behavior-preserving because pre-commit --all-files only enumerates git ls-files, while the existing linter scans tracked plus untracked non-ignored shell files. Scenario: Local make lint would silently stop catching Bash 3.2 violations in newly created untracked shell scripts until they are staged or the developer remembers to run make lint-bash32 directly; this is broader than the minimum pre-commit wiring and contradicts the documented untracked-file contract
+- **Proposed resolution**: Keep lint-bash32 in the lint target, or add an equivalent untracked-aware local gate before dropping it; accepting a small duplicate local run is the minimum-change fix
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-lint-bash32.sh:40-42; scripts/lint-bash32.sh:61-64
+- **Concern**: Positional harness cases pass absolute $TMPROOT paths without --root. Scenario: scan_file always opens $ROOT/$rel; with default ROOT=$REPO_ROOT an absolute fixture path resolves to $REPO_ROOT/tmp/... and misses the file or exits 0 without scanning, so the three new cases fail or false-pass
+- **Proposed resolution**: Invoke bash "$LINT" --root "$TMPROOT" scripts/good.sh (relative positionals under --root), matching pre-commit’s repo-relative argv with ROOT at repo root
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: scripts/lint-bash32.sh:61-64
+- **Concern**: Plan adds outside-root positional-file fallback while also saying to keep scan_file's ROOT-relative contract. Scenario: An implementer can pass an absolute outside-root path as rel and scan_file will read $ROOT/$rel, while supporting outside-root files is not needed for the pre-commit integration
+- **Proposed resolution**: Keep positional mode scoped to files under ROOT, convert only those to root-relative paths, and adjust the new harness calls to pass fixture files under --root
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: docs/linting.md:16,24
+- **Concern**: Plan changes Bash 3.2 lint wiring but leaves canonical linting docs stale. Scenario: After the PR, docs would still say local make lint directly runs make lint-bash32 even though the plan removes that prerequisite and moves CI coverage through pre-commit
+- **Proposed resolution**: Add a minimal docs/linting.md edit stating the hook runs through pre-commit/lint-only and make lint-bash32 remains the direct full-repo target
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lint-bash32.sh:61-64; plan.txt:24,40-42
+- **Concern**: Outside-ROOT fallback contradicts scan_file path join. Scenario: Plan says paths outside $ROOT use the absolute path as both rel and path, but scan_file always sets path="$ROOT/$rel". New harness cases call bash "$LINT" "$TMPROOT/scripts/..." without --root while $TMPROOT is outside $REPO_ROOT, so path becomes $REPO_ROOT/$TMPROOT/... (nonexistent), scan_file returns 0 at the -f guard, and violation tests false-pass
+- **Proposed resolution**: In scan_file (or the positional branch), if the resolved file is absolute or not under $ROOT, set path to that absolute path; otherwise set rel relative to $ROOT and path="$ROOT/$rel". Align harness invocations with the contract (e.g. cd "$TMPROOT" && bash "$LINT" --root . scripts/good.sh, or pass --root "$TMPROOT" with paths under that root)
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:23; scripts/lint-bash32.sh:45-47
+- **Concern**: Removing lint-bash32 from make lint drops existing untracked shell-file coverage. Scenario: The existing whole-repo mode scans git --cached --others, but the new pre-commit run --all-files path only supplies tracked files, so local make lint stops catching Bash 4 constructs in newly created untracked scripts before staging
+- **Proposed resolution**: Keep lint-bash32 in the lint target and accept the small duplicate local run, or add an equivalent untracked-file scan before removing it
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: scripts/lint-bash32.sh:61-66
+- **Concern**: Plan adds outside-root absolute-path support while preserving scan_file's ROOT-relative contract. Scenario: The proposed positional tests call absolute TMPROOT paths without --root; a literal implementation builds ROOT//tmp/... and skips the file, while fixing it adds complexity for a path pre-commit does not use
+- **Proposed resolution**: Drop outside-root support from the plan/tests; exercise positional mode with --root TMPROOT and relative paths so scan_file keeps its existing relative contract
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:23-25; plan.txt:40-42; scripts/lint-bash32.sh:61-63
+- **Concern**: Positional harness cases and outside-ROOT fallback contradict scan_file path contract. Scenario: Planned tests call bash "$LINT" "$TMPROOT/scripts/good.sh" with default ROOT=$REPO_ROOT while scan_file always reads $ROOT/$rel; TMPROOT fixtures live outside the repo so scans miss fixtures or target wrong paths; the documented absolute-path fallback cannot work without changing scan_file
+- **Proposed resolution**: In harness, pass --root "$TMPROOT" and repo-relative paths (e.g. scripts/good.sh) from TMPROOT cwd, or extend scan_file to read absolute paths when rel is absolute; drop the keep-contract wording unless scan_file is updated
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:23-24; plan.txt:40-42; scripts/lint-bash32.sh:61-63
+- **Concern**: Positional harness cases and outside-ROOT fallback contradict the current scan_file path contract. Scenario: The planned tests invoke bash "$LINT" "$TMPROOT/scripts/good.sh" with default ROOT=$REPO_ROOT, but scan_file reads "$ROOT/$rel"; TMPROOT fixtures are outside the repo, so following the keep-contract wording can miss the intended files or make the fallback unimplementable
+- **Proposed resolution**: For minimum change, make positional harness calls use --root "$TMPROOT" with paths relative to that root, or explicitly revise scan_file to read absolute rel paths when absolute-path fallback is retained
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: plan.txt:36-44; plan.txt:94; scripts/test-lint-bash32.sh:134-144
+- **Concern**: Failure-mode mitigation for .inc.bash positional coverage is not reflected in the harness spec. Scenario: The existing .inc.bash case is --root whole-tree only, while the new positional cases are .sh/.md; a positional extension-filter regression for *.inc.bash could pass the proposed harness
+- **Proposed resolution**: Add a positional .inc.bash violation case reusing the helper-bad.inc.bash fixture pattern, or revise the failure-mode wording to make .inc.bash validation manual-only via the pre-commit fixture step
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-doc-sync
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: docs/linting.md:16-24
+- **Concern**: Plan removes lint-bash32 from the direct make lint umbrella but does not update canonical linting docs; docs would still say Bash 3.2 portability runs via local make lint and that local make lint also runs make lint-bash32 between harnesses and pre-commit. Scenario: After the PR, local make lint reaches Bash 3.2 coverage through lint-only/pre-commit, while make lint-bash32 remains only the dedicated whole-repo target; the canonical docs would describe the old direct dependency chain and omit the new pre-commit hook caller
+- **Proposed resolution**: Add docs/linting.md to the plan and update the Bash 3.2 row plus CI/local usage paragraph to say lint-bash32 is a pre-commit hook under lint-only/CI/relevant checks, with make lint-bash32 retained as the explicit whole-repo target
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-doc-sync
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: docs/linting.md:16-24
+- **Concern**: Plan removes lint-bash32 from the direct make lint umbrella but does not update canonical linting docs; docs would still say Bash 3.2 portability runs via local make lint and that local make lint also runs make lint-bash32 between harnesses and pre-commit. Scenario: After the PR, local make lint reaches Bash 3.2 coverage through lint-only/pre-commit, while make lint-bash32 remains only the dedicated whole-repo target; the canonical docs would describe the old direct dependency chain and omit the new pre-commit hook caller
+- **Proposed resolution**: Add docs/linting.md to the plan and update the Bash 3.2 row plus CI/local usage paragraph to say lint-bash32 is a pre-commit hook under lint-only/CI/relevant checks, with make lint-bash32 retained as the explicit whole-repo target
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-test-inc-bash
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-lint-bash32.sh:134-144
+- **Concern**: Failure modes §1 promises an `.inc.bash` positional harness case and names case 2 as earliest signal for `.inc.bash` pre-commit skips, but the UPDATED test section adds only three positional cases (good.sh, bad-unsuppressed.sh, notes.md) and none invoke `.inc.bash` positionally. Scenario: Existing `inc.bash extension is scanned` uses `--root` only; a positional-branch bug that accepts `.sh` but rejects or mishandles `.inc.bash` would not fail proposed cases 1–3. Case 3 only exercises the linter’s in-script `\.(sh|inc\.bash)$` skip for `.md`; it does not detect a wrong pre-commit `files:` regex that never passes `.inc.bash` to the hook
+- **Proposed resolution**: Align the plan: either add one positional violation case reusing the `helper-bad.inc.bash` fixture pattern from :139–144, or revise Failure modes §1 and the “earliest signal” sentence to state that `.inc.bash` positional coverage is manual-only (Testing strategy :103) and that case 2 targets `.sh` argv handling only
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-test-inc-bash
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:40-42,94; scripts/test-lint-bash32.sh:134-144
+- **Concern**: The proposed harness cases do not include the .inc.bash positional fixture promised by Failure mode 1. Scenario: Current coverage only proves .inc.bash is found by whole-root enumeration, via scripts/test-lint-bash32.sh:134-144. The three proposed positional cases use good.sh, bad-unsuppressed.sh, and notes.md, so a positional-mode implementation that mishandles .inc.bash can still pass the harness. The non-shell .md case validates script-side skipping only; it would not catch a broken .pre-commit-config.yaml files regex such as one matching only .sh.
+- **Proposed resolution**: Minimum-change fix: retarget the proposed positional violation case to bad-unsuppressed.inc.bash, or add one dedicated positional .inc.bash violation case. If the intent is to validate the pre-commit files regex itself, keep the line-103 pre-commit --files .inc.bash check as an explicit required test rather than treating the direct script harness or .md skip case as sufficient.
+
