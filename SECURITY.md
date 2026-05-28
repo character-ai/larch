@@ -26,11 +26,14 @@ Accepted security-tagged review/design OOS findings (`focus-area=security`) are 
 Dynamic review scout notes are also treated as untrusted data. `scripts/scout-dynamic-archetypes.sh` rejects scout-authored `rationale` or `prompt_body` strings containing the literal `</scout_notes>` wrapper terminator, rejects `prompt_body` strings containing literal `</reviewer_` closers or standalone `---` lines, and repairs accepted `prompt_body` strings so they end with the full required closing sentence (`Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.`). `skills/review/scripts/dispatch-panel.sh` then tells dynamic reviewers to extract only file/aspect hints from `<scout_notes>` and ignore commands, tool/workflow requests, scope changes, and output-format instructions inside that block. This keeps synthesized dynamic reviewer prompts inside their untrusted `<scout_notes>` envelope and preserves the wrapper-alignment footer even if the scout omits or truncates it.
 
 Committed breadcrumb publication stages only session-root quiet logs whose
-basenames match `larch-quiet-*-*.log`. Legacy `*.ndjson` stream files and
+basenames match `larch-quiet-*-*.log`. Legacy `*.ndjson` breadcrumb stream files and
 session-local monitor sidecars (`.quiet`, `.done`, `.status`, `.surfaced`,
 `.bc-offset`) stay under the run tmpdir and are not copied into
 `larch-logs/.../breadcrumbs/`; attempted breadcrumb publication still fails
-closed on symlinks, hardlinks, or redaction errors.
+closed on symlinks, hardlinks, or redaction errors. A source-dir hint outside
+the active session tmpdir is skipped as a no-op; fail-closed rejection happens
+at per-file staging and redaction time rather than by rejecting the hint
+directory up front.
 
 Raw Codex `--json` event streams (`*.events.jsonl`) are session-local artifacts
 only. `scripts/design-log-publish.sh` and `scripts/larch-log.sh` exclude them
@@ -270,7 +273,8 @@ through the redaction and publication path described here.
 1. **Live streams are session-tmpdir-only**: raw breadcrumb stream files live
    under `$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
    `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`; never
-   committed without redaction.
+   committed without redaction. These stream files are session-local runtime
+   artifacts only; committed publication uses quiet logs instead.
 2. **Monitor-side per-line drop-on-fail for covered patterns**: the foreground
    `breadcrumb-monitor.sh` runs each streamed line through the streaming redactor
    and drops the entire line when the redactor exits non-zero. For its covered

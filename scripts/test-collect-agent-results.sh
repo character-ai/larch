@@ -235,6 +235,7 @@ write_meta "$OUT_T1" "$SUCCESS_HELPER"
 RESULT_T1=$(run_collector 5 "$OUT_T1")
 assert_line "C_T1 retry file" "REVIEWER_FILE=${OUT_T1%.txt}-retry.txt" "$RESULT_T1"
 assert_line "C_T1 status" "STATUS=OK" "$RESULT_T1"
+assert_line "C_T1 stderr retry diagnostic" "collect-agent-results.sh: transient diagnostic for $(basename "$OUT_T1"); retrying once" "$(cat "$TMPROOT/$(basename "$OUT_T1").stderr")"
 
 # C_T2: transient initial FAILED retries, but retry failure is reported as EMPTY_OUTPUT.
 OUT_T2="$TMPROOT/cursor-t2.txt"
@@ -264,6 +265,7 @@ write_meta "$OUT_T4" "$SUCCESS_HELPER"
 RESULT_T4=$(run_collector 1 "$OUT_T4")
 assert_line "C_T4 retry file" "REVIEWER_FILE=${OUT_T4%.txt}-retry.txt" "$RESULT_T4"
 assert_line "C_T4 status" "STATUS=OK" "$RESULT_T4"
+assert_line "C_T4 stderr retry diagnostic" "collect-agent-results.sh: transient diagnostic for $(basename "$OUT_T4"); retrying once" "$(cat "$TMPROOT/$(basename "$OUT_T4").stderr")"
 
 # C_T5: SENTINEL_TIMEOUT without a transient diagnostic remains a timeout.
 OUT_T5="$TMPROOT/cursor-t5.txt"

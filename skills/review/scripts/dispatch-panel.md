@@ -28,6 +28,6 @@ Stdout is `KEY=value` only: `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PAN
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 
-When `LARCH_QUIET_BREADCRUMBS=1` is exported, `dispatch-panel.sh` emits one breadcrumb immediately before the waterfall dispatch, after static and dynamic slots are finalized: `→ review: launching N reviewers (X Cursor static, Z dynamic)`. The `total > 0` gate suppresses the line when no reviewers are launched.
+`dispatch-panel.sh` emits one operator-visible launch line immediately before the waterfall dispatch, after static and dynamic slots are finalized: `→ review: launching N reviewers (X Cursor static, Z dynamic)`. It is written via `larch_err`, so it appears on stderr regardless of `LARCH_QUIET_BREADCRUMBS`; when quiet mode is active the line is also mirrored into the quiet log for failure-tail visibility. The `total > 0` gate suppresses the line when no reviewers are launched.
 
 Harness: `skills/review/scripts/test-dispatch-panel.sh`, wired through `make test-dispatch-panel`.

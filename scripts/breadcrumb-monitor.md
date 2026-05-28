@@ -1,12 +1,13 @@
 # breadcrumb-monitor.sh contract
 
 `scripts/breadcrumb-monitor.sh` is the foreground consumer paired with every
-Family B background launch (see `BASH_AUTHORING.md` §4). It surfaces breadcrumbs
-emitted on the monitored script's operator-visible stderr/quiet FD4 and,
+Family B background launch (see `BASH_AUTHORING.md` §4). It streams
+`larch:bc ...` records from the monitored script's breadcrumb stream file and,
 crucially, blocks the orchestrator's foreground Bash turn until the monitored
-script has actually exited. The blocking semantic is what prevents
-step-jumping: while a Family B script is still running, the next orchestrator
-step cannot start.
+script has actually exited. On non-zero exit it also prints a redacted failure
+tail from the quiet log. The blocking semantic is what prevents step-jumping:
+while a Family B script is still running, the next orchestrator step cannot
+start.
 
 ## Callers
 
@@ -33,7 +34,10 @@ tmpdir):
 - `LARCH_STATUS_FILE` — receives `EXIT_CODE=N` written atomically by the
   same trap.
 - `LARCH_QUIET_LOG_FILE` — receives stdout/stderr from the monitored
-  script under quiet mode. The monitor tails this on failure.
+  script under quiet mode. The monitor tails this on failure. `larch_err`
+  diagnostics are mirrored here as well, so failure tails include operator
+  progress lines even though the live monitor loop still streams only
+  `larch:bc` records.
 - `LARCH_BREADCRUMBS_SURFACED_FILE` — **resume-safety check.** Treated as
   signaled when non-empty. `lib-quiet.sh:larch_quiet_init` writes
   `surfaced\n` here when FD-3 is visible (a subprocess that surfaces
@@ -119,7 +123,8 @@ See `BASH_AUTHORING.md` §4 for the copyable canonical wrapper.
 The monitor surfaces a "Failure tail (status=N)" block from
 `LARCH_QUIET_LOG_FILE` when `EXIT_CODE` is non-zero, but the monitor's own
 exit is `0` for any non-timeout outcome (the orchestrator reads the status
-file for the real exit code).
+file for the real exit code). This tail is post-exit context only; the live
+monitor loop does not tail FD4/stderr directly.
 
 ## Caller-side path allocation
 

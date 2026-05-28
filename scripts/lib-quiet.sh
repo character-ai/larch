@@ -102,10 +102,12 @@ sanitize_diagnostic_line() {
     LC_ALL=C tr -d '[:cntrl:]'
 }
 
-# User-visible diagnostics (argv validation, fatals): still go to the process's
-# original stderr after larch_quiet_init redirects FD 1/2 to the quiet log.
+# User-visible diagnostics (argv validation, fatals): go to the process's
+# original stderr after larch_quiet_init redirects FD 1/2 to the quiet log, and
+# are mirrored into the quiet log for failure-tail visibility.
 larch_err() {
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        printf '%s\n' "$*" >&2
         printf '%s\n' "$*" >&4
     else
         printf '%s\n' "$*" >&2
@@ -115,6 +117,7 @@ larch_err() {
 # shellcheck disable=SC2059 # callers pass fixed format strings (like printf)
 larch_errf() {
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        printf "$@" >&2
         printf "$@" >&4
     else
         printf "$@" >&2

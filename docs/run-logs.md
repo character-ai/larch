@@ -82,7 +82,8 @@ publisher wires that helper for that skill. Today the landed callers are
 
 `breadcrumbs/` is a commit-only directory artifact, not a larch-log batch.
 `scripts/larch-log.sh commit` and `scripts/design-log-publish.sh` invoke the
-shared `larch_log_publish_breadcrumbs_shared` helper. Live streams remain under
+shared `larch_log_publish_breadcrumbs_shared` helper. Live breadcrumb stream
+files remain under
 the session tmpdir
 (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
 `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`).
@@ -105,7 +106,8 @@ through `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file
 after an atomic mktemp-plus-move of the staging directory. Quiet-log sourcing
 uses `dirname` of the breadcrumbs source path and runs even when `breadcrumbs/`
 was never created. Candidates must stay under the active session tmpdir, must
-not be symlinks, and must not be hardlinks. Legacy `*.ndjson` stream files are
+not be symlinks, and must not be hardlinks. Legacy `*.ndjson` breadcrumb stream
+files are
 not published. When no quiet log stages, the helper returns 0 and does not
 create, replace, or clear an existing committed `breadcrumbs/` destination.
 

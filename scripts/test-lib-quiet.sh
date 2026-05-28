@@ -115,6 +115,13 @@ write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; la
 assert_eq "$(cat "$SCRATCH/larch_err.out")" "STATUS=ok" "larch_err contract stdout"
 grep -q '^user-visible$' "$SCRATCH/larch_err.err" || fail "larch_err not on stderr"
 grep -q '^noisy$' "$log" || fail "larch_err noisy not logged"
+grep -q '^user-visible$' "$log" || fail "larch_err not mirrored to quiet log"
+
+# 10b. Breadcrumb category validation allows only the documented categories.
+helper="$SCRATCH/bc-categories.sh"
+write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; larch_quiet_init; for category in progress warn stall retry escalate wait-ci network-flake invalid ""; do if larch_quiet_bc_valid_category "$category"; then printf "VALID=%s\n" "$category"; else printf "INVALID=%s\n" "$category"; fi; done'
+out=$("$helper")
+assert_eq "$out" $'VALID=progress\nVALID=warn\nVALID=stall\nVALID=retry\nVALID=escalate\nVALID=wait-ci\nVALID=network-flake\nINVALID=invalid\nINVALID=' "breadcrumb category validation"
 
 # 11. Paired PID writer is a no-op when env var is unset.
 helper="$SCRATCH/paired-pid-unset.sh"

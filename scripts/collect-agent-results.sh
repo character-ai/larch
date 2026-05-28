@@ -838,6 +838,7 @@ for i in "${!OUTPUT_FILES[@]}"; do
                 if (( 10#$ORIG_TIMEOUT >= 1 )); then
                     ORIG_TIMEOUT=$((10#$ORIG_TIMEOUT))
                     STATUS="EMPTY_OUTPUT"
+                    larch_err "collect-agent-results.sh: transient diagnostic for $(basename "$OUTPUT"); retrying once"
                     RETRY_FILES+=("$OUTPUT")
                     RETRY_INDICES+=("$i")
                     RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")

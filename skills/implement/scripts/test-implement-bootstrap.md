@@ -63,9 +63,9 @@
 | B-invalid-emergency-requested-arg | Invalid `--emergency-requested` exits 2 with a usage error. |
 | B-invalid-upstream-repo-arg | Invalid `--upstream-repo` exits 2 with a usage error. |
 | Edge-NEVER14 | Static grep on live `scripts/implement-bootstrap.sh` forbids append / `cat` heredoc writes to `session-env.sh`. |
-| Edge-breadcrumb-count | `LARCH_QUIET_BREADCRUMBS=1` + `LARCH_QUIET_BREADCRUMB_FD=1` → exactly one `→ step0: infra ready` line. |
-| Edge-breadcrumb-count-adopt | `LARCH_QUIET_BREADCRUMBS=1` + tracking adoption → exactly one `→ step0: tracking adopted` line. |
-| Edge-breadcrumb-count-plan-green | `LARCH_QUIET_BREADCRUMBS=1` + green plan materialization emits one branch/log breadcrumb and one `larch:plan` breadcrumb. |
-| Edge-breadcrumb-count-plan-summary-fail | `LARCH_QUIET_BREADCRUMBS=1` + summary failure emits the branch/log breadcrumb but suppresses the `larch:plan` breadcrumb. |
-| B4-all-breadcrumb | `LARCH_QUIET_BREADCRUMBS=1` + widened `DEFERRED=true` `--up-to-phase all` path still emits the coder breadcrumb once. |
-| Edge-breadcrumb-count-coder-green | `LARCH_QUIET_BREADCRUMBS=1` + green coder phase emits exactly five `→ step0:` breadcrumbs, including one `coder=cursor` breadcrumb. |
+| Edge-breadcrumb-count | stderr capture sees exactly one `→ step0: infra ready` line. |
+| Edge-breadcrumb-count-adopt | tracking adoption stderr capture sees exactly one `→ step0: tracking adopted` line. |
+| Edge-breadcrumb-count-plan-green | green plan materialization stderr capture emits one branch/log progress line and one `larch:plan` breadcrumb. |
+| Edge-breadcrumb-count-plan-summary-fail | summary failure stderr capture emits the branch/log progress line but suppresses the `larch:plan` breadcrumb. |
+| B4-all-breadcrumb | widened `DEFERRED=true` `--up-to-phase all` path still emits the coder progress line once on stderr. |
+| Edge-breadcrumb-count-coder-green | green coder phase stderr capture emits exactly five `→ step0:` progress lines, including one `coder=cursor` line. |
