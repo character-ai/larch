@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- two-line duplication is real but factoring it out adds indirection without meaningful safety gain
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- coder_fallback=true already distinguishes implicit-waterfall-to-claude from explicit --coder=claude; the two paths get different messages
+FINDING_10: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_11: YES CORRECTNESS=partially-true SEVERITY=important QUALITY=adequate UNCERTAIN=true
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- step2-implement.sh now requires --coder, so --codex-available alone cannot route around bootstrap
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=important QUALITY=adequate UNCERTAIN=true -- SECURITY.md does include opt-out guidance and documents the Cursor trust model; the more precise gap is captured by FINDING_19
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_17: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- unreleased section was correctly replaced with Cursor-first entry; historical entries are accurate
+FINDING_19: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

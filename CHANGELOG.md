@@ -21,12 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `/design`: remove Step 2b.5 optional plan-size prompts and retire the file-count metric; only hard `PLAN_LINES` / `DIFF_LINES` thresholds remain, while `--partition` routes directly to the decomposition panel (#2805).
-- Restore Codex-first defaults for `/implement` Step 2 and fixer dispatch: omitted `--coder` defaults to Codex in `skills/implement/scripts/step2-implement.sh`, `### Implementer waterfall` in `skills/implement/SKILL.md` prefers Codex → Cursor → Claude, `review-and-fix.sh` and `lint-fix-loop.sh` try Codex before Cursor, with harness and cross-doc updates (`SECURITY.md`, `docs/linting.md`, sibling `.md` contracts). Closes #2756.
+- `/implement` now resolves omitted `--coder` in Step 0 via the Cursor → Codex → Claude waterfall inside `scripts/implement-bootstrap.sh phase_coder_select`, and Step 2 consumes that resolved coder without re-deciding from `diff_lines`. Review/fix and other fixer lanes remain Codex-first. Cross-doc and harness surfaces follow the same split routing contract (`SECURITY.md`, `docs/linting.md`, sibling `.md` contracts).
 - `/design`: re-print the plan candidate at Step 3 entry (first-time only) and Gate C entry, with a large-plan summary mode controlled by `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` (default 120).
 - **`/design` finalize split + upstream OOS filing** — Step 5 is now **finalize** (5a reviewer status, **5b** `/larch:issue` batch for accepted non-security OOS with `[OOS]` prefix + `file-design-oos.sh`, **5c** `larch:plan` write / publish / `[DESIGNED]` rename); Step **6** is tmpdir **cleanup** only (`cleanup-tmpdir.sh`). `/implement` Step 9a.1 skips design OOS blocks that already carry `- **Filed URL**:`; disposition counting for design-side GitHub URLs follows the structured Filed URL list lines from `[42.0.10]` (not incidental prose), while `oos-disposition-gate.sh` still accepts repeated `--filed-urls-file` arguments to **union** those extracted lists with implement tmp artifacts such as `oos-issues-created.md` (not a Description-URL bypass).
 - **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
+
+## [45.1.19] - 2026-05-27
+
+### Changed
+
+- Enforce monitor_rc initialization, capture, and conditional branching after validated Family B writer wait pairs.
+- Update foreground-marker regression fixtures to the canonical monitor_rc two-branch wait shape and add negative Markdown/shell coverage.
+- Document the new monitor_rc diagnostics and top-level Family B propagation contract.
 
 ## [45.1.18] - 2026-05-27
 

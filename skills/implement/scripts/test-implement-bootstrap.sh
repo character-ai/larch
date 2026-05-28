@@ -832,6 +832,8 @@ write_preflight_plan
 out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B4-all exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-all deferred"
+assert_line "coder=cursor" "$out" "B4-all coder"
+assert_line "coder_fallback=" "$out" "B4-all no fallback"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B4-all no phase-3 overwrite"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4" "$out" "B4-all no phase-4 overwrite"
 if [ -f "$SANDBOX_TMP/plan.txt" ] && grep -qxF "Plan from issue" "$SANDBOX_TMP/plan.txt"; then
@@ -853,6 +855,28 @@ assert_contains "tracking-issue-write rename --issue 123 --state implementing" "
 assert_order "tracking-issue-write rename --issue 123 --state implementing" "post-tracking-issue --implement-tmpdir $SANDBOX_TMP --issue-number 123 --run-id runD --adopted true" "$invoke" "B4-all rename before post-tracking-issue"
 assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
+assert_not_contains '→ step0: coder=' "$out" "B4-all no coder breadcrumb without breadcrumbs enabled"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B4-all-breadcrumb POSTED=false deferred guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runDeferredBreadcrumb --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+assert_rc "$rc" 0 "B4-all-breadcrumb exit 0"
+assert_contains "DEFERRED=true" "$out" "B4-all-breadcrumb deferred"
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=cursor' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4-all-breadcrumb coder breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4-all-breadcrumb coder breadcrumb expected 1 got $n"
+fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5 larch-log init fail ---
@@ -878,12 +902,15 @@ write_preflight_plan
 out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase all --issue-number 123 --run-id runE --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-all exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-all bail reason"
+assert_line "coder=" "$out" "B5-all empty coder"
+assert_line "coder_fallback=" "$out" "B5-all empty fallback"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B5-all no phase-3 overwrite"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4" "$out" "B5-all no phase-4 overwrite"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_not_contains "gh issue view" "$invoke" "B5-all no gh"
 assert_not_contains "persist-implement-run-flags" "$invoke" "B5-all no persist"
 assert_not_contains "check-mid-run-dirty-tree" "$invoke" "B5-all no dirty checkpoint"
+assert_not_contains '→ step0: coder=' "$out" "B5-all no coder breadcrumb"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-plan larch-log init fail guard ---
@@ -960,6 +987,360 @@ do
     assert_order "write-tally" "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-green $expected_slug tally before summary"
     rm -rf "$SANDBOX" "$SANDBOX_TMP"
 done
+
+# --- B5-coder-implicit-cursor ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCursor --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-implicit-cursor exit 0"
+assert_line "coder=cursor" "$out" "B5-coder-implicit-cursor coder"
+assert_line "coder_fallback=" "$out" "B5-coder-implicit-cursor no fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-implicit-cursor no bail"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-implicit-codex ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=false
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=false
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCodex --preflight-tmpdir "$SANDBOX/preflight" 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-implicit-codex exit 0"
+assert_line "coder=codex" "$out" "B5-coder-implicit-codex coder"
+assert_contains "Cursor unavailable — falling back to Codex implementer" "$err" "B5-coder-implicit-codex warning"
+assert_contains "Step 0 (implementer waterfall)" "$(cat "$SANDBOX_TMP/execution-issues.md")" "B5-coder-implicit-codex execution issue"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-implicit-claude ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=false
+echo CURSOR_PRESENT=false
+echo CODEX_BINARY_FOUND=false
+echo CURSOR_BINARY_FOUND=false
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-claude.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderClaude --preflight-tmpdir "$SANDBOX/preflight" 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-implicit-claude exit 0"
+assert_line "coder=claude" "$out" "B5-coder-implicit-claude coder"
+assert_line "coder_fallback=true" "$out" "B5-coder-implicit-claude fallback"
+assert_contains "Cursor unavailable — falling back to Codex implementer" "$err" "B5-coder-implicit-claude cursor warning"
+assert_contains "Codex unavailable — falling back to Claude implementer" "$err" "B5-coder-implicit-claude codex warning"
+issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
+assert_occurrences "Step 0 (implementer waterfall)" "$issues" 2 "B5-coder-implicit-claude execution issues"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains "larch-log manifest --log-root $SANDBOX_TMP/larch-logs --skill implement --run-id runCoderClaude --field coder_fallback=true" "$invoke" "B5-coder-implicit-claude manifest fallback"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-cursor-happy ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicitCursor --preflight-tmpdir "$SANDBOX/preflight" --coder cursor 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-explicit-cursor-happy exit 0"
+assert_line "coder=cursor" "$out" "B5-coder-explicit-cursor-happy coder"
+assert_line "coder_fallback=" "$out" "B5-coder-explicit-cursor-happy no fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-explicit-cursor-happy no bail"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-codex-happy ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicitCodex --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-explicit-codex-happy exit 0"
+assert_line "coder=codex" "$out" "B5-coder-explicit-codex-happy coder"
+assert_line "coder_fallback=" "$out" "B5-coder-explicit-codex-happy no fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-explicit-codex-happy no bail"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-claude-happy ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=false
+echo CURSOR_PRESENT=false
+echo CODEX_BINARY_FOUND=false
+echo CURSOR_BINARY_FOUND=false
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicitClaude --preflight-tmpdir "$SANDBOX/preflight" --coder claude 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-explicit-claude-happy exit 0"
+assert_line "coder=claude" "$out" "B5-coder-explicit-claude-happy coder"
+assert_line "coder_fallback=" "$out" "B5-coder-explicit-claude-happy no fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-explicit-claude-happy no bail"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-unavailable-binary-missing ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=false
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=false
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-explicit.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExplicit --preflight-tmpdir "$SANDBOX/preflight" --coder cursor 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-explicit-unavailable-binary-missing exit 0"
+assert_line "coder=" "$out" "B5-coder-explicit-unavailable-binary-missing empty coder"
+assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-binary-missing bail"
+assert_contains "STALL_TRACKING=true" "$out" "B5-coder-explicit-unavailable-binary-missing stall"
+assert_contains "--coder=cursor requested but Cursor binary not found" "$err" "B5-coder-explicit-unavailable-binary-missing warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-unavailable-undeterminable ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=false
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-undetermined.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderUndetermined --preflight-tmpdir "$SANDBOX/preflight" --coder cursor 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-explicit-unavailable-undeterminable exit 0"
+assert_line "coder=" "$out" "B5-coder-explicit-unavailable-undeterminable empty coder"
+assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-undeterminable bail"
+assert_contains "CURSOR_BINARY_FOUND could not be determined" "$err" "B5-coder-explicit-unavailable-undeterminable warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-unavailable-runtime-probe-failed ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=false
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-runtime-failed.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderRuntimeFail --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-explicit-unavailable-runtime-probe-failed exit 0"
+assert_line "coder=" "$out" "B5-coder-explicit-unavailable-runtime-probe-failed empty coder"
+assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-runtime-probe-failed bail"
+assert_contains "--coder=codex requested but Codex runtime probe failed / auth error" "$err" "B5-coder-explicit-unavailable-runtime-probe-failed warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-codex-binary-missing ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=false
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=false
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-codex-binary-missing.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCodexBinaryMissing --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-explicit-codex-binary-missing exit 0"
+assert_line "coder=" "$out" "B5-coder-explicit-codex-binary-missing empty coder"
+assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-codex-binary-missing bail"
+assert_contains "STALL_TRACKING=true" "$out" "B5-coder-explicit-codex-binary-missing stall"
+assert_contains "--coder=codex requested but Codex binary not found" "$err" "B5-coder-explicit-codex-binary-missing warning"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-skip-repo-unavailable ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=
+echo REPO_UNAVAILABLE=true
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderRepoUnavailable --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-repo-unavailable exit 0"
+assert_line "PLAN_FILE=" "$out" "B5-coder-skip-repo-unavailable empty plan"
+assert_line "coder=" "$out" "B5-coder-skip-repo-unavailable empty coder"
+assert_line "coder_fallback=" "$out" "B5-coder-skip-repo-unavailable empty fallback"
+assert_not_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-skip-repo-unavailable no coder-unavailable bail"
+assert_not_contains '→ step0: coder=' "$out" "B5-coder-skip-repo-unavailable no coder breadcrumb"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-skip-missing-feature-description ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCoderMissingFeature --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-feature-description setup plan exit 0"
+rm -f "$SANDBOX_TMP/feature-description.txt"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderMissingFeature --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-feature-description exit 0"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B5-coder-skip-missing-feature-description keeps plan file"
+assert_line "coder=" "$out" "B5-coder-skip-missing-feature-description empty coder"
+assert_line "coder_fallback=" "$out" "B5-coder-skip-missing-feature-description empty fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-skip-missing-feature-description empty bail"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'gh issue view 123' || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B5-coder-skip-missing-feature-description no second gh"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B5-coder-skip-missing-feature-description no second gh"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B5-coder-skip-missing-plan ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runCoderMissingPlan --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-plan setup plan exit 0"
+rm -f "$SANDBOX_TMP/plan.txt"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderMissingPlan --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-coder-skip-missing-plan exit 0"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B5-coder-skip-missing-plan keeps plan file path"
+assert_line "coder=" "$out" "B5-coder-skip-missing-plan empty coder"
+assert_line "coder_fallback=" "$out" "B5-coder-skip-missing-plan empty fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-skip-missing-plan empty bail"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'gh issue view 123' || true)" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B5-coder-skip-missing-plan no second gh"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B5-coder-skip-missing-plan no second gh"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
 # --- B5-plan-best-effort-failures ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
@@ -1230,6 +1611,55 @@ fi
 assert_not_contains "create-branch --branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch"
 assert_not_contains "git-current-branch" "$invoke" "B7-plan-dirty-tree resume re-bail no branch capture"
 assert_not_contains "run-step1-plan-log" "$invoke" "B7-plan-dirty-tree resume re-bail no plan log"
+rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
+
+# --- B7-coder-dirty-tree resume tail reaches coder phase ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
+SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+count_file="$SANDBOX/session-setup-count.txt"
+count=0
+if [ -f "\$count_file" ]; then
+  count=\$(cat "\$count_file")
+fi
+count=\$((count + 1))
+printf '%s\n' "\$count" >"\$count_file"
+if [ "\$count" -eq 1 ]; then
+  tmpdir="$SANDBOX_TMP"
+else
+  tmpdir="$SANDBOX_TMP_RESUME"
+fi
+echo SESSION_TMPDIR=\$tmpdir
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+out=$(SANDBOX_DIRTY_STATUS=dirty run_bootstrap --up-to-phase coder --issue-number 123 --run-id runDirtyResumeCoder --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-coder-dirty-tree resume first pass exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-coder-dirty-tree resume first pass bail"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase coder --issue-number 123 --run-id runDirtyResumeCoder --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-coder-dirty-tree resume tail exit 0"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B7-coder-dirty-tree resume tail clears bail"
+assert_line "coder=cursor" "$out" "B7-coder-dirty-tree resume tail reaches coder"
+assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B7-coder-dirty-tree resume tail keeps original tmpdir"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+if [ "$(printf '%s\n' "$invoke" | grep -cF 'check-mid-run-dirty-tree --mode checkpoint' || true)" -eq 2 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-coder-dirty-tree resume tail reruns dirty checkpoint"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-coder-dirty-tree resume tail reruns dirty checkpoint"
+    printf '%s\n' "$invoke" | sed 's/^/    /'
+fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
 # --- B7-plan-dirty-tree resume tail missing tmpdir ---
@@ -1762,6 +2192,35 @@ if [ "$n" -eq 1 ]; then
 else
     FAIL=$((FAIL + 1))
     echo "FAIL: Edge-breadcrumb-count-plan-log-fail plain branch breadcrumb expected 1 got $n"
+fi
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
+
+# --- Edge-breadcrumb-count-coder-green ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+write_preflight_plan
+export LARCH_QUIET_BREADCRUMBS=1
+export LARCH_QUIET_BREADCRUMB_FD=1
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runBreadcrumbCoder --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+assert_rc "$rc" 0 "Edge-breadcrumb-count-coder-green exit 0"
+n=$(printf '%s\n' "$out" | grep -cF '→ step0:' || true)
+if [ "$n" -eq 5 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-coder-green exactly five step0 breadcrumbs"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-coder-green expected 5 got $n"
+    printf '%s\n' "$out" | sed 's/^/    /'
+fi
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=cursor' || true)
+if [ "$n" -eq 1 ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: Edge-breadcrumb-count-coder-green coder breadcrumb once"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: Edge-breadcrumb-count-coder-green coder breadcrumb expected 1 got $n"
 fi
 rm -rf "$SANDBOX_TMP" "$SANDBOX"
 

@@ -41,7 +41,7 @@ Set `allowed-tools` to the minimum needed by the parent skill itself — never m
 | Tier | `allowed-tools` | Example (with stable anchor) |
 |---|---|---|
 | Pure delegator | `Skill` | `skills/im/SKILL.md` frontmatter (allowed-tools line) — forwards only |
-| Delegator that validates first | `Bash, Skill` | `skills/block-issue/SKILL.md` frontmatter — runs Bash helpers before delegating |
+| Delegator that validates first | `Bash, Skill` | `skills/block-issue/SKILL.md` frontmatter — runs Bash helpers before delegating; see `skills/research/SKILL.md § Sub-skill invocation` for another Bash-plus-Skill call-site shape in a stateful parent |
 | Hybrid orchestrator | `Skill` plus whatever the parent needs | `skills/implement/SKILL.md`, `skills/review/SKILL.md`, `skills/alias/SKILL.md`, `skills/research/SKILL.md` — parent runs setup, file I/O, git ops, and in `/alias`'s case a post-delegation sentinel-file verification. |
 
 `allowed-tools: Skill` alone is **neither necessary nor sufficient** to classify a skill as a pure delegator — some delegators need `Bash` for input validation. Conversely, a skill with `Skill` in its allowed list is not automatically a delegator; hybrid orchestrators include `Skill` as one tool among many.
@@ -74,7 +74,7 @@ Canonical examples:
 
 - **Parsed stdout machine value after `/issue`** — the orchestrator reads `ISSUES_CREATED=<N>` / `ISSUES_FAILED=<N>` / per-issue `ISSUE_N_NUMBER`/`ISSUE_N_URL` lines from `/issue`'s stdout. Without those parsed values, the parent cannot file the created issue links into the PR body. See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` (the OOS pipeline runs as a checkpoint inside the ship-pr orchestration).
 
-- **Sentinel file** — on the issue-anchored path, `/implement` Step 0 (`skills/implement/SKILL.md § Plan materialization from issue body`) copies the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` — no separate design manifest file is read.
+- **Sentinel file** — on the issue-anchored path, `/implement` Step 0 (`skills/implement/SKILL.md § Step 0 — Session Setup`, via `scripts/implement-bootstrap.sh`) copies the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` — no separate design manifest file is read.
 
 - **Sentinel file (defense in depth) — `/research` → `/issue`** — when `/research` invokes `/issue` to file findings as GitHub issues, `/issue` writes a small KV sentinel at `$RESEARCH_TMPDIR/issue-completed.sentinel` (path supplied by `/research` via `/issue`'s narrow `--sentinel-file <path>` flag — NOT `--session-env`). `/research` runs the canonical `${CLAUDE_PLUGIN_ROOT}/scripts/verify-skill-called.sh --sentinel-file "$RESEARCH_TMPDIR/issue-completed.sentinel"` post-return and aborts on `VERIFIED=false`. Defense-in-depth precedence: **stdout parsing of `ISSUES_*` (the immediately-prior bullet) is the primary post-`/issue` mechanical check** for any caller; this sentinel-file gate is `/research`-specific defense-in-depth on top of stdout parsing, not a replacement. Both apply for `/research`. The sentinel proves *execution* (gate: `ISSUES_FAILED=0 AND !dry_run`), not creation count — the all-dedup outcome (`ISSUES_CREATED=0`, `ISSUES_DEDUPLICATED>=1`, `ISSUES_FAILED=0`) writes the sentinel and continues normally. See `skills/research/SKILL.md § Filing findings as issues` for the numbered procedure and `skills/issue/SKILL.md § Sentinel file (post-success)` for `/issue`'s side of the contract.
 
@@ -196,7 +196,7 @@ When your skill consumes a session-env file, always route through `session-setup
 
 ### Normative pattern for issue-anchored `/implement`
 
-`/design` authors the `larch:plan` GitHub issue block; `/implement <issue-N>` runs Preflight + plan-adequacy audit, then Step 0 and `skills/implement/SKILL.md § Plan materialization from issue body` (folded inside Step 0) copy the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` — the anti-halt banner pins treating the `AUDIT=pass` envelope as **non-terminal** (`do NOT end the turn on the audit-pass envelope`). `/implement` does not dispatch `/design` on this happy path.
+`/design` authors the `larch:plan` GitHub issue block; `/implement <issue-N>` runs Preflight + plan-adequacy audit, then Step 0's foreground `scripts/implement-bootstrap.sh --up-to-phase coder` copies the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` and resolves `coder=` — the anti-halt banner pins treating the `AUDIT=pass` envelope as **non-terminal** (`do NOT end the turn on the audit-pass envelope`). `/implement` does not dispatch `/design` on this happy path.
 
 ## Avoid conditional phrasing for sub-skill invocations
 

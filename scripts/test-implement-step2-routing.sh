@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Regression coverage for /implement Step 1 implementer waterfall prose (Step 2 binds the resolved --coder).
+# Regression coverage for /implement Step 0 implementer selection (Step 2 binds the resolved --coder).
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
+BOOTSTRAP_SH="$REPO_ROOT/scripts/implement-bootstrap.sh"
+BOOTSTRAP_MD="$REPO_ROOT/scripts/implement-bootstrap.md"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
 
 fail() {
@@ -28,17 +30,29 @@ assert_not_contains() {
     fi
 }
 
-assert_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "implementer waterfall heading"
-assert_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "implement waterfall"
+assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selection pointer"
+assert_contains "$BOOTSTRAP_MD" 'Cursor → Codex → Claude' "implement waterfall"
+assert_contains "$IMPLEMENT_SKILL" '--up-to-phase coder' "Step 0 bootstrap coder phase"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
-assert_contains "$IMPLEMENT_SKILL" '--coder=cursor requested but Cursor runtime probe failed' "explicit cursor unavailable bail"
-assert_contains "$IMPLEMENT_SKILL" '--coder=cursor requested but Cursor binary not found' "explicit cursor binary not found bail"
-assert_contains "$IMPLEMENT_SKILL" '--coder=codex requested but Codex binary not found' "explicit codex binary not found bail"
-assert_contains "$IMPLEMENT_SKILL" '--coder=codex requested but Codex runtime probe failed' "explicit codex unavailable bail"
-assert_not_contains "$IMPLEMENT_SKILL" "When \`coder_explicit=true\`, the explicit value wins. Do not apply the Codex → Cursor → Claude waterfall" "removed blanket explicit-coder bypass sentence"
+assert_contains "$BOOTSTRAP_SH" '--coder=${tool} requested but ${tool_caps} runtime probe failed' "explicit runtime unavailable bail"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '--coder=${tool} requested but ${tool_caps} binary not found' "explicit binary not found bail"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '${binary_key} could not be determined' "explicit binary-found undetermined bail"
+assert_not_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "deleted prompt-side waterfall heading"
+assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "old waterfall order"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
-assert_contains "$IMPLEMENT_SKILL" 'Cursor and Codex both unavailable' "both-down warning"
-assert_contains "$IMPLEMENT_SKILL" 'they do not select the implementer.' "diff_lines informational non-routing clause"
+assert_contains "$BOOTSTRAP_SH" 'Cursor unavailable — falling back to Codex implementer' "cursor-to-codex warning"
+assert_contains "$BOOTSTRAP_SH" 'Codex unavailable — falling back to Claude implementer' "codex-to-claude warning"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '[ -z "${PLAN_FILE:-}" ]' "missing-plan empty PLAN_FILE guard"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '[ ! -f "${PLAN_FILE:-/nonexistent}" ]' "missing-plan unreadable PLAN_FILE guard"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '[ ! -f "${IMPLEMENT_TMPDIR:-/nonexistent}/feature-description.txt" ]' "missing-plan feature-description guard"
+# shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
+assert_contains "$BOOTSTRAP_MD" 'REPO_UNAVAILABLE` / missing-plan skip is enforced inside `phase_coder_select` itself' "missing-plan skip authority"
+assert_contains "$IMPLEMENT_SKILL" 'does not route the implementer' "diff_lines informational non-routing clause"
 
 assert_contains "$DESIGN_SKILL" 'diff_lines: <N>' "design plan diff_lines"
 # shellcheck disable=SC2016 # literal runtime path text, not shell.

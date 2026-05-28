@@ -31,6 +31,7 @@ FORKED_TARGET=false
 UPSTREAM_REPO_OPT=""
 RUN_ID_OPT=""
 PREFLIGHT_TMPDIR_OPT=""
+CODER_OPT=""
 IMPLEMENT_BAIL_REASON=""
 SKIP_CODEX_PROBE_FLAG=false
 SKIP_CURSOR_PROBE_FLAG=false
@@ -68,9 +69,11 @@ STALL_TRACKING=false
 BRANCH_NAME=""
 BRANCH_ACTION=""
 PLAN_FILE=""
+coder=""
+coder_fallback=""
 
 usage() {
-    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--preflight-tmpdir PATH] [--resume-plan-tail]"
+    larch_err "Usage: implement-bootstrap.sh --up-to-phase <infra|tracking|plan|coder|all> [--caller-env PATH] [--issue-number N] [--forked-target true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--coder claude|codex|cursor] [--preflight-tmpdir PATH] [--resume-plan-tail]"
 }
 
 die_usage() {
@@ -182,9 +185,11 @@ emit_plan_materialize_breadcrumbs_if_enabled() {
 }
 
 should_run_post_tracking_phase() {
+    # Post-tracking phases run on every non-bail / non-stall path. Specific
+    # phase functions own narrower skips such as REPO_UNAVAILABLE or missing
+    # plan artifacts.
     [ -z "${IMPLEMENT_BAIL_REASON:-}" ] \
-        && [ "${STALL_TRACKING:-false}" != "true" ] \
-        && [ "${DEFERRED:-false}" != "true" ]
+        && [ "${STALL_TRACKING:-false}" != "true" ]
 }
 
 should_run_phase_plan_materialize() {
@@ -912,7 +917,150 @@ phase_plan_materialize() {
 }
 
 phase_coder_select() {
-    IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4
+    # Belt-and-suspenders: the case-block guard already enforces these.
+    [ -z "${IMPLEMENT_BAIL_REASON:-}" ] || return 0
+    [ "${STALL_TRACKING:-false}" != "true" ] || return 0
+
+    # Step 2 requires both plan artifacts. Do not emit a coder on paths that
+    # cannot legally dispatch implementation.
+    if [ "${REPO_UNAVAILABLE:-false}" = "true" ] \
+        || [ -z "${PLAN_FILE:-}" ] \
+        || [ ! -f "${PLAN_FILE:-/nonexistent}" ] \
+        || [ ! -f "${IMPLEMENT_TMPDIR:-/nonexistent}/feature-description.txt" ]; then
+        return 0
+    fi
+
+    "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — coder select" || true
+    LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — coder select" || true
+
+    local codex_binary_found cursor_binary_found
+    codex_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
+    cursor_binary_found=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
+
+    if [ -n "$CODER_OPT" ]; then
+        _phase_coder_explicit "$CODER_OPT" "$codex_binary_found" "$cursor_binary_found"
+    else
+        _phase_coder_implicit
+    fi
+
+    emit_coder_breadcrumb_if_enabled
+    return 0
+}
+
+_phase_coder_explicit() {
+    local choice=$1 codex_binary_found=$2 cursor_binary_found=$3
+    case "$choice" in
+        claude)
+            coder=claude
+            ;;
+        cursor)
+            if [ "${cursor_available:-false}" = "true" ]; then
+                coder=cursor
+            else
+                _phase_coder_explicit_unavailable cursor "$cursor_binary_found"
+            fi
+            ;;
+        codex)
+            if [ "${codex_available:-false}" = "true" ]; then
+                coder=codex
+            else
+                _phase_coder_explicit_unavailable codex "$codex_binary_found"
+            fi
+            ;;
+    esac
+}
+
+_phase_coder_explicit_unavailable() {
+    local tool=$1 binary_found=$2
+    local tool_caps binary_key other1 other2
+    case "$tool" in
+        cursor)
+            tool_caps=Cursor
+            binary_key=CURSOR_BINARY_FOUND
+            other1=codex
+            other2=claude
+            ;;
+        codex)
+            tool_caps=Codex
+            binary_key=CODEX_BINARY_FOUND
+            other1=cursor
+            other2=claude
+            ;;
+        *)
+            tool_caps=$tool
+            binary_key=
+            other1=claude
+            other2=
+            ;;
+    esac
+
+    if [ "$binary_found" = "false" ]; then
+        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${tool} requested but ${tool_caps} binary not found. Re-run without --coder, or with --coder=${other1}|${other2}.**"
+    elif [ -z "$binary_found" ]; then
+        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${tool} requested but ${binary_key} could not be determined (Step 0 may have failed). Re-run to re-probe.**"
+    else
+        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${tool} requested but ${tool_caps} runtime probe failed / auth error. Re-run without --coder, or with --coder=${other1}|${other2}.**"
+    fi
+    IMPLEMENT_BAIL_REASON="coder-unavailable"
+    STALL_TRACKING=true
+}
+
+_phase_coder_implicit() {
+    # Phase 4 issue #2738 moves /implement's omitted-coder default to
+    # Cursor -> Codex -> Claude. Review/fix dispatchers remain Codex-first.
+    if [ "${cursor_available:-false}" = "true" ]; then
+        coder=cursor
+        return 0
+    fi
+
+    larch_err "**⚠ Cursor unavailable — falling back to Codex implementer.**"
+    _phase_coder_append_warning "Step 0 — Cursor unavailable: waterfall fallback to codex"
+    if [ "${codex_available:-false}" = "true" ]; then
+        coder=codex
+        return 0
+    fi
+
+    larch_err "**⚠ Codex unavailable — falling back to Claude implementer.**"
+    _phase_coder_append_warning "Step 0 — Cursor and Codex unavailable: waterfall fallback to claude"
+    coder=claude
+    coder_fallback=true
+    _phase_coder_manifest_fallback || true
+}
+
+_phase_coder_append_warning() {
+    local message=$1 tmpfile
+    [ -n "${IMPLEMENT_TMPDIR:-}" ] || return 0
+    tmpfile=$(mktemp "${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/larch-coder-warn.XXXXXX") || return 0
+    printf '%s\n' "$message" >"$tmpfile"
+    "$SCRIPT_DIR/append-tool-failure.sh" \
+        --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+        --site "Step 0 (implementer waterfall)" \
+        --tool "phase_coder_select" \
+        --exit-code 0 \
+        --category Warnings \
+        --output-file "$tmpfile" >/dev/null 2>&1 || true
+    rm -f "$tmpfile"
+}
+
+_phase_coder_manifest_fallback() {
+    if [ -z "${RUN_ID:-}" ]; then
+        return 0
+    fi
+    "$SCRIPT_DIR/larch-log.sh" manifest \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --skill implement \
+        --run-id "$RUN_ID" \
+        --field coder_fallback=true >/dev/null 2>&1 || true
+}
+
+emit_coder_breadcrumb_if_enabled() {
+    if ! larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
+        return 0
+    fi
+    if [ -z "${coder:-}" ] || [ -n "${IMPLEMENT_BAIL_REASON:-}" ]; then
+        return 0
+    fi
+    emit_breadcrumb "→ step0: coder=${coder}"
     return 0
 }
 
@@ -964,8 +1112,8 @@ emit_final_tail() {
     emit_kv BRANCH_NAME "${BRANCH_NAME:-}"
     emit_kv BRANCH_ACTION "${BRANCH_ACTION:-}"
     emit_kv PLAN_FILE "${PLAN_FILE:-}"
-    emit_kv coder ""
-    emit_kv coder_fallback ""
+    emit_kv coder "${coder:-}"
+    emit_kv coder_fallback "${coder_fallback:-}"
     emit_kv IMPLEMENT_BAIL_REASON "${IMPLEMENT_BAIL_REASON:-}"
 }
 
@@ -1003,6 +1151,14 @@ main() {
             --run-id)
                 [ $# -ge 2 ] || die_usage "--run-id requires a value"
                 RUN_ID_OPT=$2
+                shift 2
+                ;;
+            --coder)
+                [ $# -ge 2 ] || die_usage "--coder requires a value"
+                case "$2" in
+                    claude|codex|cursor) CODER_OPT=$2 ;;
+                    *) die_usage "--coder must be claude, codex, or cursor" ;;
+                esac
                 shift 2
                 ;;
             --preflight-tmpdir)

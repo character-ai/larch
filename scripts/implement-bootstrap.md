@@ -14,8 +14,9 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--forked-target` | no | `true` \| `false` | Default `false`. When `true`, tracking adoption is skipped and upstream context is fetched best-effort. |
 | `--upstream-repo` | no | `OWNER/REPO` | Required by callers in fork mode when upstream issue context should be fetched. Validated as one owner/repo slash with GitHub-safe characters. |
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
+| `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. On availability mismatch emits the explicit-coder warning, sets `STALL_TRACKING=true`, and `IMPLEMENT_BAIL_REASON=coder-unavailable`. When omitted, `phase_coder_select` runs the Cursor → Codex → Claude waterfall. |
 | `--preflight-tmpdir` | with `--issue-number` when `--up-to-phase` is `plan`, `coder`, or `all` | path | Directory containing `plan-from-issue.txt` from Preflight. |
-| `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh`, re-runs the dirty-tree checkpoint, and resumes only the Phase 3 tail after that checkpoint succeeds. |
+| `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh`, re-runs the dirty-tree checkpoint, and resumes only the Phase 3 tail after that checkpoint succeeds. Reviewer availability is reloaded from the persisted session-env keys; no fresh reviewer probes run on this path. |
 
 ## Inputs (Phase 1)
 
@@ -34,7 +35,9 @@ Machine-readable `KEY=value` lines. `LARCH_QUIET_DISABLE=1` is forced for this s
 
 **Per-phase:** `phase_infra` emits a consolidated infra block via `emit_infra_kv_block` inside `emit_final_tail`, including `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, `ENTRY_GATE`, `SKIP_BRANCH_CHECK`, `IMPLEMENT_TMPDIR`, `SESSION_ID`, reviewer keys, `REPO`, `REPO_UNAVAILABLE`, `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `codex_available`, `cursor_available`, then umbrella keys: `ISSUE_NUMBER`, `RUN_ID`, `BRANCH_SELECTED`, `DEFERRED`, `STALL_TRACKING`, `BRANCH_NAME`, `BRANCH_ACTION`, `PLAN_FILE`, `coder`, `coder_fallback`, `IMPLEMENT_BAIL_REASON`.
 
-`phase_plan_materialize` populates `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE`; Phase 4 keys remain present with empty values for parser stability.
+`phase_plan_materialize` populates `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE`. `phase_coder_select` populates `coder` and, only when the implicit waterfall reaches Claude because both external implementers are unavailable, `coder_fallback=true`.
+
+`diff_lines: <N>` in `plan.txt` is informational sizing context. It does not route the implementer; `phase_coder_select` and the bail table below are the routing authority.
 
 `BRANCH_SELECTED` values:
 
@@ -60,14 +63,16 @@ When `LARCH_QUIET_BREADCRUMBS` is truthy, emits exactly one line via `emit_bread
 
 `→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)`
 
-Tracking phase emits exactly one of:
+Tracking phase may also emit:
 
 - `→ step0: tracking adopted #<N> (run=<RUN_ID> branch=<branch-1-resume|branch-2-adopt>)`
 - `⏩ step0: tracking — skip (repo-unavailable|forked-target)`
 
 Set `LARCH_QUIET_BREADCRUMB_FD` to a numeric descriptor when you need breadcrumbs on a dedicated stream. When breadcrumbs are enabled but `LARCH_QUIET_BREADCRUMB_FD` is unset or non-numeric, the line is emitted via `larch_err` (stderr / quiet FD4) so stdout remains KV-only under `LARCH_QUIET_DISABLE=1`.
 
-Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged` when `run-step1-plan-log.sh` succeeds, otherwise `→ step0: branch $BRANCH_NAME`. `→ step0: larch:plan posted` is emitted only when the `tracking-issue-summary.sh upsert-summary` call succeeds. Breadcrumbs require `LARCH_QUIET_BREADCRUMBS` truthy. Phase 4 may add `→ step0: coder=…`.
+Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged` when `run-step1-plan-log.sh` succeeds, otherwise `→ step0: branch $BRANCH_NAME`. `→ step0: larch:plan posted` is emitted only when the `tracking-issue-summary.sh upsert-summary` call succeeds.
+
+`phase_coder_select` emits `→ step0: coder=<claude|codex|cursor>` from a shared tail after explicit and implicit selection. It is gated on `larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"`, `coder` being non-empty, and `IMPLEMENT_BAIL_REASON` being empty. `coder-unavailable`, `REPO_UNAVAILABLE`, and missing-plan early-return paths skip this breadcrumb.
 
 ## Exit codes
 
@@ -78,8 +83,6 @@ Plan materialization may also emit `→ step0: branch $BRANCH_NAME + plan logged
 | (other) | argv validation failures (`die_usage`). |
 
 Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_TMPDIR/plan-from-issue.txt` cannot be copied, `STEP_FAILED=gh-issue-view` when issue title/body composition fails, and `STEP_FAILED=resume-plan-tail-sentinel` when dirty-tree resume cannot validate the tracking sentinel or equivalent persisted plan artifacts.
-
-`phase_infra` emits the `Step 0 — preflight` token/timing ledger mark after `session-env.sh` is written. `phase_tracking` emits the `Step 0 — tracking issue` token/timing ledger mark before tracking skip or adoption branches.
 
 ## Bail reasons (`IMPLEMENT_BAIL_REASON`)
 
@@ -92,11 +95,11 @@ Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_
 | `run-flags-persist-failed` | `persist-implement-run-flags.sh` returned non-zero; `STALL_TRACKING=true`. |
 | `dirty-tree` | `check-mid-run-dirty-tree.sh --mode checkpoint` reported `STATUS=dirty` or `STATUS=unknown`; no stall flag so the orchestrator can route to dirty-tree recovery, then re-enter with `--resume-plan-tail` inside the existing `IMPLEMENT_TMPDIR` for another checkpoint before any Phase 3 tail helper runs. |
 | `branch-create-failed` | `create-branch.sh --branch` returned non-zero, or `git-current-branch.sh` could not capture a non-empty branch name after plan materialization; `STALL_TRACKING=true`. |
-| `not-yet-implemented-phase-4` | Stub `phase_coder_select`. |
+| `coder-unavailable` | Explicit `--coder` requested an unavailable external tool. Warning text distinguishes binary missing, undetermined `*_BINARY_FOUND`, and runtime probe/auth failure. `STALL_TRACKING=true`; re-run with another `--coder` value or omit `--coder` to engage the implicit waterfall. |
 
 ## Phase-skip semantics
 
-Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there is no bail reason, no stall, and the repo is available. This intentionally allows `DEFERRED=true` paths such as forked targets and `POSTED=false` metadata defers (the implementing rename has already fired before `post-tracking-issue.sh` so the title visibly reflects in-progress status even on defer) so Step 2 still receives `feature-description.txt` and `plan.txt`. Phase 4 keeps the stricter `should_run_post_tracking_phase`, which also skips when `DEFERRED=true`.
+Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there is no bail reason, no stall, and the repo is available. This intentionally allows `DEFERRED=true` paths such as forked targets and `POSTED=false` metadata defers so Step 2 still receives `feature-description.txt` and `plan.txt`. Phase 4's `should_run_post_tracking_phase` is equally permissive for deferred paths: it runs whenever there is no hard bail and no stall. `REPO_UNAVAILABLE` / missing-plan skip is enforced inside `phase_coder_select` itself; those paths return early without populating `coder=`. For the coder gate, "missing-plan" includes empty / unreadable `PLAN_FILE` and missing `$IMPLEMENT_TMPDIR/feature-description.txt`.
 
 ## Behavior mapping (Step 0 SKILL.md)
 
@@ -124,6 +127,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | Branch capture (`git-current-branch.sh`) | `phase_plan_materialize` |
 | Plan-goals batch (`run-step1-plan-log.sh`) and plan-review tally (`write-tally.sh`) | `phase_plan_materialize` |
 | `larch:plan` summary upsert (`tracking-issue-summary.sh upsert-summary`) | `phase_plan_materialize` |
+| Prompt-side implementer waterfall | `phase_coder_select` |
 
 ## NEVER #14
 
@@ -134,4 +138,5 @@ This script **must not** append or overwrite `$IMPLEMENT_TMPDIR/session-env.sh` 
 - `skills/implement/SKILL.md` Step 0 call site and KV parsing.
 - `scripts/lint-foreground-markers.sh` DENYLIST (Family B foreground).
 - `skills/implement/scripts/test-implement-bootstrap.sh` (+ `.md`).
+- `SECURITY.md`, `scripts/test-implement-step2-routing.sh` (+ `.md`), `scripts/test-implement-structure.sh` (+ `.md`), `docs/linting.md`, and `skills/shared/subskill-invocation.md` for Step 0 implementer-selection wording.
 - This file.

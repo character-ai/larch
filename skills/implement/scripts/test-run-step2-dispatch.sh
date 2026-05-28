@@ -64,9 +64,14 @@ printf 'ORCHESTRATOR_EDIT_AUTHORITY=allowed\n'
 EOF
 chmod +x "$SPY"
 
+launcher_env=(
+    env -u LARCH_DONE_SENTINEL -u LARCH_STATUS_FILE -u LARCH_QUIET_LOG_FILE \
+        -u LARCH_BREADCRUMBS_SURFACED_FILE -u LARCH_PAIRED_PID_FILE -u LARCH_BREADCRUMB_STREAM
+)
+
 echo "=== missing required flags ==="
 set +e
-out="$("$LAUNCHER" --coder codex 2>&1)"
+out="$("${launcher_env[@]}" "$LAUNCHER" --coder codex 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then pass "missing implement tmpdir exits 2"; else fail "missing implement tmpdir rc=$rc"; fi
@@ -76,7 +81,7 @@ echo "=== reject missing answers path ==="
 case_dir="$TMP/missing-answers"
 make_tmpdir "$case_dir" HARD false
 set +e
-out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex --answers "$case_dir/nope.json" 2>&1)"
+out="$("${launcher_env[@]}" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex --answers "$case_dir/nope.json" 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then pass "missing answers exits 2"; else fail "missing answers rc=$rc"; fi
@@ -84,9 +89,9 @@ assert_contains "$out" "--answers path does not exist" "missing answers error"
 
 echo "=== first dispatch argv derivation ==="
 case_dir="$TMP/case"
-make_tmpdir "$case_dir" HARD false
+make_tmpdir "$case_dir" HARD true
 argv_file="$TMP/step2.argv"
-out="$(RUN_STEP2_IMPLEMENT_SH="$SPY" RUN_STEP2_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder cursor)"
+out="$(RUN_STEP2_IMPLEMENT_SH="$SPY" RUN_STEP2_ARGV_FILE="$argv_file" "${launcher_env[@]}" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder cursor)"
 assert_contains "$out" "STATUS=claude_fallback" "downstream stdout passes through"
 assert_file_equals "$argv_file" "--tmpdir
 $case_dir
@@ -97,14 +102,23 @@ $case_dir/feature-description.txt
 --coder
 cursor
 --cursor-present
-false
+true
 --workflow
 HARD" "first dispatch argv derived"
+
+echo "=== cursor selection drift fails closed ==="
+make_tmpdir "$case_dir" HARD false
+set +e
+out="$("${launcher_env[@]}" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder cursor 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then pass "cursor drift exits 2"; else fail "cursor drift rc=$rc"; fi
+assert_contains "$out" "refusing Step 2 dispatch because that would silently override bootstrap routing" "cursor drift error"
 
 echo "=== answers pass-through exception ==="
 answers="$case_dir/codex-answers-1.json"
 printf '{"answers":[]}\n' > "$answers"
-RUN_STEP2_IMPLEMENT_SH="$SPY" RUN_STEP2_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex --answers "$answers" >/dev/null
+RUN_STEP2_IMPLEMENT_SH="$SPY" RUN_STEP2_ARGV_FILE="$argv_file" "${launcher_env[@]}" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex --answers "$answers" >/dev/null
 assert_file_equals "$argv_file" "--tmpdir
 $case_dir
 --plan-file
