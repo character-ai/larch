@@ -382,6 +382,30 @@ _run_post_apply_pipeline() {
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
+    local dedup_tmp dedup_removed
+    dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
+    dedup_removed=$(python3 - "$plan_path" "$dedup_tmp" <<'PY'
+import sys
+
+src, dest = sys.argv[1:3]
+removed = 0
+prev_key = None
+out = []
+with open(src, encoding="utf-8", errors="replace") as fh:
+    for line in fh:
+        key = " ".join(line.strip().split())
+        if key and prev_key == key:
+            removed += 1
+            continue
+        out.append(line)
+        prev_key = key
+with open(dest, "w", encoding="utf-8") as fh:
+    fh.writelines(out)
+print(removed)
+PY
+)
+    mv -f "$dedup_tmp" "$plan_path"
+    printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
     local emit_out emit_rc
     set +e
     emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")
@@ -404,7 +428,7 @@ _run_post_apply_pipeline() {
     val_out=$("$INVOKE_PLAN_VALIDATOR_SH" "$plan_path")
     val_rc=$?
     set -e
-    val_st=$(printf '%s\n' "$val_out" | awk -F= '$1 == "VALIDATE_STATUS" { print $2; found=1 } END { if (!found) print "" }')
+    val_st=$(printf '%s\n' "$val_out" | awk -F= '$1 == "VALIDATE_STATUS" { split($2, parts, /[[:space:]]+/); print parts[1]; found=1; exit } END { if (!found) print "" }')
     if (( val_rc != 0 )) || [[ "$val_st" == "defects-found" ]]; then
         LOOP_STATUS=plan-validator-defects
         if [[ "$val_st" == "defects-found" ]]; then

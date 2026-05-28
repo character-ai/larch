@@ -1039,7 +1039,7 @@ if [[ "${LOOP_STATUS:-}" != "cap-reached" ]]; then
       WARN) printf '%s\n' "WARN=$_value" ;;
     esac
   done <<<"${_plan_review_out:-}"
-  if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|panel-failed|main-agent-vote-required)$ ]]; then
+  if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|panel-failed|main-agent-vote-required)$ ]]; then
     LOOP_STATUS=panel-failed
     printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after plan-review-loop.sh; treating as panel-failed**"
   fi

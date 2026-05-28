@@ -162,7 +162,8 @@ while [[ $# -gt 0 ]]; do
 done
 mkdir -p "$DESIGN_TMPDIR/plan-review/round-1/revise"
 printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/revise.env"
-printf 'patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/patch.diff"
+printf 'prompt\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/prompt.txt"
+printf 'patch\n' >"$DESIGN_TMPDIR/plan-review/round-1/revise/cursor-candidate.patch"
 printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 exit 0
 EOS
@@ -187,7 +188,8 @@ printf '%s\n' "$out" | grep -q '^LOOP_STATUS=cap-hit$' || fail "expected cap-hit
 source "$ROOT/scripts/lib-design-round-artifacts.sh"
 design_round_artifact_included unknown.bin && fail "unknown.bin must be excluded by allowlist"
 design_round_artifact_included findings.md || fail "findings.md must be included"
-design_round_revise_artifact_included patch.diff || fail "patch.diff must be included in revise/"
+design_round_revise_artifact_included prompt.txt || fail "prompt.txt must be included in revise/"
+design_round_revise_artifact_included cursor-candidate.patch || fail "candidate patch must be included in revise/"
 design_round_revise_artifact_included extra.log && fail "extra.log must be excluded from revise/"
 
 # Raw reviewer output at session root must not appear in round snapshot.

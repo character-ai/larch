@@ -39,7 +39,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 | `REVISE_STATUS` | Multi-round revise path |
 | `COLLECT_OK_COUNT` / `COLLECT_FAILURE_COUNT` | Multi-round |
 
-`LOOP_STATUS` values: `complete`, `converged`, `cap-hit`, `revision-failed`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`, `main-agent-vote-required`.
+`LOOP_STATUS` values: `complete`, `converged`, `cap-hit`, `revision-failed`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `emit-plan-failed`, `panel-failed`, `main-agent-vote-required`.
 
 ## Durable handoff: `.step3-plan-review-result.env`
 
@@ -53,7 +53,7 @@ Written under `plan-review/round-N/round-summary.env` after each round's outcome
 
 | Code | `LOOP_STATUS` |
 |------|----------------|
-| 0 | `converged`, `cap-hit`, `revision-failed`, `main-agent-vote-required`, `complete`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects` |
+| 0 | `converged`, `cap-hit`, `revision-failed`, `main-agent-vote-required`, `complete`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `emit-plan-failed` |
 | 1 | `panel-failed` |
 | 2 | argv error |
 

@@ -543,6 +543,19 @@ printf '%s\n' "$out_legacy" | grep -q '^LOOP_STATUS=complete$' || fail "legacy m
 [[ -f "$DL/.step3-plan-review-result.env" ]] || fail "legacy missing step3 result env"
 ! grep -q '^REASON=manual-gate-b$' "$DL/.step3-plan-review-result.env" || fail "legacy should not be manual-gate-b"
 
+echo "=== legacy single-pass: env-only LARCH_DESIGN_ROUND_CAP does not enable multi-round ==="
+DLENV="$TMP/legacy-env"
+mkdir -p "$DLENV"
+printf 'plan v1\n\ndiff_lines: 1\n' >"$DLENV/plan.txt"
+printf 'feat\n' >"$DLENV/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+out_legacy_env=$(LARCH_DESIGN_ROUND_CAP=7 run_loop "$DLENV" 1)
+printf '%s\n' "$out_legacy_env" | grep -q '^LOOP_STATUS=complete$' || fail "env-only round cap should remain legacy complete"
+[[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
+
 echo "=== multi-round: zero findings + collector OK → converged zero-findings ==="
 DZ="$TMP/mrz"
 mkdir -p "$DZ"
@@ -672,6 +685,88 @@ out_rv=$(run_loop "$DRV" 1 --round-cap 3 --convergence-threshold 3)
 printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revise failure should surface revision-failed"
 printf '%s\n' "$out_rv" | grep -q '^REVISE_STATUS=failed-no-patch$' || fail "revise failure should preserve revise status"
 grep -q '^REVISE_STATUS=failed-no-patch$' "$DRV/plan-review/round-1/round-summary.env" || fail "round summary should preserve revise failure status"
+
+echo "=== multi-round: emit-plan failure after revise surfaces emit-plan-failed ==="
+DEF="$TMP/mr-emit-plan-fail"
+mkdir -p "$DEF"
+printf 'plan\n\ndiff_lines: 1\n' >"$DEF/plan.txt"
+printf 'feat\n' >"$DEF/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+printf '## Plan\n\nmissing trailer on purpose\n' >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_ep=$(run_loop "$DEF" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_ep" | grep -q '^LOOP_STATUS=emit-plan-failed$' || fail "emit-plan failure should surface emit-plan-failed"
+
+echo "=== multi-round: validator defects after revise surface plan-validator-defects ==="
+DVAL="$TMP/mr-validator"
+mkdir -p "$DVAL"
+printf 'plan\n\ndiff_lines: 1\n' >"$DVAL/plan.txt"
+printf 'feat\n' >"$DVAL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+cp "${CLAUDE_PLUGIN_ROOT:?}/skills/design/scripts/fixtures/validate-plan-commands/demo-plan.md" "$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_val=$(run_loop "$DVAL" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_val" | grep -q '^LOOP_STATUS=plan-validator-defects$' || fail "validator defects should surface plan-validator-defects"
+
+echo "=== multi-round: plan-size hard trigger after revise surfaces plan-size-trigger ==="
+DSIZE="$TMP/mr-size"
+mkdir -p "$DSIZE"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSIZE/plan.txt"
+printf 'feat\n' >"$DSIZE/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+{
+    printf '## Plan\n\n'
+    awk 'BEGIN { for (i = 1; i <= 805; i++) print "line " i }'
+    printf 'diff_lines: 1601\n'
+} >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_size=$(run_loop "$DSIZE" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_size" | grep -q '^LOOP_STATUS=plan-size-trigger$' || fail "plan-size hard trigger should surface plan-size-trigger"
 
 echo "=== snapshot allowlist: raw reviewer output excluded from round-1 ==="
 DS="$TMP/snap"

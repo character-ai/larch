@@ -39,7 +39,7 @@ design_round_artifact_included() {
 design_round_revise_artifact_included() {
     local name="$1"
     case "$name" in
-        codex-output.txt|cursor-output.txt|claude-output.txt|revise.env|revise-prompt.md|patch.diff)
+        codex-output.txt|cursor-output.txt|claude-output.txt|revise.env|prompt.txt|*-candidate.patch)
             return 0
             ;;
         *)
