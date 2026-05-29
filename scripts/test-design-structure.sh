@@ -32,6 +32,7 @@ absent() {
 
 contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the sole tier flag'
 contains "$SKILL_MD" 'The default tier is SIMPLE' 'SKILL must document default SIMPLE tier resolution'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'unrecognized or disallowed leading public `--` flag is a hard error before Step 0' 'SKILL must document disallowed-public-flag rejection before Step 0'
 absent "$APPROVAL_MD" 'Step 0 tier-gate' 'approval-gates.md must not retain retired Step 0 tier-gate contrast'
 contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
