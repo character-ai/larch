@@ -127,7 +127,11 @@ larch_quiet_write_diagnostic_stream() {
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         tee >(cat >&4) >&2 || true
     else
-        cat >&2 || true
+        # Use bash built-in read/printf to avoid depending on external cat
+        # (some test harnesses run with a PATH that excludes standard utilities).
+        while IFS= read -r _lqwd_line || [ -n "$_lqwd_line" ]; do
+            printf '%s\n' "$_lqwd_line" >&2
+        done || true
     fi
 }
 
