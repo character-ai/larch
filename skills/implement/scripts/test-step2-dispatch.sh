@@ -650,7 +650,8 @@ fi
 # ---------------------------------------------------------------------------
 TMP14="$SCRATCH/test14"; mkdir -p "$TMP14"
 CH14_SESSION="cap-hit-step2-$$-$RANDOM"
-CH14_LEDGER="$TMP14/cap-hit-step2-ledger.jsonl"
+# Ledger must live under TMPDIR: token-ledger.sh validate_under_tmp rejects paths outside it.
+CH14_LEDGER="${TMPDIR:-/tmp}/cap-hit-step2-ledger-$$-$RANDOM.jsonl"
 printf '{"type":"vendor","vendor":"codex","total":9999}\n' > "$CH14_LEDGER"
 
 OUT_14=$(cd "$REPO_ROOT" && \
