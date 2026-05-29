@@ -244,7 +244,7 @@ refresh_issue_counts
 # --- Plan review line ---
 PLAN_LINE="0 findings"
 if [ ! -f "$DESIGN_TMPDIR/voting-tally.md" ]; then
-    case "$MODE_STR" in *--trivial*|*trivial*) PLAN_LINE="skipped (trivial)" ;; *) PLAN_LINE="0 findings" ;; esac
+    PLAN_LINE="0 findings"
 else
     apf="$DESIGN_TMPDIR/accepted-plan-findings.md"
     oaf="$DESIGN_TMPDIR/oos-accepted-design.md"

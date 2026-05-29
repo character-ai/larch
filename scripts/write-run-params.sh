@@ -21,7 +21,7 @@ MANUAL_GATE_B=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: write-run-params.sh --classification <SIMPLE|HARD> --output <path> [--reason <text>] [--source <text>] [--sketch-budget <0|2|4>] [--review-budget <quick|full>] [--workflow-path <SIMPLE|HARD>] [--partition-requested <true|false>] [--brainstorm-requested <true|false>] [--manual-gate-b <true|false>]
+usage: write-run-params.sh --classification <SIMPLE|HARD> --output <path> [--reason <text>] [--source <text>] [--sketch-budget <0|2|4>] [--review-budget <full>] [--workflow-path <SIMPLE|HARD>] [--partition-requested <true|false>] [--brainstorm-requested <true|false>] [--manual-gate-b <true|false>]
 USAGE
 }
 
@@ -155,7 +155,7 @@ if [[ -n "$SKETCH_BUDGET" ]]; then
 fi
 
 if [[ -n "$REVIEW_BUDGET" ]]; then
-    require_enum "--review-budget" "$REVIEW_BUDGET" quick full
+    require_enum "--review-budget" "$REVIEW_BUDGET" full
 fi
 
 if [[ -n "$WORKFLOW_PATH" ]]; then

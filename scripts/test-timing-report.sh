@@ -83,7 +83,7 @@ v1	mark	10	design	Step 0	-	-	-	-	-	-	-	-
 v1	mark	70	design	Step 2a	-	-	-	-	-	-	-	-
 EOF
 cat > "$V1_PATH_DIR/run-params.json" <<'EOF'
-{"schema_version":1,"design_classification":"TRIVIAL_DOC_ONLY","workflow_path":"SIMPLE","partition_requested":false}
+{"schema_version":1,"design_classification":"SIMPLE","workflow_path":"SIMPLE","partition_requested":false}
 EOF
 LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --markdown > "$TMP_BASE/v1-path.out"
 grep -Fq '**Workflow path**: SIMPLE' "$TMP_BASE/v1-path.out"

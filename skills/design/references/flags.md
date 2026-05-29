@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` argument parsing (loaded before Step 0 via the MANDATORY directive adjacent to the compact flag table in `SKILL.md`).
 
-**Contract**: normative rules for **public** `/design` argv (`--trivial`, `--simple`, `--hard`, `--partition` / `-p`, `--brainstorm`, `--manual` / `-m`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
+**Contract**: normative rules for **public** `/design` argv (`--simple`, `--hard`, `--partition` / `-p`, `--brainstorm`, `--manual` / `-m`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
 
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
@@ -12,18 +12,17 @@
 
 ## Public `/design` flags
 
-- `--trivial`: mutually exclusive tier. Maps to `design_classification=TRIVIAL_DOC_ONLY`, `sketch_budget=0`, `review_budget=quick`, `workflow_path=SIMPLE` when writing `run-params.json`. Gate B mode is unchanged at this tier: default auto-apply, `--manual` / `-m` opt-in.
 - `--simple`: mutually exclusive tier. Maps to `design_classification=SIMPLE`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`. This aligns with `SKILL.md` Step 2a's SIMPLE branch, which launches no sketches and writes the no-sketches sentinel.
 - `--hard`: mutually exclusive tier. Maps to `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`.
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
-- `--partition` / `-p`: public boolean flag, default `false`. Mutually exclusive with `--trivial` (reject before `session-setup.sh` per `SKILL.md` Pre-Step-0 gate). Semantics: when set, Step **2b.5** routes directly to the **Split-path** (decomposition panel) when no hard threshold fired — no Continue option, no threshold inspection. Hard plans still show the hard **Split/Cancel** prompt before entering Split-path automatically; `--partition` is the user-initiated override that fires the same path on small plans. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
-- `--brainstorm`: public boolean flag, default `false`. When set, Step **1d.5** runs after Round 1 discussion and before Step **1d.7** outline-approval (Gate A re-entry only post-plan) (see `references/brainstorm.md`). Persisted as `brainstorm_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`. **`--trivial` + `--brainstorm`** is **not** an argv hard-error: `SKILL.md` Pre-Step-0 and the Step 0b tier gate use the same **Upgrade to `--simple`** / **Cancel** `AskUserQuestion` flow so `effective_tier` can become **simple** while retaining brainstorm.
+- `--partition` / `-p`: public boolean flag, default `false`. Semantics: when set, Step **2b.5** routes directly to the **Split-path** (decomposition panel) when no hard threshold fired — no Continue option, no threshold inspection. Hard plans still show the hard **Split/Cancel** prompt before entering Split-path automatically; `--partition` is the user-initiated override that fires the same path on small plans. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
+- `--brainstorm`: public boolean flag, default `false`. When set, Step **1d.5** runs after Round 1 discussion and before Step **1d.7** outline-approval (Gate A re-entry only post-plan) (see `references/brainstorm.md`). Persisted as `brainstorm_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`.
 - `--manual` / `-m`: public boolean flag, default `false`. When set, restores today's Gate B 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) on every Gate B entry. Default (`false`) makes Gate B auto-apply every accepted finding to `$DESIGN_TMPDIR/plan.txt` after printing a compact findings list. Persisted as `manual_gate_b` (boolean) in `run-params.json` via `scripts/write-run-params.sh`. Scope: Gate B only — Gate A (Step 1e) discussion sub-rounds and Gate C (Step 4b) final approval are unchanged in both modes. Whole-run sticky: parsed once at argv, read on every Gate B entry including Step 3 re-entries from Gate C(c) "Re-run review panel". Independent of all tier/partition/brainstorm flags (no mutual exclusion).
 
 `scripts/write-run-params.sh` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration.
 
-**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` on argv; duplicate tier flags → hard error before Step 0. Additionally, `--trivial` and `-p`/`--partition` are mutually exclusive (same gate). **`--trivial` + `--brainstorm`** uses the interactive upgrade/cancel flow above (not the same hard gate as `--partition`). `--manual` / `-m` is independent of all other public flags.
+**Mutual exclusion**: at most one of `--simple` / `--hard` on argv; duplicate tier flags → hard error before Step 0. `--manual` / `-m` is independent of all other public flags.
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first).
 

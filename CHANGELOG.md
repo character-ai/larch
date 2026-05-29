@@ -38,6 +38,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `skills/report-tokens/scripts/test-report-tokens-recompute.sh`, `skills/report-tokens/scripts/test-rate-assertions.sh`, `skills/report-tokens/scripts/test-rate-assertions.md`, and the `skills/report-tokens/scripts/fixtures/recompute-run/` fixture directory. The harnesses wrote fixture run directories into the live `larch-logs/implement/` and `larch-logs/design/` working-tree paths, which risked cross-talk with real run logs. They are deleted rather than migrated to `${TMPDIR}` per project preference: `run-analysis.sh` is intentionally not test-covered. Makefile recipes (`test-rate-assertions`, `test-report-tokens-recompute`) and their `test-harnesses-13` / `test-harnesses-20` shard prerequisites are removed; the matching `agent-lint.toml` exclude entry and `docs/linting.md` row are dropped; the dangling rate-harness sentence in `skills/report-tokens/SKILL.md` is trimmed. Closes #3121.
 
+## [45.3.21] - 2026-05-29
+
+### Changed
+
+- Remove stale `--trivial` / `TRIVIAL_DOC_ONLY` references from `/design` docs, SKILL prose, and enforcement scripts
+- Drop the Pre-Step-0 removal gate and legacy pause-resume tier acceptance while keeping `--simple`/`--hard` duplicate-tier mutual exclusion
+- Generalize offline harness fixtures so invalid-classification and summary-line coverage survives without trivial-specific tokens
+
 ## [45.3.20] - 2026-05-28
 
 ### Changed

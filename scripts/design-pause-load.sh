@@ -165,7 +165,7 @@ fi
 
 if [[ -n "$TIER" ]]; then
     case "$TIER" in
-        TRIVIAL_DOC_ONLY|SIMPLE|HARD|unknown) ;;
+        SIMPLE|HARD|unknown) ;;
         *) emit_load_fail "invalid-tier" ;;
     esac
 fi
