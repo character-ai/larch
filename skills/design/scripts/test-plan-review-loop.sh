@@ -55,11 +55,15 @@ write_scout() {
     cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "${PLAN_REVIEW_SCOUT_ARGV_LOG:-}" ]]; then
+    printf '%q ' "$@" >>"$PLAN_REVIEW_SCOUT_ARGV_LOG"
+    printf '\n' >>"$PLAN_REVIEW_SCOUT_ARGV_LOG"
+fi
 out=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) out="${2:?}"; shift 2 ;;
-        --plan-file|--description-file|--max-archetypes|--session-env-path) shift 2 ;;
+        --plan-file|--description-file|--max-archetypes|--session-env-path|--codex-present|--cursor-present) shift 2 ;;
         *) shift 1 ;;
     esac
 done
@@ -612,10 +616,14 @@ mkdir -p "$DC"
 printf 'plan\n' >"$DC/plan.txt"
 printf 'feat\n' >"$DC/feature-description.txt"
 write_scout
+export PLAN_REVIEW_SCOUT_ARGV_LOG="$DC/scout-argv.log"
+: >"$PLAN_REVIEW_SCOUT_ARGV_LOG"
 write_dispatch_combined_threshold
 write_collect empty
 write_voters_three
 outc=$(run_loop "$DC")
+grep -Fq -- '--codex-present' "$DC/scout-argv.log" || fail "plan-review-loop must forward codex-present to scout wrapper"
+grep -Fq -- '--cursor-present' "$DC/scout-argv.log" || fail "plan-review-loop must forward cursor-present to scout wrapper"
 printf '%s\n' "$outc" | grep -q '^DEGRADED_PANEL=1$' || fail "expected DEGRADED_PANEL=1 when COMBINED_FALLBACK_COUNT crosses threshold on zero-findings path"
 printf '%s\n' "$outc" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings with combined threshold"
 

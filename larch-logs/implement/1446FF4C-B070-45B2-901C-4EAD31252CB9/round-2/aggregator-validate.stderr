@@ -1,0 +1,2 @@
+warning: fix text for slot 'dyn-harness-codex-stub-gap-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Either set `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH` to the shared `codex_tier')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Update acceptance or issue close note to match scout vs panel behavior.  ### OOS')

@@ -39,7 +39,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --help) usage; exit 0 ;;
-        --output|--timeout|--prompt|--prompt-file|--agent-file|--mode|--description-text|--scope-files|--diff-file|--timing-task-kind|--token-budget-cap|--risk|--plan-file|--feature-file)
+        --output|--timeout|--prompt|--prompt-file|--agent-file|--mode|--description-text|--scope-files|--diff-file|--timing-task-kind|--token-budget-cap|--risk|--plan-file|--feature-file|--codex-add-dir)
             ARGS+=("$1")
             if [[ $# -gt 1 ]]; then
                 ARGS+=("$2")
@@ -107,6 +107,7 @@ PLAN_FILE=""
 FEATURE_FILE=""
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
+CODEX_ADD_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -127,6 +128,7 @@ while [[ $# -gt 0 ]]; do
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { larch_err "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value"; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
         --risk) [[ -n "${2:-}" ]] || { larch_err "launch-review.sh: --risk requires a value"; exit 2; }; shift 2 ;;
+        --codex-add-dir) CODEX_ADD_DIR="${2:?--codex-add-dir requires a value}"; shift 2 ;;
         *) larch_err "launch-review.sh: unknown flag: $1"; exit 2 ;;
     esac
 done
@@ -364,6 +366,36 @@ fi
 
 OUTPUT_DIR=$(dirname -- "$OUTPUT")
 CANON_OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd -P)
+CODEX_SANDBOX_DIR="$CANON_OUTPUT_DIR"
+_codex_add_dir_has_control_chars() {
+    printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
+_codex_canonical_existing_dir() {
+    local p="$1"
+    [[ -n "$p" ]] || return 1
+    _codex_add_dir_has_control_chars "$p" && return 1
+    [[ "$p" != *..* ]] || return 1
+    [[ -d "$p" ]] || return 1
+    [[ ! -L "$p" ]] || return 1
+    (cd "$p" && pwd -P) || return 1
+}
+_codex_under_root() {
+    local path="$1" root="$2"
+    [[ "$path" == "$root" || "$path" == "$root/"* ]]
+}
+if [[ -n "$CODEX_ADD_DIR" ]]; then
+    _canon_codex_add_dir=$(_codex_canonical_existing_dir "$CODEX_ADD_DIR") || {
+        larch_err "launch-review.sh: --codex-add-dir is not a directory: $CODEX_ADD_DIR"
+        exit 2
+    }
+    _codex_under_root "$_canon_codex_add_dir" "$CANON_OUTPUT_DIR" || {
+        larch_err "launch-review.sh: --codex-add-dir outside session root: $CODEX_ADD_DIR"
+        exit 2
+    }
+    CODEX_SANDBOX_DIR="$_canon_codex_add_dir"
+    unset _canon_codex_add_dir
+fi
+unset -f _codex_add_dir_has_control_chars _codex_canonical_existing_dir _codex_under_root
 CODEX_HOME_DIR=$(mktemp -d /tmp/larch-codex-review-home-XXXXXX)
 PROJECT_KEY=${PWD//\\/\\\\}
 PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
@@ -500,7 +532,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             --timeout "$TIMEOUT" \
             -- \
             codex exec --sandbox read-only -C "$PWD" \
-            --add-dir "$CANON_OUTPUT_DIR" \
+            --add-dir "$CODEX_SANDBOX_DIR" \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
             --output-last-message "$OUTPUT" \
@@ -517,7 +549,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             --timeout "$TIMEOUT" \
             -- \
             codex exec --sandbox read-only -C "$PWD" \
-            --add-dir "$CANON_OUTPUT_DIR" \
+            --add-dir "$CODEX_SANDBOX_DIR" \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
             --output-last-message "$OUTPUT" \

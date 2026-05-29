@@ -18,6 +18,8 @@ DESCRIPTION_FILE=""
 OUTPUT=""
 MAX_ARCHETYPES="6"
 SESSION_ENV_FILE=""
+CODEX_PRESENT="false"
+CURSOR_PRESENT="false"
 PROMPT_TEMPLATE="${PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt"
 
 while [[ $# -gt 0 ]]; do
@@ -27,6 +29,8 @@ while [[ $# -gt 0 ]]; do
         --output) OUTPUT="${2:?}"; shift 2 ;;
         --max-archetypes) MAX_ARCHETYPES="${2:?}"; shift 2 ;;
         --session-env-path) SESSION_ENV_FILE="${2:?}"; shift 2 ;;
+        --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
+        --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "scout-plan-archetypes-wrapper.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -101,6 +105,8 @@ validate_under_allowed_roots() {
 [[ -n "$DESCRIPTION_FILE" ]] || fail "--description-file is required"
 [[ -n "$OUTPUT" ]] || fail "--output is required"
 [[ -n "$SESSION_ENV_FILE" ]] || fail "--session-env-path is required"
+[[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || fail "--codex-present must be true or false"
+[[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || fail "--cursor-present must be true or false"
 
 case "$MAX_ARCHETYPES" in ''|*[!0-9]*) fail "--max-archetypes must be an integer 0-6" ;; esac
 (( 10#$MAX_ARCHETYPES <= 6 )) || fail "--max-archetypes must be 0-6 for plan scout"
@@ -157,6 +163,8 @@ SCOUT_ARGS=(
     --max-archetypes "$MAX_ARCHETYPES"
     --output "$OUTPUT"
     --session-env-path "$SESSION_ENV_FILE"
+    --codex-present "$CODEX_PRESENT"
+    --cursor-present "$CURSOR_PRESENT"
 )
 
 PROMPT_FLAG=()

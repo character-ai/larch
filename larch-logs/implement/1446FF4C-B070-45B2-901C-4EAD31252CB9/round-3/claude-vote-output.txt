@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- loop-level had_probe_miss and terminal-status are handled uniformly per plan; tier wrappers primarily assemble launcher-specific args; shared tier_raw_is_scout_json already abstracts probe logic
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- identical to round-1 FINDING_5 exonerated 3-0; plan explicitly accepts this design with tier_raw_is_scout_json shared helper
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- terminal-status contract is extensively documented in the plan already; extracting a finalize_waterfall_no_winner helper adds abstraction overhead not warranted here
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- only two callsites; premature lib extraction; future-refactoring suggestion beyond current task scope
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- identical to round-1 FINDING_21 exonerated 2-1; 180s is a tunable design parameter, not a bug
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- identical to round-1 FINDING_7 exonerated 3-0; Cursor omission is a deliberate documented design decision per plan
+FINDING_8: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_9: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=true -- manifest does not list launch-review.sh as modified; SECURITY.md uses --read-tools-add-dir on launch-claude-subprocess.sh not --codex-add-dir on launch-review.sh; likely reviewer error
+FINDING_11: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=partially-true SEVERITY=important QUALITY=adequate UNCERTAIN=true
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=true -- same false-positive basis as FINDING_10; --codex-add-dir not confirmed to exist in this diff
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=true -- manifest does not list launch-review.sh in files_touched; plan file list on the tracking issue is non-normative inventory, not ground truth for what was shipped
+FINDING_22: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_23: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

@@ -38,6 +38,43 @@ grep -Fq 'OUTER_LAUNCHER=claude' "$out.meta" || fail ".meta missing launcher"
 grep -Fq 'TOOL=claude' "$out.meta" || fail ".meta missing tool"
 grep -Fq 'STATUS=clean' "$out.dirty-tree" || fail ".dirty-tree missing clean status"
 
+read_tools_reject_session="$TMP/read-tools-reject-session"
+mkdir -p "$read_tools_reject_session/staged-context"
+read_tools_reject_prompt="$read_tools_reject_session/staged-context/prompt.md"
+printf 'Read staged context by path.\n' >"$read_tools_reject_prompt"
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$read_tools_reject_prompt" \
+    --output-file "$read_tools_reject_session/out.txt" \
+    --timeout 5 \
+    --read-tools-add-dir "$read_tools_reject_session/staged-context" \
+    --timing-task-kind scout-dynamic-archetypes \
+    >/dev/null 2>"$TMP/read-tools-add-dir-without-flag-err"
+add_dir_no_flag_rc=$?
+set -e
+[[ "$add_dir_no_flag_rc" -eq 2 ]] || fail "--read-tools-add-dir without --read-tools must exit 2"
+grep -Fq -- '--read-tools-add-dir requires --read-tools' "$TMP/read-tools-add-dir-without-flag-err" \
+    || fail "--read-tools-add-dir without --read-tools rejection message"
+
+outside_add_dir="$TMP/read-tools-outside-root"
+mkdir -p "$outside_add_dir/staged-context"
+outside_prompt="$outside_add_dir/staged-context/prompt.md"
+printf 'Read staged context by path.\n' >"$outside_prompt"
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$outside_prompt" \
+    --output-file "$outside_add_dir/out.txt" \
+    --timeout 5 \
+    --read-tools \
+    --read-tools-add-dir "$TMP" \
+    --timing-task-kind scout-dynamic-archetypes \
+    >/dev/null 2>"$TMP/read-tools-add-dir-outside-err"
+outside_add_dir_rc=$?
+set -e
+[[ "$outside_add_dir_rc" -eq 2 ]] || fail "--read-tools-add-dir outside session root must exit 2"
+grep -Fq -- '--read-tools-add-dir outside session root' "$TMP/read-tools-add-dir-outside-err" \
+    || fail "--read-tools-add-dir outside session root rejection message"
+
 ln -s "$prompt" "$TMP/link.md"
 if PATH="$BIN:$PATH" LARCH_QUIET_LOG_FILE="$TMP/quiet.log" "$SCRIPT" --prompt-file "$TMP/link.md" --output-file "$TMP/bad.txt" --timeout 5 >/dev/null 2>"$TMP/err"; then
     fail "symlink prompt accepted"
@@ -147,5 +184,27 @@ fi
 grep -Fq 'context file exceeds 1 MB' "$TMP/over-err" || fail "over-cap rejection message must say 'context file exceeds 1 MB' (got: $(cat "$TMP/over-err"))"
 # Pin against the stale 256 KB wording to prevent reverts.
 grep -Fq '256 KB' "$TMP/over-err" && fail "stale '256 KB' wording in rejection message; #2292 wording regressed"
+
+read_tools_session="$TMP/read-tools-session"
+mkdir -p "$read_tools_session/staged-context"
+read_tools_prompt="$read_tools_session/staged-context/prompt.md"
+printf 'Read staged context by path.\n' >"$read_tools_prompt"
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$read_tools_prompt" \
+    --output-file "$read_tools_session/out.txt" \
+    --timeout 5 \
+    --read-tools \
+    --read-tools-add-dir "$read_tools_session/staged-context" \
+    --timing-task-kind scout-dynamic-archetypes \
+    >"$TMP/read-tools-stdout" 2>"$TMP/read-tools-err" \
+    || fail "--read-tools launch failed"
+grep -Fq 'STATUS=OK' "$TMP/read-tools-stdout" || fail "--read-tools missing STATUS=OK"
+grep -Fq 'staged-context' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing staged-context add-dir"
+grep -Fq 'allowedTools' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing allowedTools"
+grep -Fq '"Read"' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing Read-only allowlist"
+grep -Fq 'Grep' "$read_tools_session/out.txt.meta" && fail "--read-tools CMD_JSON must not allow Grep"
+grep -Fq 'Glob' "$read_tools_session/out.txt.meta" && fail "--read-tools CMD_JSON must not allow Glob"
+grep -Fq 'Edit' "$read_tools_session/out.txt.meta" && fail "--read-tools CMD_JSON must not allow Edit"
+grep -Fq '"plan"' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing permission-mode plan"
 
 echo "All assertions passed."

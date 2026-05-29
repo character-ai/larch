@@ -315,7 +315,8 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
             SCOUT_STATUS="missing-diff-file"
             write_scout_status_file
         else
-            scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST")
+            scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST"
+                --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE")
             [[ -n "$SESSION_ENV_PATH" ]] && scout_args+=(--session-env-path "$SESSION_ENV_PATH")
             [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && scout_args+=(--plan-file "$PLAN_FILE")
             if [[ "$MODE" == "diff" ]]; then
@@ -324,7 +325,8 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                 scout_args+=(--scope-files "$SCOPE_FILES" --description-text "${DESCRIPTION_TEXT:-description review}")
             fi
             set +e
-            scout_output=$("$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh" "${scout_args[@]}")
+            scout_bin="${SCOUT_DYNAMIC_ARCHETYPES_SH:-$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh}"
+            scout_output=$("$scout_bin" "${scout_args[@]}")
             scout_rc=$?
             set -e
             if [[ "$scout_rc" -ne 0 ]]; then

@@ -834,6 +834,12 @@ exclude = [
   # harnesses above.
   "scripts/test-harness-timer.sh",
   "scripts/test-harness-timer.md",
+  # scripts/test-gather-branch-context.sh is the offline harness for
+  # scripts/gather-branch-context.sh larch-logs pathspec exclusion.
+  # Referenced from Makefile (test-gather-branch-context target) and
+  # scripts/test-gather-branch-context.md (sibling contract).
+  "scripts/test-gather-branch-context.sh",
+  "scripts/test-gather-branch-context.md",
   # scripts/test-render-run-summary.sh is the offline harness for
   # scripts/render-run-summary.sh. Referenced from Makefile
   # (test-render-run-summary target) and scripts/test-render-run-summary.md

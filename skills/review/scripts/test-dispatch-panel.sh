@@ -88,6 +88,45 @@ printf 'STATUS=OK\nOUTPUT_FILE=%s\nELAPSED=0\n' "$out"
 STUB
 chmod +x "$scout_launch"
 
+codex_tier_stub="$TMP/codex-tier-stub.sh"
+cat > "$codex_tier_stub" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) out="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$out" ]] || exit 2
+if [[ "${SCOUT_CODEX_LAUNCH_FAIL:-false}" == "true" ]]; then
+    printf 'STATUS=ERROR\nELAPSED=0\n'
+    exit 7
+fi
+if [[ "${SCOUT_CODEX_PROSE:-false}" == "true" ]]; then
+    printf 'not json prose\n' >"$out"
+    printf '0\n' >"${out}.done"
+    exit 0
+fi
+cat "${SCOUT_CODEX_JSON_FILE:-${SCOUT_LAUNCH_JSON_FILE:?SCOUT_CODEX_JSON_FILE or SCOUT_LAUNCH_JSON_FILE required}}" >"$out"
+printf '0\n' >"${out}.done"
+exit 0
+STUB
+chmod +x "$codex_tier_stub"
+
+scout_wrapper="$TMP/scout-dynamic-wrapper.sh"
+cat > "$scout_wrapper" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -n "\${SCOUT_SCOUT_ARGV_LOG:-}" ]] && printf '%s\n' "\$*" >>"\$SCOUT_SCOUT_ARGV_LOG"
+export SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch"
+export SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub"
+export SCOUT_CODEX_PROSE=true
+exec "$REPO_ROOT/scripts/scout-dynamic-archetypes.sh" "\$@"
+STUB
+chmod +x "$scout_wrapper"
+
 cat > "$TMP/scout-valid4.json" <<'JSON'
 {"archetypes":[
   {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"API changes are central.","prompt_body":"Check API contract compatibility."},
@@ -173,7 +212,8 @@ grep -Fq 'SLOT_COUNT=6' <<< "$out"
 [[ ! -e "$TMP/hard-round2/codex-union-output.txt" ]]
 
 seed_case_inputs "$TMP/dynamic4"
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
+export SCOUT_SCOUT_ARGV_LOG="$TMP/dynamic4/scout-argv.log"
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic4/review.diff" \
     --review-tmpdir "$TMP/dynamic4" \
@@ -183,6 +223,8 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --plan-file "$TMP/dynamic4/plan.md" \
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
+grep -Fq -- '--codex-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --codex-present true to scout" >&2; exit 1; }
+grep -Fq -- '--cursor-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --cursor-present true to scout" >&2; exit 1; }
 grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 grep -Fq 'SLOT_COUNT=10' <<< "$out"
@@ -194,7 +236,7 @@ grep -Fq 'Begin your response with the literal line' \
     || { echo "FAIL: dynamic reviewer artifact missing anti-preamble instruction" >&2; exit 1; }
 
 seed_case_inputs "$TMP/dynamic-empty"
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-empty.json" "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-empty.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic-empty/review.diff" \
     --review-tmpdir "$TMP/dynamic-empty" \
@@ -207,12 +249,13 @@ grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SLOT_COUNT=6' <<< "$out"
 
+# parse-failed and claude-failed fixtures are single-tier (--codex-available false).
 seed_case_inputs "$TMP/dynamic-fail"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_FAIL=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic-fail/review.diff" \
     --review-tmpdir "$TMP/dynamic-fail" \
-    --codex-available true \
+    --codex-available false \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-fail/plan.md" \
@@ -236,7 +279,7 @@ cat > "$TMP/scout-valid8.json" <<'JSON'
 JSON
 
 seed_case_inputs "$TMP/dynamic8"
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid8.json" "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid8.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic8/review.diff" \
     --review-tmpdir "$TMP/dynamic8" \
@@ -258,7 +301,7 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$issues_log" SCOUT_DYNA
     --mode diff \
     --diff-file "$TMP/dynamic-parse-failed/review.diff" \
     --review-tmpdir "$TMP/dynamic-parse-failed" \
-    --codex-available true \
+    --codex-available false \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-parse-failed/plan.md" \
@@ -283,7 +326,7 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$warn_log" SCOUT_DYNAMI
     --mode diff \
     --diff-file "$TMP/dynamic-parse-failed-warn/review.diff" \
     --review-tmpdir "$TMP/dynamic-parse-failed-warn" \
-    --codex-available true \
+    --codex-available false \
     --cursor-available true \
     --panel hard \
     --plan-file "$TMP/dynamic-parse-failed-warn/plan.md" \
@@ -311,7 +354,7 @@ fi
         --mode diff \
         --diff-file "$prod_tmp/review/review.diff" \
         --review-tmpdir "$prod_tmp/review" \
-        --codex-available true \
+        --codex-available false \
         --cursor-available true \
         --panel hard \
         --plan-file "$prod_tmp/review/plan.md" \
@@ -481,7 +524,7 @@ while written < need:
     print(line)
     written += len(line) + 1
 PY
-out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/oversized-diff/review.diff" \
     --review-tmpdir "$TMP/oversized-diff" \
@@ -490,8 +533,8 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel hard \
     --plan-file "$TMP/oversized-diff/plan.md" \
     --dynamic-archetypes 4)
-grep -Fq 'SCOUT_STATUS=validation-failed' <<< "$out"
-grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 [[ -s "$TMP/oversized-diff/cursor-specialist-structure-output.txt" ]]
 
