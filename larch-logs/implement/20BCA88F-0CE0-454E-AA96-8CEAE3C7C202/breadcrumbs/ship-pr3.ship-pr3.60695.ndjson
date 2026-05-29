@@ -1,1 +1,6 @@
 larch:bc t=2026-05-29T00:34:14Z d=0 p=60724 s=ship-pr.sh c=progress text=→ ship-pr: opening PR
+larch:bc t=2026-05-29T00:34:28Z d=0 p=60724 s=ship-pr.sh c=progress text=→ ship-pr: PR #3173 opened
+larch:bc t=2026-05-29T00:34:30Z d=0 p=60724 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-29T00:34:30Z d=0 p=63276 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-29T00:34:35Z d=0 p=63276 s=ci-wait.sh c=wait-ci text=→ Action: rebase (5s, 0 polls)
+larch:bc t=2026-05-29T00:34:35Z d=0 p=60724 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
