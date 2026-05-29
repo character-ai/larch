@@ -1,0 +1,15 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-pragmatic-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 10s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-pragmatic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review/scripts/test-dispatch-panel.sh:212-277	Plan does not retarget `dynamic-fail` / `dynamic-parse-failed*` fixtures for multi-tier terminal status	With `--codex-available true`, dispatch will forward `--codex-present true`; PATH `codex` stub writes non-JSON to `${OUTPUT}.raw` (probe miss), then Claude stub runs. `SCOUT_LAUNCH_FAIL` / malformed JSON no longer yield `SCOUT_STATUS=claude-failed` or `parse-failed` + diag — they yield `SCOUT_STATUS=empty` per the new exhaustion rule, breaking grep expectations and parse-failed sidecar tests	In `### UPDATED: skills/review/scripts/test-dispatch-panel.sh`, explicitly require: (1) `dynamic-parse-failed*` and prod warn cases use `--codex-available false` (single-tier `parse-failed` + diag), or update assertions to `empty` and drop parse-failed diag checks; (2) `dynamic-fail` use `--codex-available false` or a `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH` stub that fails launch so the last-tier status stays `claude-failed`; document that ok/empty paths may rely on Codex non-JSON fallthrough but failure-path fixtures must be retargeted
+
+1. **[correctness]** `skills/review/scripts/test-dispatch-panel.sh:212-277` — The plan’s `test-dispatch-panel.sh` update (FINDING_5) covers presence-flag forwarding and optional `LAUNCH_REVIEW_SH` stubs for non-JSON Codex, but it does not call out that existing fixtures with `--codex-available true` will change terminal status once the waterfall lands. Today those cases only stub `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` (Claude). After forwarding `--codex-present true`, the PATH `codex` stub typically exits 0 with non-JSON prose in `${OUTPUT}.raw`, so Codex is a probe miss and Claude runs next. For `dynamic-fail` (`SCOUT_LAUNCH_FAIL=true`), that becomes multi-tier probe exhaustion → `SCOUT_STATUS=empty`, not `claude-failed`. For `dynamic-parse-failed*` (malformed JSON on the Claude stub), same → `empty`, not `parse-failed`, so `append_scout_parse_issue` / diag sidecar assertions fail. Suggested revision: extend the plan’s `test-dispatch-panel.sh` section to require retargeting those fixtures (`--codex-available false` for parse-failed/diag coverage, or revised expectations), and spell out the `dynamic-fail` fixture the same way; keep optional `LAUNCH_REVIEW_SH` stubs for cases that should exercise Codex winning the probe.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.diag)
+
+Failed with exit code 1 after 10s. Output size: 0 bytes.
+

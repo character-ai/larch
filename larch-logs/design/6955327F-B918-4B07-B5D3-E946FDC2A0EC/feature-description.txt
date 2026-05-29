@@ -1,0 +1,41 @@
+# Issue #3187: 1. dynamic profile scout (in both /design and /implement reviews) should be…
+
+## Summary
+
+Three related improvements to the dynamic archetype scout (`scripts/scout-dynamic-archetypes.sh`), which proposes ephemeral specialist reviewer archetypes before each code-review round in both `/design` and `/implement`.
+
+## Requested Changes
+
+1. **Coder waterfall: Codex → Cursor → Claude** — the scout is a code-analysis call that benefits from the same availability waterfall used elsewhere in larch. Currently the scout is hardwired to `claude --print` (Claude CLI only). It should try Codex first, fall back to Cursor, then fall back to Claude, mirroring the implementer and reviewer dispatch patterns.
+
+2. **Spawn the scout as a tool-capable agent** — the scout currently runs via `launch-claude-subprocess.sh` which invokes `claude --print < prompt`. In `--print` mode there are no tools (no Read, no Bash), so the entire diff must be embedded verbatim in the prompt. If the scout is instead spawned as a full agent (e.g. via the Agent tool or an equivalent headless agent launch), it can use the Read tool to load the diff from disk on demand, removing the need to embed it in the prompt at all.
+
+3. **Remove the 256 KB diff-size gate — scout must always run** — `validate_context_input_file` in `scout-dynamic-archetypes.sh` (line 123) hard-rejects any input file exceeding 262 144 bytes (256 KB). For large PRs or PRs that include committed run-log artifacts, both rounds silently fall back to `0 dynamic` reviewers. The gate should be removed; once the scout can read the diff by tool rather than by prompt-embedding (change 2 above), the size constraint is moot.
+
+## Context / Findings
+
+These findings were observed in implement run `5CF39E2C-AAB5-4316-A4C6-719E02590A15` (PR #3185, issue #3155), where both review rounds reported:
+
+```
+scout-dynamic-archetypes.sh: --diff-file exceeds 256 KB: …/round-N/diff.txt
+→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)
+```
+
+The diff was ~855 KB (large because `larch-logs/**` committed artifacts were included). Both rounds ran with `0 dynamic` reviewers as a result.
+
+**Why `--print` forces the diff into the prompt:**
+`launch-claude-subprocess.sh` invokes `claude --model claude-sonnet-4-6 --print < "$PROMPT_RENDERED"`. The `--print` flag is non-interactive completion mode — stdin in, stdout out, no tool scaffolding. The diff MUST be embedded in the prompt because that is the only input channel. This is the root cause of the size constraint.
+
+**Model hardcoding:**
+The default in `launch-claude-subprocess.sh` is `MODEL="claude-sonnet-4-6"` and `scout-dynamic-archetypes.sh` passes `--model claude-sonnet-4-6` explicitly. While `--model` is technically overridable, the *mechanism* (`claude --print`) is locked to the Claude CLI and cannot be swapped for Codex or Cursor.
+
+## Note
+
+The above findings are from a single run and conversational analysis. `/design` should re-verify the implementation details (line numbers, flag semantics, available dispatch patterns) before writing an implementation plan.
+
+## Acceptance
+
+- Scout in `/design` and `/implement` reviews tries Codex → Cursor → Claude (availability waterfall).
+- Scout is spawned in a mode that has tool access (can Read the diff from disk).
+- The 256 KB input-file gate is removed; scout runs on diffs of any size.
+- No regression in static reviewer dispatch or round count when dynamic scout returns `{"archetypes":[]}`.

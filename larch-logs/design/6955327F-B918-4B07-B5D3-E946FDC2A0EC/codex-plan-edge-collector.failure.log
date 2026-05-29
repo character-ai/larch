@@ -1,0 +1,12 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-edge-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 20s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-edge-output.txt)
+
+{"no_issues_found": true}
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-edge-output.txt.diag)
+
+Failed with exit code 1 after 20s. Output size: 0 bytes.
+

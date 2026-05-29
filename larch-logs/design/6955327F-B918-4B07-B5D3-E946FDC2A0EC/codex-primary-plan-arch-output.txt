@@ -1,0 +1,4 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	Makefile:4; Makefile:32-34	New harness target omitted from .PHONY union	Plan adds test-gather-branch-context recipe and test-harnesses-8 membership but not a .PHONY entry; scripts/test-harness-shards-coverage.sh fails make lint with missing from .PHONY	Add test-gather-branch-context to an existing .PHONY line (e.g. Makefile:4) in the same Makefile change
+
+1. **architecture** `Makefile:32-34` — The plan registers `test-gather-branch-context` on `test-harnesses-8` but does not add the target to the Makefile `.PHONY` union that `scripts/test-harness-shards-coverage.sh` enforces. **Suggested revision:** add `test-gather-branch-context` to `.PHONY` alongside peers like `test-gather-context` on `Makefile:4`.
