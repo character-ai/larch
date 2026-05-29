@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- design plan-review files land at depth 4 from the session root (plan-review/round-N/revise/file.txt), well within the maxdepth 5 bound; the finding misjudges the depth counting
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=good UNCERTAIN=true

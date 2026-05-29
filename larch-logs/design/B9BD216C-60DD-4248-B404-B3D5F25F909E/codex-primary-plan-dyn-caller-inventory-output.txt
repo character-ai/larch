@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/run-logs.md:45-58 docs/run-logs.md:387-408	Planned /cleanup maxdepth-4 activity scan misses depth-5 round artifacts	The plan says maxdepth 4 covers larch-logs/implement/<RUN_ID>/round-<N>/findings.md, but that file is five levels below the session root; a live run that only refreshes round files can be misclassified stale and deleted	Use maxdepth 5 if round-<N> files are part of the retention contract, or narrow the contract/tests to depth-4 manifest.json only
+
+1. **[correctness]** `docs/run-logs.md:45-58`, `docs/run-logs.md:387-408`
+
+Concern: The plan’s proposed `skills/cleanup/scripts/cleanup.sh` scan uses `find "$entry" -mindepth 1 -maxdepth 4` while also claiming it protects `larch-logs/implement/<RUN_ID>/round-<N>/findings.md`. From the session root, that path is depth 5: `larch-logs` → `implement` → `<RUN_ID>` → `round-<N>` → `findings.md`.
+
+Scenario: A long-running `/implement` writes fresh per-round artifacts but the session root and ancestor mtimes stay stale. `/cleanup` can delete that active session.
+
+Suggested revision: Change the planned bounded scan to `-maxdepth 5` for this contract, or remove the `round-<N>/findings.md` promise and test case.

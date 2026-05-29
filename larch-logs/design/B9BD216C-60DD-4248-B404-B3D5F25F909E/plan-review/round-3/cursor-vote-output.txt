@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- slimming is explicit issue Decision C scope, not required to fix cleanup retention
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- issue already lists optional dangling design-env symlink reaping in proposed /cleanup redesign
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- edge cases and failure-mode #4 already require a stamp-failure prune harness case

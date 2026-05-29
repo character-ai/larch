@@ -1,0 +1,124 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,19 +1,22 @@
+ ## Plan
+ 
+-Implementation Plan — #3174: age-based cleanup + simplified /upgrade-larch, max-8 install-stamp prune
++Implementation Plan — #3174: age-based cleanup + simplified /upgrade-larch, last-8 install floor plus age window
+ 
+ SIMPLE-tier design. Bias: smallest change that fixes the bug. Remove fragile machinery; do not add config or layers the issue did not ask for.
+ 
+ ## Resolved direction
+ 
+-- `/upgrade-larch` keeps the **8 most-recently-installed** version dirs and deletes the rest. **8 is a hard maximum**, not a floor. Ordering uses a per-version install-stamp file; legacy un-stamped dirs fall back to dir mtime.
+-- The just-installed target is always retained. The currently-running version is retained only if it is among the 8 newest-installed.
+-- The 7-day window applies to `/cleanup` session dirs **only**. It never preserves extra `/upgrade-larch` version dirs beyond the top-8 cap.
++- `/upgrade-larch` keeps the union of: **8 most-recently-installed** version dirs, plus any version dir whose install age is within the `/upgrade-larch` retention window. **8 is a floor, not a hard maximum.** Ordering uses a per-version install-stamp file; legacy un-stamped dirs fall back to dir mtime.
++- The just-installed target is always retained when its cache directory exists. The currently-running version is retained if it is among the 8 newest-installed or within the retention window.
++- The 7-day window applies to both `/cleanup` session dirs and `/upgrade-larch` version dirs by default. `/cleanup` keys on newest filesystem activity. `/upgrade-larch` keys on install age: numeric install-stamp if present, otherwise directory mtime fallback.
+ - Remove the active-protection apparatus: `collect_active_session_versions`, session-scan/fallback-root pins, `KEEP_LIMIT` eviction loop, Stage A delete-newer-than-stable, and the `lib-larch-cache-touch.sh` mtime touch.
+ - Slim `.larch-keepalive` to an identity record (`CLONE_PATH`, `SESSION_ID` only); keep the filename for this PR. Drop cleanup's sentinel skip; `lib-resolve-implement-tmpdir.sh` keeps reading `.larch-keepalive`. `current-design-env-*.sh` stays untouched.
+ 
+ ## Approach
+ 
+ ### /upgrade-larch prune
+ 
++0. Add `LARCH_UPGRADE_RETENTION_DAYS` with default `7`. Validate as a positive integer; warn and fall back to `7` on invalid input.
+ 1. After a verified stable install, write `$LARCH_CACHE_DIR/$ACTUAL_VERSION/.larch-installed-at` containing `date +%s`. Best-effort; warn on failure, do not abort.
+ 2. On the already-latest path, bind `ACTUAL_VERSION="${CURRENT_INSTALLED_VERSION:-$INSTALLED_VERSION}"` before calling the shared prune helper; best-effort stamp that version; then prune without reinstalling.
+ 3. Replace `list_cached_versions_by_mtime` with `list_cached_versions_by_install_stamp`: timestamp = numeric install-stamp if present, else dir mtime via existing dual-`stat` helper, else `0`.
+-4. Sort by stamp presence first, then timestamp descending, then version-string tiebreak. Stamped dirs always outrank legacy un-stamped dirs, even if an old mtime was bumped by the removed touch helper.
+-5. Build retained set by seeding `$ACTUAL_VERSION` first, then add newest entries until size is `KEEP_VERSIONS=8` or cache is exhausted; `rm -rf` the rest.
++4. Sort by stamp presence first, then timestamp descending, then version-string tiebreak. Stamped dirs always outrank legacy un-stamped dirs, even if an old mtime was bumped by the removed touch helper.
++5. Build retained set from real cached dirs only. If `$ACTUAL_VERSION` exists under `$LARCH_CACHE_DIR`, seed it first; if it is absent, do not count it against the floor. Then walk newest-installed entries, skipping versions already retained, until 8 real cached dirs are retained or cache is exhausted.
++6. Add the age-window retention set: keep any real cached dir whose install timestamp fallback is within `LARCH_UPGRADE_RETENTION_DAYS`. This can retain more than 8 dirs.
+ 6. Delete now-unused helpers: `collect_active_session_versions`, `warn_preserved_active_version_once`, `WARNED_ACTIVE_SESSION_VERSIONS`, `version_gt`, `sort_versions`, `LARCH_SESSIONS_DIR` pin usage, and `LARCH_UPGRADE_FALLBACK_SESSION_ROOTS`.
+ 7. Keep `is_safe_version`, `stat_mtime`, `get_stable_releases`, `get_installed_larch_version`, and the renamed `list_cached_versions_*`.
+-8. Do not add a cap env var. `KEEP_VERSIONS=8` remains a plain constant.
++8. Do not add a cap env var. `KEEP_VERSIONS=8` remains a plain floor constant.
+ 9. Keep prune callable from both verified-install and already-latest paths.
+ 
+ ### /cleanup
+@@ -55,10 +58,10 @@
+ ## Files to modify/create
+ 
+ ### UPDATED: `skills/upgrade-larch/scripts/upgrade-larch.sh`
+-Add install-stamp write; replace Stage A, Stage B, and pin machinery with keep-8-newest-by-install-stamp. Force `$ACTUAL_VERSION` into the retained set while keeping total retained count at 8. On already-latest path, bind `ACTUAL_VERSION` from `CURRENT_INSTALLED_VERSION` before prune. Delete unused active-session helpers.
++Add install-stamp write; replace Stage A, Stage B, and pin machinery with last-8-installed floor plus upgrade age-window retention. Seed `$ACTUAL_VERSION` only when its cache dir exists; skip already-retained versions while filling the floor. On already-latest path, bind `ACTUAL_VERSION` from `CURRENT_INSTALLED_VERSION` before prune. Delete unused active-session helpers.
+ 
+ ### UPDATED: `skills/upgrade-larch/scripts/upgrade-larch.md`
+-Rewrite already-latest behavior: no reinstall/restart, but best-effort `.larch-installed-at` stamp and keep-8 prune may run. Rewrite prune contract: stamp-presence-first ordering, max-8 cap, seeded `$ACTUAL_VERSION`, no pins, no Stage A, no touch dependency.
++Rewrite already-latest behavior: no reinstall/restart, but best-effort `.larch-installed-at` stamp and prune may run. Rewrite prune contract: stamp-presence-first ordering, last-8 floor plus `LARCH_UPGRADE_RETENTION_DAYS`, seeded existing `$ACTUAL_VERSION`, no pins, no Stage A, no touch dependency.
+ 
+ ### UPDATED: `skills/upgrade-larch/SKILL.md`
+-Revise Step 2 so already-latest means no reinstall/restart, while cache stamp/prune side effects may still run. Replace active-session prune harness wording with install-stamp keep-8 validation. Drop any "no changes were made" implication that excludes prune/stamp.
++Revise Step 2 so already-latest means no reinstall/restart, while cache stamp/prune side effects may still run. Replace active-session prune harness wording with install-stamp floor plus age-window validation. Drop any "no changes were made" implication that excludes prune/stamp.
+ 
+ ### UPDATED: `skills/cleanup/scripts/cleanup.sh`
+ Remove singleton abort and sentinel skip. Add age-based newest-activity deletion with bounded `-maxdepth 5` scan and `LARCH_CLEANUP_RETENTION_DAYS` default `7`. Reap dangling `current-design-env-*.sh` symlinks.
+@@ -107,7 +110,7 @@
+ Update SessionStart advisory for slim `.larch-keepalive`; remove plugin-root cache mtime refresh paragraph; replace `/upgrade-larch` prune guard fallback-session trust paragraph with install-stamp + max-8 retention trust model.
+ 
+ ### UPDATED: `skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh`
+-Replace pin/KEEP_LIMIT/Stage-A cases with keep-8 cap, install-stamp ordering, stamp-presence beats un-stamped mtime, mtime fallback, always-keep-just-installed, already-latest binds target before prune, cache <8 keeps all.
++Replace pin/KEEP_LIMIT/Stage-A cases with last-8 floor plus age-window cases: all old keeps exactly last 8; young outside-top-8 kept; old outside-top-8 deleted; install-stamp ordering; stamp-presence beats un-stamped mtime; mtime fallback; existing just-installed retained; absent `ACTUAL_VERSION` does not consume budget; already-latest binds target before prune; cache <8 keeps all; exactly eight remain when `ACTUAL_VERSION` is already among the newest eight and no age-window extras exist.
+ 
+ ### UPDATED: `skills/upgrade-larch/scripts/test-upgrade-larch-prune.md`
+ Update harness contract to the new cases.
+@@ -161,7 +164,7 @@
+ Add `LARCH_CLEANUP_RETENTION_DAYS`: default `7`, positive integer only, invalid values warn and fall back to `7`.
+ 
+ ### UPDATED: `docs/installation-and-setup.md`
+-Replace old prune paragraph with install-stamp path, newest-first fallback ordering, max-8 cap, just-installed/already-current retention, no session pins, no Stage A, and no mtime-touch guarantee. Revise idempotency wording: already-latest performs no reinstall and no restart, but may stamp and prune.
++Replace old prune paragraph with install-stamp path, newest-first fallback ordering, last-8 floor plus age-window retention, just-installed/already-current retention when cached, no session pins, no Stage A, and no mtime-touch guarantee. Revise idempotency wording: already-latest performs no reinstall and no restart, but may stamp and prune.
+ 
+ ### UPDATED: `scripts/test-keepalive-sentinel.sh`
+ Update for slim `.larch-keepalive` fields: `CLONE_PATH` and `SESSION_ID` present; `PID`, `PPID`, `PREFIX`, `CREATED`, and `NOTE` absent.
+@@ -176,11 +179,13 @@
+ - Cache with fewer than 8 version dirs: keep all.
+ - Cache with exactly 8: keep all.
+ - More than 8 all stamped: keep 8 newest by stamp.
+-- More than 8 where `$ACTUAL_VERSION` would otherwise sort outside first 8: keep `$ACTUAL_VERSION` plus newest remaining entries until exactly 8 remain.
++- More than 8 all older than `LARCH_UPGRADE_RETENTION_DAYS`: keep exactly the 8 newest-installed real cached dirs.
++- More than 8 with a young version outside the newest 8: keep the 8 newest-installed plus the young outside-top-8 dir.
++- More than 8 where existing `$ACTUAL_VERSION` would otherwise sort outside first 8: keep `$ACTUAL_VERSION` plus newest remaining entries until at least 8 floor dirs remain, plus any age-window extras.
++- More than 8 where `$ACTUAL_VERSION` is already among the newest 8: skip it while filling so the retained floor is still exactly 8 when no age-window extras apply.
++- `$ACTUAL_VERSION` is absent from the cache: do not count it against the floor; keep 8 real cached dirs when available.
+ - Mixed stamped/un-stamped: all stamped dirs sort before any un-stamped dir; within each tier sort timestamp descending; unreadable timestamp sorts as `0`.
+-- Just-installed stamp write fails: still retained via seeded `$ACTUAL_VERSION`, without increasing retained count above 8.
+-- Already-latest cache over cap: bind `ACTUAL_VERSION` from installed metadata first; no reinstall; prune leaves at most 8 dirs with current version seeded.
++- Just-installed stamp write fails but cache dir exists: still retained via seeded `$ACTUAL_VERSION`; age-window eligibility uses timestamp fallback.
++- Already-latest cache over floor: bind `ACTUAL_VERSION` from installed metadata first; no reinstall; prune keeps the last-8 floor plus any age-window extras.
+ - `/cleanup` active session: freshly written child keeps newest activity inside the window.
+ - `/cleanup` APFS dir with stale own mtime but fresh depth-2 content under `design-export/`: kept.
+ - `/cleanup` stale ancestors with fresh run-log manifest at `larch-logs/implement/<RUN_ID>/manifest.json`: kept.
+@@ -193,26 +198,27 @@
+ ## Failure modes
+ 
+ 1. **Identity-record shape desync.** If `session-setup.sh` slims fields but resolver assumptions drift, `/implement` hooks stop binding. Mitigation: writer, comments, and all direct sentinel fixtures updated together; no filename change.
+-2. **Self-deletion of old running version.** If `/upgrade-larch` runs from a version outside the 8 newest-installed, that dir can be pruned. Mitigation: just-installed always kept; running version kept iff in newest 8, matching resolved direction.
++2. **Long-idle running version outside floor.** If a job runs longer than `LARCH_UPGRADE_RETENTION_DAYS` on a version outside the last-8 floor, that dir can be pruned. Mitigation: default window is 7 days, the reported failure mode is under 24 hours, and recent installs outside the floor are retained by install age.
+ 3. **Legacy-dir mtime mis-ordering during migration.** Old un-stamped dirs may have bumped mtimes. Mitigation: stamp-presence-first sort ensures stamped installs outrank un-stamped legacy dirs.
+-4. **Retained-set off-by-one.** Seeding `$ACTUAL_VERSION` after selecting first 8 can leave 9 dirs. Mitigation: seed first, fill to `KEEP_VERSIONS`, assert exact cap in tests.
+-5. **Already-latest prune with unset target.** If prune runs before binding installed version, current version may not be seeded. Mitigation: assign `ACTUAL_VERSION` before prune; cover in harness.
+-6. **Shallow session activity scan.** If newest-activity scan misses depth-5 run-log round files, active `/implement` sessions can be misclassified stale. Mitigation: use `find -maxdepth 5`; `test-cleanup.sh` must include stale ancestors plus fresh `larch-logs/implement/<RUN_ID>/round-1/findings.md`.
++4. **Retained-set off-by-one.** Filling the last-8 floor without skipping an already-seeded `$ACTUAL_VERSION` can over-retain one stale dir. Mitigation: skip already-retained versions while filling; assert exact 8 when no age-window extras apply.
++5. **Absent target consumes the floor budget.** Counting a missing `$ACTUAL_VERSION` can leave only seven real rollback dirs. Mitigation: seed only existing cache dirs; cover absent-target regression.
++6. **Already-latest prune with unset target.** If prune runs before binding installed version, current version may not be seeded. Mitigation: assign `ACTUAL_VERSION` before prune; cover in harness.
++7. **Shallow session activity scan.** If newest-activity scan misses depth-5 run-log round files, active `/implement` sessions can be misclassified stale. Mitigation: use `find -maxdepth 5`; `test-cleanup.sh` must include stale ancestors plus fresh `larch-logs/implement/<RUN_ID>/round-1/findings.md`.
+ 
+ ## Testing strategy
+ 
+-- Rewrite `test-upgrade-larch-prune.sh` for cap, stamp order, fallback, already-latest prune, target-outside-top-8 exact cap, and always-keep-just-installed.
++- Rewrite `test-upgrade-larch-prune.sh` for last-8 floor, age-window extras, stamp order, fallback, already-latest prune, target-outside-top-8 retention, already-seeded skip exact-8 behavior, absent-target budget handling, and always-keep-existing-just-installed.
+ - Rewrite or remove stale Stage-A/sanitize prune cases in `test-upgrade-larch.sh`.
+ - Add `test-cleanup.sh` for singleton-drop, stale-vs-fresh, depth-1 child, depth-2 grandchild, depth-4 manifest, depth-5 round artifact, invalid-retention fallback, and dangling-symlink reap.
+ - Update `test-keepalive-sentinel.sh` and `test-sessionstart-health.sh` for slim `.larch-keepalive`.
+ - Drop touch-lib copy in `test-implement-bootstrap.sh`.
+ - Remove touch assertions from `scripts/test-session-env-roundtrip.sh`.
+-- Run `make lint` plus the affected Makefile harness targets, including `make test-cleanup`, `make test-upgrade-larch-prune`, and `make test-keepalive-sentinel`.
++- Run `make lint` plus the affected Makefile harness targets, including `make test-cleanup`, `make test-upgrade-larch-prune`, and `make test-keepalive-sentinel`.
+ - Preserve Bash 3.2 portability and the `lib-quiet.sh` FD-3 contract.
+ 
+-diff_lines: 1155
++diff_lines: 1195

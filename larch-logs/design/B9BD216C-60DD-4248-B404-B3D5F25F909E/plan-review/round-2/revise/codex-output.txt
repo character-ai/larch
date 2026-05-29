@@ -1,0 +1,136 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -13,8 +13,8 @@
+ - The just-installed target is always retained. The currently-running version is retained only if it is among the 8 newest-installed (matches "fewer than 8 releases since my job started → my version survives"; a "release" = a new distinct version dir, since re-installing the same stable is idempotent and creates no new dir).
+ - The 7-day window applies to `/cleanup` session dirs **only** — it never deletes a top-8 version dir.
+ - Remove the entire active-protection apparatus: `collect_active_session_versions`, session-scan/fallback-root pins, `KEEP_LIMIT` eviction loop, Stage A (delete-newer-than-stable), and the `lib-larch-cache-touch.sh` mtime touch.
+-- Rename `.larch-keepalive` → slim `.larch-session` (`CLONE_PATH`, `SESSION_ID`); repoint the single reader (`lib-resolve-implement-tmpdir.sh`). `current-design-env-*.sh` stays untouched.
++- Keep the existing `.larch-keepalive` filename for compatibility, but slim and reframe it as a session identity record (`CLONE_PATH`, `SESSION_ID`) rather than a cleanup protection marker. `current-design-env-*.sh` stays untouched.
+ 
+ ## Approach
+ 
+@@ -22,10 +22,10 @@
+ 1. After a verified stable install, write `$LARCH_CACHE_DIR/$ACTUAL_VERSION/.larch-installed-at` containing `date +%s` (epoch seconds). Best-effort; a write failure logs a warning but does not abort. If the already-latest path would otherwise exit before reinstalling, still route through the same prune function first; stamp `$ACTUAL_VERSION` if possible and prune the cache without reinstalling.
+-2. Replace `list_cached_versions_by_mtime` with `list_cached_versions_by_install_stamp`: for each version dir, key = install-stamp epoch if the stamp file is present and numeric, else dir mtime (reuse the existing dual-`stat` `stat_mtime` helper), else `0`. Sort by key **descending** (version-string tiebreak), newest first.
++2. Replace `list_cached_versions_by_mtime` with `list_cached_versions_by_install_stamp`: for each version dir, key = `(stamp_present, timestamp, version)`, where `stamp_present=1` only when `.larch-installed-at` exists and is numeric; `timestamp` is the stamp epoch for stamped dirs, else dir mtime via the existing dual-`stat` `stat_mtime` helper, else `0`. Sort stamped dirs before un-stamped fallback dirs, then timestamp **descending**, then version-string tiebreak. This prevents old un-stamped dirs with touched mtimes from outranking real installed-at records.
+ 3. New prune body: build the retained set by seeding `$ACTUAL_VERSION` first, then add newest entries from `list_cached_versions_by_install_stamp` until the set size is exactly `KEEP_VERSIONS=8` or the cache is exhausted; `rm -rf` the rest. This preserves the hard max of 8 while retaining the just-installed/already-current target even if the stamp write failed or fallback ordering would put it outside the first 8.
+ 4. Delete now-unused helpers: `collect_active_session_versions`, `warn_preserved_active_version_once`, the `WARNED_ACTIVE_SESSION_VERSIONS` array, `version_gt`, `sort_versions`, the `LARCH_SESSIONS_DIR` pin usage, and `LARCH_UPGRADE_FALLBACK_SESSION_ROOTS`. Keep `is_safe_version`, `stat_mtime`, `get_stable_releases`, `get_installed_larch_version`, `list_cached_versions_*`.
+ 5. `8` stays a plain constant (`KEEP_VERSIONS=8`); the issue requested an env override only for the age window, not the cap. Do not add a cap env var.
+-6. Keep the prune callable from both the verified-install path and the already-latest path so an over-cap cache is corrected even when no files are downloaded.
++6. Keep the prune callable from both the verified-install path and the already-latest path so an over-cap cache is corrected even when no files are downloaded. In the already-latest branch, bind a concrete target before pruning, e.g. `ACTUAL_VERSION="${CURRENT_INSTALLED_VERSION:-$INSTALLED_VERSION}"`, then best-effort stamp that target and call the shared prune helper.
+ 
+ ### /cleanup (make it runnable any time)
+ 1. Drop the `pgrep -x claude` singleton abort entirely. With age-based reaping, a live or recently-active session has a fresh timestamp and survives, so the abort is unnecessary.
+@@ -33,17 +33,16 @@
+-3. Delete a `~/.cache/larch/sessions/*` directory (and matching `/tmp` glob dirs) when its **newest-activity** timestamp is older than `LARCH_CLEANUP_RETENTION_DAYS` (default 7). Newest-activity = `max(mtime of the dir AND its immediate children)` via the dual-`stat` pattern (APFS does not bump parent-dir mtime on child content edits). Validate the env var as a positive integer; fall back to 7 with a warning on invalid input.
++3. Delete a `~/.cache/larch/sessions/*` directory (and matching `/tmp` glob dirs) when its **newest-activity** timestamp is older than `LARCH_CLEANUP_RETENTION_DAYS` (default 7). Newest-activity = a bounded shallow recursive max over the dir itself and descendants through depth 2, e.g. `find "$entry" -mindepth 0 -maxdepth 2`, using the dual-`stat` pattern (APFS does not bump parent-dir mtime on child content edits). Depth 2 covers common live nested writes under `design-export/`, `larch-logs/`, and `breadcrumbs/` without making cleanup an unbounded tree walk. Validate the env var as a positive integer; fall back to 7 with a warning on invalid input.
+ 4. Reap **dangling** top-level `current-design-env-*.sh` symlinks (`-L` and `! -e`). Leave live symlinks. Leave the `current-design-env` mechanism itself untouched.
+ 5. Preserve the `emit_kv` output contract; keep a count of removed entries. `SESSION_COUNT` may still be emitted for visibility but no longer gates anything.
+ 
+-### Identity record rename
+-1. In `session-setup.sh`, rename `write_keepalive_sentinel` → `write_session_identity`; write `$SESSION_TMPDIR/.larch-session` with a one-line header comment plus exactly `CLONE_PATH=` and `SESSION_ID=` (drop `PID`/`PPID`/`PREFIX`/`CREATED`/`NOTE` — nothing reads them).
+-2. In `lib-resolve-implement-tmpdir.sh`, prefer `$dir/.larch-session` but fall back to `$dir/.larch-keepalive` for in-flight sessions created before this rollout. Refresh the adjacent comments to describe `.larch-session` as the canonical identity record and `.larch-keepalive` as a temporary read-only compatibility fallback. The resolver's `CLONE_PATH`/`SESSION_ID` matching logic and TTL backstop are unchanged.
+-3. `hook-stop-fail-close.sh` and `sessionstart-health.sh` call the resolver function, not the filename — only stale comments need touching. Update test fixtures that write the sentinel directly, and add resolver coverage that an old `.larch-keepalive` still binds during the transition.
++### Identity record slim-down
++1. In `session-setup.sh`, rename `write_keepalive_sentinel` → `write_session_identity`; continue writing `$SESSION_TMPDIR/.larch-keepalive`, but make it a slim identity record with a one-line header comment plus exactly `CLONE_PATH=` and `SESSION_ID=` (drop `PID`/`PPID`/`PREFIX`/`CREATED`/`NOTE` — nothing reads them).
++2. In `lib-resolve-implement-tmpdir.sh`, keep reading `$dir/.larch-keepalive`; update adjacent comments to describe it as the canonical session identity record, not a keepalive/protection marker. The resolver's `CLONE_PATH`/`SESSION_ID` matching logic and TTL backstop are unchanged.
++3. `hook-stop-fail-close.sh` and `sessionstart-health.sh` call the resolver function, not the filename — only stale "keepalive protection" wording needs touching. Update test fixtures that write the record directly; no `.larch-session` transition fallback or mixed-file precedence fixture is needed in this PR because the filename does not change.
+@@ -64,7 +63,10 @@
+ ### UPDATED: `skills/upgrade-larch/scripts/upgrade-larch.md`
+-Rewrite the prune contract (Behavior step 8 + "Active-session prune guard" section): install-stamp ordering, max-8 cap, `$ACTUAL_VERSION` seeded into an 8-entry retained set, no pins, no Stage A, no touch dependency, and already-latest still prunes.
++Rewrite the prune contract (Behavior step 2, Behavior step 8, and the "Active-session prune guard" section): install-stamp ordering with stamped dirs before un-stamped fallback dirs, max-8 cap, `$ACTUAL_VERSION` seeded into an 8-entry retained set, no pins, no Stage A, no touch dependency, and already-latest still best-effort stamps/prunes before exit 0. Remove any promise that the already-latest path has no plugin-state side effects.
++
++### UPDATED: `skills/upgrade-larch/SKILL.md`
++Revise the already-latest step to say no reinstall/restart is needed but cache stamp/prune may still run; replace active-session prune/harness wording with install-stamp keep-8 validation and note that session pins/fallback roots are gone.
+@@ -78,25 +80,25 @@
+ ### UPDATED: `skills/cleanup/SKILL.md`
+-Rewrite NEVER #1 (singleton rationale) and the behavior section to describe age-based, always-runnable cleanup.
++Rewrite frontmatter `description`, the intro paragraph, NEVER #1, Step 1 verification, and the behavior section to describe age-based, always-runnable cleanup. The skill may relay `SESSION_COUNT`, but must not stop merely because `SESSION_COUNT>1` or because the removed singleton guard would have objected.
+ 
+ ### UPDATED: `scripts/session-setup.sh`
+-Rename `write_keepalive_sentinel` → `write_session_identity` writing slim `.larch-session`; remove the `lib-larch-cache-touch.sh` source + call.
++Rename `write_keepalive_sentinel` → `write_session_identity` writing slim `.larch-keepalive`; remove the `lib-larch-cache-touch.sh` source + call.
+ 
+ ### UPDATED: `scripts/session-setup.md`
+-Document `.larch-session` (CLONE_PATH, SESSION_ID); remove the cache-root touch paragraph and its cross-references.
++Document `.larch-keepalive` as an identity record (CLONE_PATH, SESSION_ID), not a cleanup keepalive; remove the cache-root touch paragraph and its cross-references.
+@@ -99,16 +101,16 @@
+ ### UPDATED: `skills/implement/scripts/lib-resolve-implement-tmpdir.sh`
+-Prefer `.larch-session` at the read site, fall back to legacy `.larch-keepalive` for in-flight sessions, and update the adjacent comments.
++Keep the `.larch-keepalive` read site, update adjacent comments to describe the slim identity-record semantics, and remove any implication that the file protects a session from cleanup.
+ 
+ ### UPDATED: `skills/implement/scripts/lib-resolve-implement-tmpdir.md`
+-Update canonical references to `.larch-session` and document the temporary legacy `.larch-keepalive` fallback.
++Update canonical references to describe `.larch-keepalive` as the session identity record and make clear cleanup no longer treats it as a keepalive marker.
+ 
+ ### UPDATED: `skills/implement/scripts/hook-stop-fail-close.sh`
+-Update the stale `.larch-keepalive` comment to `.larch-session` (comment-only; code path unchanged).
++Update stale keepalive/protection wording around `.larch-keepalive` (comment-only; code path unchanged).
+ 
+ ### UPDATED: `SECURITY.md`
+-Update the SessionStart advisory paragraph (`.larch-keepalive` → `.larch-session`); remove the "Plugin-root cache mtime refresh" paragraph (helper deleted); refresh the session-identity trust-model note.
++Update the SessionStart advisory paragraph to describe `.larch-keepalive` as a slim session identity record; remove the "Plugin-root cache mtime refresh" paragraph (helper deleted); refresh the session-identity trust-model note. Replace or delete any upgrade active-session pin contract: upgrade pruning no longer scans session-env files or fallback session roots, and retention is governed by install stamps, stamped-before-unstamped ordering, the seeded target, and the max-8 cap.
+ 
+ ### UPDATED: `skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh`
+-Replace pin/KEEP_LIMIT/Stage-A cases with: keep-8 cap, install-stamp ordering, mtime fallback for un-stamped dirs, always-keep-just-installed, cache <8 keeps all.
++Replace pin/KEEP_LIMIT/Stage-A cases with: keep-8 cap, install-stamp ordering, stamped dirs sort before un-stamped mtime fallback dirs, always-keep-just-installed, target-outside-top-8 exact cap, already-latest target binding/prune, and cache <8 keeps all.
+@@ -123,7 +125,7 @@
+ ### NEW: `skills/cleanup/scripts/test-cleanup.sh`
+-New offline harness for the age-based cleanup: runs with >1 fake process present (no abort), stale dir deleted, fresh dir kept, stale-dir-with-fresh-child kept (newest-activity keying), dangling symlink reaped / live symlink kept.
++New offline harness for the age-based cleanup: runs with >1 fake process present (no abort), stale dir deleted, fresh dir kept, stale-dir-with-fresh-child kept, stale-dir-with-fresh-grandchild under a common nested directory kept (bounded depth-2 newest-activity keying), dangling symlink reaped / live symlink kept, invalid `LARCH_CLEANUP_RETENTION_DAYS` warns and falls back to default-7 behavior.
+@@ -132,7 +134,7 @@
+ ### UPDATED: `scripts/test-sessionstart-health.sh`
+-Change the two canonical fixture writes to `.larch-session`; add or preserve one legacy `.larch-keepalive` fixture to confirm the transition fallback still binds.
++Keep the canonical fixture writes at `.larch-keepalive`; update slim-field expectations and remove any cleanup-protection framing.
+@@ -145,10 +147,10 @@
+ ### UPDATED: `Makefile`
+-Rename the `test-keepalive-sentinel` target → `test-session-identity`; replace `test-keepalive-sentinel` with `test-session-identity` on `test-harnesses-18` and any other shard references; add `test-cleanup` to exactly one `test-harnesses-N` prerequisite list; add both `test-session-identity` and `test-cleanup` to the long `.PHONY` list; keep `test-upgrade-larch-prune` wired.
++Rename the `test-keepalive-sentinel` target → `test-session-identity`; replace `test-keepalive-sentinel` with `test-session-identity` on `test-harnesses-18` and any other shard references; add `test-cleanup` to exactly one `test-harnesses-N` prerequisite list; add both `test-session-identity` and `test-cleanup` to the long `.PHONY` list; keep `test-upgrade-larch-prune` wired.
+ 
+ ### UPDATED: `agent-lint.toml`
+ Replace stale `test-keepalive-sentinel` exclusions/comments with `scripts/test-session-identity.{sh,md}`. Add `skills/cleanup/scripts/test-cleanup.{sh,md}` to the same Makefile-only harness allowlist if reachability lint cannot discover it through runtime references.
+@@ -166,15 +168,15 @@
+ ### UPDATED: `docs/installation-and-setup.md`
+-Replace the old prune paragraph with the install-stamp path, newest-first fallback ordering, max-8 cap, just-installed/already-current retention, no session pins, no Stage A, and no mtime-touch guarantee.
++Replace the old prune paragraph with the install-stamp path, stamped-before-unstamped newest-first fallback ordering, max-8 cap, just-installed/already-current retention, no session pins, no Stage A, and no mtime-touch guarantee.
+ 
+ ## Files to rename (git mv, not new files)
+ 
+-- `scripts/test-keepalive-sentinel.sh` → `scripts/test-session-identity.sh` — update `.larch-keepalive` → `.larch-session` and slim-field assertions (CLONE_PATH, SESSION_ID present; PID/PPID/PREFIX/CREATED absent).
+-- `scripts/test-keepalive-sentinel.md` → `scripts/test-session-identity.md` — update contract.
++- `scripts/test-keepalive-sentinel.sh` → `scripts/test-session-identity.sh` — keep `.larch-keepalive` as the on-disk filename, update semantic naming and slim-field assertions (CLONE_PATH, SESSION_ID present; PID/PPID/PREFIX/CREATED absent).
++- `scripts/test-keepalive-sentinel.md` → `scripts/test-session-identity.md` — update contract.
+@@ -190,8 +192,9 @@
+ - More than 8 all stamped: keep the 8 newest by stamp.
+ - More than 8 where `$ACTUAL_VERSION` would otherwise sort outside the first 8: keep `$ACTUAL_VERSION` plus the newest remaining entries until exactly 8 remain.
+-- Mixed stamped / un-stamped: stamp wins; un-stamped fall back to dir mtime; unreadable timestamp sorts as `0` (least protected).
++- Mixed stamped / un-stamped: stamped dirs sort before all un-stamped fallback dirs; un-stamped dirs then fall back to dir mtime; unreadable timestamp sorts as `0` (least protected within its stamped/un-stamped group).
+ - Just-installed stamp write fails: still retained via the explicit seeded-`$ACTUAL_VERSION` invariant, without increasing retained count above 8.
+-- Already-latest install path with cache over cap: no reinstall, but prune still runs and leaves at most 8 dirs.
++- Already-latest install path with cache over cap: no reinstall, but the branch first binds `ACTUAL_VERSION` from the installed/current version, best-effort stamps it, then prunes and leaves at most 8 dirs.
+ - `/cleanup` active session: a freshly-written child file keeps newest-activity inside the window → dir kept.
+ - `/cleanup` APFS dir whose own mtime is stale but a child was just edited: kept (max-of-children keying).
++- `/cleanup` nested live write under a depth-1 child directory: kept through the bounded depth-2 newest-activity scan.
+ - `/cleanup` dangling `current-design-env-*.sh` symlink reaped; live symlink kept.
+ - `/cleanup` with multiple `claude` processes: runs normally (abort removed).
+@@ -200,7 +203,7 @@
+ 
+ ## Failure modes
+ 
+-1. **Identity-record rename desync.** If the writer (`session-setup.sh`) and reader (`lib-resolve-implement-tmpdir.sh`) are not changed together, `/implement` Stop/SessionStart hooks stop binding and lose halt protection. Earliest signal: resolver / sessionstart-health harness failures. Mitigation: change writer + reader + all sentinel-writing test fixtures in the same PR; run the resolver harness; keep a read-only `.larch-keepalive` fallback for pre-rollout in-flight sessions.
++1. **Identity-record semantic desync.** If the writer (`session-setup.sh`) drops fields the reader (`lib-resolve-implement-tmpdir.sh`) still expects, `/implement` Stop/SessionStart hooks stop binding and lose halt protection. Earliest signal: resolver / sessionstart-health harness failures. Mitigation: keep the `.larch-keepalive` filename unchanged, change writer + comments + all direct-writing test fixtures in the same PR, and run the resolver/sessionstart-health harnesses.
+@@ -210,12 +213,12 @@
+ ## Testing strategy
+ 
+-- Rewrite `test-upgrade-larch-prune.sh` for the cases in Edge cases (cap, stamp order, fallback, already-latest prune, target-outside-top-8 exact cap, always-keep-just-installed) and assert the removed helpers/pins no longer run.
++- Rewrite `test-upgrade-larch-prune.sh` for the cases in Edge cases (cap, stamp order, stamped-before-unstamped fallback, already-latest prune with concrete target, target-outside-top-8 exact cap, always-keep-just-installed) and assert the removed helpers/pins no longer run.
+ - Rewrite `test-upgrade-larch.sh` stale Stage-A/sanitize prune cases or delete them if `test-upgrade-larch-prune.sh` now owns that coverage.
+-- Add `test-cleanup.sh` for the age-based behavior (singleton-drop, stale-vs-fresh, newest-activity child keying, dangling-symlink reap).
+-- Update `test-session-identity.sh` (renamed) for `.larch-session` + slim fields; update `test-sessionstart-health.sh` fixtures including legacy fallback; drop the touch-lib copy in `skills/implement/scripts/test-implement-bootstrap.sh`; remove touch assertions from `scripts/test-session-env-roundtrip.sh`.
++- Add `test-cleanup.sh` for the age-based behavior (singleton-drop, stale-vs-fresh, newest-activity child and grandchild keying, dangling-symlink reap, invalid retention fallback warning).
++- Update `test-session-identity.sh` (renamed) for `.larch-keepalive` slim fields; update `test-sessionstart-health.sh` fixtures; drop the touch-lib copy in `skills/implement/scripts/test-implement-bootstrap.sh`; remove touch assertions from `scripts/test-session-env-roundtrip.sh`.
+ - Run `make lint` (bash32 portability, foreground-markers, script-md-siblings, bare-grep-probe) plus the renamed/added Makefile test targets.
+ - Preserve Bash 3.2 portability and the `lib-quiet.sh` FD-3 contract in every touched script.
+ 
+-diff_lines: 1120
++diff_lines: 1196

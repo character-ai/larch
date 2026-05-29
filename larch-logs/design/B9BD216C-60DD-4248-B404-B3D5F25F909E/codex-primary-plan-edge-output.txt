@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/upgrade-larch/scripts/upgrade-larch.sh:281-358	Proposed prune can count a missing ACTUAL_VERSION directory against the 8-entry retention budget	If install verification reports the target version but the cache directory is absent, seeding ACTUAL_VERSION before filling the retained set can leave only 7 real cached dirs after pruning, deleting one extra rollback candidate	Only count ACTUAL_VERSION toward KEEP_VERSIONS when $LARCH_CACHE_DIR/$ACTUAL_VERSION is an existing cached dir; otherwise fill from real cached entries up to 8 and add an absent-target regression case
+
+1. **correctness** — `skills/upgrade-larch/scripts/upgrade-larch.sh:281-358`
+
+The plan says to seed `$ACTUAL_VERSION` first, then add newest entries until the retained set reaches `KEEP_VERSIONS=8`. That is correct only when `$LARCH_CACHE_DIR/$ACTUAL_VERSION` exists.
+
+The existing harness already acknowledges a verified install can lack a cache dir. In that case, the proposed retained-set size includes a nonexistent directory and can prune one extra real cached version. Revise the prune helper so absent `$ACTUAL_VERSION` does not consume one of the 8 slots; add a test for verified/already-latest target absent with 8+ real cached dirs.

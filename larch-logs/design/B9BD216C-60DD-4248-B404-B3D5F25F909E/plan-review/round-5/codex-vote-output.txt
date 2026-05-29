@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan says retained set and fill to size 8, so a duplicate target does not produce nine retained dirs
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan-review revise files are within the proposed maxdepth-5 scan from the session root
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the env var adds surface area, but the recorded user resolution made the 7-day cleanup window env-overridable
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- the recorded user resolution explicitly changed /upgrade-larch to a hard max-8 cache, not a floor plus age window
