@@ -22,52 +22,19 @@ warn_prune_failure() {
     larch_err "Warning: failed to prune cached larch version '${version}'."
 }
 
-warn_preserved_active_version_once() {
+warn_install_stamp_failure() {
     local version="$1"
-    local warned_version
-
-    if [ "${#WARNED_ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
-        for warned_version in "${WARNED_ACTIVE_SESSION_VERSIONS[@]}"; do
-            if [ "$warned_version" = "$version" ]; then
-                return 0
-            fi
-        done
-    fi
-
-    larch_err "Warning: preserving cached larch version '${version}' because an active session, stale session metadata, or the executing cached plugin root still references it."
-    WARNED_ACTIVE_SESSION_VERSIONS+=("$version")
+    larch_err "Warning: failed to write install stamp for cached larch version '${version}'."
 }
 
 is_safe_version() {
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]
 }
 
-version_gt() {
-    local left="$1"
-    local right="$2"
-    local highest
-
-    highest=$(printf '%s\n%s\n' "$left" "$right" | sort_versions | tail -n1)
-    [[ "$left" != "$right" && "$highest" = "$left" ]]
-}
-
 get_stable_releases() {
     gh api --paginate repos/character-ai/larch/releases \
       --jq '.[] | select(.prerelease == false and .draft == false) | .tag_name' \
       | sed 's/^v//'
-}
-
-sort_versions() {
-    awk -F. '
-        NF {
-            key = ""
-            for (i = 1; i <= 8; i++) {
-                part = (i <= NF && $i ~ /^[0-9]+$/) ? $i : 0
-                key = key sprintf("%09d.", part)
-            }
-            print key "\t" $0
-        }
-    ' | sort | cut -f2-
 }
 
 get_installed_larch_version() {
@@ -115,10 +82,36 @@ stat_mtime() {
     return 0
 }
 
-list_cached_versions_by_mtime() {
+read_install_stamp() {
+    local version_dir="$1"
+    local stamp_file="$version_dir/.larch-installed-at"
+    local stamp
+
+    [ -f "$stamp_file" ] || return 1
+    stamp=$(tr -d '\r\n' < "$stamp_file" 2>/dev/null || true)
+    [[ "$stamp" =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' "$stamp"
+}
+
+write_install_stamp() {
+    local version="$1"
+    local version_dir="$LARCH_CACHE_DIR/$version"
+    local now
+
+    [ -d "$version_dir" ] || return 0
+    now=$(date +%s 2>/dev/null || true)
+    [[ "$now" =~ ^[0-9]+$ ]] || {
+        warn_install_stamp_failure "$version"
+        return 0
+    }
+    if ! printf '%s\n' "$now" > "$version_dir/.larch-installed-at"; then
+        warn_install_stamp_failure "$version"
+    fi
+}
+
+list_cached_versions_by_install_stamp() {
     local dirs=()
-    local dir
-    local mt
+    local dir version_dir version has_stamp ts
 
     shopt -s nullglob
     dirs=("$LARCH_CACHE_DIR"/[0-9]*/)
@@ -126,67 +119,83 @@ list_cached_versions_by_mtime() {
 
     for dir in "${dirs[@]}"; do
         [ -d "$dir" ] || continue
-        mt=$(stat_mtime "${dir%/}")
-        printf '%s\t%s\n' "$mt" "$(basename "${dir%/}")"
-    done | sort -k1,1n -k2,2 | cut -f2-
+        version_dir="${dir%/}"
+        version=$(basename "$version_dir")
+        is_safe_version "$version" || continue
+
+        if read_install_stamp "$version_dir" >/dev/null 2>&1; then
+            has_stamp=1
+            ts=$(read_install_stamp "$version_dir")
+        else
+            has_stamp=0
+            ts=$(stat_mtime "$version_dir")
+        fi
+        printf '%s\t%s\t%s\n' "$has_stamp" "$ts" "$version"
+    done | sort -t $'\t' -k1,1rn -k2,2rn -k3,3rn | cut -f3-
 }
 
-collect_active_session_versions() {
-    local env_files=()
-    local env_file plugin_root version session_root fallback_session_dir
-    local fallback_roots_spec fallback_roots=()
+version_is_retained() {
+    local needle="$1"
+    local retained="$2"
+    local version
 
-    if [ -d "$LARCH_SESSIONS_DIR" ]; then
-        shopt -s nullglob
-        env_files+=("$LARCH_SESSIONS_DIR"/*/session-env.sh)
-        shopt -u nullglob
+    for version in $retained; do
+        [ "$version" = "$needle" ] && return 0
+    done
+    return 1
+}
+
+prune_cached_versions() {
+    local target_version="$1"
+    local keep_versions=8
+    local retained="" version version_dir removed=0
+
+    larch_err "Pruning old larch versions (keeping up to ${keep_versions} most-recently-installed)..."
+
+    if [ -n "$target_version" ] && is_safe_version "$target_version" && [ -d "$LARCH_CACHE_DIR/$target_version" ]; then
+        retained="$target_version"
     fi
 
-    fallback_roots_spec="${LARCH_UPGRADE_FALLBACK_SESSION_ROOTS:-/tmp:/private/tmp}"
-    IFS=: read -r -a fallback_roots <<< "$fallback_roots_spec"
-
-    for session_root in "${fallback_roots[@]}"; do
-        [ -n "$session_root" ] || continue
-        [ -d "$session_root" ] || continue
-
-        shopt -s nullglob
-        for fallback_session_dir in "$session_root"/claude-*; do
-            [ -d "$fallback_session_dir" ] || continue
-            [ -O "$fallback_session_dir" ] || continue
-            env_files+=("$fallback_session_dir"/session-env.sh)
-        done
-        shopt -u nullglob
-    done
-
-    [ "${#env_files[@]}" -gt 0 ] || return 0
-
-    for env_file in "${env_files[@]}"; do
-        [ -f "$env_file" ] || continue
-        [ -O "$env_file" ] || continue
-        plugin_root=$(awk '
-            BEGIN { p = "LARCH_CLAUDE_PLUGIN_ROOT=" }
-            index($0, p) == 1 {
-                print substr($0, length(p) + 1)
-                exit
-            }
-        ' "$env_file" 2>/dev/null || true)
-        [ -n "$plugin_root" ] || continue
-        plugin_root=$(printf '%s' "$plugin_root" | tr -d '\r' | sed 's/[[:space:]]*$//')
-        [ -n "$plugin_root" ] || continue
-
-        version=$(basename "$plugin_root")
-        if is_safe_version "$version"; then
-            printf '%s\n' "$version"
+    while IFS= read -r version; do
+        [ -n "$version" ] || continue
+        if version_is_retained "$version" "$retained"; then
+            continue
         fi
-    done | sort_versions | awk '!seen[$0]++'
+        retained="${retained:+$retained }$version"
+        if [ "$(printf '%s\n' "$retained" | wc -w | tr -d ' ')" -ge "$keep_versions" ]; then
+            break
+        fi
+    done < <(list_cached_versions_by_install_stamp)
+
+    if [ -z "$retained" ]; then
+        larch_err "  No cached versions to prune."
+        return 0
+    fi
+
+    shopt -s nullglob
+    for version_dir in "$LARCH_CACHE_DIR"/[0-9]*/; do
+        [ -d "$version_dir" ] || continue
+        version=$(basename "${version_dir%/}")
+        is_safe_version "$version" || continue
+        if version_is_retained "$version" "$retained"; then
+            continue
+        fi
+        larch_err "  Removing old version: $version"
+        if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
+            warn_prune_failure "$version"
+            continue
+        fi
+        removed=$((removed + 1))
+    done
+    shopt -u nullglob
+
+    if [ "$removed" -eq 0 ]; then
+        larch_err "  No old versions to prune."
+    fi
 }
 
 # Parent directory that contains one subdirectory per installed larch version.
 LARCH_CACHE_DIR="$(dirname "$PLUGIN_ROOT")"
-# Parent directory that contains larch session temp dirs with session-env.sh.
-LARCH_SESSIONS_DIR="${LARCH_SESSIONS_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions}"
-# Colon-separated override for fallback session roots used by the prune guard.
-LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="${LARCH_UPGRADE_FALLBACK_SESSION_ROOTS:-/tmp:/private/tmp}"
 # Version string of the currently running larch installation (basename of PLUGIN_ROOT).
 INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 
@@ -227,12 +236,15 @@ if command -v gh >/dev/null 2>&1; then
     rm -f -- "$GH_STDERR_LOG"
 fi
 
-# Idempotency: skip the upgrade if the installed version already matches the latest stable.
+# Idempotency: on already-latest, stamp and prune without reinstalling.
 CURRENT_INSTALLED_VERSION=$(get_installed_larch_version || true)
 if ! is_safe_version "${CURRENT_INSTALLED_VERSION:-}"; then
     CURRENT_INSTALLED_VERSION="$INSTALLED_VERSION"
 fi
 if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
+    ACTUAL_VERSION="${CURRENT_INSTALLED_VERSION:-$INSTALLED_VERSION}"
+    write_install_stamp "$ACTUAL_VERSION"
+    prune_cached_versions "$ACTUAL_VERSION"
     larch_err ""
     larch_err "Already at latest stable larch release (${CURRENT_INSTALLED_VERSION}). No upgrade needed."
     exit 0
@@ -275,111 +287,9 @@ if [ -n "$LATEST_STABLE" ]; then
 fi
 
 # Prune old versions only after a verified stable install.
-# Always drop cached versions newer than the verified stable release, then keep
-# at most 8 cached versions total by mtime while preserving the verified stable
-# dir.
 if [ "$VERIFIED_TARGET" = true ]; then
-    larch_err "Pruning old larch versions (keeping up to 8, excluding versions newer than verified stable)..."
-    CACHED_VERSIONS=()
-    while IFS= read -r version; do
-        [ -n "$version" ] || continue
-        CACHED_VERSIONS+=("$version")
-    done < <(list_cached_versions_by_mtime)
-    SANITIZED_VERSIONS=()
-    KEEP_LIMIT=8
-
-    SESSION_PLUGIN_VERSIONS=()
-    while IFS= read -r version; do
-        [ -n "$version" ] || continue
-        SESSION_PLUGIN_VERSIONS+=("$version")
-    done < <(collect_active_session_versions)
-    ACTIVE_SESSION_VERSIONS=()
-    if [ "${#SESSION_PLUGIN_VERSIONS[@]}" -gt 0 ]; then
-        ACTIVE_SESSION_VERSIONS=("${SESSION_PLUGIN_VERSIONS[@]}")
-    fi
-    if is_safe_version "$INSTALLED_VERSION"; then
-        ACTIVE_SESSION_VERSIONS+=("$INSTALLED_VERSION")
-    fi
-    WARNED_ACTIVE_SESSION_VERSIONS=()
-    if [ "${#SESSION_PLUGIN_VERSIONS[@]}" -gt 0 ]; then
-        for session_pin in "${SESSION_PLUGIN_VERSIONS[@]}"; do
-            warn_preserved_active_version_once "$session_pin"
-        done
-    fi
-
-    for version in "${CACHED_VERSIONS[@]}"; do
-        if version_gt "$version" "$LATEST_STABLE"; then
-            if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
-                for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
-                    if [ "$version" = "$active_version" ]; then
-                        larch_err "Warning: preserving cached larch version '${version}' because an active session is using it."
-                        SANITIZED_VERSIONS+=("$version")
-                        continue 2
-                    fi
-                done
-            fi
-            larch_err "  Removing version newer than verified stable: $version"
-            if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
-                warn_prune_failure "$version"
-                SANITIZED_VERSIONS+=("$version")
-            fi
-            continue
-        fi
-        SANITIZED_VERSIONS+=("$version")
-    done
-
-    VERSION_COUNT="${#SANITIZED_VERSIONS[@]}"
-    if [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]; then
-        PRUNE_FAILED_VERSIONS=()
-        while [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]; do
-            REMOVED_VERSION=false
-            for version in "${SANITIZED_VERSIONS[@]}"; do
-                if [ "$version" = "$LATEST_STABLE" ]; then
-                    continue
-                fi
-                if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
-                    for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
-                        if [ "$version" = "$active_version" ]; then
-                            warn_preserved_active_version_once "$version"
-                            continue 2
-                        fi
-                    done
-                fi
-                if [ "${#PRUNE_FAILED_VERSIONS[@]}" -gt 0 ]; then
-                    for failed_version in "${PRUNE_FAILED_VERSIONS[@]}"; do
-                        if [ "$version" = "$failed_version" ]; then
-                            continue 2
-                        fi
-                    done
-                fi
-                larch_err "  Removing old version: $version"
-                if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
-                    warn_prune_failure "$version"
-                    PRUNE_FAILED_VERSIONS+=("$version")
-                    continue
-                fi
-                UPDATED_VERSIONS=()
-                for retained_version in "${SANITIZED_VERSIONS[@]}"; do
-                    if [ "$retained_version" != "$version" ]; then
-                        UPDATED_VERSIONS+=("$retained_version")
-                    fi
-                done
-                SANITIZED_VERSIONS=("${UPDATED_VERSIONS[@]}")
-                VERSION_COUNT=$((VERSION_COUNT - 1))
-                REMOVED_VERSION=true
-                break
-            done
-            if [ "$REMOVED_VERSION" = false ]; then
-                break
-            fi
-        done
-        if [ "${#SANITIZED_VERSIONS[@]}" -gt "$KEEP_LIMIT" ]; then
-            larch_err "Warning: cache cap (${KEEP_LIMIT}) exceeded — ${#SANITIZED_VERSIONS[@]} versions remain; pinned entries or prune failures blocked full trim."
-        fi
-    else
-        larch_err "  No old versions to prune."
-    fi
-
+    write_install_stamp "$ACTUAL_VERSION"
+    prune_cached_versions "$ACTUAL_VERSION"
 else
     larch_err "Skipping prune because the expected stable version was not verified."
 fi

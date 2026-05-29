@@ -266,6 +266,10 @@ Step duration threshold (in seconds) used by `scripts/timing-report.sh --full` t
 
 When set to `true`, `/implement` Step 17 prints the full per-step token/timing table to chat (the same output as before v25). When unset or set to any other value (the default), Step 17 prints a single grand-total summary line (`Total: claude=N tokens ...; vendor=N` / `Total: elapsed=HH:MM:SS ...`) instead. The full breakdown is always written to the committed `token-report` and `timing-report` larch-log batches regardless of this setting.
 
+### `LARCH_CLEANUP_RETENTION_DAYS`
+
+Retention window for `/cleanup` age-based session directory pruning. Default: `7` (positive integer days). `/cleanup` removes entries under `~/.cache/larch/sessions/` and matching `/tmp` larch patterns when newest activity (entry mtime or any descendant within depth 5) is older than the cutoff. Non-numeric or non-positive explicit values warn on stderr and fall back to `7`. See `skills/cleanup/scripts/cleanup.md` for the script contract.
+
 ### `LARCH_BUMP_FILES`
 
 Colon-separated list of bump files that `scripts/drop-bump-commit.sh` Guard 4 accepts as the allowed non-changelog file set. Uses **replacement semantics**: when set, this list replaces the built-in default (`.claude-plugin/plugin.json`) — it is NOT additive. `CHANGELOG.md` is allowed alongside bump files regardless of this setting (never required, always optional). The `--allow-changelog-only` flag is independent: it gates the special case where a bump-subject commit touches exactly `CHANGELOG.md`.

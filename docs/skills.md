@@ -44,7 +44,7 @@ Express a native GitHub blocked-by relationship between two issues using the `ad
 
 **Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
 
-Remove leftover larch session temp directories from `~/.cache/larch/sessions/` and `/tmp`. Checks for active sessions (`.larch-keepalive`) before deleting cache dirs, and aborts entirely if more than one `claude` process is detected. Reports counts removed from each location.
+Remove stale larch session temp directories from `~/.cache/larch/sessions/` and `/tmp` by age (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Activity is measured through depth 5 under each entry. Reaps dangling `current-design-env-*.sh` symlinks. Always runnable — reports `SESSION_COUNT` for visibility but does not abort when multiple Claude sessions are active.
 
 ## `/design`
 

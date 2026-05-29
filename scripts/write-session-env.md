@@ -25,12 +25,6 @@ the writer's environment. `/implement` uses this durable key so later Bash
 blocks can recover `${CLAUDE_PLUGIN_ROOT}` from `$IMPLEMENT_TMPDIR/session-env.sh`
 without sourcing the file.
 
-When `CLAUDE_PLUGIN_ROOT` is set and validates, the script also invokes
-`larch_touch_executing_cache_root` from `scripts/lib-larch-cache-touch.sh`
-best-effort so the corresponding larch cache directory's mtime reflects recent
-session use. This is consumed by
-`skills/upgrade-larch/scripts/upgrade-larch.sh`'s mtime-based prune.
-
 It may also write `LARCH_DYNAMIC_ARCHETYPES_MAX` when the caller passes
 `--dynamic-archetypes <N>` (integer 0–8). `/implement` uses this to propagate
 `--dynamic-archetypes`/`--no-dynamic-archetypes` operator flags to
@@ -48,4 +42,4 @@ Values must stay narrow and caller-controlled (`true|false` for presence boolean
 
 ## Edit-in-sync
 
-Update `scripts/session-setup.sh`, `skills/shared/subskill-invocation.md`, and every producer/consumer skill when adding session-env keys. Update `skills/upgrade-larch/scripts/upgrade-larch.sh` and `scripts/lib-larch-cache-touch.sh` when changing cache-root touch semantics.
+Update `scripts/session-setup.sh`, `skills/shared/subskill-invocation.md`, and every producer/consumer skill when adding session-env keys.

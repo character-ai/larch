@@ -108,13 +108,6 @@ if [[ -z "$PREFIX" ]]; then
     exit 4
 fi
 
-# Refresh the executing larch cache-directory mtime so /upgrade-larch's
-# mtime-based prune treats currently-used versions as recently touched.
-# Best-effort; helper silently no-ops on non-numeric paths.
-# shellcheck source=scripts/lib-larch-cache-touch.sh
-source "$SCRIPT_DIR/lib-larch-cache-touch.sh"
-larch_touch_executing_cache_root --path "${CLAUDE_PLUGIN_ROOT:-}"
-
 # --- Read caller-env file (if provided and exists) ---
 # Parse line-by-line; do NOT source. Only recognized keys with non-empty values are used.
 CALLER_REPO=""
@@ -252,21 +245,14 @@ make_session_id() {
     fi
 }
 
-write_keepalive_sentinel() {
+write_session_identity() {
     local sentinel="$SESSION_TMPDIR/.larch-keepalive"
-    local created
-    created=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "?")
     if ! {
-        printf 'larch session keepalive\n'
-        printf 'PID=%s\n' "$$"
-        printf 'PPID=%s\n' "$PPID"
+        printf '# larch session identity (hook routing)\n'
         printf 'CLONE_PATH=%s\n' "$PWD"
         printf 'SESSION_ID=%s\n' "$SESSION_ID"
-        printf 'PREFIX=%s\n' "$PREFIX"
-        printf 'CREATED=%s\n' "$created"
-        printf 'NOTE=ext-cleaners-please-skip\n'
     } > "$sentinel"; then
-        larch_errf 'session-setup.sh: warning: failed to write keepalive sentinel: %s\n' "$sentinel"
+        larch_errf 'session-setup.sh: warning: failed to write session identity: %s\n' "$sentinel"
     fi
 }
 
@@ -285,7 +271,7 @@ else
 fi
 SESSION_ID=$(make_session_id)
 printf '%s\n' "$SESSION_ID" > "$SESSION_TMPDIR/session-id"
-write_keepalive_sentinel
+write_session_identity
 emit_kv SESSION_TMPDIR "$SESSION_TMPDIR"
 emit_kv SESSION_ID "$SESSION_ID"
 emit_kv LARCH_RENDER_CACHE_DIR "$SESSION_TMPDIR/render-cache"

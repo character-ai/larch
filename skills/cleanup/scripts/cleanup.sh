@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# cleanup.sh — Remove leftover larch session temp directories.
+# cleanup.sh — Remove stale larch session temp directories by age.
 #
 # Outputs (KEY=value on stdout):
-#   SESSION_COUNT=<N>      Number of running claude processes detected.
+#   SESSION_COUNT=<N>      Number of running claude processes detected (informational).
 #   CACHE_REMOVED=<N>      Entries removed from ~/.cache/larch/sessions/.
 #   TMP_REMOVED=<N>        Entries removed from /tmp matching larch patterns.
-#
-# Exits non-zero when multiple Claude sessions are detected (no cleanup performed).
+#   SYMLINKS_REMOVED=<N>   Dangling current-design-env-*.sh symlinks removed.
 
 set -euo pipefail
 
@@ -16,34 +15,75 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-# --- Singleton guard -----------------------------------------------------------
-# Count running 'claude' processes. pgrep -x matches the exact binary name.
+stat_mtime() {
+    local file="$1"
+    local mt
+
+    if mt=$(stat -c '%Y' -- "$file" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$mt"
+        return 0
+    fi
+    if mt=$(stat -f '%m' -- "$file" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$mt"
+        return 0
+    fi
+    printf '0\n'
+    return 0
+}
+
+newest_activity_mtime() {
+    local entry="$1"
+    local newest path mt
+
+    newest=$(stat_mtime "$entry")
+    while IFS= read -r path; do
+        [ -n "$path" ] || continue
+        mt=$(stat_mtime "$path")
+        if [ "$mt" -gt "$newest" ]; then
+            newest="$mt"
+        fi
+    done < <(find "$entry" -mindepth 1 -maxdepth 5 2>/dev/null || true)
+    printf '%s\n' "$newest"
+}
+
+parse_retention_days() {
+    local raw="${LARCH_CLEANUP_RETENTION_DAYS:-7}"
+    if [[ "$raw" =~ ^[1-9][0-9]*$ ]]; then
+        printf '%s\n' "$raw"
+        return 0
+    fi
+    larch_err "Warning: invalid LARCH_CLEANUP_RETENTION_DAYS='${raw}'; using 7."
+    printf '7\n'
+}
+
+RETENTION_DAYS=$(parse_retention_days)
+NOW=$(date +%s 2>/dev/null || printf '0\n')
+CUTOFF=$((NOW - RETENTION_DAYS * 86400))
+
+# --- Session count (informational only) ---------------------------------------
 SESSION_COUNT=0
 SESSION_COUNT=$(pgrep -x claude 2>/dev/null | wc -l | tr -d ' ') || SESSION_COUNT=0
-
 emit_kv SESSION_COUNT "$SESSION_COUNT"
 
-if [[ "$SESSION_COUNT" -gt 1 ]]; then
-    larch_err "**⚠ cleanup: $SESSION_COUNT Claude sessions detected. Aborting to protect active session state.**"
-    PIDS=$(pgrep -x claude 2>/dev/null | tr '\n' ' ' || true)
-    larch_err "  Active PIDs: $PIDS"
-    exit 1
-fi
+should_remove_by_age() {
+    local entry="$1"
+    local newest
+
+    newest=$(newest_activity_mtime "$entry")
+    [ "$newest" -lt "$CUTOFF" ]
+}
 
 # --- Clean ~/.cache/larch/sessions/ -------------------------------------------
-# Skip dirs with a .larch-keepalive file to protect any active session
-# (applies even when SESSION_COUNT == 1, i.e. only this Claude is running).
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions"
 CACHE_REMOVED=0
 
 if [[ -d "$CACHE_DIR" ]]; then
     while IFS= read -r -d $'\0' entry; do
         [[ -d "$entry" ]] || continue
-        if [[ -f "$entry/.larch-keepalive" ]]; then
-            continue  # skip active session
+        if should_remove_by_age "$entry"; then
+            rm -rf "$entry"
+            (( CACHE_REMOVED++ )) || true
         fi
-        rm -rf "$entry"
-        (( CACHE_REMOVED++ )) || true
     done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 -print0 2>/dev/null) || true
 fi
 
@@ -55,7 +95,7 @@ TMP_PATTERNS=(
     "claude-implement-*"
     "claude-fix-issue-*"
     "claude-review-*"
-    "claudin-review-*"   # historical typo prefix from early larch sessions
+    "claudin-review-*"
     "claude-issue-test"
     "wait-reviewers-*"
     "test-health-empty-caller-env-*"
@@ -74,21 +114,35 @@ TMP_PATTERNS=(
 )
 
 for pattern in "${TMP_PATTERNS[@]}"; do
-    # Guard against non-matching glob: skip if entry does not exist.
     for entry in /tmp/${pattern}; do
         [[ -e "$entry" || -L "$entry" ]] || continue
-        # session-setup.sh falls back to /tmp when ~/.cache is unwritable;
-        # the same .larch-keepalive sentinel applies here.
-        [[ -d "$entry" && -f "$entry/.larch-keepalive" ]] && continue
-        rm -rf "$entry"
-        (( TMP_REMOVED++ )) || true
+        [[ -d "$entry" ]] || continue
+        if should_remove_by_age "$entry"; then
+            rm -rf "$entry"
+            (( TMP_REMOVED++ )) || true
+        fi
     done
 done
 
 emit_kv TMP_REMOVED "$TMP_REMOVED"
+
+# --- Reap dangling current-design-env-*.sh symlinks ---------------------------
+SYMLINKS_REMOVED=0
+SESSIONS_PARENT="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions"
+if [[ -d "$SESSIONS_PARENT" ]]; then
+    while IFS= read -r -d $'\0' link; do
+        [[ -L "$link" ]] || continue
+        [[ -e "$link" ]] && continue
+        rm -f "$link"
+        (( SYMLINKS_REMOVED++ )) || true
+    done < <(find "$SESSIONS_PARENT" -maxdepth 1 -name 'current-design-env-*.sh' -type l -print0 2>/dev/null) || true
+fi
+
+emit_kv SYMLINKS_REMOVED "$SYMLINKS_REMOVED"
 
 # --- Summary ------------------------------------------------------------------
 larch_err ""
 larch_err "Cleanup complete:"
 larch_err "  ~/.cache/larch/sessions/: $CACHE_REMOVED entries removed"
 larch_err "  /tmp (larch patterns):    $TMP_REMOVED entries removed"
+larch_err "  dangling design-env links: $SYMLINKS_REMOVED removed"

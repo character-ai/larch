@@ -144,12 +144,6 @@ if [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]]; then
   fi
 fi
 
-# Refresh executing larch cache-directory mtime after validation. Best-effort;
-# helper silently no-ops on non-numeric paths or missing directories.
-# shellcheck source=scripts/lib-larch-cache-touch.sh
-source "$SCRIPT_DIR/lib-larch-cache-touch.sh"
-larch_touch_executing_cache_root --path "$CLAUDE_PLUGIN_ROOT_VALUE"
-
 if [[ -n "$DYNAMIC_ARCHETYPES_MAX_ARG" ]]; then
   case "$DYNAMIC_ARCHETYPES_MAX_ARG" in
     [0-8]) ;;

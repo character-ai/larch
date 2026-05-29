@@ -56,14 +56,16 @@ else
 fi
 
 SENTINEL=$(cat "$SESSION_TMPDIR/.larch-keepalive")
-assert_contains "larch session keepalive" "$SENTINEL" "sentinel header present"
-assert_contains "PID=" "$SENTINEL" "sentinel records PID"
-assert_contains "PPID=" "$SENTINEL" "sentinel records PPID"
-assert_contains "CLONE_PATH=$REPO_ROOT" "$SENTINEL" "sentinel records clone path"
-assert_contains "SESSION_ID=$SESSION_ID" "$SENTINEL" "sentinel records session id"
-assert_contains "PREFIX=claude-implement" "$SENTINEL" "sentinel records prefix"
-assert_contains "CREATED=" "$SENTINEL" "sentinel records creation time"
-assert_contains "NOTE=ext-cleaners-please-skip" "$SENTINEL" "sentinel records cleaner hint"
+assert_contains "# larch session identity (hook routing)" "$SENTINEL" "identity header present"
+assert_contains "CLONE_PATH=$REPO_ROOT" "$SENTINEL" "identity records clone path"
+assert_contains "SESSION_ID=$SESSION_ID" "$SENTINEL" "identity records session id"
+if printf '%s' "$SENTINEL" | grep -qE '^(PID|PPID|PREFIX|CREATED|NOTE)='; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: legacy keepalive fields must be absent"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: legacy keepalive fields absent"
+fi
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

@@ -121,6 +121,11 @@ EOF
     chmod +x "$path"
 }
 
+write_install_stamp() {
+    local cache_root="$1" version="$2" epoch="$3"
+    printf '%s\n' "$epoch" > "$cache_root/$version/.larch-installed-at"
+}
+
 write_stub_rm() {
     local path="$1"
     cat > "$path" <<'EOF'
@@ -146,6 +151,7 @@ run_case() {
     local event_log="$work/events.log"
     local cache_root="$work/cache"
     local plugin_root
+    local stamp_pair stamp_version stamp_epoch
     local output rc
 
     mkdir -p "$home/.claude/plugins" "$bin" "$cache_root"
@@ -171,6 +177,13 @@ JSON
     fi
     for version in ${CACHED_VERSIONS:-}; do
         mkdir -p "$cache_root/$version"
+    done
+    for stamp_pair in ${INSTALL_STAMPS:-}; do
+        stamp_version="${stamp_pair%%:*}"
+        stamp_epoch="${stamp_pair#*:}"
+        [[ -n "$stamp_version" && -n "$stamp_epoch" ]] || continue
+        [[ -d "$cache_root/$stamp_version" ]] || continue
+        write_install_stamp "$cache_root" "$stamp_version" "$stamp_epoch"
     done
 
     set +e
@@ -242,72 +255,57 @@ run_case verify-without-cache-dir
 assert_contains "$CASE_OUTPUT" "Verified: larch 31.0.0 installed successfully." "verify-without-cache-dir verify"
 assert_not_contains "$CASE_OUTPUT" "Upgrade incomplete" "verify-without-cache-dir no failure"
 
-# Pruning removes cached versions newer than the verified stable release even
-# when the cache is already under the 8-version limit.
+# Pruning keeps a newer-than-stable cached version when the cache is under the cap.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'
 INITIAL_INSTALLED_VERSION="30.8.0"
 PLUGIN_ROOT_VERSION="30.8.0"
 INSTALL_RESULT_VERSION="31.0.0"
 INSTALL_CACHE_VERSION="31.0.0"
 CACHED_VERSIONS="29.0.0 30.0.0 31.0.0 99.0.0"
-run_case prune-stray-newer-under-cap
-[[ "$CASE_RC" -eq 0 ]] || fail "prune-stray-newer-under-cap exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-stray-newer-under-cap should prune 99.0.0"
-for version in 29.0.0 30.0.0 31.0.0; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-stray-newer-under-cap should keep $version"
+INSTALL_STAMPS="29.0.0:100 30.0.0:200 31.0.0:300 99.0.0:400"
+run_case keep-newer-under-cap
+[[ "$CASE_RC" -eq 0 ]] || fail "keep-newer-under-cap exit $CASE_RC"
+for version in 29.0.0 30.0.0 31.0.0 99.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "keep-newer-under-cap should keep $version"
 done
+unset INSTALL_STAMPS
 
-# Pruning keeps the verified stable cache dir even when more than 8 cached
-# versions are present.
+# Pruning keeps the just-installed version and trims to exactly eight dirs.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'
 INITIAL_INSTALLED_VERSION="30.8.0"
 PLUGIN_ROOT_VERSION="30.9.0"
 INSTALL_RESULT_VERSION="31.0.0"
 INSTALL_CACHE_VERSION="31.0.0"
 CACHED_VERSIONS="31.0.0 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0"
-run_case preserve-verified-stable
-[[ "$CASE_RC" -eq 0 ]] || fail "preserve-verified-stable exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "preserve-verified-stable should keep 31.0.0"
-for version in 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0; do
-    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "preserve-verified-stable should prune $version"
+INSTALL_STAMPS="32.0.0:820 33.0.0:830 34.0.0:840 35.0.0:850 36.0.0:860 37.0.0:870 38.0.0:880 39.0.0:890"
+run_case cap-trims-to-eight-keeps-target
+[[ "$CASE_RC" -eq 0 ]] || fail "cap-trims-to-eight-keeps-target exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "cap-trims-to-eight-keeps-target should keep 31.0.0"
+[[ ! -d "$CASE_CACHE_ROOT/32.0.0" ]] || fail "cap-trims-to-eight-keeps-target should prune 32.0.0"
+for version in 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-trims-to-eight-keeps-target should keep $version"
 done
+unset INSTALL_STAMPS
 
-# Pruning removes cached versions newer than the verified stable release before
-# enforcing the 8-version retention limit.
+# Failed prune removals are warned and the directory remains on disk.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'
 INITIAL_INSTALLED_VERSION="30.8.0"
 PLUGIN_ROOT_VERSION="30.9.0"
 INSTALL_RESULT_VERSION="31.0.0"
 INSTALL_CACHE_VERSION="31.0.0"
-CACHED_VERSIONS="20.0.0 21.0.0 22.0.0 23.0.0 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0 99.0.0"
-run_case prune-oldest-after-sanitize
-[[ "$CASE_RC" -eq 0 ]] || fail "prune-oldest-after-sanitize exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-oldest-after-sanitize should prune 99.0.0"
-for version in 20.0.0 21.0.0 22.0.0 23.0.0; do
-    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest-after-sanitize should prune $version"
-done
-for version in 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-oldest-after-sanitize should keep $version"
-done
-
-# Failed sanitize removals must remain in the retention set so later pruning
-# still counts the still-present directory.
-GH_OUTPUT=$'31.0.0\n30.9.0\n'
-INITIAL_INSTALLED_VERSION="30.8.0"
-PLUGIN_ROOT_VERSION="30.9.0"
-INSTALL_RESULT_VERSION="31.0.0"
-INSTALL_CACHE_VERSION="31.0.0"
-CACHED_VERSIONS="24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0 99.0.0"
+CACHED_VERSIONS="21.0.0 22.0.0 23.0.0 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 99.0.0"
+INSTALL_STAMPS="21.0.0:210 22.0.0:220 23.0.0:230 24.0.0:240 25.0.0:250 26.0.0:260 27.0.0:270 28.0.0:280 29.0.0:290 99.0.0:50"
 RM_FAIL_VERSION="99.0.0"
-run_case sanitize-failure-counts-toward-cap
-[[ "$CASE_RC" -eq 0 ]] || fail "sanitize-failure-counts-toward-cap exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "sanitize-failure-counts-toward-cap should retain 99.0.0 on rm failure"
-assert_contains "$CASE_OUTPUT" "Warning: failed to prune cached larch version '99.0.0'." "sanitize-failure-counts-toward-cap warning"
-[[ ! -d "$CASE_CACHE_ROOT/24.0.0" ]] || fail "sanitize-failure-counts-toward-cap should prune 24.0.0 after failed sanitize removal"
-for version in 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 30.9.0 31.0.0; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "sanitize-failure-counts-toward-cap should keep $version"
+run_case prune-rm-failure-retains-version
+[[ "$CASE_RC" -eq 0 ]] || fail "prune-rm-failure-retains-version exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-rm-failure-retains-version should retain 99.0.0 on rm failure"
+assert_contains "$CASE_OUTPUT" "Warning: failed to prune cached larch version '99.0.0'." "prune-rm-failure-retains-version warning"
+[[ ! -d "$CASE_CACHE_ROOT/21.0.0" ]] || fail "prune-rm-failure-retains-version should prune 21.0.0"
+[[ ! -d "$CASE_CACHE_ROOT/22.0.0" ]] || fail "prune-rm-failure-retains-version should prune 22.0.0"
+for version in 23.0.0 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 31.0.0; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-rm-failure-retains-version should keep $version"
 done
-unset RM_FAIL_VERSION
+unset RM_FAIL_VERSION INSTALL_STAMPS
 
 # gh failure output should not be echoed back verbatim.
 GH_FAIL=1

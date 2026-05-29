@@ -534,6 +534,11 @@ exclude = [
   # scripts/test-preflight-args.sh above.
   "scripts/test-cleanup-tmpdir.sh",
   "scripts/test-cleanup-tmpdir.md",
+  # skills/cleanup/scripts/test-cleanup.sh is the offline harness for age-based
+  # /cleanup (sibling contract in test-cleanup.md). Referenced only from Makefile
+  # (test-cleanup target), matching the Makefile-only harness pattern above.
+  "skills/cleanup/scripts/test-cleanup.sh",
+  "skills/cleanup/scripts/test-cleanup.md",
   # scripts/test-session-entry-gate.sh is the offline regression harness for
   # scripts/session-entry-gate.sh. Referenced only from Makefile
   # (test-session-entry-gate target) and scripts/test-session-entry-gate.md

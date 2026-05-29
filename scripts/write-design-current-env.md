@@ -41,13 +41,6 @@ An explicit flag overrides the recovered value. When exactly one side of a
 the omitted peer so a partial override cannot leave a stale peer (see harness Case 14).
 `MANUAL_REQUESTED`, `REPO`, and `ISSUE_NUMBER` keep clear-on-omit behavior (harness
 Case 12 for `MANUAL_REQUESTED`).
-
-When `CLAUDE_PLUGIN_ROOT` is set and validates, the script also invokes
-`larch_touch_executing_cache_root` from `scripts/lib-larch-cache-touch.sh`
-best-effort so the corresponding larch cache directory's mtime reflects recent
-session use. This is consumed by
-`skills/upgrade-larch/scripts/upgrade-larch.sh`'s mtime-based prune.
-
 ## `--claude-pid`
 
 Required for normal `/design` operation: pass the Bash-tool subshell parent
@@ -87,8 +80,9 @@ this symlink (it uses `SESSION_ENV_PATH` and related contracts), so
 concurrent `/implement` runs do not race on `current-design-env-*.sh`.
 
 **Stale symlinks**: after Claude exits, PID-keyed symlinks may dangle;
-the prelude's `[ -f ... ] &&` guard skips missing targets. Operators
-may prune broken symlinks, for example:
+the prelude's `[ -f ... ] &&` guard skips missing targets. `/cleanup`
+reaps broken `current-design-env-*.sh` symlinks automatically; operators
+may also prune manually, for example:
 
 ```bash
 find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
@@ -110,6 +104,5 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 Update `skills/design/SKILL.md` (the prelude line and Step 0 writer
 call), `skills/design/scripts/test-write-design-current-env.sh` (regression
 harness), and the Makefile registration when changing the writer's
-public shape. Update `scripts/lib-larch-cache-touch.sh` and
-`skills/upgrade-larch/scripts/upgrade-larch.sh` when changing cache-root touch
-semantics.
+public shape. Update `skills/cleanup/scripts/cleanup.sh` when changing
+dangling symlink reaping behavior.
