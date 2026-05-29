@@ -436,3 +436,41 @@ larch:bc t=2026-05-28T23:40:02Z d=0 p=79658 s=ci-wait.sh c=wait-ci text=.
 larch:bc t=2026-05-28T23:40:16Z d=0 p=79658 s=ci-wait.sh c=wait-ci text=.
 larch:bc t=2026-05-28T23:40:31Z d=0 p=79658 s=ci-wait.sh c=wait-ci text=→ Action: rebase (46s, 3 polls)
 larch:bc t=2026-05-28T23:40:31Z d=0 p=93350 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
+larch:bc t=2026-05-28T23:41:38Z d=0 p=93350 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-merge)
+larch:bc t=2026-05-28T23:41:38Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-28T23:41:42Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:41:56Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:42:09Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:42:23Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:42:37Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:42:51Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:42:51Z d=0 p=58503 s=ci-wait.sh c=wait-ci text= ⏳ CI: 1m elapsed, 6 polls, status=pending
+larch:bc t=2026-05-28T23:43:05Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:43:18Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:43:32Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:43:46Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:43:59Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:44:14Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:44:14Z d=0 p=58503 s=ci-wait.sh c=wait-ci text= ⏳ CI: 2m elapsed, 12 polls, status=pending
+larch:bc t=2026-05-28T23:44:27Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:44:40Z d=0 p=58503 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (182s, 13 polls)
+larch:bc t=2026-05-28T23:44:41Z d=0 p=93350 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-merge)
+larch:bc t=2026-05-28T23:44:41Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-28T23:44:45Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:44:58Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:45:11Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:45:25Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:45:38Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:45:52Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:45:52Z d=0 p=71655 s=ci-wait.sh c=wait-ci text= ⏳ CI: 1m elapsed, 6 polls, status=pending
+larch:bc t=2026-05-28T23:46:05Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:46:19Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:46:32Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:46:46Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:46:59Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:47:13Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:47:13Z d=0 p=71655 s=ci-wait.sh c=wait-ci text= ⏳ CI: 2m elapsed, 12 polls, status=pending
+larch:bc t=2026-05-28T23:47:26Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-28T23:47:39Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (178s, 13 polls)
+larch:bc t=2026-05-28T23:47:54Z d=0 p=36668 s=implement-finalize.sh c=progress text=✅ 18: cleanup status=complete elapsed=1s
+larch:bc t=2026-05-28T23:52:42Z d=0 p=93513 s=implement-finalize.sh c=progress text=✅ 18: cleanup status=complete elapsed=0s
