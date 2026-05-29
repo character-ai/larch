@@ -635,11 +635,11 @@ grep -Fq 'copy the full canonical key set' "$SKILL_MD" \
 assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md" ship-pr-invocation
 assert_p3119_family_b_fence_absent "$STALL_RECOVERY_MD" "stall-recovery.md"
 assert_p3119_family_b_fence_absent "$REFS_DIR/rebase-rebump-subprocedure.md" "rebase-rebump-subprocedure.md"
-grep -Fq 'treat the foreground Bash tool exit code as `writer_rc`' "$SKILL_MD" \
+grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
   || fail "(3119) SKILL.md Step 8+ must pin foreground writer_rc routing (post ship-pr return)"
-grep -Fq 'Treat the foreground Bash tool exit code as `writer_rc`' "$SKILL_MD" \
+grep -Fq "Treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
   || fail "(3119) SKILL.md Exit 4 must pin foreground writer_rc routing"
-grep -Fq 'treat the foreground Bash tool exit code as `writer_rc`' "$STALL_RECOVERY_MD" \
+grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$STALL_RECOVERY_MD" \
   || fail "(3119) stall-recovery.md step8-shippr must pin foreground writer_rc routing"
 
 echo "All assertions passed."
