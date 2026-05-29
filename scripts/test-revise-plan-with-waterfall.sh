@@ -1278,4 +1278,81 @@ assert_kv "$out11c" REVISE_TIER_3_STATUS no-patch
 assert_kv "$out11c" REVISE_TIER_4_STATUS no-patch
 grep -q '^alpha$' "$C11C/plan.txt" || fail "case11c should roll back the failed winner"
 
+echo "=== unified-diff rejects candidate that drops optional size trailers ==="
+C12="$TMP/case12-trailers"
+setup_case "$C12"
+cp "$COMMON/launch-review.sh" "$C12/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C12/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C12/design-driver.sh"
+mkdir -p "$C12/responses"
+cat >"$C12/plan.txt" <<'EOF'
+## Plan
+alpha
+diff_added: 100
+diff_deleted: 50
+mechanical_churn: true
+diff_lines: 150
+EOF
+cat >"$C12/responses/codex.txt" <<'EOF'
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,3 @@
+ ## Plan
+ alpha
+-diff_added: 100
+-diff_deleted: 50
+-mechanical_churn: true
+ diff_lines: 150
+EOF
+cat >"$C12/responses/cursor.txt" <<'EOF'
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ ## Plan
+-alpha
++beta
+ diff_added: 100
+ diff_deleted: 50
+ mechanical_churn: true
+ diff_lines: 150
+EOF
+printf '\n' >"$C12/responses/claude.txt"
+out12=$(run_case "$C12")
+assert_kv "$out12" REVISE_STATUS ok
+assert_kv "$out12" REVISE_TIER_1_STATUS invalid-patch
+assert_kv "$out12" REVISE_TIER_2_STATUS ok
+grep -q '^diff_added: 100$' "$C12/plan.txt" || fail "case12 should preserve diff_added trailer"
+grep -q '^mechanical_churn: true$' "$C12/plan.txt" || fail "case12 should preserve mechanical_churn trailer"
+grep -q '^diff_lines: 150$' "$C12/plan.txt" || fail "case12 should preserve diff_lines trailer"
+
+echo "=== file-replacement preserves optional size trailers ==="
+C13="$TMP/case13-trailers-fr"
+setup_case "$C13"
+cp "$COMMON/launch-review.sh" "$C13/launch-review.sh"
+cp "$COMMON/launch-claude-review.sh" "$C13/launch-claude-review.sh"
+cp "$COMMON/design-driver.sh" "$C13/design-driver.sh"
+mkdir -p "$C13/responses"
+cat >"$C13/plan.txt" <<'EOF'
+## Plan
+alpha
+diff_added: 200
+diff_deleted: 10
+mechanical_churn: false
+diff_lines: 210
+EOF
+cat >"$C13/responses/codex.txt" <<'EOF'
+## Plan
+revised body
+diff_added: 200
+diff_deleted: 10
+mechanical_churn: false
+diff_lines: 210
+EOF
+printf '\n' >"$C13/responses/cursor.txt"
+printf '\n' >"$C13/responses/claude.txt"
+out13=$(run_case "$C13" --patch-format file-replacement)
+assert_kv "$out13" REVISE_STATUS ok
+grep -q '^diff_added: 200$' "$C13/plan.txt" || fail "case13 file-replacement should preserve diff_added"
+grep -q '^mechanical_churn: false$' "$C13/plan.txt" || fail "case13 file-replacement should preserve mechanical_churn"
+
 printf '%s\n' 'test-revise-plan-with-waterfall: ok'

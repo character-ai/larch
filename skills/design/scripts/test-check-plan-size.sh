@@ -222,4 +222,193 @@ out=$(run_ok "$d" "$d/alternate-plan.txt")
 assert_kv_eq PLAN_LINES 246 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 
+# --- Case 14: optional metadata does not count toward plan body ---
+d="$TMPROOT/c14"
+mkdir -p "$d"
+{
+    for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done
+    fill_lines 795 'b'
+    printf 'diff_added: 100\n'
+    printf 'diff_deleted: 50\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 150\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq PLAN_LINES 800 "$out"
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq SOFT_ADVISORY false "$out"
+
+# --- Case 15: diff_added boundary ---
+d="$TMPROOT/c15a"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_added: 2000\n'; printf 'diff_lines: 5000\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+d="$TMPROOT/c15b"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_added: 2001\n'; printf 'diff_lines: 100\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-added" "$out"
+
+# --- Case 16: additions override legacy total churn ---
+d="$TMPROOT/c16"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_added: 100\n'
+    printf 'diff_deleted: 5000\n'
+    printf 'diff_lines: 5100\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq TRIGGER_REASONS "" "$out"
+assert_kv_eq DIFF_ADDED 100 "$out"
+
+# --- Case 17: deletions exempt ---
+d="$TMPROOT/c17"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_added: 100\n'
+    printf 'diff_deleted: 9999\n'
+    printf 'diff_lines: 10099\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq DIFF_DELETED 9999 "$out"
+
+# --- Case 18: mechanical advisory new-style ---
+d="$TMPROOT/c18"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_added: 5000\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5000\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq SOFT_ADVISORY true "$out"
+assert_kv_eq DIFF_ADDED 5000 "$out"
+assert_kv_eq TRIGGER_REASONS "" "$out"
+
+# --- Case 19: mechanical advisory legacy (#3118) ---
+d="$TMPROOT/c19"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 4700\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq SOFT_ADVISORY true "$out"
+
+# --- Case 20: plan-body unaffected by mechanical_churn ---
+d="$TMPROOT/c20"
+mkdir -p "$d"
+{
+    for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done
+    fill_lines 796 'b'
+    printf 'diff_added: 5000\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5000\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
+assert_kv_eq SOFT_ADVISORY true "$out"
+
+# --- Case 21: mechanical_churn: false explicit ---
+d="$TMPROOT/c21"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_added: 2001\n'
+    printf 'mechanical_churn: false\n'
+    printf 'diff_lines: 2001\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq SOFT_ADVISORY false "$out"
+
+# --- Case 22: malformed optional trailers ---
+d="$TMPROOT/c22a"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_added:\t1\n'; printf 'diff_lines: 2001\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
+assert_kv_eq DIFF_ADDED "" "$out"
+assert_kv_eq DIFF_DELETED "" "$out"
+assert_kv_eq MECHANICAL_CHURN false "$out"
+assert_kv_eq SOFT_ADVISORY false "$out"
+d="$TMPROOT/c22b"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_added:  1\n'; printf 'diff_lines: 2001\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DIFF_ADDED "" "$out"
+
+# --- Case 23: spoof resistance ---
+d="$TMPROOT/c23"
+mkdir -p "$d"
+{
+    printf 'mechanical_churn: true\n'
+    printf 'diff_added: 0\n'
+    fill_lines 10 'b'
+    printf 'diff_added: 2001\n'
+    printf 'mechanical_churn: false\n'
+    printf 'diff_lines: 2001\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DIFF_ADDED 2001 "$out"
+assert_kv_eq MECHANICAL_CHURN false "$out"
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-added" "$out"
+assert_kv_eq SOFT_ADVISORY false "$out"
+
+# --- Case 24: blank boundary ---
+d="$TMPROOT/c24"
+mkdir -p "$d"
+{
+    fill_lines 5 'b'
+    printf 'diff_added: 0\n'
+    printf '\n'
+    fill_lines 5 'b2'
+    printf 'diff_added: 100\n'
+    printf 'diff_lines: 200\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq PLAN_LINES 12 "$out"
+assert_kv_eq DIFF_ADDED 100 "$out"
+
+# --- Case 25: duplicate optional keys (last wins) ---
+d="$TMPROOT/c25"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_added: 2001\n'
+    printf 'diff_added: 100\n'
+    printf 'diff_lines: 2001\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DIFF_ADDED 100 "$out"
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+
+# --- Case 26: combined gate KV ---
+d="$TMPROOT/c26"
+mkdir -p "$d"
+{
+    for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done
+    fill_lines 796 'b'
+    printf 'diff_added: 5000\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5000\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
+assert_kv_eq SOFT_ADVISORY true "$out"
+
 echo "PASS: test-check-plan-size.sh"

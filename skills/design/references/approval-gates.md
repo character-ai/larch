@@ -131,7 +131,7 @@ Header: `"Plan findings"`. Substitute the actual counts before asking.
 
 ### Apply-all body
 
-Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`), then Execute `### Shared post-apply pipeline` verbatim.
+Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:` — preserve or explicitly recompute them; do not drop mechanical/deletion-heavy estimates while retaining only the legacy total), then Execute `### Shared post-apply pipeline` verbatim.
 
 ### One-by-one iteration prompt
 
@@ -152,14 +152,15 @@ After the chosen findings have been applied to `plan.txt` (either the full accep
 2. Preserve intentional repetition where the same content appears in distinct context sections (for example, a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section.
 3. Rewrite `plan.txt` via the Write tool with duplicates removed.
 4. Print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran).
-5. Only after the breadcrumb proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
+4a. **Optional trailer guard (direct rewrites)**: before any prompt-side `plan.txt` replacement or dedup rewrite, snapshot strict optional trailer keys (`diff_added`, `diff_deleted`, `mechanical_churn`) from the final metadata block; after the rewrite and before `ACTION=EMIT_PLAN` / Step 2b.5, verify those keys are still present with strict grammar in the revised final metadata block or that the rewrite explicitly recomputed the estimates. If the check fails, revise again rather than continuing with a legacy total-only estimate.
+5. Only after the breadcrumb (and optional trailer guard when applicable) proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
 6. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
 7. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
 8. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
 
 ### Gate B plan revision and Step 2b.5
 
-Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partition`) routes directly to Split-path with no `AskUserQuestion`; hard trigger (`PLAN_LINES > 800` or `DIFF_LINES > 1500`) fires an `AskUserQuestion` with Split / Cancel only (no Continue option); otherwise Step 2b.5 returns silently. If Step 2b.5 exits the skill on **Cancel** (cost line + exit 0) or **Split** (Split-path: decomposition panel + exit 1), `$DESIGN_TMPDIR` is preserved and the operator can re-run after addressing sprawl.
+Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partition`) routes directly to Split-path with no `AskUserQuestion`; hard trigger (plan body `> 800`, or `diff_added > 2000` when the trailer is present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades only the diff trigger to `SOFT_ADVISORY`) fires an `AskUserQuestion` with Split / Cancel only (no Continue option) when `HARD_TRIGGER_FIRED=true`; otherwise Step 2b.5 returns silently (possibly after a mechanical-churn advisory line). Authoritative machine contract: `skills/design/scripts/check-plan-size.md`. If Step 2b.5 exits the skill on **Cancel** (cost line + exit 0) or **Split** (Split-path: decomposition panel + exit 1), `$DESIGN_TMPDIR` is preserved and the operator can re-run after addressing sprawl.
 
 ---
 

@@ -490,13 +490,136 @@ _run_revise_with_status_parse() {
     return 1
 }
 
+_snapshot_optional_trailer_keys() {
+    local plan="$1" out="$2"
+    awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+    {
+        lines[NR] = $0
+    }
+    END {
+        block_len = 0
+        for (i = trailer_nr - 1; i >= 1; i--) {
+            line = lines[i]
+            if (line ~ /^diff_added: [0-9]+$/) {
+                block[++block_len] = line
+                continue
+            }
+            if (line ~ /^diff_deleted: [0-9]+$/) {
+                block[++block_len] = line
+                continue
+            }
+            if (line ~ /^mechanical_churn: (true|false)$/) {
+                block[++block_len] = line
+                continue
+            }
+            break
+        }
+        has_added = 0
+        has_deleted = 0
+        has_mech = 0
+        for (j = block_len; j >= 1; j--) {
+            line = block[j]
+            if (line ~ /^diff_added: [0-9]+$/) {
+                has_added = 1
+            } else if (line ~ /^diff_deleted: [0-9]+$/) {
+                has_deleted = 1
+            } else if (line ~ /^mechanical_churn: (true|false)$/) {
+                has_mech = 1
+            }
+        }
+        if (has_added) {
+            print "diff_added"
+        }
+        if (has_deleted) {
+            print "diff_deleted"
+        }
+        if (has_mech) {
+            print "mechanical_churn"
+        }
+    }
+    ' "$plan" >"$out"
+}
+
+_plan_has_optional_trailer_key() {
+    local plan="$1" key="$2"
+    case "$key" in
+        diff_added)
+            awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+            { lines[NR] = $0 }
+            END {
+                for (i = trailer_nr - 1; i >= 1; i--) {
+                    if (lines[i] ~ /^diff_added: [0-9]+$/) {
+                        exit 0
+                    }
+                    if (lines[i] !~ /^diff_added: [0-9]+$/ && lines[i] !~ /^diff_deleted: [0-9]+$/ && lines[i] !~ /^mechanical_churn: (true|false)$/) {
+                        exit 1
+                    }
+                }
+                exit 1
+            }
+            ' "$plan"
+            ;;
+        diff_deleted)
+            awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+            { lines[NR] = $0 }
+            END {
+                for (i = trailer_nr - 1; i >= 1; i--) {
+                    if (lines[i] ~ /^diff_deleted: [0-9]+$/) {
+                        exit 0
+                    }
+                    if (lines[i] !~ /^diff_added: [0-9]+$/ && lines[i] !~ /^diff_deleted: [0-9]+$/ && lines[i] !~ /^mechanical_churn: (true|false)$/) {
+                        exit 1
+                    }
+                }
+                exit 1
+            }
+            ' "$plan"
+            ;;
+        mechanical_churn)
+            awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+            { lines[NR] = $0 }
+            END {
+                for (i = trailer_nr - 1; i >= 1; i--) {
+                    if (lines[i] ~ /^mechanical_churn: (true|false)$/) {
+                        exit 0
+                    }
+                    if (lines[i] !~ /^diff_added: [0-9]+$/ && lines[i] !~ /^diff_deleted: [0-9]+$/ && lines[i] !~ /^mechanical_churn: (true|false)$/) {
+                        exit 1
+                    }
+                }
+                exit 1
+            }
+            ' "$plan"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+_validate_optional_trailers_preserved() {
+    local plan="$1" keys_file="$2" key
+    [[ -f "$keys_file" ]] || return 0
+    while IFS= read -r key || [[ -n "$key" ]]; do
+        [[ -n "$key" ]] || continue
+        _plan_has_optional_trailer_key "$plan" "$key" || return 1
+    done <"$keys_file"
+    return 0
+}
+
 _run_post_apply_pipeline() {
     local round_num="$1"
     local plan_backup="${2:-}"
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
-    local dedup_tmp dedup_removed
+    local dedup_tmp dedup_removed optional_keys_file pre_dedup_snapshot
+    optional_keys_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-keys.XXXXXX")
+    _snapshot_optional_trailer_keys "$plan_path" "$optional_keys_file"
+    if [[ -s "$optional_keys_file" ]]; then
+        pre_dedup_snapshot=$(mktemp "$DESIGN_TMPDIR/.plan-pre-dedup.XXXXXX")
+        cp -f "$plan_path" "$pre_dedup_snapshot"
+    else
+        pre_dedup_snapshot=""
+    fi
     dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
     if ! dedup_removed=$(python3 "$DEDUP_PLAN_LINES_PY" "$plan_path" "$dedup_tmp"); then
         rm -f "$dedup_tmp"
@@ -517,6 +640,16 @@ _run_post_apply_pipeline() {
     fi
     mv -f "$dedup_tmp" "$plan_path"
     printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
+    if [[ -n "$pre_dedup_snapshot" ]] && ! _validate_optional_trailers_preserved "$plan_path" "$optional_keys_file"; then
+        cp -f "$pre_dedup_snapshot" "$plan_path"
+        rm -f "$pre_dedup_snapshot" "$optional_keys_file"
+        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+        rm -f "$plan_backup"
+        LOOP_STATUS=emit-plan-failed
+        LOOP_REASON=optional-trailer-dedup-loss
+        return 1
+    fi
+    rm -f "$pre_dedup_snapshot" "$optional_keys_file"
     local emit_out emit_rc
     set +e
     emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")

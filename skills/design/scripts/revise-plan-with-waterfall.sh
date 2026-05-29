@@ -122,6 +122,124 @@ heading_count() {
 HASH_BEFORE=$(sha256_file "$PLAN_FILE")
 ORIG_FILE_HEADING_COUNT=$(heading_count "$PLAN_FILE")
 cp "$PLAN_FILE" "$SNAPSHOT"
+OPTIONAL_TRAILER_KEYS_FILE="$SNAPSHOT.optional-trailer-keys"
+
+snapshot_optional_trailer_keys() {
+    local plan="$1" out="$2"
+    awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+    {
+        lines[NR] = $0
+    }
+    END {
+        block_len = 0
+        for (i = trailer_nr - 1; i >= 1; i--) {
+            line = lines[i]
+            if (line ~ /^diff_added: [0-9]+$/) {
+                block[++block_len] = line
+                continue
+            }
+            if (line ~ /^diff_deleted: [0-9]+$/) {
+                block[++block_len] = line
+                continue
+            }
+            if (line ~ /^mechanical_churn: (true|false)$/) {
+                block[++block_len] = line
+                continue
+            }
+            break
+        }
+        has_added = 0
+        has_deleted = 0
+        has_mech = 0
+        for (j = block_len; j >= 1; j--) {
+            line = block[j]
+            if (line ~ /^diff_added: [0-9]+$/) {
+                has_added = 1
+            } else if (line ~ /^diff_deleted: [0-9]+$/) {
+                has_deleted = 1
+            } else if (line ~ /^mechanical_churn: (true|false)$/) {
+                has_mech = 1
+            }
+        }
+        if (has_added) {
+            print "diff_added"
+        }
+        if (has_deleted) {
+            print "diff_deleted"
+        }
+        if (has_mech) {
+            print "mechanical_churn"
+        }
+    }
+    ' "$plan" >"$out"
+}
+
+plan_has_optional_trailer_key() {
+    local plan="$1" key="$2"
+    case "$key" in
+        diff_added)
+            awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+            { lines[NR] = $0 }
+            END {
+                for (i = trailer_nr - 1; i >= 1; i--) {
+                    if (lines[i] ~ /^diff_added: [0-9]+$/) {
+                        exit 0
+                    }
+                    if (lines[i] !~ /^diff_added: [0-9]+$/ && lines[i] !~ /^diff_deleted: [0-9]+$/ && lines[i] !~ /^mechanical_churn: (true|false)$/) {
+                        exit 1
+                    }
+                }
+                exit 1
+            }
+            ' "$plan"
+            ;;
+        diff_deleted)
+            awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+            { lines[NR] = $0 }
+            END {
+                for (i = trailer_nr - 1; i >= 1; i--) {
+                    if (lines[i] ~ /^diff_deleted: [0-9]+$/) {
+                        exit 0
+                    }
+                    if (lines[i] !~ /^diff_added: [0-9]+$/ && lines[i] !~ /^diff_deleted: [0-9]+$/ && lines[i] !~ /^mechanical_churn: (true|false)$/) {
+                        exit 1
+                    }
+                }
+                exit 1
+            }
+            ' "$plan"
+            ;;
+        mechanical_churn)
+            awk -v trailer_nr="$(awk 'NF { nr = NR } END { print nr + 0 }' "$plan")" '
+            { lines[NR] = $0 }
+            END {
+                for (i = trailer_nr - 1; i >= 1; i--) {
+                    if (lines[i] ~ /^mechanical_churn: (true|false)$/) {
+                        exit 0
+                    }
+                    if (lines[i] !~ /^diff_added: [0-9]+$/ && lines[i] !~ /^diff_deleted: [0-9]+$/ && lines[i] !~ /^mechanical_churn: (true|false)$/) {
+                        exit 1
+                    }
+                }
+                exit 1
+            }
+            ' "$plan"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+validate_optional_trailers_preserved() {
+    local plan="$1" keys_file="$2" key
+    [[ -f "$keys_file" ]] || return 0
+    while IFS= read -r key || [[ -n "$key" ]]; do
+        [[ -n "$key" ]] || continue
+        plan_has_optional_trailer_key "$plan" "$key" || return 1
+    done <"$keys_file"
+    return 0
+}
+
+snapshot_optional_trailer_keys "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"
 
 compose_prompt() {
     {
@@ -132,6 +250,9 @@ compose_prompt() {
             printf "%s\n\n" "Emit ONLY the complete replacement plan in your final response, beginning with \`## Plan\` and ending with \`diff_lines: <N>\`."
         fi
         printf "%s\n\n" "Hard rules: the revised plan must end with \`diff_lines: <N>\`. When the original plan has \`### NEW:\`, \`### UPDATED:\`, or \`### REWRITTEN:\` headings, preserve at least one such heading."
+        if [[ -s "$OPTIONAL_TRAILER_KEYS_FILE" ]]; then
+            printf "%s\n\n" "When the original plan has optional size trailers (\`diff_added:\`, \`diff_deleted:\`, \`mechanical_churn:\`) in the final metadata block immediately above \`diff_lines:\`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior."
+        fi
         printf '<plan>\n'
         sed -n '1,$p' "$PLAN_FILE"
         printf '\n</plan>\n\n<findings>\n'
@@ -614,6 +735,9 @@ attempt_tier() {
     elif ! validate_file_replacement "$patch_file"; then
         set_tier_status "$ordinal" invalid-patch
         return 1
+    elif [[ -s "$OPTIONAL_TRAILER_KEYS_FILE" ]] && ! validate_optional_trailers_preserved "$patch_file" "$OPTIONAL_TRAILER_KEYS_FILE"; then
+        set_tier_status "$ordinal" invalid-patch
+        return 1
     fi
 
     if ! apply_patch_file "$patch_file"; then
@@ -629,6 +753,12 @@ attempt_tier() {
             restore_plan_or_die
             return 1
         fi
+    fi
+
+    if ! validate_optional_trailers_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"; then
+        set_tier_status "$ordinal" invalid-patch
+        restore_plan_or_die
+        return 1
     fi
 
     if ! run_emit_plan_gate; then

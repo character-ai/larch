@@ -84,7 +84,81 @@ if [[ -z "$trailer_nr" || "$trailer_nr" -eq 0 ]]; then
     exit 2
 fi
 
-plan_lines=$(( trailer_nr - 1 ))
+initial_plan_lines=$(( trailer_nr - 1 ))
+if [[ "$initial_plan_lines" -lt 0 ]]; then
+    initial_plan_lines=0
+fi
+
+_metadata_parse=$(
+awk -v trailer_nr="$trailer_nr" '
+{
+    lines[NR] = $0
+}
+END {
+    block_len = 0
+    for (i = trailer_nr - 1; i >= 1; i--) {
+        line = lines[i]
+        if (line ~ /^diff_added: [0-9]+$/) {
+            block[++block_len] = line
+            continue
+        }
+        if (line ~ /^diff_deleted: [0-9]+$/) {
+            block[++block_len] = line
+            continue
+        }
+        if (line ~ /^mechanical_churn: (true|false)$/) {
+            block[++block_len] = line
+            continue
+        }
+        break
+    }
+    diff_added = ""
+    diff_deleted = ""
+    mechanical_churn = "false"
+    for (j = block_len; j >= 1; j--) {
+        line = block[j]
+        if (line ~ /^diff_added: [0-9]+$/) {
+            diff_added = substr(line, 13)
+            continue
+        }
+        if (line ~ /^diff_deleted: [0-9]+$/) {
+            diff_deleted = substr(line, 15)
+            continue
+        }
+        if (line ~ /^mechanical_churn: true$/) {
+            mechanical_churn = "true"
+            continue
+        }
+        if (line ~ /^mechanical_churn: false$/) {
+            mechanical_churn = "false"
+        }
+    }
+    printf "%d\n", block_len
+    if (diff_added == "") {
+        print "-"
+    } else {
+        print diff_added
+    }
+    if (diff_deleted == "") {
+        print "-"
+    } else {
+        print diff_deleted
+    }
+    print mechanical_churn
+}
+' "$PLAN_FILE"
+)
+metadata_trailer_lines=$(printf '%s\n' "$_metadata_parse" | sed -n '1p')
+_diff_added_raw=$(printf '%s\n' "$_metadata_parse" | sed -n '2p')
+_diff_deleted_raw=$(printf '%s\n' "$_metadata_parse" | sed -n '3p')
+mechanical_churn=$(printf '%s\n' "$_metadata_parse" | sed -n '4p')
+diff_added=""
+diff_deleted=""
+[[ "$_diff_added_raw" != "-" ]] && diff_added="$_diff_added_raw"
+[[ "$_diff_deleted_raw" != "-" ]] && diff_deleted="$_diff_deleted_raw"
+unset _metadata_parse _diff_added_raw _diff_deleted_raw
+
+plan_lines=$(( initial_plan_lines - metadata_trailer_lines ))
 if [[ "$plan_lines" -lt 0 ]]; then
     plan_lines=0
 fi
@@ -92,8 +166,22 @@ fi
 hard_plan=0
 if [[ "$plan_lines" -gt 800 ]]; then hard_plan=1; fi
 
+hard_diff_raw=0
+diff_basis="diff-lines"
+if [[ -n "$diff_added" ]]; then
+    if [[ "$diff_added" -gt 2000 ]]; then hard_diff_raw=1; fi
+    diff_basis="diff-added"
+else
+    if [[ "$diff_lines" -gt 1500 ]]; then hard_diff_raw=1; fi
+fi
+
+soft_advisory=0
 hard_diff=0
-if [[ "$diff_lines" -gt 1500 ]]; then hard_diff=1; fi
+if [[ "$mechanical_churn" == "true" ]]; then
+    if [[ "$hard_diff_raw" -eq 1 ]]; then soft_advisory=1; fi
+else
+    hard_diff="$hard_diff_raw"
+fi
 
 hard_trigger=0
 if [[ "$hard_plan" -eq 1 || "$hard_diff" -eq 1 ]]; then
@@ -105,7 +193,7 @@ if [[ "$hard_plan" -eq 1 ]]; then
     reasons+=("plan-body-lines")
 fi
 if [[ "$hard_diff" -eq 1 ]]; then
-    reasons+=("diff-lines")
+    reasons+=("$diff_basis")
 fi
 
 TRIGGER_REASONS=""
@@ -124,4 +212,12 @@ fi
 emit_kv TRIGGER_REASONS "$TRIGGER_REASONS"
 emit_kv PLAN_LINES "$plan_lines"
 emit_kv DIFF_LINES "$diff_lines"
+emit_kv DIFF_ADDED "$diff_added"
+emit_kv DIFF_DELETED "$diff_deleted"
+emit_kv MECHANICAL_CHURN "$mechanical_churn"
+if [[ "$soft_advisory" -eq 1 ]]; then
+    emit_kv SOFT_ADVISORY true
+else
+    emit_kv SOFT_ADVISORY false
+fi
 exit 0

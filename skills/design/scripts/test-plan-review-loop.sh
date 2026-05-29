@@ -1317,6 +1317,81 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_size=$(run_loop "$DSIZE" 1 --round-cap 2 --convergence-threshold 3)
 printf '%s\n' "$out_size" | grep -q '^LOOP_STATUS=plan-size-trigger$' || fail "plan-size hard trigger should surface plan-size-trigger"
 
+echo "=== multi-round: mechanical churn revised plan avoids plan-size-trigger ==="
+DMECH="$TMP/mr-mech-churn"
+mkdir -p "$DMECH"
+printf 'plan\n\ndiff_lines: 1\n' >"$DMECH/plan.txt"
+printf 'feat\n' >"$DMECH/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+{
+    printf '## Plan\n\n'
+    awk 'BEGIN { for (i = 1; i <= 10; i++) print "line " i }'
+    printf 'diff_added: 5000\n'
+    printf 'diff_deleted: 100\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5100\n'
+} >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_mech=$(run_loop "$DMECH" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_mech" | grep -q '^REVISE_STATUS=ok$' || fail "mechanical churn path should record revise ok"
+printf '%s\n' "$out_mech" | grep -qv '^LOOP_STATUS=plan-size-trigger$' || fail "mechanical churn revised plan must not surface plan-size-trigger"
+grep -q '^diff_added: 5000$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_added trailer"
+grep -q '^mechanical_churn: true$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep mechanical_churn trailer"
+grep -q '^diff_lines: 5100$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_lines trailer"
+
+echo "=== multi-round: post-revision dedup preserves optional size trailers ==="
+DDEDUP="$TMP/mr-dedup-trailers"
+mkdir -p "$DDEDUP"
+printf 'plan\n\ndiff_lines: 1\n' >"$DDEDUP/plan.txt"
+printf 'feat\n' >"$DDEDUP/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+{
+    printf '## Plan\n\n'
+    awk 'BEGIN { for (i = 1; i <= 5; i++) print "line " i }'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_added: 5000\n'
+    printf 'diff_deleted: 100\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5100\n'
+} >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_dedup=$(run_loop "$DDEDUP" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_dedup" | grep -q '^REVISE_STATUS=ok$' || fail "dedup trailer fixture should record revise ok"
+printf '%s\n' "$out_dedup" | grep -qv '^LOOP_STATUS=plan-size-trigger$' || fail "dedup must not collapse optional trailers into plan-size-trigger"
+grep -q '^diff_added: 5000$' "$DDEDUP/plan.txt" || fail "dedup must preserve diff_added trailer"
+grep -q '^diff_deleted: 100$' "$DDEDUP/plan.txt" || fail "dedup must preserve diff_deleted trailer"
+grep -q '^mechanical_churn: true$' "$DDEDUP/plan.txt" || fail "dedup must preserve mechanical_churn trailer"
+
 echo "=== snapshot allowlist: raw reviewer output excluded from round-1 ==="
 DS="$TMP/snap"
 mkdir -p "$DS"

@@ -35,7 +35,9 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 **Hard trigger** — any one suffices (no operator Continue override in the hard `AskUserQuestion`):
 
 - Plan body line count **>** 800.
-- `diff_lines` trailer **>** 1500.
+- `diff_added` trailer **>** 2000 when present in the final metadata block immediately above `diff_lines:`; otherwise legacy `diff_lines` trailer **>** 1500.
+- Deletions (`diff_deleted`) never trip.
+- `mechanical_churn: true` downgrades only the diff trigger to a soft advisory (`SOFT_ADVISORY`); plan-body hard triggers are unchanged.
 
 **`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to the **Split-path** even if no hard threshold fired. That path runs the **real decomposition panel** (8 external slots via `scripts/dispatch-with-waterfall.sh`). Full procedure, idempotent sentinels, and filing semantics live in `skills/design/references/decompose-panel.md`.
 
@@ -50,7 +52,7 @@ Normative argv validation lives in `skills/design/scripts/plan-review-loop.sh` (
 
 ## Helper output — `TRIGGER_REASONS`
 
-The helper emits comma-separated reason tokens in **fixed priority order** `plan-body-lines`, `diff-lines` (the order hard thresholds are evaluated — **not** lexicographic).
+The helper emits comma-separated reason tokens in **fixed priority order** `plan-body-lines`, then `diff-added` (new-style) or `diff-lines` (legacy) — the order hard thresholds are evaluated, **not** lexicographic.
 
 ## Per-round velocity (deferred)
 
@@ -58,8 +60,8 @@ Between-review-round velocity (>20% plan growth **and** >10 accepted findings) i
 
 ## `check-plan-size.sh` contract (summary)
 
-- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar.
-- **Machine output**: `emit_kv` on FD 3 (`lib-quiet.sh`) — `PLAN_LINES`, `DIFF_LINES`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). On validation failure only: `PLAN_SIZE_STATUS` is `missing-plan` or `missing-diff-lines`.
+- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar. Optional trailers `diff_added:`, `diff_deleted:`, and `mechanical_churn:` MAY appear in the final contiguous metadata block immediately above `diff_lines:` (strict full-line regexes — see `check-plan-size.md`).
+- **Machine output**: `emit_kv` on FD 3 (`lib-quiet.sh`) — `PLAN_LINES`, `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). `PLAN_LINES` excludes recognized optional metadata trailers above final `diff_lines:`. On validation failure only: `PLAN_SIZE_STATUS` is `missing-plan` or `missing-diff-lines`.
 - **Exit codes**: **0** when the plan parses; **2** only when emitting `PLAN_SIZE_STATUS` (`missing-plan` / `missing-diff-lines`); **3** on argv / usage errors (missing `--design-tmpdir`, unknown flags) — no `PLAN_SIZE_STATUS` lines.
 
 ## Plan-command validator

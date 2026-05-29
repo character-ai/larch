@@ -378,6 +378,28 @@ grep -Fq 'semantic sprawl heuristic' "$DISCUSSION_MD" \
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 grep -Fq 'Step 2b.5' "$APPROVAL_MD" \
   || fail "(FINDING_21) approval-gates.md missing Step 2b.5 reference after Gate B EMIT_PLAN"
+grep -Fq 'SOFT_ADVISORY=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse SOFT_ADVISORY"
+grep -Fq 'DIFF_ADDED=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse DIFF_ADDED"
+grep -Fq 'DIFF_DELETED=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse DIFF_DELETED"
+grep -Fq 'MECHANICAL_CHURN=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse MECHANICAL_CHURN"
+grep -Fq 'plan-body gate still requires Split/Cancel' "$SKILL_MD" \
+  || fail "(3175) SKILL.md must document plan-body hard + SOFT_ADVISORY combined advisory"
+grep -Fq 'diff_added' "$SKILL_MD" \
+  || fail "(3175) SKILL.md missing diff_added preservation/recompute language"
+grep -Fq 'mechanical_churn' "$SKILL_MD" \
+  || fail "(3175) SKILL.md missing mechanical_churn preservation language"
+grep -Fq 'snapshot' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing optional trailer snapshot language"
+grep -Fq 'diff_added' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing diff_added preservation language"
+grep -Fq 'snapshot' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing optional trailer snapshot language"
+grep -Fq 'mechanical_churn' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing mechanical_churn preservation language"
 # Check 19 (#2754): --brainstorm / Step 1d.5 / run-params / plan-review feature-context pins.
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 BRAINSTORM_PROMPTS="$REPO_ROOT/skills/design/references/brainstorm-prompts.md"
