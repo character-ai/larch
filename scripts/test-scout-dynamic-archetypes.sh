@@ -421,10 +421,10 @@ grep -Fq '<reviewer_description>' "$TMP/description-too-large/staged-context/sco
 
 mkdir -p "$TMP/description-text-inline-cap"
 seed_case_inputs "$TMP/description-text-inline-cap"
-# Use a temp file for the large string to avoid shell argument-length limits on some systems.
-_huge_inline_file="$TMP/description-text-inline-cap/huge-inline.txt"
-python3 -c "import sys; sys.stdout.write('x' * 270000)" > "$_huge_inline_file"
-huge_inline=$(cat "$_huge_inline_file")
+# 262145 bytes = 1 byte over the 256 KB MAX_CONTEXT_BYTES cap.
+# Using 270000 bytes would hit ARG_MAX on CI (GH Actions env adds ~50 KB),
+# so we stay just above the cap but well under system limits.
+huge_inline=$(python3 -c "import sys; sys.stdout.write('x' * 262145)")
 set +e
 PATH="$BIN:$PATH" "$SCRIPT" \
     --mode description \
@@ -437,7 +437,7 @@ PATH="$BIN:$PATH" "$SCRIPT" \
     > "$TMP/description-text-inline-cap/stdout.env" 2> "$TMP/description-text-inline-cap/stderr.env"
 inline_rc=$?
 set -e
-[[ "$inline_rc" -eq 2 ]] || fail "inline description-text over 256 KB should fail validation (got rc=$inline_rc; stderr=$(cat $TMP/description-text-inline-cap/stderr.env); len=${#huge_inline})"
+[[ "$inline_rc" -eq 2 ]] || fail "inline description-text over 256 KB should fail validation"
 grep -Fq 'description-text exceeds 256 KB' "$TMP/description-text-inline-cap/stderr.env" || fail "inline cap stderr"
 
 mkdir -p "$TMP/large-diff"
