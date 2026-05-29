@@ -474,3 +474,6 @@ larch:bc t=2026-05-28T23:47:26Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=.
 larch:bc t=2026-05-28T23:47:39Z d=0 p=71655 s=ci-wait.sh c=wait-ci text=→ Action: evaluate_failure (178s, 13 polls)
 larch:bc t=2026-05-28T23:47:54Z d=0 p=36668 s=implement-finalize.sh c=progress text=✅ 18: cleanup status=complete elapsed=1s
 larch:bc t=2026-05-28T23:52:42Z d=0 p=93513 s=implement-finalize.sh c=progress text=✅ 18: cleanup status=complete elapsed=0s
+larch:bc t=2026-05-29T00:01:36Z d=0 p=93350 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-merge)
+larch:bc t=2026-05-29T00:01:36Z d=0 p=75191 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-29T00:01:41Z d=0 p=75191 s=ci-wait.sh c=warn text=⚠ Bailing: fix-attempts-exhausted (5s, 0 polls)
