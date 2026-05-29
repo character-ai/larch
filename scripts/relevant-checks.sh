@@ -100,7 +100,7 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            skills/design/scripts/plan-review-loop.sh|skills/design/scripts/plan-review-loop.md|skills/design/scripts/test-plan-review-loop.sh)
+            skills/design/scripts/plan-review-loop.sh|skills/design/scripts/plan-review-loop.md|skills/design/scripts/test-plan-review-loop.sh|skills/design/scripts/dedup-plan-lines.py|skills/design/scripts/dedup-plan-lines.md)
                 append_target_once test-plan-review-loop
                 append_target_once test-design-multi-round-integration
                 ;;

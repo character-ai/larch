@@ -25,6 +25,8 @@ Primary consumer: `validate-plan-commands.sh` via `validate-plan.sh`.
 
 ## Fenced `bash` / `sh` blocks
 
+This parser intentionally uses a simple `bash` / `sh` fence toggle, which differs from the plan-line dedup's two-pass balanced-pair model for heading/Constraints-state detection in [`dedup-plan-lines.md`](dedup-plan-lines.md). The two are not unified because they serve different concerns; plan-line dedup still collapses duplicate lines inside fences.
+
 - Backslash line continuations are joined before further processing.
 - **Heredocs**: bodies between `<<DELIM` / `<<'DELIM'` / `<<"DELIM"` and a closing line containing only `DELIM` are removed from the physical line stream so later commands in the same fence are still parsed. Unterminated `<<"…` openers emit a `parse_note` and leave the line intact (no silent fast-forward to EOF).
 - Command lines are split on `|`, `&&`, `||`, and `;` outside quotes and outside balanced `(...)`.

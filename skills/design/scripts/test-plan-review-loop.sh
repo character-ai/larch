@@ -1530,6 +1530,39 @@ printf '%s\n' "$out_ddd" | grep -q '^LOOP_STATUS=cap-hit$' || fail "dedup-reset 
 grep -q '^DEGRADED_PANEL=1$' "$DDD/plan-review/round-1/round-summary.env" || fail "dedup failure should degrade round 1"
 grep -q '^DEGRADED_PANEL=0$' "$DDD/plan-review/round-2/round-summary.env" || fail "dedup failure must not leak into round 2"
 
+echo "=== multi-round: plan-line dedup python failure surfaces dedup-python-failed ==="
+DDPL="$TMP/dedup-plan-lines-fail"
+mkdir -p "$DDPL"
+printf 'plan\n\ndiff_lines: 1\n' >"$DDPL/plan.txt"
+printf 'feat\n' >"$DDPL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+PYWRAP_DDPL="$TMP/python-wrap-dedup-lines"
+mkdir -p "$PYWRAP_DDPL"
+REAL_PYTHON_DDPL="$(command -v python3)"
+cat >"$PYWRAP_DDPL/python3" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1##*/}" in
+    dedup-plan-lines.py) exit 99 ;;
+esac
+exec "${REAL_PYTHON:?}" "$@"
+EOS
+chmod +x "$PYWRAP_DDPL/python3"
+out_ddpl=$(REAL_PYTHON="$REAL_PYTHON_DDPL" PATH="$PYWRAP_DDPL:$PATH" run_loop "$DDPL" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_ddpl" | grep -q '^LOOP_STATUS=emit-plan-failed$' || fail "plan-line dedup failure should surface emit-plan-failed"
+printf '%s\n' "$out_ddpl" | grep -q '^REASON=dedup-python-failed$' || fail "plan-line dedup failure should surface dedup-python-failed reason"
+printf '%s\n' "$out_ddpl" | grep -q 'LOOP_REASON=dedup-python-failed' && fail "helper should not print LOOP_REASON directly"
+grep -q '^REASON=dedup-python-failed$' "$DDPL/.step3-plan-review-result.env" || fail "result env should carry dedup-python-failed reason"
+
 echo "=== snapshot fails closed on symlinked revise artifact sources ==="
 DSREV="$TMP/snap-revise-symlink"
 mkdir -p "$DSREV"
@@ -1739,6 +1772,7 @@ export CLAUDE_PLUGIN_ROOT="$ROOT"
 export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
 export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
 export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export DEDUP_PLAN_LINES_PY="$ROOT/skills/design/scripts/dedup-plan-lines.py"
 export LARCH_QUIET_DISABLE=1
 # shellcheck disable=SC1091
 source "$ROOT/scripts/lib-quiet.sh"
@@ -1749,7 +1783,7 @@ dedup_log=$(
         # shellcheck disable=SC1091
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
-        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
         eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
@@ -1790,6 +1824,7 @@ export CLAUDE_PLUGIN_ROOT="$ROOT"
 export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
 export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
 export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export DEDUP_PLAN_LINES_PY="$ROOT/skills/design/scripts/dedup-plan-lines.py"
 export LARCH_QUIET_DISABLE=1
 # shellcheck disable=SC1091
 source "$ROOT/scripts/lib-quiet.sh"
@@ -1800,7 +1835,7 @@ dedup_unclosed_log=$(
         # shellcheck disable=SC1091
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
-        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
         eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
@@ -1828,6 +1863,7 @@ export CLAUDE_PLUGIN_ROOT="$ROOT"
 export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
 export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
 export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export DEDUP_PLAN_LINES_PY="$ROOT/skills/design/scripts/dedup-plan-lines.py"
 export LARCH_QUIET_DISABLE=1
 # shellcheck disable=SC1091
 source "$ROOT/scripts/lib-quiet.sh"
@@ -1839,7 +1875,7 @@ dedup_pyfail_log=$(
         # shellcheck disable=SC1091
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
-        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT PATH
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
         eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_pyfail" 2>&1
@@ -1861,7 +1897,6 @@ backup_nonnumeric="$(mktemp "$DPNONNUM/.plan-before-revise.XXXXXX")"
 printf 'restored nonnumeric backup\n\ndiff_lines: 1\n' >"$backup_nonnumeric"
 cat >"$STUB/python3" <<'EOS'
 #!/usr/bin/env bash
-cat >/dev/null
 printf 'bogus\n'
 EOS
 chmod +x "$STUB/python3"
@@ -1870,6 +1905,7 @@ export CLAUDE_PLUGIN_ROOT="$ROOT"
 export DESIGN_DRIVER_SH="$STUB/dedup-emit-driver.sh"
 export INVOKE_PLAN_VALIDATOR_SH="$STUB/dedup-validate.sh"
 export CHECK_PLAN_SIZE_SH="$ROOT/skills/design/scripts/check-plan-size.sh"
+export DEDUP_PLAN_LINES_PY="$ROOT/skills/design/scripts/dedup-plan-lines.py"
 export LARCH_QUIET_DISABLE=1
 # shellcheck disable=SC1091
 source "$ROOT/scripts/lib-quiet.sh"
@@ -1881,7 +1917,7 @@ dedup_nonnumeric_log=$(
         # shellcheck disable=SC1091
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
-        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT PATH
+        export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
         eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_nonnumeric" 2>&1
