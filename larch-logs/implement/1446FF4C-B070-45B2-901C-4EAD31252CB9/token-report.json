@@ -1,6 +1,7 @@
 {
   "vendors": [
     "claude",
+    "codex",
     "cursor"
   ],
   "claude": {
@@ -255,13 +256,13 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 16,
-          "cache_read": 3459347,
-          "cache_create": 860408,
-          "cache_create_5m": 860408,
+          "input": 19,
+          "cache_read": 4081495,
+          "cache_create": 1173449,
+          "cache_create_5m": 1173449,
           "cache_create_1h": 0,
-          "output": 19768,
-          "total": 4339539
+          "output": 22159,
+          "total": 5277122
         },
         "skills": [
           {
@@ -279,26 +280,139 @@
           {
             "skill": "larch:issue",
             "totals": {
-              "input": 14,
-              "cache_read": 3184627,
-              "cache_create": 621715,
-              "cache_create_5m": 621715,
+              "input": 17,
+              "cache_read": 3806775,
+              "cache_create": 934756,
+              "cache_create_5m": 934756,
               "cache_create_1h": 0,
-              "output": 14795,
-              "total": 3821151
+              "output": 17186,
+              "total": 4758734
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 134,
-      "cache_read": 24921571,
-      "cache_create": 1326248,
-      "cache_create_5m": 1326248,
+      "input": 137,
+      "cache_read": 25543719,
+      "cache_create": 1639289,
+      "cache_create_5m": 1639289,
       "cache_create_1h": 0,
-      "output": 83626,
-      "total": 26331579
+      "output": 86017,
+      "total": 27269162
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "implement Step 0 — plan materialization",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "implement Step 0 — coder select",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 1,
+          "output": 1,
+          "total": 2
+        }
+      }
+    ],
+    "totals": {
+      "input": 1,
+      "output": 1,
+      "total": 2
     }
   },
   "cursor": {
@@ -415,18 +529,18 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 134,
-    "cache_read": 24921571,
-    "cache_create_5m": 1326248,
+    "input": 137,
+    "cache_read": 25543719,
+    "cache_create_5m": 1639289,
     "cache_create_1h": 0,
-    "output": 83626,
-    "total": 26331579
+    "output": 86017,
+    "total": 27269162
   },
   "BUCKETS_codex": {
-    "input": 0,
+    "input": 1,
     "cached_input": 0,
-    "output": 0,
-    "total": 0
+    "output": 1,
+    "total": 2
   },
   "BUCKETS_cursor": {
     "input": 3046105,
