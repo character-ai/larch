@@ -377,7 +377,7 @@ seed_case_inputs "$TMP/description-too-large"
 huge_file="$TMP/description-too-large/huge-description.bin"
 python3 - <<'PY' > "$huge_file"
 import sys
-sys.stdout.write("x" * 270000)
+sys.stdout.write("x" * 300000)
 PY
 desc_launch="$TMP/description-stub-launch.sh"
 cat > "$desc_launch" <<STUB
@@ -399,6 +399,9 @@ PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_O
 grep -Fq 'SCOUT_STATUS=ok' "$TMP/description-too-large/stdout.env" || fail "large description-file should succeed"
 staged_desc="$TMP/description-too-large/staged-context/description.txt"
 [[ -f "$staged_desc" ]] || fail "description file not staged"
+staged_desc_bytes=$(wc -c < "$staged_desc" | tr -d '[:space:]')
+[[ "$staged_desc_bytes" -gt 262144 ]] || fail "staged description fixture size $staged_desc_bytes"
+grep -Fq 'staged --description-file' "$TMP/description-too-large/stdout.env" || fail "large description-file should emit staged WARN"
 grep -Fq "$staged_desc" "$TMP/description-too-large/staged-context/scout-dynamic-archetypes-prompt.md" || fail "prompt must reference staged description path"
 grep -Fq '<reviewer_description>' "$TMP/description-too-large/staged-context/scout-dynamic-archetypes-prompt.md" && fail "prompt must not embed bulk description"
 
@@ -442,6 +445,7 @@ PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$large_launch" SCOUT_STUB_
 large_diff_rc=$?
 [[ "$large_diff_rc" -eq 0 ]] || fail "large diff should not fail size gate"
 grep -Fq 'SCOUT_STATUS=ok' "$TMP/large-diff/stdout.env" || fail "large diff scout status"
+grep -Fq 'staged --diff-file' "$TMP/large-diff/stdout.env" || fail "large diff should emit staged WARN"
 
 # --prompt-override-file: must be a regular file under CLAUDE_PLUGIN_ROOT (max 256KB).
 mkdir -p "$TMP/prompt-override-good"
@@ -672,6 +676,137 @@ PATH="$BIN:$PATH" \
     >"$TMP/waterfall-probe-claude-fail/stdout.env"
 grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/waterfall-probe-claude-fail/stdout.env" || fail "codex prose + claude launch fail should surface claude-failed"
 grep -Fq 'SCOUT_FAIL_REASON' "$TMP/waterfall-probe-claude-fail/stdout.env" && fail "launcher failure must not set SCOUT_FAIL_REASON"
+
+codex_fail_launch="$TMP/waterfall-codex-fail-launch.sh"
+cat > "$codex_fail_launch" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'STATUS=ERROR\nELAPSED=0\n'
+exit 7
+STUB
+chmod +x "$codex_fail_launch"
+mkdir -p "$TMP/waterfall-codex-fail-claude-win"
+seed_case_inputs "$TMP/waterfall-codex-fail-claude-win"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_fail_launch" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
+    SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/waterfall-codex-fail-claude-win/review.diff" \
+    --plan-file "$TMP/waterfall-codex-fail-claude-win/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/waterfall-codex-fail-claude-win/scout-manifest.json" \
+    --codex-present true \
+    --timeout 5 \
+    >"$TMP/waterfall-codex-fail-claude-win/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-codex-fail-claude-win/stdout.env" || fail "codex launch fail should fall through to claude winner"
+
+mkdir -p "$TMP/waterfall-both-launch-fail"
+seed_case_inputs "$TMP/waterfall-both-launch-fail"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_fail_launch" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$claude_fail_launch" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/waterfall-both-launch-fail/review.diff" \
+    --plan-file "$TMP/waterfall-both-launch-fail/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/waterfall-both-launch-fail/scout-manifest.json" \
+    --codex-present true \
+    --timeout 5 \
+    >"$TMP/waterfall-both-launch-fail/stdout.env"
+grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/waterfall-both-launch-fail/stdout.env" || fail "both tiers launch fail should surface last-tier claude-failed"
+
+mkdir -p "$TMP/waterfall-exit0-empty"
+seed_case_inputs "$TMP/waterfall-exit0-empty"
+empty_launch="$TMP/waterfall-exit0-empty-launch.sh"
+cat > "$empty_launch" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-file) out="$2"; shift 2 ;;
+        --output) out="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+: >"${out:?}"
+printf 'STATUS=OK\nELAPSED=0\n'
+exit 0
+STUB
+chmod +x "$empty_launch"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$empty_launch" \
+    SCOUT_CODEX_PROSE=true \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/waterfall-exit0-empty/review.diff" \
+    --plan-file "$TMP/waterfall-exit0-empty/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/waterfall-exit0-empty/scout-manifest.json" \
+    --codex-present true \
+    --timeout 5 \
+    >"$TMP/waterfall-exit0-empty/stdout.env"
+grep -Fq 'SCOUT_STATUS=empty' "$TMP/waterfall-exit0-empty/stdout.env" || fail "exit-0 empty tier raw should contribute to probe exhaustion (empty)"
+
+mkdir -p "$TMP/staged-900k-diff"
+seed_case_inputs "$TMP/staged-900k-diff"
+python3 - <<'PY' >"$TMP/staged-900k-diff/review.diff"
+import sys
+sys.stdout.write("diff --git a/big b/big\n+" + "x" * 900000 + "\n")
+PY
+PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/staged-900k-diff/review.diff" \
+    --plan-file "$TMP/staged-900k-diff/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/staged-900k-diff/scout-manifest.json" \
+    --timeout 5 \
+    >"$TMP/staged-900k-diff/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/staged-900k-diff/stdout.env" || fail "~900 KB staged diff should succeed"
+grep -Fq 'staged --diff-file' "$TMP/staged-900k-diff/stdout.env" || fail "~900 KB staged diff should emit staged WARN"
+
+mkdir -p "$TMP/staged-over-1mb-diff"
+seed_case_inputs "$TMP/staged-over-1mb-diff"
+python3 - <<'PY' >"$TMP/staged-over-1mb-diff/review.diff"
+import sys
+sys.stdout.write("diff --git a/big b/big\n+" + "x" * 1048600 + "\n")
+PY
+PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/staged-over-1mb-diff/review.diff" \
+    --plan-file "$TMP/staged-over-1mb-diff/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/staged-over-1mb-diff/scout-manifest.json" \
+    --timeout 5 \
+    >"$TMP/staged-over-1mb-diff/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/staged-over-1mb-diff/stdout.env" || fail ">1 MB staged diff should fail-open with stub launcher"
+grep -Fq 'staged --diff-file' "$TMP/staged-over-1mb-diff/stdout.env" || fail ">1 MB staged diff should emit staged WARN over cap"
+
+mkdir -p "$TMP/codex-no-description-text-argv"
+seed_case_inputs "$TMP/codex-no-description-text-argv"
+codex_huge_file="$TMP/codex-no-description-text-argv/huge-description.bin"
+cp -f "$huge_file" "$codex_huge_file"
+export SCOUT_CODEX_ARGV_LOG="$TMP/codex-no-description-text-argv/codex-argv.log"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
+    SCOUT_CODEX_JSON_FILE="$TMP/valid4.json" \
+    "$SCRIPT" \
+    --mode description \
+    --scope-files "$TMP/codex-no-description-text-argv/scope-files.txt" \
+    --description-file "$codex_huge_file" \
+    --plan-file "$TMP/codex-no-description-text-argv/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/codex-no-description-text-argv/scout-manifest.json" \
+    --codex-present true \
+    --timeout 5 \
+    >"$TMP/codex-no-description-text-argv/stdout.env"
+grep -Fq -- '--description-text' "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass --description-text on --prompt-file launches"
+grep -Fq -- '--codex-add-dir' "$SCOUT_CODEX_ARGV_LOG" || fail "codex tier must pass --codex-add-dir"
 
 mkdir -p "$TMP/max-zero-no-stage"
 seed_case_inputs "$TMP/max-zero-no-stage"

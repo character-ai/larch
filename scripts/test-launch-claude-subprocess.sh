@@ -38,6 +38,43 @@ grep -Fq 'OUTER_LAUNCHER=claude' "$out.meta" || fail ".meta missing launcher"
 grep -Fq 'TOOL=claude' "$out.meta" || fail ".meta missing tool"
 grep -Fq 'STATUS=clean' "$out.dirty-tree" || fail ".dirty-tree missing clean status"
 
+read_tools_reject_session="$TMP/read-tools-reject-session"
+mkdir -p "$read_tools_reject_session/staged-context"
+read_tools_reject_prompt="$read_tools_reject_session/staged-context/prompt.md"
+printf 'Read staged context by path.\n' >"$read_tools_reject_prompt"
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$read_tools_reject_prompt" \
+    --output-file "$read_tools_reject_session/out.txt" \
+    --timeout 5 \
+    --read-tools-add-dir "$read_tools_reject_session/staged-context" \
+    --timing-task-kind scout-dynamic-archetypes \
+    >/dev/null 2>"$TMP/read-tools-add-dir-without-flag-err"
+add_dir_no_flag_rc=$?
+set -e
+[[ "$add_dir_no_flag_rc" -eq 2 ]] || fail "--read-tools-add-dir without --read-tools must exit 2"
+grep -Fq -- '--read-tools-add-dir requires --read-tools' "$TMP/read-tools-add-dir-without-flag-err" \
+    || fail "--read-tools-add-dir without --read-tools rejection message"
+
+outside_add_dir="$TMP/read-tools-outside-root"
+mkdir -p "$outside_add_dir/staged-context"
+outside_prompt="$outside_add_dir/staged-context/prompt.md"
+printf 'Read staged context by path.\n' >"$outside_prompt"
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$outside_prompt" \
+    --output-file "$outside_add_dir/out.txt" \
+    --timeout 5 \
+    --read-tools \
+    --read-tools-add-dir "$TMP" \
+    --timing-task-kind scout-dynamic-archetypes \
+    >/dev/null 2>"$TMP/read-tools-add-dir-outside-err"
+outside_add_dir_rc=$?
+set -e
+[[ "$outside_add_dir_rc" -eq 2 ]] || fail "--read-tools-add-dir outside session root must exit 2"
+grep -Fq -- '--read-tools-add-dir outside session root' "$TMP/read-tools-add-dir-outside-err" \
+    || fail "--read-tools-add-dir outside session root rejection message"
+
 ln -s "$prompt" "$TMP/link.md"
 if PATH="$BIN:$PATH" LARCH_QUIET_LOG_FILE="$TMP/quiet.log" "$SCRIPT" --prompt-file "$TMP/link.md" --output-file "$TMP/bad.txt" --timeout 5 >/dev/null 2>"$TMP/err"; then
     fail "symlink prompt accepted"

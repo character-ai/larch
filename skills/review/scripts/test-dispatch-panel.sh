@@ -88,12 +88,41 @@ printf 'STATUS=OK\nOUTPUT_FILE=%s\nELAPSED=0\n' "$out"
 STUB
 chmod +x "$scout_launch"
 
+codex_tier_stub="$TMP/codex-tier-stub.sh"
+cat > "$codex_tier_stub" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) out="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$out" ]] || exit 2
+if [[ "${SCOUT_CODEX_LAUNCH_FAIL:-false}" == "true" ]]; then
+    printf 'STATUS=ERROR\nELAPSED=0\n'
+    exit 7
+fi
+if [[ "${SCOUT_CODEX_PROSE:-false}" == "true" ]]; then
+    printf 'not json prose\n' >"$out"
+    printf '0\n' >"${out}.done"
+    exit 0
+fi
+cat "${SCOUT_CODEX_JSON_FILE:-${SCOUT_LAUNCH_JSON_FILE:?SCOUT_CODEX_JSON_FILE or SCOUT_LAUNCH_JSON_FILE required}}" >"$out"
+printf '0\n' >"${out}.done"
+exit 0
+STUB
+chmod +x "$codex_tier_stub"
+
 scout_wrapper="$TMP/scout-dynamic-wrapper.sh"
 cat > "$scout_wrapper" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 [[ -n "\${SCOUT_SCOUT_ARGV_LOG:-}" ]] && printf '%s\n' "\$*" >>"\$SCOUT_SCOUT_ARGV_LOG"
 export SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch"
+export SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub"
+export SCOUT_CODEX_PROSE=true
 exec "$REPO_ROOT/scripts/scout-dynamic-archetypes.sh" "\$@"
 STUB
 chmod +x "$scout_wrapper"
@@ -208,7 +237,7 @@ grep -Fq 'Begin your response with the literal line' \
     || { echo "FAIL: dynamic reviewer artifact missing anti-preamble instruction" >&2; exit 1; }
 
 seed_case_inputs "$TMP/dynamic-empty"
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-empty.json" "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-empty.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic-empty/review.diff" \
     --review-tmpdir "$TMP/dynamic-empty" \
@@ -251,7 +280,7 @@ cat > "$TMP/scout-valid8.json" <<'JSON'
 JSON
 
 seed_case_inputs "$TMP/dynamic8"
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid8.json" "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid8.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic8/review.diff" \
     --review-tmpdir "$TMP/dynamic8" \
@@ -496,7 +525,7 @@ while written < need:
     print(line)
     written += len(line) + 1
 PY
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" SCOUT_CODEX_PROSE=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/oversized-diff/review.diff" \
     --review-tmpdir "$TMP/oversized-diff" \

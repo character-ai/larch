@@ -130,14 +130,20 @@ validate_context_input_file() {
 
 stage_context_file() {
     local label="$1" src="$2" staged_basename="$3"
-    local dest="$STAGED_DIR/$staged_basename" size
+    local dest="$STAGED_DIR/$staged_basename"
     cp -f "$src" "$dest" || fail "failed to stage $label: $src"
-    size=$(wc -c < "$dest" | tr -d ' ')
-    (( size <= MAX_STAGED_BYTES )) || fail "staged $label exceeds $MAX_STAGED_BYTES bytes: $src"
-    if (( size > MAX_CONTEXT_BYTES )); then
+    printf '%s\n' "$dest"
+}
+
+emit_staged_size_warning() {
+    local label="$1" staged_path="$2" size
+    [[ -n "$staged_path" && -f "$staged_path" ]] || return 0
+    size=$(wc -c < "$staged_path" | tr -d '[:space:]')
+    if [ "$size" -gt "$MAX_STAGED_BYTES" ]; then
+        emit_kv WARN "staged $label is ${size} bytes (>${MAX_STAGED_BYTES}); scout tiers may truncate or time out"
+    elif [ "$size" -gt "$MAX_CONTEXT_BYTES" ]; then
         emit_kv WARN "staged $label is ${size} bytes (>${MAX_CONTEXT_BYTES}); scout tiers may truncate or time out"
     fi
-    printf '%s\n' "$dest"
 }
 
 tier_raw_is_scout_json() {
@@ -161,7 +167,7 @@ tier_raw_is_scout_json() {
         if [[ -s "$fenced_tmp" ]]; then
             cp "$fenced_tmp" "$probe_tmp" || { rm -f "$probe_tmp" "$fenced_tmp"; return 1; }
         else
-            cp "$raw_path" "$probe_tmp" || { rm -f "$probe_tmp"; return 1; }
+            cp "$raw_path" "$probe_tmp" || { rm -f "$probe_tmp" "$fenced_tmp"; return 1; }
         fi
         rm -f "$fenced_tmp"
     else
@@ -296,14 +302,18 @@ STAGED_DESC=""
 STAGED_PLAN=""
 if [[ "$MODE" == "diff" ]]; then
     STAGED_DIFF=$(stage_context_file "--diff-file" "$DIFF_FILE_CANON" "diff.txt")
+    emit_staged_size_warning "--diff-file" "$STAGED_DIFF"
 else
     STAGED_SCOPE=$(stage_context_file "--scope-files" "$SCOPE_FILES_CANON" "scope-files.txt")
+    emit_staged_size_warning "--scope-files" "$STAGED_SCOPE"
     if [[ -n "${DESCRIPTION_FILE_CANON:-}" ]]; then
         STAGED_DESC=$(stage_context_file "--description-file" "$DESCRIPTION_FILE_CANON" "description.txt")
+        emit_staged_size_warning "--description-file" "$STAGED_DESC"
     fi
 fi
 if [[ -n "${PLAN_FILE_CANON:-}" ]]; then
     STAGED_PLAN=$(stage_context_file "--plan-file" "$PLAN_FILE_CANON" "plan.txt")
+    emit_staged_size_warning "--plan-file" "$STAGED_PLAN"
 fi
 
 # Export so nested timing-ledger fallback can resolve the caller-provided
@@ -380,13 +390,9 @@ run_codex_tier() {
         codex_args+=(--diff-file "$STAGED_DIFF")
     else
         codex_args+=(--scope-files "$STAGED_SCOPE")
-        if [[ -n "${STAGED_DESC:-}" ]]; then
-            codex_args+=(--description-text "$(head -c "$MAX_CONTEXT_BYTES" "$STAGED_DESC")")
-        elif [[ -n "$DESCRIPTION_TEXT" ]]; then
-            codex_args+=(--description-text "$DESCRIPTION_TEXT")
-        fi
     fi
     [[ -n "$STAGED_PLAN" ]] && codex_args+=(--plan-file "$STAGED_PLAN")
+    codex_args+=(--codex-add-dir "$STAGED_DIR")
     set +e
     "$LAUNCH_REVIEW_SH" "${codex_args[@]}" >"$launch_stdout"
     last_launch_rc=$?
@@ -399,7 +405,10 @@ run_codex_tier() {
         [[ "$launch_status" == "TIMEOUT" || "$launch_status" == "cap_hit" ]] && last_scout_status="timeout"
         return 1
     fi
-    [[ -s "$tier_raw" ]] || return 1
+    if [[ ! -s "$tier_raw" ]]; then
+        had_probe_miss=1
+        return 1
+    fi
     if tier_raw_is_scout_json "$tier_raw"; then
         winner_raw="$tier_raw"
         return 0
@@ -430,7 +439,10 @@ run_claude_tier() {
         [[ "$launch_status" == "TIMEOUT" ]] && last_scout_status="timeout"
         return 1
     fi
-    [[ -s "$tier_raw" ]] || return 1
+    if [[ ! -s "$tier_raw" ]]; then
+        had_probe_miss=1
+        return 1
+    fi
     if tier_raw_is_scout_json "$tier_raw"; then
         winner_raw="$tier_raw"
         return 0
