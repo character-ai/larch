@@ -34,7 +34,7 @@ parse_plan_optional_metadata() {
 
 validate_optional_trailers_preserved() {
     local plan="$1" keys_file="$2" values_file="${3:-}"
-    local key expect got
+    local key expect
     [[ -f "$keys_file" ]] || return 0
     while IFS= read -r key || [[ -n "$key" ]]; do
         [[ -n "$key" ]] || continue

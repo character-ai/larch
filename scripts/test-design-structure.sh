@@ -407,8 +407,10 @@ grep -Fq 'diff_deleted' "$DISCUSSION_MD" \
   || fail "(3175) discussion-rounds.md missing diff_deleted preservation language"
 grep -Fq 'diff_deleted' "$FLAGS_MD" \
   || fail "(3175) flags.md missing diff_deleted preservation language"
+# shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
 grep -Fq 'before `ACTION=EMIT_PLAN`' "$APPROVAL_MD" \
   || fail "(3175) approval-gates.md missing validate-before-EMIT_PLAN guard"
+# shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
 grep -Fq 'before `ACTION=EMIT_PLAN`' "$DISCUSSION_MD" \
   || fail "(3175) discussion-rounds.md missing validate-before-EMIT_PLAN guard"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh" \
