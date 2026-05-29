@@ -1,0 +1,551 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "implement Step 0 — plan materialization",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "implement Step 0 — coder select",
+        "totals": {
+          "input": 3,
+          "cache_read": 337884,
+          "cache_create": 2767,
+          "cache_create_5m": 2767,
+          "cache_create_1h": 0,
+          "output": 2624,
+          "total": 343278
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 3,
+              "cache_read": 337884,
+              "cache_create": 2767,
+              "cache_create_5m": 2767,
+              "cache_create_1h": 0,
+              "output": 2624,
+              "total": 343278
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 11,
+          "cache_read": 1048140,
+          "cache_create": 4171,
+          "cache_create_5m": 4171,
+          "cache_create_1h": 0,
+          "output": 2644,
+          "total": 1054966
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 2 — implementation",
+            "totals": {
+              "input": 6,
+              "cache_read": 469302,
+              "cache_create": 1614,
+              "cache_create_5m": 1614,
+              "cache_create_1h": 0,
+              "output": 1727,
+              "total": 472649
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 5,
+              "cache_read": 578838,
+              "cache_create": 2557,
+              "cache_create_5m": 2557,
+              "cache_create_1h": 0,
+              "output": 917,
+              "total": 582317
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 3,
+          "cache_read": 357014,
+          "cache_create": 1394,
+          "cache_create_5m": 1394,
+          "cache_create_1h": 0,
+          "output": 1922,
+          "total": 360333
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 3 — checks first pass",
+            "totals": {
+              "input": 3,
+              "cache_read": 357014,
+              "cache_create": 1394,
+              "cache_create_5m": 1394,
+              "cache_create_1h": 0,
+              "output": 1922,
+              "total": 360333
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 7,
+          "cache_read": 607204,
+          "cache_create": 3332,
+          "cache_create_5m": 3332,
+          "cache_create_1h": 0,
+          "output": 1800,
+          "total": 612343
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 5 — code review",
+            "totals": {
+              "input": 7,
+              "cache_read": 607204,
+              "cache_create": 3332,
+              "cache_create_5m": 3332,
+              "cache_create_1h": 0,
+              "output": 1800,
+              "total": 612343
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 4,
+          "cache_read": 497362,
+          "cache_create": 3089,
+          "cache_create_5m": 3089,
+          "cache_create_1h": 0,
+          "output": 3369,
+          "total": 503824
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 4,
+              "cache_read": 497362,
+              "cache_create": 3089,
+              "cache_create_5m": 3089,
+              "cache_create_1h": 0,
+              "output": 3369,
+              "total": 503824
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 1,
+          "cache_read": 126243,
+          "cache_create": 1512,
+          "cache_create_5m": 1512,
+          "cache_create_1h": 0,
+          "output": 22,
+          "total": 127778
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 1,
+              "cache_read": 126243,
+              "cache_create": 1512,
+              "cache_create_5m": 1512,
+              "cache_create_1h": 0,
+              "output": 22,
+              "total": 127778
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 23,
+          "cache_read": 2929954,
+          "cache_create": 20300,
+          "cache_create_5m": 20300,
+          "cache_create_1h": 0,
+          "output": 11385,
+          "total": 2961662
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 23,
+              "cache_read": 2929954,
+              "cache_create": 20300,
+              "cache_create_5m": 20300,
+              "cache_create_1h": 0,
+              "output": 11385,
+              "total": 2961662
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 5,
+          "cache_read": 751045,
+          "cache_create": 5616,
+          "cache_create_5m": 5616,
+          "cache_create_1h": 0,
+          "output": 4490,
+          "total": 761156
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 7 — commit review fixes",
+            "totals": {
+              "input": 5,
+              "cache_read": 751045,
+              "cache_create": 5616,
+              "cache_create_5m": 5616,
+              "cache_create_1h": 0,
+              "output": 4490,
+              "total": 761156
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 57,
+      "cache_read": 6654846,
+      "cache_create": 42181,
+      "cache_create_5m": 42181,
+      "cache_create_1h": 0,
+      "output": 28256,
+      "total": 6725340
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "implement Step 0 — plan materialization",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "implement Step 0 — coder select",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 53778,
+          "output": 3640,
+          "total": 306634
+        }
+      },
+      {
+        "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "input": 53778,
+      "output": 3640,
+      "total": 306634
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "implement Step 0 — plan materialization",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "implement Step 0 — coder select",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 24400,
+          "output": 3246,
+          "total": 226206
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 236666,
+          "output": 31749,
+          "total": 1308891
+        }
+      },
+      {
+        "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "input": 261066,
+      "output": 34995,
+      "total": 1535097
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 57,
+    "cache_read": 6654846,
+    "cache_create_5m": 42181,
+    "cache_create_1h": 0,
+    "output": 28256,
+    "total": 6725340
+  },
+  "BUCKETS_codex": {
+    "input": 53778,
+    "cached_input": 249216,
+    "output": 3640,
+    "total": 306634
+  },
+  "BUCKETS_cursor": {
+    "input": 261066,
+    "cache_read": 1239036,
+    "output": 34995,
+    "total": 1535097
+  }
+}

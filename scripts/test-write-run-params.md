@@ -1,13 +1,13 @@
 # test-write-run-params.sh
 
-Regression harness for v2 `/design` `run-params.json`.
+Regression harness for `/design` `run-params.json`.
 
 Coverage:
 
-- Valid `SIMPLE` and `HARD` writes with schema version 2.
+- Valid `SIMPLE` and `HARD` writes.
 - Rejection of invalid `design_classification`, including `TRIVIAL_DOC_ONLY`.
 - Rejection of relative output paths.
-- Validation of `--partition-requested`, `--brainstorm-requested`, and `--manual-gate-b`.
+- Missing/empty-value rejection for all required and boolean flags: `--classification`, `--output`, `--partition-requested`, `--brainstorm-requested`, and `--manual-gate-b` (each exits 2 with a `requires a value` message).
 - Explicit `--manual-gate-b true` and `--manual-gate-b false` persistence.
 - Triple-flag persistence: `--partition-requested true` plus `--brainstorm-requested true` plus `--manual-gate-b true`.
 
