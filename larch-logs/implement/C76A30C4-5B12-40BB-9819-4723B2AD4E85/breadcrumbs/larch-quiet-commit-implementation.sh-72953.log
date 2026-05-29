@@ -1,0 +1,14 @@
+[sergey-zhupanov/implementing-breadcrumbs-deprecation-sta-3118 1d8a43d8f] Remove breadcrumb-monitor contract (Stage 3 of #3111)
+ 52 files changed, 118 insertions(+), 5117 deletions(-)
+ delete mode 100644 scripts/lib-redact-streaming.md
+ delete mode 100755 scripts/lib-redact-streaming.sh
+ delete mode 100644 scripts/lint-foreground-markers.md
+ delete mode 100755 scripts/lint-foreground-markers.sh
+ delete mode 100644 scripts/test-background-monitor-wait.md
+ delete mode 100755 scripts/test-background-monitor-wait.sh
+ delete mode 100644 scripts/test-breadcrumb-monitor-bash32.md
+ delete mode 100755 scripts/test-breadcrumb-monitor-bash32.sh
+ delete mode 100644 scripts/test-breadcrumb-monitor.md
+ delete mode 100755 scripts/test-breadcrumb-monitor.sh
+ delete mode 100644 scripts/test-lint-foreground-markers.md
+ delete mode 100755 scripts/test-lint-foreground-markers.sh

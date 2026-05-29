@@ -1,0 +1,11 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real branch hygiene issue, but not a useful out-of-scope GitHub issue for future work
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- legitimate temporary guard loss, but reworking deleted lint for Stage-4-deferred fences is more churn than warranted
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=weak UNCERTAIN=false -- real timeout behavior loss, but restoring paired-PID monitor semantics would undo the intended Stage 3 simplification
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the fail-open warning path is real but explicitly intentional for diagnostic preservation and not worth blocking this change
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- accepting unknown flags is part of the temporary always-exit-0 shim contract
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
