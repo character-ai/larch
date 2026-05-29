@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Existing variableized-call precedents in agent-lint support a focused exclusion, and the cited sibling vars have separate SKILL.md/runtime references.

@@ -1,0 +1,50 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,7 +1,7 @@
+ ## Implementation Plan
+ 
+ ### Summary
+-Resolve the three code-quality / test-coverage items in issue #3166 for the `plan-review-loop.sh` plan-line dedup. Extract the inline Python dedup heredoc inside `_run_post_apply_pipeline` (lines 500-581) into a committed standalone script, document the intentional fence-model divergence without overstating fenced duplicate protection, add unconditional lint exclusions for the variableized helper caller, and add a `run_loop` integration test for the `dedup-python-failed` caller wiring. This is a pure refactor — dedup behavior stays byte-identical.
++Resolve the three code-quality / test-coverage items in issue #3166 for the `plan-review-loop.sh` plan-line dedup. Extract the inline Python dedup heredoc inside `_run_post_apply_pipeline` (lines 500-581) into a committed standalone script, document the intentional fence-model divergence without overstating fenced duplicate protection, add unconditional lint exclusions for the variableized helper caller, map the new helper and sibling doc to `test-plan-review-loop` in `scripts/relevant-checks.sh`, and add a `run_loop` integration test for the `dedup-python-failed` caller wiring. This is a pure refactor — dedup behavior stays byte-identical.
+ 
+ ## Files to modify/create
+ 
+@@ -40,6 +40,10 @@
+ - When updating the existing non-numeric `_run_post_apply_pipeline` stub for the refactored path, do not keep a stdin-reading heredoc-era `cat` stub. Make it print bogus output and exit without reading stdin, or gate on basename `dedup-plan-lines.py` and print bogus for that path only. The test must exercise the non-numeric guard deterministically without blocking on ambient stdin.
+ 
++### UPDATED: `scripts/relevant-checks.sh`
++- Extend the existing `plan-review-loop` `case "$f" in` branch (`scripts/relevant-checks.sh` lines 103-106) to pipe-alternate `skills/design/scripts/dedup-plan-lines.py` and `skills/design/scripts/dedup-plan-lines.md` alongside `plan-review-loop.sh`, `plan-review-loop.md`, and `test-plan-review-loop.sh`.
++- Leave the existing `append_target_once test-plan-review-loop` and `append_target_once test-design-multi-round-integration` calls unchanged; helper-only or sibling-doc-only edits now run the owning harness instead of passing `relevant-checks` with no dedup regression signal.
++
+ ### UPDATED: `agent-lint.toml`
+ - Unconditionally add `skills/design/scripts/dedup-plan-lines.py` to the adjacent dead-script exclusion block, with a short comment naming `skills/design/scripts/plan-review-loop.sh` as the runtime caller through `$DEDUP_PLAN_LINES_PY`; agent-lint 2.3.2 does not follow that shell variable indirection.
+ - Unconditionally add `skills/design/scripts/dedup-plan-lines.md` to the existing skill-local sibling `.md` exclusion block, or beside the helper entry if that is the local convention for this block. Keep the exclusion focused; do not weaken dead-script or sibling-doc lint globally.
+@@ -52,6 +56,7 @@
+ - Reuse the established sibling-path wiring (`$PLUGIN_ROOT/...` plain form) and the eval-isolation override convention already used by `DESIGN_DRIVER_SH` — no new override mechanism, no `${LARCH_*:-}` indirection.
+ - Document (not unify) the fence divergence per the Round 1 decision; the authoritative explanation lives in the new `.md`, with a one-line cross-reference from `parse-plan-commands.md`. The wording must distinguish fence-aware heading/Constraints state from duplicate-line protection.
+ - Add focused, unconditional `agent-lint.toml` exclusions because the new runtime edge is intentionally variableized and current lint does not resolve that caller path.
++- Extend the existing `relevant-checks.sh` plan-review-loop path glob so helper-only or sibling-doc-only edits cannot merge without exercising `test-plan-review-loop` (FINDING_1).
+ 
+ ## Edge cases
+ - `set -u` unbound `$DEDUP_PLAN_LINES_PY` in the four eval-isolation tests: must export it in all four AND in their inner `bash -c` export lists. Missing any one fails that test loudly.
+@@ -60,6 +65,7 @@
+ - Documentation must not claim fenced regions are protected from duplicate removal. The balanced fence model suppresses heading and Constraints-section state changes inside matched fences; duplicate-line collapse remains global except for the existing Constraints-section protection outside fences.
+ - Dead-script lint will not infer the shell-to-Python helper edge from the variableized caller path in agent-lint 2.3.2. Add both the helper and sibling `.md` to the focused `agent-lint.toml` exclusion blocks with a caller comment instead of making the update conditional or weakening lint globally.
+ - Python version: the moved code uses PEP 585 builtin-generic annotations (`set[int]`, `list[tuple[int, int]]`); this requirement (Python 3.9+) is unchanged from the current heredoc.
++- Helper-only edits must hit the extended `relevant-checks.sh` case; if `dedup-plan-lines.py` or `dedup-plan-lines.md` are omitted from the plan-review-loop branch, `relevant-checks` can pass while dedup behavior drifts untested.
+ 
+ ## Failure modes
+ 1. **Awk extraction silently truncates after a future edit** — earliest signal: a dedup unit test fails with a bash syntax error from a partial function body. Mitigation: extraction removes the embedded Python, so the awk range spans only shell and the column-zero `}` hazard is gone.
+@@ -68,9 +74,11 @@
+ 4. **Test wrapper recursion** — if the integration PYWRAP appends `exec python3 "$@"` after `PATH="$PYWRAP:$PATH"`, non-dedup Python calls can re-enter the wrapper until failure. Mitigation: capture `REAL_PYTHON` before wrapper installation and have the wrapper exec that absolute interpreter path.
+ 5. **Dead-script lint failure** — if `agent-lint` cannot see the variableized runtime call, `relevant-checks` can fail even though `plan-review-loop.sh` calls the helper. Mitigation: add focused, unconditional exclusions for the new helper and sibling doc with a comment pointing at the caller.
++6. **Helper-only change skips owning harness** — if `dedup-plan-lines.py` or `dedup-plan-lines.md` are not in the `relevant-checks.sh` plan-review-loop case, a focused helper edit can pass `relevant-checks` without running `test-plan-review-loop`. Mitigation: extend the existing pipe-alternation on that branch; signal is dedup regressions discovered only on later loop-touching PRs.
+ 
+ ## Testing strategy
+ - `make test-plan-review-loop` (`bash skills/design/scripts/test-plan-review-loop.sh`): every existing dedup test (section-aware 4-dup removal, Constraints protection, unclosed-fence non-collapse, fenced duplicate-collapse behavior if currently asserted, python-failure backup restore, non-numeric backup restore) must pass unchanged, plus the new `dedup-python-failed` integration test.
++- `scripts/relevant-checks.sh` path routing: edits confined to `dedup-plan-lines.py` or `dedup-plan-lines.md` must append `test-plan-review-loop` (and the existing `test-design-multi-round-integration` companion on that branch).
+ - `bash scripts/relevant-checks.sh` after edits: covers shellcheck on the `.sh`, the `script-md-siblings` sibling-existence check for the new `.py` / `.md`, markdownlint, Bash 3.2 lint, and the focused dead-script / sibling-doc exclusions for the new helper.
+ - Manual spot-check: run `python3 skills/design/scripts/dedup-plan-lines.py <plan> <out>` on a sample plan and confirm the removed-count and output match the pre-refactor heredoc, including duplicate collapse inside fenced blocks.
+ 
+-diff_lines: 292
++diff_lines: 295

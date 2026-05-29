@@ -1,0 +1,38 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -39,6 +39,10 @@
+ - Add one new `run_loop` integration test (sub-task 3). Scaffold a round that reaches `_run_post_apply_pipeline` (scout + dispatch + collect-with-findings + voters + revise stub, mirroring the existing `out_ddd` setup), with a `python3` PATH wrapper that `exit`s non-zero **only** when `$1` ends with `dedup-plan-lines.py` (basename match, now possible because the logic is a named file) and execs real `python3` for every other call. Assert the loop terminates with `LOOP_STATUS=emit-plan-failed` and surfaces `REASON=dedup-python-failed` (the caller-emitted KV from `emit_loop_kvs` / the `.step3-plan-review-result.env` result env), and that the helper does not print `LOOP_REASON` directly. This is distinct from `out_ddd`, which exercises the separate **findings** dedup (`.plan-review-loop-dedup.py`, line 944), not the plan-line dedup.
++- For that new integration wrapper, capture `REAL_PYTHON=$(command -v python3)` **before** prepending the wrapper directory to `PATH`, write the wrapper to `exec "${REAL_PYTHON:?}" "$@"` for non-`dedup-plan-lines.py` calls, and invoke `run_loop` with `REAL_PYTHON="$REAL_PYTHON" PATH="$PYWRAP:$PATH"`. This avoids wrapper recursion while preserving interception of the named helper path.
++- When updating the existing non-numeric `_run_post_apply_pipeline` stub for the refactored path, do not keep a stdin-reading heredoc-era `cat` stub. Make it print bogus output and exit without reading stdin, or gate on basename `dedup-plan-lines.py` and print bogus for that path only. The test must exercise the non-numeric guard deterministically without blocking on ambient stdin.
++
++### UPDATED: `agent-lint.toml`
++- Add `skills/design/scripts/dedup-plan-lines.py` and `skills/design/scripts/dedup-plan-lines.md` to the adjacent dead-script / sibling-doc exclusion block if the current lint graph does not already recognize the shell caller edge. Include a short comment naming `skills/design/scripts/plan-review-loop.sh` as the runtime caller so `bash scripts/relevant-checks.sh` does not fail the new helper as unreferenced.
+ 
+ ### UPDATED: `skills/design/scripts/parse-plan-commands.md`
+ - Add a short note in the existing **## Fenced `bash` / `sh` blocks** section cross-referencing `dedup-plan-lines.md`: this parser intentionally uses a simple `bash`/`sh` fence toggle, which differs from the plan-line dedup's two-pass balanced-pair model; the two are not unified because they serve different concerns (sub-task 2). Keep code/grammar tokens byte-stable.
+@@ -50,15 +54,17 @@
+ 
+ ## Edge cases
+ - `set -u` unbound `$DEDUP_PLAN_LINES_PY` in the four eval-isolation tests: must export it in all four AND in their inner `bash -c` export lists. Missing any one fails that test loudly.
+-- The `python3`-stub tests (python-failure / non-numeric) keep working unchanged: the stub replaces the `python3` binary, so it intercepts the call regardless of script path.
+-- Integration-test PYWRAP must match only `dedup-plan-lines.py` (never the findings-dedup `.plan-review-loop-dedup.py`) so it fails the intended path, and must exec real python for all other `python3` calls in the loop (parse-collect-inline, cumulative, findings split, etc.).
++- The `python3`-stub tests (python-failure / non-numeric) still intercept the call because the stub replaces the `python3` binary, but the non-numeric stub must be changed from any stdin-reading heredoc-era shape to a deterministic bogus-output stub. It should print the bogus value and exit without reading stdin.
++- Integration-test PYWRAP must match only `dedup-plan-lines.py` (never the findings-dedup `.plan-review-loop-dedup.py`) so it fails the intended path, and must exec the pre-captured real python for all other `python3` calls in the loop (parse-collect-inline, cumulative, findings split, etc.). Capture `REAL_PYTHON` before changing `PATH`; otherwise `exec python3 "$@"` can recurse into the wrapper.
++- Dead-script lint may not infer the shell-to-Python helper edge from the variableized caller path. If so, add both the helper and sibling `.md` to the relevant `agent-lint.toml` exclusion block with a caller comment instead of weakening the lint globally.
+ - Python version: the moved code uses PEP 585 builtin-generic annotations (`set[int]`, `list[tuple[int, int]]`); this requirement (Python 3.9+) is unchanged from the current heredoc.
+ 
+ ## Failure modes
+ 1. **Awk extraction silently truncates after a future edit** — earliest signal: a dedup unit test fails with a bash syntax error from a partial function body. Mitigation: extraction removes the embedded Python, so the awk range spans only shell and the column-zero `}` hazard is gone.
+ 2. **Path-resolution drift** — if `DEDUP_PLAN_LINES_PY` is written with the `${LARCH_*:-}` form instead of the plain assignment, the eval-isolation tests would silently use the production path and mask override intent. Mitigation: match the exact plain-assignment form of the three sibling vars; the warning signal is a unit test reading the wrong file.
+ 3. **Findings-dedup vs plan-line-dedup confusion** — a PYWRAP or doc note that conflates `.plan-review-loop-dedup.py` (line 944, findings) with `dedup-plan-lines.py` (line 500, plan lines). Mitigation: distinct names; the new test and docs explicitly scope to the plan-line path.
++4. **Test wrapper recursion** — if the integration PYWRAP appends `exec python3 "$@"` after `PATH="$PYWRAP:$PATH"`, non-dedup Python calls can re-enter the wrapper until failure. Mitigation: capture `REAL_PYTHON` before wrapper installation and have the wrapper exec that absolute interpreter path.
++5. **Dead-script lint failure** — if `agent-lint` cannot see the variableized runtime call, `relevant-checks` can fail even though `plan-review-loop.sh` calls the helper. Mitigation: add focused exclusions for the new helper and sibling doc with a comment pointing at the caller.
+ 
+ ## Testing strategy
+ - `make test-plan-review-loop` (`bash skills/design/scripts/test-plan-review-loop.sh`): every existing dedup test (section-aware 4-dup removal, Constraints protection, unclosed-fence non-collapse, python-failure backup restore, non-numeric backup restore) must pass unchanged, plus the new `dedup-python-failed` integration test.
+-- `bash scripts/relevant-checks.sh` after edits: covers shellcheck on the `.sh`, the `script-md-siblings` sibling-existence check for the new `.py` / `.md`, markdownlint, and Bash 3.2 lint.
++- `bash scripts/relevant-checks.sh` after edits: covers shellcheck on the `.sh`, the `script-md-siblings` sibling-existence check for the new `.py` / `.md`, markdownlint, Bash 3.2 lint, and the dead-script exclusions for the new helper if required by `agent-lint.toml`.
+ - Manual spot-check: run `python3 skills/design/scripts/dedup-plan-lines.py <plan> <out>` on a sample plan and confirm the removed-count and output match the pre-refactor heredoc.
+ 
+-diff_lines: 270
++diff_lines: 286

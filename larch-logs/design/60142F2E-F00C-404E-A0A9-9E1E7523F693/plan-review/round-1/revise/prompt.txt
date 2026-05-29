@@ -1,0 +1,113 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+## Implementation Plan
+
+### Summary
+Resolve the three code-quality / test-coverage items in issue #3166 for the `plan-review-loop.sh` plan-line dedup. Extract the inline Python dedup heredoc inside `_run_post_apply_pipeline` (lines 500-581) into a committed standalone script, document the intentional fence-model divergence, and add a `run_loop` integration test for the `dedup-python-failed` caller wiring. This is a pure refactor — dedup behavior stays byte-identical.
+
+## Files to modify/create
+
+### NEW: `skills/design/scripts/dedup-plan-lines.py`
+- Holds the section-aware plan-line dedup logic moved **verbatim** from `plan-review-loop.sh` lines 501-580 (the body between `<<'PY'` and `PY`).
+- CLI contract preserved exactly: `python3 dedup-plan-lines.py <src> <dest>` reads `<src>` (plan.txt), writes the deduped result to `<dest>`, and prints the integer count of removed duplicate lines to stdout. Same `sys.argv[1:3]` unpacking.
+- Add a `#!/usr/bin/env python3` shebang and a module docstring documenting the fence model: two-pass balanced opener/closer pairing; only lines strictly between a matched fence pair are in-fence; a failed closer leaves the stack unchanged (plain-text semantics); Constraints-section duplicates are protected outside fences. State explicitly that this model intentionally differs from the `parse-plan-commands.awk` toggle (sub-task 2).
+- No logic change: identical `heading_re` / `fence_re`, `norm_key`, `update_heading_state`, two-pass `in_fence_lines`, and Constraints-protection code.
+
+### NEW: `skills/design/scripts/dedup-plan-lines.md`
+- Sibling contract doc (`script-md-siblings` rule): purpose, CLI (`<src> <dest>` -> stdout removed-count), primary caller (`plan-review-loop.sh` `_run_post_apply_pipeline` via `$DEDUP_PLAN_LINES_PY`), invariants (byte-identical dedup; Constraints protection; balanced-pair fence model), and harness pointer (`test-plan-review-loop.sh`).
+- Authoritative home for the fence-model divergence note (sub-task 2): explain WHY the dedup uses a two-pass balanced-pair model while `parse-plan-commands.awk` uses a simple `bash`/`sh` toggle. They serve different concerns (dedup protects any fenced region; the awk parser only extracts `bash`/`sh` command bodies for validation), so they are intentionally NOT unified.
+
+### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+- Add a script-path variable beside the existing sibling-path block (lines 21-23, next to `DESIGN_DRIVER_SH` / `CHECK_PLAN_SIZE_SH` / `INVOKE_PLAN_VALIDATOR_SH`):
+  `DEDUP_PLAN_LINES_PY="$PLUGIN_ROOT/skills/design/scripts/dedup-plan-lines.py"`
+  (plain `$PLUGIN_ROOT` form, matching its three siblings; unit tests override it by `export` + eval-isolation, exactly as they already do for those three.)
+- In `_run_post_apply_pipeline`, replace the heredoc (lines 500-581: `if ! dedup_removed=$(python3 - "$plan_path" "$dedup_tmp" <<'PY' ... PY` ... `); then`) with a single-line call:
+  `if ! dedup_removed=$(python3 "$DEDUP_PLAN_LINES_PY" "$plan_path" "$dedup_tmp"); then`
+- Leave the surrounding failure handling byte-for-byte unchanged: backup restore, `LOOP_STATUS=emit-plan-failed`, `LOOP_REASON=dedup-python-failed`, the non-numeric `dedup_removed` guard, and the `rm`/`mv` lines.
+- Net effect: `_run_post_apply_pipeline` no longer contains embedded Python, so a stray column-zero `}` can no longer truncate the `awk "/^_run_post_apply_pipeline\(\)/,/^}$/"` test extraction (sub-task 1). Bash 3.2-safe; no new constructs.
+
+### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+- For each of the four `_run_post_apply_pipeline` awk-extraction tests (currently near lines 1746, 1797, 1836, 1878): add `export DEDUP_PLAN_LINES_PY="$ROOT/skills/design/scripts/dedup-plan-lines.py"` alongside the existing `export DESIGN_DRIVER_SH=...` lines, AND add `DEDUP_PLAN_LINES_PY` to each inner `bash -c '... export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH CLAUDE_PLUGIN_ROOT ...'` export list. Required because the eval-extracted function references `$DEDUP_PLAN_LINES_PY` under `set -u`; the top-of-script assignment is never eval'd in isolation. The two `python3`-stub tests (python-failure, non-numeric) still pass because the stub replaces the `python3` binary and ignores the script path.
+- Add one new `run_loop` integration test (sub-task 3). Scaffold a round that reaches `_run_post_apply_pipeline` (scout + dispatch + collect-with-findings + voters + revise stub, mirroring the existing `out_ddd` setup), with a `python3` PATH wrapper that `exit`s non-zero **only** when `$1` ends with `dedup-plan-lines.py` (basename match, now possible because the logic is a named file) and execs real `python3` for every other call. Assert the loop terminates with `LOOP_STATUS=emit-plan-failed` and surfaces `REASON=dedup-python-failed` (the caller-emitted KV from `emit_loop_kvs` / the `.step3-plan-review-result.env` result env), and that the helper does not print `LOOP_REASON` directly. This is distinct from `out_ddd`, which exercises the separate **findings** dedup (`.plan-review-loop-dedup.py`, line 944), not the plan-line dedup.
+
+### UPDATED: `skills/design/scripts/parse-plan-commands.md`
+- Add a short note in the existing **## Fenced `bash` / `sh` blocks** section cross-referencing `dedup-plan-lines.md`: this parser intentionally uses a simple `bash`/`sh` fence toggle, which differs from the plan-line dedup's two-pass balanced-pair model; the two are not unified because they serve different concerns (sub-task 2). Keep code/grammar tokens byte-stable.
+
+## Approach
+- Verbatim move of the Python (no logic edits) keeps dedup output byte-identical and lets every existing dedup assertion pass unchanged.
+- Reuse the established sibling-path wiring (`$PLUGIN_ROOT/...` plain form) and the eval-isolation override convention already used by `DESIGN_DRIVER_SH` — no new override mechanism, no `${LARCH_*:-}` indirection.
+- Document (not unify) the fence divergence per the Round 1 decision; the authoritative explanation lives in the new `.md`, with a one-line cross-reference from `parse-plan-commands.md`.
+
+## Edge cases
+- `set -u` unbound `$DEDUP_PLAN_LINES_PY` in the four eval-isolation tests: must export it in all four AND in their inner `bash -c` export lists. Missing any one fails that test loudly.
+- The `python3`-stub tests (python-failure / non-numeric) keep working unchanged: the stub replaces the `python3` binary, so it intercepts the call regardless of script path.
+- Integration-test PYWRAP must match only `dedup-plan-lines.py` (never the findings-dedup `.plan-review-loop-dedup.py`) so it fails the intended path, and must exec real python for all other `python3` calls in the loop (parse-collect-inline, cumulative, findings split, etc.).
+- Python version: the moved code uses PEP 585 builtin-generic annotations (`set[int]`, `list[tuple[int, int]]`); this requirement (Python 3.9+) is unchanged from the current heredoc.
+
+## Failure modes
+1. **Awk extraction silently truncates after a future edit** — earliest signal: a dedup unit test fails with a bash syntax error from a partial function body. Mitigation: extraction removes the embedded Python, so the awk range spans only shell and the column-zero `}` hazard is gone.
+2. **Path-resolution drift** — if `DEDUP_PLAN_LINES_PY` is written with the `${LARCH_*:-}` form instead of the plain assignment, the eval-isolation tests would silently use the production path and mask override intent. Mitigation: match the exact plain-assignment form of the three sibling vars; the warning signal is a unit test reading the wrong file.
+3. **Findings-dedup vs plan-line-dedup confusion** — a PYWRAP or doc note that conflates `.plan-review-loop-dedup.py` (line 944, findings) with `dedup-plan-lines.py` (line 500, plan lines). Mitigation: distinct names; the new test and docs explicitly scope to the plan-line path.
+
+## Testing strategy
+- `make test-plan-review-loop` (`bash skills/design/scripts/test-plan-review-loop.sh`): every existing dedup test (section-aware 4-dup removal, Constraints protection, unclosed-fence non-collapse, python-failure backup restore, non-numeric backup restore) must pass unchanged, plus the new `dedup-python-failed` integration test.
+- `bash scripts/relevant-checks.sh` after edits: covers shellcheck on the `.sh`, the `script-md-siblings` sibling-existence check for the new `.py` / `.md`, markdownlint, and Bash 3.2 lint.
+- Manual spot-check: run `python3 skills/design/scripts/dedup-plan-lines.py <plan> <out>` on a sample plan and confirm the removed-count and output match the pre-refactor heredoc.
+
+diff_lines: 270
+
+</plan>
+
+<findings>
+### FINDING_1: Non-numeric dedup stub may block on stdin
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Cursor-dyn-anchor-verifier, Codex-dyn-anchor-verifier, Codex-Innovation, Codex-Pragmatic, Cursor-dyn-test-contract, Codex-dyn-test-contract
+- **Severity**: important
+- **Concern**: The refactor removes the inline Python heredoc and calls the helper by path, but the non-numeric `python3` test stub still reads stdin. That can hang or consume ambient stdin during the non-numeric dedup-output scenario instead of reliably asserting bogus output handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch, Codex-Edge, Cursor-dyn-anchor-verifier, Codex-dyn-anchor-verifier: Change the stub for the refactored path to print bogus without reading stdin, or gate on basename dedup-plan-lines.py and exit after printing bogus
+  - From Codex-Innovation, Codex-Pragmatic, Cursor-dyn-test-contract, Codex-dyn-test-contract: Change this stub to just print bogus output, or redirect the cat from /dev/null, when updating the eval-isolation exports
+
+
+### FINDING_2: PYWRAP integration test can recurse
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The integration-test `PYWRAP` does not capture and pass through the real `python3` before prepending the wrapper directory to `PATH`. A wrapper that runs `exec python3 "$@"` can resolve back to itself and recurse instead of reaching the real interpreter for non-dedup calls.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Mirror out_ddd: capture REAL_PYTHON before mkdir PYWRAP; wrapper ends with exec "${REAL_PYTHON:?}" "$@"; invoke with REAL_PYTHON="$REAL_PYTHON" PATH="$PYWRAP:$PATH" run_loop ...
+
+
+### FINDING_3: New helper may fail dead-script lint
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Concern**: The plan adds a skill-local Python helper and sibling documentation file without updating the adjacent `agent-lint` dead-script exclusions. Because the linter may not follow the shell caller edge, `relevant-checks` can fail on the new helper files.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add skills/design/scripts/dedup-plan-lines.py and skills/design/scripts/dedup-plan-lines.md to the adjacent exclude block with a short comment naming plan-review-loop.sh as the caller
+
+
+</findings>
+
+<feature>
+Multiple code quality and test coverage improvements in plan-review-loop.sh dedup pipeline
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor specialist reviewers (structure, testing, edge-cases)
+**Phase**: implement
+**Vote tally**: 2-3 YES per finding, 0 NO across the panel
+
+## Description
+
+Three related latent issues in the unclosed-fence dedup fix:
+  1. `skills/design/scripts/plan-review-loop.sh:492-647`: The large inline Python heredoc (`_run_post_apply_pipeline`) is tightly coupled to awk-extracted tests; accidental column-zero shell syntax in the function body would break all dedup tests. Suggested fix: extract the dedup Python logic to a standalone helper script when next touching this area.
+  2. `skills/design/scripts/plan-review-loop.sh` and `skills/design/scripts/parse-plan-commands.awk`: The AWK parser and Python dedup logic use different fence-boundary semantics (AWK uses a simpler toggle while Python now uses a two-pass balanced-pair approach). Document or unify fence models when either path changes to prevent future divergence.
+  3. `skills/design/scripts/test-plan-review-loop.sh`: No full `run_loop` integration test covering the new `LOOP_REASON=dedup-python-failed` caller wiring; a unit test for `_run_post_apply_pipeline` failure exists (added in this PR) but an integration test proving the loop caller handles the new reason correctly is missing.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+</feature>
