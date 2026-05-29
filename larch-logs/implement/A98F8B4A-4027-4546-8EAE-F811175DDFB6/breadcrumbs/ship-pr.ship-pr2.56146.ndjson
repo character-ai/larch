@@ -1,1 +1,17 @@
 larch:bc t=2026-05-29T00:14:22Z d=0 p=56256 s=ship-pr.sh c=progress text=→ ship-pr: opening PR
+larch:bc t=2026-05-29T00:14:35Z d=0 p=56256 s=ship-pr.sh c=progress text=→ ship-pr: PR #3170 opened
+larch:bc t=2026-05-29T00:14:38Z d=0 p=56256 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
+larch:bc t=2026-05-29T00:14:38Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
+larch:bc t=2026-05-29T00:14:41Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:14:54Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:15:08Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:15:22Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:15:35Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:15:48Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:15:49Z d=0 p=74161 s=ci-wait.sh c=wait-ci text= ⏳ CI: 1m elapsed, 6 polls, status=pending
+larch:bc t=2026-05-29T00:16:02Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:16:15Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:16:29Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:16:42Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=.
+larch:bc t=2026-05-29T00:16:57Z d=0 p=74161 s=ci-wait.sh c=wait-ci text=→ Action: rebase (139s, 10 polls)
+larch:bc t=2026-05-29T00:16:57Z d=0 p=56256 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
