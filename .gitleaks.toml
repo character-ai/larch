@@ -19,3 +19,9 @@ paths = [
     '''^skills/review-and-fix/scripts/test-review-and-fix\.sh$''',
     '''^skills/review/scripts/test-review-core\.sh$''',
 ]
+# Synthetic test-fixture key used in redaction harnesses.
+# The value is obviously fake (sequential alphabet + digits) and appears in test
+# scripts and changelog prose describing the fixture, not in production code.
+regexes = [
+    '''abcdefghijklmnopqrstuvwxyz0123456789ABCD''',
+]
