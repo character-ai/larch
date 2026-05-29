@@ -22,6 +22,10 @@ paths = [
 # Synthetic test-fixture key used in redaction harnesses.
 # The value is obviously fake (sequential alphabet + digits) and appears in test
 # scripts and changelog prose describing the fixture, not in production code.
+stopwords = [
+    "abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+]
 regexes = [
+    '''sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD''',
     '''abcdefghijklmnopqrstuvwxyz0123456789ABCD''',
 ]
