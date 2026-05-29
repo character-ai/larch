@@ -225,16 +225,81 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 23,
+          "cache_read": 2929954,
+          "cache_create": 20300,
+          "cache_create_5m": 20300,
+          "cache_create_1h": 0,
+          "output": 11385,
+          "total": 2961662
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 23,
+              "cache_read": 2929954,
+              "cache_create": 20300,
+              "cache_create_5m": 20300,
+              "cache_create_1h": 0,
+              "output": 11385,
+              "total": 2961662
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 5,
+          "cache_read": 751045,
+          "cache_create": 5616,
+          "cache_create_5m": 5616,
+          "cache_create_1h": 0,
+          "output": 4490,
+          "total": 761156
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 7 — commit review fixes",
+            "totals": {
+              "input": 5,
+              "cache_read": 751045,
+              "cache_create": 5616,
+              "cache_create_5m": 5616,
+              "cache_create_1h": 0,
+              "output": 4490,
+              "total": 761156
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 29,
-      "cache_read": 2973847,
-      "cache_create": 16265,
-      "cache_create_5m": 16265,
+      "input": 57,
+      "cache_read": 6654846,
+      "cache_create": 42181,
+      "cache_create_5m": 42181,
       "cache_create_1h": 0,
-      "output": 12381,
-      "total": 3002522
+      "output": 28256,
+      "total": 6725340
     }
   },
   "codex": {
@@ -313,6 +378,30 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
         "totals": {
           "input": 0,
           "output": 0,
@@ -407,6 +496,30 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -416,12 +529,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 29,
-    "cache_read": 2973847,
-    "cache_create_5m": 16265,
+    "input": 57,
+    "cache_read": 6654846,
+    "cache_create_5m": 42181,
     "cache_create_1h": 0,
-    "output": 12381,
-    "total": 3002522
+    "output": 28256,
+    "total": 6725340
   },
   "BUCKETS_codex": {
     "input": 53778,
