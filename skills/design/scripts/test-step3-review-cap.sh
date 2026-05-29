@@ -33,6 +33,9 @@ grep -Fq "including \`LOOP_STATUS=panel-failed\`" "$SKILL_MD" \
     || fail "SKILL missing panel-failed counter-consumption prose"
 grep -Fq "MUST NOT persist when \`TALLY_PLAN_REVIEW_STATUS=tally-error\`" "$SKILL_MD" \
     || fail "SKILL missing tally-error non-consumption prose"
+# shellcheck disable=SC2016 # ${...} tokens are literal markdown/code pins.
+grep -Fq '**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and continuing to Step 3b, Step 4, then Gate C.**' "$SKILL_MD" \
+    || fail "SKILL missing exact review-round cap breadcrumb"
 grep -Fq 'WARN=Step 3: refusing to clean symlinked plan-review directory' "$SKILL_MD" \
     || fail "SKILL missing symlinked plan-review cleanup warning"
 

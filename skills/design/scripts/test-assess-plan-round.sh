@@ -314,6 +314,10 @@ write_params_for() {
 
 echo "=== two-entry Step 3 cursor + round-2 assessor integration ==="
 case_tmp=$(mktemp -d "${TMPDIR:-/tmp}/tapr-two-entry.XXXXXX")
+saved_dispatch_plan_assessors_sh=${LARCH_DISPATCH_PLAN_ASSESSORS_SH-__UNSET__}
+saved_breadcrumb_monitor_sh=${LARCH_BREADCRUMB_MONITOR_SH-__UNSET__}
+saved_tally_plan_assessor_sh=${LARCH_TALLY_PLAN_ASSESSOR_SH-__UNSET__}
+saved_snapshot_plan_round_sh=${LARCH_SNAPSHOT_PLAN_ROUND_SH-__UNSET__}
 rm -f "$case_tmp"/plan-after-round-*.txt \
   "$case_tmp"/plan-review-round-cursor.txt \
   "$case_tmp"/assessor-verdict-round-*.txt \
@@ -375,6 +379,25 @@ printf '%s\n' "$out2" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'Entr
 printf '%s\n' "$out2" | grep -Fq 'EFFECTIVE_ASSESSORS=3' || fail 'Entry 2 must tally three effective assessors'
 [[ -f "$case_tmp/assessor-verdict-round-2.txt" ]] || fail 'Entry 2 must write assessor-verdict-round-2.txt'
 rm -rf "$case_tmp"
-unset LARCH_DISPATCH_PLAN_ASSESSORS_SH LARCH_BREADCRUMB_MONITOR_SH
+if [[ "$saved_dispatch_plan_assessors_sh" == "__UNSET__" ]]; then
+  unset LARCH_DISPATCH_PLAN_ASSESSORS_SH
+else
+  export LARCH_DISPATCH_PLAN_ASSESSORS_SH="$saved_dispatch_plan_assessors_sh"
+fi
+if [[ "$saved_breadcrumb_monitor_sh" == "__UNSET__" ]]; then
+  unset LARCH_BREADCRUMB_MONITOR_SH
+else
+  export LARCH_BREADCRUMB_MONITOR_SH="$saved_breadcrumb_monitor_sh"
+fi
+if [[ "$saved_tally_plan_assessor_sh" == "__UNSET__" ]]; then
+  unset LARCH_TALLY_PLAN_ASSESSOR_SH
+else
+  export LARCH_TALLY_PLAN_ASSESSOR_SH="$saved_tally_plan_assessor_sh"
+fi
+if [[ "$saved_snapshot_plan_round_sh" == "__UNSET__" ]]; then
+  unset LARCH_SNAPSHOT_PLAN_ROUND_SH
+else
+  export LARCH_SNAPSHOT_PLAN_ROUND_SH="$saved_snapshot_plan_round_sh"
+fi
 
 pass 'assess-plan-round harness'
