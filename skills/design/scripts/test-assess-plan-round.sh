@@ -300,7 +300,8 @@ advance_step3_cursor() {
   if [[ -f "$tmp/plan-after-round-${cursor}.txt" ]]; then
     next=$((cursor + 1))
     "$ROOT/skills/design/scripts/snapshot-plan-round.sh" \
-      write-cursor --design-tmpdir "$tmp" --value "$next" >/dev/null
+      write-cursor --design-tmpdir "$tmp" --value "$next" >/dev/null \
+      || fail "advance_step3_cursor: write-cursor failed for round $next"
     cursor=$next
   fi
   printf '%s' "$cursor"
@@ -374,5 +375,6 @@ printf '%s\n' "$out2" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'Entr
 printf '%s\n' "$out2" | grep -Fq 'EFFECTIVE_ASSESSORS=3' || fail 'Entry 2 must tally three effective assessors'
 [[ -f "$case_tmp/assessor-verdict-round-2.txt" ]] || fail 'Entry 2 must write assessor-verdict-round-2.txt'
 rm -rf "$case_tmp"
+unset LARCH_DISPATCH_PLAN_ASSESSORS_SH LARCH_BREADCRUMB_MONITOR_SH
 
 pass 'assess-plan-round harness'
