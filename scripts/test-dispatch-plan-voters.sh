@@ -113,10 +113,6 @@ chmod +x "$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh"
 cat > "$PLUGIN_ROOT_STUB/scripts/dispatch-with-waterfall.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ -n "${LARCH_PAIRED_PID_FILE:-}" ]]; then
-    echo "nested waterfall inherited LARCH_PAIRED_PID_FILE" >&2
-    exit 88
-fi
 slots_file=""
 CODEX_PRESENT="true"
 CURSOR_PRESENT="true"
@@ -292,16 +288,13 @@ pv_abs=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,
 
 stub_log="$TMP/dispatch-with-waterfall.log"
 argv_log="$TMP/dispatch-with-waterfall.argv"
-paired_pid_file="$TMP/healthy/paired.pid"
-out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$stub_log" PLAN_VOTER_ARGV_LOG="$argv_log" LARCH_PAIRED_PID_FILE="$paired_pid_file" \
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$stub_log" PLAN_VOTER_ARGV_LOG="$argv_log" \
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/healthy" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" || { echo "FAIL: healthy path missing VOTER_1 launched" >&2; exit 1; }
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: healthy path did not keep codex primary" >&2; exit 1; }
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: healthy path did not keep cursor primary" >&2; exit 1; }
 assert_key_order "healthy dispatcher stdout" "$(printf '%s\n' "$out" | stdout_key_order)" "$EXPECTED_ORDER_WITH_PATHS"
 tr '\n' ' ' < "$argv_log" | grep -Fq -- '--timeout 1860' || fail "waterfall timeout should be 1860"
-[[ -s "$paired_pid_file" ]] || fail "LARCH_PAIRED_PID_FILE was not written by dispatcher"
-grep -Eq '^[0-9]+$' "$paired_pid_file" || fail "LARCH_PAIRED_PID_FILE content is not a PID"
 grep -Fq 'OOS_N:' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: healthy codex prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/claude-plan-voter-prompt.txt" || { echo "FAIL: healthy claude voter1 prompt missing OOS rows" >&2; exit 1; }

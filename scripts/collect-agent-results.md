@@ -1,7 +1,7 @@
 # scripts/collect-agent-results.sh — contract
 
-`collect-agent-results.sh` is a top-level Family B writer for
-`LARCH_PAIRED_PID_FILE`; it writes its own PID after quiet/done-trap setup.
+`collect-agent-results.sh` is a top-level Family B writer; paired-PID file
+writes were removed in breadcrumbs Stage 3.
 
 The `.meta` parser is intentionally line-oriented: each record is split on the first `=` and no escaping layer is applied while reading. On duplicate keys (`TIMEOUT=`, `CMD_JSON=`, etc.), the last assignment wins. This matches the existing parser convention; sidecars with internal contradictions are accepted as long as the final value satisfies validation. Keep this parser in sync with the writer-side `.meta sidecar grammar` contract in `scripts/run-external-agent.md`, which documents the per-field guarantees for `TOOL`, `TIMEOUT`, capture booleans, `OUTPUT_FILE`, and `CMD_JSON`.
 

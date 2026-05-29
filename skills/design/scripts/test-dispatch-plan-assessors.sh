@@ -107,8 +107,6 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB"
 export LARCH_LAUNCH_CLAUDE_REVIEW_SH="$PLUGIN_STUB/scripts/launch-claude-review.sh"
 export LARCH_DISPATCH_WITH_WATERFALL_SH="$PLUGIN_STUB/scripts/dispatch-with-waterfall.sh"
 export DESIGN_TMPDIR="$TMP"
-export LARCH_PAIRED_PID_FILE="$TMP/paired.pid"
-export LARCH_BREADCRUMB_STREAM="$TMP/breadcrumbs.ndjson"
 export PLAN_ASSESSOR_TRACE_FILE="$TMP/waterfall.trace"
 unset IMPLEMENT_TMPDIR || true
 
@@ -126,11 +124,6 @@ printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'DISPATCH_OK not true
 printf '%s\n' "$out" | grep -Fq 'CLAUDE_ASSESSOR_PATH=' || fail 'missing claude path kv'
 printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=false' || fail 'happy path should not be degraded'
 grep -Fq 'plan-assessor' "$TMP/plan-assessor-slots.ndjson" || fail 'missing manifest'
-[[ -s "$TMP/paired.pid" ]] || fail 'paired pid file was not written'
-# Stage 2: larch_err replaces emit_breadcrumb; progress markers are no longer in the NDJSON
-# stream. Functional assertions above (DISPATCH_OK, CLAUDE_ASSESSOR_PATH, manifest, paired.pid)
-# already cover correct execution. Skip the progress-marker check to avoid quiet-log
-# truncation false-negatives when subprocesses reinitialize larch_quiet_init.
 
 out=$(CURSOR_STUB_MODE=narrate LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \

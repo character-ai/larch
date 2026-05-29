@@ -29,7 +29,8 @@ make_env() {
     mkdir -p "$root/scripts"
     cp "$REPO_ROOT/scripts/ci-wait.sh" "$root/scripts/ci-wait.sh"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
-    chmod +x "$root/scripts/ci-wait.sh"
+    cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
+    chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/redact-secrets.sh"
     printf '%s\n' "$root"
 }
 

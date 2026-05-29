@@ -8,7 +8,6 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
-larch_quiet_append_done_trap
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
 
@@ -173,17 +172,11 @@ rm -f \
 
 bc_dir="$DESIGN_TMPDIR/breadcrumbs"
 mkdir -p "$bc_dir"
-export LARCH_BREADCRUMB_STREAM="$bc_dir/assessor-round-${ROUND_NUM}.ndjson"
-export LARCH_DONE_SENTINEL="$bc_dir/assessor-round-${ROUND_NUM}.done"
-export LARCH_STATUS_FILE="$bc_dir/assessor-round-${ROUND_NUM}.status"
 export LARCH_QUIET_LOG_FILE="$bc_dir/assessor-round-${ROUND_NUM}.quiet.log"
 DISPATCH_KV_FILE="$bc_dir/assessor-round-${ROUND_NUM}.dispatch.kv"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$bc_dir/assessor-round-${ROUND_NUM}.surfaced"
-export LARCH_PAIRED_PID_FILE="$bc_dir/assessor-round-${ROUND_NUM}.paired.pid"
 rm -f "$DISPATCH_KV_FILE"
 
 DISPATCH_SH="${LARCH_DISPATCH_PLAN_ASSESSORS_SH:-$PLUGIN_ROOT/skills/design/scripts/dispatch-plan-assessors.sh}"
-MONITOR_SH="${LARCH_BREADCRUMB_MONITOR_SH:-$PLUGIN_ROOT/scripts/breadcrumb-monitor.sh}"
 
 set +e
 "$DISPATCH_SH" \
@@ -198,15 +191,6 @@ set +e
     --timeout "$TIMEOUT" \
     >"$DISPATCH_KV_FILE" 2>"$LARCH_QUIET_LOG_FILE" &
 dispatch_pid=$!
-monitor_rc=0
-"$MONITOR_SH" \
-    --stream "$LARCH_BREADCRUMB_STREAM" \
-    --done-sentinel "$LARCH_DONE_SENTINEL" \
-    --status-file "$LARCH_STATUS_FILE" \
-    --quiet-log "$LARCH_QUIET_LOG_FILE" \
-    --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-    --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-    || monitor_rc=$?
 wait "$dispatch_pid"
 dispatch_rc=$?
 set -e
@@ -235,21 +219,10 @@ if ! assessor_path_valid "$CLAUDE_ASSESSOR_PATH" "claude-plan-assessor-round-${R
     DISPATCH_OK=false
 fi
 
-if [[ "$monitor_rc" -ne 0 ]]; then
-    cap=$(mktemp "${TMPDIR:-/tmp}/assessor-monitor.XXXXXX")
-    {
-        printf 'monitor_rc=%s\n' "$monitor_rc"
-        [[ -f "$LARCH_QUIET_LOG_FILE" ]] && cat "$LARCH_QUIET_LOG_FILE"
-    } >"$cap"
-    append_warning "$cap" "$monitor_rc"
-    rm -f "$cap"
-fi
-
 if [[ "$DISPATCH_OK" != "true" || "$dispatch_rc" -ne 0 ]]; then
     cap=$(mktemp "${TMPDIR:-/tmp}/assessor-dispatch.XXXXXX")
     {
         printf 'dispatch_rc=%s\n' "${dispatch_rc:-1}"
-        printf 'monitor_rc=%s\n' "${monitor_rc:-0}"
         printf '%s\n' "$dispatch_out"
         [[ -f "$LARCH_QUIET_LOG_FILE" ]] && cat "$LARCH_QUIET_LOG_FILE"
     } >"$cap"

@@ -121,11 +121,6 @@ suppress = [
 # black-box regression harness. Both are Makefile-only from agent-lint's
 # reachability perspective, so both are excluded with their sibling contracts.
 #
-# scripts/lint-foreground-markers.sh is the fenced-invoke foreground-marker linter
-# (`make lint-foreground-markers`, pre-commit hook `lint-foreground-markers`, local
-# `make lint` between bash32 and lint-only). scripts/test-lint-foreground-markers.sh
-# is its black-box harness. Same Makefile-only reachability pattern as lint-bash32.
-#
 # scripts/lint-readability-preamble.sh is a pre-commit / Makefile-only lint for
 # /design readability prompt registrations. scripts/test-lint-readability-preamble.sh
 # is its black-box harness. Both are excluded with sibling docs because agent-lint
@@ -347,20 +342,6 @@ exclude = [
   # the SKILL.md invocation of scripts/run-step5-review.sh.
   "scripts/test-run-step5-review.sh",
   "scripts/test-run-step5-review.md",
-  # scripts/test-breadcrumb-monitor.sh is the Makefile-only regression harness
-  # for scripts/breadcrumb-monitor.sh. The monitor itself is referenced from
-  # every Family B fence in skills/design and skills/research; the harness is
-  # covered by the test-breadcrumb-monitor target and Makefile shard
-  # test-harnesses-18.
-  "scripts/test-breadcrumb-monitor.sh",
-  "scripts/test-breadcrumb-monitor.md",
-  "scripts/test-breadcrumb-monitor-bash32.sh",
-  "scripts/test-breadcrumb-monitor-bash32.md",
-  # scripts/test-background-monitor-wait.sh is the Makefile-only regression
-  # harness for the caller-side Family B writer wait contract. It is covered by
-  # the test-background-monitor-wait target and test-harnesses-19.
-  "scripts/test-background-monitor-wait.sh",
-  "scripts/test-background-monitor-wait.md",
   # Makefile/ship-pr-only CI recovery helpers. ci-failed-jobs.sh is invoked
   # by scripts/ship-pr.sh after gh-run-logs succeeds; check-focus-area-enum.sh
   # is invoked by the Makefile's agent-sync target, which mirrors the CI job.
@@ -396,11 +377,6 @@ exclude = [
   # larch-log-batches.sh is sourced by lib-larch-log.sh; agent-lint does not
   # follow Bash source edges.
   "scripts/larch-log-batches.sh",
-  # lib-redact-streaming.sh is invoked by breadcrumb-monitor.sh via a sibling
-  # path lookup, and the sibling markdown contract is referenced only from that
-  # harness/documentation surface. agent-lint does not follow this runtime
-  # shell-to-sibling edge, so the markdown companion is dead-script excluded.
-  "scripts/lib-redact-streaming.md",
   "scripts/larch-log-batches.md",
   # read-claude-model.sh is retained as a diagnostic helper for operators; the
   # anchor assembler caller was removed by the larch-log migration.
@@ -880,10 +856,6 @@ exclude = [
   "scripts/lint-bash32.md",
   "scripts/test-lint-bash32.sh",
   "scripts/test-lint-bash32.md",
-  "scripts/lint-foreground-markers.sh",
-  "scripts/lint-foreground-markers.md",
-  "scripts/test-lint-foreground-markers.sh",
-  "scripts/test-lint-foreground-markers.md",
   "scripts/lint-readability-preamble.sh",
   "scripts/lint-readability-preamble.md",
   "scripts/test-lint-readability-preamble.sh",

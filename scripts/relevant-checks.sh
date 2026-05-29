@@ -49,16 +49,6 @@ run_direct_relevant_targets() {
     DIRECT_TARGETS=""
     while IFS= read -r f; do
         case "$f" in
-            BASH_AUTHORING.md|AGENTS.md|docs/linting.md|scripts/breadcrumb-monitor.md|scripts/lint-foreground-markers.sh|scripts/lint-foreground-markers.md|scripts/test-lint-foreground-markers.sh|scripts/test-lint-foreground-markers.md|skills/*/SKILL.md|skills/*/references/*.md|skills/shared/*.md|skills/*.md)
-                append_target_once test-lint-foreground-markers
-                ;;
-        esac
-        case "$f" in
-            scripts/test-background-monitor-wait.sh|scripts/test-background-monitor-wait.md|scripts/breadcrumb-monitor.sh|scripts/ship-pr.sh|scripts/run-step5-review.sh|scripts/collect-agent-results.sh|scripts/dispatch-plan-voters.sh|skills/implement/scripts/run-step2-dispatch.sh) # lint-foreground-markers: ok relevant-checks case pattern
-                append_target_once test-background-monitor-wait
-                ;;
-        esac
-        case "$f" in
             scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh)
                 append_target_once test-step0b-router-flag-recovery
                 ;;

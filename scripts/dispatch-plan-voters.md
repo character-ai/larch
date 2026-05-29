@@ -21,9 +21,8 @@ Each slot is dispatched through the same three-phase waterfall used elsewhere:
 
 The script writes per-slot prompt files, builds a two-slot NDJSON manifest (Voters 2–3 only), and calls `dispatch-with-waterfall.sh` with `--mode description` and `--timeout 1860`. The 1860s per-voter waterfall cap follows the `skills/design/SKILL.md` anti-pattern #5 timeout family for plan-review/dialectic phases; Voter 1 remains on its separate `launch-claude-review.sh --timeout 1200` path. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each external slot.
 
-`dispatch-plan-voters.sh` is a top-level Family B writer for
-`LARCH_PAIRED_PID_FILE`; it writes its own PID after quiet/done-trap setup and
-unsets the env var before invoking nested `dispatch-with-waterfall.sh`.
+`dispatch-plan-voters.sh` is a top-level Family B writer; paired-PID plumbing
+was removed in breadcrumbs Stage 3.
 
 ## Parse-rate retries
 

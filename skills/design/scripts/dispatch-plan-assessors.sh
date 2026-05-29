@@ -8,7 +8,6 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
-larch_quiet_append_done_trap
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
 
@@ -58,7 +57,6 @@ for f in "$PLAN_ORIGINAL" "$PLAN_PREV" "$PLAN_CURRENT" "$FEATURE_FILE"; do
 done
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "dispatch-plan-assessors.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "dispatch-plan-assessors.sh: --cursor-present must be true or false"; exit 2; }
-larch_quiet_write_paired_pid_file
 larch_err "→ assessor-dispatch: round=${ROUND_NUM} prompt"
 
 RENDER_SH="${LARCH_RENDER_ASSESSOR_PROMPT_SH:-$PLUGIN_ROOT/skills/shared/scripts/render-assessor-prompt.sh}"
@@ -99,7 +97,6 @@ manifest="$DESIGN_TMPDIR/plan-assessor-slots.ndjson"
 } >"$manifest"
 
 WATERFALL_SH="${LARCH_DISPATCH_WITH_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
-unset LARCH_PAIRED_PID_FILE
 set +e
 waterfall_output=$("$WATERFALL_SH" \
     --slots-file "$manifest" \

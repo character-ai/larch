@@ -208,17 +208,17 @@ The local sentinel reader validates non-empty `ISSUE_NUMBER` values as digits on
 
 **`larch-logs/` as durable run store**: reviewer findings, tallies, version-bump reasoning, OOS links, execution issues, run statistics, token reports, and timing reports are written through `scripts/larch-log.sh` into `larch-logs/<skill>/<run-id>/` and committed by explicit lifecycle log-flush paths before the business PR merges. Diagrams are not written through a larch-log batch; the public diagram surface is the `larch:diagrams` issue comment described above. After a merge-success result, `scripts/ship-pr.sh` writes `$IMPLEMENT_TMPDIR/post-merge-sentinel`; `scripts/larch-log-flush.sh` no-ops on that sentinel and `scripts/larch-log.sh commit` refuses, so prompt-side teardown cannot create or push new log-only commits to `main`. The sentinel check therefore depends on `IMPLEMENT_TMPDIR` being exported into subprocesses that may call `larch-log.sh commit`; Step 7a and `scripts/refresh-run-logs.sh` provide that export before their transcript/log refresh paths run. Defense-in-depth commit refusal lives at `scripts/larch-log.sh commit`; `scripts/refresh-run-logs.sh` also short-circuits entirely when `MERGE_RESULT` already reports a merged terminal state, so post-merge retry refreshes do not attempt transcript/log writes. `capture-session-transcript.sh` itself no longer owns an independent default-branch refusal policy; it delegates commit enforcement to `larch-log.sh commit` (or to its caller when `--defer-commit` is used). Callers pass the staging root explicitly with `--log-root`; the helper no longer falls back to `$IMPLEMENT_TMPDIR` or the repository root when the root is omitted. `larch-logs/ export-ignore` keeps those audit files out of plugin release archives. Payload batches are redacted before writing. Tool-failure captures routed through `scripts/append-tool-failure.sh` preserve command stdout/stderr verbatim for debugging and use `scripts/redact-secrets.sh` when callers pass `--redact`; `/implement` final-summary degraded-render warnings now also use that redacted capture path before stderr is appended into `execution-issues.md`. This is a secrets-family backstop only, so internal URLs, private hostnames, PII, and domain-specific sensitive content still require prompt-level/operator discipline before logs are pushed. `manifest.json` schema version 2 records `operator_cwd` and `operator_repo_root` as local absolute paths for provenance; these fields are JSON-escaped but not path-redacted, so public repositories may expose local username/workspace path components in committed run logs. Slim marker-keyed tracking comments contain summaries and links only, except for the diagrams comment; operators should still treat committed log files and tracking comments as public once pushed to a public repository.
 
-**Paired breadcrumb monitor PID file**: paired Family B launches may allocate
-`LARCH_PAIRED_PID_FILE` and pass it to `breadcrumb-monitor.sh --paired-pid-file`
-so the foreground monitor can signal the background process on timeout. Both
-writer and monitor require absolute paths under the active session tmpdir
-breadcrumbs surface, reject `..` and symlinks, and fail open with warnings rather
-than aborting the caller. The monitor signals only the file-supplied PID
-(`SIGTERM`, then `SIGKILL` after a short grace period); it does not signal a
-process group, walk parents, or attempt cross-user authority. This relies on the
-same-UID operator trust model. A long-departed PID could theoretically be reused
-before timeout; that is a known limitation mitigated by the 1800-second timeout,
-same-UID scope, and per-launch `mktemp` paths.
+**Breadcrumb monitor (Stage 3)**: `scripts/breadcrumb-monitor.sh` is a temporary
+no-op compatibility shim (always exit 0) retained until Stage 4 removes the
+remaining Family B foreground fences. It does not stream breadcrumbs, watch
+sentinels, or signal paired PIDs on timeout. `larch_quiet_write_paired_pid_file`
+and `larch_quiet_append_done_trap` in `scripts/lib-quiet.sh` are matching no-op
+shims for deferred fences.
+
+**Operator diagnostic redaction**: `larch_err` / `larch_errf` still pipe through
+`redact-secrets.sh --streaming` directly (the `lib-redact-streaming.sh` wrapper
+was removed in Stage 3). Durable log publication redaction remains in
+`larch-log.sh` / `design-log-publish.sh` via the shared breadcrumbs helper.
 
 Mermaid diagram content is sanitized at diagram-write time and PR-body composition via `scripts/sanitize-mermaid-fragment.sh` so unsafe diagram content is dropped before it reaches public comments or PR bodies. The Mermaid parser lint introduces a Node toolchain surface through `@mermaid-js/mermaid-cli`; pin, audit, and bump expectations are documented in `skills/shared/mermaid-safe-content.md` "Node Toolchain Maintenance".
 
@@ -276,12 +276,10 @@ through the redaction and publication path described here.
    `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`; never
    committed without redaction. These stream files are session-local runtime
    artifacts only; committed publication uses quiet logs instead.
-2. **Monitor-side per-line drop-on-fail for covered patterns**: the foreground
-   `breadcrumb-monitor.sh` runs each streamed line through the streaming redactor
-   and drops the entire line when the redactor exits non-zero. For its covered
-   families (recognized full-line PEM blocks and the token shapes the streaming
-   redactor matches), partial blocks never reach operator-visible output.
-   Incomplete or non-pattern fragments fall under the residual-risk bullet below.
+2. **Live monitor streaming removed (Stage 3)**: the foreground monitor is a
+   no-op shim; there is no per-line live redaction or operator-visible breadcrumb
+   stream. Operator diagnostics from `larch_err` / `larch_errf` still use
+   `redact-secrets.sh --streaming` directly.
 3. **Committed copies are routed through `larch-log.sh commit` and
    `design-log-publish.sh`**: both entrypoints invoke the shared
    `larch_log_publish_breadcrumbs_shared` helper in `scripts/lib-larch-log.sh`.

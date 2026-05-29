@@ -710,7 +710,6 @@ dispatch_args=(
 [[ -n "$PLAN_FILE" ]] && dispatch_args+=(--plan-file "$PLAN_FILE")
 dispatch_args+=(--require-result-pattern "$REQUIRE_RESULT_PATTERN")
 
-unset LARCH_PAIRED_PID_FILE
 set +e
 "$DISPATCH_SH" "${dispatch_args[@]}" > "$dispatch_out" 2>"$REVIEW_TMPDIR/aggregator-dispatch.stderr"
 dispatch_rc=$?
