@@ -349,4 +349,34 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$CURSOR_AVAILABLE" = "true" ] || exit 145
 ) || fail "case14: partial codex override did not mirror peer or preserve cursor keys (subshell exit $?)"
 
+# Case 15 — prior env recovery accepts only strict boolean exports
+case15_dir="$TMPROOT/case15"
+design15="$case15_dir/design"
+out15="$case15_dir/source-env.sh"
+mkdir -p "$design15"
+cat >"$out15" <<'EOF'
+#!/usr/bin/env bash
+export CODEX_PRESENT=true
+export CURSOR_PRESENT=$(touch /tmp/larch-wdce-should-not-exist)
+export CODEX_AVAILABLE=maybe
+export CURSOR_AVAILABLE=false
+EOF
+rm -f /tmp/larch-wdce-should-not-exist
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out15" \
+    --design-tmpdir "$design15" \
+    --session-id "STRICT-RECOVERY" \
+    --claude-pid "$TEST_CLAUDE_PID"
+[ ! -e /tmp/larch-wdce-should-not-exist ] || \
+    fail "case15: prior env command substitution was executed during recovery"
+(
+    set -u
+    # shellcheck disable=SC1090,SC2153
+    source "$out15"
+    [ "$CODEX_PRESENT" = "true" ] || exit 151
+    [ "$CURSOR_AVAILABLE" = "false" ] || exit 152
+    [ "${CURSOR_PRESENT+x}" != x ] || exit 153
+    [ "${CODEX_AVAILABLE+x}" != x ] || exit 154
+) || fail "case15: strict boolean recovery did not preserve expected values (subshell exit $?)"
+
 echo "PASS: test-write-design-current-env.sh"

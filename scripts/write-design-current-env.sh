@@ -150,19 +150,18 @@ build_export() {
   printf 'export %s=%q\n' "$key" "$val"
 }
 
-recover_prior_env_value() {
+recover_prior_bool_value() {
   local key="$1"
   local prior_file="$2"
   if [[ ! -f "$prior_file" ]]; then
     return 0
   fi
   local line=""
-  line=$(grep -E "^export ${key}=" "$prior_file" 2>/dev/null | tail -1) || true
+  line=$(grep -E "^export ${key}=(true|false)$" "$prior_file" 2>/dev/null | tail -1) || true
   if [[ -z "$line" ]]; then
     return 0
   fi
-  eval "$line"
-  printf '%s' "${!key}"
+  printf '%s' "${line#*=}"
 }
 
 # Mirror a partial explicit *_PRESENT / *_AVAILABLE override to its alias peer.
@@ -179,12 +178,17 @@ fi
 
 for _recover_key in CODEX_PRESENT CURSOR_PRESENT CODEX_AVAILABLE CURSOR_AVAILABLE; do
   if [[ -z "${!_recover_key}" ]]; then
-    _recovered=$(recover_prior_env_value "$_recover_key" "$OUTPUT") || true
+    _recovered=$(recover_prior_bool_value "$_recover_key" "$OUTPUT") || true
     if [[ -n "$_recovered" ]]; then
       printf -v "$_recover_key" '%s' "$_recovered"
     fi
   fi
 done
+
+validate_bool codex-present "$CODEX_PRESENT"
+validate_bool cursor-present "$CURSOR_PRESENT"
+validate_bool codex-available "$CODEX_AVAILABLE"
+validate_bool cursor-available "$CURSOR_AVAILABLE"
 
 {
   printf '#!/usr/bin/env bash\n'
