@@ -333,8 +333,9 @@ FAKE_TREE="$TMPROOT/fake-tree"
 mkdir -p "$FAKE_TREE/skills/issue/scripts" "$FAKE_TREE/scripts"
 cp "$CREATE_ONE" "$FAKE_TREE/skills/issue/scripts/create-one.sh"
 # Intentionally do NOT create $FAKE_TREE/scripts/redact-secrets.sh.
-# lib-quiet.sh must be present so create-one.sh can source it.
+# lib-quiet.sh and lib-net.sh must be present so create-one.sh can source them.
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TREE/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/lib-net.sh" "$FAKE_TREE/scripts/lib-net.sh"
 chmod +x "$FAKE_TREE/skills/issue/scripts/create-one.sh"
 missing_out=$(bash "$FAKE_TREE/skills/issue/scripts/create-one.sh" --title 'a-title' --body-file "$BODY_FILE" --repo owner/repo --dry-run 2>&1 || true)
 assert_contains "$missing_out" 'ISSUE_FAILED=true' '[edge] missing helper → ISSUE_FAILED=true on stdout'

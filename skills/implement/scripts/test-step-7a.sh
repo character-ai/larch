@@ -302,6 +302,7 @@ install_real_diagrams_helper() {
     cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
     cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$root/scripts/redact-tmpdir-paths.sh"
     cp "$REPO_ROOT/scripts/sanitize-mermaid-fragment.sh" "$root/scripts/sanitize-mermaid-fragment.sh"
+    cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     chmod +x \
         "$root/scripts/upsert-diagrams-comment.sh" \
         "$root/scripts/tracking-issue-summary.sh" \
