@@ -40,7 +40,7 @@ Question text: `"All open design questions appear discussed. Ready to launch the
 
 When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with Shape 2, the same three-option `AskUserQuestion` (See full plan / Ready for review / Discuss more). Gate A re-entries always use Shape 2 because first-time entry is replaced by Step 1d.7. Append resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` using the existing Q&A schema in `discussion-rounds.md`.
 
-**Per-tier behavior**: Gate A fires only on re-entry. First-time entry across all three tiers (`--trivial` / `--simple` / `--hard`) is handled by Step 1d.7 outline-approval.
+**Per-tier behavior**: Gate A fires only on re-entry. First-time entry across both tiers (`--simple` / `--hard`) is handled by Step 1d.7 outline-approval.
 
 ### Re-entry from Gate B(c) or Gate C(b)
 

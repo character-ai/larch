@@ -361,7 +361,7 @@ pass 'design skill schema + cmp byte identity'
     --issue-url 'N/A' \
     --pr-number 0 \
     --pr-url 'N/A' \
-    --plan-review-line 'skipped (trivial)' \
+    --plan-review-line '0 findings' \
     --code-review-line 'N/A' \
     --oos-count 0 \
     --oos-urls '' \

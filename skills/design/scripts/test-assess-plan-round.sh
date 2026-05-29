@@ -63,10 +63,6 @@ write_params SIMPLE
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'SIMPLE must skip'
 
-write_params TRIVIAL
-out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
-printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'TRIVIAL must skip'
-
 write_params HARD
 printf '1\n' >"$TMP/plan-review-round-cursor.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)

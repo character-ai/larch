@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Design an implementation plan for a feature and review it with the **full** panel on both tiers (10 static reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the full plan-review panel; HARD runs 4 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--simple`, `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). `--trivial` has been removed and is a Pre-Step-0 hard error. If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
+**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--simple`, `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
@@ -21,7 +21,7 @@ Design an implementation plan for a feature and review it with the **full** pane
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one of `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0. If `--trivial` appears anywhere in the tier-flag scan, print the removal warning in Pre-Step-0 and abort before `session-setup.sh`.
+**Mutual exclusion**: at most one of `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0.
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
@@ -115,10 +115,6 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 6. **NEVER mechanically dedupe plan-review findings by string-key clustering** (for example, grouping by the tuple `(focus_area, location, what-prefix)` or writing a Python/shell helper to bucket findings by these fields). **Why:** reviewers routinely phrase the same concern differently across slots — different `file:line` citations, different prefix wording, different `focus_area` assignment — so string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. The `/review` code-review path uses an LLM-based aggregator (`skills/review/scripts/aggregate-findings.sh`); the `/design` plan-review path has no such helper and the dedup is owned by the orchestrator's main-agent judgment. **How to apply:** read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields semantically and group by meaning. If the orchestrator is tempted to write a Python/shell helper to mechanically cluster findings, that temptation itself signals the wrong approach — proceed by reading.
 
 7. **NEVER omit the pause-check line from the canonical Bash-block prelude (Step 1c onward).** **Why:** pause/resume relies on the orchestrator self-terminating at the next Bash boundary; missing this line means a pause request invoked during an in-flight `/design` is silently dropped until the run completes naturally. **How to apply:** every Bash block from Step 1c through Step 6 starts with the two-line prelude (source env, then pause-check). The `scripts/test-design-structure.sh` harness enforces this with `assert_bash_fences_have_pause_check`.
-
-## Pre-Step-0 — argv gate (before `session-setup.sh`)
-
-Before running the **Step 0a** `session-setup.sh` Bash block, scan the start of `$ARGUMENTS` for tier flags (`--trivial` / `--simple` / `--hard`), partition flags (`-p` / `--partition`), and brainstorm (`--brainstorm`). If `--trivial` is present, print `**⚠ /design: --trivial flag removed; tier consolidation in #2956. Use --simple or --hard.**` and exit **1**. Do **not** run `session-setup.sh` on this path — no `DESIGN_TMPDIR` is created. Step **0b** still performs the full argv parse after Step 0a; this gate is validation-only for the removed flag.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup

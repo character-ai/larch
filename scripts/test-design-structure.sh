@@ -31,7 +31,6 @@ absent() {
 }
 
 contains "$SKILL_MD" '[--simple|--hard]' 'SKILL argument hint must expose only SIMPLE/HARD tiers'
-contains "$SKILL_MD" '--trivial flag removed; tier consolidation in #2956. Use --simple or --hard.' 'SKILL missing removed --trivial hard-error prose'
 contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'unless `design_classification == SIMPLE`, where the user-confirmed no-sketch carve-out applies' 'SKILL missing SIMPLE Design Mindset carve-out'

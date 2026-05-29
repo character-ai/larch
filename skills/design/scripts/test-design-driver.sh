@@ -101,20 +101,10 @@ printf '%s\n' "$out2" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail 
 
 simple_row=$'| `--simple` |'
 hard_row=$'| `--hard` |'
-if grep -Fq "| \`--trivial\` |" "$DESIGN_SKILL"; then
-    fail "design SKILL still exposes trivial tier row"
-fi
 grep -Fq "$simple_row" "$DESIGN_SKILL" || fail "design SKILL missing simple tier row"
 grep -Fq "$hard_row" "$DESIGN_SKILL" || fail "design SKILL missing hard tier row"
 grep -Fq 'design_classification=SIMPLE' "$DESIGN_SKILL" || fail "design SKILL missing SIMPLE v2 mapping pin"
 grep -Fq 'design_classification=HARD' "$DESIGN_SKILL" || fail "design SKILL missing HARD v2 mapping pin"
 grep -Fq 'invoke-plan-validator.sh' "$DESIGN_SKILL" || fail "design SKILL missing unconditional validator helper pin"
-
-trivial_line=$(grep -nF "## Pre-Step-0 — argv gate (before \`session-setup.sh\`)" "$DESIGN_SKILL" | head -n1 | cut -d: -f1)
-step0_line=$(grep -nF '## Step 0 — Session Setup' "$DESIGN_SKILL" | head -n1 | cut -d: -f1)
-session_setup_line=$(grep -nF 'session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers' "$DESIGN_SKILL" | head -n1 | cut -d: -f1)
-[[ -n "$trivial_line" && -n "$step0_line" && -n "$session_setup_line" ]] || fail "missing Pre-Step-0/session-setup anchors in design SKILL"
-(( trivial_line < step0_line )) || fail "removed --trivial gate must remain before Step 0"
-(( trivial_line < session_setup_line )) || fail "removed --trivial gate must remain before session-setup contract pin"
 
 echo "PASS: test-design-driver.sh"

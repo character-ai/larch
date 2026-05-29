@@ -32,7 +32,7 @@ out_hard="$(DESIGN_TMPDIR="$HARD_DIR" "$SUBJECT" 2>"$TMPROOT/hard.err")"
 
 INVALID_JSON="$TMPROOT/invalid.json"
 cat >"$INVALID_JSON" <<'JSON'
-{"schema_version":2,"design_classification":"TRIVIAL_DOC_ONLY","partition_requested":false,"brainstorm_requested":false}
+{"schema_version":2,"design_classification":"BOGUS","partition_requested":false,"brainstorm_requested":false}
 JSON
 out_invalid="$("$SUBJECT" "$INVALID_JSON" 2>"$TMPROOT/invalid.err")"
 [[ "$out_invalid" == "HARD" ]] || fail "invalid classification must default to HARD"

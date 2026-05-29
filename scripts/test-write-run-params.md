@@ -5,7 +5,7 @@ Regression harness for `/design` `run-params.json`.
 Coverage:
 
 - Valid `SIMPLE` and `HARD` writes.
-- Rejection of invalid `design_classification`, including `TRIVIAL_DOC_ONLY`.
+- Rejection of invalid `design_classification` enum values.
 - Rejection of relative output paths.
 - Missing/empty-value rejection for all required and boolean flags: `--classification`, `--output`, `--partition-requested`, `--brainstorm-requested`, and `--manual-gate-b` (each exits 2 with a `requires a value` message).
 - Explicit `--manual-gate-b true` and `--manual-gate-b false` persistence.
