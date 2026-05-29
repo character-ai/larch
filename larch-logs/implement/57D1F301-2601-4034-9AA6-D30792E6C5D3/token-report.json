@@ -332,50 +332,62 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 42,
-          "cache_read": 18300517,
-          "cache_create": 485865,
-          "cache_create_5m": 485865,
+          "input": 60,
+          "cache_read": 26161651,
+          "cache_create": 525560,
+          "cache_create_5m": 525560,
           "cache_create_1h": 0,
-          "output": 28886,
-          "total": 18815310
+          "output": 40729,
+          "total": 26728000
         },
         "skills": [
           {
             "skill": "bump-version",
             "totals": {
-              "input": 11,
-              "cache_read": 4981621,
-              "cache_create": 10844,
-              "cache_create_5m": 10844,
+              "input": 12,
+              "cache_read": 5485797,
+              "cache_create": 12607,
+              "cache_create_5m": 12607,
               "cache_create_1h": 0,
-              "output": 8137,
-              "total": 5000613
+              "output": 8287,
+              "total": 5506703
             }
           },
           {
             "skill": "inferred:Step 8b — rebase",
             "totals": {
-              "input": 31,
-              "cache_read": 13318896,
-              "cache_create": 475021,
-              "cache_create_5m": 475021,
+              "input": 39,
+              "cache_read": 16377723,
+              "cache_create": 487936,
+              "cache_create_5m": 487936,
               "cache_create_1h": 0,
-              "output": 20749,
-              "total": 13814697
+              "output": 27384,
+              "total": 16893082
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 9,
+              "cache_read": 4298131,
+              "cache_create": 25017,
+              "cache_create_5m": 25017,
+              "cache_create_1h": 0,
+              "output": 5058,
+              "total": 4328215
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 763,
-      "cache_read": 218487585,
-      "cache_create": 1604869,
-      "cache_create_5m": 1604869,
+      "input": 781,
+      "cache_read": 226348719,
+      "cache_create": 1644564,
+      "cache_create_5m": 1644564,
       "cache_create_1h": 0,
-      "output": 186688,
-      "total": 220279905
+      "output": 198531,
+      "total": 228192595
     }
   },
   "codex": {
@@ -653,12 +665,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 763,
-    "cache_read": 218487585,
-    "cache_create_5m": 1604869,
+    "input": 781,
+    "cache_read": 226348719,
+    "cache_create_5m": 1644564,
     "cache_create_1h": 0,
-    "output": 186688,
-    "total": 220279905
+    "output": 198531,
+    "total": 228192595
   },
   "BUCKETS_codex": {
     "input": 102482,
