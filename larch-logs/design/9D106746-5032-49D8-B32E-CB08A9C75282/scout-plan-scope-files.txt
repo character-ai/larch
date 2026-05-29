@@ -1,0 +1,15 @@
+skills/design/SKILL.md
+skills/design/references/flags.md
+skills/design/references/approval-gates.md
+scripts/test-design-structure.sh
+skills/design/scripts/test-design-driver.sh
+skills/design/scripts/render-final-summary.sh
+skills/design/scripts/render-final-summary.md
+skills/design/scripts/test-render-final-summary.sh
+scripts/render-run-summary.md
+README.md
+docs/skills.md
+docs/workflow-lifecycle.md
+docs/installation-and-setup.md
+docs/issue-anchored-plan.md
+.claude-plugin/plugin.json

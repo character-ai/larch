@@ -1,0 +1,22 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-default-promotion-drift-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 20s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-default-promotion-drift-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:191	Gate C `Other` prose still contrasts with removed Step 0 tier-gate	Plan only rewrites cross-tier invariant (line 13) and per-tier first-entry prose (line 43). Line 191 still says Gate C `Other` differs from Step 0 tier-gate `Other` (terminal cancel) after tier resolution replaces that gate and `cancelled-tier-gate` is retired	Extend the `approval-gates.md` edit step: delete or shorten the Gate C `Other` paragraph so it no longer references Step 0 tier-gate / terminal cancel via `Other`
+2	in_scope	important	integration	skills/design/scripts/render-final-summary.md:12-14	Contract doc still lists tier-gate as a `render-final-summary.sh` caller	Plan retires `cancelled-tier-gate` in SKILL.md, `render-final-summary.sh`, tests, and `scripts/render-run-summary.md` but omits this sibling contract. Post-PR docs still describe a twelfth caller path that no longer exists	Add `skills/design/scripts/render-final-summary.md` to Files to modify: drop tier-gate cancel from the callers list and adjust the caller count if the doc enumerates twelve paths
+
+1. **[correctness]** `skills/design/references/approval-gates.md:191` — The plan’s `approval-gates.md` bullet covers lines 13 and 43 (argv-free SIMPLE/HARD wording) but does not call out the Gate C `Other` paragraph, which still documents a contrast with **Step 0 tier-gate `Other` (terminal cancel)**. After silent tier resolution and `cancelled-tier-gate` removal, that sentence implies an interactive Step 0 prompt that will not run. **Suggested revision:** add an explicit edit to remove or rewrite line 191 so Gate C `Other` behavior is described without referencing the retired gate.
+
+2. **[integration]** `skills/design/scripts/render-final-summary.md:12-14` — The plan aligns `render-final-summary.sh` and `scripts/render-run-summary.md` with outcome retirement but does not list `render-final-summary.md`, which still documents **tier-gate cancel** under “Callers (twelve)”. **Suggested revision:** include this contract file in the plan and remove the tier-gate caller entry (and fix the count if kept).
+
+**Step 0b numbering / Anti-halt / resume (plan coverage):** Keeping sub-steps 5, 5.5, 5.5-bis, and 6 while renaming 5 to **Tier resolution** is internally consistent; the resume skip list update to “tier resolution” matches; the Anti-halt reminder uses top-level steps only and needs no renumbering. No finding on those items.
+
+**Listed user-facing files:** The plan’s explicit edits to `SKILL.md`, `flags.md`, `approval-gates.md` (partial), README, `docs/skills.md`, `docs/workflow-lifecycle.md`, `docs/installation-and-setup.md`, and `docs/issue-anchored-plan.md` are directionally sufficient for argv-hint and default-SIMPLE prose where specified. The gaps above are the main post-PR doc drift risks not covered by the retired-argv-token completeness grep alone.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-default-promotion-drift-output.txt.diag)
+
+Failed with exit code 1 after 20s. Output size: 0 bytes.
+

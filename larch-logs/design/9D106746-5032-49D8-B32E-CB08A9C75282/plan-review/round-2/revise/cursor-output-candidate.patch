@@ -1,0 +1,33 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -28,6 +28,7 @@
+ ### UPDATED: `skills/design/references/approval-gates.md`
+ - Cross-tier invariant: refer to SIMPLE and HARD tier names only; drop argv flag spellings from the invariant sentence.
+ - Per-tier behavior: first-time entry prose refers to both tiers (SIMPLE / HARD) without argv flag spellings.
++- Gate C **`Other`** paragraph (~line 191): delete the Step 0 tier-gate `Other` contrast (that cancel path is retired with tier-gate removal). State only that Gate C `Other` re-prompts with the **same option set unchanged**, may `cat` the full plan when requested, and **never** cancels `/design` (contrast with structured `See full plan`, which drops itself on re-prompt).
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ - Arg-hint assertion: expect `'[--hard]'` only; update the label text.
+ - Duplicate-tier assertion (`'if two or more tier flags appear'`): replace with assertions that pin default SIMPLE tier resolution and generic disallowed-public-flag rejection prose; structure-test needles must not embed the removed argv token; update the label.
+ - Flag-parse-prose pin: tier flag list is `--hard` only in the documented parse prose.
++- `approval-gates.md` absent pin: no `Step 0 tier-gate` substring (retired Gate C contrast to removed Step 0 cancel path).
+ - Leave the SIMPLE-tier assertions (SIMPLE branch, `NO_SKETCHES_CLASSIFIED_SIMPLE`, carve-out, designer emphasis) and the `[--brainstorm] [--manual|-m] [--no-dedup]` pin unchanged.
+ 
+ ### UPDATED: `skills/design/scripts/test-design-driver.sh`
+@@ -88,6 +90,7 @@
+ 1. Incomplete removal — a stale retired-flag literal lingers in a doc or test. Earliest signal: the completeness grep gate or `test-design-structure.sh`. Mitigation: run the completeness grep before finishing.
+ 2. Test pins drift from prose — `test-design-structure.sh`, `test-design-driver.sh`, or `test-render-final-summary.sh` fail in CI. Earliest signal: `make lint` / the named harnesses. Mitigation: edit the three test files in lock-step with the prose.
+ 3. `cancelled-tier-gate` retired in the renderer allowlist but still emitted somewhere — the renderer rejects the outcome. Earliest signal: a design run that reaches the (removed) gate. Mitigation: confirm the gate is the sole producer (verified) and is fully removed.
++4. Stale Gate C tier-gate contrast — `approval-gates.md` still documents Step 0 tier-gate `Other` as a terminal cancel. Earliest signal: the new structure-test `absent` pin or a live-surface grep for `Step 0 tier-gate`. Mitigation: rewrite the Gate C `Other` paragraph per the approval-gates edit above.
+ 
+ ## Testing strategy
+-- `bash scripts/test-design-structure.sh` — passes with the updated arg-hint, default-tier, and disallowed-flag pins.
++- `bash scripts/test-design-structure.sh` — passes with the updated arg-hint, default-tier, disallowed-flag pins, and `approval-gates.md` absent pin for retired `Step 0 tier-gate` prose.
+ - `bash skills/design/scripts/test-design-driver.sh` — passes with the removed-tier table-row assertion removed.
+ - `bash skills/design/scripts/test-render-final-summary.sh` — passes with `cancelled-tier-gate` retired.
+ - `bash scripts/test-write-run-params.sh` — unchanged; must still pass.
+@@ -99,4 +102,4 @@
+ - Completeness gate (manual): live-surface grep for the retired tier argv token (same exclusions as #3176); must return no rows.
+ 
+-diff_lines: 102
++diff_lines: 105

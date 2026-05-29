@@ -1,0 +1,15 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-requirements-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 10s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-requirements-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/design/SKILL.md:354	Final summary block When clause still names tier-flag mutual-exclusion abort	After removing --simple and duplicate-tier mutual exclusion, implementers updating the SUMMARY_OUTCOME enum in the same section can leave this pre-DESIGN_TMPDIR skip label pointing at a retired exit path; disallowed-public-argv abort before Step 0 is the surviving equivalent	Add a plan bullet under skills/design/SKILL.md Final summary block: replace tier-flag mutual-exclusion abort with disallowed public argv abort before Step 0 (no DESIGN_TMPDIR)
+
+1. **[correctness]** `skills/design/SKILL.md:354` — The plan updates the Final summary `SUMMARY_OUTCOME` enum and Step 0b tier handling but does not list the **When** clause that still says “tier-flag mutual-exclusion abort.” After this change, pre–Step 0 failures are generic disallowed-flag errors, not duplicate-tier mutual exclusion. **Suggested revision:** Extend the `skills/design/SKILL.md` edit list to reword that skip to “disallowed public argv abort before Step 0.”
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-requirements-output.txt.diag)
+
+Failed with exit code 1 after 10s. Output size: 0 bytes.
+

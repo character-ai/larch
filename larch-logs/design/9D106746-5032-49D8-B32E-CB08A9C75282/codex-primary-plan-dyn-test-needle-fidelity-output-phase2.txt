@@ -1,0 +1,38 @@
+Reading the plan and the test files it references to verify needle fidelity.
+Checking SKILL.md and related files for needles the plan references and proposed replacement prose.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:33	Plan replaces arg-hint needle `[--simple|--hard]` with a contains-only `[--hard]` pin; current SKILL.md line 4 still satisfies that substring while retaining `--simple` in the alternation	Implementer follows plan literally with `contains … '[--hard]'`; arg-hint left as `[--simple|--hard]` still passes CI; completeness grep may miss bracketed argv spellings depending on pattern	Pin the full post-change frontmatter value (plan: `"[--hard] [-p|--partition] …"`) or pair `contains '[--hard]'` with `absent '[--simple|'` on the argument-hint line
+
+**1. [correctness]** `scripts/test-design-structure.sh:33` — Plan replaces arg-hint needle `[--simple|--hard]` with a contains-only `[--hard]` pin; current SKILL.md line 4 still satisfies that substring while retaining `--simple` in the alternation. **Scenario:** Implementer follows plan literally with `contains … '[--hard]'`; arg-hint left as `[--simple|--hard]` still passes CI; completeness grep may miss bracketed argv spellings depending on pattern. **Suggested revision:** Pin the full post-change frontmatter value (plan: `"[--hard] [-p|--partition] …"`) or pair `contains '[--hard]'` with `absent '[--simple|'` on the argument-hint line.
+
+---
+
+**Needle-fidelity verification (no additional findings)**
+
+**Removal needles — present as described**
+
+| File | Current needle | Plan action | Match |
+|------|----------------|-------------|-------|
+| `scripts/test-design-structure.sh:33` | `'[--simple|--hard]'` (exact literal) | Replace | Yes |
+| `scripts/test-design-structure.sh:34` | `'if two or more tier flags appear'` (exact literal) | Replace | Yes |
+| `scripts/test-design-structure.sh:508` | Full parse line with `` `--simple\|--hard` `` (exact literal) | Replace tier list to `--hard` only | Yes |
+| `skills/design/scripts/test-design-driver.sh:102-104` | `simple_row=$'\| \`--simple\` \|'` + variable-backed grep | Remove | Yes |
+| `skills/design/scripts/test-render-final-summary.sh:474,483,527` | `cancelled-tier-gate` (variable at 474; literal greps at 483/527) | Swap/remove | Yes |
+
+**Tier-gate outcome assertions** — `cancelled-tier-gate` uses a variable assignment plus hardcoded title grep in the empty-mode block; the matrix loop uses literal tokens. Plan’s `cancelled-sprawl` swap targets all three sites consistently.
+
+**Replacement prose — plausible in post-change SKILL.md**
+
+Plan-specified SKILL.md strings align with proposed test pins:
+- `design_classification_reason="default tier: SIMPLE (no --hard)"` (Step 0b mapping + bash block)
+- Flags prose: “the default tier is SIMPLE” and “unrecognized or disallowed leading public `--` flag is a hard error before Step 0”
+- Parse list: `` `--hard` `` only (line 191)
+- `approval-gates.md` absent pin: `Step 0 tier-gate` is present today at line 191 and removed per plan
+
+**Parse-prose pin (line 508)** — A needle anchored on `` Parse public flags (`--hard`, `` would not match the current `` `--simple\|--hard` `` form, so it correctly forces an update (unlike line 33).
+
+**`test-design-driver.sh`** — `hard_row` uses a `$'…'` table-row literal; plan keeps it. `design_classification=SIMPLE` / `HARD` mapping pins remain valid after tier resolution.
+
+**`test-render-final-summary.sh`** — `cancelled-sprawl` is already in the renderer allowlist and matrix loop; empty-mode title `## /design run RUN-EMPTY-MODE — cancelled-sprawl` matches the existing matrix title pattern at line 545.
+
+**Exonerated (SIMPLE minimum-change bias):** Stale `pass 'twelve-outcome post-publish matrix'` label after removing one matrix entry; plan not spelling exact `contains()` strings for new default-tier/disallowed-flag pins (SKILL.md prose is specified); no structure-test pin for `Tier resolution` heading or resume-path “tier gate” → “tier resolution” wording.

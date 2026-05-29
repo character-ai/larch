@@ -1,0 +1,10 @@
+### FINDING_1: Completeness gate conflicts with `--simple` in proposed prose and test pins
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, unknown-slot, Cursor-dyn-outcome-enum-audit
+- **Severity**: important
+- **Concern**: The plan requires a manual completeness check with zero `--simple` matches on the live surface (e.g. plan.txt:74–86, 85–98), while other bullets still mandate or exemplify literal `--simple` in SKILL.md, flags.md, edge-case text, and `test-design-structure.sh` pins (e.g. “including `--simple`”, “`--simple`-rejected” prose). An implementer cannot satisfy both at once: either the grep gate fails, removal strips the only documented rejection contract, or a new structure-test pin that embeds `--simple` would itself violate the gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Choose one contract: (A) zero grep — use only generic "disallowed public flag" / "default SIMPLE (no --hard)" wording everywhere, pin rejection via `absent` or non-literal harness needles; or (B) allow `--simple` only in a single generic disallow sentence and drop the zero-grep gate
+  - From Cursor-Pragmatic: Pick one contract: (a) grep-clean surface with generic "unknown/disallowed public flag" only and pins on that wording, or (b) allow `--simple` only in negative-test/absent assertions with an explicit grep exclusion list; align SKILL, flags.md, and test-design-structure.sh to the chosen rule
+  - From unknown-slot: Q2 already says no `--simple`-specific messages. Align every file edit and `test-design-structure.sh` pin with that: generic "unknown/disallowed leading `--` flag" language only; pin default SIMPLE + disallowed-flag rejection without embedding the removed token; reword Edge cases without the literal flag name
+  - From Cursor-dyn-outcome-enum-audit: Keep rejection behavior generic (any unrecognized leading `--` flag is a hard error before Step 0) with no `--simple` literal in runtime/docs/tests; pin default-SIMPLE + `--hard` only in test-design-structure.sh
+

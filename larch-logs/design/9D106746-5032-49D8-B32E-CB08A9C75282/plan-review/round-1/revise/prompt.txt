@@ -1,0 +1,150 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — Issue #3192
+
+Make SIMPLE the default `/design` tier and remove the `--simple` flag entirely. Keep `--hard` as the sole tier flag (opt-in to HARD). No backward compatibility. Remove every live-surface mention of `--simple` (runtime prose, references, docs, tests). Retire the now-dead `cancelled-tier-gate` outcome, because the interactive tier gate that produced it is removed.
+
+Tier semantics do not change. SIMPLE still means no sketches, no dialectic, full review panel, 3 review runs. HARD still means 4 sketches, dialectic, full panel, 5 review runs. Only the default and the public flag surface change.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+The core change. Edit sites (refer by anchor, not line number):
+- Frontmatter `argument-hint`: change `[--simple|--hard] ...` to `[--hard] ...`. Keep the rest of the hint byte-for-byte.
+- **Flags** prose: drop `--simple` from the "Public argv allows only" list. Delete the sentence about the mutual-exclusion tier gate ("If no tier flag is set ... the orchestrator MUST run the tier `AskUserQuestion` gate"). State instead: the default tier is SIMPLE; `--hard` selects HARD; a disallowed leading `--` token (including `--simple`) is a hard error before Step 0 and is never treated as positional feature text.
+- Flag table: delete the `--simple` row. Keep the `--hard` row; reword its Purpose to "opt into HARD (default is SIMPLE)".
+- **Mutual exclusion** line: replace with the single-tier-flag rule plus the generic disallowed-flag rejection. Do not name `--simple` as a special deprecated case.
+- Step 0b resume-path "Parse public flags (`--simple|--hard`, ...)" prose: drop `--simple`.
+- Step 0b sub-step 5 (**Tier gate**): replace the interactive gate with a non-interactive **Tier resolution** step — `design_classification` is HARD when `--hard` was parsed, else SIMPLE (the default); no `AskUserQuestion`, no `cancelled-tier-gate`. Keep the existing sub-step numbering (5, 5.5, 5.5-bis, 6) to avoid renumber churn elsewhere.
+- Step 0b sub-step 6 tier mapping: reframe the `simple:` mapping as the default — `design_classification=SIMPLE`, `design_classification_reason="default tier: SIMPLE (no --hard)"`, `design_classification_source=caller-forwarded`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`. Keep the `hard:` mapping unchanged.
+- Step 0b bash block: change the SIMPLE-branch `design_classification_reason` from `"argv tier: --simple"` to `"default tier: SIMPLE (no --hard)"`. The `if [[ "$design_classification" == SIMPLE ]] ... elif ... HARD` branch is otherwise unchanged (the orchestrator resolves the classification before this block).
+- SUMMARY_OUTCOME enum (Final summary block orchestrator contract): remove `cancelled-tier-gate`.
+- Resume-path skip list that names "tier gate": change "tier gate" to "tier resolution".
+- Verify the Anti-halt reminder's sub-step transition list still matches the kept numbering; no step numbers change.
+
+### UPDATED: `skills/design/references/flags.md`
+- Contract line: drop `--simple` from the public-argv list.
+- Remove the `--simple` tier bullet. Restructure the tier section: SIMPLE is the default (no flag); `--hard` is the only tier flag and maps to `design_classification=HARD`.
+- Mutual-exclusion line: replace with the single-tier-flag rule and the generic "disallowed leading flag (including `--simple`) is a hard error before Step 0" rule.
+- Keep the `--hard` mapping and every non-tier flag entry unchanged.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+- Cross-tier invariant: "Gates apply uniformly across `--simple` and `--hard`." becomes "across SIMPLE and HARD" (drop the flag spellings).
+- Per-tier behavior: "First-time entry across both tiers (`--simple` / `--hard`)" becomes "across both tiers (SIMPLE / HARD)".
+
+### UPDATED: `scripts/test-design-structure.sh`
+- Arg-hint assertion: change `'[--simple|--hard]'` to `'[--hard]'`; update the label text.
+- Duplicate-tier assertion (`'if two or more tier flags appear'`): replace with an assertion that pins the new behavior — default SIMPLE and the `--simple`-rejected-as-disallowed-flag prose. Update the label.
+- Flag-parse-prose pin: drop `--simple` so it reads `Parse public flags (`--hard`, ...)`.
+- Leave the SIMPLE-tier assertions (SIMPLE branch, `NO_SKETCHES_CLASSIFIED_SIMPLE`, carve-out, designer emphasis) and the `[--brainstorm] [--manual|-m] [--no-dedup]` pin unchanged.
+
+### UPDATED: `skills/design/scripts/test-design-driver.sh`
+- Remove the `simple_row` variable and its "design SKILL missing simple tier row" grep assertion. Keep the `--hard` row assertion and the `design_classification=SIMPLE` / `design_classification=HARD` mapping pins.
+
+### UPDATED: `skills/design/scripts/render-final-summary.sh`
+- Remove `cancelled-tier-gate` from the accepted-`--outcome` case branch. The gate (its only producer) is gone, so the outcome is dead.
+
+### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
+- Empty-mode default block: swap `SUMMARY_OUTCOME=cancelled-tier-gate` for a surviving early-cancellation outcome (`cancelled-sprawl`); update the `## /design run ... — cancelled-...` title grep to match.
+- All-outcomes acceptance loop: remove the `cancelled-tier-gate` entry.
+
+### UPDATED: `scripts/render-run-summary.md`
+- `/design` outcomes table row: remove `cancelled-tier-gate` from the list.
+
+### UPDATED: `README.md`
+- `/design` argument-hint cell: `[--simple|--hard] ...` becomes `[--hard] ...`.
+- Adjacent prose: "Tier flags (`--simple` / `--hard`) select sketch and plan-review depth" becomes "The `--hard` flag selects HARD; the default tier is SIMPLE" while preserving the sketch/review-depth meaning.
+
+### UPDATED: `docs/skills.md`
+- Arguments line: `[--simple|--hard] ...` becomes `[--hard] ...`.
+- Prose: "Tier flags (`--simple` / `--hard`) select sketch + plan-review depth" reworded to default-SIMPLE / `--hard`.
+
+### UPDATED: `docs/workflow-lifecycle.md`
+- `/design` usage line: `[--simple|--hard] ...` becomes `[--hard] ...`. The following SIMPLE/HARD descriptive sentence stays.
+
+### UPDATED: `docs/installation-and-setup.md`
+- "`/design --simple` runs the full plan-review panel" becomes "`/design` (SIMPLE, the default) runs the full plan-review panel". Keep the timing and `LARCH_DESIGN_ROUND_CAP` discussion.
+
+### UPDATED: `docs/issue-anchored-plan.md`
+- "Design tier selection (`--simple` / `--hard` public argv; ...)" becomes "Design tier selection (`--hard` public argv; default SIMPLE; ...)".
+
+### UPDATED: `.claude-plugin/plugin.json`
+- Description string: "issue-anchored `/design` (tier flags `--simple` / `--hard`)" becomes "issue-anchored `/design` (tier flag `--hard`; default SIMPLE)".
+
+## Approach
+- Single-tier-flag model. The orchestrator resolves `design_classification` during flag parsing: HARD when `--hard` is present, SIMPLE otherwise. There is no interactive tier gate.
+- `--simple` rejection (Q2). Rely on a generic "disallowed leading `--` flag is a hard error before Step 0" rule so `--simple` is never swallowed as positional/verbal feature text. No `--simple`-specific message — this honors "remove all mentions of --simple" while still preventing the footgun.
+- Tier semantics are unchanged; only the default and the flag surface move. All SIMPLE-branch prose, the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel, and per-tier emphasis stay.
+- `cancelled-tier-gate` retirement is a bounded consequence of the Q1 gate removal. The gate is the outcome's only producer (verified), so the outcome becomes dead. Retire it across the SKILL enum, the renderer allowlist, that renderer's test, and the run-summary doc table to keep the outcome enum consistent (SKILL ↔ script ↔ doc ↔ test). If reviewers prefer strict minimalism, this retirement is the one separable sub-change.
+- Run-params layer is untouched. `write-run-params.sh` enum-validates only classification/budgets; `--reason` and `--source` are free text; its tests use `--hard` fixtures; `read-design-classification.sh` reads the SIMPLE/HARD enum. Only the SKILL default-SIMPLE `reason` string changes; `source=caller-forwarded` stays (it describes SKILL-to-script forwarding, still accurate).
+- Keep the argument-hint and the flag table in sync; the skill-md flag-signature lint cross-validates them, and removing `--simple` from both preserves consistency.
+
+## Edge cases
+- `/design --simple <text>`: hard error before Step 0; the text is not turned into an issue.
+- `/design --simple --hard`: errors (the disallowed `--simple` is rejected before the run proceeds).
+- `/design <issue-N>` or `/design <verbal>` with no tier flag: runs SIMPLE (the new default), no prompt.
+- Resume of a run created under the old skill: the pause block stores the resolved tier (SIMPLE/HARD classification), not the `--simple` flag, so resume is unaffected by the flag removal.
+- Completeness: after the edits, a `--simple` grep over the live surface (excluding `larch-logs/**` and dated `CHANGELOG.md`) must return zero, mirroring the #3176 `--trivial` completeness gate.
+
+## Failure modes
+1. Incomplete removal — a stale `--simple` lingers in a doc or test. Earliest signal: the completeness grep gate or `test-design-structure.sh`. Mitigation: run the completeness grep before finishing.
+2. Test pins drift from prose — `test-design-structure.sh`, `test-design-driver.sh`, or `test-render-final-summary.sh` fail in CI. Earliest signal: `make lint` / the named harnesses. Mitigation: edit the three test files in lock-step with the prose.
+3. `cancelled-tier-gate` retired in the renderer allowlist but still emitted somewhere — the renderer rejects the outcome. Earliest signal: a design run that reaches the (removed) gate. Mitigation: confirm the gate is the sole producer (verified) and is fully removed.
+
+## Testing strategy
+- `bash scripts/test-design-structure.sh` — passes with the updated arg-hint, behavior, and flag-parse pins.
+- `bash skills/design/scripts/test-design-driver.sh` — passes with the `--simple` table-row assertion removed.
+- `bash skills/design/scripts/test-render-final-summary.sh` — passes with `cancelled-tier-gate` retired.
+- `bash scripts/test-write-run-params.sh` — unchanged; must still pass.
+- `bash scripts/relevant-checks.sh` (or `make lint`) — repo-wide lint, including `agent-lint`, the skill-md flag-signature lint, markdownlint, and drift checks.
+- Completeness gate (manual): a `--simple` grep over `*.md`/`*.sh`/`*.json`/`*.txt`/`*.tsv`/`*.toml`, excluding `larch-logs/**`, `.git/`, and `CHANGELOG.md`, returns no rows.
+
+diff_lines: 90
+
+</plan>
+
+<findings>
+### FINDING_1: Completeness gate conflicts with `--simple` in proposed prose and test pins
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, unknown-slot, Cursor-dyn-outcome-enum-audit
+- **Severity**: important
+- **Concern**: The plan requires a manual completeness check with zero `--simple` matches on the live surface (e.g. plan.txt:74–86, 85–98), while other bullets still mandate or exemplify literal `--simple` in SKILL.md, flags.md, edge-case text, and `test-design-structure.sh` pins (e.g. “including `--simple`”, “`--simple`-rejected” prose). An implementer cannot satisfy both at once: either the grep gate fails, removal strips the only documented rejection contract, or a new structure-test pin that embeds `--simple` would itself violate the gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Choose one contract: (A) zero grep — use only generic "disallowed public flag" / "default SIMPLE (no --hard)" wording everywhere, pin rejection via `absent` or non-literal harness needles; or (B) allow `--simple` only in a single generic disallow sentence and drop the zero-grep gate
+  - From Cursor-Pragmatic: Pick one contract: (a) grep-clean surface with generic "unknown/disallowed public flag" only and pins on that wording, or (b) allow `--simple` only in negative-test/absent assertions with an explicit grep exclusion list; align SKILL, flags.md, and test-design-structure.sh to the chosen rule
+  - From unknown-slot: Q2 already says no `--simple`-specific messages. Align every file edit and `test-design-structure.sh` pin with that: generic "unknown/disallowed leading `--` flag" language only; pin default SIMPLE + disallowed-flag rejection without embedding the removed token; reword Edge cases without the literal flag name
+  - From Cursor-dyn-outcome-enum-audit: Keep rejection behavior generic (any unrecognized leading `--` flag is a hard error before Step 0) with no `--simple` literal in runtime/docs/tests; pin default-SIMPLE + `--hard` only in test-design-structure.sh
+
+
+</findings>
+
+<feature>
+[DESIGNING] /design: default to SIMPLE mode and drop --simple flag (keep only --hard)
+
+## Summary
+
+Make SIMPLE the default tier for `/design` and remove the `--simple` flag entirely. Keep only `--hard` as the opt-in to HARD tier.
+
+## Desired behavior
+
+- No tier flag on argv => `design_classification=SIMPLE` (the new default).
+- `--hard` => `design_classification=HARD`.
+- The `--simple` flag is removed completely from the public argv surface.
+
+Put another way: no `--hard` => SIMPLE; `--hard` => HARD.
+
+## Scope
+
+- Remove all mentions of the `--simple` argument everywhere it appears, including documentation and tests.
+- No backward compatibility required (do not accept `--simple` as a deprecated/aliased flag; it should error like any other unknown flag).
+
+## Notes
+
+- The current tier gate `AskUserQuestion` (fired when no tier flag is present) should be reconsidered: since the default is now SIMPLE, "no flag" is an explicit choice rather than an unspecified one. Whether to keep, drop, or restructure the gate is a design decision for the plan.
+- The mutual-exclusion rule (`--simple` xor `--hard`) collapses to "at most one `--hard`", which is trivially satisfied; update validation prose accordingly.
+
+</feature>

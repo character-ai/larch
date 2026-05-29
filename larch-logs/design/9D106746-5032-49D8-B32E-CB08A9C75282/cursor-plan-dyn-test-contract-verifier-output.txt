@@ -1,0 +1,23 @@
+Reviewing the plan and proposed test harness changes against the repository.
+Checking SKILL.md tier-gate prose and similar harness patterns from prior flag retirements.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:34-39 (plan ### UPDATED)	Proposed harness edits pin default-SIMPLE and disallowed-flag prose but omit SKILL.md guards for retired Step 0b tier gate	Implementer can reintroduce `5. **Tier gate**` / `AskUserQuestion` `simple`/`hard` while adding `default tier: SIMPLE (no --hard)` elsewhere; structure tests pass but no-flag runs prompt again instead of defaulting to SIMPLE	Add `absent` pins on `skills/design/SKILL.md` for `**Tier gate**`, `cancelled-tier-gate`, and/or the tier `AskUserQuestion` block, plus `contains` for `**Tier resolution**` (and `absent` `argv tier: --simple` in the Step 0b bash block)
+2	in_scope	latent	correctness	scripts/test-design-structure.sh:36-37 (plan ### UPDATED)	Plan requires disallowed-flag rejection needles but does not name a distinctive substring	Implementer may pin only `hard error before Step 0`, which already appears in mutual-exclusion lines and does not prove the positional-footgun rule the plan relies on to block retired argv tokens from becoming feature text	In the plan’s `test-design-structure.sh` bullet, require a needle such as `never treated as positional` (from proposed Flags prose); `test-design-driver.sh` and `test-render-final-summary.sh` need not duplicate it
+
+1. **correctness** — `scripts/test-design-structure.sh` (plan lines 34–39): The plan replaces the duplicate-tier `contains` with default-SIMPLE and generic disallowed-flag pins, and adds `approval-gates.md` `absent` for `Step 0 tier-gate`, but it does not require matching **SKILL.md** guards for the removed Step 0b interactive gate. A regression could restore `5. **Tier gate**` and `cancelled-tier-gate` while still satisfying a loose `default tier: SIMPLE` pin; the completeness grep for `--simple` would not catch that (gate options are bare `simple`/`hard`). Add `absent` for `**Tier gate**` / `cancelled-tier-gate` and `contains` for `**Tier resolution**` in `scripts/test-design-structure.sh`.
+
+2. **correctness** (latent) — `scripts/test-design-structure.sh` (plan lines 36–37): Disallowed-flag coverage is planned only in `test-design-structure.sh` (sufficient for “at least one needle across the three harnesses”). Name an explicit substring such as `never treated as positional` so the pin cannot degrade to generic `hard error before Step 0` alone.
+
+**Coverage review (no additional YES findings):**
+
+- **Disallowed-flag across three harnesses:** The plan assigns the needle to `test-design-structure.sh` only; `test-design-driver.sh` and `test-render-final-summary.sh` are not required to duplicate it. Adequate if implementer pins the proposed Flags prose (ideally including `never treated as positional`).
+
+- **Removed `simple_row`:** Table-row grep only; no behavioral loss.
+
+- **Removed `cancelled-tier-gate` matrix/empty-mode pins:** Appropriate given outcome retirement; `cancelled-sprawl` is a reasonable empty-mode substitute.
+
+- **Default-SIMPLE without tier flag:** `design_classification=SIMPLE` in `test-design-driver.sh` (lines 106–107) remains; default resolution depends on structure pins—weak without the SKILL tier-gate absent/`Tier resolution` pins above.
+
+- **code-quality / architecture / security / risk-integration:** No further material gaps in the proposed three-harness edits beyond the items above.
+
+[OUT_OF_SCOPE] No executable argv-parser harness exists today; tier/disallowed-flag behavior remains prose-orchestrator–driven—pre-existing, not introduced by this plan gap.

@@ -1,0 +1,23 @@
+[DESIGNING] /design: default to SIMPLE mode and drop --simple flag (keep only --hard)
+
+## Summary
+
+Make SIMPLE the default tier for `/design` and remove the `--simple` flag entirely. Keep only `--hard` as the opt-in to HARD tier.
+
+## Desired behavior
+
+- No tier flag on argv => `design_classification=SIMPLE` (the new default).
+- `--hard` => `design_classification=HARD`.
+- The `--simple` flag is removed completely from the public argv surface.
+
+Put another way: no `--hard` => SIMPLE; `--hard` => HARD.
+
+## Scope
+
+- Remove all mentions of the `--simple` argument everywhere it appears, including documentation and tests.
+- No backward compatibility required (do not accept `--simple` as a deprecated/aliased flag; it should error like any other unknown flag).
+
+## Notes
+
+- The current tier gate `AskUserQuestion` (fired when no tier flag is present) should be reconsidered: since the default is now SIMPLE, "no flag" is an explicit choice rather than an unspecified one. Whether to keep, drop, or restructure the gate is a design decision for the plan.
+- The mutual-exclusion rule (`--simple` xor `--hard`) collapses to "at most one `--hard`", which is trivially satisfied; update validation prose accordingly.
