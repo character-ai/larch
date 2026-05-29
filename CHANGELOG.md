@@ -1,5 +1,10 @@
 # Changelog
 
+## 47.0.2 (2026-05-29)
+
+- Resilient dynamic archetype scout: Codex→Claude waterfall with staged context reads; trim `larch-logs/**` from review diff in `gather-branch-context.sh`; thread `--codex-present`/`--cursor-present` through dispatch-panel, scout-plan-archetypes-wrapper, and plan-review-loop; remove 256 KB bulk-file gate from `scout-dynamic-archetypes.sh`.
+
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
