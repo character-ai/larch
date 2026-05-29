@@ -59,6 +59,11 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh)
+                append_target_once test-step0b-router-flag-recovery
+                ;;
+        esac
+        case "$f" in
             skills/design/SKILL.md|skills/design/references/*.md)
                 append_target_once test-design-structure
                 ;;

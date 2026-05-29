@@ -2,8 +2,9 @@
 
 **Purpose**: regression harness for the `SKILL.md` Step 0b router-flag recovery guard
 and jq-merge. Exercises both true-branch merge (cases 1-4), false-branch no-op
-(case 5), writer-failure abort before recovery (case 7), and the success-path
-positive control that recovery completes after a successful write (case 7b).
+(case 5), the missing-file degraded warning path (case 6), writer-failure abort
+before recovery (case 7), and the success-path positive control that recovery
+completes after a successful write (case 7b).
 
 **Primary**: `scripts/write-run-params.sh` + `skills/design/SKILL.md` Step 0b.
 
