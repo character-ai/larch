@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- active /design plan-review artifacts live at depth ≤4 under the session root, within maxdepth 5
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- issue open question 1 already calls for an overridable retention env var, so the env surface matches requested scope
+FINDING_5: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false -- feature brief requires last-8-installed floor plus upgrade age window; plan hard-caps upgrade-larch at eight only

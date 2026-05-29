@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/cleanup/scripts/cleanup.sh; docs/configuration-and-permissions.md	Plan adds LARCH_CLEANUP_RETENTION_DAYS even though the resolved policy is a fixed 7-day cleanup window	This creates a new public config surface and extra validation/docs/tests in a SIMPLE-tier change; mis-set low values can also make cleanup more aggressive than the stated default contract	Hard-code the 7-day retention in cleanup.sh and drop the env-var validation, configuration docs entry, and invalid-retention harness case
+
+1. **[architecture] `skills/cleanup/scripts/cleanup.sh`; `docs/configuration-and-permissions.md`**
+
+Concern: The plan adds `LARCH_CLEANUP_RETENTION_DAYS`, but the resolved behavior is a fixed 7-day age window. That is extra public configuration for a SIMPLE-tier cleanup fix.
+
+Suggested revision: Keep the retention constant at 7 days. Remove the env-var validation path, the config docs entry, and the invalid-retention test case.

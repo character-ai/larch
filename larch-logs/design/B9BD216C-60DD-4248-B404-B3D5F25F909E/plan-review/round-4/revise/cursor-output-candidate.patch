@@ -1,0 +1,69 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -30,7 +30,7 @@
+ ### /cleanup (make it runnable any time)
+ 1. Drop the `pgrep -x claude` singleton abort entirely. With age-based reaping, a live or recently-active session has a fresh timestamp and survives, so the abort is unnecessary.
+ 2. Drop the `.larch-keepalive` / `.larch-session` skip — deletion no longer keys on a sentinel.
+-3. Delete a `~/.cache/larch/sessions/*` directory (and matching `/tmp` glob dirs) when its **newest-activity** timestamp is older than `LARCH_CLEANUP_RETENTION_DAYS` (default 7). Newest-activity = `max(mtime of the dir and every file/dir under it via a bounded shallow scan: find "$entry" -mindepth 1 -maxdepth 4`, each path measured with the dual-`stat` `stat_mtime` helper) so nested live writes under `design-export/`, `breadcrumbs/`, and committed run-log batches under `larch-logs/<skill>/<RUN_ID>/` (e.g. `larch-logs/implement/<RUN_ID>/manifest.json`, `larch-logs/implement/<RUN_ID>/round-<N>/findings.md` per `docs/run-logs.md`) refresh retention — **maxdepth 4** reaches depth-3 namespace segments plus the batch file under the session root; APFS does not bump parent-dir mtime on child content edits). Validate the env var as a positive integer; fall back to 7 with a warning on invalid input.
++3. Delete a `~/.cache/larch/sessions/*` directory (and matching `/tmp` glob dirs) when its **newest-activity** timestamp is older than `LARCH_CLEANUP_RETENTION_DAYS` (default 7). Newest-activity = `max(mtime of the dir and every file/dir under it via a bounded shallow scan: find "$entry" -mindepth 1 -maxdepth 5`, each path measured with the dual-`stat` `stat_mtime` helper) so nested live writes under `design-export/`, `breadcrumbs/`, and committed run-log batches under `larch-logs/<skill>/<RUN_ID>/` (e.g. depth-4 `larch-logs/implement/<RUN_ID>/manifest.json`, depth-5 `larch-logs/implement/<RUN_ID>/round-<N>/findings.md` per `docs/run-logs.md`) refresh retention — **maxdepth 5** reaches depth-4 `round-<N>/` dirs and depth-5 round artifacts; depth-4 manifest paths remain covered; APFS does not bump parent-dir mtime on child content edits). Validate the env var as a positive integer; fall back to 7 with a warning on invalid input.
+ 4. Reap **dangling** top-level `current-design-env-*.sh` symlinks (`-L` and `! -e`). Leave live symlinks. Leave the `current-design-env` mechanism itself untouched.
+ 5. Preserve the `emit_kv` output contract; keep a count of removed entries. `SESSION_COUNT` may still be emitted for visibility but no longer gates anything.
+ 
+@@ -68,13 +68,13 @@
+ Add install-stamp write; replace Stage A + Stage B + pin machinery with keep-8-newest-by-install-stamp (stamp-presence-first sort); force `$ACTUAL_VERSION` into the retained set while keeping the total retained count at 8; on the already-latest path bind `ACTUAL_VERSION` from `CURRENT_INSTALLED_VERSION` before prune; delete the unused helpers listed above.
+ 
+ ### UPDATED: `skills/cleanup/scripts/cleanup.sh`
+-Remove singleton abort and sentinel skip; add age-based newest-activity deletion with bounded **maxdepth-4** newest-activity scan and `LARCH_CLEANUP_RETENTION_DAYS` (default 7); reap dangling `current-design-env-*.sh` symlinks.
++Remove singleton abort and sentinel skip; add age-based newest-activity deletion with bounded **maxdepth-5** newest-activity scan and `LARCH_CLEANUP_RETENTION_DAYS` (default 7); reap dangling `current-design-env-*.sh` symlinks.
+ 
+ ### UPDATED: `skills/cleanup/scripts/cleanup.md`
+-Rewrite the contract: no singleton abort, no keepalive skip, maxdepth-4 age-based newest-activity reaping (including `larch-logs/<skill>/<RUN_ID>/` batches), symlink reaping, env var.
++Rewrite the contract: no singleton abort, no keepalive skip, maxdepth-5 age-based newest-activity reaping (depth-4 `manifest.json` and depth-5 `round-<N>/findings.md` under `larch-logs/<skill>/<RUN_ID>/` per `docs/run-logs.md`), symlink reaping, env var.
+ 
+ ### UPDATED: `skills/cleanup/SKILL.md`
+-Rewrite frontmatter `description`, the intro paragraph, NEVER #1 (drop singleton rationale), Step 1 verification (relay counts; do not stop solely because `SESSION_COUNT>1` or because the script exited non-zero for concurrency), and the behavior section to describe maxdepth-4 age-based, always-runnable cleanup (including live `larch-logs/` writes).
++Rewrite frontmatter `description`, the intro paragraph, NEVER #1 (drop singleton rationale), Step 1 verification (relay counts; do not stop solely because `SESSION_COUNT>1` or because the script exited non-zero for concurrency), and the behavior section to describe maxdepth-5 age-based, always-runnable cleanup (including live `larch-logs/` manifest and round-artifact writes).
+ 
+ ### UPDATED: `scripts/session-setup.sh`
+ Rename `write_keepalive_sentinel` → `write_session_identity` writing slim `.larch-keepalive`; remove the `lib-larch-cache-touch.sh` source + call.
+@@ -108,10 +108,10 @@
+ Rewrite or drop stale Stage-A and sanitize-failure prune assertions that still expect removed prune behavior. Keep install/verify coverage, and align any remaining prune assertions with install-stamp keep-8 semantics or move duplicate coverage into `test-upgrade-larch-prune.sh`.
+ 
+ ### NEW: `skills/cleanup/scripts/test-cleanup.sh`
+-New offline harness for the age-based cleanup: runs with >1 fake process present (no abort), stale dir deleted, fresh dir kept, stale-dir-with-fresh-child kept (depth-1 child), stale parent + fresh depth-2 grandchild kept (e.g. `design-export/`), stale parent + fresh depth-3 run-log batch kept (`larch-logs/implement/<RUN_ID>/manifest.json` or `larch-logs/implement/<RUN_ID>/round-1/findings.md` with stale ancestors), invalid `LARCH_CLEANUP_RETENTION_DAYS` warns and falls back to 7, dangling symlink reaped / live symlink kept.
++New offline harness for the age-based cleanup: runs with >1 fake process present (no abort), stale dir deleted, fresh dir kept, stale-dir-with-fresh-child kept (depth-1 child), stale parent + fresh depth-2 grandchild kept (e.g. `design-export/`), stale parent + fresh depth-4 `larch-logs/implement/<RUN_ID>/manifest.json` kept (stale ancestors), stale parent + fresh depth-5 `larch-logs/implement/<RUN_ID>/round-1/findings.md` kept (round-artifact boundary with stale ancestors), invalid `LARCH_CLEANUP_RETENTION_DAYS` warns and falls back to 7, dangling symlink reaped / live symlink kept.
+ 
+ ### NEW: `skills/cleanup/scripts/test-cleanup.md`
+-Sibling contract for `test-cleanup.sh` (includes depth-3 `larch-logs/implement/<RUN_ID>/` batch case).
++Sibling contract for `test-cleanup.sh` (includes depth-4 manifest and depth-5 `round-1/findings.md` boundary cases per `docs/run-logs.md`).
+ 
+ ### UPDATED: `scripts/test-sessionstart-health.sh`
+ Update fixture writes to the slim two-field `.larch-keepalive` shape.
+@@ -168,7 +168,7 @@
+ - Just-installed stamp write fails: still retained via the explicit seeded-`$ACTUAL_VERSION` invariant, without increasing retained count above 8.
+ - Already-latest install path with cache over cap: bind `ACTUAL_VERSION` from installed metadata first; no reinstall, but prune still runs and leaves at most 8 dirs with the current version seeded.
+ - `/cleanup` active session: a freshly-written child file keeps newest-activity inside the window → dir kept.
+-- `/cleanup` APFS dir whose own mtime is stale but a child, depth-2 grandchild (e.g. under `design-export/`), or depth-3/4 run-log batch (`larch-logs/implement/<RUN_ID>/manifest.json`, `larch-logs/<skill>/<RUN_ID>/round-<N>/findings.md`) was just edited: kept (bounded maxdepth-4 newest-activity keying).
++- `/cleanup` APFS dir whose own mtime is stale but a child, depth-2 grandchild (e.g. under `design-export/`), depth-4 run-log manifest (`larch-logs/implement/<RUN_ID>/manifest.json`), or depth-5 round artifact (`larch-logs/implement/<RUN_ID>/round-<N>/findings.md`) was just edited: kept (bounded maxdepth-5 newest-activity keying).
+ - `/cleanup` dangling `current-design-env-*.sh` symlink reaped; live symlink kept.
+ - `/cleanup` with multiple `claude` processes: runs normally (abort removed).
+ - Invalid `LARCH_CLEANUP_RETENTION_DAYS`: fall back to 7 with a warning.
+@@ -181,12 +181,12 @@
+ 3. **Legacy-dir mtime mis-ordering during migration.** Pre-feature dirs whose mtime was bumped by the now-removed touch may briefly sort high among un-stamped dirs. Signal: a touched old un-stamped version consuming an un-stamped slot. Mitigation: stamp-presence-first sort ensures stamped installs always outrank un-stamped legacy dirs; every `/upgrade-larch` install writes a stamp; mtime fallback only affects un-stamped legacy dirs, which age out. Low impact.
+ 4. **Retained-set off-by-one.** Seeding `$ACTUAL_VERSION` after selecting the first 8 can leave 9 dirs. Mitigation: seed first, then fill to `KEEP_VERSIONS`, and assert exactly 8 remain in the target-outside-top-8/stamp-failure test.
+ 5. **Already-latest prune with unset target.** If the already-latest path calls prune before binding the installed version, the current version may not be seeded. Mitigation: assign `ACTUAL_VERSION` from `CURRENT_INSTALLED_VERSION` immediately before the shared prune call; cover in prune harness.
+-6. **Shallow session activity scan.** If newest-activity `find` maxdepth is too shallow, long-running `/implement` jobs writing fresh files under `larch-logs/implement/<RUN_ID>/` below the scan bound can be misclassified as stale and deleted. Mitigation: maxdepth 4 aligned to `docs/run-logs.md`; `test-cleanup.sh` case with stale ancestors + fresh `larch-logs/implement/<RUN_ID>/manifest.json` (or `round-1/findings.md`).
++6. **Shallow session activity scan.** If newest-activity `find` maxdepth is too shallow, long-running `/implement` jobs writing only fresh round artifacts (e.g. `larch-logs/implement/<RUN_ID>/round-<N>/findings.md` at depth 5 from the session root) can be misclassified as stale and deleted. Mitigation: maxdepth 5 aligned to `docs/run-logs.md` path shapes; `test-cleanup.sh` must cover stale ancestors + fresh `larch-logs/implement/<RUN_ID>/round-1/findings.md` (depth-5 boundary) plus a separate depth-4 `manifest.json` case.
+ 
+ ## Testing strategy
+ 
+ - Rewrite `test-upgrade-larch-prune.sh` for the cases in Edge cases (cap, stamp order, fallback, already-latest prune, target-outside-top-8 exact cap, always-keep-just-installed) and assert the removed helpers/pins no longer run.
+ - Rewrite `test-upgrade-larch.sh` stale Stage-A/sanitize prune cases or delete them if `test-upgrade-larch-prune.sh` now owns that coverage.
+-- Add `test-cleanup.sh` for the age-based behavior (singleton-drop, stale-vs-fresh, depth-1 child, depth-2 grandchild, depth-3 `larch-logs/implement/<RUN_ID>/` batch, invalid-retention fallback, dangling-symlink reap); wire via `make test-cleanup` on `test-harnesses-12`.
++- Add `test-cleanup.sh` for the age-based behavior (singleton-drop, stale-vs-fresh, depth-1 child, depth-2 grandchild, depth-4 `manifest.json`, depth-5 `round-1/findings.md`, invalid-retention fallback, dangling-symlink reap); wire via `make test-cleanup` on `test-harnesses-12`.
+ - Update `test-keepalive-sentinel.sh` for slim `.larch-keepalive` fields; update `test-sessionstart-health.sh` fixtures; drop the touch-lib copy in `skills/implement/scripts/test-implement-bootstrap.sh`; remove touch assertions from `scripts/test-session-env-roundtrip.sh`.
+ - Run `make lint` (bash32 portability, foreground-markers, script-md-siblings, bare-grep-probe) plus the renamed/added Makefile test targets.
+ - Preserve Bash 3.2 portability and the `lib-quiet.sh` FD-3 contract in every touched script.
+ 
+-diff_lines: 1145
++diff_lines: 1153
