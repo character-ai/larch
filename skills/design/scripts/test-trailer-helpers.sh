@@ -29,8 +29,9 @@ set +e
 out=$("$SCRIPT_DIR/test-trailer-validate.sh" "$d/plan.txt" "$d/keys" 2>&1)
 rc=$?
 set -e
-[[ "$rc" == 1 ]] && printf '%s\n' "$out" | grep -q 'validate=fail' \
-    || fail "test-trailer-validate should reject lost keys"
+if [[ "$rc" != 1 ]] || ! printf '%s\n' "$out" | grep -q 'validate=fail'; then
+  fail "test-trailer-validate should reject lost keys"
+fi
 
 d="$TMPROOT/dedup"
 mkdir -p "$d"
