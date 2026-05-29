@@ -87,9 +87,9 @@ contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping p
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$APPROVAL_MD" 'Then fire `AskUserQuestion` with exactly two options: **Continue to Step 3.6 and Gate C** (Recommended) / **Switch to discussion mode**.' 'approval-gates.md missing passive-summary Step 3.6 forward link'
+contains "$APPROVAL_MD" 'do **not** fire an `AskUserQuestion` here — auto-continue to Step 3.6, then Step 3b, then Step 4, then Gate C' 'approval-gates.md passive-summary must be non-blocking auto-continue (no AskUserQuestion)'
 contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 forward link'
-contains "$APPROVAL_MD" 'passive-summary Continue → Step 3.6 → Step 3b → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 forward link'
+contains "$APPROVAL_MD" 'passive-summary auto-continue → Step 3.6 → Step 3b → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 forward link'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b' 'approval-gates.md missing shared post-apply Step 3.6 forward link'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -839,13 +839,13 @@ contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-revie
 contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
 contains "$SKILL_MD" "--round-num \"\$ROUND_NUM\"" 'SKILL.md missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
-contains "$SKILL_MD" 'passive-summary Continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
-contains "$SKILL_MD" 'Passive-summary Continue routes through Step 3.6 before Step 3b' 'SKILL.md missing passive-summary Continue Step 3.6 routing pin'
+contains "$SKILL_MD" 'passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
+contains "$SKILL_MD" 'Passive-summary auto-continue routes through Step 3.6 before Step 3b' 'SKILL.md missing passive-summary auto-continue Step 3.6 routing pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
 contains "$APPROVAL_MD" 'refresh the active Step 3 result state (including `.step3-plan-review-result.env`) before continuing to Gate B as complete-equivalent' 'approval-gates.md missing MainAgent re-tally Step 3 state refresh pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
 contains "$SKILL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`) bypass Step 3.5 **and Step 3.6** and continue to Step 3b instead' 'SKILL.md missing full Gate-B-bypass short-circuit list in Step 3.5 entry'
-contains "$APPROVAL_MD" 'Passive-summary Continue routes through Step 3.6 before Step 3b' 'approval-gates.md missing passive-summary Continue Step 3.6 routing pin'
+contains "$APPROVAL_MD" 'Passive-summary auto-continue routes through Step 3.6 before Step 3b' 'approval-gates.md missing passive-summary auto-continue Step 3.6 routing pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 contains "$APPROVAL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
