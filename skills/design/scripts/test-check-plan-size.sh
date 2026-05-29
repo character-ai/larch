@@ -251,6 +251,7 @@ mkdir -p "$d"
     printf 'diff_lines: 150\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq PLAN_LINES 800 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq SOFT_ADVISORY false "$out"
@@ -260,11 +261,13 @@ d="$TMPROOT/c15a"
 mkdir -p "$d"
 { fill_lines 10 'b'; printf 'diff_added: 2000\n'; printf 'diff_lines: 5000\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 d="$TMPROOT/c15b"
 mkdir -p "$d"
 { fill_lines 10 'b'; printf 'diff_added: 2001\n'; printf 'diff_lines: 100\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-added" "$out"
 
@@ -278,6 +281,7 @@ mkdir -p "$d"
     printf 'diff_lines: 5100\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq TRIGGER_REASONS "" "$out"
 assert_kv_eq DIFF_ADDED 100 "$out"
@@ -292,6 +296,7 @@ mkdir -p "$d"
     printf 'diff_lines: 10099\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq DIFF_DELETED 9999 "$out"
 
@@ -305,6 +310,7 @@ mkdir -p "$d"
     printf 'diff_lines: 5000\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq SOFT_ADVISORY true "$out"
 assert_kv_eq DIFF_ADDED 5000 "$out"
@@ -319,6 +325,7 @@ mkdir -p "$d"
     printf 'diff_lines: 4700\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq SOFT_ADVISORY true "$out"
 
@@ -333,6 +340,7 @@ mkdir -p "$d"
     printf 'diff_lines: 5000\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
 assert_kv_eq SOFT_ADVISORY true "$out"
@@ -347,6 +355,7 @@ mkdir -p "$d"
     printf 'diff_lines: 2001\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq SOFT_ADVISORY false "$out"
 
@@ -355,6 +364,7 @@ d="$TMPROOT/c22a"
 mkdir -p "$d"
 { fill_lines 10 'b'; printf 'diff_added:\t1\n'; printf 'diff_lines: 2001\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 assert_kv_eq DIFF_ADDED "" "$out"
@@ -365,6 +375,7 @@ d="$TMPROOT/c22b"
 mkdir -p "$d"
 { fill_lines 10 'b'; printf 'diff_added:  1\n'; printf 'diff_lines: 2001\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 assert_kv_eq DIFF_ADDED "" "$out"
@@ -384,6 +395,7 @@ mkdir -p "$d"
     printf 'diff_lines: 2001\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq DIFF_ADDED 2001 "$out"
 assert_kv_eq MECHANICAL_CHURN false "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
@@ -402,10 +414,11 @@ mkdir -p "$d"
     printf 'diff_lines: 200\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq PLAN_LINES 12 "$out"
 assert_kv_eq DIFF_ADDED 100 "$out"
 
-# --- Case 25: duplicate optional keys (last wins) ---
+# --- Case 25: duplicate optional keys (last wins for values; all lines subtracted) ---
 d="$TMPROOT/c25"
 mkdir -p "$d"
 {
@@ -415,8 +428,9 @@ mkdir -p "$d"
     printf 'diff_lines: 2001\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq DIFF_ADDED 100 "$out"
-assert_kv_eq PLAN_LINES 11 "$out"
+assert_kv_eq PLAN_LINES 10 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 
 # --- Case 26: combined gate KV ---
@@ -430,6 +444,7 @@ mkdir -p "$d"
     printf 'diff_lines: 5000\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
 assert_kv_eq SOFT_ADVISORY true "$out"
@@ -446,6 +461,7 @@ mkdir -p "$d"
     printf 'diff_lines: 5000\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq PLAN_LINES 798 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq DIFF_ADDED 100 "$out"
@@ -460,6 +476,7 @@ mkdir -p "$d"
     printf 'diff_lines: 5000\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq SOFT_ADVISORY false "$out"
 assert_kv_eq MECHANICAL_CHURN true "$out"
@@ -473,9 +490,67 @@ mkdir -p "$d"
     printf 'diff_lines: 500\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq DIFF_DELETED 9999 "$out"
 assert_kv_eq DIFF_ADDED "" "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq TRIGGER_REASONS "" "$out"
+
+# --- Case 30: 800 body + duplicate diff_added lines (full metadata subtraction) ---
+d="$TMPROOT/c30"
+mkdir -p "$d"
+{
+    for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done
+    fill_lines 795 'b'
+    printf 'diff_added: 5000\n'
+    printf 'diff_added: 100\n'
+    printf 'diff_lines: 5000\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq PLAN_LINES 800 "$out"
+assert_kv_eq DIFF_ADDED 100 "$out"
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+
+# --- Case 31: 799 body + three diff_added lines (no spurious plan-body hard trigger) ---
+d="$TMPROOT/c31"
+mkdir -p "$d"
+{
+    for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done
+    fill_lines 794 'b'
+    printf 'diff_added: 1\n'
+    printf 'diff_added: 2\n'
+    printf 'diff_added: 3\n'
+    printf 'diff_lines: 100\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq PLAN_LINES 799 "$out"
+assert_kv_eq DIFF_ADDED 3 "$out"
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+
+# --- Case 32: leading-zero trailers use decimal thresholds ---
+d="$TMPROOT/c32a"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_added: 002001\n'; printf 'diff_lines: 100\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-added" "$out"
+d="$TMPROOT/c32b"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_lines: 001501\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
+d="$TMPROOT/c32c"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_added: 08\n'; printf 'diff_lines: 2001\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq DIFF_ADDED "" "$out"
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 
 echo "PASS: test-check-plan-size.sh"

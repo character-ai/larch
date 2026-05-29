@@ -390,8 +390,12 @@ grep -Fq 'plan-body gate still requires Split/Cancel' "$SKILL_MD" \
   || fail "(3175) SKILL.md must document plan-body hard + SOFT_ADVISORY combined advisory"
 grep -Fq 'diff_added' "$SKILL_MD" \
   || fail "(3175) SKILL.md missing diff_added preservation/recompute language"
+grep -Fq 'diff_deleted' "$SKILL_MD" \
+  || fail "(3175) SKILL.md missing diff_deleted preservation language"
 grep -Fq 'mechanical_churn' "$SKILL_MD" \
   || fail "(3175) SKILL.md missing mechanical_churn preservation language"
+grep -Fq 'gate-b-dedup-plan.sh' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing mechanical gate-b-dedup-plan.sh post-apply hook"
 grep -Fq 'snapshot' "$APPROVAL_MD" \
   || fail "(3175) approval-gates.md missing optional trailer snapshot language"
 grep -Fq 'diff_added' "$APPROVAL_MD" \

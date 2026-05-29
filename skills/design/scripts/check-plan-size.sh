@@ -98,8 +98,20 @@ _diff_deleted_raw=$(printf '%s\n' "$_metadata_parse" | sed -n '3p')
 mechanical_churn=$(printf '%s\n' "$_metadata_parse" | sed -n '4p')
 diff_added=""
 diff_deleted=""
-[[ "$_diff_added_raw" != "-" ]] && diff_added="$_diff_added_raw"
-[[ "$_diff_deleted_raw" != "-" ]] && diff_deleted="$_diff_deleted_raw"
+if [[ "$_diff_added_raw" != "-" ]]; then
+    if [[ "$_diff_added_raw" == "08" || "$_diff_added_raw" == "09" ]]; then
+        :
+    else
+        diff_added="$_diff_added_raw"
+    fi
+fi
+if [[ "$_diff_deleted_raw" != "-" ]]; then
+    if [[ "$_diff_deleted_raw" == "08" || "$_diff_deleted_raw" == "09" ]]; then
+        :
+    else
+        diff_deleted="$_diff_deleted_raw"
+    fi
+fi
 unset _metadata_parse _diff_added_raw _diff_deleted_raw
 
 plan_lines=$(( initial_plan_lines - metadata_trailer_lines ))
@@ -108,15 +120,15 @@ if [[ "$plan_lines" -lt 0 ]]; then
 fi
 
 hard_plan=0
-if [[ "$plan_lines" -gt 800 ]]; then hard_plan=1; fi
+if (( plan_lines > 800 )); then hard_plan=1; fi
 
 hard_diff_raw=0
 diff_basis="diff-lines"
 if [[ -n "$diff_added" ]]; then
-    if [[ "$diff_added" -gt 2000 ]]; then hard_diff_raw=1; fi
+    if (( 10#$diff_added > 2000 )); then hard_diff_raw=1; fi
     diff_basis="diff-added"
 else
-    if [[ "$diff_lines" -gt 1500 ]]; then hard_diff_raw=1; fi
+    if (( 10#$diff_lines > 1500 )); then hard_diff_raw=1; fi
 fi
 
 soft_advisory=0

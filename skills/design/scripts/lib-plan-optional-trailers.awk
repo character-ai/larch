@@ -100,8 +100,8 @@ END {
         exit 0
     }
 
-    # mode == parse (default): subtract only winning optional keys (last-match-wins), not duplicate block lines
-    metadata_trailer_lines = has_added + has_deleted + has_mech
+    # mode == parse (default): subtract every strict optional trailer line in the block
+    metadata_trailer_lines = block_len
     printf "%d\n", metadata_trailer_lines
     if (diff_added == "") {
         print "-"

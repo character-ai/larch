@@ -28,13 +28,16 @@ Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captu
 22. Malformed optional trailers (tab / double space) — legacy fallback; four new keys always emitted.
 23. Spoof resistance — body prose ignored; final metadata block wins.
 24. Blank line stops metadata scan.
-25. Duplicate optional keys — last match closest to `diff_lines:` wins.
+25. Duplicate optional keys — last match closest to `diff_lines:` wins for values; every strict optional trailer line in the block is subtracted from `PLAN_LINES`.
 26. Combined plan-body hard + downgraded diff (`SOFT_ADVISORY=true`).
 27. 801 raw body lines minus optional metadata avoids plan-body hard trigger (`PLAN_LINES=798`).
 28. `mechanical_churn` under already-soft `diff_added` does not set `SOFT_ADVISORY`.
 29. `diff_deleted`-only legacy fallback (no `diff_added`).
+30. 800 body + duplicate `diff_added` lines — no spurious `plan-body-lines` hard trigger.
+31. 799 body + three `diff_added` lines — full metadata line subtraction (`PLAN_LINES=799`).
+32. Leading-zero trailer digits — `10#` decimal coercion for threshold comparisons; invalid `diff_added: 08` rejected as metadata (legacy `diff_lines` path).
 
-Cases 14–29 also assert `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, and `SOFT_ADVISORY` where relevant.
+Cases 14–32 call `assert_always_emitted_keys` on every `run_ok` exit 0 path.
 
 ## Run
 
