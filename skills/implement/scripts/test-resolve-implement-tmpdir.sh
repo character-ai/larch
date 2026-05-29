@@ -46,7 +46,7 @@ resolve_for_cwd() {
     env -u LARCH_TOKEN_SESSION_ID \
         XDG_CACHE_HOME="$TMP/cache" \
         HOME="$TMP/home" \
-        bash -c 'source "$1"; resolve_implement_tmpdir "$2"' _ "$LIB" "$1"
+        bash -c "source \"\$1\"; resolve_implement_tmpdir \"\$2\"" _ "$LIB" "$1"
 }
 
 resolved=$(resolve_for_cwd "$WORKTREE_A")
