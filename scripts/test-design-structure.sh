@@ -88,6 +88,8 @@ contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping p
 contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'do **not** fire an `AskUserQuestion` here — auto-continue to Step 3.6, then Step 3b, then Step 4, then Gate C' 'approval-gates.md passive-summary must be non-blocking auto-continue (no AskUserQuestion)'
+contains "$APPROVAL_MD" 'do **not** halt the turn on the printed table' 'approval-gates.md passive-summary must not halt on multi-round table'
+contains "$APPROVAL_MD" 'Gate C (Step 4b) is the single decision point' 'approval-gates.md passive-summary must pin Gate C as single decision point'
 contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 forward link'
 contains "$APPROVAL_MD" 'passive-summary auto-continue → Step 3.6 → Step 3b → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 forward link'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
