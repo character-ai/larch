@@ -47,14 +47,7 @@ printf 'ASSESSMENT: TIE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/cursor-plan-a
 STUB
 chmod +x "$TMP/mock-dispatch.sh"
 
-cat >"$TMP/mock-monitor.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$TMP/mock-monitor.sh"
-
 export LARCH_DISPATCH_PLAN_ASSESSORS_SH="$TMP/mock-dispatch.sh"
-export LARCH_BREADCRUMB_MONITOR_SH="$TMP/mock-monitor.sh"
 export LARCH_TALLY_PLAN_ASSESSOR_SH="$ROOT/skills/design/scripts/tally-plan-assessor.sh"
 export LARCH_SNAPSHOT_PLAN_ROUND_SH="$ROOT/skills/design/scripts/snapshot-plan-round.sh"
 unset IMPLEMENT_TMPDIR || true
@@ -165,17 +158,6 @@ printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
 printf 'ASSESSMENT: WORSE\nREASONING: c\nQUALIFICATIONS: cq\n' >"$DIR/claude-plan-assessor-round-2.txt"
 STUB
 chmod +x "$TMP/mock-dispatch.sh"
-cat >"$TMP/mock-monitor.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 6
-STUB
-chmod +x "$TMP/mock-monitor.sh"
-setup_round2
-printf 'stale worse\n' >"$TMP/assessor-verdict-round-2.txt"
-out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
-printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=ok' || fail 'monitor failure should still tally valid assessor outputs'
-grep -Fqx 'WORSE: c' "$TMP/assessor-verdict-round-2.txt" || fail 'monitor failure must not suppress valid WORSE tally'
-grep -Fq 'assess-plan-round.sh' "$TMP/execution-issues.md" || fail 'monitor failure should still append warning'
 
 cat >"$TMP/mock-tally.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -205,19 +187,6 @@ printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
 printf 'ASSESSMENT: TIE\nREASONING: q\nQUALIFICATIONS: z\n' >"$DIR/claude-plan-assessor-round-2.txt"
 STUB
 chmod +x "$TMP/mock-dispatch.sh"
-cat >"$TMP/mock-monitor.sh" <<'STUB'
-#!/usr/bin/env bash
-quiet=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --quiet-log) quiet="${2:?}"; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$quiet" && -f "$quiet" ]] || exit 8
-exit 0
-STUB
-chmod +x "$TMP/mock-monitor.sh"
 export LARCH_TALLY_PLAN_ASSESSOR_SH="$ROOT/skills/design/scripts/tally-plan-assessor.sh"
 setup_round2
 rm -f "$TMP/breadcrumbs/assessor-round-2.dispatch.kv" "$TMP/breadcrumbs/assessor-round-2.quiet.log"
@@ -243,11 +212,6 @@ printf 'ASSESSMENT: WORSE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/codex-plan-
 printf 'ASSESSMENT: WORSE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/cursor-plan-assessor-round-2.txt"
 STUB
 chmod +x "$TMP/mock-dispatch.sh"
-cat >"$TMP/mock-monitor.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$TMP/mock-monitor.sh"
 setup_round2
 rm -f "$TMP/execution-issues.md"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)

@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `skills/report-tokens/scripts/test-report-tokens-recompute.sh`, `skills/report-tokens/scripts/test-rate-assertions.sh`, `skills/report-tokens/scripts/test-rate-assertions.md`, and the `skills/report-tokens/scripts/fixtures/recompute-run/` fixture directory. The harnesses wrote fixture run directories into the live `larch-logs/implement/` and `larch-logs/design/` working-tree paths, which risked cross-talk with real run logs. They are deleted rather than migrated to `${TMPDIR}` per project preference: `run-analysis.sh` is intentionally not test-covered. Makefile recipes (`test-rate-assertions`, `test-report-tokens-recompute`) and their `test-harnesses-13` / `test-harnesses-20` shard prerequisites are removed; the matching `agent-lint.toml` exclude entry and `docs/linting.md` row are dropped; the dangling rate-harness sentence in `skills/report-tokens/SKILL.md` is trimmed. Closes #3121.
 
-## [45.3.24] - 2026-05-29
+## [45.3.25] - 2026-05-29
 
 ### Changed
 
@@ -46,6 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Align approval-gates bypass and settle paths with SKILL.md assessor disposition
 - Pin passive-summary Continue and Gate-B-bypass coverage in test-design-structure.sh
 - Add two-entry Step 3 integration case for cursor advance and round-2 assessor firing
+
+### Removed
+
+- **Breadcrumbs Stage 3 — monitor contract removal** (#3118): `scripts/breadcrumb-monitor.sh` is replaced with a tiny no-op compatibility shim that consumes all historical flags and exits 0. `scripts/lib-quiet.sh` drops breadcrumb stream, sentinel, paired-PID, and surfaced-file plumbing; no-op shims for `larch_quiet_append_done_trap` and `larch_quiet_write_paired_pid_file` remain through Stage 4. `larch_err` redaction now calls `redact-secrets.sh --streaming` directly. `scripts/lib-redact-streaming.{sh,md}`, `scripts/lint-foreground-markers.{sh,md}`, `scripts/test-lint-foreground-markers.{sh,md}`, `scripts/test-breadcrumb-monitor*`, and `scripts/test-background-monitor-wait.{sh,md}` are deleted. All Family-B callers (`ship-pr.sh`, `run-step5-review.sh`, `dispatch-plan-voters.sh`, `collect-agent-results.sh`, `run-step2-dispatch.sh`) and dead-barrier sites have their paired-PID/sentinel plumbing removed. Makefile, `.pre-commit-config.yaml`, `agent-lint.toml`, and `scripts/relevant-checks.sh` are updated. Supersedes the #2826 sentinel behavior entry above.
 
 ## [45.3.23] - 2026-05-29
 

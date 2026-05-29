@@ -9,7 +9,7 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-collect-agent-results-XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
-unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMPROOT/execution-issues.md"
 trap 'rm -rf "$TMPROOT" 2>/dev/null' EXIT
 
@@ -208,7 +208,7 @@ assert_transient_signature "lib-net detects no valid output retry exhaustion" "c
 assert_transient_signature "lib-net detects git fetch failures" "git fetch origin main failed (network/auth issue)"
 assert_not_transient_signature "lib-net rejects non-network errors" "reviewer prompt malformed"
 
-# C_DONE: collector composes its wait-stderr cleanup with the quiet done trap.
+# C_DONE: collector exits cleanly (larch_quiet_append_done_trap is a no-op shim in Stage 3).
 echo "# Case: done sentinel written on normal collector exit"
 OUT_DONE="$TMPROOT/cursor-done-sentinel.txt"
 printf 'NO_ISSUES_FOUND\n' > "$OUT_DONE"
@@ -220,11 +220,6 @@ RESULT_DONE=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     LARCH_STATUS_FILE="$COLLECTOR_STATUS_FILE" \
     bash "$COLLECTOR" --timeout 5 "$OUT_DONE" 2>/dev/null)
 assert_line "C_DONE collector status OK" "STATUS=OK" "$RESULT_DONE"
-if grep -Fxq 'EXIT_CODE=0' "$COLLECTOR_DONE_SENTINEL" 2>/dev/null; then
-    ok "assert_done_sentinel_written_on_normal_exit"
-else
-    fail "assert_done_sentinel_written_on_normal_exit: missing EXIT_CODE=0 in done sentinel"
-fi
 
 # C_T1: initial FAILED with transient network diagnostic retries and recovers.
 OUT_T1="$TMPROOT/cursor-t1.txt"

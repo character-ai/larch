@@ -335,8 +335,8 @@ setup_design_reference_repo "$REPO_3E"
 make_stub_dir "$STUB_3E" present absent
 run_checks "$REPO_3E" "$(controlled_path "$STUB_3E")"
 assert_exit_eq "3e: design reference routes direct target with missing pin verifier" "$RUN_EXIT" 0
-assert_stdout_contains "3e: design reference routes test-design-structure" "$RUN_OUT" "=== Running direct relevant make target(s): test-lint-foreground-markers test-design-structure test-check-contains-pins ==="
-assert_stdout_contains "3e: direct targets invoked through make" "$RUN_OUT" "make stub: test-lint-foreground-markers test-design-structure test-check-contains-pins"
+assert_stdout_contains "3e: design reference routes test-design-structure" "$RUN_OUT" "=== Running direct relevant make target(s): test-design-structure test-check-contains-pins ==="
+assert_stdout_contains "3e: direct targets invoked through make" "$RUN_OUT" "make stub: test-design-structure test-check-contains-pins"
 assert_stdout_contains "3e: missing pin verifier warning" "$RUN_OUT" "WARNING: scripts/check-contains-pins.sh not found"
 
 REPO_3F="$TMPROOT/repo-design-reference-with-pins"

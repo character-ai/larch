@@ -3063,7 +3063,6 @@ run_ci_phase() {
 $(ci_common_args)
 EOF
     fail_file=$(failure_capture_path "$phase")
-    unset LARCH_PAIRED_PID_FILE
     ship_pr_with_transient_retry transient_envelope_predicate_ci_wait "$fail_file" "$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}"
     rc=$_WTR_RC
     out=$_WTR_OUT
@@ -3338,7 +3337,6 @@ main() {
         case "$INIT_TOOL_LABEL" in *$'\r'*|*$'\n'*) die_usage "--tool-label must not contain CR or LF" ;; esac
     fi
     export IMPLEMENT_TMPDIR
-    larch_quiet_write_paired_pid_file
     export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
 
     if [ ! -e "$STATE_FILE" ] || [ "$FORCE_INIT_STATE" = "true" ]; then

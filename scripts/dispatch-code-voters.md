@@ -5,7 +5,7 @@ Launches the `/review` judge voting panel through the current waterfall stack. E
 Voter 1 is always Claude and is launched directly through `scripts/launch-claude-review.sh`. Voter 2 and Voter 3 are dispatched as Codex-first and Cursor-first slots through `scripts/dispatch-with-waterfall.sh`, so each external slot can fall through to the alternate external tool and then to Claude when necessary.
 
 Before invoking nested `dispatch-with-waterfall.sh`, the script defensively
-unsets any inherited `LARCH_PAIRED_PID_FILE`; this script is not a top-level
+does not allocate paired-PID files; this script is not a top-level
 Family B writer.
 
 The `dispatch-with-waterfall.sh` invocation is wrapped with `set +e`/`set -e` so a non-zero exit (e.g. when a reviewer launcher exits abnormally mid-run) does not abort the dispatch before the voter tally step. A non-zero waterfall exit is logged via `larch_err` and treated as an empty waterfall result; the post-wait size checks then classify individual voters as failed or launched based on file presence.

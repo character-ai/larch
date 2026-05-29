@@ -145,7 +145,6 @@ fi
 
 DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
 
-unset LARCH_PAIRED_PID_FILE
 _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
     --slots-file "$_manifest" \
     --codex-present "$CODEX_PRESENT" \

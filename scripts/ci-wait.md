@@ -10,7 +10,7 @@ Backgrounding `ci-wait.sh` disconnects the orchestrator from the script's return
 
 For the paired-PID monitor contract, `ci-wait.sh` remains intentionally
 excluded from the writer list because it is a nested synchronous child under
-`ship-pr.sh`, which unsets `LARCH_PAIRED_PID_FILE` before invocation.
+`ship-pr.sh` (paired-PID barriers removed in breadcrumbs Stage 3).
 
 ## Default I/O contract
 

@@ -220,8 +220,6 @@ if [[ -z "$TIMEOUT" ]]; then
     exit 1
 fi
 
-larch_quiet_write_paired_pid_file
-
 if [[ -n "$COLLECT_PATHS_FILE" && ${#OUTPUT_FILES[@]} -gt 0 ]]; then
     larch_err "collect-agent-results.sh: --paths-file is mutually exclusive with positional output-file arguments"
     exit 1

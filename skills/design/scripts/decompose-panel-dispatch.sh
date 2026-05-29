@@ -156,7 +156,6 @@ if [[ "$MODE" == "plan" ]]; then
 fi
 
 set +e
-unset LARCH_PAIRED_PID_FILE
 _dispatch_out=$("$WATERFALL_SH" \
     --slots-file "$_manifest" \
     --codex-present "$CODEX_PRESENT" \

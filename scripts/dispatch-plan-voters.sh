@@ -45,7 +45,6 @@ done
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
 export DESIGN_TMPDIR
-larch_quiet_write_paired_pid_file
 
 LARCH_VPR_BALLOT_FILE="$BALLOT_FILE"
 LARCH_VPR_ID_GRAMMAR=finding-oos
@@ -142,7 +141,6 @@ VOTER_3_PATH="$DESIGN_TMPDIR/cursor-vote-output.txt"
     printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_PATH" "$cursor_prompt"
 } > "$manifest"
 
-unset LARCH_PAIRED_PID_FILE
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
     --codex-present "$CODEX_AVAILABLE" \

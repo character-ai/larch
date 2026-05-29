@@ -17,24 +17,16 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   stdout/stderr to the quiet log.
 - `emit TEXT` writes one line of contract output to the caller-visible stream.
 - `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream. Values must not contain `\n` or `\r`; the helper returns 2 with `larch_err` on violation. See `scripts/test-lib-quiet.sh` for reject coverage.
-- `larch_quiet_bc_valid_category NAME` validates breadcrumb category tokens for
-  `scripts/breadcrumb-monitor.sh`. Runtime scripts surface operator-visible
-  progress via `larch_err` / `larch_errf`; the legacy breadcrumb emit helpers
-  are no longer part of the runtime authoring path.
 - `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
   original stderr (FD 4 after init) so harnesses and operators still see them
   while incidental `echo`/`printf` chatter stays in the quiet log. The emitted
-  text is mirrored into the quiet log and passed through the streaming
-  secret-redaction helper first.
+  text is mirrored into the quiet log and passed through
+  `redact-secrets.sh --streaming` first.
 - `larch_errf` is the `printf`-style variant for formatted user-visible errors
   (same routing and redaction contract as `larch_err`).
-- `larch_quiet_write_paired_pid_file` writes the caller's `$$` to
-  `LARCH_PAIRED_PID_FILE` when that env var is set. It validates an absolute,
-  non-symlink path with no `..` under the active session tmpdir, requires a
-  writable parent directory, writes through `mktemp` in that parent, and
-  publishes with `mv -f`. Invalid paths or write failures emit
-  `WARN paired-pid-file-invalid` and return 0 so callers under `set -e` do not
-  abort.
+- `larch_quiet_append_done_trap` and `larch_quiet_write_paired_pid_file` are
+  **Stage 3 no-op compatibility shims** for deferred Stage 4 fences and any
+  missed dynamic callers. They do not write files or install traps.
 
 `LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses use that
 override when they need direct access to stdout/stderr without quiet-log
@@ -65,13 +57,6 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
 - Pure stdin-to-stdout filters must either avoid `larch_quiet_init` or set
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.
-- Paired PID ownership is restricted to top-level Family B entrypoints:
-  `ship-pr.sh`, `run-step5-review.sh`, `run-step2-dispatch.sh`,
-  `collect-agent-results.sh`, and `dispatch-plan-voters.sh`. Nested children
-  (`ci-wait.sh`, `review-and-fix.sh`, `step2-implement.sh`, and
-  `dispatch-with-waterfall.sh`) must not call the helper; their parents unset
-  `LARCH_PAIRED_PID_FILE` before invoking them. See
-  `scripts/breadcrumb-monitor.md`.
 
 Family B scripts surface progress via `larch_err` / `larch_errf` on the
 operator-visible stderr channel (FD 4 after `larch_quiet_init`).
@@ -81,6 +66,6 @@ operator-visible stderr channel (FD 4 after `larch_quiet_init`).
 `scripts/test-lib-quiet.sh` exercises default redirect behavior, explicit log
 paths, disable mode, nested init, contract emission, empty values, fallback
 behavior when the log directory cannot be created, pure-filter disable
-semantics, `larch_err` routing to real stderr, and the paired PID writer's
-no-op, atomic-write, validation, fail-open, and parallel-write behavior. It is
-wired as `make test-lib-quiet`.
+semantics, `larch_err` routing to real stderr, direct `redact-secrets.sh`
+streaming redaction, and the Stage 3 compatibility shim no-ops. It is wired
+as `make test-lib-quiet`.

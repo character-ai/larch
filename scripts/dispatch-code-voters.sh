@@ -168,7 +168,6 @@ manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
 } > "$manifest"
 
 codex_present_for_waterfall="$CODEX_AVAILABLE"
-unset LARCH_PAIRED_PID_FILE
 # Guard against non-zero exit from waterfall (e.g. a reviewer launcher exiting
 # abnormally mid-run) so set -e does not abort dispatch before tally.
 set +e
