@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- redundant Bash filter is technically true but defensive-only; awk parse-mode never emits "08"/"09" since the block-scan break produces "-"; nit complexity not worth addressing
+FINDING_4: EXONERATE CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- test-gate-b-dedup-plan is in Makefile; could not verify "four test scripts in SKILL.md" or standalone lib unit scripts; claim is partially unsupported
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- 08/09 edge in designer prose is real but nit-level; prefer EXONERATE
+FINDING_6: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- extra plan read per helper call is real but trivial overhead; not worth a dedicated issue
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- multiple awk passes confirmed but a minor efficiency nit not worth a standalone issue
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- test-doosc-debug.sh is a 4-line debug filter with header "debug only"; claim that it is listed in SKILL.md as an optional-trailer harness could not be verified
+FINDING_10: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- self-reporting trust boundary is explicit design choice; adding independent measurement is out-of-scope scope creep
+FINDING_13: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- read-only operation in single-user plugin context; path constraint adds complexity for minimal practical benefit
+FINDING_15: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=important QUALITY=excellent UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- dedup only removes lines and cannot introduce new optional trailers into a trailer-free plan; the described failure path is mechanically impossible
