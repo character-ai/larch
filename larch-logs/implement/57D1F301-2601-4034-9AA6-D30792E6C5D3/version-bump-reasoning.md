@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `ae6884a48` (chore(larch-logs): flush design run 77E51DBB-E6C4-4944-AA34-10092352662B [skip ci] (#3189))
-- **Current version**: `45.3.28`
+- **Base commit**: `668275011` (Fixes #3192: Default /design to SIMPLE; drop --simple flag (#3203))
+- **Current version**: `46.0.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.3.29`
+- **New version**: `46.0.1`
 
 ### PATCH rationale
 
