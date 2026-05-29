@@ -83,7 +83,7 @@ absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must n
 
 contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
-contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and returning to Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
+contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, Step 4, then Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -840,6 +840,42 @@ contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-curs
 contains "$SKILL_MD" "--round-num \"\$ROUND_NUM\"" 'SKILL.md missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
 contains "$SKILL_MD" 'passive-summary Continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
+contains "$SKILL_MD" 'Passive-summary Continue routes through Step 3.6 before Step 3b' 'SKILL.md missing passive-summary Continue Step 3.6 routing pin'
+# shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
+contains "$APPROVAL_MD" 'refresh the active Step 3 result state (including `.step3-plan-review-result.env`) before continuing to Gate B as complete-equivalent' 'approval-gates.md missing MainAgent re-tally Step 3 state refresh pin'
+# shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
+contains "$SKILL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`) bypass Step 3.5 **and Step 3.6** and continue to Step 3b instead' 'SKILL.md missing full Gate-B-bypass short-circuit list in Step 3.5 entry'
+contains "$APPROVAL_MD" 'Passive-summary Continue routes through Step 3.6 before Step 3b' 'approval-gates.md missing passive-summary Continue Step 3.6 routing pin'
+# shellcheck disable=SC2016 # backticks are literal markdown pins
+contains "$APPROVAL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
+# shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
+contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`, and persist `.step3-plan-review-result.env` from the re-tally so Gate B does not read stale 0-judge fallback state' 'SKILL.md missing MainAgent re-tally state refresh pin'
+# shellcheck disable=SC2016 # $ tokens are literal markdown pins
+contains "$SKILL_MD" '--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"' 'SKILL.md missing MainAgent re-tally findings-classification-out pin'
+# shellcheck disable=SC2016 # backticks are literal markdown pins
+contains "$APPROVAL_MD" 'Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, and `panel-failed` skip Gate B (and therefore Step 3.6) but still continue Step 3b → Step 4 → Step 4b with the current plan and artifacts.' 'approval-gates.md missing Gate C panel-failed bypass routing pin'
+# shellcheck disable=SC2016 # backticks are literal markdown pins
+for _bypass_line in \
+  "$(grep -F 'Gate-B-bypass short-circuits (' "$SKILL_MD")" \
+  "$(grep -F 'Gate-B-bypass short-circuits (' "$APPROVAL_MD")" \
+  "$(grep -F 'When `LOOP_STATUS` is `tally-error`' "$APPROVAL_MD")" \
+  "$(grep -F 'Step 3 bypasses such as `LOOP_STATUS=cap-reached`' "$APPROVAL_MD")" \
+  "$(grep -F 'If `LOOP_STATUS` is `tally-error`' "$SKILL_MD")"
+do
+  [[ "$_bypass_line" != *'main-agent-vote-required'* ]] || fail 'bypass prose must not include main-agent-vote-required'
+  [[ "$_bypass_line" != *'zero-findings-degraded-panel'* ]] || fail 'bypass prose must not include zero-findings-degraded-panel'
+done
+for _skip_breadcrumb in \
+  '⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)' \
+  '⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)' \
+  '⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)' \
+  '⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)' \
+  '⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)' \
+  '⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)'
+do
+  contains "$SKILL_MD" "$_skip_breadcrumb" "SKILL.md missing Step 3.6 skip breadcrumb: $_skip_breadcrumb"
+  contains "$APPROVAL_MD" "$_skip_breadcrumb" "approval-gates.md missing Step 3.6 skip breadcrumb: $_skip_breadcrumb"
+done
 contains "$SKILL_MD" 'cancelled-assessor-worse' 'SKILL.md missing cancelled-assessor-worse outcome'
 contains "$REPO_ROOT/skills/design/scripts/render-final-summary.sh" 'cancelled-assessor-worse' 'render-final-summary.sh missing cancelled-assessor-worse outcome'
 contains "$REPO_ROOT/skills/design/scripts/test-render-final-summary.sh" "pass 'cancelled-assessor-worse outcome'" 'test-render-final-summary.sh missing cancelled-assessor-worse harness pin'

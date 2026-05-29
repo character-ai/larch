@@ -285,4 +285,119 @@ out=$(IMPLEMENT_TMPDIR="$TMP/implement-tmp" LARCH_QUIET_DISABLE=1 "$SUBJECT" --d
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=not-worse' || fail 'design feature preference path failed'
 grep -Fqx "$(cd "$TMP" && pwd -P)/feature-description.txt" "$TMP/feature-path-seen.txt" || fail 'design tmpdir feature-description.txt should win over implement tmpdir copy'
 
+# Two-entry Step 3 integration: cursor advance, snapshots, round-2 assessor firing.
+advance_step3_cursor() {
+  local tmp="$1" cursor=1 next cursor_out cursor_line
+  cursor_out=$("$ROOT/skills/design/scripts/snapshot-plan-round.sh" \
+    read-cursor --design-tmpdir "$tmp")
+  while IFS= read -r cursor_line || [[ -n "$cursor_line" ]]; do
+    case "$cursor_line" in
+      ROUND_CURSOR=*) cursor="${cursor_line#ROUND_CURSOR=}" ;;
+    esac
+  done <<<"$cursor_out"
+  case "$cursor" in ''|*[!0-9]*|0) cursor=1 ;; esac
+  cursor=$((10#$cursor))
+  if [[ -f "$tmp/plan-after-round-${cursor}.txt" ]]; then
+    next=$((cursor + 1))
+    "$ROOT/skills/design/scripts/snapshot-plan-round.sh" \
+      write-cursor --design-tmpdir "$tmp" --value "$next" >/dev/null \
+      || fail "advance_step3_cursor: write-cursor failed for round $next"
+    cursor=$next
+  fi
+  printf '%s' "$cursor"
+}
+
+write_params_for() {
+  local tmp="$1" wp="$2"
+  printf '{"workflow_path":"%s"}\n' "$wp" >"$tmp/run-params.json"
+}
+
+echo "=== two-entry Step 3 cursor + round-2 assessor integration ==="
+case_tmp=$(mktemp -d "${TMPDIR:-/tmp}/tapr-two-entry.XXXXXX")
+saved_dispatch_plan_assessors_sh=${LARCH_DISPATCH_PLAN_ASSESSORS_SH-__UNSET__}
+saved_breadcrumb_monitor_sh=${LARCH_BREADCRUMB_MONITOR_SH-__UNSET__}
+saved_tally_plan_assessor_sh=${LARCH_TALLY_PLAN_ASSESSOR_SH-__UNSET__}
+saved_snapshot_plan_round_sh=${LARCH_SNAPSHOT_PLAN_ROUND_SH-__UNSET__}
+rm -f "$case_tmp"/plan-after-round-*.txt \
+  "$case_tmp"/plan-review-round-cursor.txt \
+  "$case_tmp"/assessor-verdict-round-*.txt \
+  "$case_tmp"/assessor-verdict-round-*.env \
+  "$case_tmp"/plan.txt-original \
+  "$case_tmp"/claude-plan-assessor-round-*.txt \
+  "$case_tmp"/codex-plan-assessor-round-*.txt \
+  "$case_tmp"/cursor-plan-assessor-round-*.txt 2>/dev/null || true
+write_params_for "$case_tmp" HARD
+
+cat >"$case_tmp/mock-dispatch.sh" <<'STUB'
+#!/usr/bin/env bash
+DIR=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --design-tmpdir) DIR="${2:?}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'DISPATCH_OK=true\n'
+printf 'CLAUDE_ASSESSOR_PATH=%s/claude-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CODEX_ASSESSOR_PATH=%s/codex-plan-assessor-round-2.txt\n' "$DIR"
+printf 'CURSOR_ASSESSOR_PATH=%s/cursor-plan-assessor-round-2.txt\n' "$DIR"
+printf 'ASSESSMENT: WORSE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/claude-plan-assessor-round-2.txt"
+printf 'ASSESSMENT: WORSE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/codex-plan-assessor-round-2.txt"
+printf 'ASSESSMENT: TIE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/cursor-plan-assessor-round-2.txt"
+STUB
+chmod +x "$case_tmp/mock-dispatch.sh"
+cat >"$case_tmp/mock-monitor.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$case_tmp/mock-monitor.sh"
+export LARCH_DISPATCH_PLAN_ASSESSORS_SH="$case_tmp/mock-dispatch.sh"
+export LARCH_BREADCRUMB_MONITOR_SH="$case_tmp/mock-monitor.sh"
+export LARCH_TALLY_PLAN_ASSESSOR_SH="$ROOT/skills/design/scripts/tally-plan-assessor.sh"
+export LARCH_SNAPSHOT_PLAN_ROUND_SH="$ROOT/skills/design/scripts/snapshot-plan-round.sh"
+
+printf 'plan entry1\n' >"$case_tmp/plan.txt"
+printf 'feature entry1\n' >"$case_tmp/feature-description.txt"
+"$ROOT/skills/design/scripts/snapshot-plan-round.sh" write-original --design-tmpdir "$case_tmp" >/dev/null
+cursor1=$(advance_step3_cursor "$case_tmp")
+[[ "$cursor1" == "1" ]] || fail 'Entry 1 cursor must remain 1 before first write-after'
+"$ROOT/skills/design/scripts/snapshot-plan-round.sh" write-after --design-tmpdir "$case_tmp" --round 1 >/dev/null
+out1=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$case_tmp" --codex-present true --cursor-present true)
+printf '%s\n' "$out1" | grep -Fq 'ASSESSOR_STATUS=skipped' || fail 'Entry 1 assessor must skip'
+printf '%s\n' "$out1" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'Entry 1 assessor verdict must be skipped'
+[[ ! -e "$case_tmp/assessor-verdict-round-1.txt" ]] || fail 'Entry 1 must not write round-1 assessor verdict'
+
+printf 'plan entry2 revised\n' >"$case_tmp/plan.txt"
+cursor2=$(advance_step3_cursor "$case_tmp")
+[[ "$cursor2" == "2" ]] || fail 'Entry 2 cursor must advance to 2'
+"$ROOT/skills/design/scripts/snapshot-plan-round.sh" write-after --design-tmpdir "$case_tmp" --round 2 >/dev/null
+[[ -f "$case_tmp/plan-after-round-1.txt" && -f "$case_tmp/plan-after-round-2.txt" ]] || fail 'round 1 and 2 snapshots must exist'
+cmp -s "$case_tmp/plan-after-round-1.txt" "$case_tmp/plan-after-round-2.txt" && fail 'round snapshots must differ'
+out2=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$case_tmp" --codex-present true --cursor-present true)
+printf '%s\n' "$out2" | grep -Fq 'ASSESSOR_STATUS=ok' || fail 'Entry 2 assessor must fire'
+printf '%s\n' "$out2" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'Entry 2 assessor verdict must be worse-majority'
+printf '%s\n' "$out2" | grep -Fq 'EFFECTIVE_ASSESSORS=3' || fail 'Entry 2 must tally three effective assessors'
+[[ -f "$case_tmp/assessor-verdict-round-2.txt" ]] || fail 'Entry 2 must write assessor-verdict-round-2.txt'
+rm -rf "$case_tmp"
+if [[ "$saved_dispatch_plan_assessors_sh" == "__UNSET__" ]]; then
+  unset LARCH_DISPATCH_PLAN_ASSESSORS_SH
+else
+  export LARCH_DISPATCH_PLAN_ASSESSORS_SH="$saved_dispatch_plan_assessors_sh"
+fi
+if [[ "$saved_breadcrumb_monitor_sh" == "__UNSET__" ]]; then
+  unset LARCH_BREADCRUMB_MONITOR_SH
+else
+  export LARCH_BREADCRUMB_MONITOR_SH="$saved_breadcrumb_monitor_sh"
+fi
+if [[ "$saved_tally_plan_assessor_sh" == "__UNSET__" ]]; then
+  unset LARCH_TALLY_PLAN_ASSESSOR_SH
+else
+  export LARCH_TALLY_PLAN_ASSESSOR_SH="$saved_tally_plan_assessor_sh"
+fi
+if [[ "$saved_snapshot_plan_round_sh" == "__UNSET__" ]]; then
+  unset LARCH_SNAPSHOT_PLAN_ROUND_SH
+else
+  export LARCH_SNAPSHOT_PLAN_ROUND_SH="$saved_snapshot_plan_round_sh"
+fi
+
 pass 'assess-plan-round harness'
