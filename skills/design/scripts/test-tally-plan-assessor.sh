@@ -2,8 +2,7 @@
 # Offline harness for tally-plan-assessor.sh
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
-unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE \
-  LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE LARCH_PAIRED_PID_FILE || true
+unset LARCH_QUIET_LOG_FILE || true
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SUBJECT="$ROOT/skills/design/scripts/tally-plan-assessor.sh"

@@ -7,8 +7,7 @@ stdout/stderr is redirected to the quiet log, disable mode preserves legacy
 stdout, nested initialization is idempotent, `larch_err` stays operator-visible
 on stderr while being mirrored into the quiet log through
 `redact-secrets.sh --streaming`, and pure filters can opt out with
-`LARCH_QUIET_DISABLE=1`. It also covers Stage 3 compatibility shim no-ops,
-`emit_kv` newline rejection (embedded LF/CR), literal backslash-n pass-through,
+`LARCH_QUIET_DISABLE=1`. It also covers `emit_kv` newline rejection (embedded LF/CR), literal backslash-n pass-through,
 and long single-line values.
 
 Wired into `make test-lib-quiet`. Keep this harness in sync with

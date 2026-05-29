@@ -177,12 +177,3 @@ emit_kv() {
         printf '%s=%s\n' "$key" "$value"
     fi
 }
-
-# Stage 3 compatibility shims — no-op until Stage 4 removes remaining fences.
-larch_quiet_append_done_trap() {
-    return 0
-}
-
-larch_quiet_write_paired_pid_file() {
-    return 0
-}

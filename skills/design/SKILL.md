@@ -247,7 +247,6 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      export SUMMARY_OUTCOME=cancelled-reentry-guard
      LARCH_DESIGN_REENTRY_GUARD_PPID="$PPID"
      DESIGN_REENTRY_MARKER_PATH="$(design_reentry_marker_path "$ISSUE_NUMBER" "$PPID")"
-     export LARCH_DESIGN_REENTRY_GUARD_PPID DESIGN_REENTRY_MARKER_PATH
      export CLAUDE_PLUGIN_ROOT
      SUMMARY_MODE_STRING=""
      if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
@@ -366,7 +365,7 @@ fi
 
 ```bash
 # design-final-summary-anchor (scripts/test-design-structure.sh)
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 export CLAUDE_PLUGIN_ROOT
 SUMMARY_MODE_STRING=""
@@ -537,142 +536,37 @@ If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `c
 
 **Regular mode** (4 external output files when both tools available):
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-
-mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
-export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
   "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-innovation-output.txt" \
-  "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt" &
-COLLECTOR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$COLLECTOR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$COLLECTOR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt"
 ```
 
 **Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-
-mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
-export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
-  "$DESIGN_TMPDIR/codex-sketch-generic-output.txt" &
-COLLECTOR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$COLLECTOR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$COLLECTOR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
 ```
 
 **Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-
-mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
-export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
-  "$DESIGN_TMPDIR/codex-sketch-generic-output.txt" &
-COLLECTOR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$COLLECTOR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$COLLECTOR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
 ```
 
-Use `timeout: 1260000` on the Bash tool call. Set `run_in_background: true` on the long-script Bash tool call and pair with foreground `breadcrumb-monitor.sh`. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).
+Use `timeout: 1260000` on the Bash tool call. Use a foreground Bash tool call with a sufficiently large timeout. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).
 
 Note: This is a separate `collect-agent-results.sh` call from the one in Step 3. Both are permitted because they operate on completely distinct output file sets (`*-sketch-*-output.txt` vs `*-plan-output.txt`).
 
@@ -878,7 +772,6 @@ At the Step 2b success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.comp
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
    [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-   export LARCH_QUIET_DISABLE=1
    set +e
    _plan_size_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh" --design-tmpdir "$DESIGN_TMPDIR")
    _plan_size_rc=$?
@@ -1042,7 +935,7 @@ else
       ROUND_NUM=$_next_cursor
     fi
   fi
-  # Foreground required: see BASH_AUTHORING.md §4
+  # Foreground required
   set +e
   _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh" \
     --design-tmpdir "$DESIGN_TMPDIR" \

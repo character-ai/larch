@@ -77,14 +77,6 @@ fi
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
 
-# Source lib-quiet only for larch_quiet_append_done_trap; do NOT call
-# larch_quiet_init here because existing diagnostics use >&2 directly and
-# initializing quiet mode would redirect them to a log file.
-# shellcheck source=scripts/lib-quiet.sh
-# shellcheck disable=SC1091
-source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
-larch_quiet_append_done_trap
-
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"
 WORKFLOW_PATH="HARD"

@@ -49,7 +49,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 8. **NEVER use `step12_rebase` or `step10_rebase` (or any other non-`step8b_rebase` token) as the `caller_kind` when invoking the Rebase + Re-bump Sub-procedure from Step 8b's conflict handler.** **Why**: step10/step12 caller families have wrong post-success control flow for Step 8b — `step12_rebase` re-invokes `ci-wait.sh` (no PR exists at Step 8b, so `ci-wait.sh` would fail), `step10_rebase` falls through to a Step 10 → Step 11 path that is unreachable from Step 8b, and the failure semantics route to 12d (no PR to bail under) or break out of a non-existent CI loop. **How to apply**: `implement-finalize.sh postbump` emits `CALLER_KIND=step8b_rebase` on the conflict envelope, and the orchestrator must invoke the sub-procedure with that same token. The sub-procedure's step 7 has a dedicated `step8b_rebase` return branch that returns control to `postbump`'s checkpointed force-push phase without sleeping or re-invoking `ci-wait.sh`.
 
-9. **NEVER call `ScheduleWakeup` anywhere in the `/implement` orchestrator.** **Why**: long-running Family B scripts (`step2-implement.sh`, `ci-wait.sh`, `ship-pr.sh`, etc.) now launch with `run_in_background: true` and rely on a foreground `breadcrumb-monitor.sh` pair in the same Bash message for completion coupling and live breadcrumbs. A non-sentinel `prompt` re-fires on wakeup as a `/loop` input and can perpetuate follow-up turns past Step 18 (spurious `/review --diff` on empty diff, etc.). **How to apply**: do not call `ScheduleWakeup` from the `/implement` orchestrator at any step; use the background+monitor Bash pair and let `breadcrumb-monitor.sh` block until the done sentinel fires. See `skills/implement/scripts/step2-implement.md` orchestrator wait contract and `scripts/breadcrumb-monitor.md`.
+9. **NEVER call `ScheduleWakeup` anywhere in the `/implement` orchestrator.** **Why**: improvised wakeups re-fire as `/loop` input and can perpetuate follow-up turns past Step 18 (spurious `/review --diff` on empty diff, etc.). **How to apply**: do not call `ScheduleWakeup` from the `/implement` orchestrator at any step. Do not spawn a Monitor or a Bash polling loop (`for`/`while`/`until` + `sleep`) to watch another `run_in_background` job finish. For long-running helper scripts (`step2-implement.sh`, `ci-wait.sh`, `ship-pr.sh`, etc.), invoke them as foreground Bash tool calls; the harness auto-backgrounds an overrunning call and notifies on completion. See `skills/implement/scripts/step2-implement.md` orchestrator wait contract and `skills/shared/orchestrator-never.md`.
 
 10. **NEVER branch Step 2 on `STATUS` before completing §2.1.5 envelope validation.** **Why**: the dispatcher emits `ORCHESTRATOR_EDIT_AUTHORITY=allowed|forbidden` with `allowed` iff `STATUS=claude_fallback`; any other pairing or malformed envelope lets the main agent mutate the working tree while the external implementer path owns commits (issue #1058). **How to apply**: after parsing §2.1's KV stdout, always run the §2.1.5 checks in full before §2.2 branches on `STATUS`. On failure, synthesize `orchestrator-envelope-invalid` per §2.1.5 — do not enter Step 3 or consume `MANIFEST` on a malformed envelope.
 
@@ -63,7 +63,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 15. **NEVER end the turn after `/bump-version`'s Skill tool return inside the Rebase + Re-bump Sub-procedure.** **Why**: `/bump-version` is invoked as a direct Skill call from the Rebase + Re-bump Sub-procedure step 4 for any active `caller_kind` whose `HAS_BUMP=true` branch reaches the Skill invocation — currently `step8_apply_bump_same_version` and `step8b_rebase` (the step8 family, after `ship-pr.sh` exit 5 **only when** `CALLER_KIND` is `step8b_rebase` or `step8_apply_bump_same_version` — **not** `ship_pr_pre_push`, whose exit **5** follows `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` only and never enters this sub-procedure Skill path) and `step12_phase4` (the post-conflict re-bump path). NEVER #11 carves out the Step 8 main path (where `ship-pr.sh` handles the bump internally without invoking the Skill); NEVER #15 covers the orthogonal sub-procedure direct-Skill path. The Skill returns `APPLIED=true COMMIT_SHA=<sha>` — those values are step 4 inputs, NOT a run-completion signal; the sub-procedure still has post-verification (`check-bump-version.sh --mode post`, Block β STATUS-first matrix, sentinel-file check, and the rest of steps 4a-7) to execute. The exact symptom this rule targets (issue #2338) is a turn that ends immediately after the Skill returns `APPLIED=true COMMIT_SHA=<sha>` instead of invoking `check-bump-version.sh --mode post --before-count <COMMITS_BEFORE-value>` as the next Bash tool call. Ending the turn here leaves the post-verification gate unrun and the run stalled until the user manually prompts continuation; the Stop hook (`hook-stop-fail-close.sh` `.bump-version-armed` block) backstops only session-termination events, not turn-boundary halts. The PostToolUse hook `skills/implement/scripts/hook-post-bump-version.sh` injects a continuation directive into the next turn's context as a mechanical backstop, but the orchestrator's `check-bump-version.sh --mode post` Bash call remains the load-bearing next action. Both hooks source `skills/implement/scripts/lib-resolve-implement-tmpdir.sh` for cwd-bound tmpdir routing; offline harness: `skills/implement/scripts/test-resolve-implement-tmpdir.sh`. **How to apply**: immediately after the `/bump-version` Skill tool returns, the FIRST and ONLY permitted next orchestrator action is `check-bump-version.sh --mode post --before-count <COMMITS_BEFORE-value-from-pre-check-stdout>` as a Bash tool call (substitute the numeric value parsed from the earlier pre-check stdout for `<COMMITS_BEFORE-value...>` — do NOT pass the literal string `$COMMITS_BEFORE`) — do NOT echo `APPLIED=true, COMMIT_SHA=...` as a comma-separated list, do NOT write a recap or status line, do NOT end the turn. See `skills/implement/references/rebase-rebump-subprocedure.md` step 4 "Continue after child returns" anti-halt reminder.
 
-16. **NEVER invoke a Family B denylisted script without the background+monitor pair.** **Why**: the nine linted entrypoints (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, `review-and-fix.sh`, `run-step2-dispatch.sh`, `step2-implement.sh`, `collect-agent-results.sh`, `dispatch-with-waterfall.sh`, `dispatch-plan-voters.sh`) must launch with Bash `run_in_background: true` **and** a foreground `${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh` call in the same message so breadcrumbs stream live and completion is coupled before the orchestrator continues. Backgrounding without the monitor loses visibility and defers completion to an async task notification that may arrive after the model has already ended the turn — the failure mode behind issue **#2454**. **How to apply**: before each denylisted launch, export the six `LARCH_*` breadcrumb paths under the skill tmpdir, including `LARCH_PAIRED_PID_FILE` for top-level Family B writers, set `run_in_background: true` on the long-script Bash tool call, then invoke `breadcrumb-monitor.sh --stream … --done-sentinel … --status-file … --quiet-log … --surfaced-sentinel … --paired-pid-file …` in the same fenced block (see `BASH_AUTHORING.md` §4). The call may take a long time (multi-step CI and merge loops); configure a sufficiently large Bash timeout when supported (see `skills/implement/references/rebase-rebump-subprocedure.md` for long-blocking `ci-wait.sh` guidance, including a 31-minute reference). If a timeout or unexpected turn end occurs anyway, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` for persisted `PHASE` / resume semantics, then re-invoke the same background+monitor `Invoke:` block **without** `--resume-phase` so the persisted `PHASE` main loop resumes — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. Pass `--resume-phase` only with tokens `ship-pr.sh` accepts (`force-push-gate`, `bump`, `pr-create`, `ci-initial`, `ci-merge`, `evaluate-failure`, `postmerge`) — for example the explicit exit-code paths below or `RESUME_PHASE` from Exit 5 — never as `--resume-phase $PHASE` when `PHASE` is a main-loop value such as `checks` or `pr-prep`. See the inline warning block immediately before the Step 8+ `Invoke:` block. **CI-backed**: no (editorial invariant). The seven argv-init per-key flags from issue #2742 (`--branch-name`, `--expected-session-id`, `--expected-tmpdir-basename-prefix`, `--issue-number`, `--manifest-path`, `--run-id`, `--tool-label`) are written into `ship-pr-state.sh` on cold start by `ship-pr.sh` itself; on resume (state file already present) they are silently ignored unless `--force-init-state true`. A resume invocation may omit them to keep argv short; re-passing them is harmless.
+16. **(removed — see issue #3111 Stage 4; Family-B background+monitor pairs are deleted.)** Invoke long-running denylisted scripts (`ship-pr.sh`, `ci-wait.sh`, `run-step5-review.sh`, etc.) as foreground Bash tool calls; the harness auto-backgrounds an overrunning call and notifies on completion. Configure a sufficiently large Bash timeout when supported (see `skills/implement/references/rebase-rebump-subprocedure.md`). If a timeout or unexpected turn end occurs, read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` for persisted `PHASE` / resume semantics, then re-invoke the same foreground `Invoke:` block **without** `--resume-phase`.
 
 17. **NEVER silently drop a voted-in OOS finding.** **Why**: accepted OOS blocks are the durable contract between reviewers, the implementer manifest, and Step 9a.1 filing — losing them between acceptance and GitHub/inline disposition breaks auditability and leaves follow-up work untracked. **How to apply**: honor the Terminal disposition invariant in the OOS triage section; run `oos-disposition-gate.sh` before clearing `OOS_PENDING`; if the gate fails, log with `append-tool-failure.sh` and do not clear `OOS_PENDING` or write the `run-statistics` batch until the gap is resolved.
 
@@ -136,7 +136,7 @@ Verbosity suppression is prompt-enforced and best-effort; may degrade in very lo
 
 Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 7.r's `FILES_CHANGED=true` guard stays at the call site — `scripts/rebase-checkpoint-probe.sh` owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
 
-**Thin implementation** — `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh` (full argv, exit codes, and KV grammar: `scripts/rebase-checkpoint-probe.md`). Each checkpoint is **one foreground Bash invocation** per Call-site registry row (foreground markers + denylist: `scripts/lint-foreground-markers.sh`).
+**Thin implementation** — `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh` (full argv, exit codes, and KV grammar: `scripts/rebase-checkpoint-probe.md`). Each checkpoint is **one foreground Bash invocation** per Call-site registry row (argv/exit/KV authority in `scripts/rebase-checkpoint-probe.md` only).
 
 **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
 
@@ -387,7 +387,7 @@ EOF
   export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
   export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE IMPLEMENT_BAIL_REASON coder coder_fallback codex_available cursor_available
 }
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 # phase-anchor: implement-bootstrap Step 0 through coder select
 _ib_run_bootstrap
 _ib_kv_scan() {
@@ -469,7 +469,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 _ib_caller_env=()
 if [ -n "${CALLER_ENV_PATH:-}" ]; then
   _ib_caller_env+=(--caller-env "$CALLER_ENV_PATH")
@@ -641,7 +640,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 BASE_ARGS=()
 if [ "${forked_target:-false}" = "true" ]; then
   BASE_ARGS=(--base-remote upstream --base-ref main)
@@ -665,7 +664,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 CODEX_PRESENT=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
 CURSOR_PRESENT=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
 case "${coder:-}" in
@@ -713,53 +711,17 @@ Regression harnesses for this dispatcher surface are `skills/implement/scripts/t
 
 **2.1 — First dispatch invocation**:
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-
-mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
-# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
-_launch_id="run-step2-dispatch.$$"
-export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --coder "$coder" &
-RUN_STEP2_DISPATCH_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$RUN_STEP2_DISPATCH_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$RUN_STEP2_DISPATCH_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+    --coder "$coder"
 ```
 
-**Do NOT poll or print sidecar output while dispatching.** Invoke `run-step2-dispatch.sh` with `run_in_background: true` paired with foreground `breadcrumb-monitor.sh`. The launcher, in turn, invokes `step2-implement.sh` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
+**Do NOT poll or print sidecar output while dispatching.** Invoke `run-step2-dispatch.sh` as a foreground Bash tool call. The launcher, in turn, invokes `step2-implement.sh` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
 
 The launcher `run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and `--workflow HARD` (it does **not** assemble those from `PLAN_FILE` / `POST_PLAN_WORKFLOW_PATH` keys in `session-env.sh`). It still reads `CURSOR_PRESENT` from `$IMPLEMENT_TMPDIR/session-env.sh` and uses the conventional feature file `$IMPLEMENT_TMPDIR/feature-description.txt`. When Step 0 resolved `coder=cursor`, the launcher must fail closed if session-env later says `CURSOR_PRESENT!=true`; do not silently override the bootstrap choice by letting Step 2 fall through to Claude. The dispatcher's internal `--cursor-present false -> claude_fallback` branch is legacy defense-in-depth, not the normal Step 0-driven routing path. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
 
@@ -797,7 +759,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 "${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh" --step 2-post-dispatch
 ```
 
@@ -873,7 +835,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
 > **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 4's commit (impl) breadcrumb next — the next user-facing output is either `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=<short-sha> elapsed=<elapsed>` on the external implementer path or the Step 4 implementation-commit flow on Claude fallback. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `check-script-not-executable`, `check-script-symlink-broken`, `redaction-failed`; act on the reason, no log file is produced). Otherwise pass `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`) to `${CLAUDE_PLUGIN_ROOT}/scripts/lint-fix-loop.sh --tmpdir "$IMPLEMENT_TMPDIR" --site step3 --checks-log "$REDACTED_LOG_FILE"` and parse `LINT_FIX_STATUS`: `applied` → re-invoke the checks helper; `main-agent-required` → repair via main-agent Edit/Write, then re-invoke the checks helper; `failed` → set `STALL_TRACKING=true` and skip to Step 18; `no-changes` → re-invoke the checks helper once so captured checks remain authoritative. If the re-run still reports `STATUS=fail`, repeat the same Step 3 repair loop until the helper returns clean or the run stalls. The failure path is in-Step-3, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
@@ -903,7 +864,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
 **On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=$(git rev-parse --short HEAD) elapsed=<elapsed>`.
@@ -944,7 +904,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 BASE_ARGS=()
 if [ "${forked_target:-false}" = "true" ]; then
   BASE_ARGS=(--base-remote upstream --base-ref main)
@@ -969,7 +929,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 5 — code review" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
 # token-mark Step 5 — code review
@@ -978,7 +937,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 ### Scripted review loop
 
-**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh` with `--mode loop` (see `scripts/run-step5-review.md`). Step 5 invokes **one** background+monitor Bash message pair (`run-step5-review.sh` background, `breadcrumb-monitor.sh` foreground) that internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — never a background or polling launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a **base** `--round-cap` of **5** (not pre-inflated; degraded-round inflation happens inside `review-and-fix.sh`), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix.sh` → `review-core.sh`.
+**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh` with `--mode loop` (see `scripts/run-step5-review.md`). Step 5 invokes **one** foreground `run-step5-review.sh` Bash tool call that internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates — never a background or polling launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a **base** `--round-cap` of **5** (not pre-inflated; degraded-round inflation happens inside `review-and-fix.sh`), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix.sh` → `review-core.sh`.
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
@@ -988,51 +947,15 @@ Print once before the `run-step5-review.sh` invocation:
 
 `> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $effective_round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 6 Cursor specialists; dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-
-mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
-# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
-_launch_id="run-step5-review.$$"
-export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
-  --starting-round 1 &
-RUN_STEP5_REVIEW_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$RUN_STEP5_REVIEW_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$RUN_STEP5_REVIEW_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  --starting-round 1
 ```
 
 Parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
@@ -1059,51 +982,15 @@ export CLAUDE_PLUGIN_ROOT
 
 Then re-invoke the loop wrapper:
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-
-mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
-# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
-_launch_id="run-step5-review.$$"
-export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
-  --starting-round "$((FINAL_ROUND_NUM + 1))" &
-RUN_STEP5_REVIEW_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$RUN_STEP5_REVIEW_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$RUN_STEP5_REVIEW_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  --starting-round "$((FINAL_ROUND_NUM + 1))"
 ```
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
@@ -1136,7 +1023,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
 **Post-/review boundary sentinel**: the three required post-/review actions (Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb) are all complete once this step is reached. Write `.review-boundary-passed` immediately at Step 6 entry to release `hook-stop-fail-close.sh`'s post-/review Stop hook guard (which blocks session stop while `review-round-summary.md` exists without this sentinel — issue #1862):
@@ -1188,7 +1074,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
 If any files changed during review / checks (Steps 5–6):
@@ -1214,7 +1099,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 BASE_ARGS=()
 if [ "${forked_target:-false}" = "true" ]; then
   BASE_ARGS=(--base-remote upstream --base-ref main)
@@ -1242,7 +1127,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --issue-number "${ISSUE_NUMBER:-}" \
@@ -1277,7 +1162,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-# Foreground required: see BASH_AUTHORING.md §4
+# Foreground required
 "${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh" --step 8-pre-bump
 ```
 
@@ -1300,12 +1185,9 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 
 > **`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a JSON manifest path.** On manifest-reuse fast paths (Step 0 materialization complete but Step 2 does not dispatch), claude-fallback paths (Step 2.4), bailed-Step-2 paths, and any other path where Step 2 did not produce a JSON manifest at `$MANIFEST`, leave `MANIFEST_PATH` empty. **The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH` — these are two different artifacts despite the shared noun.** `ship-pr.sh` hard-fails at entry if `MANIFEST_PATH` is non-empty and not readable JSON; see issue #2233.
 
-> **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-> ⚠ **`ship-pr.sh` MUST launch with `run_in_background: true` and a foreground `breadcrumb-monitor.sh` pair in the same Bash message.** The call may take a long time (CI and merge can exceed default tool caps); configure a sufficiently large Bash timeout when the host allows it (see NEVER #16 and `skills/implement/references/rebase-rebump-subprocedure.md` for long-wait policy). Launching `ship-pr.sh` without the paired monitor breaks turn-boundary semantics: breadcrumbs stay invisible until an async task notification arrives after the orchestrator may have already ended the turn (see NEVER #16). **Recovery after unexpected turn end or timeout**: read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction for persisted `PHASE` / resume semantics, then re-invoke the same background+monitor `Invoke:` block below **without** `--resume-phase` so the persisted state machine continues — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. The seven argv-init per-key flags are ignored on resume unless `--force-init-state true`; omitting them on resume is fine. Use `--resume-phase <token>` only for tokens `ship-pr.sh` accepts (same list as NEVER #16) or paths already spelled out in the exit-code matrix (including `RESUME_PHASE` on Exit 5), not `--resume-phase $PHASE` for main-loop `PHASE` values like `checks` or `pr-prep`.
+> **Long-running `ship-pr.sh` call.** Configure a sufficiently large Bash timeout when the host allows it (see `skills/implement/references/rebase-rebump-subprocedure.md` for long-wait policy). The harness auto-backgrounds an overrunning foreground call and notifies on completion. **Recovery after unexpected turn end or timeout**: read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction for persisted `PHASE` / resume semantics, then re-invoke the same foreground `Invoke:` block below **without** `--resume-phase` so the persisted state machine continues — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. The seven argv-init per-key flags are ignored on resume unless `--force-init-state true`; omitting them on resume is fine. Use `--resume-phase <token>` only for tokens `ship-pr.sh` accepts or paths already spelled out in the exit-code matrix (including `RESUME_PHASE` on Exit 5), not `--resume-phase $PHASE` for main-loop `PHASE` values like `checks` or `pr-prep`.
 
 Invoke:
-
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1321,20 +1203,6 @@ else
   CLONE_TAG_FULL=$(printf '%.32s' "$CLONE_TAG_FULL")
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
-
-mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
-# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
-_launch_id="ship-pr.$$"
-export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" \
   --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
@@ -1350,32 +1218,12 @@ touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
   --tool-label "${coder:-claude}" \
   --no-admin-fallback "$no_admin_fallback" \
   --no-logs-commit "$no_logs_commit" \
-  --repo "$REPO" &
-SHIP_PR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$SHIP_PR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$SHIP_PR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  --repo "$REPO"
 ```
 
 Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction only; do not source it.
 
-> **Post-/bump-version boundary (Step 8 direct path).** Bump work runs inside `ship-pr.sh`; sub-steps 3/3b are `check-bump-version.sh --mode post` and `implement-finalize.sh postbump` (script-internal). After each `ship-pr.sh` return, continue Step 8+ mechanically — parse `EXIT_CODE` from `$LARCH_STATUS_FILE` for the writer status, parse state keys, then run the next required Bash continuation (resume `ship-pr.sh`, Step 9a.1 OOS helpers, CI merge resume, etc.). The wrapper exit code equals `writer_rc` when `breadcrumb-monitor.sh` succeeds and `monitor_rc` when the monitor itself fails; a non-zero monitor failure is an infrastructure-failure stall signal, distinct from writer-driven bail/conflict-handoff/retry paths. Do NOT end the turn replaying `classify-bump.sh` / `apply-bump.sh` stdout as a substitute for advancing the state machine. Any turn end (with or without text output) before that Bash call is a halt in disguise that skips sub-steps 3/3b.
+> **Post-/bump-version boundary (Step 8 direct path).** Bump work runs inside `ship-pr.sh`; sub-steps 3/3b are `check-bump-version.sh --mode post` and `implement-finalize.sh postbump` (script-internal). After each `ship-pr.sh` return, continue Step 8+ mechanically — treat the foreground Bash tool exit code as `writer_rc`; read `EXIT_CODE` and continuation keys from `ship-pr-state.sh` (and related state files) only, then run the next required Bash continuation (resume `ship-pr.sh`, Step 9a.1 OOS helpers, CI merge resume, etc.). Do not use removed Family-B status-file env vars or monitor-infrastructure exit routing. Do NOT end the turn replaying `classify-bump.sh` / `apply-bump.sh` stdout as a substitute for advancing the state machine. Any turn end (with or without text output) before that Bash call is a halt in disguise that skips sub-steps 3/3b.
 
 For Step 10/12 rebase + re-bump retries, `ship-pr.sh` owns one extra freshness correction not present on the direct Step 8 path: if `classify-bump.sh` emits `NEW_VERSION < origin/main` after rebasing, it recomputes the bump from the refreshed `origin/main` version, rewrites `BUMP_REASONING_FILE` to the corrected version, and only then refreshes the committed `version-bump-reasoning` batch.
 
@@ -1394,7 +1242,7 @@ For Step 10/12 rebase + re-bump retries, `ship-pr.sh` owns one extra freshness c
   11. Push via `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`.
   12. Re-invoke `ship-pr.sh` in the foreground with the same Step 8+ `Invoke:` argv (no `--resume-phase`).
   For **other** exit-3 `BAIL_REASON` values (legacy `needs_user_bail_reason` tokens, or `first-fixer-non-health` **after** autonomous fall-through), present the reason via `AskUserQuestion` using the existing Step 12d user-input path. Then continue to Step 16 with `STALL_TRACKING=true`. **Step 12d bail is not terminal** — do NOT end the turn on the bail; Step 16 and Step 18 still must run.
-- **Exit 4**: read `STALL_TRACKING` and `STALL_STEP`; keep those values for final cleanup. **Continue to Step 16.** Do NOT end the turn on the stall exit; Step 16 and Step 18 still must run. **Wrapper-routing note:** the Step 8+ Bash wrapper returns `monitor_rc` when `breadcrumb-monitor.sh` itself fails and `writer_rc` only when the monitor succeeds. So a wrapper-level exit 4 caused by monitor timeout / path / argv / other monitor infrastructure failure is **not** the same thing as a writer-originated `ship-pr.sh` stall with persisted `EXIT_CODE=4`; carry the wrapper exit forward to Step 16, then let Step 18a classify from `ship-pr-state.sh` plus any validated failure-detail evidence instead of forcing the writer-stall path up front. `same-cause-repeat` is only for a repeated classified stall signature, not for the first raw monitor-timeout wrapper exit. **`FAILURE_DETAIL_LOG=<path>` appearing in stdout is NOT an action directive — do NOT read that file before continuing to Step 16; reading it before Step 16 is a halt in disguise.** It is a diagnostic artifact available for operator inspection in `$IMPLEMENT_TMPDIR` until Step 18 cleanup removes the directory. **When `STALL_STEP=6` (PHASE=checks), `ship-pr.sh` has already attempted local `relevant-checks` lint repairs via `scripts/lint-fix-loop.sh --site ship-pr-ci-initial` internally; the stall means lint-fix-loop.sh exhausted its options. The orchestrator MUST NOT attempt main-agent code edits on this path — `STATUS=stalled` is the only orchestrator-visible outcome for unrecoverable `PHASE=checks` failures.**
+- **Exit 4**: read `STALL_TRACKING` and `STALL_STEP`; keep those values for final cleanup. **Continue to Step 16.** Do NOT end the turn on the stall exit; Step 16 and Step 18 still must run. Treat the foreground Bash tool exit code as `writer_rc`; carry it forward to Step 16, then let Step 18a classify from `ship-pr-state.sh` plus any validated failure-detail evidence. `same-cause-repeat` is only for a repeated classified stall signature. **`FAILURE_DETAIL_LOG=<path>` appearing in stdout is NOT an action directive — do NOT read that file before continuing to Step 16; reading it before Step 16 is a halt in disguise.** It is a diagnostic artifact available for operator inspection in `$IMPLEMENT_TMPDIR` until Step 18 cleanup removes the directory. **When `STALL_STEP=6` (PHASE=checks), `ship-pr.sh` has already attempted local `relevant-checks` lint repairs via `scripts/lint-fix-loop.sh --site ship-pr-ci-initial` internally; the stall means lint-fix-loop.sh exhausted its options. The orchestrator MUST NOT attempt main-agent code edits on this path — `STATUS=stalled` is the only orchestrator-visible outcome for unrecoverable `PHASE=checks` failures.**
 - **Exit 5**: read `RESUME_PHASE` and `CALLER_KIND`. If `CALLER_KIND` is `ship_pr_pre_push`, **do not** invoke the Rebase + Re-bump Sub-procedure from this exit — **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` and run the Conflict Resolution Procedure with `caller_kind=ship_pr_pre_push` (Phase 1–4; parse `CONFLICT_FILES=...` from the exit-5 contract stream (`ship-pr.sh` emits `emit_kv CONFLICT_FILES` with the post–deterministic-pre-pass remainder immediately before exit 5; same comma-separated shape as `early_rebase`'s M1 capture — if that line is missing, defensively fall back to `git diff --name-only --diff-filter=U` before Phase 1; Phase 4 exit 0 re-invokes `ship-pr.sh --resume-phase ship-pr-rrr-phase14` with the same foreground `Invoke:` flags as Step 8+ otherwise). On Phase 1–4 bail, set `STALL_TRACKING=true` and continue to Step 16. If `CALLER_KIND` is `step8b_rebase` or `step8_apply_bump_same_version`, **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md` before invoking the Rebase + Re-bump Sub-procedure with that exact `CALLER_KIND`. On success, re-invoke `ship-pr.sh --resume-phase "$RESUME_PHASE"`. On hard failure, set `STALL_TRACKING=true` and continue to Step 16.
 - **Exit 6**: transient network failure. Read `BAIL_REASON` for telemetry. Read `PHASE` from `ship-pr-state.sh`. Maintain a per-phase retry counter at `$IMPLEMENT_TMPDIR/ship-pr-net-retries-$PHASE.count` (initialize to 0 if missing; increment on each Exit 6 for this `PHASE`). If the count is ≤ 3: foreground `${CLAUDE_PLUGIN_ROOT}/scripts/sleep-seconds.sh 30` (NOT `ScheduleWakeup` — see NEVER #9), then re-invoke `ship-pr.sh` with the same foreground arguments as the Step 8+ `Invoke:` block without `--resume-phase` (persisted `PHASE` resumes the main loop; do not pass `--resume-phase $PHASE` for values such as `checks` or `pr-prep`). On the 4th transient failure for the same phase, treat as Exit 4: set `STALL_TRACKING=true` in the state file via a key-based rewrite, and continue to Step 16. Do NOT end the turn on Exit 6; the retry is part of the same orchestrator turn.
 
@@ -1531,7 +1379,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 16 — rejected findings" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 16 — rejected findings" || true
 # token-mark Step 16 — rejected findings
@@ -1582,7 +1429,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 17 — final report" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 17 — final report" || true
 # token-mark Step 17 — final report
@@ -1631,7 +1477,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 _stall_disk=false
 _stall_session=false
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
@@ -1668,7 +1513,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — cleanup" || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — cleanup" || true
 # token-mark Step 18 — cleanup
@@ -1689,7 +1533,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
 _wfr_args=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
 _wfr_printed=false
@@ -1751,7 +1594,6 @@ export CLAUDE_PLUGIN_ROOT
 LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse > /dev/null || true
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse > /dev/null || true
 # token-step-end Step 18

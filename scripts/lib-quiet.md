@@ -24,10 +24,6 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   `redact-secrets.sh --streaming` first.
 - `larch_errf` is the `printf`-style variant for formatted user-visible errors
   (same routing and redaction contract as `larch_err`).
-- `larch_quiet_append_done_trap` and `larch_quiet_write_paired_pid_file` are
-  **Stage 3 no-op compatibility shims** for deferred Stage 4 fences and any
-  missed dynamic callers. They do not write files or install traps.
-
 `LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses use that
 override when they need direct access to stdout/stderr without quiet-log
 redirection.
@@ -67,5 +63,5 @@ operator-visible stderr channel (FD 4 after `larch_quiet_init`).
 paths, disable mode, nested init, contract emission, empty values, fallback
 behavior when the log directory cannot be created, pure-filter disable
 semantics, `larch_err` routing to real stderr, direct `redact-secrets.sh`
-streaming redaction, and the Stage 3 compatibility shim no-ops. It is wired
+streaming redaction. It is wired
 as `make test-lib-quiet`.

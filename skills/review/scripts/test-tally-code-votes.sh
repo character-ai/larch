@@ -133,7 +133,7 @@ cat > "$TMP/ballot.md" <<'EOF'
 EOF
 printf 'FINDING_1: YES\n' > "$TMP/good-vote-output.txt"
 out="$TMP/out.env"
-env -u LARCH_QUIET_DISABLE LARCH_BREADCRUMBS_SURFACED_FILE="$TMP/surfaced" "$SCRIPT" --ballot-file "$TMP/ballot.md" \
+env -u LARCH_QUIET_DISABLE "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/good-vote-output.txt" "$TMP/missing-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
 grep -Fq 'WARN=judge vote/rating parser failed' "$out" \

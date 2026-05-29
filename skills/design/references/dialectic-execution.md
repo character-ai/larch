@@ -68,45 +68,12 @@
    Reasoning effort is handled by the launcher wrappers (`--risk high` by default).
 
 4. **Collect** dialectic debate outputs (Option B enforcement):
-   **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
    ```bash
-mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
-export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
-  <each launched output path> &
-COLLECTOR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$COLLECTOR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$COLLECTOR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  <each launched output path>
 ```
-   The collector no longer updates cross-skill reviewer state; the dialectic phase keeps debate failures scoped to its local availability variables. Background the collector launch (`run_in_background: true`) and foreground `breadcrumb-monitor.sh` in the same Bash message.
+   The collector no longer updates cross-skill reviewer state; the dialectic phase keeps debate failures scoped to its local availability variables. Invoke the collector as a foreground Bash tool call.
 
    Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=dialectic-debate-collection`.
 
@@ -218,47 +185,13 @@ External judge outputs are collected via `collect-agent-results.sh` using its se
 
 When at least one external judge was launched, after all external judges return:
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
-mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
-export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
    \
-  <each launched external-judge output path> &
-COLLECTOR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$COLLECTOR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$COLLECTOR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  <each launched external-judge output path>
 ```
 
-Blocking `collect-agent-results.sh` ensures the judge phase never mutates unrelated session-env files. Background the collector launch (`run_in_background: true`) and foreground `breadcrumb-monitor.sh` in the same Bash message.
+Blocking `collect-agent-results.sh` ensures the judge phase never mutates unrelated session-env files. Invoke the collector as a foreground Bash tool call.
 
 For each external judge, parse its `STATUS` and `REVIEWER_FILE`. An external judge with `STATUS != OK` is ineligible for every decision on the ballot. For inline Agent-tool judges (primary Claude subagent + any Claude replacements), parse votes directly from the Agent return text; inline judges are always eligible.
 

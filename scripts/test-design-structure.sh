@@ -409,11 +409,13 @@ grep -Fq 'skills/design/references/brainstorm-prompts.md' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing brainstorm-prompts.md path literal"
 grep -Fq 'ScheduleWakeup' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing ScheduleWakeup prohibition anchor"
-# shellcheck disable=SC2016 # Markdown fence literal in brainstorm.md
+# shellcheck disable=SC2016 # Stage 4: Family-B fence shape removed from brainstorm.md
 grep -Fq '**⚠ Background required — must be paired with breadcrumb-monitor.sh.**' "$BRAINSTORM_MD" \
-  || fail "(2754) brainstorm.md missing background-pair banner in collector fence"
+  && fail "(3119) brainstorm.md still has background-pair banner in collector fence"
 grep -Fq '# Background pair required: see BASH_AUTHORING.md §4' "$BRAINSTORM_MD" \
-  || fail "(2754) brainstorm.md missing BASH_AUTHORING §4 in-fence comment"
+  && fail "(3119) brainstorm.md still has BASH_AUTHORING §4 in-fence comment"
+grep -Fq 'breadcrumb-monitor.sh' "$BRAINSTORM_MD" \
+  && fail "(3119) brainstorm.md still references breadcrumb-monitor.sh"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
   || fail "(2754) SKILL.md write-run-params invocation missing --brainstorm-requested"

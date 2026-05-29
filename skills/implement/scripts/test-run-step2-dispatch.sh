@@ -65,8 +65,7 @@ EOF
 chmod +x "$SPY"
 
 launcher_env=(
-    env -u LARCH_DONE_SENTINEL -u LARCH_STATUS_FILE -u LARCH_QUIET_LOG_FILE \
-        -u LARCH_BREADCRUMBS_SURFACED_FILE -u LARCH_PAIRED_PID_FILE -u LARCH_BREADCRUMB_STREAM
+    env -u LARCH_QUIET_LOG_FILE
 )
 
 echo "=== missing required flags ==="

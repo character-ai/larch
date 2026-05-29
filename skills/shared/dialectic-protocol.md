@@ -257,46 +257,12 @@ Timing note: v1 timing rows are emitted by the launch-wrapper scripts, not by di
 
    When at least one external judge was launched, after all launches return, collect the external judge outputs:
 
-   **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
    ```bash
-mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
-export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
-  <each launched external-judge output path> &
-COLLECTOR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$COLLECTOR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$COLLECTOR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+  <each launched external-judge output path>
 ```
 
-   The collector does not update `SESSION_ENV_PATH` or any session-env file; dialectic availability remains phase-local. Background the collector launch (`run_in_background: true`) and foreground `breadcrumb-monitor.sh` in the same Bash message.
+   The collector does not update `SESSION_ENV_PATH` or any session-env file; dialectic availability remains phase-local. Invoke the collector as a foreground Bash tool call.
 
    Parse each external judge's `STATUS` and `REVIEWER_FILE`. Read vote lines from the `REVIEWER_FILE` field (may point at a `*-retry.txt` if the collector recovered an empty output; do NOT read from the original launch path).
 

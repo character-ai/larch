@@ -7,11 +7,6 @@ context from session artifacts.
 
 Caller: `skills/implement/SKILL.md` Step 2.1 and Q/A redispatch in Step 2.3.
 
-`run-step2-dispatch.sh` is a top-level Family B launcher. It still calls the
-Stage 3 no-op `larch_quiet_append_done_trap` shim for compatibility with
-deferred skill fences; paired-PID plumbing was removed from the shell launcher
-in breadcrumbs Stage 3.
-
 Arguments:
 
 - `--implement-tmpdir PATH` is required.

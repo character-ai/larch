@@ -185,46 +185,12 @@ COLLECT_ARGS=()
 
 Otherwise invoke the collector with substantive validation:
 
-**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
-
 ```bash
-mkdir -p "$RESEARCH_TMPDIR/breadcrumbs"
-_launch_id="collect-agent-results.$$"
 export RESEARCH_TMPDIR
-export LARCH_BREADCRUMB_STREAM="$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
-: > "$LARCH_BREADCRUMB_STREAM"
-export LARCH_DONE_SENTINEL="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
-export LARCH_STATUS_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
-export LARCH_QUIET_LOG_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
-export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
-export LARCH_PAIRED_PID_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.pid.XXXXXX")"
-touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
-# Tool JSON: run_in_background: true
-# Background pair required: see BASH_AUTHORING.md §4
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}" &
-COLLECTOR_PID=$!
-
-monitor_rc=0
-"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
-  --stream "$LARCH_BREADCRUMB_STREAM" \
-  --done-sentinel "$LARCH_DONE_SENTINEL" \
-  --status-file "$LARCH_STATUS_FILE" \
-  --quiet-log "$LARCH_QUIET_LOG_FILE" \
-  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE" \
-  --paired-pid-file "$LARCH_PAIRED_PID_FILE" \
-  || monitor_rc=$?
-
-if [ "$monitor_rc" -eq 0 ]; then
-  writer_rc=0
-  wait "$COLLECTOR_PID" || writer_rc=$?
-  exit "$writer_rc"
-else
-  wait "$COLLECTOR_PID" 2>/dev/null || true
-  exit "$monitor_rc"
-fi
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
 ```
 
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call. The paired `breadcrumb-monitor.sh` invocation in the same message provides the synchronization point and surfaces live breadcrumbs while the collector runs.
+Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgrounds an overrunning call and notifies on completion.
 
 Parse the structured output for each lane's `STATUS` and `REVIEWER_FILE`. Under `--substantive-validation`, content validation is performed by `collect-agent-results.sh`; thin-but-cited or long-but-uncited prose is rejected with `STATUS=NOT_SUBSTANTIVE` and a diagnostic in `FAILURE_REASON`.
 

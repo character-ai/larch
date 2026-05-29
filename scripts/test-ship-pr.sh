@@ -8,7 +8,7 @@ export LARCH_QUIET_DISABLE=1
 # so breadcrumbs route to a non-stdout FD; this test suite checks stdout for
 # KV envelopes and stderr for operator breadcrumbs.
 unset LARCH_QUIET_BREADCRUMB_FD
-unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE
+unset LARCH_QUIET_LOG_FILE
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE="$(mktemp -d -t ship-pr-test.XXXXXX)"

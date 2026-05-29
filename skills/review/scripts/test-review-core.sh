@@ -7,7 +7,6 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 unset LARCH_QUIET_BREADCRUMB_FD || true
-unset LARCH_BREADCRUMB_STREAM LARCH_BREADCRUMBS_SURFACED_FILE || true
 SCRIPT="$REPO_ROOT/skills/review/scripts/review-core.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-core.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
