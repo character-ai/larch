@@ -86,10 +86,16 @@ assert_not_transient() {
 }
 
 assert_transient "sig: Could not resolve" "Could not resolve host: api.github.com"
+assert_transient "sig: unable to access" "fatal: unable to access 'https://github.com/example/repo.git/': Failed to connect"
 assert_transient "sig: Connection refused" "dial tcp: Connection refused"
+assert_transient "sig: Temporary failure" "Temporary failure in name resolution"
+assert_transient "sig: timed out" "operation timed out while dialing"
 assert_transient "sig: TLS handshake" "TLS handshake failure"
 assert_transient "sig: HTTP 502" "HTTP 502 Bad Gateway"
+assert_transient "sig: EOF during" "EOF during request body write"
 assert_transient "sig: context deadline" "context deadline exceeded"
+assert_transient "sig: no valid output 3 times" "ci-status.sh returned no valid output 3 times consecutively"
+assert_transient "sig: git fetch failed" "git fetch origin main failed (network/auth issue)"
 assert_not_transient "sig: empty" ""
 assert_not_transient "sig: generic error" "permission denied"
 

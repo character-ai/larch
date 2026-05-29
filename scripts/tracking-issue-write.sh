@@ -395,13 +395,14 @@ case "$cmd" in
                 trap 'rm -f "$BODY_TMP" "$ERR_TMP"' EXIT
         printf '%s' "$BODY_CONTENT" > "$BODY_TMP"
         net_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-write-comment.XXXXXX")
-        if gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP" >"$net_fail_file" 2>&1; then
+        if with_transient_retry transient_envelope_predicate_none "$net_fail_file" \
+            gh issue comment "$ISSUE" --repo "$REPO" --body-file "$BODY_TMP"; then
             comment_rc=0
         else
-            comment_rc=$?
+            comment_rc=$_WTR_RC
         fi
         ERR_CONTENT=$(cat "$net_fail_file" 2>/dev/null || true)
-        COMMENT_URL=$ERR_CONTENT
+        COMMENT_URL=$_WTR_OUT
         rm -f "$net_fail_file"
         if [[ "$comment_rc" -eq 0 ]]; then
             URL_LINE=$(echo "$COMMENT_URL" | grep -oE 'https?://[^[:space:]]+#issuecomment-[0-9]+' | tail -1 || true)

@@ -69,6 +69,26 @@ if [[ -z "$REPO" ]]; then
   fi
 fi
 
+redact_gh_error() {
+  local err_text="$1" redacted status=0
+  if [[ ! -x "$REDACT" ]]; then
+    printf '%s' 'gh failure: redaction unavailable'
+    return 0
+  fi
+  redacted=$(printf '%s' "$err_text" | "$REDACT") || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    printf '%s' 'gh failure: redaction unavailable'
+    return 0
+  fi
+  case "$redacted" in
+    *'[content truncated'*)
+      printf '%s' 'gh failure: redaction unavailable'
+      return 0
+      ;;
+  esac
+  printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+}
+
 IFS=',' read -ra ISSUES <<< "$SOURCE_ISSUES"
 
 if [[ "$DRY_RUN" == "true" ]]; then
@@ -112,7 +132,7 @@ for issue_num in "${ISSUES[@]}"; do
   else
     CLOSE_ERR=$(cat "$close_fail_file" 2>/dev/null || true)
     rm -f "$close_fail_file"
-    CLOSE_ERRORS="${CLOSE_ERRORS}Failed to close #${issue_num}: ${CLOSE_ERR}; "
+    CLOSE_ERRORS="${CLOSE_ERRORS}Failed to close #${issue_num}: $(redact_gh_error "$CLOSE_ERR"); "
   fi
 done
 

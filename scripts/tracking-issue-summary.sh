@@ -126,13 +126,14 @@ case "$cmd" in
         printf '%s' "$body" > "$tmp"
         if [ "$count" -eq 0 ]; then
             comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/tracking-issue-summary-comment.XXXXXX")
-            if gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp" >"$comment_fail_file" 2>&1; then
+            if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$tmp"; then
                 comment_rc=0
             else
-                comment_rc=$?
+                comment_rc=$_WTR_RC
             fi
             comment_err=$(cat "$comment_fail_file" 2>/dev/null || true)
-            out=$comment_err
+            out=$_WTR_OUT
             rm -f "$comment_fail_file"
             [ "$comment_rc" -eq 0 ] || fail 2 "gh issue comment failed: $(redact_gh_error "$comment_err")"
             url="$(printf '%s\n' "$out" | grep -oE 'https?://[^[:space:]]+' | tail -1 || true)"

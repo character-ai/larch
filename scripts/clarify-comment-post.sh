@@ -153,15 +153,18 @@ fi
 
 OUT_URL=""
 comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/clarify-comment-post.XXXXXX")
-if gh issue comment "$ISSUE" --repo "$REPO" --body-file "$REDACTED" >"$comment_fail_file" 2>&1; then
-    :
+if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+    gh issue comment "$ISSUE" --repo "$REPO" --body-file "$REDACTED"; then
+    comment_rc=0
 else
-    ERR_CONTENT=$(cat "$comment_fail_file" 2>/dev/null || true)
-    rm -f "$comment_fail_file"
+    comment_rc=$_WTR_RC
+fi
+ERR_CONTENT=$(cat "$comment_fail_file" 2>/dev/null || true)
+OUT_URL=$_WTR_OUT
+rm -f "$comment_fail_file"
+if [ "$comment_rc" -ne 0 ]; then
     emit_gh_failure "$ERR_CONTENT"
 fi
-OUT_URL=$(cat "$comment_fail_file" 2>/dev/null || true)
-rm -f "$comment_fail_file"
 
 # gh prints URL; extract numeric comment id from ...#issuecomment-123
 COMMENT_NUM=""
