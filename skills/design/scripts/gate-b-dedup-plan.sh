@@ -75,50 +75,21 @@ if [[ "$MODE" == "snapshot" ]]; then
     exit 0
 fi
 
-optional_keys_file="$TRAILER_KEYS_FILE"
-if [[ ! -f "$optional_keys_file" ]]; then
-    optional_keys_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-keys.XXXXXX")
-    snapshot_optional_trailer_keys "$plan_path" "$optional_keys_file"
-    _ephemeral_keys=1
-else
-    _ephemeral_keys=0
+if [[ ! -f "$TRAILER_KEYS_FILE" ]]; then
+    echo "gate-b-dedup-plan.sh: --dedup requires prior --snapshot-trailers (.gate-b-optional-trailer-keys missing)" >&2
+    exit 3
 fi
 
-pre_dedup_snapshot=""
-if [[ -s "$optional_keys_file" ]]; then
-    pre_dedup_snapshot=$(mktemp "$DESIGN_TMPDIR/.plan-pre-dedup.XXXXXX")
-    cp -f "$plan_path" "$pre_dedup_snapshot"
-fi
-
-dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
-if ! dedup_removed=$(python3 "$DEDUP_PLAN_LINES_PY" "$plan_path" "$dedup_tmp"); then
-    rm -f "$dedup_tmp"
-    [[ -n "$pre_dedup_snapshot" ]] && cp -f "$pre_dedup_snapshot" "$plan_path"
-    rm -f "$pre_dedup_snapshot"
-    [[ "$_ephemeral_keys" -eq 1 ]] && rm -f "$optional_keys_file"
-    echo "gate-b-dedup-plan.sh: dedup-plan-lines.py failed" >&2
-    exit 2
-fi
-if [[ ! "$dedup_removed" =~ ^[0-9]+$ ]]; then
-    rm -f "$dedup_tmp"
-    [[ -n "$pre_dedup_snapshot" ]] && cp -f "$pre_dedup_snapshot" "$plan_path"
-    rm -f "$pre_dedup_snapshot"
-    [[ "$_ephemeral_keys" -eq 1 ]] && rm -f "$optional_keys_file"
-    echo "gate-b-dedup-plan.sh: dedup-plan-lines.py returned non-numeric count" >&2
-    exit 2
-fi
-mv -f "$dedup_tmp" "$plan_path"
-printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
-
-if [[ -n "$pre_dedup_snapshot" ]] &&
-    ! validate_optional_trailers_preserved "$plan_path" "$optional_keys_file"; then
-    cp -f "$pre_dedup_snapshot" "$plan_path"
-    rm -f "$pre_dedup_snapshot"
-    [[ "$_ephemeral_keys" -eq 1 ]] && rm -f "$optional_keys_file"
-    echo "gate-b-dedup-plan.sh: optional trailer keys lost during dedup" >&2
-    exit 1
-fi
-
-rm -f "$pre_dedup_snapshot"
-[[ "$_ephemeral_keys" -eq 1 ]] && rm -f "$optional_keys_file"
-exit 0
+dedup_rc=0
+dedup_plan_preserve_optional_trailers "$plan_path" "$TRAILER_KEYS_FILE" "$DESIGN_TMPDIR" "$DEDUP_PLAN_LINES_PY" || dedup_rc=$?
+case "$dedup_rc" in
+    0) exit 0 ;;
+    1)
+        echo "gate-b-dedup-plan.sh: optional trailer keys or values lost during dedup" >&2
+        exit 1
+        ;;
+    *)
+        echo "gate-b-dedup-plan.sh: dedup-plan-lines.py failed" >&2
+        exit 2
+        ;;
+esac

@@ -539,8 +539,7 @@ _try_one_unified_diff_candidate() {
             return 1
         fi
     fi
-    if [[ -s "$OPTIONAL_TRAILER_KEYS_FILE" ]] &&
-        ! validate_optional_trailers_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"; then
+    if ! validate_optional_trailers_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"; then
         restore_plan
         return 1
     fi
@@ -639,8 +638,7 @@ attempt_tier() {
     elif ! validate_file_replacement "$patch_file"; then
         set_tier_status "$ordinal" invalid-patch
         return 1
-    elif [[ -s "$OPTIONAL_TRAILER_KEYS_FILE" ]] &&
-        ! validate_optional_trailers_preserved "$patch_file" "$OPTIONAL_TRAILER_KEYS_FILE"; then
+    elif ! validate_optional_trailers_preserved "$patch_file" "$OPTIONAL_TRAILER_KEYS_FILE"; then
         set_tier_status "$ordinal" invalid-patch
         return 1
     fi

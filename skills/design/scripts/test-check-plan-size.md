@@ -35,7 +35,8 @@ Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captu
 29. `diff_deleted`-only legacy fallback (no `diff_added`).
 30. 800 body + duplicate `diff_added` lines — no spurious `plan-body-lines` hard trigger.
 31. 799 body + three `diff_added` lines — full metadata line subtraction (`PLAN_LINES=799`).
-32. Leading-zero trailer digits — `10#` decimal coercion for threshold comparisons; invalid `diff_added: 08` rejected as metadata (legacy `diff_lines` path).
+32. Leading-zero trailer digits — `10#` decimal coercion for threshold comparisons; invalid `diff_added: 08` / `09` rejected as metadata (legacy `diff_lines` path).
+33. `diff_deleted`-only legacy hard trigger — high `diff_deleted` with `diff_lines > 1500` and no `diff_added` fires `HARD_TRIGGER_FIRED=true`, `TRIGGER_REASONS=diff-lines`.
 
 Cases 14–32 call `assert_always_emitted_keys` on every `run_ok` exit 0 path.
 

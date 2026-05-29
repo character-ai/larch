@@ -30,8 +30,10 @@ Parsing rules:
 - Scan upward from the line above `diff_lines:`; the block contains only strict trailer lines matching the regexes above.
 - Stop at the first line above `diff_lines:` that is **not** one of those regexes (including blank lines).
 - Malformed trailer-looking lines are treated as absent and stop the block.
+- `diff_added: 08` / `09` and `diff_deleted: 08` / `09` match the strict line regex but are rejected as absent metadata (same rule as `lib-plan-optional-trailers.awk` snapshot/validate); threshold logic then falls back to legacy `diff_lines` when `diff_added` is absent.
 - Duplicate keys inside the block: **last match in file order** wins (closest to `diff_lines:`).
 - `mechanical_churn: false` is explicit no-downgrade; absent or malformed mechanical values normalize to `false`.
+- Threshold comparisons use bash `10#` decimal coercion on emitted `DIFF_ADDED` / `DIFF_LINES` values (e.g. `diff_added: 002001` trips at 2001).
 
 ## Output contract (`emit_kv` on FD 3)
 

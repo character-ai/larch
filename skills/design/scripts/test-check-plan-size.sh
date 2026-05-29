@@ -552,5 +552,28 @@ assert_always_emitted_keys "$out"
 assert_kv_eq DIFF_ADDED "" "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
+d="$TMPROOT/c32d"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_added: 09\n'; printf 'diff_lines: 2001\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq DIFF_ADDED "" "$out"
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
+
+# --- Case 33: diff_deleted-only with legacy diff_lines hard trigger ---
+d="$TMPROOT/c33"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_deleted: 9999\n'
+    printf 'diff_lines: 2001\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq DIFF_DELETED 9999 "$out"
+assert_kv_eq DIFF_ADDED "" "$out"
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 
 echo "PASS: test-check-plan-size.sh"

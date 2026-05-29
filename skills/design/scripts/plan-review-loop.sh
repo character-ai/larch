@@ -498,45 +498,34 @@ _run_post_apply_pipeline() {
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
-    local dedup_tmp dedup_removed optional_keys_file pre_dedup_snapshot
+    local optional_keys_file dedup_rc dedup_log
     optional_keys_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-keys.XXXXXX")
     snapshot_optional_trailer_keys "$plan_path" "$optional_keys_file"
-    if [[ -s "$optional_keys_file" ]]; then
-        pre_dedup_snapshot=$(mktemp "$DESIGN_TMPDIR/.plan-pre-dedup.XXXXXX")
-        cp -f "$plan_path" "$pre_dedup_snapshot"
-    else
-        pre_dedup_snapshot=""
-    fi
-    dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
-    if ! dedup_removed=$(python3 "$DEDUP_PLAN_LINES_PY" "$plan_path" "$dedup_tmp"); then
-        rm -f "$dedup_tmp"
-        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
-        rm -f "$plan_backup"
-        LOOP_STATUS=emit-plan-failed
-        LOOP_REASON=dedup-python-failed
-        return 1
-    fi
-    # dedup_removed must be a non-negative integer; empty means the Python pass failed
-    if [[ ! "$dedup_removed" =~ ^[0-9]+$ ]]; then
-        rm -f "$dedup_tmp"
-        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
-        rm -f "$plan_backup"
-        LOOP_STATUS=emit-plan-failed
-        LOOP_REASON=dedup-python-failed
-        return 1
-    fi
-    mv -f "$dedup_tmp" "$plan_path"
-    printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
-    if [[ -n "$pre_dedup_snapshot" ]] &&
-        ! validate_optional_trailers_preserved "$plan_path" "$optional_keys_file"; then
-        cp -f "$pre_dedup_snapshot" "$plan_path"
-        rm -f "$pre_dedup_snapshot" "$optional_keys_file"
-        rm -f "$plan_backup"
-        LOOP_STATUS=optional-trailer-dedup-loss
-        LOOP_REASON=optional-trailer-dedup-loss
-        return 1
-    fi
-    rm -f "$pre_dedup_snapshot" "$optional_keys_file"
+    local optional_had_trailers=0
+    [[ -s "$optional_keys_file" ]] && optional_had_trailers=1
+    dedup_rc=0
+    dedup_plan_preserve_optional_trailers "$plan_path" "$optional_keys_file" "$DESIGN_TMPDIR" "$DEDUP_PLAN_LINES_PY" || dedup_rc=$?
+    case "$dedup_rc" in
+        1)
+            rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
+            if (( optional_had_trailers == 0 )) && [[ -n "$plan_backup" ]]; then
+                cp -f "$plan_backup" "$plan_path"
+            fi
+            rm -f "$plan_backup"
+            LOOP_STATUS=optional-trailer-dedup-loss
+            LOOP_REASON=optional-trailer-dedup-loss
+            return 1
+            ;;
+        2)
+            rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
+            [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+            rm -f "$plan_backup"
+            LOOP_STATUS=emit-plan-failed
+            LOOP_REASON=dedup-python-failed
+            return 1
+            ;;
+    esac
+    rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
     local emit_out emit_rc
     set +e
     emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")
@@ -574,9 +563,22 @@ _run_post_apply_pipeline() {
         rm -f "$plan_backup"
         return 1
     fi
-    local size_out hard
+    local size_out hard soft diff_added diff_deleted diff_lines
     size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path")
     hard=$(printf '%s\n' "$size_out" | awk -F= '$1 == "HARD_TRIGGER_FIRED" { print $2; found=1 } END { if (!found) print "false" }')
+    soft=$(printf '%s\n' "$size_out" | awk -F= '$1 == "SOFT_ADVISORY" { print $2; found=1 } END { if (!found) print "false" }')
+    if [[ "$soft" == "true" ]]; then
+        diff_added=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_ADDED" { print $2; found=1 } END { if (!found) print "" }')
+        diff_deleted=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_DELETED" { print $2; found=1 } END { if (!found) print "" }')
+        diff_lines=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_LINES" { print $2; found=1 } END { if (!found) print "" }')
+        if [[ "$hard" == "true" ]]; then
+            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); plan-body gate still requires Split/Cancel\n' \
+                "${diff_added:-}" "${diff_deleted:-}" "${diff_lines:-}"
+        else
+            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); proceeding\n' \
+                "${diff_added:-}" "${diff_deleted:-}" "${diff_lines:-}"
+        fi
+    fi
     if [[ "$hard" == "true" ]]; then
         LOOP_STATUS="plan-size-trigger"
         LOOP_REASON="plan-size-hard"

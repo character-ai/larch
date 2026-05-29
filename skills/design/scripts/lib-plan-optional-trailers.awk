@@ -16,11 +16,11 @@ END {
     block_len = 0
     for (i = trailer_nr - 1; i >= 1; i--) {
         line = lines[i]
-        if (line ~ /^diff_added: [0-9]+$/) {
+        if (line ~ /^diff_added: [0-9]+$/ && substr(line, 13) !~ /^0[89]$/) {
             block[++block_len] = line
             continue
         }
-        if (line ~ /^diff_deleted: [0-9]+$/) {
+        if (line ~ /^diff_deleted: [0-9]+$/ && substr(line, 15) !~ /^0[89]$/) {
             block[++block_len] = line
             continue
         }
@@ -42,12 +42,16 @@ END {
         line = block[j]
         if (line ~ /^diff_added: [0-9]+$/) {
             diff_added = substr(line, 13)
-            has_added = 1
+            if (diff_added !~ /^0[89]$/) {
+                has_added = 1
+            }
             continue
         }
         if (line ~ /^diff_deleted: [0-9]+$/) {
             diff_deleted = substr(line, 15)
-            has_deleted = 1
+            if (diff_deleted !~ /^0[89]$/) {
+                has_deleted = 1
+            }
             continue
         }
         if (line ~ /^mechanical_churn: true$/) {
