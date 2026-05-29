@@ -471,7 +471,7 @@ pass 'non-cancelled outcomes omit stale note-file arg'
 EMPTY_MODE_D="$TMP/design-empty-mode"
 mkdir -p "$EMPTY_MODE_D"
 : >"$EMPTY_MODE_D/execution-issues.md"
-SUMMARY_OUTCOME=cancelled-tier-gate
+SUMMARY_OUTCOME=cancelled-sprawl
 SUMMARY_MODE_STRING=""
 if [ -f "$EMPTY_MODE_D/run-params.json" ] && command -v jq >/dev/null 2>&1; then
   SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$EMPTY_MODE_D/run-params.json" 2>/dev/null || echo N/A)"
@@ -480,7 +480,7 @@ fi
 DESIGN_TMPDIR="$EMPTY_MODE_D" ISSUE_NUMBER="" SESSION_ID="RUN-EMPTY-MODE" \
     "$SUBJECT" --outcome "$SUMMARY_OUTCOME" --mode "$SUMMARY_MODE_STRING" --post-publish-only >"$TMP/std-empty-mode.log" 2>/dev/null
 grep -Fq -- '- **Mode**: N/A' "$EMPTY_MODE_D/final-summary.md" || fail 'empty-mode fence did not default to N/A'
-grep -Fq '## /design run RUN-EMPTY-MODE — cancelled-tier-gate' "$EMPTY_MODE_D/final-summary.md" || fail 'empty-mode cancellation summary missing'
+grep -Fq '## /design run RUN-EMPTY-MODE — cancelled-sprawl' "$EMPTY_MODE_D/final-summary.md" || fail 'empty-mode cancellation summary missing'
 pass 'early cancellation empty-mode default'
 
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
@@ -524,7 +524,6 @@ for summary_outcome in \
     approved-partition \
     cancelled-clarify \
     cancelled-already-planned \
-    cancelled-tier-gate \
     cancelled-title-filter \
     cancelled-sprawl \
     cancelled-plan-size-hard \

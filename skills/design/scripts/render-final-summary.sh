@@ -48,7 +48,7 @@ fi
 # SKILL.md Step 0b uses alphabetical-within-cancelled documentation order.
 # Both forms accept the same token set.
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|cancelled-assessor-worse|failed-plan-write) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|cancelled-assessor-worse|failed-plan-write) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2

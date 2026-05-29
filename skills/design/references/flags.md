@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` argument parsing (loaded before Step 0 via the MANDATORY directive adjacent to the compact flag table in `SKILL.md`).
 
-**Contract**: normative rules for **public** `/design` argv (`--simple`, `--hard`, `--partition` / `-p`, `--brainstorm`, `--manual` / `-m`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
+**Contract**: normative rules for **public** `/design` argv (`--hard`, `--partition` / `-p`, `--brainstorm`, `--manual` / `-m`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
 
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
@@ -12,8 +12,8 @@
 
 ## Public `/design` flags
 
-- `--simple`: mutually exclusive tier. Maps to `design_classification=SIMPLE`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`. This aligns with `SKILL.md` Step 2a's SIMPLE branch, which launches no sketches and writes the no-sketches sentinel.
-- `--hard`: mutually exclusive tier. Maps to `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`.
+**Tier**: SIMPLE is the default (no tier flag). `--hard` is the only public tier flag and maps to `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`. When `--hard` is absent, the orchestrator resolves `design_classification=SIMPLE`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE` (no sketches; full plan-review panel per `SKILL.md` Step 2a).
+
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
 - `--partition` / `-p`: public boolean flag, default `false`. Semantics: when set, Step **2b.5** routes directly to the **Split-path** (decomposition panel) when no hard threshold fired — no Continue option, no threshold inspection. Hard plans still show the hard **Split/Cancel** prompt before entering Split-path automatically; `--partition` is the user-initiated override that fires the same path on small plans. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
@@ -22,7 +22,7 @@
 
 `scripts/write-run-params.sh` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration.
 
-**Mutual exclusion**: at most one of `--simple` / `--hard` on argv; duplicate tier flags → hard error before Step 0. `--manual` / `-m` is independent of all other public flags.
+**Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` is independent of all other public flags.
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first).
 

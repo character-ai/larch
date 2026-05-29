@@ -9,9 +9,9 @@ phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=â€
 via `scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only
 this helper).
 
-## Callers (twelve)
+## Callers (eleven)
 
-Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-planned cancel, tier-gate cancel; Step 1c/1d sprawl
+Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-planned cancel; Step 1c/1d sprawl
 cancel; Step 1d.7 outline cancel (`cancelled-outline`); Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
 partition filing (`cancelled-decompose`, `approved-partition`, `cancelled-assessor-worse`); Step 5c happy path (two-phase: `--pre-publish-only`
 before `design-log-publish.sh`, `--post-publish-only` after); Step 5c
