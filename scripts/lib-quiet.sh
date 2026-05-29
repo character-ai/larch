@@ -111,15 +111,30 @@ larch_quiet_redaction_state_file() {
 }
 
 larch_quiet_redact_diagnostic_stream() {
-    local helper state_file
+    local helper state_file _out _rc
+    local _buf="" _lqrd_line
     helper="$LARCH_LIB_QUIET_DIR/lib-redact-streaming.sh"
+    # Buffer stdin with bash built-ins (no external cat dependency).
+    while IFS= read -r _lqrd_line || [ -n "$_lqrd_line" ]; do
+        _buf="$_buf$_lqrd_line"$'\n'
+    done
+    _buf="${_buf%$'\n'}"
     if [ ! -x "$helper" ]; then
-        cat
+        printf '%s\n' "$_buf"
         return 0
     fi
     state_file="$(larch_quiet_redaction_state_file)"
-    if ! "$helper" --state-file "$state_file" 2>/dev/null; then
+    set +e
+    _out=$(printf '%s\n' "$_buf" | "$helper" --state-file "$state_file" 2>/dev/null)
+    _rc=$?
+    set -e
+    if [ "$_rc" -ne 0 ]; then
+        # Redactor failed: surface warning and fall back to original content
+        # so the message is not silently lost.
         printf 'WARN larch_err-redaction-failed\n'
+        printf '%s\n' "$_buf"
+    else
+        printf '%s\n' "$_out"
     fi
 }
 
