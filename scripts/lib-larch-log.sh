@@ -399,38 +399,14 @@ larch_log_publish_breadcrumbs_stage_file() {
 }
 
 larch_log_publish_breadcrumbs_shared() {
-    local source_dir="$1" dest_dir="$2" on_error="$3"
+    local source_hint_dir="$1" dest_dir="$2" on_error="$3"
     local staging_parent staging_dir f base found_any=false
-    local session_root ndjson_source_ok=false quiet_source_ok=false
+    local session_root
 
-    [ -n "$source_dir" ] || return 0
-    session_root="$(dirname "$source_dir")"
+    [ -n "$source_hint_dir" ] || return 0
+    session_root="$(dirname "$source_hint_dir")"
 
-    if [ -e "$source_dir" ]; then
-        case "$source_dir" in
-            /*) ;;
-            *) "$on_error" "breadcrumbs source must be absolute: $source_dir"; return 1 ;;
-        esac
-        if [ -L "$source_dir" ]; then
-            "$on_error" "breadcrumbs source must not be a symlink: $source_dir"
-            return 1
-        fi
-        if [ ! -d "$source_dir" ]; then
-            "$on_error" "breadcrumbs source is not a directory: $source_dir"
-            return 1
-        fi
-        if ! larch_log_breadcrumbs_under_session_tmp "$source_dir"; then
-            "$on_error" "breadcrumbs source must be under IMPLEMENT_TMPDIR, DESIGN_TMPDIR, REVIEW_TMPDIR, or RESEARCH_TMPDIR: $source_dir"
-            return 1
-        fi
-        ndjson_source_ok=true
-    fi
-
-    if larch_log_breadcrumbs_under_session_tmp "$session_root"; then
-        quiet_source_ok=true
-    fi
-
-    if [ "$ndjson_source_ok" != true ] && [ "$quiet_source_ok" != true ]; then
+    if ! larch_log_breadcrumbs_under_session_tmp "$session_root"; then
         return 0
     fi
 
@@ -445,37 +421,19 @@ larch_log_publish_breadcrumbs_shared() {
         return 1
     }
 
-    if [ "$ndjson_source_ok" = true ]; then
-        for f in "$source_dir"/*; do
-            [ -e "$f" ] || continue
-            base="$(basename "$f")"
-            case "$base" in
-                *.ndjson) ;;
-                *) continue ;;
-            esac
-            if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
-                return 1
-            fi
-            [ -e "$staging_dir/$base" ] || continue
-            found_any=true
-        done
-    fi
-
-    if [ "$quiet_source_ok" = true ]; then
-        for f in "$session_root"/larch-quiet-*-*.log; do
-            [ -e "$f" ] || continue
-            base="$(basename "$f")"
-            case "$base" in
-                larch-quiet-*-*.log) ;;
-                *) continue ;;
-            esac
-            if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
-                return 1
-            fi
-            [ -e "$staging_dir/$base" ] || continue
-            found_any=true
-        done
-    fi
+    for f in "$session_root"/larch-quiet-*-*.log; do
+        [ -e "$f" ] || continue
+        base="$(basename "$f")"
+        case "$base" in
+            larch-quiet-*-*.log) ;;
+            *) continue ;;
+        esac
+        if ! larch_log_publish_breadcrumbs_stage_file "$staging_parent" "$staging_dir" "$f" "$on_error"; then
+            return 1
+        fi
+        [ -e "$staging_dir/$base" ] || continue
+        found_any=true
+    done
 
     if [ "$found_any" != "true" ]; then
         rm -rf "$staging_parent"

@@ -3,7 +3,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-export LARCH_QUIET_BREADCRUMBS=1
 
 PROD="$REPO_ROOT/scripts/phantom-probe-with-warn.sh"
 fail() { echo "FAIL: $1" >&2; exit 1; }

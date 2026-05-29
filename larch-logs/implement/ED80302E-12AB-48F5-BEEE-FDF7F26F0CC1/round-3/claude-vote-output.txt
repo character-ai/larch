@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- mixed-concern PR is a structural observation; branch mixes Stage 2 migration with code-review fixes from #2667 applied by Codex, not actionable within this review
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- inert LARCH_QUIET_BREADCRUMBS in review-and-fix tests is confusing but tests continue to work via outer 2>&1 capture; cleanup adds complexity without fixing test logic
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- adding a CI lint rule to enforce the acceptance grep is a separate task not appropriate to add inline
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- missing retry diagnostic assertions are nit-level; broader harness behavior is covered
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly accepts Stage 2 live-progress regression cost; progress messages do not contain secrets
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- accepted Stage 2 cost per plan; artifact basenames are low-sensitivity
+FINDING_15: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Stage 3 scope; breadcrumb-monitor is intentionally unchanged in Stage 2
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Stage 3 scope; larch_err output bypassing quiet-log publication is accepted Stage 2 cost

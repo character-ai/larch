@@ -17,24 +17,17 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   stdout/stderr to the quiet log.
 - `emit TEXT` writes one line of contract output to the caller-visible stream.
 - `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream. Values must not contain `\n` or `\r`; the helper returns 2 with `larch_err` on violation. See `scripts/test-lib-quiet.sh` for reject coverage.
-- `emit_breadcrumb --category=NAME TEXT` writes progress text to the quiet log
-  by default and requires the fixed breadcrumb category vocabulary. Set
-  `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout. When
-  `LARCH_BREADCRUMB_STREAM` is set, it writes only the structured breadcrumb
-  record. When `LARCH_QUIET_BREADCRUMB_FD` is set to an inherited numeric file
-  descriptor, surfaced breadcrumbs write there instead of FD 3 so nested
-  scripts can stay operator-visible even when their stdout is redirected into
-  capture files.
-- `emit_breadcrumb_stderr --category=NAME FORMAT [ARGS...]` is the stderr
-  progress bridge for legacy `larch_errf` progress callsites. Without
-  `LARCH_BREADCRUMB_STREAM`, it preserves `larch_errf` formatting and no-newline
-  behavior. With a stream, it writes only a structured breadcrumb record in the
-  fixed category vocabulary.
+- `larch_quiet_bc_valid_category NAME` validates breadcrumb category tokens for
+  `scripts/breadcrumb-monitor.sh`. Runtime scripts surface operator-visible
+  progress via `larch_err` / `larch_errf`; the legacy breadcrumb emit helpers
+  are no longer part of the runtime authoring path.
 - `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
   original stderr (FD 4 after init) so harnesses and operators still see them
-  while incidental `echo`/`printf` chatter stays in the quiet log.
+  while incidental `echo`/`printf` chatter stays in the quiet log. The emitted
+  text is mirrored into the quiet log and passed through the streaming
+  secret-redaction helper first.
 - `larch_errf` is the `printf`-style variant for formatted user-visible errors
-  (same FD routing as `larch_err`).
+  (same routing and redaction contract as `larch_err`).
 - `larch_quiet_write_paired_pid_file` writes the caller's `$$` to
   `LARCH_PAIRED_PID_FILE` when that env var is set. It validates an absolute,
   non-symlink path with no `..` under the active session tmpdir, requires a
@@ -43,8 +36,9 @@ source the library and run `larch_quiet_init` after strict-mode setup and
   `WARN paired-pid-file-invalid` and return 0 so callers under `set -e` do not
   abort.
 
-`LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses that
-assert legacy stdout may use that override during migration.
+`LARCH_QUIET_DISABLE=1` leaves stdout/stderr unchanged. Test harnesses use that
+override when they need direct access to stdout/stderr without quiet-log
+redirection.
 
 ## Authoring Rule
 
@@ -79,14 +73,14 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
   `LARCH_PAIRED_PID_FILE` before invoking them. See
   `scripts/breadcrumb-monitor.md`.
 
-`scripts/ship-pr.sh` and the review/review-and-fix tree (`skills/review/scripts/dispatch-panel.sh`, `skills/review/scripts/review-core.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`) opt into breadcrumb surfacing via `export LARCH_QUIET_BREADCRUMBS=1` set at their `/implement` invocation sites (`skills/implement/SKILL.md` Step 8+ block and `scripts/run-step5-review.sh`).
+Family B scripts surface progress via `larch_err` / `larch_errf` on the
+operator-visible stderr channel (FD 4 after `larch_quiet_init`).
 
 ## Harness
 
 `scripts/test-lib-quiet.sh` exercises default redirect behavior, explicit log
-paths, disable mode, nested init, contract emission, breadcrumb suppression and
-opt-in surfacing, empty values, fallback behavior when the log directory cannot
-be created, pure-filter disable semantics, `larch_err` routing to real stderr,
-and the paired PID writer's no-op, atomic-write, validation, fail-open, and
-parallel-write behavior. It is wired as `make
-test-lib-quiet`.
+paths, disable mode, nested init, contract emission, empty values, fallback
+behavior when the log directory cannot be created, pure-filter disable
+semantics, `larch_err` routing to real stderr, and the paired PID writer's
+no-op, atomic-write, validation, fail-open, and parallel-write behavior. It is
+wired as `make test-lib-quiet`.

@@ -97,4 +97,4 @@ while IFS= read -r expected_file; do
   mv "$tmp" "$target"
 done < <(find "$EXPECTED_DIR" -maxdepth 1 -type f \( -name 'reviewer-*-body.txt' -o -name '.manifest' \) | sort)
 
-emit_breadcrumb --category=progress "Wrote $OUTPUT_DIR"
+larch_err "Wrote $OUTPUT_DIR"

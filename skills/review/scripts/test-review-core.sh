@@ -6,7 +6,7 @@ export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD || true
+unset LARCH_QUIET_BREADCRUMB_FD || true
 unset LARCH_BREADCRUMB_STREAM LARCH_BREADCRUMBS_SURFACED_FILE || true
 SCRIPT="$REPO_ROOT/skills/review/scripts/review-core.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-core.XXXXXX")
@@ -486,9 +486,10 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/fix/findings-classificat
 }
 
 fix_breadcrumbs_out="$TMP/fix-breadcrumbs.out"
-LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs" >"$fix_breadcrumbs_out"
+fix_breadcrumbs_err="$TMP/fix-breadcrumbs.err"
+TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs" >"$fix_breadcrumbs_out" 2>"$fix_breadcrumbs_err"
 grep -Fq 'REVIEW_CORE_STATUS=fix-required' "$fix_breadcrumbs_out" || { echo "FAIL: fix-breadcrumbs status" >&2; cat "$fix_breadcrumbs_out" >&2; exit 1; }
-grep -Fq '→ review: consolidating findings' "$fix_breadcrumbs_out" || { echo "FAIL: fix-breadcrumbs breadcrumb" >&2; cat "$fix_breadcrumbs_out" >&2; exit 1; }
+grep -Fq '→ review: consolidating findings' "$fix_breadcrumbs_err" || { echo "FAIL: fix-breadcrumbs breadcrumb" >&2; cat "$fix_breadcrumbs_err" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'

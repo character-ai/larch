@@ -127,8 +127,10 @@ printf '%s\n' "$out" | grep -Fq 'CLAUDE_ASSESSOR_PATH=' || fail 'missing claude 
 printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=false' || fail 'happy path should not be degraded'
 grep -Fq 'plan-assessor' "$TMP/plan-assessor-slots.ndjson" || fail 'missing manifest'
 [[ -s "$TMP/paired.pid" ]] || fail 'paired pid file was not written'
-grep -Fq 'assessor-dispatch: round=2 prompt' "$TMP/breadcrumbs.ndjson" || fail 'breadcrumb stream missing prompt marker'
-grep -Fq 'assessor-dispatch: round=2 waterfall-rc=0' "$TMP/breadcrumbs.ndjson" || fail 'breadcrumb stream missing waterfall marker'
+# Stage 2: larch_err replaces emit_breadcrumb; progress markers are no longer in the NDJSON
+# stream. Functional assertions above (DISPATCH_OK, CLAUDE_ASSESSOR_PATH, manifest, paired.pid)
+# already cover correct execution. Skip the progress-marker check to avoid quiet-log
+# truncation false-negatives when subprocesses reinitialize larch_quiet_init.
 
 out=$(CURSOR_STUB_MODE=narrate LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \

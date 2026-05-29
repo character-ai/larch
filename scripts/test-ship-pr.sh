@@ -5,7 +5,8 @@ set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
 # Hermetic harness: callers (e.g. Claude Code) may export LARCH_QUIET_BREADCRUMB_FD
-# so breadcrumbs route to a non-stdout FD; this test suite greps captured stdout.
+# so breadcrumbs route to a non-stdout FD; this test suite checks stdout for
+# KV envelopes and stderr for operator breadcrumbs.
 unset LARCH_QUIET_BREADCRUMB_FD
 unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE
 
@@ -1110,22 +1111,22 @@ STUB_CI_ACTION=bail STUB_BAIL_REASON=fix-attempts-exhausted run_subject "$root" 
 assert_rc "$tmp/rc" 3 "user-input bail exits 3"
 assert_state_line "$tmp/ship-pr-state.sh" "BAIL_NEEDS_USER_INPUT=true" "user-input bail marks state"
 
-# Breadcrumb pin: phase-entry breadcrumbs appear in stdout when LARCH_QUIET_BREADCRUMBS=1.
+# Breadcrumb pin: phase-entry diagnostics appear on stderr via larch_err.
 root=$(make_repo breadcrumb_phase_entry)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" checks
-LARCH_QUIET_BREADCRUMBS=1 STUB_CI_ACTION=merge run_subject "$root" "$tmp" "$tmp/rc"
+STUB_CI_ACTION=merge run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "breadcrumb phase-entry scenario exits 0"
 for crumb in '→ ship-pr: checks' '→ ship-pr: version bump' '→ ship-pr: PR prep' '→ ship-pr: opening PR'; do
-    if grep -qF "$crumb" "$tmp/stdout"; then
-        ok "breadcrumb phase-entry: stdout contains '$crumb'"
+    if grep -qF "$crumb" "$tmp/stderr"; then
+        ok "breadcrumb phase-entry: stderr contains '$crumb'"
     else
-        fail "breadcrumb phase-entry: stdout missing '$crumb'"
-        sed 's/^/    stdout: /' "$tmp/stdout"
+        fail "breadcrumb phase-entry: stderr missing '$crumb'"
+        sed 's/^/    stderr: /' "$tmp/stderr"
     fi
 done
 
-# Breadcrumb pin: stall breadcrumb appears when LARCH_QUIET_BREADCRUMBS=1 and bump fails.
+# Breadcrumb pin: stall diagnostic appears on stderr when bump fails.
 root=$(make_repo breadcrumb_stall)
 tmp=$(make_tmpdir)
 cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
@@ -1134,15 +1135,15 @@ exit 1
 STUB
 chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh"
 write_state "$tmp/ship-pr-state.sh" bump
-LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc"
-if grep -qF '⛔ ship-pr: stalled at step 8' "$tmp/stdout"; then
-    ok "breadcrumb stall: stdout contains stall-at-step-8 breadcrumb"
+run_subject "$root" "$tmp" "$tmp/rc"
+if grep -qF '⛔ ship-pr: stalled at step 8' "$tmp/stderr"; then
+    ok "breadcrumb stall: stderr contains stall-at-step-8 diagnostic"
 else
-    fail "breadcrumb stall: stdout missing '⛔ ship-pr: stalled at step 8'"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    fail "breadcrumb stall: stderr missing '⛔ ship-pr: stalled at step 8'"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
-# Breadcrumb pin: transient breadcrumb appears when LARCH_QUIET_BREADCRUMBS=1.
+# Breadcrumb pin: transient diagnostic appears on stderr.
 root=$(make_repo breadcrumb_transient)
 tmp=$(make_tmpdir)
 cat > "$root/scripts/create-pr.sh" <<'STUB'
@@ -1154,12 +1155,12 @@ exit 1
 STUB
 chmod +x "$root/scripts/create-pr.sh"
 write_state "$tmp/ship-pr-state.sh" pr-create
-LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc"
-if grep -qF '⚠ ship-pr: transient network failure' "$tmp/stdout"; then
-    ok "breadcrumb transient: stdout contains transient-network breadcrumb"
+run_subject "$root" "$tmp" "$tmp/rc"
+if grep -qF '⚠ ship-pr: transient network failure' "$tmp/stderr"; then
+    ok "breadcrumb transient: stderr contains transient-network diagnostic"
 else
-    fail "breadcrumb transient: stdout missing '⚠ ship-pr: transient network failure'"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    fail "breadcrumb transient: stderr missing '⚠ ship-pr: transient network failure'"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
 # AC#12: recovery_waterfall_paths_delta_revert uses quoted paths (spaces / glob chars).
@@ -1317,11 +1318,11 @@ awk '
   /^MERGE=/ { print "MERGE=false"; next }
   { print }
 ' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
 assert_rc "$tmp/rc" 0 "ci-watch skip path exits 0"
-if grep -qF '→ ship-pr: CI watch (ci-merge)' "$tmp/stdout"; then
+if grep -qF '→ ship-pr: CI watch (ci-merge)' "$tmp/stderr"; then
     fail "ci-watch skip path should not emit CI watch breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 else
     ok "ci-watch skip path omits CI watch breadcrumb"
 fi
@@ -1329,7 +1330,7 @@ fi
 root=$(make_repo version_published_pr_merged)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-merge
-PATH="$root/scripts:$PATH" LARCH_QUIET_BREADCRUMBS=1 STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED run_subject "$root" "$tmp" "$tmp/rc"
+PATH="$root/scripts:$PATH" STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "version_already_published + merged PR exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "version_already_published + merged PR records already_merged"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "version_already_published + merged PR completes postmerge"
@@ -1338,11 +1339,11 @@ if [ -f "$tmp/post-merge-sentinel" ]; then
 else
     fail "version_already_published + merged PR should write post-merge-sentinel"
 fi
-if grep -qF '→ ship-pr: merged' "$tmp/stdout"; then
+if grep -qF '→ ship-pr: merged' "$tmp/stderr"; then
     ok "version_already_published + merged PR emits merged breadcrumb"
 else
     fail "version_already_published + merged PR should emit merged breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
 root=$(make_repo version_published_pr_open)
@@ -1411,7 +1412,7 @@ root=$(make_repo stale_stall_state_cleared_on_already_merged)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-merge
 seed_stale_stall_state "$tmp/ship-pr-state.sh"
-LARCH_QUIET_BREADCRUMBS=1 STUB_CI_ACTION=already_merged run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+STUB_CI_ACTION=already_merged run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
 assert_rc "$tmp/rc" 0 "stale stall state: ci-wait already_merged exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "stale stall state: ci-wait already_merged records already_merged"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: ci-wait already_merged completes postmerge"
@@ -1419,11 +1420,11 @@ assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: ci-
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: ci-wait already_merged clears STALL_TRACKING"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: ci-wait already_merged clears STALL_STEP"
 assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: ci-wait already_merged leaves final-bail-reason.txt empty"
-if grep -qF '→ ship-pr: merged' "$tmp/stdout"; then
+if grep -qF '→ ship-pr: merged' "$tmp/stderr"; then
     ok "already_merged path emits merged breadcrumb"
 else
     fail "already_merged path should emit merged breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    sed 's/^/    stderr: /' "$tmp/stderr"
 fi
 
 root=$(make_repo malformed)
@@ -2292,7 +2293,7 @@ chmod +x "$root/scripts/cursor" \
          "$root/scripts/git-sync-local-main.sh" \
          "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
-LARCH_QUIET_BREADCRUMBS=1 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "second rebase conflict stalls after recovery waterfall exhausts (exit_stall)"
 if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
     ok "second rebase conflict sets CALLER_KIND=ship_pr_pre_push"
@@ -3537,7 +3538,6 @@ cat > "$runner" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 
-emit_breadcrumb() { :; }
 _per_job_argv() { return 1; }
 state_set_many() {
     while [ "$#" -gt 0 ]; do
@@ -3590,7 +3590,6 @@ cat > "$runner_mixed" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 
-emit_breadcrumb() { :; }
 _per_job_argv() { return 1; }
 state_set_many() {
     while [ "$#" -gt 0 ]; do
@@ -5460,11 +5459,11 @@ else
 fi
 assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 dispatch persists RESUME_PHASE"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 dispatch persists CALLER_KIND"
-if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stderr"; then
     ok "phase14 dispatch breadcrumb mentions aggregator-dispatch/conflict-resolution"
 else
-    fail "stdout missing phase14 aggregator-dispatch breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+    fail "stderr missing phase14 aggregator-dispatch breadcrumb"
+    sed 's/^/    stderr: /' "$tmp/stderr" | head -n 20
 fi
 if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
     fail "phase14 handoff must not record keep-on-conflict rebase failure before resolution"
@@ -5514,11 +5513,11 @@ else
 fi
 assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 deep CSV persists RESUME_PHASE"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 deep CSV persists CALLER_KIND"
-if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
-    ok "phase14 deep CSV stdout mentions aggregator-dispatch/conflict-resolution"
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stderr"; then
+    ok "phase14 deep CSV stderr mentions aggregator-dispatch/conflict-resolution"
 else
-    fail "phase14 deep CSV stdout missing aggregator-dispatch breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+    fail "phase14 deep CSV stderr missing aggregator-dispatch breadcrumb"
+    sed 's/^/    stderr: /' "$tmp/stderr" | head -n 20
 fi
 if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
     fail "phase14 deep CSV must not record keep-on-conflict execution-issues line before resolution"

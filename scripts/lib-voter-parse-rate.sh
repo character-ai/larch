@@ -253,7 +253,7 @@ check_and_retry_voter_parse_rate() {
         if [[ "$retry_status" == "OK" ]]; then
             rm -f "$first_pass_sidecar" || true
             if cp "$voter_path" "$first_pass_sidecar" 2>/dev/null; then
-                { emit_breadcrumb --category=retry "voter-${voter_tool}: first-pass content preserved at $(basename "$first_pass_sidecar") (parse-rate retry succeeded)"; } >&2
+                larch_err "voter-${voter_tool}: first-pass content preserved at $(basename "$first_pass_sidecar") (parse-rate retry succeeded)"
             else
                 larch_err "check_and_retry_voter_parse_rate: warning: failed to preserve first-pass voter output at $first_pass_sidecar after parse-rate retry succeeded"
             fi

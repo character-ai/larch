@@ -3,24 +3,16 @@
 
 set -euo pipefail
 
+# Contract KVs must stay on stdout; operator progress uses larch_err on stderr.
+export LARCH_QUIET_DISABLE="${LARCH_QUIET_DISABLE:-1}"
+unset LARCH_QUIET_PID LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 larch_quiet_append_done_trap
-
-ensure_breadcrumb_fd() {
-    if [[ -z "${LARCH_QUIET_BREADCRUMB_FD:-}" ]]; then
-        if [[ "${LARCH_QUIET_PID:-}" == "$$" ]]; then
-            exec 5>&3
-        else
-            exec 5>&1
-        fi
-        export LARCH_QUIET_BREADCRUMB_FD=5
-    fi
-}
-ensure_breadcrumb_fd
 
 # lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
 # directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.
@@ -293,7 +285,7 @@ run_coder_dispatch() {
         fi
     fi
 
-    emit_breadcrumb --category=warn "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
+    larch_err "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
     return 1
 }
 
@@ -361,7 +353,7 @@ apply_findings_with_coder() {
     scrub_count=$(awk -F= '$1 == "SCRUB_COUNT" { print $2; exit }' <<< "$scrub_out")
     scrub_count="${scrub_count:-0}"
     if [[ "$scrub_ok" == "false" || ( "$scrub_rc" -ne 0 && -z "$scrub_ok" ) ]]; then
-        emit_breadcrumb --category=warn "⚠ review-and-fix: submodule scrub failed; refusing to dispatch coder"
+        larch_err "⚠ review-and-fix: submodule scrub failed; refusing to dispatch coder"
         {
             printf 'CODER_TOOL=none\n'
             printf 'CODER_STATUS=failed\n'
@@ -393,7 +385,7 @@ apply_findings_with_coder() {
     prompt_body=$(cat "$prompt_file")
     tool_file="$round_dir/coder-tool.txt"
     tool_log="$round_dir/coder-output.log"
-    emit_breadcrumb --category=progress "→ review-and-fix: dispatching coder (${scrubbed_count} fixes)"
+    larch_err "→ review-and-fix: dispatching coder (${scrubbed_count} fixes)"
     if ! run_coder_dispatch "$round_dir" "$prompt_body" "$tool_log" "$tool_file"; then
         {
             printf 'CODER_TOOL=none\n'
@@ -463,7 +455,7 @@ apply_findings_with_coder() {
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
     fi
-    emit_breadcrumb --category=progress "→ review-and-fix: $(cat "$tool_file") applied ${scrubbed_count} fixes (commit ${commit_sha:0:7})"
+    larch_err "→ review-and-fix: $(cat "$tool_file") applied ${scrubbed_count} fixes (commit ${commit_sha:0:7})"
 
     {
         printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
@@ -597,7 +589,7 @@ flush_review_batches() {
 
     batch_input_dir="$impl_tmpdir/larch-log-batches-input"
     mkdir -p "$batch_input_dir" || {
-        emit_breadcrumb --category=warn "⚠ review-and-fix: failed to create tally batch input directory; skipping tally flush"
+        larch_err "⚠ review-and-fix: failed to create tally batch input directory; skipping tally flush"
         return 1
     }
     body_file="$batch_input_dir/code-review-tally-body.md"
@@ -605,11 +597,11 @@ flush_review_batches() {
 
     if [[ -n "$composed_findings_source" && -s "$composed_findings_source" ]]; then
         cp "$composed_findings_source" "$findings_file" 2>/dev/null || {
-            emit_breadcrumb --category=warn "⚠ review-and-fix: failed to stage review-findings-full batch input; skipping tally flush"
+            larch_err "⚠ review-and-fix: failed to stage review-findings-full batch input; skipping tally flush"
             return 1
         }
     elif ! compose_review_findings_output "$impl_tmpdir" "$findings_file"; then
-        emit_breadcrumb --category=warn "⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush"
+        larch_err "⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush"
         return 0
     fi
     derived_counts=$(derive_code_review_tally_from_composed_findings "$findings_file") || derived_counts="0 0"
@@ -688,7 +680,7 @@ flush_review_batches() {
             printf '\n'
         fi
     } > "$body_file"; then
-        emit_breadcrumb --category=warn "⚠ review-and-fix: failed to write code-review-tally batch body; skipping tally flush"
+        larch_err "⚠ review-and-fix: failed to write code-review-tally batch body; skipping tally flush"
         return 1
     fi
 
@@ -707,7 +699,7 @@ flush_review_batches() {
     tally_rc=$?
     set -e
     if [[ "$tally_rc" -ne 0 ]]; then
-        emit_breadcrumb --category=warn "⚠ review-and-fix: failed to flush code-review-tally batch"
+        larch_err "⚠ review-and-fix: failed to flush code-review-tally batch"
         [[ -n "$tally_out" ]] && larch_err "$tally_out"
     fi
 
@@ -739,7 +731,7 @@ flush_round_log_after_coder() {
     rc=$?
     set -e
     if [[ "$rc" -ne 0 ]]; then
-        emit_breadcrumb --category=warn "⚠ review-and-fix: late round log flush failed (round $round_num, rc=$rc)"
+        larch_err "⚠ review-and-fix: late round log flush failed (round $round_num, rc=$rc)"
         append_log_write_failure "5" "larch-log.sh write-round" "$flush_err" "Warnings" "$rc" "post-coder round $round_num"
     else
         rm -f "$flush_err"
@@ -981,7 +973,7 @@ _implement_round_body() {
         *) larch_err "review-and-fix.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 8"; exit 2 ;;
     esac
 
-    emit_breadcrumb --category=progress "→ review-and-fix: round ${round_num_dec}"
+    larch_err "→ review-and-fix: round ${round_num_dec}"
     round_dir="$IMPLEMENT_TMPDIR/round-${round_num_dec}"
     mkdir -p "$round_dir"
     if (( round_num_dec == 1 )) && [[ -x "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" ]]; then
@@ -1103,7 +1095,7 @@ _implement_round_body() {
         cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
     fi
     write_rejected_findings_aggregate "$IMPLEMENT_TMPDIR" "$rejected_file"
-    emit_breadcrumb --category=progress "→ review-and-fix: round ${round_num_dec} — ${accepted_count} accepted, ${rejected_count} rejected (${exonerated_count} exonerated)"
+    larch_err "→ review-and-fix: round ${round_num_dec} — ${accepted_count} accepted, ${rejected_count} rejected (${exonerated_count} exonerated)"
 
     coder_tool="none"
     coder_status="skipped"
@@ -1219,12 +1211,12 @@ _implement_round_body() {
     exit_code=0
     case "$core_status" in
         panel-failed)
-            emit_breadcrumb --category=warn "⚠ review-and-fix: reviewer panel failed (>50% slots)"
+            larch_err "⚠ review-and-fix: reviewer panel failed (>50% slots)"
             status="$core_status"
             exit_code=2
             ;;
         aggregator-validation-exhausted)
-            emit_breadcrumb --category=warn "⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch"
+            larch_err "⚠ review-and-fix: narrow-trigger aggregator validator exhausted after pattern-gated dispatch"
             status="$core_status"
             exit_code=2
             ;;
@@ -1244,10 +1236,10 @@ _implement_round_body() {
                 exit_code=0
             elif [[ "$coder_status" == "no-changes" ]]; then
                 status="no-changes"
-                emit_breadcrumb --category=warn "⚠ review-and-fix: round $round_num_dec — coder dispatch exited 0 but did not modify the working tree; halting loop"
+                larch_err "⚠ review-and-fix: round $round_num_dec — coder dispatch exited 0 but did not modify the working tree; halting loop"
             else
                 status="in-scope-filtered-out"
-                emit_breadcrumb --category=warn "⚠ review-and-fix: round $round_num_dec — all accepted findings scrubbed; nothing to apply"
+                larch_err "⚠ review-and-fix: round $round_num_dec — all accepted findings scrubbed; nothing to apply"
             fi
             ;;
         zero-findings|ok)
@@ -1290,7 +1282,7 @@ _implement_round_body() {
                     if [[ "$important_rc" -eq 2 ]]; then
                         important_scan_abort=1
                     else
-                        emit_breadcrumb --category=progress "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both <= ${small_threshold}; degraded rounds excluded)."
+                        larch_err "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both <= ${small_threshold}; degraded rounds excluded)."
                         status="converged-small-changes"
                     fi
                 fi
@@ -1337,7 +1329,7 @@ _implement_round_body() {
                 total_rejected="$derived_rejected"
             fi
         else
-            emit_breadcrumb --category=warn "⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary"
+            larch_err "⚠ review-and-fix: failed to compose review findings for summary derivation; preserving vote tally in summary"
         fi
     fi
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
@@ -1444,11 +1436,11 @@ _implement_round_body() {
     if [[ "$exit_code" -eq 0 ]]; then
         if [[ "$composed_findings_ok" == true ]]; then
             if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then
-                emit_breadcrumb --category=warn "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
+                larch_err "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
             fi
         else
             if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"; then
-                emit_breadcrumb --category=warn "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
+                larch_err "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
             fi
         fi
     elif [[ -n "${IRF_SUPPRESS_EMIT_KV:-}" ]]; then

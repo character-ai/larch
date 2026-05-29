@@ -10,7 +10,7 @@ cd "$REPO_ROOT"
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 # Inherit no half-open quiet-stream session from the operator shell (e.g. a
 # parent /implement sets LARCH_QUIET_BREADCRUMB_FD without a valid FD in this
-# process); review-and-fix would then die in emit_breadcrumb before review-core.
+# process); review-and-fix would then die in larch_err before review-core.
 unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
     LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS 2>/dev/null || true
 SESSION_SETUP="$REPO_ROOT/scripts/session-setup.sh"

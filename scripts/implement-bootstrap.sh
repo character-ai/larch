@@ -160,29 +160,23 @@ resolve_run_id() {
     printf '%s\n' "$candidate"
 }
 
-emit_skip_breadcrumb_if_enabled() {
+emit_skip_breadcrumb() {
     local reason=$1
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb "⏩ step0: tracking — skip ($reason)"
-    fi
+    larch_err "⏩ step0: tracking — skip ($reason)"
 }
 
-emit_tracking_breadcrumb_if_enabled() {
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb "→ step0: tracking adopted #${ISSUE_NUMBER_RESOLVED:-} (run=${RUN_ID:-} branch=${BRANCH_SELECTED:-})"
-    fi
+emit_tracking_breadcrumb() {
+    larch_err "→ step0: tracking adopted #${ISSUE_NUMBER_RESOLVED:-} (run=${RUN_ID:-} branch=${BRANCH_SELECTED:-})"
 }
 
-emit_plan_materialize_breadcrumbs_if_enabled() {
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        if [ "${RUN_PLAN_LOGGED:-false}" = "true" ]; then
-            emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-} + plan logged"
-        else
-            emit_breadcrumb "→ step0: branch ${BRANCH_NAME:-}"
-        fi
-        if [ "${PLAN_SUMMARY_POSTED:-false}" = "true" ]; then
-            emit_breadcrumb "→ step0: larch:plan posted"
-        fi
+emit_plan_materialize_breadcrumbs() {
+    if [ "${RUN_PLAN_LOGGED:-false}" = "true" ]; then
+        larch_err "→ step0: branch ${BRANCH_NAME:-} + plan logged"
+    else
+        larch_err "→ step0: branch ${BRANCH_NAME:-}"
+    fi
+    if [ "${PLAN_SUMMARY_POSTED:-false}" = "true" ]; then
+        larch_err "→ step0: larch:plan posted"
     fi
 }
 
@@ -725,9 +719,7 @@ phase_infra() {
         cursor_available=false
     fi
 
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit_breadcrumb --category=progress "→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)"
-    fi
+    larch_err "→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)"
 
     return 0
 }
@@ -743,7 +735,7 @@ phase_tracking() {
     if [ "${REPO_UNAVAILABLE:-}" = "true" ]; then
         BRANCH_SELECTED=repo-unavailable-skip
         DEFERRED=true
-        emit_skip_breadcrumb_if_enabled repo-unavailable
+        emit_skip_breadcrumb repo-unavailable
         return 0
     fi
 
@@ -771,7 +763,7 @@ phase_tracking() {
                     --redact || true
             fi
         fi
-        emit_skip_breadcrumb_if_enabled forked-target
+        emit_skip_breadcrumb forked-target
         return 0
     fi
 
@@ -852,7 +844,7 @@ phase_tracking() {
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 persist_run_flags HARD || return 0
                 post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
-                emit_tracking_breadcrumb_if_enabled
+                emit_tracking_breadcrumb
                 return 0
             fi
         else
@@ -907,7 +899,7 @@ phase_tracking() {
     persist_run_flags HARD || return 0
     post_tracking_metadata true "Step 0 tracking adoption — Branch 2 adopt metadata post" || return 0
 
-    emit_tracking_breadcrumb_if_enabled
+    emit_tracking_breadcrumb
     return 0
 }
 
@@ -1140,7 +1132,7 @@ phase_plan_materialize() {
         fi
     fi
 
-    emit_plan_materialize_breadcrumbs_if_enabled
+    emit_plan_materialize_breadcrumbs
     return 0
 }
 
@@ -1171,7 +1163,7 @@ phase_coder_select() {
         _phase_coder_implicit
     fi
 
-    emit_coder_breadcrumb_if_enabled
+    emit_coder_breadcrumb
     return 0
 }
 
@@ -1281,14 +1273,11 @@ _phase_coder_manifest_fallback() {
         --field coder_fallback=true >/dev/null 2>&1 || true
 }
 
-emit_coder_breadcrumb_if_enabled() {
-    if ! larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        return 0
-    fi
+emit_coder_breadcrumb() {
     if [ -z "${coder:-}" ] || [ -n "${IMPLEMENT_BAIL_REASON:-}" ]; then
         return 0
     fi
-    emit_breadcrumb "→ step0: coder=${coder}"
+    larch_err "→ step0: coder=${coder}"
     return 0
 }
 

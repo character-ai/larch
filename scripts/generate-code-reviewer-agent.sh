@@ -140,4 +140,4 @@ if [[ "$MODE" == "check" ]]; then
 fi
 
 cp "$TMP" "$AGENT_FILE"
-emit_breadcrumb --category=progress "Wrote $AGENT_FILE"
+larch_err "Wrote $AGENT_FILE"

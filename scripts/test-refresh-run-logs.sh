@@ -317,7 +317,8 @@ ISSUES
 } || fail "step7a-skip refresh: exception"
 
 # ---------------------------------------------------------------------------
-# a3) Real larch-log commit publishes only ndjson breadcrumbs during refresh
+# a3) Real larch-log commit publishes quiet logs during refresh and ignores
+#     legacy breadcrumb stream sidecars.
 # ---------------------------------------------------------------------------
 {
     tmp=$(mktemp -d)
@@ -373,10 +374,10 @@ EOF
         fail "refresh breadcrumbs: unexpected output — $out"
     fi
     committed="$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.ndjson"
-    if [ -f "$committed" ]; then
-        pass "refresh breadcrumbs: ndjson breadcrumb committed"
+    if [ ! -f "$committed" ]; then
+        pass "refresh breadcrumbs: legacy ndjson breadcrumb not committed"
     else
-        fail "refresh breadcrumbs: missing committed ndjson breadcrumb"
+        fail "refresh breadcrumbs: legacy ndjson breadcrumb must stay tmpdir-local"
     fi
     if [ ! -e "$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.quiet" ] \
         && [ ! -e "$tmp/larch-logs/implement/$run_id/breadcrumbs/refresh.done" ] \
@@ -387,16 +388,16 @@ EOF
     else
         fail "refresh breadcrumbs: sidecars must not be committed"
     fi
-    if grep -Fq '<REDACTED-PRIVATE-KEY>' "$committed"; then
-        pass "refresh breadcrumbs: committed breadcrumb redacts PEM payload"
-    else
-        fail "refresh breadcrumbs: expected redacted PEM payload"
-    fi
     quiet_committed="$tmp/larch-logs/implement/$run_id/breadcrumbs/larch-quiet-refresh-run-logs.sh-24680.log"
     if [ -f "$quiet_committed" ]; then
         pass "refresh breadcrumbs: session-root quiet log committed"
     else
         fail "refresh breadcrumbs: missing committed session-root quiet log"
+    fi
+    if grep -Fq 'refresh quiet log line' "$quiet_committed"; then
+        pass "refresh breadcrumbs: committed quiet log preserves quiet-log content"
+    else
+        fail "refresh breadcrumbs: expected committed quiet log content"
     fi
 
     rm -rf "$tmp"

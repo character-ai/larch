@@ -569,7 +569,6 @@ export TEST_CLONE_ROOT="$clone_ql"
 export TEST_MERGE_BRANCH="larch-log-design-RUNQUIETEXCL1"
 unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_MERGE_RC GH_STUB_PR_LIST_EMPTY
 mkdir -p "$TMPQL/design/breadcrumbs"
-printf 'larch:bc t=now d=0 p=1 s=test c=progress text=quiet-excl\n' >"$TMPQL/design/breadcrumbs/design.ndjson"
 printf 'top-level quiet must not duplicate\n' >"$TMPQL/design/larch-quiet-design-log-publish.sh-4242.log"
 set +e
 out_ql=$(
@@ -683,7 +682,7 @@ out_meta=$(
 )
 [[ "$out_meta" == *"PUBLISH_OK=false"* ]] || fail "malformed meta should fail publish: $out_meta"
 
-echo "=== breadcrumb publish redacts PEM/tmpdir and copies non-ndjson files ==="
+echo "=== breadcrumb publish redacts PEM/tmpdir from quiet logs only ==="
 TMPBC=$(mktemp -d "${TMPDIR:-/tmp}/larch-design-breadcrumbs.XXXXXX")
 clone_bc=$(setup_clone_with_origin_head "$TMPBC")
 stub_bc="$TMPBC/stub"
@@ -702,27 +701,26 @@ pem_body_part2='Pt8Qu'
 pem_end_part1='-----END RSA PRIVATE '
 pem_end_part2='KEY-----'
 pem_body="${pem_body_part1}${pem_body_part2}"
+printf 'legacy ndjson must not publish\n' >"$TMPBC/design/breadcrumbs/stream.ndjson"
 {
-    printf 'larch:bc t=now d=0 p=1 s=test c=progress text=tmpdir %s\n' "$secret_path"
+    printf 'quiet tmpdir %s\n' "$secret_path"
     printf '%s%s\n' "$pem_begin_part1" "$pem_begin_part2"
     printf '%s%s\n' "$pem_body_part1" "$pem_body_part2"
     printf '%s%s\n' "$pem_end_part1" "$pem_end_part2"
-} >"$TMPBC/design/breadcrumbs/stream.ndjson"
-printf 'quiet tmpdir %s\n' "$secret_path" >"$TMPBC/design/breadcrumbs/stream.quiet"
+} >"$TMPBC/design/larch-quiet-design-log-publish.sh-99999.log"
 (
     cd "$clone_bc" || exit 1
     out_bc=$(bash "$PUBLISH" --design-tmpdir "$TMPBC/design" --run-id "RUNBREAD1" --issue 13 --repo owner/repo)
     [[ "$out_bc" == *"PUBLISH_OK=true"* ]] || fail "breadcrumb publish PUBLISH_OK: $out_bc"
 )
 git -C "$clone_bc" pull -q origin main
-bc_stream="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.ndjson"
-# Only .ndjson files are published; non-ndjson sidecars (e.g. .quiet) are filtered by larch_log_publish_breadcrumbs_shared
-[[ -f "$bc_stream" ]] || fail "breadcrumb ndjson missing"
-[[ ! -f "$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.quiet" ]] || fail "non-ndjson sidecar must not be published"
-grep -Eq '<TMPDIR>|<OPERATOR_REPO_PATH>' "$bc_stream" || fail "breadcrumb ndjson tmpdir redaction missing"
-! grep -Fq "$secret_path" "$bc_stream" || fail "breadcrumb ndjson leaked tmpdir path"
-grep -q '<REDACTED-PRIVATE-KEY>' "$bc_stream" || fail "breadcrumb ndjson PEM redaction missing"
-! grep -Fq "$pem_body" "$bc_stream" || fail "breadcrumb ndjson leaked PEM body"
+bc_quiet="$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/larch-quiet-design-log-publish.sh-99999.log"
+[[ -f "$bc_quiet" ]] || fail "breadcrumb quiet log missing"
+[[ ! -f "$clone_bc/larch-logs/design/RUNBREAD1/breadcrumbs/stream.ndjson" ]] || fail "legacy ndjson must not be published"
+grep -Eq '<TMPDIR>|<OPERATOR_REPO_PATH>' "$bc_quiet" || fail "breadcrumb quiet log tmpdir redaction missing"
+! grep -Fq "$secret_path" "$bc_quiet" || fail "breadcrumb quiet log leaked tmpdir path"
+grep -q '<REDACTED-PRIVATE-KEY>' "$bc_quiet" || fail "breadcrumb quiet log PEM redaction missing"
+! grep -Fq "$pem_body" "$bc_quiet" || fail "breadcrumb quiet log leaked PEM body"
 
 echo "=== breadcrumb publish rejects symlink source closed ==="
 TMPBCSYM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-breadcrumb-symlink.XXXXXX")
@@ -734,7 +732,7 @@ unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CR
 mkdir -p "$TMPBCSYM/design/breadcrumbs"
 printf 'body\n' >"$TMPBCSYM/design/plan.txt"
 printf 'real\n' >"$TMPBCSYM/real-breadcrumb.txt"
-ln -s "$TMPBCSYM/real-breadcrumb.txt" "$TMPBCSYM/design/breadcrumbs/bad.ndjson"
+ln -s "$TMPBCSYM/real-breadcrumb.txt" "$TMPBCSYM/design/larch-quiet-bad.sh-1.log"
 out_bcsym=$(
     (cd "$clone_bcsym" && bash "$PUBLISH" --design-tmpdir "$TMPBCSYM/design" --run-id "RUNBSYM1" --issue 14 --repo owner/repo) 2>/dev/null || true
 )
@@ -750,7 +748,7 @@ export PATH="$stub_bcfail:$PATH"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPBCFAIL/design/breadcrumbs"
 printf 'body\n' >"$TMPBCFAIL/design/plan.txt"
-printf 'will fail redaction\n' >"$TMPBCFAIL/design/breadcrumbs/fail.ndjson"
+printf 'will fail redaction\n' >"$TMPBCFAIL/design/larch-quiet-fail.sh-1.log"
 orig_redact="$REPO_ROOT/scripts/redact-secrets.sh"
 saved_redact="$TMPBCFAIL/redact-secrets.original.sh"
 cp "$orig_redact" "$saved_redact"

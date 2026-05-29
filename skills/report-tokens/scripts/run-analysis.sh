@@ -142,7 +142,7 @@ fi
 if [[ -z "$PLOT_FROM" ]]; then
     REPO_ROOT=$(git -C "$(pwd)" rev-parse --show-toplevel 2>/dev/null || pwd)
     LOG_BASE="$REPO_ROOT/larch-logs/$SKILL"
-    emit_breadcrumb --category=progress "Scanning $LOG_BASE for larch run logs (--skill=$SKILL)..."
+    larch_err "Scanning $LOG_BASE for larch run logs (--skill=$SKILL)..."
 
     : > "$ISSUES_JSONL"
     run_count=0
@@ -172,7 +172,7 @@ if [[ -z "$PLOT_FROM" ]]; then
         fi
 
         combined_body="**Workflow path**: ${workflow_path}"
-        emit_breadcrumb --category=progress "Processing run for issue #${issue_number}..."
+        larch_err "Processing run for issue #${issue_number}..."
         # Isolate jq failure per-run so a single invalid token-report.json
         # warns and is skipped rather than aborting the whole scan under
         # set -euo pipefail.
@@ -1169,7 +1169,7 @@ export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
 [ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
 
 if [[ -n "$PLOT_FROM" ]]; then
-    emit_breadcrumb --category=progress "Fetching analysis report issue #$PLOT_FROM..."
+    larch_err "Fetching analysis report issue #$PLOT_FROM..."
     ISSUE_JSON_FILE="$TMPROOT/plot-from-issue.json"
     if ! gh issue view "$PLOT_FROM" --repo "$REPO" --json title,body > "$ISSUE_JSON_FILE"; then
         larch_err "ERROR: failed to fetch issue #$PLOT_FROM"

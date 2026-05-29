@@ -112,6 +112,16 @@ assert_stdout_contains() {
     fi
 }
 
+assert_stderr_contains() {
+    local root=$1 pattern=$2 label=$3
+    if grep -q "$pattern" "$root/.stderr"; then
+        ok "$label"
+    else
+        fail "$label (pattern '$pattern' not found in stderr)"
+        sed 's/^/    stderr: /' "$root/.stderr"
+    fi
+}
+
 assert_rc() {
     local file=$1 expected=$2 label=$3 actual
     actual=$(cat "$file")
@@ -252,57 +262,36 @@ else
     fail "genuine timeout: expected ≤4 ci-status calls, got $call_count"
 fi
 
-# --- Case 5: breadcrumb stream captures wait-ci progress while stderr stays quiet ---
-root=$(make_env breadcrumb_stream)
+# --- Case 5: larch_errf progress appears on stderr ---
+root=$(make_env breadcrumb_stderr)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
-stream="$root/breadcrumbs.ndjson"
-LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pass run_subject "$root" "$root/.rc" --timeout 60
-assert_rc "$root/.rc" 0 "breadcrumb stream: exits 0"
-assert_stdout_contains "$root" "ACTION=merge" "breadcrumb stream: ACTION=merge"
-assert_stream_contains "$stream" "c=wait-ci" "breadcrumb stream: wait-ci category written"
-assert_stream_contains "$stream" "text=⏳ CI: waiting" "breadcrumb stream: waiting message written"
-assert_stream_contains "$stream" "text=✓ CI passed" "breadcrumb stream: success message written"
-if [[ ! -s "$root/.stderr" ]]; then
-    ok "breadcrumb stream: stderr has no progress output"
-else
-    fail "breadcrumb stream: expected quiet stderr, got [$(cat "$root/.stderr")]"
-fi
+STUB_STATUSES=pass run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "breadcrumb stderr: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "breadcrumb stderr: ACTION=merge"
+assert_stderr_compact_matches "$root" '^⏳ CI: waiting✓ CI passed \([0-9]+s, 0 polls\)$' \
+    "breadcrumb stderr: immediate pass stays inline without stray newline"
 
-# --- Case 6: breadcrumb stream captures dot progress across pending polls ---
-root=$(make_env breadcrumb_stream_pending_dots)
+# --- Case 6: inline dot progress on stderr across pending polls ---
+root=$(make_env breadcrumb_stderr_pending_dots)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
 write_noop_sleep_stub "$root"
-stream="$root/pending-dots.ndjson"
-LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pending:pending:pass run_subject "$root" "$root/.rc" --timeout 60
+STUB_STATUSES=pending:pending:pass run_subject "$root" "$root/.rc" --timeout 60
 assert_rc "$root/.rc" 0 "breadcrumb dots: exits 0"
 assert_stdout_contains "$root" "ACTION=merge" "breadcrumb dots: ACTION=merge"
-dot_count=$(grep -Fc 'text=.' "$stream" 2>/dev/null || echo 0)
-if [[ "$dot_count" -eq 2 ]]; then
-    ok "breadcrumb dots: writes one dot record per pending poll"
-else
-    fail "breadcrumb dots: expected 2 dot records, got $dot_count"
-    sed 's/^/    stream: /' "$stream"
-fi
+assert_stderr_compact_matches "$root" '^⏳ CI: waiting\.\.✓ CI passed \([0-9]+s, 2 polls\)$' \
+    "breadcrumb dots: pending dots stay inline until success banner"
 
-# --- Case 7: breadcrumb stream captures timeout bail warnings without stderr leakage ---
-root=$(make_env breadcrumb_stream_timeout_bail)
+# --- Case 7: timeout bail warning on stderr ---
+root=$(make_env breadcrumb_stderr_timeout_bail)
 write_ci_status_stub "$root"
 write_ci_decide_stub "$root"
 write_noop_sleep_stub "$root"
-stream="$root/timeout-bail.ndjson"
-LARCH_BREADCRUMB_STREAM="$stream" STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 20
+STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 20
 assert_rc "$root/.rc" 0 "breadcrumb timeout bail: exits 0"
 assert_stdout_contains "$root" "ACTION=bail" "breadcrumb timeout bail: ACTION=bail"
-assert_stream_contains "$stream" "c=warn" "breadcrumb timeout bail: warn category written"
-assert_stream_contains "$stream" "text= ⚠ CI wait timed out after 2 polls" "breadcrumb timeout bail: timeout warning written"
-stderr_no_newlines=$(tr -d '\n' <"$root/.stderr")
-if [[ -z "$stderr_no_newlines" ]]; then
-    ok "breadcrumb timeout bail: stderr remains quiet"
-else
-    fail "breadcrumb timeout bail: expected quiet stderr, got [$stderr_no_newlines]"
-fi
+assert_stderr_contains "$root" "⚠ CI wait timed out after 2 polls" "breadcrumb timeout bail: timeout warning on stderr"
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ci-wait: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2

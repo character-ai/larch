@@ -17,6 +17,14 @@ Key exports:
 - `larch_log_repo_run_dir(skill, run_id)` — always returns the canonical repo path
   (`$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run_id>`), bypassing the tmpdir tier.
   Used by `larch-log.sh commit` to locate the copy destination.
+- `larch_log_publish_breadcrumbs_shared(source_hint_dir, dest_dir, on_error)` —
+  publishes committed `breadcrumbs/` artifacts from session-root quiet logs. The
+  helper treats `source_hint_dir` as the live breadcrumbs-directory hint, derives the
+  session root with `dirname "$source_hint_dir"`, stages matching
+  `larch-quiet-<script>-<pid>.log` files from that session root, and ignores
+  legacy `*.ndjson` stream files. A hint outside the active session tmpdir is a
+  no-op; each staged quiet log must still stay under the active session tmpdir or
+  publication fails closed.
 - `larch_log_validate_batch_payload(batch, file)` — dispatches batch sanitizers.
   The `plan-goals` sanitizer requires a non-empty `## Implementation Plan`
   section and rejects pointer-only placeholders. The `json-lines` sanitizer

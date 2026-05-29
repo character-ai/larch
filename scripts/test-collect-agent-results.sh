@@ -235,6 +235,7 @@ write_meta "$OUT_T1" "$SUCCESS_HELPER"
 RESULT_T1=$(run_collector 5 "$OUT_T1")
 assert_line "C_T1 retry file" "REVIEWER_FILE=${OUT_T1%.txt}-retry.txt" "$RESULT_T1"
 assert_line "C_T1 status" "STATUS=OK" "$RESULT_T1"
+assert_line "C_T1 stderr retry diagnostic" "collect-agent-results.sh: transient diagnostic for $(basename "$OUT_T1"); retrying once" "$(cat "$TMPROOT/$(basename "$OUT_T1").stderr")"
 
 # C_T2: transient initial FAILED retries, but retry failure is reported as EMPTY_OUTPUT.
 OUT_T2="$TMPROOT/cursor-t2.txt"
@@ -264,6 +265,7 @@ write_meta "$OUT_T4" "$SUCCESS_HELPER"
 RESULT_T4=$(run_collector 1 "$OUT_T4")
 assert_line "C_T4 retry file" "REVIEWER_FILE=${OUT_T4%.txt}-retry.txt" "$RESULT_T4"
 assert_line "C_T4 status" "STATUS=OK" "$RESULT_T4"
+assert_line "C_T4 stderr retry diagnostic" "collect-agent-results.sh: transient diagnostic for $(basename "$OUT_T4"); retrying once" "$(cat "$TMPROOT/$(basename "$OUT_T4").stderr")"
 
 # C_T5: SENTINEL_TIMEOUT without a transient diagnostic remains a timeout.
 OUT_T5="$TMPROOT/cursor-t5.txt"
@@ -305,11 +307,12 @@ assert_line "C_IT2 status is NOT_SUBSTANTIVE" "STATUS=NOT_SUBSTANTIVE" "$RESULT_
 # artifact/result instead of treating launch as best-effort.
 echo "# Case: NOT_SUBSTANTIVE output with CMD_JSON .meta — retry succeeds"
 OUT_NSR="$TMPROOT/cursor-specialist-structure-output.txt"
+STDERR_NSR="$TMPROOT/case-nsr.stderr"
 printf 'Reading the ballot file and gathering diff context.\n' > "$OUT_NSR"
 printf '0\n' > "${OUT_NSR}.done"
 write_meta "$OUT_NSR" "$SUCCESS_HELPER"
 RESULT_NSR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
-    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>/dev/null)
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>"$STDERR_NSR")
 assert_line "C_NSR retry file selected (publish to orig)" "REVIEWER_FILE=$OUT_NSR" "$RESULT_NSR"
 assert_line "C_NSR retry status OK" "STATUS=OK" "$RESULT_NSR"
 if grep -Fq "$RETRY_CONTENT" "$OUT_NSR" 2>/dev/null; then
@@ -337,6 +340,16 @@ if grep -Fq "NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN" "$NSR_RETRY_META" 2>/dev/
 else
     fail "C_NSR_REASON ns-retry .meta missing NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN (meta: $(cat "$NSR_RETRY_META" 2>/dev/null || echo '<missing>'))"
 fi
+if grep -Fq 'ns-retry: first-pass content preserved at cursor-specialist-structure-output-first-pass.txt' "$STDERR_NSR" 2>/dev/null; then
+    ok "C_NSR stderr surfaces first-pass preservation breadcrumb"
+else
+    fail "C_NSR stderr missing first-pass preservation breadcrumb"
+fi
+if grep -Fq 'ns-retry: published retry content to cursor-specialist-structure-output.txt; retry artifact retained at cursor-specialist-structure-output-ns-retry.txt' "$STDERR_NSR" 2>/dev/null; then
+    ok "C_NSR stderr surfaces retry publish breadcrumb"
+else
+    fail "C_NSR stderr missing retry publish breadcrumb"
+fi
 
 # C_NS_STRUCTURED: section 3.6 downgrade must re-run structured validation
 # before restoring STATUS=OK, publish retry prose back to the original path,
@@ -353,8 +366,9 @@ is discussing, but the body still refuses to emit structured reviewer records.
 EOF
 printf '0\n' > "${OUT_NSS}.done"
 write_meta "$OUT_NSS" "$STRUCTURED_SUCCESS_HELPER"
+STDERR_NSS="$TMPROOT/case-nss.stderr"
 RESULT_NSS=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
-    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode --structured-reviewer-validation "$OUT_NSS" 2>/dev/null)
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode --structured-reviewer-validation "$OUT_NSS" 2>"$STDERR_NSS")
 assert_line "C_NSS retry file selected (publish to orig)" "REVIEWER_FILE=$OUT_NSS" "$RESULT_NSS"
 assert_line "C_NSS retry status OK" "STATUS=OK" "$RESULT_NSS"
 assert_line "C_NSS structured sidecar emitted (orig path)" "STRUCTURED_SIDECAR=${OUT_NSS}.tsv" "$RESULT_NSS"
@@ -379,6 +393,16 @@ if grep -Fq "NO_ISSUES_FOUND" "$NSS_RETRY_OUTPUT" 2>/dev/null; then
     ok "C_NSS retry artifact retained"
 else
     fail "C_NSS retry artifact missing retry content"
+fi
+if grep -Fq 'ns-retry: first-pass content preserved at cursor-specialist-structured-output-first-pass.txt' "$STDERR_NSS" 2>/dev/null; then
+    ok "C_NSS stderr surfaces first-pass preservation breadcrumb"
+else
+    fail "C_NSS stderr missing first-pass preservation breadcrumb"
+fi
+if grep -Fq 'ns-retry: published retry content to cursor-specialist-structured-output.txt; retry artifact retained at cursor-specialist-structured-output-ns-retry.txt' "$STDERR_NSS" 2>/dev/null; then
+    ok "C_NSS stderr surfaces retry publish breadcrumb"
+else
+    fail "C_NSS stderr missing retry publish breadcrumb"
 fi
 
 # C_NS_FP_SUCCESS: NS-retry success path produces a -first-pass.txt sidecar.

@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `skills/report-tokens/scripts/test-report-tokens-recompute.sh`, `skills/report-tokens/scripts/test-rate-assertions.sh`, `skills/report-tokens/scripts/test-rate-assertions.md`, and the `skills/report-tokens/scripts/fixtures/recompute-run/` fixture directory. The harnesses wrote fixture run directories into the live `larch-logs/implement/` and `larch-logs/design/` working-tree paths, which risked cross-talk with real run logs. They are deleted rather than migrated to `${TMPDIR}` per project preference: `run-analysis.sh` is intentionally not test-covered. Makefile recipes (`test-rate-assertions`, `test-report-tokens-recompute`) and their `test-harnesses-13` / `test-harnesses-20` shard prerequisites are removed; the matching `agent-lint.toml` exclude entry and `docs/linting.md` row are dropped; the dangling rate-harness sentence in `skills/report-tokens/SKILL.md` is trimmed. Closes #3121.
 
+## [45.3.19] - 2026-05-28
+
+### Changed
+
+- Fix unclosed code fences so they no longer leak in-fence state through EOF and disable Constraints duplicate protection
+- Fail loudly when the post-apply dedup Python pass returns empty or non-numeric output instead of coercing to zero removals
+
 ## [45.3.18] - 2026-05-28
 
 ### Changed
@@ -6591,7 +6598,7 @@ Supersedes #731 (paginate the back-link's `gh api blocked_by` call) — that cod
 
 ### Fixed
 
-- `scripts/test-redact-secrets.sh` no longer triggers GitHub secret-scanning's `sk-ant-*` heuristic as a false positive. The synthetic `SK_TOKEN` fixture on line 33 previously appeared as a contiguous `sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD` substring that GitHub's scanner flagged as an OpenAI API key (alert #1). The fix splits the `sk-ant-` prefix in the source via adjacent single-quoted bash strings (`'sk-''ant-…'`), which concatenate at runtime to the identical 47-character test value but contain no contiguous `sk-ant-` substring in the repo source. Three other sites in the same file that also contained contiguous `sk-ant-*` substrings (`dry_title_raw` literal on line 137, the `GHZERO` heredoc stub's `printf` on line 285, and the `assert_not_contains` needle on line 303) are likewise rewritten to build their token-shaped values from the canonical `SK_TOKEN` fixture via `${SK_TOKEN}` and `${SK_TOKEN:0:35}` expansions; the `GHZERO` heredoc is switched from quoted (`<<'GHZERO'`) to unquoted (`<<GHZERO`) with `\$1` escaping to allow the expansion. All 45 assertions still pass with byte-identical runtime values.
+- `scripts/test-redact-secrets.sh` no longer triggers GitHub secret-scanning's `sk-ant-*` heuristic as a false positive. The synthetic `SK_TOKEN` fixture on line 33 previously appeared as a contiguous `sk-ant-[…]ABCD` substring that GitHub's scanner flagged as an OpenAI API key (alert #1). The fix splits the `sk-ant-` prefix in the source via adjacent single-quoted bash strings (`'sk-''ant-…'`), which concatenate at runtime to the identical 47-character test value but contain no contiguous `sk-ant-` substring in the repo source. Three other sites in the same file that also contained contiguous `sk-ant-*` substrings (`dry_title_raw` literal on line 137, the `GHZERO` heredoc stub's `printf` on line 285, and the `assert_not_contains` needle on line 303) are likewise rewritten to build their token-shaped values from the canonical `SK_TOKEN` fixture via `${SK_TOKEN}` and `${SK_TOKEN:0:35}` expansions; the `GHZERO` heredoc is switched from quoted (`<<'GHZERO'`) to unquoted (`<<GHZERO`) with `\$1` escaping to allow the expansion. All 45 assertions still pass with byte-identical runtime values.
 
 ## [3.4.6] - 2026-04-19
 

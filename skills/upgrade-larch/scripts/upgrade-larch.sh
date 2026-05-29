@@ -191,7 +191,7 @@ LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="${LARCH_UPGRADE_FALLBACK_SESSION_ROOTS:-/t
 INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 
 # Resolve the latest stable (non-pre-release, non-draft) release from GitHub.
-emit_breadcrumb --category=progress "Checking latest stable larch release..."
+larch_err "Checking latest stable larch release..."
 LATEST_STABLE=""
 if command -v gh >/dev/null 2>&1; then
     STABLE_RELEASES=()
@@ -233,27 +233,27 @@ if ! is_safe_version "${CURRENT_INSTALLED_VERSION:-}"; then
     CURRENT_INSTALLED_VERSION="$INSTALLED_VERSION"
 fi
 if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
-    emit_breadcrumb --category=progress ""
-    emit_breadcrumb --category=progress "Already at latest stable larch release (${CURRENT_INSTALLED_VERSION}). No upgrade needed."
+    larch_err ""
+    larch_err "Already at latest stable larch release (${CURRENT_INSTALLED_VERSION}). No upgrade needed."
     exit 0
 fi
 
 if [ -n "$LATEST_STABLE" ]; then
-    emit_breadcrumb --category=progress "Upgrading larch from ${INSTALLED_VERSION} to ${LATEST_STABLE}..."
+    larch_err "Upgrading larch from ${INSTALLED_VERSION} to ${LATEST_STABLE}..."
 else
-    emit_breadcrumb --category=warn "Latest stable release could not be determined; upgrading unconditionally..."
+    larch_err "Latest stable release could not be determined; upgrading unconditionally..."
 fi
 
-emit_breadcrumb --category=progress "Uninstalling larch plugin..."
+larch_err "Uninstalling larch plugin..."
 claude plugin uninstall larch@larch-local 2>&1 || true
 
-emit_breadcrumb --category=progress "Removing larch-local marketplace..."
+larch_err "Removing larch-local marketplace..."
 claude plugin marketplace remove larch-local 2>&1 || true
 
-emit_breadcrumb --category=progress "Re-adding larch marketplace from GitHub..."
+larch_err "Re-adding larch marketplace from GitHub..."
 claude plugin marketplace add character-ai/larch 2>&1
 
-emit_breadcrumb --category=progress "Installing larch plugin..."
+larch_err "Installing larch plugin..."
 claude plugin install larch@larch-local 2>&1
 
 # Verify the installed version matches the expected stable release.
@@ -263,7 +263,7 @@ if [ -n "$LATEST_STABLE" ]; then
     ACTUAL_VERSION=$(get_installed_larch_version || true)
     if [ "$ACTUAL_VERSION" = "$LATEST_STABLE" ]; then
         VERIFIED_TARGET=true
-        emit_breadcrumb --category=progress "Verified: larch ${LATEST_STABLE} installed successfully."
+        larch_err "Verified: larch ${LATEST_STABLE} installed successfully."
     else
         larch_err ""
         larch_err "Warning: expected version ${LATEST_STABLE} but found installed version ${ACTUAL_VERSION:-unknown}."
@@ -279,7 +279,7 @@ fi
 # at most 8 cached versions total by mtime while preserving the verified stable
 # dir.
 if [ "$VERIFIED_TARGET" = true ]; then
-    emit_breadcrumb --category=progress "Pruning old larch versions (keeping up to 8, excluding versions newer than verified stable)..."
+    larch_err "Pruning old larch versions (keeping up to 8, excluding versions newer than verified stable)..."
     CACHED_VERSIONS=()
     while IFS= read -r version; do
         [ -n "$version" ] || continue
@@ -318,7 +318,7 @@ if [ "$VERIFIED_TARGET" = true ]; then
                     fi
                 done
             fi
-            emit_breadcrumb --category=progress "  Removing version newer than verified stable: $version"
+            larch_err "  Removing version newer than verified stable: $version"
             if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
                 warn_prune_failure "$version"
                 SANITIZED_VERSIONS+=("$version")
@@ -352,7 +352,7 @@ if [ "$VERIFIED_TARGET" = true ]; then
                         fi
                     done
                 fi
-                emit_breadcrumb --category=progress "  Removing old version: $version"
+                larch_err "  Removing old version: $version"
                 if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
                     warn_prune_failure "$version"
                     PRUNE_FAILED_VERSIONS+=("$version")
@@ -377,21 +377,21 @@ if [ "$VERIFIED_TARGET" = true ]; then
             larch_err "Warning: cache cap (${KEEP_LIMIT}) exceeded — ${#SANITIZED_VERSIONS[@]} versions remain; pinned entries or prune failures blocked full trim."
         fi
     else
-        emit_breadcrumb --category=progress "  No old versions to prune."
+        larch_err "  No old versions to prune."
     fi
 
 else
-    emit_breadcrumb --category=warn "Skipping prune because the expected stable version was not verified."
+    larch_err "Skipping prune because the expected stable version was not verified."
 fi
 
-emit_breadcrumb --category=progress ""
-emit_breadcrumb --category=progress "Installed larch plugin version:"
+larch_err ""
+larch_err "Installed larch plugin version:"
 claude plugin list 2>&1 | grep -A2 'larch@larch-local' || true
 
-emit_breadcrumb --category=progress ""
+larch_err ""
 if [ "$VERIFIED_TARGET" = false ] && [ -n "$LATEST_STABLE" ]; then
-    emit_breadcrumb --category=warn "Upgrade incomplete: expected stable version ${LATEST_STABLE} was not verified."
+    larch_err "Upgrade incomplete: expected stable version ${LATEST_STABLE} was not verified."
     exit 1
 fi
 
-emit_breadcrumb --category=progress "Upgrade complete. Restart Claude Code to apply the new version."
+larch_err "Upgrade complete. Restart Claude Code to apply the new version."

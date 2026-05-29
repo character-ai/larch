@@ -165,8 +165,9 @@ _backup_rewrite_stage() {
 }
 
 # Steps 3–5: backup, rewrite, stage, then fetch-and-verify in a retry loop.
-# On a same-version or version-regression collision, silently re-classify and
-# retry up to _max_retries times before bailing loudly.
+# On a same-version or version-regression collision, re-classify and retry up
+# to _max_retries times. Retry diagnostics stay operator-visible on stderr via
+# larch_err; stdout remains the machine-readable contract surface.
 INITIAL_NEW_VERSION="$NEW_VERSION"
 _retry_count=0
 _max_retries=10
@@ -192,7 +193,7 @@ while true; do
     fi
     _bump_type=$(_infer_bump_type "$ORIGINAL_CURRENT_VERSION" "$INITIAL_NEW_VERSION")
     NEW_VERSION=$(_apply_bump_type "$ORIGIN_VERSION" "$_bump_type")
-    emit_breadcrumb --category=retry "apply-bump: retry $((_retry_count+1))/$_max_retries origin/main=$ORIGIN_VERSION new-version=$NEW_VERSION"
+    larch_err "apply-bump: retry $((_retry_count+1))/$_max_retries origin/main=$ORIGIN_VERSION new-version=$NEW_VERSION"
     _retry_count=$((_retry_count+1))
     _backup_rewrite_stage
     continue

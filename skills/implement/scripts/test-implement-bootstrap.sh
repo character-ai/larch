@@ -541,7 +541,6 @@ run_bootstrap() {
             CLAUDE_PLUGIN_ROOT="$SANDBOX" \
             PATH="$SANDBOX/bin:$PATH" \
             LARCH_BREADCRUMB_STREAM= \
-            LARCH_QUIET_BREADCRUMBS="${LARCH_QUIET_BREADCRUMBS:-}" \
             LARCH_QUIET_BREADCRUMB_FD="${LARCH_QUIET_BREADCRUMB_FD:-}" \
             bash "$SANDBOX/scripts/implement-bootstrap.sh" "$@"
     )
@@ -886,7 +885,10 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
-out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-b4-all.XXXXXX")
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runD --preflight-tmpdir "$SANDBOX/preflight" 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
 assert_rc "$rc" 0 "B4-all exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-all deferred"
 assert_line "coder=cursor" "$out" "B4-all coder"
@@ -912,7 +914,8 @@ assert_contains "tracking-issue-write rename --issue 123 --state implementing" "
 assert_order "tracking-issue-write rename --issue 123 --state implementing" "post-tracking-issue --implement-tmpdir $SANDBOX_TMP --issue-number 123 --run-id runD --adopted true" "$invoke" "B4-all rename before post-tracking-issue"
 assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
-assert_not_contains '→ step0: coder=' "$out" "B4-all no coder breadcrumb without breadcrumbs enabled"
+assert_not_contains '→ step0: coder=' "$out" "B4-all coder breadcrumb stays off stdout"
+assert_contains '→ step0: coder=cursor' "$err" "B4-all coder breadcrumb surfaces on stderr"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4-all-breadcrumb POSTED=false deferred guard ---
@@ -920,10 +923,7 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
-export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=1
-out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runDeferredBreadcrumb --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runDeferredBreadcrumb --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B4-all-breadcrumb exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-all-breadcrumb deferred"
 n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=cursor' || true)
@@ -1604,7 +1604,7 @@ issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "Step 0 plan materialization — larch:plan summary redaction" "$issues" "B5-plan-summary-redaction-failure warning"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_contains "tracking-issue-summary upsert-summary" "$invoke" "B5-plan-summary-redaction-failure summary invoked"
-assert_not_contains '→ step0: larch:plan posted' "$out" "B5-plan-summary-redaction-failure no breadcrumb without breadcrumbs enabled"
+assert_not_contains '→ step0: larch:plan posted' "$out" "B5-plan-summary-redaction-failure no breadcrumb on stdout"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B6-plan-flags ---
@@ -2482,10 +2482,7 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 bc=$(mktemp "${TMPDIR:-/tmp}/larch-ib-bc.XXXXXX")
-export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=1
-out=$(run_bootstrap --up-to-phase infra 2>/dev/null) && rc=$? || rc=$?
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+out=$(run_bootstrap --up-to-phase infra 2>&1) && rc=$? || rc=$?
 n=$(printf '%s\n' "$out" | grep -cF '→ step0: infra ready' || true)
 rm -f "$bc"
 assert_rc "$rc" 0 "Edge-breadcrumb-count exit 0"
@@ -2502,10 +2499,7 @@ rm -rf "$SANDBOX_TMP" "$SANDBOX"
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
-export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=1
-out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runBreadcrumb 2>/dev/null) && rc=$? || rc=$?
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runBreadcrumb 2>&1) && rc=$? || rc=$?
 n=$(printf '%s\n' "$out" | grep -cF '→ step0: tracking adopted' || true)
 assert_rc "$rc" 0 "Edge-breadcrumb-count-adopt exit 0"
 if [ "$n" -eq 1 ]; then
@@ -2522,10 +2516,7 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
-export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=1
-out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlan --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlan --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "Edge-breadcrumb-count-plan-green exit 0"
 n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch ' || true)
 if [ "$n" -eq 1 ]; then
@@ -2550,10 +2541,7 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
-export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=1
-out=$(SANDBOX_PLAN_SUMMARY_EXIT=5 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlanFail --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+out=$(SANDBOX_PLAN_SUMMARY_EXIT=5 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlanFail --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "Edge-breadcrumb-count-plan-summary-fail exit 0"
 n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch ' || true)
 if [ "$n" -eq 1 ]; then
@@ -2578,10 +2566,7 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
-export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=1
-out=$(SANDBOX_RUN_PLAN_LOG_EXIT=5 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlanLogFail --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+out=$(SANDBOX_RUN_PLAN_LOG_EXIT=5 run_bootstrap --up-to-phase plan --issue-number 123 --run-id runBreadcrumbPlanLogFail --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "Edge-breadcrumb-count-plan-log-fail exit 0"
 n=$(printf '%s\n' "$out" | grep -cF '→ step0: branch testuser/test-feature-123 + plan logged' || true)
 if [ "$n" -eq 0 ]; then
@@ -2606,10 +2591,7 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 write_preflight_plan
-export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=1
-out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runBreadcrumbCoder --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
-unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runBreadcrumbCoder --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "Edge-breadcrumb-count-coder-green exit 0"
 n=$(printf '%s\n' "$out" | grep -cF '→ step0:' || true)
 if [ "$n" -eq 5 ]; then

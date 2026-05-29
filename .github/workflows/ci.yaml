@@ -276,7 +276,13 @@ jobs:
           sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
           gitleaks version
       - name: Scan git history
-        run: gitleaks detect --source . --redact --no-banner
+        run: |
+          set -euo pipefail
+          # Limit scan to new commits in this PR to avoid false positives from
+          # historical test-fixture keys in the main branch. The pre-commit hook
+          # (--no-git) scans the working tree; this step scans only new commits.
+          BASE=$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD^)
+          gitleaks detect --source . --redact --no-banner --log-opts "${BASE}..HEAD"
 
   # Trufflehog verified-only scan. Independent of gitleaks — catches
   # credentials that authenticate against a live provider API even if

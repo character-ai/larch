@@ -1,0 +1,22 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly kept quiet_source_ok guard for the early-return path; redundancy is intentional
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- env-plumbing removal is explicitly Piece 3 scope; no-op vars cause no harm in the interim
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan explicitly accepts chat-progress regressions as Stage 2 cost; this is documented intentional behavior
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- larch_err stdout-routing is already covered by lib-quiet unit tests; per-callsite coverage would over-constrain
+FINDING_12: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_13: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- claim that assertion is comment-only not directly confirmed; insufficient evidence to vote YES
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_16: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- breadcrumb-monitor.md update is Piece 3 scope per the plan; emit_breadcrumb still describes remaining Piece 3 callsites accurately
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- concern is legitimate but separating committed work retroactively introduces more complexity than warranted at review time
+FINDING_22: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true

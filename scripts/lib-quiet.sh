@@ -102,23 +102,68 @@ sanitize_diagnostic_line() {
     LC_ALL=C tr -d '[:cntrl:]'
 }
 
-# User-visible diagnostics (argv validation, fatals): still go to the process's
-# original stderr after larch_quiet_init redirects FD 1/2 to the quiet log.
-larch_err() {
-    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
-        printf '%s\n' "$*" >&4
-    else
-        printf '%s\n' "$*" >&2
+larch_quiet_redaction_state_file() {
+    if [ -n "${LARCH_QUIET_REDACT_STATE_FILE:-}" ]; then
+        printf '%s\n' "$LARCH_QUIET_REDACT_STATE_FILE"
+        return 0
     fi
+    printf '%s/larch-quiet-redact-%s.state\n' "${TMPDIR:-/tmp}" "$$"
+}
+
+larch_quiet_redact_diagnostic_stream() {
+    local helper state_file _out _rc
+    local _buf="" _lqrd_line
+    helper="$LARCH_LIB_QUIET_DIR/lib-redact-streaming.sh"
+    # Buffer stdin with bash built-ins (no external cat dependency).
+    while IFS= read -r _lqrd_line || [ -n "$_lqrd_line" ]; do
+        _buf="$_buf$_lqrd_line"$'\n'
+    done
+    _buf="${_buf%$'\n'}"
+    if [ ! -x "$helper" ]; then
+        printf '%s\n' "$_buf"
+        return 0
+    fi
+    state_file="$(larch_quiet_redaction_state_file)"
+    set +e
+    _out=$(printf '%s\n' "$_buf" | "$helper" --state-file "$state_file" 2>/dev/null)
+    _rc=$?
+    set -e
+    if [ "$_rc" -ne 0 ]; then
+        # Redactor failed: surface warning and fall back to original content
+        # so the message is not silently lost.
+        printf 'WARN larch_err-redaction-failed\n'
+        printf '%s\n' "$_buf"
+    else
+        printf '%s\n' "$_out"
+    fi
+}
+
+larch_quiet_write_diagnostic_stream() {
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        tee >(cat >&4) >&2 || true
+    else
+        # Use bash built-in read/printf to avoid depending on external cat
+        # (some test harnesses run with a PATH that excludes standard utilities).
+        while IFS= read -r _lqwd_line || [ -n "$_lqwd_line" ]; do
+            printf '%s\n' "$_lqwd_line" >&2
+        done || true
+    fi
+}
+
+# User-visible diagnostics (argv validation, fatals): go to the process's
+# original stderr after larch_quiet_init redirects FD 1/2 to the quiet log, and
+# are mirrored into the quiet log for failure-tail visibility. The text is
+# passed through the streaming secret scrubber first so direct operator output
+# keeps the same redaction family as breadcrumb-monitor lines.
+larch_err() {
+    printf '%s\n' "$*" | larch_quiet_redact_diagnostic_stream | larch_quiet_write_diagnostic_stream
+    return 0
 }
 
 # shellcheck disable=SC2059 # callers pass fixed format strings (like printf)
 larch_errf() {
-    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
-        printf "$@" >&4
-    else
-        printf "$@" >&2
-    fi
+    printf "$@" | larch_quiet_redact_diagnostic_stream | larch_quiet_write_diagnostic_stream
+    return 0
 }
 
 emit() {
@@ -151,30 +196,6 @@ larch_quiet_bc_valid_category() {
     esac
 }
 
-larch_quiet_write_breadcrumb_record() {
-    local _bc_cat="$1" _bc_text="$2" _prefix _rec _ts
-    if [ -z "$_bc_cat" ]; then
-        larch_err "WARN unknown-category=<missing> emit_breadcrumb requires --category when LARCH_BREADCRUMB_STREAM is set"
-        return 0
-    fi
-    if ! larch_quiet_bc_valid_category "$_bc_cat"; then
-        larch_err "WARN unknown-category=${_bc_cat} (dropped from stream)"
-        return 0
-    fi
-    _ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf 'na')
-    _prefix=$(printf 'larch:bc t=%s d=%s p=%s s=%s c=%s text=' \
-        "$_ts" "${LARCH_BC_DEPTH:-0}" "$$" "${0##*/}" "$_bc_cat")
-    _rec="${_prefix}${_bc_text}"
-    if [ "${#_rec}" -gt 1024 ]; then
-        _rec="${_prefix}[truncated]"
-        larch_err "WARN truncated breadcrumb record (>1KiB cap)"
-    fi
-    mkdir -p "$(dirname "$LARCH_BREADCRUMB_STREAM")" 2>/dev/null || true
-    if ! printf '%s\n' "$_rec" >>"$LARCH_BREADCRUMB_STREAM" 2>/dev/null; then
-        larch_err "WARN breadcrumb-stream-write-failed"
-    fi
-}
-
 larch_quiet__exit_write_done() {
     local _rc=$1
     if [ "${LARCH_DONE_OWNER_PID:-}" != "$$" ]; then
@@ -201,6 +222,12 @@ larch_quiet__exit_combo() {
 # Append PID-keyed done sentinel + atomic status write to the current EXIT trap.
 larch_quiet_append_done_trap() {
     if [ -z "${LARCH_DONE_SENTINEL:-}" ] || [ -z "${LARCH_STATUS_FILE:-}" ]; then
+        return 0
+    fi
+    # Idempotent: if a parent process already owns the sentinel, skip to avoid
+    # a nested subprocess (e.g. collect-agent-results.sh called inside ship-pr)
+    # from prematurely signalling the breadcrumb-monitor on its own exit.
+    if [ -n "${LARCH_DONE_OWNER_PID:-}" ] && [ "${LARCH_DONE_OWNER_PID}" != "$$" ]; then
         return 0
     fi
     export LARCH_DONE_OWNER_PID=$$
@@ -282,96 +309,4 @@ larch_quiet_write_paired_pid_file() {
         return 0
     fi
     return 0
-}
-
-# emit_breadcrumb [--category=NAME] TEXT
-# When LARCH_BREADCRUMB_STREAM is set, --category is required (fixed vocabulary).
-# Without stream: legacy behavior (category ignored for stream; still logs text).
-emit_breadcrumb() {
-    local _bc_cat="" _bc_text=""
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --category=*)
-                _bc_cat="${1#--category=}"
-                shift
-                ;;
-            --category)
-                _bc_cat="${2:-}"
-                shift 2
-                ;;
-            *)
-                break
-                ;;
-        esac
-    done
-    _bc_text="$*"
-    _bc_text="${_bc_text//$'\n'/ }"
-
-    if larch_quiet_truthy "${LARCH_QUIET_DISABLE:-}"; then
-        if [ -n "${LARCH_BREADCRUMB_STREAM:-}" ]; then
-            :
-        else
-            if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-                local breadcrumb_fd="${LARCH_QUIET_BREADCRUMB_FD:-}"
-                if [[ "$breadcrumb_fd" =~ ^[0-9]+$ ]]; then
-                    printf '%s\n' "$_bc_text" >&"$breadcrumb_fd"
-                else
-                    emit "$_bc_text"
-                fi
-            else
-                printf '%s\n' "$_bc_text"
-            fi
-        fi
-        return 0
-    fi
-
-    if [ -n "${LARCH_BREADCRUMB_STREAM:-}" ]; then
-        larch_quiet_write_breadcrumb_record "$_bc_cat" "$_bc_text"
-        return 0
-    fi
-
-    if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        local breadcrumb_fd="${LARCH_QUIET_BREADCRUMB_FD:-}"
-        if [[ "$breadcrumb_fd" =~ ^[0-9]+$ ]]; then
-            printf '%s\n' "$_bc_text" >&"$breadcrumb_fd"
-        else
-            emit "$_bc_text"
-        fi
-    else
-        printf '%s\n' "$_bc_text"
-    fi
-}
-
-# emit_breadcrumb_stderr --category=NAME FORMAT [ARGS...]
-# Stream-set path writes only a structured breadcrumb. Stream-unset path keeps
-# larch_errf stderr semantics, including no implicit newline.
-emit_breadcrumb_stderr() {
-    local _bc_cat="" _bc_fmt="" _bc_text=""
-    case "${1:-}" in
-        --category=*)
-            _bc_cat="${1#--category=}"
-            shift
-            ;;
-        --category)
-            _bc_cat="${2:-}"
-            shift 2
-            ;;
-        *)
-            larch_err "emit_breadcrumb_stderr requires --category"
-            return 2
-            ;;
-    esac
-    _bc_fmt="${1-}"
-    if [ $# -gt 0 ]; then
-        # shellcheck disable=SC2059 # preserves larch_errf-compatible printf formats
-        _bc_text="$(printf "$@")"
-    else
-        _bc_text=""
-    fi
-    _bc_text="${_bc_text//$'\n'/ }"
-    if [ -n "${LARCH_BREADCRUMB_STREAM:-}" ]; then
-        larch_quiet_write_breadcrumb_record "$_bc_cat" "$_bc_text"
-    else
-        larch_errf "$_bc_fmt" "${@:2}"
-    fi
 }

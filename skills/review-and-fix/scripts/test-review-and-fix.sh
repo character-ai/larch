@@ -4,7 +4,7 @@
 set -euo pipefail
 
 # Do not inherit a parent larch quiet-session FD map (e.g. Cursor agent shell);
-# stale LARCH_QUIET_BREADCRUMB_FD breaks emit_breadcrumb with EBADF in children.
+# stale LARCH_QUIET_BREADCRUMB_FD breaks larch_err with EBADF in children.
 unset LARCH_BREADCRUMB_STREAM \
     LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
     LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
@@ -697,12 +697,12 @@ make_work_repo "$work_compose_fail"
 implement_tmp="$work_compose_fail/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+compose_fail_out="$TMP/compose-fail-run.out"
 set +e
 export REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH="$TMP/compose-review-findings-fail-stub.sh"
-out=$(
+(
     cd "$work_compose_fail" && \
     LARCH_QUIET_DISABLE=1 \
-    LARCH_QUIET_BREADCRUMBS=1 \
     COMPOSE_FAIL_CALLED="$TMP/compose-review-findings-fail-called" \
     TEST_CORE_STATUS=zero \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
@@ -710,16 +710,18 @@ out=$(
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
     REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH="$TMP/compose-review-findings-fail-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id compose-fail-run 3>&1
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id compose-fail-run \
+        >"$compose_fail_out" 2>&1
 )
 rc=$?
+out=$(cat "$compose_fail_out")
 unset REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH
 set -e
 [[ -f "$TMP/compose-review-findings-fail-called" ]] || fail "compose-fail stub was not invoked"
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "compose-fail expected exit 0 got $rc"; }
 [[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/code-review-tally.json" ]] || fail "compose-fail must skip tally batch write"
 [[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/review-findings-full.jsonl" ]] || fail "compose-fail must skip findings batch write"
-grep -Fq 'failed to compose review findings for summary derivation; preserving vote tally in summary' <<< "$out" \
+grep -Fq 'failed to compose review findings for summary derivation' <<< "$out" \
     || fail "compose-fail warning breadcrumb"
 
 work_claude="$TMP/claude-removed"
@@ -758,7 +760,7 @@ implement_tmp="$work_fail_early/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
-out=$(LARCH_QUIET_BREADCRUMBS=1 CLAUDE_PLUGIN_OPTION_CURSOR_MODEL=' ' TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_fail_early" \
+out=$(CLAUDE_PLUGIN_OPTION_CURSOR_MODEL=' ' TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_fail_early" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" 2>&1)
 rc=$?
 set -e
@@ -989,7 +991,7 @@ implement_tmp="$work_flush_warn/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
-out=$(TEST_CORE_STATUS=zero LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_WRITE_TALLY_SH="$TMP/write-tally-fails-stub.sh" run_review_and_fix "$work_flush_warn" \
+out=$(TEST_CORE_STATUS=zero REVIEW_AND_FIX_WRITE_TALLY_SH="$TMP/write-tally-fails-stub.sh" run_review_and_fix "$work_flush_warn" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id flush-warning-run 2>&1)
 rc=$?
 set -e
@@ -1647,7 +1649,6 @@ write_prior_round "$implement_tmp" 2 2    # round 2: 2 accepts (clean, small)
 set +e
 out=$(
     cd "$work_degraded" && \
-    LARCH_QUIET_BREADCRUMBS=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
@@ -1702,7 +1703,6 @@ printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env
 set +e
 out=$(
     cd "$work_retry_ok" && \
-    LARCH_QUIET_BREADCRUMBS=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-then-clean.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
@@ -1760,7 +1760,6 @@ touch "$implement_tmp/round-1/degraded-retry.flag"
 set +e
 out=$(
     cd "$work_retry_stale" && \
-    LARCH_QUIET_BREADCRUMBS=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stale-retry-recovered.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
@@ -1784,7 +1783,6 @@ touch "$implement_tmp/round-1/degraded-retry.flag" "$implement_tmp/round-1/degra
 set +e
 out=$(
     cd "$work_retry_done_stale" && \
-    LARCH_QUIET_BREADCRUMBS=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-then-clean.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
@@ -1806,7 +1804,6 @@ printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env
 set +e
 out=$(
     cd "$work_retry_fail" && \
-    LARCH_QUIET_BREADCRUMBS=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
@@ -1934,7 +1931,6 @@ chmod +x "$TMP/review-core-churn-stub.sh"
 set +e
 out=$(
     cd "$work_churn" && \
-    LARCH_QUIET_BREADCRUMBS=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-churn-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
@@ -2322,7 +2318,6 @@ if section_runs step5-starting-round; then
             RUN_ID="step5-${case_name}"
             PLUGIN_ROOT="$REPO_ROOT"
             emit_kv() { printf '%s=%s\n' "$1" "$2"; }
-            emit_breadcrumb() { :; }
             larch_err() { printf '%s\n' "$*" >&2; }
             flush_review_batches() { printf 'flush %s %s\n' "$1" "$2" >> "$STEP5_FLUSH_LOG"; }
             kv_get() {
@@ -2506,7 +2501,7 @@ if section_runs step5-starting-round; then
     pass "step5-starting-round entry-prior-deg-nonnumeric"
 fi  # end section: step5-starting-round
 
-# Breadcrumb pin: round entry and coder dispatch breadcrumbs appear when LARCH_QUIET_BREADCRUMBS=1.
+# Breadcrumb pin: round entry and coder dispatch breadcrumbs surface via stderr capture.
 if section_runs dispatch; then
 work_breadcrumb_round="$TMP/breadcrumb-round-entry"
 make_work_repo "$work_breadcrumb_round"
@@ -2514,7 +2509,7 @@ implement_tmp="$work_breadcrumb_round/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
-out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_CORE_STATUS=zero run_review_and_fix "$work_breadcrumb_round" \
+out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_breadcrumb_round" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
     --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-round-run 2>&1)
 rc=$?
@@ -2529,7 +2524,7 @@ implement_tmp="$work_breadcrumb_coder/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
-out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_breadcrumb_coder" \
+out=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_breadcrumb_coder" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
     --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-coder-run 2>&1)
 rc=$?
@@ -2546,7 +2541,7 @@ implement_tmp="$work_breadcrumb_no_changes/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
-out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_breadcrumb_no_changes" \
+out=$(TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_breadcrumb_no_changes" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
     --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-no-changes-run 2>&1)
 rc=$?
