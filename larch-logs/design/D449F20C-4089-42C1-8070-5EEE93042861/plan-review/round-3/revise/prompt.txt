@@ -1,0 +1,208 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+## Plan
+
+SIMPLE tier. Minimum-change consistency + test pass. The assessor mechanics
+(`assess-plan-round.sh`, `snapshot-plan-round.sh`) are NOT modified. Update
+Step 3 / Step 3.6 ROUTING prose in two skill files and expand one offline
+harness so every Step 3 exit path has an explicit Step 3.6 disposition.
+
+## Context
+
+- The Step 3.6 plan-quality assessor is HARD-only and skips unless
+  `ROUND_NUM >= 2`.
+- Passive-summary already routes toward Step 3.6 in some prose, but the branch
+  matrix still needs an explicit cross-reference.
+- Short-circuit statuses need uniform Step 3.6 skip breadcrumbs.
+- `main-agent-vote-required` also needs explicit routing after inline
+  adjudication and re-tally.
+- The existing test gap is end-to-end cursor advancement across two Step 3
+  entries, including round-2 assessor firing.
+
+## Files
+
+### UPDATED: `skills/design/SKILL.md`
+
+Make Step 3.6 routing explicit on every Step 3 exit path. Preserve existing
+`test-design-structure.sh` pinned substrings with append-only edits where
+possible.
+
+- `LOOP_STATUS=converged|cap-hit`: keep the pinned passive-summary prefix
+  verbatim and append: "Passive-summary Continue routes through Step 3.6 before
+  Step 3b."
+- `LOOP_STATUS=main-agent-vote-required`: add that successful inline
+  adjudication re-runs tally and then continues to Gate B as complete-equivalent;
+  settled Gate B paths, including zero-findings and passive-summary Continue,
+  proceed through Step 3.6 before Step 3b. If re-tally emits `tally-error`, use
+  the `tally-error` short-circuit.
+- `tally-error`: append `(skip Gate B **and Step 3.6**)` and print
+  `⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)`.
+- `degraded-empty-collector`: keep existing Step 3.6 skip semantics and add
+  `⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)`.
+- `panel-failed`: add `(skip Gate B **and Step 3.6**)` and print
+  `⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)`.
+- `cap-reached` paragraph: append that Step 3.6 is skipped and print
+  `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`.
+- `plan-size-trigger|plan-validator-defects`: state that both skip Gate B and
+  Step 3.6, with breadcrumbs:
+  `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)` and
+  `⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)`.
+- Add `panel-failed` to the follow-up sentence listing statuses that do not
+  enter Gate B, and note that Step 3.6 is skipped on those short-circuits.
+- Do not add `main-agent-vote-required` or `zero-findings-degraded-panel` to any
+  skip list.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+Make Gate B / Gate C routing match SKILL.md.
+
+- Gate C "When" paragraph: add `panel-failed` to the existing bypass list that
+  skips Gate B and therefore Step 3.6.
+- Gate B multi-round outcomes bullet: add `panel-failed` and `cap-reached` to
+  the Gate-B-bypassed list, noting Step 3.6 is skipped too.
+- Add a minimal `main-agent-vote-required` clause: after successful MainAgent
+  adjudication and re-tally, continue to Gate B as complete-equivalent; settled
+  Gate B paths proceed through Step 3.6. If re-tally emits `tally-error`, use
+  that short-circuit.
+- Keep `zero-findings-degraded-panel` out of skip lists.
+
+### UPDATED: `skills/design/scripts/test-assess-plan-round.sh`
+
+Append one isolated integration case before the terminal `pass` line.
+
+- Add a local cursor helper matching SKILL.md Step 3 HARD cursor advance:
+  read cursor defaulting to `1`; if `plan-after-round-<cursor>.txt` exists,
+  write `<cursor+1>`; echo the resulting cursor.
+- Use a fresh `case_tmp="$(mktemp -d ...)"` for this case.
+- Write `"$case_tmp/run-params.json"` directly, or add a parameterized helper
+  such as `write_params_for "$case_tmp" HARD`; do not rely on the existing
+  `write_params` helper if it only writes to global `$TMP`.
+- Before Entry 1, reset only this case's artifacts:
+  `plan-after-round-*.txt`, cursor, `assessor-verdict-*`, and related status
+  files. Do not reset between Entry 1 and Entry 2, because Entry 2 depends on
+  `plan-after-round-1.txt`.
+- Restore deterministic default stubs before Entry 1. Explicitly set
+  `LARCH_TALLY_PLAN_ASSESSOR_SH="$ROOT/skills/design/scripts/tally-plan-assessor.sh"`
+  so the round-2 assertion cannot pass through fail-open fallback.
+- Entry 1:
+  - create `plan.txt` and `feature-description.txt`;
+  - run `snapshot-plan-round.sh write-original`;
+  - run the cursor helper and assert cursor remains `1`;
+  - run `snapshot-plan-round.sh write-after --round 1`;
+  - run `assess-plan-round.sh --design-tmpdir "$case_tmp"`;
+  - assert `ASSESSOR_STATUS=skipped`, `ASSESSOR_VERDICT=skipped`, and no
+    `assessor-verdict-round-1.txt` exists.
+- Entry 2:
+  - overwrite `plan.txt` with revised content;
+  - run the cursor helper and assert it advances to `2`;
+  - run `snapshot-plan-round.sh write-after --round 2`;
+  - assert round 1 and round 2 snapshots both exist and differ;
+  - configure the round-2 dispatch stub to produce a deterministic worse
+    majority;
+  - run `assess-plan-round.sh --design-tmpdir "$case_tmp"`;
+  - assert `ASSESSOR_STATUS=ok`, `ASSESSOR_VERDICT=worse-majority`,
+    `EFFECTIVE_ASSESSORS=3`, and `assessor-verdict-round-2.txt` exists.
+
+### UPDATED: `skills/design/scripts/test-assess-plan-round.md`
+
+Add one validated-behavior summary line for the two-entry integration case:
+cursor advance → `write-after` → round-2 assessor firing across Step 3 entries.
+
+## Approach
+
+- Treat the prose work as routing consistency only.
+- Enumerate Step 3.6 behavior for every Step 3 exit: either route through it or
+  skip it with a status-specific breadcrumb.
+- Treat the harness addition as the only behavioral guard.
+- Do not change assessor scoring, dispatch, tally, convergence, cap semantics,
+  or Step 3 status validation.
+
+## Edge Cases
+
+- `zero-findings-degraded-panel` still routes through Step 3.6.
+- `main-agent-vote-required` is not a skip status; only a failed re-tally can
+  fall into the existing `tally-error` skip path.
+- SIMPLE/TRIVIAL still skip the assessor because `workflow_path != HARD`.
+- Preserve round-1 snapshots through Entry 2.
+- The integration case must not inherit mutated mocks from earlier cases.
+
+## Failure Modes
+
+- Structural pin breakage: run `bash scripts/test-design-structure.sh`.
+- Markdown lint failure: keep code spans whitespace-clean and avoid new heading
+  level jumps.
+- Fail-open false positive: assert `ASSESSOR_STATUS=ok`,
+  `ASSESSOR_VERDICT=worse-majority`, and `EFFECTIVE_ASSESSORS=3` with the real
+  tally script path.
+- Wrong tempdir params: write `run-params.json` into `case_tmp`.
+- Over-resetting artifacts: reset before the case, not between Entry 1 and
+  Entry 2.
+
+## Testing Strategy
+
+- `bash skills/design/scripts/test-assess-plan-round.sh`
+- `bash scripts/test-design-structure.sh`
+- `make lint`
+- Manual read-through confirming every Step 3 exit names its Step 3.6
+  disposition, including `main-agent-vote-required`, `plan-size-trigger`, and
+  `plan-validator-defects`.
+
+diff_lines: 135
+
+</plan>
+
+<findings>
+### FINDING_1: Case-local mocks must reset all assessment script overrides
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: The planned integration case isolates `case_tmp` but does not reliably reset process-global `LARCH_*` mock overrides before the two-entry scenario, so earlier test mutations can make round 2 falsely pass or fail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Install case-local mock-dispatch.sh and mock-monitor.sh under case_tmp; export all three LARCH_* paths to case_tmp (or re-seed $TMP stubs) immediately before Entry 1; set Entry 2 dispatch stub under case_tmp before the round-2 assess call.
+
+
+### FINDING_2: MainAgent re-tally leaves stale Step 3 result state
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Concern**: After a successful MainAgent re-tally, Gate B may still read stale `.step3-plan-review-result.env` values from the earlier 0-judge fallback, preventing the path from being treated as complete-equivalent or routed through Step 3.6 correctly.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Add a minimal step after the MainAgent re-tally: parse the re-tally output; on TALLY_PLAN_REVIEW_STATUS=ok set LOOP_STATUS=complete and TALLY_PLAN_REVIEW_STATUS=ok in the in-memory Step 3 variables and/or rewrite .step3-plan-review-result.env before entering Gate B; on tally-error use the existing short-circuit.
+
+
+### FINDING_3: Integration coverage skips the Gate B settle leg
+- **Reviewer(s)**: Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned test manually calls cursor advancement, write-after, and `assess-plan-round`, so it does not prove that a Gate B settled path such as passive-summary Continue actually routes through Step 3.6 before the second Step 3 entry.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements, Codex-Requirements: Add a minimal validation that a Gate B settled path, especially passive-summary Continue, routes to Step 3.6 write-after before the second Step 3 entry/round-2 assessor assertion; if a full prompt harness is impractical, add a focused structural assertion that pins that exact settled-path routing.
+
+
+</findings>
+
+<feature>
+/design assessor integration gaps — passive-summary routing, short-circuit bypass, and integration test coverage
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Round 5 code review panel (cursor-specialist-testing, dyn-skill-gate-coverage, dyn-cursor-ordering, cursor-specialist-edge-cases)
+**Phase**: implement
+**Vote tally**: YES=3+ across all three findings
+
+## Description
+
+Three related gaps in the assessor stage integration (issue #2953):
+
+  1. **Passive-summary Gate B path skips Step 3.6** (`skills/design/SKILL.md`): On HARD runs where `LOOP_STATUS=converged|cap-hit`, the passive-summary Gate B path (AskUserQuestion "Continue to Step 3.6 and Gate C") should route through Step 3.6 before Gate C, but the implementation may not invoke `assess-plan-round.sh` / `snapshot-plan-round.sh write-after` on this path. The fix requires adding Step 3.6 invocation to the passive-summary continue branch in SKILL.md. ~30-50 LOC.
+
+  2. **Step 3 short-circuit statuses bypass Step 3.6** (`skills/design/SKILL.md`): `panel-failed`, `tally-error`, and `cap-reached` Step 3 exits can flow toward Gate C without traversing Step 3.6, leaving assessor behavior undefined on those paths. The fix requires auditing each short-circuit path and adding explicit assessor skip breadcrumbs or appropriate Step 3.6 routing. ~20-40 LOC.
+
+  3. **No integration fixture for Step 3 cursor and round-2 assessor flow** (`skills/design/scripts/test-assess-plan-round.sh` or new harness): No integration test exercises Step 3 cursor advancement, Gate B settle, Step 3.6 write-after, and second Step 3 entry together end-to-end. A new test fixture or expansion of `test-assess-plan-round.sh` is needed. ~50-100 LOC.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+</feature>

@@ -1,0 +1,16 @@
+plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	cursor-plan-requirements	cursor	<TMPDIR>/cursor-plan-requirements-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-cross-doc-consistency	dyn-codex-plan-cross-doc-consistency	codex	<TMPDIR>/codex-primary-plan-dyn-cross-doc-consistency-output.txt	ok
+plan-dyn-status-enumeration	dyn-codex-plan-status-enumeration	codex	<TMPDIR>/codex-primary-plan-dyn-status-enumeration-output.txt	ok
+plan-dyn-test-fixture-isolation	dyn-codex-plan-test-fixture-isolation	codex	<TMPDIR>/codex-primary-plan-dyn-test-fixture-isolation-output.txt	ok
+plan-edge	cursor-plan-edge	codex	<TMPDIR>/cursor-plan-edge-output.txt	reused	codex-plan-edge
+plan-dyn-cross-doc-consistency	dyn-cursor-plan-cross-doc-consistency	codex	<TMPDIR>/cursor-plan-dyn-cross-doc-consistency-output.txt	reused	dyn-codex-plan-cross-doc-consistency
+plan-dyn-status-enumeration	dyn-cursor-plan-status-enumeration	codex	<TMPDIR>/cursor-plan-dyn-status-enumeration-output.txt	reused	dyn-codex-plan-status-enumeration
+plan-dyn-test-fixture-isolation	dyn-cursor-plan-test-fixture-isolation	codex	<TMPDIR>/cursor-plan-dyn-test-fixture-isolation-output.txt	reused	dyn-codex-plan-test-fixture-isolation

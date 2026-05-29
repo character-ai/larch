@@ -1,0 +1,81 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -60,15 +60,24 @@
+ - **Gap 2 — `cap-reached` paragraph** (the "do NOT enter Gate B ... short-circuits
+   directly to Step 3b, then Step 4, then Gate C" sentence; editable, not pinned):
+   append "Step 3.6 is also skipped on this path; print
+   `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`."
++- **Gap 2 — `plan-size-trigger|plan-validator-defects` branch entry**:
++  make its Step 3.6 disposition explicit: it skips Gate B **and Step 3.6**.
++  Add matching breadcrumbs for both statuses:
++  `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)` and
++  `⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)`.
+ - **Gap 2 — the "do NOT enter Gate B" follow-up sentence** that lists
+   `tally-error`, `degraded-empty-collector`, `plan-size-trigger`,
+   `plan-validator-defects`: add `panel-failed` to the list and a trailing
+-  "(Step 3.6 is skipped on these short-circuits; see the per-status breadcrumbs
+-  above)".
++  "(Step 3.6 is skipped on these short-circuits; print the per-status
++  breadcrumbs above where listed, including the plan-size and validator-defect
++  breadcrumbs)".
+ 
+ Breadcrumbs reuse the existing `⏩ 3.6: assessor — …` grammar; no new
+ `LOOP_STATUS` token is introduced and the Step 3 LOOP_STATUS validation regex
+ is unchanged. Code spans carry no inner leading/trailing whitespace (MD038).
++The edited branch matrix must leave no Step 3 exit silent about Step 3.6:
++each exit either routes through Step 3.6 or skips it with an explicit reason.
+ 
+ ### UPDATED: `skills/design/references/approval-gates.md`
+ Make the Step 3.6 bypass enumeration include `panel-failed`. Preserve the
+@@ -96,6 +105,11 @@
+   dispatch stub (worse/tie) and run `assess-plan-round.sh` → assert the
+   assessor FIRES on round 2 (`ASSESSOR_VERDICT` is a real verdict and
+   `assessor-verdict-round-2.txt` exists).
++- Isolation requirement: run this integration case in its own `mktemp`
++  sub-tmpdir, reset the round artifacts there, and restore fresh default
++  harness stubs before Entry 1. In particular, do not inherit earlier mutated
++  dispatch/monitor mocks; explicitly point `LARCH_TALLY_PLAN_ASSESSOR_SH` back
++  at the real `scripts/tally-plan-assessor.sh` for this case.
+ - Keep all assertions offline and deterministic; no external tools, no network.
+ 
+ ### UPDATED: `skills/design/scripts/test-assess-plan-round.md`
+@@ -105,7 +119,8 @@
+ 
+ ## Approach
+ - Treat gaps 1-2 as documentation consistency: enumerate Step 3.6 routing on
+-  EVERY Step 3 exit path, append-only so structural pins survive.
++  EVERY Step 3 exit path, including `plan-size-trigger` and
++  `plan-validator-defects`, append-only so structural pins survive.
+ - Treat gap 3 as the one new behavioral guard: an offline state-machine
+   integration case in the existing harness, proving the assessor only fires on
+   the second review run and that the cursor/snapshot scripts compose correctly.
+@@ -123,6 +138,9 @@
+ - The integration test must reset `plan-after-round-*` / cursor / verdict
+   artifacts between entries so write-once `snapshot-plan-round.sh` does not
+   preserve stale files and mask a regression.
++- The new integration case must not reuse harness globals that earlier subtests
++  intentionally mutate. Its tempdir, stubs, artifact paths, and assessor/tally
++  script pointers are reset before Entry 1.
+ 
+ ## Failure modes
+ - **Structural-pin breakage**: an over-eager rewrite of a pinned branch-matrix
+@@ -139,6 +157,10 @@
+   or false fails. Signal: non-deterministic `test-assess-plan-round.sh`.
+   Mitigation: explicit artifact reset + assert both round files exist and
+   differ before asserting the round-2 verdict.
++- **Mutated-stub inheritance**: earlier harness cases leave dispatch, monitor,
++  or tally-assessor mocks in a state that makes the integration case test the
++  harness instead of the real Step 3.6 composition. Mitigation: isolate the case
++  in a fresh tempdir and restore fresh default stubs/script pointers up front.
+ 
+ ## Testing strategy
+ - Expand `skills/design/scripts/test-assess-plan-round.sh` with the two-entry
+@@ -150,6 +172,6 @@
+   pre-commit) over the changed files.
+ - Manual read-through of the Step 3 branch matrix confirming every
+   `LOOP_STATUS` exit names its Step 3.6 disposition (route-through or
+-  skip-with-breadcrumb).
++  skip-with-breadcrumb), including plan-size and validator-defect exits.
+ 
+-diff_lines: 100
++diff_lines: 115
