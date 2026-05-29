@@ -10,7 +10,7 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 
 - Runs with `set -euo pipefail`.
 - Requires an absolute `--output` path and an existing output directory.
-- Requires `--classification <SIMPLE|HARD>` and `--output <absolute-path>`.
+- Requires `--classification <SIMPLE|HARD>` and `--output <absolute-path>`. Both reject a missing or empty argv value with `exit 2` and a `requires a value` stderr line (consistent with the boolean flags below).
 - Optional `--reason <text>`, `--source <text>`, `--sketch-budget <0|2|4>`, `--review-budget <quick|full>`, and `--workflow-path <SIMPLE|HARD>` default to JSON null when omitted or passed as an empty string. The parser accepts `--reason ""` / `--source ""` and emits null instead of treating the empty string as a missing argv value.
 - Optional `--partition-requested <true|false>`, optional `--brainstorm-requested <true|false>`, and optional `--manual-gate-b <true|false>` default to JSON false when omitted. Each requires a present, non-empty `true`/`false` value when passed on the command line and rejects a missing or empty argv value with `exit 2` (unlike the nullable text flags above, which accept `""` and emit JSON null). See [`skills/design/references/flags.md`](../skills/design/references/flags.md) for the public `-p` / `--partition`, `--brainstorm`, and `--manual` / `-m` flag semantics wired from `/design` Step 0b.
 - Validates `--classification` as `SIMPLE` or `HARD`; `TRIVIAL_DOC_ONLY` is rejected.
@@ -21,7 +21,7 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 
 ## Harness
 
-`scripts/test-write-run-params.sh` exercises valid v3 writes, enum rejection including `TRIVIAL_DOC_ONLY`, absolute-output validation, boolean flag validation, missing/empty-value rejection for all three boolean flags (`--partition-requested`, `--brainstorm-requested`, `--manual-gate-b`), nullable v3 optional-field behavior, exact-name round-trips for `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, and `workflow_path`, and the triple-flag `partition_requested` + `brainstorm_requested` + `manual_gate_b` persistence case.
+`scripts/test-write-run-params.sh` exercises valid v3 writes, enum rejection including `TRIVIAL_DOC_ONLY`, absolute-output validation, boolean flag validation, missing/empty-value rejection for all five required/boolean flags (`--classification`, `--output`, `--partition-requested`, `--brainstorm-requested`, `--manual-gate-b`), nullable v3 optional-field behavior, exact-name round-trips for `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, and `workflow_path`, and the triple-flag `partition_requested` + `brainstorm_requested` + `manual_gate_b` persistence case.
 
 ## Edit In Sync
 

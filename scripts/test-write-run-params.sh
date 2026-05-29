@@ -133,6 +133,22 @@ assert_rejected_with brainstorm-requested-missing 'write-run-params.sh: --brains
     --output "$TMPROOT/brainstorm-requested-missing.json" \
     --brainstorm-requested
 
+assert_rejected_with classification-empty 'write-run-params.sh: --classification requires a value' \
+    --classification "" \
+    --output "$TMPROOT/classification-empty.json"
+
+assert_rejected_with classification-missing 'write-run-params.sh: --classification requires a value' \
+    --output "$TMPROOT/classification-missing.json" \
+    --classification
+
+assert_rejected_with output-empty 'write-run-params.sh: --output requires a value' \
+    --classification SIMPLE \
+    --output ""
+
+assert_rejected_with output-missing 'write-run-params.sh: --output requires a value' \
+    --classification SIMPLE \
+    --output
+
 assert_rejected_with bad-sketch-budget 'invalid --sketch-budget: 5' \
     --classification SIMPLE \
     --sketch-budget 5 \

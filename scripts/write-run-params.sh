@@ -47,11 +47,13 @@ require_value() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --classification)
-            CLASSIFICATION="${2:?--classification requires a value}"
+            require_value --classification "${2-}"
+            CLASSIFICATION="$2"
             shift 2
             ;;
         --output)
-            OUTPUT="${2:?--output requires a value}"
+            require_value --output "${2-}"
+            OUTPUT="$2"
             shift 2
             ;;
         --reason)
