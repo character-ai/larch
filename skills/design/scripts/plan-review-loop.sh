@@ -498,7 +498,7 @@ _run_post_apply_pipeline() {
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
-    local optional_keys_file dedup_rc dedup_log
+    local optional_keys_file dedup_rc
     optional_keys_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-keys.XXXXXX")
     snapshot_optional_trailer_keys "$plan_path" "$optional_keys_file"
     local optional_had_trailers=0

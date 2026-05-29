@@ -4,9 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
-ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 SUBJECT="$SCRIPT_DIR/gate-b-dedup-plan.sh"
-DEDUP_PY="$SCRIPT_DIR/dedup-plan-lines.py"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
