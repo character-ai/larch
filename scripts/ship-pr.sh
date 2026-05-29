@@ -1937,7 +1937,7 @@ run_ci_fix_vendor() {
                 printf 'pre_refresh_head=%s\n' "$pre_refresh_head"
                 printf 'reason=vendor exited 0 and CI-fix staging/push left HEAD unchanged; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
             } > "$detail_log"
-            emit_breadcrumb --category=warn "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
+            larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
             state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
             record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
             return 1

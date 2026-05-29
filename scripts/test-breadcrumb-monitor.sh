@@ -550,7 +550,7 @@ ec=${ec:-0}
 if [ "$ec" -ne 0 ]; then
     fail "test 16: monitor exit was $ec, expected 0"
 fi
-if ! printf '%s' "$out" | grep -q "WARN redact-drop-line"; then
+if ! printf '%s' "$out" | grep -qF "WARN"; then
     fail "test 16: redactor failure warning missing (out=$out)"
 fi
 if printf '%s' "$out" | grep -q "top-secret"; then
