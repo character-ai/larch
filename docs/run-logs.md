@@ -82,11 +82,11 @@ publisher wires that helper for that skill. Today the landed callers are
 
 `breadcrumbs/` is a commit-only directory artifact, not a larch-log batch.
 `scripts/larch-log.sh commit` and `scripts/design-log-publish.sh` invoke the
-shared `larch_log_publish_breadcrumbs_shared` helper. Live breadcrumb stream
-files remain under
-the session tmpdir
-(`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
-`$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`).
+shared `larch_log_publish_breadcrumbs_shared` helper. Session-tmpdir
+`breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
+`$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are publication
+hints only; committed publication stages quiet logs from the session root, not
+live runtime streams under those directories.
 
 Source resolution uses `LARCH_BREADCRUMB_SOURCE_DIR` when set (which must still
 be under an active session tmpdir), else the log-root parent's `breadcrumbs/`.
@@ -106,16 +106,16 @@ through `redact-tmpdir-paths.sh | redact-secrets.sh --streaming --state-file
 after an atomic mktemp-plus-move of the staging directory. Quiet-log sourcing
 uses `dirname` of the breadcrumbs source path and runs even when `breadcrumbs/`
 was never created. Candidates must stay under the active session tmpdir, must
-not be symlinks, and must not be hardlinks. Legacy `*.ndjson` breadcrumb stream
-files are
-not published. When no quiet log stages, the helper returns 0 and does not
-create, replace, or clear an existing committed `breadcrumbs/` destination.
+not be symlinks, and must not be hardlinks. Legacy `*.ndjson` files and other
+non-quiet-log artifacts under the session `breadcrumbs/` hint are not published.
+When no quiet log stages, the helper returns 0 and does not create, replace,
+or clear an existing committed `breadcrumbs/` destination.
 
 The enforced-reject and silent-skip split is documented in
 [SECURITY.md § Breadcrumb stream redaction](../SECURITY.md#breadcrumb-stream-redaction):
-enforced triggers fail closed for the whole directory, while legacy ndjson
-files, hidden monitor sidecars, non-regular files, and non-matching quiet-log
-basenames are ignored and not committed.
+enforced triggers fail closed for the whole directory, while legacy ndjson files,
+non-regular files, and non-matching quiet-log basenames are ignored and not
+committed.
 
 `round-<N>/` directories are written by `larch-log.sh write-round` during
 `/implement` code review. They preserve the per-round reviewer and voter

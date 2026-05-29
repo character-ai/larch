@@ -208,8 +208,8 @@ assert_transient_signature "lib-net detects no valid output retry exhaustion" "c
 assert_transient_signature "lib-net detects git fetch failures" "git fetch origin main failed (network/auth issue)"
 assert_not_transient_signature "lib-net rejects non-network errors" "reviewer prompt malformed"
 
-# C_DONE: collector exits cleanly on a normal external output.
-echo "# Case: collector status OK on done sentinel"
+# C_OK: collector status OK on normal external output (.done present).
+echo "# Case: collector status OK on normal external output"
 OUT_DONE="$TMPROOT/cursor-done-sentinel.txt"
 printf 'NO_ISSUES_FOUND\n' > "$OUT_DONE"
 printf '0\n' > "${OUT_DONE}.done"

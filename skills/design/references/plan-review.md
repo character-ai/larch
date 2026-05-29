@@ -139,6 +139,7 @@ Submit both in-scope findings and out-of-scope observations to a 3-agent voting 
 `/design` Step 3 runs voting inside `skills/design/scripts/plan-review-loop.sh`, which calls `dispatch-plan-voters.sh` once for **all three** voters (Voter 1 first, then the Codex/Cursor waterfall). The dispatcher launches external voters in parallel where applicable, waits on wrapper sentinels, and emits stdout KVs (`VOTER_*_PATH`, `VOTER_*_STATUS`, `VOTER_*_PARSE_RATE_STATUS`, `VOTER_PATHS_FILE`, `DISPATCH_OK`, …) for downstream parsing. The inline Bash snippet below is retained as a **mechanical argv reference** for operators debugging `dispatch-plan-voters.sh` directly; the skill's primary path is the loop driver, not a second manual launch.
 
 ```bash
+_launch_id="dispatch-plan-voters.$$"
 _plan_voter_dispatch_file="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.stdout.XXXXXX")"
 "${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" \
   --ballot-file "$DESIGN_TMPDIR/ballot.txt" \

@@ -146,7 +146,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmp
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>.")"
 ```
 
-Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
+Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
 **Cursor voter replacement** (plan review and code review; if `cursor_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
 
@@ -167,7 +167,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpd
     "<voter prompt with ballot>."
 ```
 
-Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
+Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
 **Codex voter replacement** (plan review and code review; if `codex_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
 
