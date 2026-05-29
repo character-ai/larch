@@ -1,0 +1,8 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch, Codex-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Cursor-Innovation	accepted	YES	true	minor	excellent	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	excellent	false	Cursor
+FINDING_3	Codex-Pragmatic	accepted	YES	true	minor	excellent	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
+FINDING_4	Cursor-Requirements	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_5	Cursor-dyn-shell-strictness, Codex-dyn-shell-strictness	exonerated	EXONERATE	partially-true	nit	adequate	false	Claude	EXONERATE	partially-true	nit	weak	false	Codex	EXONERATE	partially-true	nit	adequate	false	Cursor
+FINDING_6	Cursor-dyn-wiring-fidelity, Codex-dyn-wiring-fidelity	exonerated	EXONERATE	true	nit	adequate	false	Claude	EXONERATE	partially-true	nit	adequate	false	Codex	EXONERATE	true	nit	good	false	Cursor
+FINDING_7	Cursor-dyn-wiring-fidelity, Codex-dyn-wiring-fidelity	accepted	EXONERATE	partially-true	nit	adequate	true	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor

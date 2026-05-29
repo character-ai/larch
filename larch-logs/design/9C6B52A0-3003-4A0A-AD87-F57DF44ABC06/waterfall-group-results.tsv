@@ -1,0 +1,16 @@
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-shell-api-claims	dyn-cursor-plan-shell-api-claims	cursor	<TMPDIR>/cursor-plan-dyn-shell-api-claims-output.txt	ok
+plan-dyn-shell-api-claims	dyn-codex-plan-shell-api-claims	codex	<TMPDIR>/codex-primary-plan-dyn-shell-api-claims-output.txt	ok
+plan-dyn-scope-exclusion	dyn-codex-plan-scope-exclusion	codex	<TMPDIR>/codex-primary-plan-dyn-scope-exclusion-output.txt	ok
+plan-dyn-test-infrastructure	dyn-codex-plan-test-infrastructure	codex	<TMPDIR>/codex-primary-plan-dyn-test-infrastructure-output.txt	ok
+plan-arch	cursor-plan-arch	codex	<TMPDIR>/cursor-plan-arch-output.txt	reused	codex-plan-arch
+plan-edge	cursor-plan-edge	codex	<TMPDIR>/cursor-plan-edge-output.txt	reused	codex-plan-edge
+plan-requirements	cursor-plan-requirements	codex	<TMPDIR>/cursor-plan-requirements-output.txt	reused	codex-plan-requirements
+plan-dyn-scope-exclusion	dyn-cursor-plan-scope-exclusion	codex	<TMPDIR>/cursor-plan-dyn-scope-exclusion-output.txt	reused	dyn-codex-plan-scope-exclusion
+plan-dyn-test-infrastructure	dyn-cursor-plan-test-infrastructure	codex	<TMPDIR>/cursor-plan-dyn-test-infrastructure-output.txt	reused	dyn-codex-plan-test-infrastructure
