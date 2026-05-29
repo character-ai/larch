@@ -25,7 +25,7 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
-# shellcheck source=lib-p3119-fence-absence.sh
+# shellcheck source=scripts/lib-p3119-fence-absence.sh
 source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/research/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/research/references"

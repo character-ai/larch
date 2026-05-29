@@ -606,6 +606,10 @@ exclude = [
   # launch-review.sh --tool cursor (issue #1502 dedup). Referenced via source
   # directives only.
   "scripts/lib-dirty-tree-sidecar.sh",
+  # scripts/lib-p3119-fence-absence.sh is a sourced-only shell library shared
+  # by the four *-structure.sh Stage-4 (#3119) harnesses via source directives
+  # only; agent-lint does not follow source directives.
+  "scripts/lib-p3119-fence-absence.sh",
   # scripts/lib-phantom-probe.sh is a sourced-only shell library (no shebang,
   # not invokable directly) shared by rebase-checkpoint-probe.sh and
   # phantom-probe-with-warn.sh; agent-lint does not follow source directives.
