@@ -37,6 +37,7 @@ contains "$SKILL_MD" '**Tier resolution**' 'SKILL must document non-interactive 
 contains "$SKILL_MD" 'default tier: SIMPLE (no --hard)' 'SKILL must pin default-tier write-run-params reason string'
 absent "$SKILL_MD" '**Tier gate**' 'SKILL must not retain retired Step 0 Tier gate sub-step'
 absent "$SKILL_MD" 'cancelled-tier-gate' 'SKILL must not retain cancelled-tier-gate outcome'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 absent "$SKILL_MD" 'the tier `AskUserQuestion`' 'SKILL must not retain interactive tier AskUserQuestion gate'
 absent "$SKILL_MD" 'argv tier: --simple' 'SKILL must not retain legacy argv-tier --simple reason string'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
