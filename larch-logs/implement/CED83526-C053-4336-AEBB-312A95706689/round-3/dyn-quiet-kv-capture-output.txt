@@ -1,0 +1,22 @@
+Reviewing quiet-KV capture and assessor dispatch wiring against the branch diff.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+The scout concern about `emit_kv` writing to FD3 and missing `DISPATCH_KV_FILE` does not apply to the current branch. `scripts/lib-quiet.sh` binds FD3 with `exec 3>&1` **before** redirecting FD1/2 to the quiet log, and explicitly documents that this is so contract output follows the child’s immediate stdout target (command substitution or a file redirect), not the grandparent:
+
+```64:68:scripts/lib-quiet.sh
+    # Inheriting LARCH_QUIET_ACTIVE=1 from a parent must NOT skip init in the
+    # child: the child's FD1 may differ (command substitution, file redirect),
+    # and exec 3>&1 must capture the child's current FD1 so emit/emit_kv route
+    # contract output to the child's immediate caller, not the grandparent.
+```
+
+With the production wiring in `assess-plan-round.sh`, the background dispatcher is started as `>"$DISPATCH_KV_FILE" 2>"$LARCH_QUIET_LOG_FILE"`. The child’s pre-init FD1 is the KV file, so post-init `emit_kv` from `dispatch-plan-assessors.sh` lands in `assessor-round-<N>.dispatch.kv`, while breadcrumbs and ordinary stdout go to the quiet log. Round-2 commit `b432abe91` fixed the real regression (dispatch KVs were previously read from the mixed quiet log); the current split capture + `cat "$DISPATCH_KV_FILE"` path is correct.
+
+Inside `dispatch-plan-assessors.sh`, `waterfall_output=$("$WATERFALL_SH" ...)` uses the same FD3 mechanism: the waterfall child re-inits quiet mode with FD1 on the substitution pipe, so `emit_kv` lines from `dispatch-with-waterfall.sh` are captured in `waterfall_output` and parsed at lines 116–125. That path is also sound.
+
+`assess-plan-round.sh`’s `tally_out=$(... 2>&1)` capture is likewise compatible with quiet mode (FD3 dup’d to the substitution pipe); lines 259–262 provide a file-based fallback via `assessor-verdict-round-<N>.txt.env` if parsing ever comes up empty.
+
+### Out-of-Scope Observations
+- **`skills/design/scripts/test-assess-plan-round.sh:4,204-207`** — The case labeled “production quiet-mode wiring” still inherits harness-wide `export LARCH_QUIET_DISABLE=1` and uses a mock dispatcher that prints KVs with `printf`, not `emit_kv`. It validates file split (`dispatch.kv` vs `.quiet.log`) but does not exercise real `dispatch-plan-assessors.sh` under quiet mode; a gap in regression signal, not a demonstrated production defect given `lib-quiet.sh` semantics.
+- **`scripts/test-lib-quiet.sh`** — No dedicated harness case for “quiet init + `>file` redirect + `emit_kv`” (only command-substitution capture in test #1). That predates this branch; the assessor wiring follows the same established pattern used elsewhere (e.g. decompose panel `>out.kv` tests).

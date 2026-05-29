@@ -48,7 +48,7 @@ fi
 # SKILL.md Step 0b uses alphabetical-within-cancelled documentation order.
 # Both forms accept the same token set.
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|failed-plan-write) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|cancelled-assessor-worse|failed-plan-write) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
@@ -436,6 +436,20 @@ restore_preserved_cost_line() {
     mv "${summary_file}.tmp" "$summary_file"
 }
 
+patch_assessor_worse_title() {
+    local summary_file="$1"
+    local round="${ASSESSOR_ROUND_NUM:-?}"
+    [[ -f "$summary_file" ]] || return 0
+    awk -v round="$round" '
+        NR == 1 {
+            print "## /design run cancelled — assessor WORSE verdict (round " round ")"
+            next
+        }
+        { print }
+    ' "$summary_file" > "${summary_file}.tmp"
+    mv "${summary_file}.tmp" "$summary_file"
+}
+
 render_or_fallback() {
     local err_file="$DESIGN_TMPDIR/render-final-summary.stderr.log"
     local summary_file="$DESIGN_TMPDIR/final-summary.md"
@@ -453,6 +467,9 @@ render_or_fallback() {
         restore_preserved_cost_line "$summary_file" "$preserved_cost_line"
     elif [ "$PHASE" = post ] && [ -n "$preserved_cost_line" ] && summary_cost_is_na_or_missing "$summary_file"; then
         restore_preserved_cost_line "$summary_file" "$preserved_cost_line"
+    fi
+    if [ "$OUTCOME" = "cancelled-assessor-worse" ]; then
+        patch_assessor_worse_title "$summary_file"
     fi
 }
 

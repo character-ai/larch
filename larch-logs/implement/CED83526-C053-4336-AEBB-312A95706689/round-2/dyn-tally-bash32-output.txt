@@ -1,0 +1,17 @@
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/tally-plan-assessor.sh:37-44` — `parse_assessment` only recognizes three literal `ASSESSMENT:` header spellings (`ASSESSMENT`, `Assessment`, `assessment`), while `dispatch-plan-assessors.sh` accepts any per-character case mix via `ASSESSMENT_PATTERN` (`[Aa][Ss][Ee]…`). An assessor line like `AsSeSsMeNt: WORSE` can pass the waterfall `--require-result-pattern` gate, be written to disk, and then be treated as unparseable (dropping an effective vote and potentially flipping a WORSE majority to `NOT_WORSE`). **Suggested fix:** Normalize the stripped header before matching (e.g., `label="${stripped%%:*}"; label=$(printf '%s' "$label" | tr '[:upper:]' '[:lower:]')` then match `assessment:`), or use an awk/regex gate aligned with the dispatcher pattern.
+
+- **correctness** `skills/design/scripts/tally-plan-assessor.sh:37-44` — The tally parser accepts only `ASSESSMENT:` (colon), but `dispatch-plan-assessors.sh:15` allows `:` or `=` in `--require-result-pattern`. Output shaped as `ASSESSMENT= WORSE` can satisfy dispatch and still fail tally parsing, with the same vote-loss / majority-flip risk as above. **Suggested fix:** Treat `=` like `:` when splitting the header (e.g., normalize the first separator to `:` before extracting the verdict token), and add a harness case for `ASSESSMENT= WORSE`.
+
+- **correctness** `skills/design/scripts/tally-plan-assessor.sh:38-44` — On a second `ASSESSMENT:` line, the parser resets `in_reason` / `in_qual` but does not clear `reasoning` or `qualifications`. A malformed or duplicated block can attach the first block’s `REASONING:` / `QUALIFICATIONS:` to the last verdict, polluting `reason_worse` and `QUALIFICATIONS_SUMMARY` shown to the operator on the WORSE-majority path. **Suggested fix:** Set `reasoning=""` and `qualifications=""` in the `ASSESSMENT:*` branch before parsing the new verdict.
+
+### Out-of-Scope Observations
+
+- Bash 3.2 portability for `declare -a qual_worse_list=()`, `qual_worse_list+=("$candidate")`, and `${#qual_worse_list[@]}` looks consistent with repo practice (`tally-plan-review.sh` and `BASH_AUTHORING.md`); array `+=` has been supported since Bash 3.1. No Bash 3.2 defect found in those constructs; `ASSESS_VERDICT` globals are reset each loop iteration at `tally-plan-assessor.sh:109`, so cross-iteration leakage is not an issue.
+
+- `strip_md_bold` (`tally-plan-assessor.sh:23-27`) removes all `*` characters on header lines via `tr -d '*'`, not paired `**` only; that is broader than the plan wording but behaves correctly for `**ASSESSMENT: WORSE**` and asymmetric wrappers.
+
+- `assess-plan-round.sh:203-219` still runs `tally-plan-assessor.sh` after `DISPATCH_OK=false`; `test-assess-plan-round.sh:95-106` explicitly expects partial outputs to be tallied. That diverges from the written plan’s “no tally on infrastructure failure” note but appears intentional in this branch.
+
+**Commits on branch (since `main`):** `d8f1b7ce2` Address code review feedback (round 1); `ad7890c72` Apply relevant-checks fixes (Step 3); `45d5f575d` chore(larch-logs): flush implement run; `46d880a70` Add HARD plan-quality assessor stage to /design.

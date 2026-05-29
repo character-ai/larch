@@ -87,6 +87,12 @@ contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping p
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'Then fire `AskUserQuestion` with exactly two options: **Continue to Step 3.6 and Gate C** (Recommended) / **Switch to discussion mode**.' 'approval-gates.md missing passive-summary Step 3.6 forward link'
+contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 forward link'
+contains "$APPROVAL_MD" 'passive-summary Continue → Step 3.6 → Step 3b → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 forward link'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$APPROVAL_MD" 'proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b' 'approval-gates.md missing shared post-apply Step 3.6 forward link'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:' 'approval-gates.md missing explicit converged/cap-hit auto-apply skip guard'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -449,7 +455,7 @@ grep -Fq 'The already-planned ad-hoc Q&A-only branch does **not** invoke this fi
 if grep -Fq 'proceed to Step 1e' "$DESIGN_OUTLINE_MD"; then
   fail "(2974) design-outline.md must not hand off outline approval to Step 1e"
 fi
-grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
+grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(2974) SKILL.md missing updated anti-halt sequence"
 if grep -Fq '1c→1d→1d.5→1e' "$SKILL_MD"; then
   fail "(2974) SKILL.md still contains stale 1d.5→1e anti-halt sequence"
@@ -713,7 +719,7 @@ assert_bash_fences_have_pause_check() {
 
 assert_step_completion_sentinels() {
   local step start_pat end_pat start_line end_line section
-  for step in 0c 1c 1d 1d.5 1e 2a 2a.5 2b 2b.5 3 3.5 3b 4 4b 5b 5c 5d 6; do
+  for step in 0c 1c 1d 1d.5 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b 4 4b 5b 5c 5d 6; do
     case "$step" in
       0c) start_pat='### 0c —'; end_pat='<!-- step:1c' ;;
       1c) start_pat='<!-- step:1c'; end_pat='<!-- step:1d' ;;
@@ -725,7 +731,8 @@ assert_step_completion_sentinels() {
       2b) start_pat='<!-- step:2b —'; end_pat='### Step 2b.5' ;;
       2b.5) start_pat='### Step 2b.5'; end_pat='<!-- step:3' ;;
       3) start_pat='<!-- step:3 —'; end_pat='<!-- step:3.5' ;;
-      3.5) start_pat='<!-- step:3.5'; end_pat='<!-- step:3b' ;;
+      3.5) start_pat='<!-- step:3.5'; end_pat='<!-- step:3.6' ;;
+      3.6) start_pat='<!-- step:3.6'; end_pat='<!-- step:3b' ;;
       3b) start_pat='<!-- step:3b'; end_pat='<!-- step:4 —' ;;
       4) start_pat='<!-- step:4 —'; end_pat='<!-- step:4b' ;;
       4b) start_pat='<!-- step:4b'; end_pat='### 5b' ;;
@@ -824,6 +831,32 @@ for _label in \
     || fail "(FINDING_2667_TEMPLATE) plan-review.md FINDING_N template missing label: $_label"
 done
 echo "PASS: FINDING_2667_TEMPLATE — FINDING_N template six-field label set OK"
+
+contains "$SKILL_MD" 'snapshot-plan-round.sh' 'SKILL.md Step 2b missing snapshot-plan-round'
+contains "$SKILL_MD" 'write-original --design-tmpdir' 'SKILL.md Step 2b missing write-original invocation'
+contains "$SKILL_MD" 'assess-plan-round.sh' 'SKILL.md Step 3.6 missing assess-plan-round.sh'
+contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
+contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
+contains "$SKILL_MD" "--round-num \"\$ROUND_NUM\"" 'SKILL.md missing --round-num ROUND_NUM to plan-review-loop'
+contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
+contains "$SKILL_MD" 'passive-summary Continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
+contains "$SKILL_MD" 'cancelled-assessor-worse' 'SKILL.md missing cancelled-assessor-worse outcome'
+contains "$REPO_ROOT/skills/design/scripts/render-final-summary.sh" 'cancelled-assessor-worse' 'render-final-summary.sh missing cancelled-assessor-worse outcome'
+contains "$REPO_ROOT/skills/design/scripts/test-render-final-summary.sh" "pass 'cancelled-assessor-worse outcome'" 'test-render-final-summary.sh missing cancelled-assessor-worse harness pin'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'claude-plan-assessor' 'lib-timing-kinds.sh missing claude-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'claude-phase2-plan-assessor' 'lib-timing-kinds.sh missing claude-phase2-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'claude-phase3-plan-assessor' 'lib-timing-kinds.sh missing claude-phase3-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'codex-plan-assessor' 'lib-timing-kinds.sh missing codex-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'codex-phase1-plan-assessor' 'lib-timing-kinds.sh missing codex-phase1-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'codex-phase2-plan-assessor' 'lib-timing-kinds.sh missing codex-phase2-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'cursor-plan-assessor' 'lib-timing-kinds.sh missing cursor-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'cursor-phase2-plan-assessor' 'lib-timing-kinds.sh missing cursor-phase2-plan-assessor'
+contains "$REPO_ROOT/scripts/lib-timing-kinds.sh" 'cursor-phase3-plan-assessor' 'lib-timing-kinds.sh missing cursor-phase3-plan-assessor'
+contains "$MAKEFILE" 'test-snapshot-plan-round' 'Makefile missing test-snapshot-plan-round'
+contains "$MAKEFILE" 'test-dispatch-plan-assessors' 'Makefile missing test-dispatch-plan-assessors'
+contains "$MAKEFILE" 'test-render-assessor-prompt' 'Makefile missing test-render-assessor-prompt'
+contains "$MAKEFILE" 'test-tally-plan-assessor' 'Makefile missing test-tally-plan-assessor'
+contains "$MAKEFILE" 'test-assess-plan-round' 'Makefile missing test-assess-plan-round'
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

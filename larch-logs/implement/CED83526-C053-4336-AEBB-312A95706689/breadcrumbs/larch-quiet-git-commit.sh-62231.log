@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-add-plan-quality-assessor-s-2953 91f7fe955] Fix CI failure (main-agent): add snapshot stub and fix heredoc quoting in test-step3-review-cap.sh
+ 1 file changed, 10 insertions(+), 4 deletions(-)

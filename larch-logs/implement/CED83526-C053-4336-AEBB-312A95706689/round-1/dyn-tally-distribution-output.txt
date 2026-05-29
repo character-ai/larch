@@ -1,0 +1,16 @@
+Reviewing the branch diff and `tally-plan-assessor.sh` tally logic against the plan's worked examples.
+**Branch commits** (since `main`):
+
+- `46d880a70` — Add HARD plan-quality assessor stage to /design  
+- `45d5f575d` — chore(larch-logs): flush implement run  
+- `ad7890c72` — Apply relevant-checks fixes (Step 3)
+
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/tally-plan-assessor.sh:142-150` — `QUALIFICATIONS_SUMMARY` uses a single fallback (`Assessors found no WORSE-majority consensus.`) for every outcome, including when `worse_majority=true` but no WORSE assessor supplied a `QUALIFICATIONS:` block (`qual_worse` empty). Step 3.6 surfaces that field in the Continue/Stop `AskUserQuestion` (FINDING_15), so operators can see text that denies a WORSE majority while `ASSESSOR_VERDICT=worse-majority` and the verdict file say the opposite. The strict-majority `if` blocks at lines 118–121 match FINDING_3/FINDING_8 (including `(0,2,1)` → `successful=3`, `worse=1` → NOT_WORSE); TIE is counted only in `successful`/`tie`, not in `worse`/`better`; `strip_md_bold` + `tr -d '*'` correctly normalizes `**ASSESSMENT: WORSE**`. **Suggested fix:** Branch the fallback on `worse_majority` (e.g. use `reason_worse` or an explicit “WORSE-majority reached; no assessor QUALIFICATIONS” string when `worse_majority=true` and `qual_worse` is empty), and extend `test-tally-plan-assessor.sh` to assert `QUALIFICATIONS_SUMMARY` content on a WORSE-majority path with missing `QUALIFICATIONS:` lines.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/design/scripts/test-tally-plan-assessor.sh:48-72` — The harness exercises several FINDING_8 tuples but not all documented cells (e.g. `(0,3,0)` all-TIE, `(2,1,0)`, `(0,2,0)` with two successful assessors, and the 0-successful degraded case). Manual review of `tally-plan-assessor.sh:118-121` suggests those cases would behave correctly, but they are not regression-pinned.
+
+- **correctness** `skills/design/scripts/tally-plan-assessor.sh:46-57` — Only the `ASSESSMENT:` header is matched case-insensitively (`ASSESSMENT:*|Assessment:*|assessment:*`); `REASONING:` / `QUALIFICATIONS:` remain case-sensitive, which may drop structured fields from atypical model output without changing the verdict token.
