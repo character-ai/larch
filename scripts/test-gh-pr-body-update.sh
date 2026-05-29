@@ -40,4 +40,33 @@ rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "malformed --repo should fail"
 
+cat > "$stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${GH_LOG:?}"
+attempt_file="${GH_ATTEMPT_FILE:?}"
+attempt=0
+if [[ -f "$attempt_file" ]]; then
+    attempt=$(cat "$attempt_file")
+fi
+attempt=$((attempt + 1))
+printf '%s\n' "$attempt" > "$attempt_file"
+if [[ "$1 $2" != "pr edit" ]]; then
+    echo "unexpected gh command: $*" >&2
+    exit 2
+fi
+if [[ "$attempt" -lt 3 ]]; then
+    echo "Could not resolve host: api.github.com" >&2
+    exit 1
+fi
+exit 0
+GH
+chmod +x "$stub_dir/gh"
+
+GH_ATTEMPT_FILE="$TMPROOT/retry-attempts" GH_LOG="$TMPROOT/retry-gh.log" PATH="$stub_dir:$PATH" \
+    "$SCRIPT" --pr 123 --body-file "$TMPROOT/body.md" >"$TMPROOT/retry.out"
+grep -Fxq 'UPDATED=true' "$TMPROOT/retry.out" || fail "transient retry should succeed"
+attempts=$(cat "$TMPROOT/retry-attempts")
+[[ "$attempts" == "3" ]] || fail "expected 3 gh pr edit attempts, got $attempts"
+
 echo "PASS: test-gh-pr-body-update.sh"

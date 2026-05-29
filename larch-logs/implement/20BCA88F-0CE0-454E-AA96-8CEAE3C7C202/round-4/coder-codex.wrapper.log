@@ -1,0 +1,18 @@
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+2026-05-28T23:36:13.174243Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/skills/design/scripts/decompose-file-issues.sh:
+        fi
+        printf '%s' "$body" > "$redacted"
+        comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/decompose-comment.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+            gh issue comment "$original" --repo "$repo" --body-file "$redacted"; then
+            :
+        else
+            comment_err=$(cat "$comment_fail_file" 2>/dev/null || true)
+            rm -f "$comment_fail_file"
+            append_tool_failure \
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+2026-05-28T23:38:26.546591Z ERROR codex_core::session: failed to record rollout items: thread 019e70ef-cc3f-7561-937b-0d07eb55c4e9 not found
+✓ codex agent: completed (exit code 0, 290s elapsed, output 77 bytes)

@@ -29,6 +29,8 @@ REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-net.sh
+source "$PLUGIN_ROOT/scripts/lib-net.sh"
 larch_quiet_init
 
 ISSUE=""
@@ -74,16 +76,17 @@ if [[ -z "$REPO" ]]; then
     fi
 fi
 
-ERR_TMP=$(mktemp)
-trap 'rm -f "$ERR_TMP"' EXIT
-
-if gh issue close --repo "$REPO" "$ISSUE" --reason "not planned" >/dev/null 2>"$ERR_TMP"; then
+close_fail_file=$(mktemp "${TMPDIR:-/tmp}/cleanup-failed-issue.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$close_fail_file" \
+    gh issue close --repo "$REPO" "$ISSUE" --reason "not planned"; then
+    rm -f "$close_fail_file"
     emit_kv CLOSED "true"
     emit_kv ISSUE "$ISSUE"
     exit 0
 fi
 
-ERR_CONTENT=$(cat "$ERR_TMP")
+ERR_CONTENT=$(cat "$close_fail_file" 2>/dev/null || true)
+rm -f "$close_fail_file"
 REDACTED_ERR=$(printf '%s' "$ERR_CONTENT" | "$REDACT_HELPER" 2>/dev/null) || REDACTED_ERR="(redaction-helper failed; original suppressed)"
 ERR_FLAT=$(echo "$REDACTED_ERR" | tr '\n' ' ' | head -c 500)
 emit_kv CLOSED "false"

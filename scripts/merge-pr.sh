@@ -40,11 +40,38 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
+REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
+REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
 usage() { larch_err "Usage: merge-pr.sh --pr NUMBER --repo OWNER/REPO [--no-admin-fallback]"; }
+
+redact_merge_diagnostic() {
+    local err_text="$1"
+    local redacted
+    local status=0
+    if [[ ! -x "$REDACT_HELPER" ]] || [[ ! -x "$REDACT_TMPDIR_HELPER" ]]; then
+        printf '%s' 'merge diagnostic redaction unavailable'
+        return 0
+    fi
+    redacted=$(printf '%s' "$err_text" | "$REDACT_TMPDIR_HELPER" | "$REDACT_HELPER") || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'merge diagnostic redaction unavailable'
+        return 0
+    fi
+    case "$redacted" in
+        *'[content truncated'*)
+            printf '%s' 'merge diagnostic redaction unavailable'
+            return 0
+            ;;
+    esac
+    printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+}
 
 # --- Parse arguments (before installing EXIT trap) ---
 PR_NUMBER=""
@@ -278,7 +305,15 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
     fi
 fi
 
-if ! git fetch origin main --quiet 2>/dev/null; then
+fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-fetch.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fetch_fail_file" \
+    git fetch origin main --quiet; then
+  FETCH_EXIT=0
+else
+  FETCH_EXIT=$_WTR_RC
+fi
+rm -f "$fetch_fail_file"
+if [[ "$FETCH_EXIT" -ne 0 ]]; then
     MERGE_RESULT="error"
     ERROR="git fetch origin main failed; cannot verify same-version race"
     exit 0
@@ -315,7 +350,15 @@ fi
 # land the same version on main. A second fetch immediately before the merge shrinks
 # the race window to the network latency of the merge API call itself.
 if [[ -n "$BUMP_SUBJECT" ]]; then
-    if ! git fetch origin main --quiet 2>/dev/null; then
+    premerge_fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-premerge-fetch.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$premerge_fetch_fail_file" \
+        git fetch origin main --quiet; then
+        PREMERGE_FETCH_EXIT=0
+    else
+        PREMERGE_FETCH_EXIT=$_WTR_RC
+    fi
+    rm -f "$premerge_fetch_fail_file"
+    if [[ "$PREMERGE_FETCH_EXIT" -ne 0 ]]; then
         MERGE_RESULT="error"
         ERROR="git fetch origin main failed (pre-merge re-fetch)"
         exit 0
@@ -330,8 +373,16 @@ fi
 
 # --- All checks passed — merge with selected privilege path ---
 if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
-    MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash 2>&1)
-    MERGE_EXIT=$?
+    merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-merge.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
+        gh pr merge "$PR_NUMBER" --repo "$REPO" --squash; then
+        MERGE_EXIT=0
+    else
+        MERGE_EXIT=$_WTR_RC
+    fi
+    MERGE_OUTPUT=$_WTR_OUT
+    MERGE_FAIL_OUTPUT=$(cat "$merge_fail_file" 2>/dev/null || true)
+    rm -f "$merge_fail_file"
 
     if [[ $MERGE_EXIT -eq 0 ]]; then
         MERGE_RESULT="merged"
@@ -340,13 +391,22 @@ if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
     fi
 
     MERGE_RESULT="policy_denied"
-    ERROR="branch protection denied merge; --no-admin-fallback set"
+    MERGE_OUTPUT_ONE_LINE=$(redact_merge_diagnostic "${MERGE_FAIL_OUTPUT:-$MERGE_OUTPUT}")
+    ERROR="branch protection denied merge; --no-admin-fallback set: $MERGE_OUTPUT_ONE_LINE"
     exit 0
 fi
 
 larch_err "ℹ CI is green and branch is fresh. Trying merge with --admin..."
-ADMIN_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --admin 2>&1)
-ADMIN_EXIT=$?
+admin_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-admin.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$admin_fail_file" \
+    gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --admin; then
+    ADMIN_EXIT=0
+else
+    ADMIN_EXIT=$_WTR_RC
+fi
+ADMIN_OUTPUT=$_WTR_OUT
+ADMIN_FAIL_OUTPUT=$(cat "$admin_fail_file" 2>/dev/null || true)
+rm -f "$admin_fail_file"
 
 if [[ $ADMIN_EXIT -eq 0 ]]; then
     MERGE_RESULT="admin_merged"
@@ -354,10 +414,18 @@ if [[ $ADMIN_EXIT -eq 0 ]]; then
     exit 0
 fi
 
-larch_err "ℹ Admin merge attempt failed: $ADMIN_OUTPUT"
+larch_err "ℹ Admin merge attempt failed: $(redact_merge_diagnostic "${ADMIN_FAIL_OUTPUT:-$ADMIN_OUTPUT}")"
 larch_err "ℹ Retrying merge without --admin..."
-MERGE_OUTPUT=$(gh pr merge "$PR_NUMBER" --repo "$REPO" --squash 2>&1)
-MERGE_EXIT=$?
+merge_fallback_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-merge-fallback.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$merge_fallback_fail_file" \
+    gh pr merge "$PR_NUMBER" --repo "$REPO" --squash; then
+    MERGE_EXIT=0
+else
+    MERGE_EXIT=$_WTR_RC
+fi
+MERGE_OUTPUT=$_WTR_OUT
+MERGE_FAIL_OUTPUT=$(cat "$merge_fallback_fail_file" 2>/dev/null || true)
+rm -f "$merge_fallback_fail_file"
 
 if [[ $MERGE_EXIT -eq 0 ]]; then
     MERGE_RESULT="merged"
@@ -368,8 +436,8 @@ fi
 # Collapse newlines in tool output so ERROR stays a single key=value line —
 # emit_output() prints `ERROR=$ERROR` with `echo`, and an embedded newline
 # would split it across multiple lines and break key-based parsers downstream.
-ADMIN_OUTPUT_ONE_LINE=$(printf '%s' "$ADMIN_OUTPUT" | tr '\n' ' ')
-MERGE_OUTPUT_ONE_LINE=$(printf '%s' "$MERGE_OUTPUT" | tr '\n' ' ')
+ADMIN_OUTPUT_ONE_LINE=$(redact_merge_diagnostic "${ADMIN_FAIL_OUTPUT:-$ADMIN_OUTPUT}")
+MERGE_OUTPUT_ONE_LINE=$(redact_merge_diagnostic "${MERGE_FAIL_OUTPUT:-$MERGE_OUTPUT}")
 MERGE_RESULT="admin_failed"
 ERROR="Admin merge failed: $ADMIN_OUTPUT_ONE_LINE; fallback merge failed: $MERGE_OUTPUT_ONE_LINE"
 exit 0

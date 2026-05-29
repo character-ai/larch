@@ -30,20 +30,45 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+REDACT_SECRETS_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 
-PUSH_STDERR=""
 GIT_STATUS_STDERR=""
 PR_STDERR_FILE=""
 PR_STDOUT_FILE=""
 REDACTED_BODY_FILE=""
+NET_FAIL_FILES=()
 cleanup() {
-    rm -f "$PUSH_STDERR" "$GIT_STATUS_STDERR" "$PR_STDERR_FILE" "$PR_STDOUT_FILE" "$REDACTED_BODY_FILE"
+    rm -f "${NET_FAIL_FILES[@]}" "$GIT_STATUS_STDERR" "$PR_STDERR_FILE" "$PR_STDOUT_FILE" "$REDACTED_BODY_FILE"
 }
 trap cleanup EXIT
 
 usage() { larch_err "Usage: create-pr.sh --title TEXT --body-file FILE [--draft] [--repo OWNER/REPO] [--base BASE_REF]"; }
+
+redact_diagnostic() {
+    local text="$1"
+    local redacted
+    local status=0
+    if [[ ! -x "$REDACT_TMPDIR_HELPER" ]] || [[ ! -x "$REDACT_SECRETS_HELPER" ]]; then
+        printf '%s' 'diagnostic redaction unavailable'
+        return 0
+    fi
+    redacted=$(printf '%s' "$text" | "$REDACT_TMPDIR_HELPER" | "$REDACT_SECRETS_HELPER") || status=$?
+    if [[ "$status" -ne 0 ]]; then
+        printf '%s' 'diagnostic redaction unavailable'
+        return 0
+    fi
+    case "$redacted" in
+        *'[content truncated'*)
+            printf '%s' 'diagnostic redaction unavailable'
+            return 0
+            ;;
+    esac
+    printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+}
 
 TITLE=""
 BODY_FILE=""
@@ -125,10 +150,15 @@ if [[ -n "$EXISTING_PR" ]]; then
             # Push any new local commits before returning. Fail closed on real
             # push errors rather than swallowing them — a stale remote on an
             # OPEN PR is exactly the silent-failure mode this branch must avoid.
-            PUSH_STDERR=$(mktemp)
-            if git push -u origin HEAD >/dev/null 2>"$PUSH_STDERR"; then
-                : # plain push succeeded (fast-forward or already-in-sync)
+            push_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-pr-push.XXXXXX")
+            NET_FAIL_FILES+=("$push_fail_file")
+            if with_transient_retry transient_envelope_predicate_none "$push_fail_file" \
+                git push -u origin HEAD; then
+                push_rc=0
             else
+                push_rc=$_WTR_RC
+            fi
+            if [[ "$push_rc" -ne 0 ]]; then
                 # Plain push failed — commonly non-fast-forward after history
                 # rewrite (e.g., /implement Step 12 rebase + re-bump). Escalate
                 # to force-with-lease via the shared helper, which encodes
@@ -140,8 +170,8 @@ if [[ -n "$EXISTING_PR" ]]; then
                 # Suppress helper stdout (BRANCH=/PUSHED=/STATUS= keys) so the
                 # PR_* stdout contract this script publishes stays intact;
                 # capture helper stderr to surface on real failure.
-                if ! "$SCRIPT_DIR/git-force-push.sh" >/dev/null 2>>"$PUSH_STDERR"; then
-                    larch_err "ERROR: Failed to push branch on existing-PR fast-path: $(cat "$PUSH_STDERR")"
+                if ! "$SCRIPT_DIR/git-force-push.sh" >/dev/null 2>>"$push_fail_file"; then
+                    larch_err "ERROR: Failed to push branch on existing-PR fast-path: $(redact_diagnostic "$(cat "$push_fail_file" 2>/dev/null || true)")"
                     exit 1
                 fi
             fi
@@ -197,9 +227,16 @@ recover_existing_pr_after_create_conflict() {
 }
 
 # --- Push branch ---
-PUSH_STDERR=$(mktemp)
-if ! git push -u origin HEAD >"$PUSH_STDERR" 2>&1; then
-    larch_err "ERROR: Failed to push branch: $(cat "$PUSH_STDERR")"
+push_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-pr-push-new.XXXXXX")
+NET_FAIL_FILES+=("$push_fail_file")
+if with_transient_retry transient_envelope_predicate_none "$push_fail_file" \
+    git push -u origin HEAD; then
+    push_rc=0
+else
+    push_rc=$_WTR_RC
+fi
+if [[ "$push_rc" -ne 0 ]]; then
+    larch_err "ERROR: Failed to push branch: $(redact_diagnostic "$(cat "$push_fail_file" 2>/dev/null || true)")"
     exit 1
 fi
 
@@ -223,22 +260,25 @@ fi
 GH_CREATE_ARGV="gh pr create ${GH_REPO_ARGS[*]+${GH_REPO_ARGS[*]}} --assignee @me --head $BRANCH --base $BASE_REF --title <redacted> --body-file <redacted> ${GH_DRAFT_ARGS[*]+${GH_DRAFT_ARGS[*]}}"
 GH_CREATE_ARGV=$(printf '%s\n' "$GH_CREATE_ARGV" | "$REDACT_TMPDIR_HELPER")
 
-# Capture stdout to a tmpfile (for last-10-lines diagnostic) while stderr goes
-# to PR_STDERR_FILE.  Use set +e/-e to prevent set -e from firing on gh non-zero
-# before PR_EXIT=$? is reached.
-set +e
-PR_OUTPUT=$(gh pr create \
+create_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-pr-gh-create.XXXXXX")
+NET_FAIL_FILES+=("$create_fail_file")
+if with_transient_retry transient_envelope_predicate_none "$create_fail_file" \
+    gh pr create \
     ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} \
     --assignee @me \
     --head "$BRANCH" \
     --base "$BASE_REF" \
     --title "$TITLE" \
     --body-file "$REDACTED_BODY_FILE" \
-    ${GH_DRAFT_ARGS[@]+"${GH_DRAFT_ARGS[@]}"} \
-    2>"$PR_STDERR_FILE")
-PR_EXIT=$?
-set -e
+    ${GH_DRAFT_ARGS[@]+"${GH_DRAFT_ARGS[@]}"}; then
+    create_rc=0
+else
+    create_rc=$_WTR_RC
+fi
+PR_OUTPUT=$_WTR_OUT
+PR_EXIT=$create_rc
 printf '%s\n' "$PR_OUTPUT" > "$PR_STDOUT_FILE"
+printf '%s\n' "$(cat "$create_fail_file" 2>/dev/null || true)" > "$PR_STDERR_FILE"
 
 if [[ $PR_EXIT -ne 0 ]]; then
     PR_STDERR=$(cat "$PR_STDERR_FILE" 2>/dev/null || true)

@@ -364,7 +364,7 @@ run_case "no_admin_policy_denied" \
     env GH_MERGE_STATE=HAS_HOOKS GH_PLAIN_EXIT=1 GH_PLAIN_OUTPUT="review required" \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo --no-admin-fallback
 assert_stdout_contains "no_admin_policy_denied" "MERGE_RESULT=policy_denied" "D: plain-only failure emits policy_denied"
-assert_stdout_contains "no_admin_policy_denied" "ERROR=branch protection denied merge; --no-admin-fallback set" "D: policy_denied error string is stable"
+assert_stdout_matches "no_admin_policy_denied" "^ERROR=branch protection denied merge; --no-admin-fallback set:" "D: policy_denied error prefix is stable"
 assert_command_count "no_admin_policy_denied" "gh.log" "pr merge 123 --repo owner/repo --squash --admin" "0" "D: --admin is not invoked on policy_denied"
 
 echo
@@ -396,6 +396,21 @@ if [[ "$ERROR_LINE_COUNT" == "1" ]]; then
 else
     fail "F: ERROR is a single line (got $ERROR_LINE_COUNT)"
     sed 's/^/    stdout: /' "$TMPDIR_BASE/admin_failed/stdout.log"
+fi
+
+run_case "admin_failed_redacted" \
+    env GH_MERGE_STATE=BLOCKED \
+    GH_ADMIN_EXIT=1 \
+    GH_ADMIN_OUTPUT='admin helper saw github_pat_abcdefghijklmnopqrstuvwxyz1234567890' \
+    GH_PLAIN_EXIT=1 \
+    GH_PLAIN_OUTPUT='plain helper saw ghp_'"123456789012345678""901234567890123456" \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+if grep -Eq 'github_pat_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+' "$TMPDIR_BASE/admin_failed_redacted/stdout.log" "$TMPDIR_BASE/admin_failed_redacted/stderr.log"; then
+    fail "F2: merge diagnostics leaked raw token"
+    sed 's/^/    stdout: /' "$TMPDIR_BASE/admin_failed_redacted/stdout.log"
+    sed 's/^/    stderr: /' "$TMPDIR_BASE/admin_failed_redacted/stderr.log"
+else
+    ok "F2: merge diagnostics redact raw tokens"
 fi
 
 echo

@@ -1547,14 +1547,14 @@ run_pr_create_phase() {
     # helper failure here stalls Step 9b with no PR yet. PR_URL defaults to
     # "N/A".
     fail_file=$(failure_capture_path pr-create)
-    with_transient_retry transient_envelope_predicate_none "$fail_file" \
+    ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
         "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
     rc=$_WTR_RC
     final_report_output=$_WTR_OUT
     if [ "$rc" -ne 0 ]; then
         record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
         if run_recovery_waterfall pr-create fix "$fail_file" write-final-pre; then
-            with_transient_retry transient_envelope_predicate_none "$fail_file" \
+            ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
                 "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
             rc=$_WTR_RC
             final_report_output=$_WTR_OUT
@@ -1583,14 +1583,14 @@ run_pr_create_phase() {
         fi
     fi
     fail_file=$(failure_capture_path pr-create)
-    with_transient_retry transient_envelope_predicate_none "$fail_file" \
+    ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
         "$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}"
     rc=$_WTR_RC
     out=$_WTR_OUT
     if [ "$rc" -ne 0 ]; then
         record_failure pr-create "create-pr.sh" "$rc" "$fail_file" Warnings
         if run_recovery_waterfall pr-create fix "$fail_file" create-pr "$title" "$IMPLEMENT_TMPDIR/pr-body.md"; then
-            with_transient_retry transient_envelope_predicate_none "$fail_file" \
+            ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
                 "$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}"
             rc=$_WTR_RC
             out=$_WTR_OUT
@@ -1620,8 +1620,12 @@ run_pr_create_phase() {
     [ "$rc" -eq 0 ] || record_failure pr-create "write-final-report.sh post" "$rc" "$fail_file" Warnings
     if [ "$pr_status" = "existing" ]; then
         fail_file=$(failure_capture_path pr-create)
-        gh pr edit "$pr_number" "${repo_args[@]+"${repo_args[@]}"}" --title "$title" > "$fail_file" 2>&1
-        rc=$?
+        if ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
+            gh pr edit "$pr_number" "${repo_args[@]+"${repo_args[@]}"}" --title "$title"; then
+            rc=0
+        else
+            rc=$_WTR_RC
+        fi
         [ "$rc" -eq 0 ] || record_failure pr-create "gh pr edit --title" "$rc" "$fail_file"
         fail_file=$(failure_capture_path pr-create)
         "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" > "$fail_file" 2>&1
@@ -2390,10 +2394,6 @@ is_head_divergence_recoverable() {
     git merge-base --is-ancestor "$pr_head_oid" "$current_head" 2>/dev/null
 }
 
-transient_envelope_predicate_none() {
-    return 1
-}
-
 transient_envelope_predicate_merge_pr() {
     local out=$1
     local mr err
@@ -2416,49 +2416,22 @@ transient_envelope_predicate_ci_wait() {
     return 1
 }
 
-# Retry helper: up to 3 attempts; transient if predicate(content) returns true,
-# OR (non-zero rc AND net signature on fail_file content). The predicate is consulted
-# BEFORE the rc=0 short-circuit because helpers like merge-pr.sh and ci-wait.sh
-# signal failure via stdout KV envelopes (MERGE_RESULT=error|admin_failed,
-# ACTION=bail) while still exiting 0; a pre-rc=0-return predicate consultation lets
-# those envelopes drive transient retries instead of being silently accepted as
-# success. Predicate argument is the combined stderr+stdout content read from the
-# capture file (acceptance criterion #3: classification uses combined streams).
-# $1=predicate name, $2=fail_file path (capture path for the helper), $3..$n command+args.
-# Sets global _WTR_OUT and _WTR_RC.
-with_transient_retry() {
-    local pred=$1 ff=$2 attempt=1 transient=0 ff_content
-    shift 2
-    _WTR_OUT=""
-    _WTR_RC=0
-    while [ "$attempt" -le 3 ]; do
-        : > "$ff"
-        if _WTR_OUT=$("$@" 2>>"$ff"); then
-            _WTR_RC=0
-        else
-            _WTR_RC=$?
-        fi
-        printf '%s\n' "$_WTR_OUT" >> "$ff"
-        ff_content=$(cat "$ff" 2>/dev/null || true)
-        transient=0
-        # Run predicate BEFORE the rc=0 short-circuit so rc=0 envelope-error cases
-        # (e.g. merge-pr.sh exit 0 with MERGE_RESULT=error+transient ERROR=) retry
-        # instead of being treated as success.
-        if "$pred" "$ff_content"; then
-            transient=1
-        fi
-        if [ "$transient" -eq 0 ] && [ "$_WTR_RC" -ne 0 ] && is_transient_net_signature "$ff_content"; then
-            transient=1
-        fi
-        if [ "$transient" -eq 0 ]; then
-            return "$_WTR_RC"
-        fi
-        if [ "$attempt" -eq 3 ]; then
-            exit_transient_net "Transient retries exhausted"
-        fi
-        attempt=$((attempt + 1))
-    done
-    return "$_WTR_RC"
+# ship-pr terminal-exit wrapper around lib-net's return-style with_transient_retry.
+ship_pr_with_transient_retry() {
+    local pred=$1 ff=$2
+    with_transient_retry "$@"
+    local rc=$_WTR_RC
+    local ff_content
+    ff_content=$(cat "$ff" 2>/dev/null || true)
+    # Envelope still transient after exhaustion (e.g. MERGE_RESULT=error / ACTION=bail
+    # with a transient ERROR=): preserve ship-pr's terminal-exit semantics regardless of rc.
+    if "$pred" "$ff_content"; then
+        exit_transient_net "Transient envelope exhausted"
+    fi
+    [ "$rc" -eq 0 ] && return 0
+    is_transient_net_signature "$ff_content" \
+        && exit_transient_net "Transient retries exhausted"
+    return "$rc"
 }
 
 recovery_waterfall_paths_delta_revert() {
@@ -2783,7 +2756,9 @@ _run_rebase_rebump_from_step3() {
             fi
             pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
             if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
-                gh pr edit "$pr_n" --repo "$repo_r" \
+                fail_file=$(failure_capture_path rebase)
+                with_transient_retry transient_envelope_predicate_none "$fail_file" \
+                    gh pr edit "$pr_n" --repo "$repo_r" \
                     --title "Bump version to $new_version" >/dev/null 2>&1 || true
             fi
             if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
@@ -2913,7 +2888,7 @@ run_rebase_rebump() {
 
     # 2. Rebase without pushing; keep in-progress on conflict for vendor resolution
     fail_file=$(failure_capture_path rebase)
-    with_transient_retry transient_envelope_predicate_none "$fail_file" \
+    ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
         "$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict
     rebase_rc=$_WTR_RC
     rebase_out=$_WTR_OUT
@@ -3089,7 +3064,7 @@ $(ci_common_args)
 EOF
     fail_file=$(failure_capture_path "$phase")
     unset LARCH_PAIRED_PID_FILE
-    with_transient_retry transient_envelope_predicate_ci_wait "$fail_file" "$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}"
+    ship_pr_with_transient_retry transient_envelope_predicate_ci_wait "$fail_file" "$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}"
     rc=$_WTR_RC
     out=$_WTR_OUT
     if [ "$rc" -ne 0 ]; then
@@ -3109,7 +3084,7 @@ EOF
             merge_args=(--pr "$(read_state PR_NUMBER)" --repo "$(read_state REPO)")
             [ "$NO_ADMIN_FALLBACK" = "true" ] && merge_args+=(--no-admin-fallback)
             fail_file=$(failure_capture_path ci-merge)
-            with_transient_retry transient_envelope_predicate_merge_pr "$fail_file" \
+            ship_pr_with_transient_retry transient_envelope_predicate_merge_pr "$fail_file" \
                 "$SCRIPT_DIR/merge-pr.sh" "${merge_args[@]}"
             rc=$_WTR_RC
             merge_out=$_WTR_OUT
@@ -3288,7 +3263,7 @@ run_postmerge_phase() {
                 # in state, so tmpdir summary-final.md / run-log final-summary.md mirror align with merged OUTCOME
                 # (pre-merge pass wrote bailed). NEVER #19: no post-merge git commit publishes this.
                 fail_file=$(failure_capture_path postmerge)
-                with_transient_retry transient_envelope_predicate_none "$fail_file" \
+                ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
                     "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
                 final_report_rc=$_WTR_RC
                 final_report_output=$_WTR_OUT

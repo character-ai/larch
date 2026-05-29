@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 
 MARKER='<!-- larch:diagrams v1 -->'
 ISSUE=""
@@ -393,11 +395,16 @@ if [ ! -s "$sections_redacted" ] && [ "${comment_id:-}" = "" ]; then
 fi
 
 if [ ! -s "$sections_redacted" ] && [ "${comment_id:-}" != "" ]; then
-    delete_err="$(tmp_file)"
-    gh api "/repos/${REPO}/issues/comments/${comment_id}" -X DELETE > /dev/null 2>"$delete_err" || {
-        err="$(cat "$delete_err" 2>/dev/null || true)"
+    delete_fail_file=$(mktemp "${TMPDIR:-/tmp}/upsert-diagrams-delete.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$delete_fail_file" \
+        gh api "/repos/${REPO}/issues/comments/${comment_id}" -X DELETE; then
+        :
+    else
+        err="$(cat "$delete_fail_file" 2>/dev/null || true)"
+        rm -f "$delete_fail_file"
         fail 2 "gh api comment delete failed: $(redact_gh_error "$err")"
-    }
+    fi
+    rm -f "$delete_fail_file"
     emit_kv UPSERT_STATUS ok
     emit_kv COMMENT_URL ""
     emit_kv UPDATED true

@@ -27,6 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
+REDACT_HELPER="$SCRIPT_DIR/redact-secrets.sh"
 
 usage() { larch_err "Usage: gh-pr-body-update.sh --pr <number> --body-file <path> [--repo OWNER/REPO]"; }
 
@@ -69,13 +72,34 @@ emit_output() {
 }
 trap 'emit_output' EXIT
 
+redact_text() {
+    local text="$1"
+    local redacted
+    if [[ ! -x "$REDACT_HELPER" ]]; then
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
+    fi
+    if ! redacted=$(printf '%s' "$text" | "$REDACT_HELPER" 2>/dev/null); then
+        printf '%s' 'gh failure: redaction failed'
+        return 0
+    fi
+    printf '%s' "$redacted"
+}
+
 if [[ ! -f "$BODY_FILE" ]]; then
     ERROR="body file not found: $BODY_FILE"
     exit 2
 fi
 
-OUTPUT=$(gh pr edit "$PR" "${GH_REPO_ARGS[@]}" --body-file "$BODY_FILE" 2>&1)
-EXIT_CODE=$?
+fail_file=$(mktemp "${TMPDIR:-/tmp}/gh-pr-body-update.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fail_file" \
+    gh pr edit "$PR" ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --body-file "$BODY_FILE"; then
+    EXIT_CODE=0
+else
+    EXIT_CODE=$_WTR_RC
+fi
+OUTPUT=$(cat "$fail_file" 2>/dev/null || true)
+rm -f "$fail_file"
 
 if [[ $EXIT_CODE -eq 0 ]]; then
     UPDATED="true"
@@ -83,6 +107,7 @@ if [[ $EXIT_CODE -eq 0 ]]; then
     exit 0
 else
     UPDATED="false"
+    OUTPUT=$(redact_text "$OUTPUT")
     OUTPUT="${OUTPUT//$'\n'/ }"
     ERROR="gh pr edit failed (exit $EXIT_CODE): $OUTPUT"
     exit 2

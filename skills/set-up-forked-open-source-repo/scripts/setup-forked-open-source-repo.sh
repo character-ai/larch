@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Network retry carve-out: `git clone --mirror` is intentionally not wrapped in
+# `with_transient_retry` — clone against a fixed destination is not idempotent.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,6 +14,8 @@ fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$PLUGIN_ROOT/scripts/lib-net.sh"
 REDACTOR="$PLUGIN_ROOT/scripts/redact-secrets.sh"
 
 UPSTREAM=""
@@ -120,9 +124,18 @@ ssh_url() {
 }
 
 remote_main_sha() {
-  local url
+  local url fail_file
   url="$1"
-  git ls-remote "$url" refs/heads/main | awk '$2 == "refs/heads/main" {print $1; found=1} END {exit !found}'
+  fail_file="$(mktemp "${TMPDIR:-/tmp}/forked-lsremote.XXXXXX")"
+  if with_transient_retry transient_envelope_predicate_none "$fail_file" \
+    git ls-remote "$url" refs/heads/main; then
+    printf '%s\n' "$_WTR_OUT" | awk '$2 == "refs/heads/main" {print $1; found=1} END {exit !found}'
+    local awk_rc=$?
+    rm -f "$fail_file"
+    return "$awk_rc"
+  fi
+  rm -f "$fail_file"
+  return 1
 }
 
 snapshot_remote_state() {
@@ -408,7 +421,16 @@ phase_github() {
   # spuriously fail an already-completed destructive sync.
   pushed_sha="$(git -C "$clone_dir" rev-parse refs/heads/main 2>/dev/null || true)"
   [[ -n "$pushed_sha" ]] || { rm -rf "$tmp"; die "mirror clone has no refs/heads/main"; }
-  git -C "$clone_dir" push --prune "$fork_ssh" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
+  mirror_push_fail_file="$(mktemp "${TMPDIR:-/tmp}/forked-mirror-push.XXXXXX")"
+  if with_transient_retry transient_envelope_predicate_none "$mirror_push_fail_file" \
+    git -C "$clone_dir" push --prune "$fork_ssh" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'; then
+    :
+  else
+    rm -rf "$tmp"
+    rm -f "$mirror_push_fail_file"
+    die "mirror push to fork failed"
+  fi
+  rm -f "$mirror_push_fail_file"
   post_sha="$(remote_main_sha "$fork_https" 2>/dev/null || true)"
   rm -rf "$tmp"
   [[ "$post_sha" == "$pushed_sha" ]] || die "fork refs/heads/main did not match what was pushed (expected $pushed_sha, got ${post_sha:-<none>})"
@@ -494,7 +516,15 @@ phase_remotes() {
 
 phase_submodules() {
   if [[ "$INIT_SUBMODULES" == "true" && -f .gitmodules ]]; then
-    git submodule update --init --recursive
+    submodule_fail_file="$(mktemp "${TMPDIR:-/tmp}/forked-submodule.XXXXXX")"
+    if with_transient_retry transient_envelope_predicate_none "$submodule_fail_file" \
+      git submodule update --init --recursive; then
+      :
+    else
+      rm -f "$submodule_fail_file"
+      die "git submodule update --init --recursive failed"
+    fi
+    rm -f "$submodule_fail_file"
   fi
 }
 

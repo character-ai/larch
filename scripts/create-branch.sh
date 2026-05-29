@@ -31,6 +31,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 
 usage() { larch_err "Usage: create-branch.sh --check | create-branch.sh --branch NAME"; }
 
@@ -106,7 +108,15 @@ fi
 
 # Fetch latest main and create branch directly from origin/main
 # (avoids unnecessary checkout main + pull round-trip)
-if ! git fetch origin main --quiet >/dev/null 2>&1; then
+fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-branch-fetch.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fetch_fail_file" \
+    git fetch origin main --quiet; then
+    fetch_rc=0
+else
+    fetch_rc=$_WTR_RC
+fi
+rm -f "$fetch_fail_file"
+if [[ "$fetch_rc" -ne 0 ]]; then
     larch_err "ERROR: Failed to fetch origin/main"
     exit 2
 fi

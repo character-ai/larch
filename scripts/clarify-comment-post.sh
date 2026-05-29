@@ -12,6 +12,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
@@ -150,8 +152,17 @@ if ! "$REDACT_HELPER" < "$BODY_TMP" > "$REDACTED"; then
 fi
 
 OUT_URL=""
-if ! OUT_URL=$(gh issue comment "$ISSUE" --repo "$REPO" --body-file "$REDACTED" 2>"$ERR_TMP"); then
-    ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/clarify-comment-post.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+    gh issue comment "$ISSUE" --repo "$REPO" --body-file "$REDACTED"; then
+    comment_rc=0
+else
+    comment_rc=$_WTR_RC
+fi
+ERR_CONTENT=$(cat "$comment_fail_file" 2>/dev/null || true)
+OUT_URL=$_WTR_OUT
+rm -f "$comment_fail_file"
+if [ "$comment_rc" -ne 0 ]; then
     emit_gh_failure "$ERR_CONTENT"
 fi
 

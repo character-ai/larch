@@ -153,6 +153,11 @@ run_direct_relevant_targets() {
                 append_target_once test-lib-design-tmpdir
                 ;;
         esac
+        case "$f" in
+            scripts/lib-net.sh|scripts/lib-net.md|scripts/test-lib-net.sh|scripts/test-lib-net.md)
+                append_target_once test-lib-net
+                ;;
+        esac
     done <<< "$MODIFIED_FILES"
 
     if [ -n "$DIRECT_TARGETS" ]; then

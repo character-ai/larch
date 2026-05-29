@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Create a combined issue and close the source issues.
 #
+# Network retry carve-out: `gh issue create` is intentionally not wrapped in
+# `with_transient_retry` — create is not idempotent under server-side success
+# with a lost response.
+#
 # Required flags:
 #   --title <title>         Title for the combined issue.
 #   --body-file <path>      Path to a file containing the combined issue body.
@@ -21,6 +25,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../../../" && pwd)"
 REDACT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
+# shellcheck source=scripts/lib-net.sh
+source "$PLUGIN_ROOT/scripts/lib-net.sh"
 
 TITLE=""
 BODY_FILE=""
@@ -63,6 +69,26 @@ if [[ -z "$REPO" ]]; then
   fi
 fi
 
+redact_gh_error() {
+  local err_text="$1" redacted status=0
+  if [[ ! -x "$REDACT" ]]; then
+    printf '%s' 'gh failure: redaction unavailable'
+    return 0
+  fi
+  redacted=$(printf '%s' "$err_text" | "$REDACT") || status=$?
+  if [[ "$status" -ne 0 ]]; then
+    printf '%s' 'gh failure: redaction unavailable'
+    return 0
+  fi
+  case "$redacted" in
+    *'[content truncated'*)
+      printf '%s' 'gh failure: redaction unavailable'
+      return 0
+      ;;
+  esac
+  printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
+}
+
 IFS=',' read -ra ISSUES <<< "$SOURCE_ISSUES"
 
 if [[ "$DRY_RUN" == "true" ]]; then
@@ -97,11 +123,16 @@ CLOSED=0
 CLOSE_ERRORS=""
 for issue_num in "${ISSUES[@]}"; do
   issue_num=$(echo "$issue_num" | tr -d ' ')
-  if CLOSE_ERR=$(gh issue close "$issue_num" --repo "$REPO" \
-    --comment "Combined into #${COMBINED_NUMBER}" 2>&1); then
+  close_fail_file=$(mktemp "${TMPDIR:-/tmp}/apply-combination-close.XXXXXX")
+  if with_transient_retry transient_envelope_predicate_none "$close_fail_file" \
+    gh issue close "$issue_num" --repo "$REPO" \
+    --comment "Combined into #${COMBINED_NUMBER}"; then
     CLOSED=$((CLOSED + 1))
+    rm -f "$close_fail_file"
   else
-    CLOSE_ERRORS="${CLOSE_ERRORS}Failed to close #${issue_num}: ${CLOSE_ERR}; "
+    CLOSE_ERR=$(cat "$close_fail_file" 2>/dev/null || true)
+    rm -f "$close_fail_file"
+    CLOSE_ERRORS="${CLOSE_ERRORS}Failed to close #${issue_num}: $(redact_gh_error "$CLOSE_ERR"); "
   fi
 done
 

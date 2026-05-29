@@ -12,6 +12,8 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
+# shellcheck source=scripts/lib-net.sh
+source "$PLUGIN_ROOT/scripts/lib-net.sh"
 
 APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
 
@@ -328,10 +330,14 @@ cmd_close_original() {
     fi
 
     if [[ ! -f "$comment_sent" ]]; then
-        set +e
-        gh issue comment "$original" --repo "$repo" --body-file "$redacted"
-        _c_rc=$?
-        set -e
+        comment_fail_file=$(mktemp "${TMPDIR:-/tmp}/decompose-comment.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$comment_fail_file" \
+            gh issue comment "$original" --repo "$repo" --body-file "$redacted"; then
+            _c_rc=0
+        else
+            _c_rc=$_WTR_RC
+        fi
+        rm -f "$comment_fail_file"
         if [[ "$_c_rc" != 0 ]]; then
             if [[ -x "$APPEND_FAIL_SH" ]]; then
                 set +e
@@ -351,10 +357,14 @@ cmd_close_original() {
         : >"$comment_sent"
     fi
 
-    set +e
-    gh issue close "$original" --repo "$repo"
-    _cl_rc=$?
-    set -e
+    close_fail_file=$(mktemp "${TMPDIR:-/tmp}/decompose-close.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$close_fail_file" \
+        gh issue close "$original" --repo "$repo"; then
+        _cl_rc=0
+    else
+        _cl_rc=$_WTR_RC
+    fi
+    rm -f "$close_fail_file"
     if [[ "$_cl_rc" != 0 ]]; then
         if [[ -x "$APPEND_FAIL_SH" ]]; then
             set +e

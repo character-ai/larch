@@ -24,6 +24,10 @@
 # Intentionally omit -e: cleanup records partial failures in stdout keys.
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
+
 usage() { echo "Usage: local-cleanup.sh --branch BRANCH_NAME" >&2; }
 
 # --- Parse arguments (before installing EXIT trap) ---
@@ -71,9 +75,14 @@ CURRENT_BRANCH="main"
 # --- Step 2: Fetch origin main ---
 echo "🔄 Fetching origin main..." >&2
 _pre_fetch_sha=$(git rev-parse origin/main 2>/dev/null || true)
-if ! git fetch origin main >/dev/null 2>&1; then
+fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/local-cleanup-fetch.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fetch_fail_file" \
+    git fetch origin main; then
+    :
+else
     echo "⚠ Failed to fetch origin main (continuing)" >&2
 fi
+rm -f "$fetch_fail_file"
 
 # --- Step 3: Drop prior larch-log flush orphans before pulling ---
 ahead_before=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || printf '0\n')
@@ -105,7 +114,15 @@ fi
 
 # --- Step 4: Pull origin main ---
 echo "🔄 Pulling latest main..." >&2
-if ! git pull origin main >/dev/null 2>&1; then
+pull_fail_file=$(mktemp "${TMPDIR:-/tmp}/local-cleanup-pull.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$pull_fail_file" \
+    git pull origin main; then
+    pull_rc=0
+else
+    pull_rc=$_WTR_RC
+fi
+rm -f "$pull_fail_file"
+if [[ "$pull_rc" -ne 0 ]]; then
     ahead_count=$(git rev-list --count "origin/main..HEAD" 2>/dev/null || printf '0\n')
     case "$ahead_count" in
         ''|*[!0-9]*) ahead_count=0 ;;

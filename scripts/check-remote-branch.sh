@@ -26,6 +26,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$SCRIPT_DIR/lib-net.sh"
+REDACT_HELPER="$SCRIPT_DIR/redact-secrets.sh"
 
 BRANCH=""
 REMOTE="origin"
@@ -49,18 +52,24 @@ if [ -z "$BRANCH" ]; then
     exit 0
 fi
 
-# Capture stderr so transport-error messages can be redacted into ERROR=.
-STDERR_TMP=$(mktemp)
-trap 'rm -f "$STDERR_TMP"' EXIT
-
-git ls-remote --exit-code --heads "$REMOTE" "$BRANCH" >/dev/null 2>"$STDERR_TMP"
-RC=$?
+fail_file=$(mktemp "${TMPDIR:-/tmp}/check-remote-branch.XXXXXX")
+if with_transient_retry transient_envelope_predicate_none "$fail_file" \
+    git ls-remote --exit-code --heads "$REMOTE" "$BRANCH"; then
+    RC=0
+else
+    RC=$_WTR_RC
+fi
+FAIL_CAPTURE=$(cat "$fail_file" 2>/dev/null || true)
+rm -f "$fail_file"
+if [ -x "$REDACT_HELPER" ]; then
+    FAIL_CAPTURE=$(printf '%s' "$FAIL_CAPTURE" | "$REDACT_HELPER" 2>/dev/null || printf '%s' 'git ls-remote failure redaction failed')
+fi
 
 case "$RC" in
     0)  emit_kv STATE present; emit_kv RC 0 ;;
     2)  emit_kv STATE absent;  emit_kv RC 2 ;;
     *)
-        STDERR_FLAT=$(tr '\n' ' ' < "$STDERR_TMP" | sed 's/  */ /g; s/^ //; s/ $//')
+        STDERR_FLAT=$(printf '%s\n' "$FAIL_CAPTURE" | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
         emit_kv STATE error
         emit_kv RC "$RC"
         if [ -n "$STDERR_FLAT" ]; then

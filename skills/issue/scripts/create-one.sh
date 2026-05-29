@@ -69,9 +69,14 @@ REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 # Keep lib-quiet on the same resolved tree as redact-secrets.sh (REPO_ROOT),
 # not ${CLAUDE_PLUGIN_ROOT:-…}, so harnesses that copy this script into an
 # isolated fake repo layout still source the adjacent scripts/lib-quiet.sh.
+# Network retry carve-out: `gh issue create` is intentionally not wrapped in
+# `with_transient_retry` — create is not idempotent under server-side success
+# with a lost response.
 # shellcheck source=scripts/lib-quiet.sh
 source "$REPO_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-net.sh
+source "$REPO_ROOT/scripts/lib-net.sh"
 
 # redact <text> — prints redacted text on stdout, returns the helper's
 # exit code. Callers MUST invoke this via command substitution combined
@@ -330,17 +335,18 @@ if [[ "$USE_FALLBACK" == "true" ]] || (echo "$ERR_CONTENT" | grep -qiE 'unknown 
         # stderr (redacted) but does not change the exit path — the operator
         # still sees ISSUE_FAILED=true.
         rollback_orphan() {
-            local rollback_err
-            rollback_err=$(mktemp)
-            if gh issue close --repo "$REPO" "$ISSUE_NUM" --reason "not planned" >/dev/null 2>"$rollback_err"; then
+            rollback_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-one-rollback.XXXXXX")
+            if with_transient_retry transient_envelope_predicate_none "$rollback_fail_file" \
+                gh issue close --repo "$REPO" "$ISSUE_NUM" --reason "not planned"; then
+                rm -f "$rollback_fail_file"
                 larch_err "ROLLBACK: closed orphan issue #$ISSUE_NUM after id-lookup failure"
             else
                 local rb_redacted rb_flat
-                rb_redacted=$(redact "$(cat "$rollback_err")") || rb_redacted="(redaction-helper failed)"
+                rb_redacted=$(redact "$(cat "$rollback_fail_file" 2>/dev/null || true)") || rb_redacted="(redaction-helper failed)"
                 rb_flat=$(echo "$rb_redacted" | tr '\n' ' ' | head -c 300)
                 larch_err "ROLLBACK_FAILED: could not close orphan issue #$ISSUE_NUM ($URL_LINE): $rb_flat. Manually close."
             fi
-            rm -f "$rollback_err"
+            rm -f "$rollback_fail_file"
         }
         # Best-effort id lookup. Failure rolls back the just-created orphan
         # via rollback_orphan() (above) before emitting ISSUE_FAILED=true.

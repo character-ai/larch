@@ -1,0 +1,20 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Branch scope is messy, but splitting the stack is process-heavy and not necessary to fix the retry behavior.
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The nested retry behavior is real, but the plan explicitly accepted it and changing it now is more churn than the risk warrants.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The duplication is real but small, and adding another abstraction would likely cost more than it saves here.
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The push-failure paths observed emit the existing PUBLISH_OK=false envelope before exiting.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The duplicate helper limits the lib harness, but production wrapper coverage belongs in ship-pr tests and this is not blocking.
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Lost-success duplicate comments are possible, but adding idempotency guards for these low-impact comments is more complexity than warranted.
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The temp files are not in the global trap, but normal control paths remove them and the leak risk is negligible.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The recovery could miss some duplicate-create cases, but the residual scenario is speculative and not worth filing as separate work.
