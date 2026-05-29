@@ -174,6 +174,7 @@ printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=panel-failed$' || fail "inva
 echo "=== passive-summary statuses parse and persist across Step 3 entries ==="
 DP="$TMPROOT/passive-summary"
 write_common_inputs "$DP" HARD
+write_snapshot_stub "$DP"
 mkdir -p "$DP/plan-review/round-1" "$DP/plan-review/round-2"
 printf 'stale\n' >"$DP/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$DP/plan-review/round-2/stale.txt"
@@ -199,7 +200,10 @@ printf '1\n' >"$DH/review-round-count.txt"
 printf '1\n' >"$DH/plan-review-round-cursor.txt"
 printf 'round1 snapshot\n' >"$DH/plan-after-round-1.txt"
 write_snapshot_stub "$DH"
-dh_loop_body=$(cat <<EOF
+mkdir -p "$DH/skills/design/scripts"
+cat >"$DH/skills/design/scripts/plan-review-loop.sh" <<'STUBEOF'
+#!/usr/bin/env bash
+set -euo pipefail
 round_num=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -207,11 +211,12 @@ while [[ $# -gt 0 ]]; do
         *) shift ;;
     esac
 done
+STUBEOF
+cat >>"$DH/skills/design/scripts/plan-review-loop.sh" <<STUBEOF
 printf "%s\n" "\$round_num" >"$DH/round-num-seen.txt"
 printf "LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nVOTER_1_PARSE_RATE_STATUS=ok\n" "\$round_num"
-EOF
-)
-write_loop_stub "$DH" "$dh_loop_body"
+STUBEOF
+chmod +x "$DH/skills/design/scripts/plan-review-loop.sh"
 run_guard "$DH" >/tmp/larch-step3-cap.guardh.out
 driver_out=$(run_driver "$DH")
 printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=complete$' || fail "hard round-2 path should still complete"
@@ -222,6 +227,7 @@ grep -Fqx 'write-cursor:2' "$DH/snapshot.log" || fail "hard round-2 path must ad
 echo "=== tally-error does not consume the pending round ==="
 D4="$TMPROOT/tally-error"
 write_common_inputs "$D4" HARD
+write_snapshot_stub "$D4"
 printf '2\n' >"$D4/review-round-count.txt"
 write_loop_stub "$D4" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=$D4/voting-tally.md\nVOTER_1_PARSE_RATE_STATUS=ok\n'; exit 2"
 run_guard "$D4" >/tmp/larch-step3-cap.guard4.out
