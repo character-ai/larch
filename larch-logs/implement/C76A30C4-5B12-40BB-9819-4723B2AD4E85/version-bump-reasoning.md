@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `f9478b504` (chore(larch-logs): flush design run 60142F2E-F00C-404E-A0A9-9E1E7523F693 [skip ci] (#3180))
-- **Current version**: `45.3.23`
+- **Base commit**: `8a12a3fc2` (Fixes #3155: Align /design Step 3.6 routing prose with assessor integration plan (#3185))
+- **Current version**: `45.3.24`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `45.3.24`
+- **New version**: `45.3.25`
 
 ### PATCH rationale
 
