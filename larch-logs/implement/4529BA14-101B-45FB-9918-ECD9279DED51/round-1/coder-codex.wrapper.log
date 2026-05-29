@@ -1,0 +1,11 @@
+Reading additional input from stdin...
+2026-05-29T17:45:31.025233Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/skills/design/scripts/test-write-design-current-env.sh:
+fi
+grep -q "Invalid --manual-requested" "$bad_manual_err" || \
+    fail "case11: invalid manual-requested missing expected error"
+
+echo "PASS: write-design-current-env"
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+2026-05-29T17:46:48.985152Z ERROR codex_core::session: failed to record rollout items: thread 019e74d6-8c64-7602-966d-ccc914e7a129 not found
+✓ codex agent: completed (exit code 0, 140s elapsed, output 37 bytes)

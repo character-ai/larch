@@ -1,0 +1,15 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- eval on grep-selected writer-%q lines matches existing full-file source trust; stricter parsing is disproportionate for this change
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- recovery runs after validate_bool and can re-emit corrupt prior boolean strings without re-validation
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- case14 value checks still fail on missing exports; set -u and cursor-only mirror are harness polish only
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- missing prior file is a one-line guard; dedicated harness case is nice-to-have not required for #3181
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- both-explicit conflicting alias pairs can persist; concrete edge case worth tracking outside this diff
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- --output is only absolute-path checked while --design-tmpdir is allowlisted; real pre-existing hardening gap
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- symlink TOCTOU is documented operational risk in the script, not introduced by this refresh work
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- no-flag refresh intentionally preserves prior bytes; post-recovery pair sync is outside #3181 scope
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- resume refresh without reviewer flags can still drop keys when the env file never had them
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan-review-loop argv guard is the known failure mode this writer fix addresses; separate consumer issue adds little
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- implement log artifacts are real diff noise but belong in PR cleanup, not a product GitHub issue
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- contextual analysis that writer-only round-trip is sound, not an actionable defect to accept
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- empty explicit flag vs empty-value recovery is manual-caller only; documented /design callers do not pass empty booleans
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- both-explicit differing values are intentional non-mirroring when both sides are set, not a defect to file
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch commit inventory is reviewer metadata, not a code problem worth raising
