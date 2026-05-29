@@ -1,0 +1,26 @@
+Verifying harness-pin alignment: reading the diff and comparing assertion literals to the target prose.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+All five updated `contains` pins in `scripts/test-design-structure.sh` are valid `grep -Fq` substrings of their targets:
+
+| Pin (line) | Assertion literal | Target match |
+|------------|-------------------|--------------|
+| 90 | `do **not** fire an \`AskUserQuestion\` here — auto-continue to Step 3.6, then Step 3b, then Step 4, then Gate C` | `skills/design/references/approval-gates.md:100` (continues with `, and do **not** halt the turn...`) |
+| 92 | `passive-summary auto-continue → Step 3.6 → Step 3b → Step 4 → Step 4b` | `approval-gates.md:168` (before `; zero-findings...`) |
+| 842 | `passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort` | `skills/design/SKILL.md:1145` |
+| 843 | `Passive-summary auto-continue routes through Step 3.6 before Step 3b` | `SKILL.md:1106` (before `.`) |
+| 848 | same as 843 | `approval-gates.md:100` (before ` / the next Step 3 entry`) |
+
+The two unchanged pins still match unchanged prose:
+
+- Line 88 → `approval-gates.md:98` (`#### Gate B passive-summary mode (\`LOOP_STATUS=converged|cap-hit\`)`)
+- Line 91 → `approval-gates.md:168` (`zero-findings short-circuit → Step 3.6 → Step 3b → Step 4 → Step 4b.` including the trailing period)
+
+No quoting/whitespace drift (em dashes, arrows, backticks) between pins and prose. Grep over `skills/` and `scripts/` shows no remaining `Continue to Step 3.6 and Gate C` or `passive-summary Continue` literals.
+
+**Commits on branch vs `main`:** `0c2622021` (feature), `6e95a9ea6` (larch-logs flush).
+
+### Out-of-Scope Observations
+- The branch diff also adds `larch-logs/implement/FC8A9906-.../` (empty breadcrumb logs, manifest, plan snapshot). That is unrelated to Gate B harness pins and is a separate commit (`chore(larch-logs): flush implement run...`); worth stripping or splitting before merge if you want a prose-only PR.
+- Pin at line 90 intentionally asserts only the auto-continue clause, not the full “do **not** halt the turn on the printed table” sentence. That is weaker than a full-sentence pin but consistent with the plan and still passes; not a mismatch defect.
