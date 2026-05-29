@@ -1868,7 +1868,7 @@ dedup_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        eval "$(awk "BEGIN{p=0} /^_snapshot_optional_trailer_keys\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
 )
@@ -1920,7 +1920,7 @@ dedup_unclosed_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        eval "$(awk "BEGIN{p=0} /^_snapshot_optional_trailer_keys\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
 )
@@ -1960,7 +1960,7 @@ dedup_pyfail_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        eval "$(awk "BEGIN{p=0} /^_snapshot_optional_trailer_keys\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_pyfail" 2>&1
 )
@@ -2002,7 +2002,7 @@ dedup_nonnumeric_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        eval "$(awk "BEGIN{p=0} /^_snapshot_optional_trailer_keys\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_nonnumeric" 2>&1
 )

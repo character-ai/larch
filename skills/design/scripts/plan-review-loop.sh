@@ -678,7 +678,7 @@ _run_post_apply_pipeline() {
     set -e
     val_st=$(printf '%s\n' "$val_out" | awk -F= '$1 == "VALIDATE_STATUS" { split($2, parts, /[[:space:]]+/); print parts[1]; found=1; exit } END { if (!found) print "" }')
     if (( val_rc != 0 )) || [[ "$val_st" == "defects-found" ]]; then
-        LOOP_STATUS=plan-validator-defects
+        LOOP_STATUS="plan-validator-defects"
         if [[ "$val_st" == "defects-found" ]]; then
             LOOP_REASON=validator-defects
         else
@@ -691,8 +691,8 @@ _run_post_apply_pipeline() {
     size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path")
     hard=$(printf '%s\n' "$size_out" | awk -F= '$1 == "HARD_TRIGGER_FIRED" { print $2; found=1 } END { if (!found) print "false" }')
     if [[ "$hard" == "true" ]]; then
-        LOOP_STATUS=plan-size-trigger
-        LOOP_REASON=plan-size-hard
+        LOOP_STATUS="plan-size-trigger"
+        LOOP_REASON="plan-size-hard"
         rm -f "$plan_backup"
         return 1
     fi
