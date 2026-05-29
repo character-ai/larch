@@ -11,7 +11,7 @@
 - **Code review**: 50/78 accepted
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/ED80302E-12AB-48F5-BEEE-FDF7F26F0CC1/`
 
 <!-- larch:run-summary v=1 -->
