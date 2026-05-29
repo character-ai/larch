@@ -1,12 +1,13 @@
 # Version Bump Reasoning
 
-- **Base commit**: `16012123f` (chore(larch-logs): flush design run 6955327F-B918-4B07-B5D3-E946FDC2A0EC [skip ci] (#3201))
-- **Current version**: `46.0.0`
+- **Base commit**: `42a318537` (Fixes #3119: Remove Family-B breadcrumb fences and monitor shims (Stage 4) (#3206))
+- **Current version**: `47.0.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: MAJOR
+## Result: PATCH
 
-- **New version**: `47.0.0`
+- **New version**: `47.0.1`
 
-### MAJOR evidence
-- Removed `--simple` from argument-hint in `skills/design/SKILL.md`
+### PATCH rationale
+
+No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy ("every PR must bump at least PATCH").
