@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `668275011` (Fixes #3192: Default /design to SIMPLE; drop --simple flag (#3203))
-- **Current version**: `46.0.0`
+- **Base commit**: `42a318537` (Fixes #3119: Remove Family-B breadcrumb fences and monitor shims (Stage 4) (#3206))
+- **Current version**: `47.0.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `46.0.1`
+- **New version**: `47.0.1`
 
 ### PATCH rationale
 
