@@ -948,7 +948,7 @@ _tier="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_
 # SIMPLE gets 3 total review runs; HARD gets 5 total review runs per #2956.
 case "$_tier" in SIMPLE) _round_cap=3 ;; *) _round_cap=5 ;; esac
 if (( _round_count >= _round_cap )); then
-  printf '%s\n' "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and returning to Gate C.**"
+  printf '%s\n' "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and continuing to Step 3b, Step 4, then Gate C.**"
   cat >"$_step3_cap_env" <<'EOF'
 STEP3_REVIEW_CAP_REACHED=true
 STEP3_REVIEW_ROUND_NUM=
@@ -1108,7 +1108,7 @@ Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected fi
 - `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (handled above); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; loop aborted; current plan preserved.**` and short-circuit to Step 3b (skip Gate B **and Step 3.6**). Print `⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)`.
 - `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt`; print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation, not convergence.**` and short-circuit to Step 3b (skip Gate B and Step 3.6). Print `⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)`.
 - `LOOP_STATUS=zero-findings-degraded-panel` — do not treat the round as converged; proceed to Gate B, whose zero-findings short-circuit still continues to Step 3.6 before Step 3b.
-- `LOOP_STATUS=plan-size-trigger|plan-validator-defects` — run the Step 2b.5 Split-path / Cancel `AskUserQuestion` handler (or plan-command validator failure shared body) before Gate B/3b; both skip Gate B and Step 3.6. Print `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)` or `⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)` as appropriate.
+- `LOOP_STATUS=plan-size-trigger|plan-validator-defects` — run the Step 2b.5 Split-path / Cancel `AskUserQuestion` handler (or the shared plan-command validator failure body) first, then short-circuit to Step 3b; skip Gate B and Step 3.6. Print `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)` or `⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)` as appropriate.
 - `LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure and route through Gate B's warning/manual handling, not the Split-path prompt. Gate-B-settled path proceeds through Step 3.6 after Gate B and any Step 2b.5 return.
 - `LOOP_STATUS=panel-failed` (`rc=1`) — short-circuit to Step 3b (skip Gate B **and Step 3.6**). Print `⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)`.
 - `LOOP_STATUS=main-agent-vote-required` — inline main-agent vote path below; after successful adjudication and re-tally, proceed through Gate B and Step 3.6 like other Gate-B-settled paths (not a skip status).

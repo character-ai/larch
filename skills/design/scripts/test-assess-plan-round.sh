@@ -287,12 +287,16 @@ grep -Fqx "$(cd "$TMP" && pwd -P)/feature-description.txt" "$TMP/feature-path-se
 
 # Two-entry Step 3 integration: cursor advance, snapshots, round-2 assessor firing.
 advance_step3_cursor() {
-  local tmp="$1" cursor=1 next
-  if [[ -f "$tmp/plan-review-round-cursor.txt" ]]; then
-    cursor=$(tr -d '[:space:]' <"$tmp/plan-review-round-cursor.txt")
-    case "$cursor" in ''|*[!0-9]*|0) cursor=1 ;; esac
-    cursor=$((10#$cursor))
-  fi
+  local tmp="$1" cursor=1 next cursor_out cursor_line
+  cursor_out=$("$ROOT/skills/design/scripts/snapshot-plan-round.sh" \
+    read-cursor --design-tmpdir "$tmp")
+  while IFS= read -r cursor_line || [[ -n "$cursor_line" ]]; do
+    case "$cursor_line" in
+      ROUND_CURSOR=*) cursor="${cursor_line#ROUND_CURSOR=}" ;;
+    esac
+  done <<<"$cursor_out"
+  case "$cursor" in ''|*[!0-9]*|0) cursor=1 ;; esac
+  cursor=$((10#$cursor))
   if [[ -f "$tmp/plan-after-round-${cursor}.txt" ]]; then
     next=$((cursor + 1))
     "$ROOT/skills/design/scripts/snapshot-plan-round.sh" \
