@@ -1,0 +1,2 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Concern is real, but folding fetch-retry stubbing into the conflict harness mixes separate behaviors for a nit-level maintenance issue.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

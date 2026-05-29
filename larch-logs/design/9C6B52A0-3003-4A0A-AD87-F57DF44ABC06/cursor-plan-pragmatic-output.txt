@@ -1,0 +1,2 @@
+{"no_issues_found": true}
+The plan aligns with existing `with_transient_retry` usage in `rebase-push.sh`, `create-pr.sh`, and `merge-pr.sh`, covers the main failure modes (transient vs non-transient `gh pr checks`, JSON exhaustion vs text fallback, `set -e` in `create-pr.sh`), and includes harness wiring with `SLEEP_SCRIPT_DIR` stubbing. No material gaps found for the proposed change set under the SIMPLE minimum-change bar.

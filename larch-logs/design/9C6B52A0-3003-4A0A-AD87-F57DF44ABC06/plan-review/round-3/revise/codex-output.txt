@@ -1,0 +1,43 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -77,10 +77,10 @@
+ 
+ ### UPDATED: `scripts/lib-net.sh`
+-Extend `is_transient_net_signature` with the minimum accepted reviewer additions for common DNS/reset failures: `lookup ... no such host`, bare `no such host`, and capitalized `Connection reset by peer`. Keep the predicate focused on network signatures only; do not add content predicates for GitHub business-state failures.
++Extend `is_transient_net_signature` with the minimum accepted reviewer additions for common DNS/reset failures: `lookup ... no such host`, bare `no such host`, and capitalized `Connection reset by peer`. Keep the predicate focused on network signatures only; do not add content predicates for GitHub business-state failures. If the bare `no such host` addition is substring-based today, keep the implementation narrow enough that adjacent words such as `no such hosted` do not match.
+ 
+ ### UPDATED: `scripts/test-lib-net.sh`
+-Add fixtures for the new transient signatures above, including the capitalized reset variant. Keep existing retry attempt/backoff tests unchanged.
++Add positive fixtures for the new transient signatures above, including the capitalized reset variant. Add adversarial negative fixtures beside them for near-misses that must not classify as transient: lowercase `no such hosted`, a `lookup` line that does not include the resolver/no-such-host failure shape, and a reset-looking line that is not the exact `Connection reset by peer` network signature. Keep existing retry attempt/backoff tests unchanged.
+ 
+ ### UPDATED: `scripts/test-create-pr.sh`
+ Add a transient-recovery case to the PATH-stub `gh`: a new `GH_MODE` (or a count-file flip on `create_exists`) where `pr create` reports `already exists`, the first recovery `gh pr list` emits a net-signature error + exit 1, and the second `pr list` returns the PR JSON. Assert `PR_STATUS=existing` (recovered, not exit 2). Add a persistent-list-failure variant asserting the conflict-text URL fallback still resolves the PR.
+@@ -133,7 +133,7 @@
+ 
+ ## Approach
+-The retry primitive (`with_transient_retry`, 3 attempts, net-signature detection, 2s/4s backoff) is already implemented and tested in `lib-net.sh` / `test-lib-net.sh`; this plan only adds a few accepted signature fixtures and wraps already-identified network commands. Each call-site gap is closed by adding one call to that helper around an already-identified network command, using the exact mktemp-fail-file + `_WTR_OUT`/`_WTR_RC` shape already present in the same files. Production code delta is still small: three wrappers plus the signature list update. The larger part of the diff is regression coverage, Makefile/agent-lint wiring, and the `.md` contract updates that repo rules require — not new product behavior.
++The retry primitive (`with_transient_retry`, 3 attempts, net-signature detection, 2s/4s backoff) is already implemented and tested in `lib-net.sh` / `test-lib-net.sh`; this plan only adds a few accepted signature fixtures, pins adversarial near-miss negatives for the broader DNS/reset signatures, and wraps already-identified network commands. Each call-site gap is closed by adding one call to that helper around an already-identified network command, using the exact mktemp-fail-file + `_WTR_OUT`/`_WTR_RC` shape already present in the same files. Production code delta is still small: three wrappers plus the signature list update. The larger part of the diff is regression coverage, Makefile/agent-lint wiring, and the `.md` contract updates that repo rules require — not new product behavior.
+ 
+ Predicate choice: `transient_envelope_predicate_none` (net-signature-only) is correct for all three. `gh pr checks` legitimately exits non-zero on pending/failing checks; because the predicate never reports transient-by-content and pending/failing output does not match `is_transient_net_signature`, those non-zero exits return immediately with output intact — no spurious retry.
+@@ -146,6 +146,7 @@
+ - merge-pr.sh JSON-check exhaustion contract: if the primary JSON checks call exhausts on transient signatures, do not run the text fallback in that refresh; keep `CI_GOOD=false`, emit/retain `ci_not_ready`, and do not run merge.
+ - create-pr.sh recovery: when the retried `gh pr list` is still empty, the conflict-text URL regex fallback (lines 213-215) remains the final tier; do not regress it.
+ - rebase-push.sh `--no-push`: persistent (non-transient or exhausted) fetch failure must still `exit 3` with `REBASE_ERROR`. Default-mode fetch tolerance (`|| true`) is untouched.
++- lib-net.sh signature scope: broader DNS/reset entries must not match adjacent near-misses such as `no such hosted` or generic `lookup` lines that are not resolver/no-such-host failures.
+ - `set -uo pipefail` (rebase-push.sh, merge-pr.sh) and `set -euo pipefail` (create-pr.sh): new locals/mktemps must be `set -u` clean; Bash 3.2-safe (no associative arrays / namerefs / `${var^^}`).
+ 
+ ## Failure modes
+@@ -161,7 +162,7 @@
+ 
+ ## Testing strategy
+-- Extend `scripts/test-lib-net.sh` with the new DNS/reset signature fixtures; keep the existing retry mechanism coverage unchanged.
++- Extend `scripts/test-lib-net.sh` with the new DNS/reset signature fixtures plus targeted negative near-misses for `lookup`, `no such host`, and `Connection reset by peer`; keep the existing retry mechanism coverage unchanged.
+ - Extend `scripts/test-create-pr.sh` and `scripts/test-merge-pr.sh` with the transient-once-then-success cases above, using explicit env-gated fake-`gh` failure branches where the current count-file flips only model successful content changes. Stub `SLEEP_SCRIPT_DIR` with a no-op `sleep-seconds.sh` in each retry harness before invoking transient retry paths.
+ - Add the explicit `gh pr checks` pending/failing no-retry assertion in `scripts/test-merge-pr.sh` (call count stays 1; result remains `ci_not_ready`), plus the exhausted-transient/misleading-stdout assertion (retry-budget call count, `MERGE_RESULT=ci_not_ready`, no merge command).
+ - Add `scripts/test-rebase-push-no-push-fetch-retry.sh` (+ `.md`, + Makefile wiring) for the `--no-push` fetch retry-recovery and persistent-failure-fatal cases.
+@@ -170,4 +171,4 @@
+ - Add `agent-lint.toml` exclusions for the new Makefile-only rebase-push harness files so `bash scripts/relevant-checks.sh` / `make lint` do not fail on orphan-file checks.
+ - After edits run `bash scripts/relevant-checks.sh` and the touched harness targets (`make test-create-pr test-merge-pr test-rebase-push-no-push-fetch-retry test-lib-net`). External-tool note (`.claude/rules/verify-external-tool-invocations.md`): no new live `gh`/`git` flags are introduced — same subcommands, only wrapped — so harness stubs are sufficient and no live invocation changes need manual CI verification.
+ 
+-diff_lines: 334
++diff_lines: 346

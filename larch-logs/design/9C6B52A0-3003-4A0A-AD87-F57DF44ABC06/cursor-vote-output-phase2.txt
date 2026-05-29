@@ -1,0 +1,2 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Existing harness hits the --no-push fetch path, but folding PATH-stub retry cases into a conflict harness would blur ownership; the standalone focused harness is acceptable.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

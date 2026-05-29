@@ -1,0 +1,157 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — Close remaining transient-retry gaps (#3172)
+
+SIMPLE tier. Bias to the smallest change that closes the 3 confirmed-open gaps. Reuse `with_transient_retry` from `scripts/lib-net.sh` exactly as the surrounding code already does; add no new retry machinery. Scope (Round 1): confirmed-open gaps only — `rebase-push.sh`, `create-pr.sh`, `merge-pr.sh`. The two `design-log-publish.sh` findings (FINDING_10 trap; FINDING_14 list/view retry) are already resolved on `main` (#2581) and are out of scope — no code change.
+
+## Files to modify/create
+
+### UPDATED: `scripts/rebase-push.sh`
+Wrap the `--no-push` `git fetch` (currently line 195, inside `if [[ "$NO_PUSH" == "true" ]]`) in `with_transient_retry transient_envelope_predicate_none`, mirroring the existing ls-remote (line 158) and push (line 286) call shapes already in this file:
+- `fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/rebase-push-fetch.XXXXXX")`
+- `if with_transient_retry transient_envelope_predicate_none "$fetch_fail_file" git fetch "$BASE_REMOTE" "$BASE_REF" --quiet; then fetch_rc=0; else fetch_rc=$_WTR_RC; fi`
+- `rm -f "$fetch_fail_file"`
+- On `fetch_rc != 0`: keep the existing fatal contract verbatim — `emit_kv REBASE_ERROR "git fetch $BASE_REMOTE $BASE_REF failed (network/auth issue)"` then `exit 3`.
+Leave the default-mode fetch (line 200, `... || true`) unchanged. Net behavior: transient fetch failures retry 3×; a genuine failure stays fatal (exit 3) because `--no-push` exists for freshness.
+
+### UPDATED: `scripts/create-pr.sh`
+In `recover_existing_pr_after_create_conflict()` (line 192), wrap the recovery `gh pr list` (line 201) in `with_transient_retry`:
+- Add `local list_fail_file` to the function's `local` declarations.
+- `list_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-pr-recover-list.XXXXXX"); NET_FAIL_FILES+=("$list_fail_file")` (reuses the existing array + EXIT-trap cleanup at line 44-47).
+- Replace the bare `pr_json=$(gh pr list ... 2>/dev/null || echo "")` with a `with_transient_retry transient_envelope_predicate_none "$list_fail_file" gh pr list ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} --head "$BRANCH" --state open --json number,url,title --limit 1` call, then `pr_json=$_WTR_OUT` on both success and exhaustion.
+- Preserve the conflict-text URL fallback (lines 213-215) unchanged as the second recovery tier.
+This closes FINDING_8/15 (bare recovery list) and the FINDING_20 lost-success duplicate-PR path: when `gh pr create` succeeds server-side but the client sees a transient and retries into an "already exists" conflict, the retried recovery list reliably finds the existing PR.
+
+### UPDATED: `scripts/merge-pr.sh`
+Route the two bare gh reads through `with_transient_retry`, layered under (not replacing) the existing `retry_pr_info_unknown_recovery` content loop:
+- `refresh_pr_info()` (line 113): wrap `gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid` in `with_transient_retry`; set `PR_INFO=$_WTR_OUT` on success and `PR_INFO=""` on exhaustion (preserves the existing empty-on-failure contract that feeds the UNKNOWN-recovery loop). Parse `MERGE_STATE`/`PR_HEAD_OID` from `PR_INFO` as today. Use a local mktemp fail file + `rm -f` inline.
+- `refresh_ci_state()` (line 133): wrap both `gh pr checks` calls — the `--json name,state,bucket,link` primary (line 135) and the text fallback (line 156). Set `CHECKS_JSON`/`CHECKS_TEXT` from `_WTR_OUT`; keep `CI_GOOD=false` conservative default on empty. Use local mktemp fail files + `rm -f` inline.
+Closes FINDING_14/16. A transient on `gh pr checks` no longer yields a false `ci_not_ready`. The UNKNOWN-recovery loop is retained for GitHub content uncertainty (orthogonal to network transients). All `MERGE_RESULT=*` outcomes, exit codes, and the EXIT-trap KV contract are unchanged.
+
+### UPDATED: `scripts/rebase-push.md`
+Add one line under the retry/behavior notes: the `--no-push` fetch now retries transient failures via `with_transient_retry` before the fatal `exit 3`.
+
+### UPDATED: `scripts/create-pr.md`
+Note that conflict-recovery `gh pr list` now retries transients via `with_transient_retry`, closing the lost-success duplicate-PR window.
+
+### UPDATED: `scripts/merge-pr.md`
+Note that `gh pr view` (`refresh_pr_info`) and `gh pr checks` (`refresh_ci_state`) now retry transients via `with_transient_retry`, layered under the existing UNKNOWN-recovery loop.
+
+### UPDATED: `scripts/test-create-pr.sh`
+Add a transient-recovery case to the PATH-stub `gh`: a new `GH_MODE` (or a count-file flip on `create_exists`) where `pr create` reports `already exists`, the first recovery `gh pr list` emits a net-signature error + exit 1, and the second `pr list` returns the PR JSON. Assert `PR_STATUS=existing` (recovered, not exit 2). Add a persistent-list-failure variant asserting the conflict-text URL fallback still resolves the PR.
+
+### UPDATED: `scripts/test-merge-pr.sh`
+Using the existing `GH_VIEW_COUNT_FILE` / `GH_CHECKS_COUNT_FILE` flip pattern, add two cases: (1) `gh pr view` emits a net-signature error + exit 1 on call 1, then valid JSON — assert the merge proceeds (no spurious `error`); (2) `gh pr checks` transient on call 1 then a passing array — assert `CI_GOOD` recovers (no false `ci_not_ready`). Keep existing UNKNOWN-recovery cases green to prove the content loop still works.
+
+### NEW: `scripts/test-rebase-push-no-push-fetch-retry.sh`
+Focused harness matching the `test-rebase-push-*` family (none of the three existing rebase-push harnesses owns the `--no-push` fetch path). PATH-stub `git` so `git fetch` fails with a net signature (e.g. `fatal: unable to access ...`) on call 1 then succeeds; run `rebase-push.sh --no-push` and assert exit 0. Add a persistent-fetch-failure case asserting `exit 3` + `REBASE_ERROR` is preserved. Reuse the local git-repo + stub-bin pattern from `test-create-pr.sh`.
+
+### NEW: `scripts/test-rebase-push-no-push-fetch-retry.md`
+Sibling contract stub per `.claude/rules/script-md-siblings.md`: purpose, primary target (`scripts/rebase-push.sh` `--no-push` fetch retry), Makefile wiring, invariants.
+
+### UPDATED: `Makefile`
+Register the new harness like the sibling rebase-push tests: add `test-rebase-push-no-push-fetch-retry` to the `.PHONY` list, add the recipe `bash scripts/harness-timer.sh $@ bash scripts/test-rebase-push-no-push-fetch-retry.sh`, and add it to a `test-harnesses-N` shard (alongside the other `test-rebase-push-*` entries, e.g. shard 14 or 16).
+
+## Approach
+The retry primitive (`with_transient_retry`, 3 attempts, net-signature detection, 2s/4s backoff) is already implemented and tested in `lib-net.sh` / `test-lib-net.sh`. Each gap is closed by adding one call to that helper around an already-identified network command, using the exact mktemp-fail-file + `_WTR_OUT`/`_WTR_RC` shape already present in the same files. Production code delta is ~3 small wraps (~35 lines total). The larger part of the diff is regression coverage (new failure-recovery paths) and the `.md` contract updates that repo rules require — not new product behavior.
+
+Predicate choice: `transient_envelope_predicate_none` (net-signature-only) is correct for all three. `gh pr checks` legitimately exits non-zero on pending/failing checks; because the predicate never reports transient-by-content and pending/failing output does not match `is_transient_net_signature`, those non-zero exits return immediately with output intact — no spurious retry.
+
+## Edge cases
+- `gh pr checks` non-zero exit on pending/failing checks must NOT trigger retry. Verified by the net-signature-only predicate; covered by a no-retry assertion in the test.
+- merge-pr.sh empty-on-failure contract: on `with_transient_retry` exhaustion, `PR_INFO`/`CHECKS_JSON` must be set empty so the downstream UNKNOWN-recovery loop and conservative `CI_GOOD=false` still fire exactly as today.
+- create-pr.sh recovery: when the retried `gh pr list` is still empty, the conflict-text URL regex fallback (lines 213-215) remains the final tier; do not regress it.
+- rebase-push.sh `--no-push`: persistent (non-transient or exhausted) fetch failure must still `exit 3` with `REBASE_ERROR`. Default-mode fetch tolerance (`|| true`) is untouched.
+- `set -uo pipefail` (rebase-push.sh, merge-pr.sh) and `set -euo pipefail` (create-pr.sh): new locals/mktemps must be `set -u` clean; Bash 3.2-safe (no associative arrays / namerefs / `${var^^}`).
+
+## Failure modes
+1. **Over-retry / misclassification** — a wrapped call's non-transient non-zero exit gets retried, adding latency or masking real state. Earliest signal: a unit assertion that pending/failing `gh pr checks` returns without retry. Mitigation: net-signature-only predicate + the fixed `is_transient_net_signature` list; do not pass a content predicate.
+2. **Variable-capture regression in merge-pr.sh** — refactoring `refresh_pr_info`/`refresh_ci_state` drops the `|| echo ""` tolerance, breaking the empty→UNKNOWN-recovery handoff and emitting a spurious `error`. Earliest signal: existing UNKNOWN-recovery cases in `test-merge-pr.sh` flip red. Mitigation: explicitly set the capture var empty on `_WTR_RC != 0`.
+3. **Latency growth on the freshness path** — three attempts (2s+4s backoff) lengthen worst-case `--no-push` fetch failure before exit 3. Earliest signal: harness wall-time / CI timing. Mitigation: 3 attempts is the standard helper budget already used by the push/ls-remote paths in the same script; no new budget introduced.
+
+## Testing strategy
+- No change to `scripts/test-lib-net.sh`; it already covers the retry mechanism (attempts, transient detection, backoff).
+- Extend `scripts/test-create-pr.sh` and `scripts/test-merge-pr.sh` with the transient-once-then-success cases above, reusing each harness's existing PATH-stub + count-file flip mechanism; keep all existing cases green.
+- Add `scripts/test-rebase-push-no-push-fetch-retry.sh` (+ `.md`, + Makefile wiring) for the `--no-push` fetch retry-recovery and persistent-failure-fatal cases.
+- After edits run `bash scripts/relevant-checks.sh` and the touched harness targets (`make test-create-pr test-merge-pr test-rebase-push-no-push-fetch-retry test-lib-net`). External-tool note (`.claude/rules/verify-external-tool-invocations.md`): no new live `gh`/`git` flags are introduced — same subcommands, only wrapped — so harness stubs are sufficient and no live invocation changes need manual CI verification.
+
+diff_lines: 230
+
+</plan>
+
+<findings>
+### FINDING_1: Missing no-retry coverage for pending/failing checks
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge
+- **Severity**: important
+- **Concern**: The plan claims pending/failing `gh pr checks` non-zero exits are covered by a no-retry assertion, but the testing strategy only covers transient-then-success behavior, so a regression that retries real CI failures could ship undetected.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit `test-merge-pr.sh` sub-test: stub `gh pr checks` exits non-zero once with pending/failing output that does not match `is_transient_net_signature`, assert a single invocation (or call-count == 1) and conservative `CI_GOOD=false` / `ci_not_ready`
+  - From Cursor-Edge: Either add one planned stub case (`exit 1` + pending JSON, assert `pr checks` count stays 1) or delete the "covered by a no-retry assertion" clause and rely on the predicate rationale only
+
+
+### FINDING_2: Missing agent-lint exclusions for new Makefile-only rebase-push harness
+- **Reviewer(s)**: Codex-Edge, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements, Codex-dyn-shell-compat
+- **Severity**: important
+- **Concern**: The new `scripts/test-rebase-push-no-push-fetch-retry.sh` harness and `.md` sibling are Makefile-only references, matching existing harnesses that need `agent-lint.toml` exclusions; without those exclusions, `relevant-checks` or `make lint` may fail even though the Makefile wiring exists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Add the new .sh exclusion beside the other test-rebase-push harness entries and add the .md exclusion beside scripts/test-rebase-push-*.md
+  - From Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements: Add scripts/test-rebase-push-no-push-fetch-retry.sh and scripts/test-rebase-push-no-push-fetch-retry.md to agent-lint.toml beside the existing test-rebase-push-* exclusions, or add a real non-Makefile runtime reference if that is intended
+  - From Codex-dyn-shell-compat: Add scripts/test-rebase-push-no-push-fetch-retry.sh next to the existing rebase-push harness exclusions and scripts/test-rebase-push-no-push-fetch-retry.md next to the existing rebase-push .md exclusions, with the same short Makefile-only rationale.
+
+
+### FINDING_3: Recovery retry wrapper must preserve fallback under `set -e`
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Wrapping `gh pr list` in `recover_existing_pr_after_create_conflict` must not let a persistent retry failure terminate the script before the existing conflict-text URL fallback runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Wrap in `if with_transient_retry ...; then pr_json=$_WTR_OUT; else pr_json=$_WTR_OUT; fi` (or `|| true` before assigning), matching the existing `create_fail_file` block at lines 265-277
+
+
+### FINDING_4: Planned merge-pr retry harness does not actually simulate transient failures
+- **Reviewer(s)**: Cursor-dyn-harness-fidelity, Codex-dyn-harness-fidelity
+- **Severity**: important
+- **Concern**: The proposed `GH_VIEW_COUNT_FILE` / `GH_CHECKS_COUNT_FILE` reuse only flips successful JSON content today; it does not make the first call exit non-zero with a transient network signature, so tests could pass without exercising `with_transient_retry`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-harness-fidelity: Add env-gated stub branches (e.g. fail call 1 with stderr matching is_transient_net_signature, succeed on call 2) in write_fake_gh view and checks handlers; document required env vars beside the two new run_case blocks
+  - From Codex-dyn-harness-fidelity: Add explicit first-call transient branches inside the view and checks cases, keyed by new env vars and the existing count files, that print a net-signature diagnostic to stderr and exit 1 on count 1, then return valid JSON on the next call.
+
+
+### FINDING_5: Transient signature set misses common DNS and reset errors
+- **Reviewer(s)**: Cursor-dyn-net-sig-coverage, Codex-dyn-net-sig-coverage
+- **Severity**: important
+- **Concern**: The current network signature predicate may not classify common `gh` DNS failures like `lookup api.github.com: no such host`, or capitalized `Connection reset by peer`, causing intended retry wrappers to give up after one attempt.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-net-sig-coverage, Codex-dyn-net-sig-coverage: Add the minimum new lib-net signatures plus test fixtures: e.g. lookup + no such host, no such host, and capitalized Connection reset. Keep the three call-site wrappers unchanged.
+
+
+### FINDING_6: Exhausted transient checks can leave invalid stdout in CHECKS_JSON
+- **Reviewer(s)**: Cursor-dyn-net-sig-coverage, Codex-dyn-net-sig-coverage
+- **Severity**: important
+- **Concern**: The plan’s empty-on-exhaustion contract conflicts with assigning `CHECKS_JSON` / `CHECKS_TEXT` from `_WTR_OUT`, because `with_transient_retry` preserves the final stdout; exhausted transient output could become non-empty invalid JSON or misleading fallback text.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-net-sig-coverage, Codex-dyn-net-sig-coverage: Specify the merge-pr capture logic precisely: on wrapper failure whose final fail file still matches is_transient_net_signature, set CHECKS_JSON and CHECKS_TEXT to empty; preserve _WTR_OUT only for non-transient gh pr checks exits so pending/failing check output remains available.
+
+
+</findings>
+
+<feature>
+# [OOS] Remaining transient-retry gaps in rebase-push, create-pr, merge-pr, and design-log-publish
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Multi-reviewer panel (Cursor specialists)
+**Phase**: implement
+**Vote tally**: multiple accepted findings combined per triage rule
+
+## Description
+
+`scripts/rebase-push.sh` hard-fails `git fetch` in `--no-push` mode without transient retry (FINDING_7/17). `scripts/create-pr.sh` conflict recovery calls bare `gh pr list` without retry, so a transient list failure can miss an existing PR (FINDING_8/15). `scripts/merge-pr.sh` `gh pr view` and `gh pr checks` calls use local retry instead of `with_transient_retry` (FINDING_14/16). `scripts/design-log-publish.sh:685-686` leaves orphan remote branch when all create retries and recovery list probe fail (FINDING_14 design-log). `scripts/design-log-publish.sh` `list_fail_file` and `view_fail_file` not included in `wt_cleanup` trap so early exits leak temp files (FINDING_10). `scripts/create-pr.sh` has latent lost-success duplicate-PR risk if recovery misses after a transient (FINDING_20). Each fix is < ~30 LOC; cannot safely fold into the current branch after review.
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+</feature>
