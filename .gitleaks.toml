@@ -18,6 +18,8 @@ paths = [
     '''^scripts/test-ship-pr\.sh$''',
     '''^skills/review-and-fix/scripts/test-review-and-fix\.sh$''',
     '''^skills/review/scripts/test-review-core\.sh$''',
+    '''^scripts/test-launch-claude-ci\.sh$''',
+    '''^scripts/test-upsert-diagrams-comment\.sh$''',
 ]
 # Synthetic test-fixture key used in redaction harnesses.
 # The value is obviously fake (sequential alphabet + digits) and appears in test
