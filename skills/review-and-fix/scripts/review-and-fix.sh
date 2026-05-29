@@ -386,15 +386,20 @@ apply_findings_with_coder() {
     tool_log="$round_dir/coder-output.log"
     larch_err "→ review-and-fix: dispatching coder (${scrubbed_count} fixes)"
     if ! run_coder_dispatch "$round_dir" "$prompt_body" "$tool_log" "$tool_file"; then
+        # #3207: no external coder could apply (codex -> cursor both exhausted).
+        # Waterfall to the Claude/main-agent tier instead of hard-failing:
+        # CODER_STATUS=main-agent-required, return 4. The orchestrator (/implement
+        # Step 5, /review Step 3) then applies the accepted findings via main-agent
+        # Edit/Write, mirroring the implementer's codex -> cursor -> claude chain.
         {
             printf 'CODER_TOOL=none\n'
-            printf 'CODER_STATUS=failed\n'
+            printf 'CODER_STATUS=main-agent-required\n'
             printf 'CODER_LOG_FILE=\n'
             printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
             printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
             printf 'SUBMODULE_REVERT_COUNT=0\n'
         } > "$result_file"
-        return 2
+        return 4
     fi
 
     revert_count=$(post_dispatch_submodule_revert "$round_dir" "$submodules_list")
@@ -907,6 +912,7 @@ run_findings_mode() {
 
     case "$coder_rc" in
         0) review_status="complete"; exit_code=0 ;;
+        4) review_status="coder-main-agent-required"; exit_code=0 ;;
         2) review_status="coder-failed"; exit_code=2 ;;
         3) review_status="coder-failed"; exit_code=2 ;;
         *) review_status="coder-failed"; exit_code=2 ;;
@@ -1224,7 +1230,11 @@ _implement_round_body() {
             exit_code=0
             ;;
         fix-required|cap-reached)
-            if [[ "$coder_rc" -eq 2 ]]; then
+            if [[ "$coder_rc" -eq 4 || "$coder_status" == "main-agent-required" ]]; then
+                # #3207: codex -> cursor both exhausted; hand off to the main agent.
+                status="coder-main-agent-required"
+                exit_code=0
+            elif [[ "$coder_rc" -eq 2 ]]; then
                 status="coder-failed"
                 exit_code=2
             elif [[ "$coder_rc" -eq 3 || "$coder_status" == "submodule-violation" ]]; then

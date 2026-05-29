@@ -2,10 +2,12 @@
 
 ## Availability Checks
 
-At the start of each skill, a binary check determines which external tools are installed:
+At the start of each skill, a binary check plus runtime probe (`scripts/check-reviewers.sh` via `session-setup.sh --check-reviewers`) determines which external tools are usable:
 
-- If **Codex** is not found, a warning is printed and the skill proceeds without it
-- If **Cursor** is not found, a warning is printed and the skill proceeds without it
+- If **Codex** is unavailable (binary not on `PATH`, or its runtime auth/quota probe fails), a warning is printed
+- If **Cursor** is unavailable (same two failure modes), a warning is printed
+
+**Degraded-tools gate (issue #3207).** Beyond the warning, every skill that uses external tools (`/design`, `/implement`, `/review`, `/research`) runs the **Degraded-tools gate** in Step 0 (`scripts/degraded-tools-gate.sh`; procedure in `skills/shared/external-reviewers.md`). When either tool is unavailable, the gate presents an explanation (what is down, why — binary-missing vs runtime-probe-failed — and the degradation to expect) and, on an interactive run, asks the operator via `AskUserQuestion` whether to **continue with the backup waterfall** or **abort**. Non-interactive / autonomous runs (cron, `claude -p`, eval) auto-proceed degraded with the explanation logged, so automation is never blocked.
 
 **Exception: dialectic debate buckets (`/design` Step 2a.5) do NOT use replacement-first.** When the assigned external tool (Cursor for odd-indexed decisions, Codex for even) is unavailable, the bucket is **skipped entirely** and a `Disposition: bucket-skipped` resolution is written — Claude subagents are never substituted into the debate path. This carve-out applies only to the **debate execution phase** of dialectic; the post-debate **judge panel** uses replacement-first normally. See [Dialectic-specific behavior](#dialectic-specific-behavior) below and `skills/shared/dialectic-protocol.md` for the full rationale.
 
@@ -87,14 +89,23 @@ Authoritative flag documentation lives in the `--substantive-validation` / `--va
 
 External reviewers participate in multiple phases:
 
+The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned external tool → the *other* external tool → Claude, per slot (via `scripts/dispatch-with-waterfall.sh` for reviewer panels, or selection/runtime tiers for coders); **replacement-first** = tool unavailable → Claude directly (no cross-tool tier); **skip** = tool unavailable → slot dropped, no substitution.
+
 | Phase | Role | Skills | Fallback behavior |
 |---|---|---|---|
-| [Collaborative sketches](collaborative-sketches.md) | Propose architectural approaches | `/design` | Replacement-first (Claude subagent fills slot) |
-| Plan review | Review implementation plans | `/design` | Replacement-first |
-| [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | Replacement-first |
+| [Collaborative sketches](collaborative-sketches.md) | Propose architectural approaches | `/design` | **Skip** — fewer sketches, no Claude substitution (#3207) |
+| Plan review | Review implementation plans | `/design` | **Full waterfall** (Cursor↔Codex→Claude per slot) |
+| Code review | Review code changes | `/review`, `/implement` Step 5 | **Full waterfall** (per slot, `dispatch-panel.sh`) |
+| [Voting](voting-process.md) | Vote on findings | `/design`, `/review` | **Full waterfall** (Voter 2/3 per slot) |
+| Plan revision | Apply accepted plan findings | `/design` | **Full waterfall** (Codex→Cursor→Claude) |
+| Implementer (Step 2) | Write the implementation | `/implement` | **Selection waterfall** keyed on `--coder` (chosen → other external → Claude main-agent), #3207 |
+| review-and-fix / lint-fix coders | Apply review/lint fixes | `/implement`, `/review` | **Waterfall** Codex→Cursor→Claude main-agent (#3207) |
+| CI / checks recovery | Fix failing CI/checks | `/implement` (`ship-pr.sh`) | **Full waterfall** (Cursor→Codex→Claude) |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |
-| **Dialectic debate** (`/design` Step 2a.5) | Defend / attack contested decisions | `/design` | **Bucket skipped — no Claude substitution** |
+| Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |
+| **Dialectic debate** (`/design` Step 2a.5) | Defend / attack contested decisions | `/design` | **Bucket skipped — no Claude substitution** (per-side Cursor↔Codex→Claude-final retry) |
 | Dialectic judge panel (`/design` Step 2a.5) | Adjudicate between pre-authored defenses | `/design` | Replacement-first (panel shape stays intact) |
+| Dynamic-archetype scout | Propose ephemeral reviewer archetypes | `/design`, `/implement` reviews | **Codex→Claude waterfall** (landed in #3187) |
 
 ## Dialectic-specific behavior
 

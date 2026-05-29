@@ -173,6 +173,14 @@ run_implement_loop() {
                 step5_emit_final_envelope main-agent-vote-required false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 exit 0
                 ;;
+            coder-main-agent-required)
+                # #3207: codex -> cursor both exhausted this round; hand the
+                # accepted-findings application off to the main agent (Step 5
+                # orchestrator) rather than stalling — the Claude tier of the
+                # coder waterfall.
+                step5_emit_final_envelope coder-main-agent-required false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
+                exit 0
+                ;;
             panel-failed)
                 step5_emit_final_envelope stall true panel-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true

@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# test-degraded-tools-gate.sh — offline regression for scripts/degraded-tools-gate.sh (#3207).
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GATE="$SCRIPT_DIR/degraded-tools-gate.sh"
+
+PASS=0
+FAIL=0
+
+assert_contains() {
+    local haystack=$1 needle=$2 label=$3
+    if printf '%s\n' "$haystack" | grep -Fq -- "$needle"; then
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        printf 'FAIL: %s — expected to contain: %s\n' "$label" "$needle" >&2
+        printf '----- output -----\n%s\n------------------\n' "$haystack" >&2
+    fi
+}
+
+assert_not_contains() {
+    local haystack=$1 needle=$2 label=$3
+    if printf '%s\n' "$haystack" | grep -Fq -- "$needle"; then
+        FAIL=$((FAIL + 1))
+        printf 'FAIL: %s — expected NOT to contain: %s\n' "$label" "$needle" >&2
+    else
+        PASS=$((PASS + 1))
+    fi
+}
+
+assert_rc() {
+    local got=$1 want=$2 label=$3
+    if [ "$got" = "$want" ]; then
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        printf 'FAIL: %s — rc=%s want=%s\n' "$label" "$got" "$want" >&2
+    fi
+}
+
+# --- Case 1: all healthy → not degraded, no explanation block ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present true \
+    --cursor-binary-found true --cursor-present true --skill design) && rc=$? || rc=$?
+assert_rc "$rc" 0 "all-healthy exit 0"
+assert_contains "$out" "DEGRADED=false" "all-healthy DEGRADED=false"
+assert_contains "$out" "CODEX_STATE=ok" "all-healthy codex ok"
+assert_contains "$out" "CURSOR_STATE=ok" "all-healthy cursor ok"
+assert_not_contains "$out" "DEGRADED_EXPLANATION_BEGIN" "all-healthy no explanation"
+
+# --- Case 2: codex probe-failed, cursor ok → degraded, probe-failed phrasing ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present false \
+    --cursor-binary-found true --cursor-present true --skill design) && rc=$? || rc=$?
+assert_rc "$rc" 0 "codex-probe-failed exit 0"
+assert_contains "$out" "DEGRADED=true" "codex-probe-failed degraded"
+assert_contains "$out" "CODEX_STATE=probe-failed" "codex-probe-failed state"
+assert_contains "$out" "CURSOR_STATE=ok" "codex-probe-failed cursor ok"
+assert_contains "$out" "DEGRADED_EXPLANATION_BEGIN" "codex-probe-failed explanation begin"
+assert_contains "$out" "DEGRADED_EXPLANATION_END" "codex-probe-failed explanation end"
+assert_contains "$out" "runtime health probe failed" "codex-probe-failed phrasing"
+assert_contains "$out" "/design run" "codex-probe-failed skill label"
+
+# --- Case 3: cursor binary-missing, codex ok → degraded, binary-missing phrasing ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present true \
+    --cursor-binary-found false --cursor-present false --skill implement) && rc=$? || rc=$?
+assert_rc "$rc" 0 "cursor-binary-missing exit 0"
+assert_contains "$out" "DEGRADED=true" "cursor-binary-missing degraded"
+assert_contains "$out" "CURSOR_STATE=binary-missing" "cursor-binary-missing state"
+assert_contains "$out" "CODEX_STATE=ok" "cursor-binary-missing codex ok"
+assert_contains "$out" "CLI binary not found" "cursor-binary-missing phrasing"
+assert_contains "$out" "/implement run" "cursor-binary-missing skill label"
+
+# --- Case 4: both unavailable (binary present, probes failed) → degraded ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present false \
+    --cursor-binary-found true --cursor-present false --skill review) && rc=$? || rc=$?
+assert_rc "$rc" 0 "both-probe-failed exit 0"
+assert_contains "$out" "DEGRADED=true" "both-probe-failed degraded"
+assert_contains "$out" "CODEX_STATE=probe-failed" "both-probe-failed codex"
+assert_contains "$out" "CURSOR_STATE=probe-failed" "both-probe-failed cursor"
+
+# --- Case 5: empty binary-found + empty present → generic `unavailable` ---
+out=$(bash "$GATE" --codex-binary-found "" --codex-present "" \
+    --cursor-binary-found true --cursor-present true) && rc=$? || rc=$?
+assert_rc "$rc" 0 "empty-codex exit 0"
+assert_contains "$out" "DEGRADED=true" "empty-codex degraded"
+assert_contains "$out" "CODEX_STATE=unavailable" "empty-codex → generic unavailable"
+assert_contains "$out" "/this run" "default skill label"
+
+# --- Case 6: present=true but binary-found=false is still binary-missing (binary gate wins) ---
+out=$(bash "$GATE" --codex-binary-found false --codex-present true \
+    --cursor-binary-found true --cursor-present true) && rc=$? || rc=$?
+assert_contains "$out" "CODEX_STATE=binary-missing" "binary-false-present-true → binary-missing"
+assert_contains "$out" "DEGRADED=true" "binary-false-present-true degraded"
+
+# --- Case 7: present-only wiring (binary-found omitted, as /design/review/research call it) ---
+out=$(bash "$GATE" --codex-present true --cursor-present false --skill review) && rc=$? || rc=$?
+assert_rc "$rc" 0 "present-only exit 0"
+assert_contains "$out" "DEGRADED=true" "present-only degraded (cursor down)"
+assert_contains "$out" "CODEX_STATE=ok" "present-only codex ok without binary-found"
+assert_contains "$out" "CURSOR_STATE=unavailable" "present-only cursor generic unavailable"
+
+# --- Case 8: unknown flag → exit 2 ---
+out=$(bash "$GATE" --bogus 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 2 "unknown-flag exit 2"
+assert_contains "$out" "unknown argument" "unknown-flag message"
+
+printf 'test-degraded-tools-gate: PASS=%d FAIL=%d\n' "$PASS" "$FAIL"
+[ "$FAIL" -eq 0 ]

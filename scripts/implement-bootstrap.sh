@@ -1171,58 +1171,70 @@ _phase_coder_explicit() {
     local choice=$1 codex_binary_found=$2 cursor_binary_found=$3
     case "$choice" in
         claude)
+            # Claude is the main-agent path and is always available, so an
+            # explicit --coder=claude resolves to claude. (#3207 priority order
+            # claude -> cursor -> codex is documented for completeness; the
+            # main-agent tier never reports unavailable, so the tail is unreached.)
             coder=claude
             ;;
         cursor)
             if [ "${cursor_available:-false}" = "true" ]; then
                 coder=cursor
             else
-                _phase_coder_explicit_unavailable cursor "$cursor_binary_found"
+                # #3207: waterfall, do not bail — cursor -> codex -> claude.
+                _phase_coder_explicit_waterfall cursor "$cursor_binary_found" codex
             fi
             ;;
         codex)
             if [ "${codex_available:-false}" = "true" ]; then
                 coder=codex
             else
-                _phase_coder_explicit_unavailable codex "$codex_binary_found"
+                # #3207: waterfall, do not bail — codex -> cursor -> claude.
+                _phase_coder_explicit_waterfall codex "$codex_binary_found" cursor
             fi
             ;;
     esac
 }
 
-_phase_coder_explicit_unavailable() {
-    local tool=$1 binary_found=$2
-    local tool_caps binary_key other1 other2
-    case "$tool" in
-        cursor)
-            tool_caps=Cursor
-            binary_key=CURSOR_BINARY_FOUND
-            other1=codex
-            other2=claude
-            ;;
-        codex)
-            tool_caps=Codex
-            binary_key=CODEX_BINARY_FOUND
-            other1=cursor
-            other2=claude
-            ;;
-        *)
-            tool_caps=$tool
-            binary_key=
-            other1=claude
-            other2=
-            ;;
+# #3207 implementer waterfall: an explicit --coder named an unavailable external
+# tool. Emit the requested-tool diagnostic, then resolve to the alternate
+# external when present, else to Claude (main agent). Replaces the historical
+# hard-bail (IMPLEMENT_BAIL_REASON=coder-unavailable) so an unhealthy pinned
+# tool degrades gracefully instead of stalling the run.
+_phase_coder_explicit_waterfall() {
+    local requested=$1 requested_binary_found=$2 alt=$3
+    local requested_caps requested_binary_key alt_caps alt_available
+
+    case "$requested" in
+        cursor) requested_caps=Cursor; requested_binary_key=CURSOR_BINARY_FOUND ;;
+        codex)  requested_caps=Codex;  requested_binary_key=CODEX_BINARY_FOUND ;;
+        *)      requested_caps=$requested; requested_binary_key= ;;
+    esac
+    case "$alt" in
+        cursor) alt_caps=Cursor; alt_available=${cursor_available:-false} ;;
+        codex)  alt_caps=Codex;  alt_available=${codex_available:-false} ;;
+        *)      alt_caps=$alt;    alt_available=false ;;
     esac
 
-    if [ "$binary_found" = "false" ]; then
-        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${tool} requested but ${tool_caps} binary not found. Re-run without --coder, or with --coder=${other1}|${other2}.**"
-    elif [ -z "$binary_found" ]; then
-        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${tool} requested but ${binary_key} could not be determined (Step 0 may have failed). Re-run to re-probe.**"
+    if [ "$requested_binary_found" = "false" ]; then
+        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${requested} requested but ${requested_caps} binary not found. Waterfalling to ${alt_caps} → Claude.**"
+    elif [ -z "$requested_binary_found" ]; then
+        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${requested} requested but ${requested_binary_key} could not be determined (Step 0 may have failed). Waterfalling to ${alt_caps} → Claude.**"
     else
-        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${tool} requested but ${tool_caps} runtime probe failed / auth error. Re-run without --coder, or with --coder=${other1}|${other2}.**"
+        larch_err "**⚠ /implement Step 0 (implementer waterfall): --coder=${requested} requested but ${requested_caps} runtime probe failed / auth error. Waterfalling to ${alt_caps} → Claude.**"
     fi
-    IMPLEMENT_BAIL_REASON="coder-unavailable"
-    STALL_TRACKING=true
+    _phase_coder_append_warning "Step 0 — explicit --coder=${requested} unavailable: waterfall fallback toward ${alt} → claude"
+
+    if [ "$alt_available" = "true" ]; then
+        coder=$alt
+        return 0
+    fi
+
+    larch_err "**⚠ /implement Step 0 (implementer waterfall): ${alt_caps} also unavailable — falling back to Claude implementer.**"
+    _phase_coder_append_warning "Step 0 — explicit --coder=${requested} and ${alt} unavailable: waterfall fallback to claude"
+    coder=claude
+    coder_fallback=true
+    _phase_coder_manifest_fallback || true
 }
 
 _phase_coder_implicit() {

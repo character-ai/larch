@@ -193,6 +193,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 **Execution-issues logging**: Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` to `$DESIGN_TMPDIR/execution-issues.md` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
+**Degraded-tools gate (#3207).** After the presence parse above, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with the `CODEX_BINARY_FOUND` / `CODEX_PRESENT` / `CURSOR_BINARY_FOUND` / `CURSOR_PRESENT` values from the session-setup output and `--skill design`. If `DEGRADED=true` on an **interactive** run, present the `DEGRADED_EXPLANATION_BEGIN`…`END` block and fire `AskUserQuestion` with **Continue (degraded waterfall)** / **Abort**; on **Abort**, run `${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"` and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
+
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
 1. Consume the mental argv bindings from Step **0-pre** (`hard_requested`, `partition_requested`, `brainstorm_requested`, `manual_requested`, `no_dedup_requested`, optional `run_id`). Remaining tokens after flags:
@@ -474,7 +476,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Also read `review_budget` (`quick` vs `full`): it gates the Step 2b plan-command validator (skipped on `quick` alongside the full plan-review panel) and is consumed again explicitly in Step 3. Do not re-classify here; Step 0 owns router judgment.
 
-**IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with 4 personality sketch agents (using Claude replacements when external tools are unavailable). SIMPLE is the only no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD regardless of how simple or obvious the feature appears.**
+**IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with the 4 personality sketch slots. Per #3207, a slot whose external tool is unavailable is **skipped** (fewer sketches) — it is NOT padded with a Claude replacement; if both Cursor and Codex are down the phase runs zero sketches and falls through to the no-sketches path. SIMPLE is the only deliberate no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD by choice regardless of how simple or obvious the feature appears.**
 
 A diverge-then-converge phase where multiple agents independently produce short architectural sketches before writing the full plan. This surfaces different perspectives early — when they can still influence architectural direction — rather than waiting for review when the plan is already anchored.
 
@@ -494,19 +496,19 @@ Skip Step 2a.5 and proceed directly to Step 2b. Do NOT call `collect-agent-resul
 
 ### Regular mode (`sketch_budget=4`) — 4 sketch agents
 
-The 4 sketch agents are **2 Cursor + 2 Codex**, with per-slot Claude fallback when an external tool is unavailable:
+The 4 sketch slots are **2 Cursor + 2 Codex**. A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207):
 
-1. **Cursor — Architecture/Standards** — or **Claude (Architecture/Standards)** fallback.
-2. **Cursor — Edge-cases/Failure-modes** — or **Claude (Edge-cases/Failure-modes)** fallback.
-3. **Codex — Innovation/Exploration** — or **Claude (Innovation/Exploration)** fallback.
-4. **Codex — Pragmatism/Safety** — or **Claude (Pragmatism/Safety)** fallback.
+1. **Cursor — Architecture/Standards** (skipped if Cursor unavailable).
+2. **Cursor — Edge-cases/Failure-modes** (skipped if Cursor unavailable).
+3. **Codex — Innovation/Exploration** (skipped if Codex unavailable).
+4. **Codex — Pragmatism/Safety** (skipped if Codex unavailable).
 
-When the assigned external is unavailable, the slot's Claude fallback uses the same personality prompt; the configured 4-agent shape is preserved.
+When the assigned external is unavailable, the slot is skipped — no Claude substitution (#3207) — and the phase proceeds with fewer sketches (possibly zero if both tools are down).
 
 ### Quick/simple mode (`sketch_budget=2`) — 2 sketch agents
 
-1. **Cursor — Generic** — or **Claude (Generic)** fallback: a broad-scope sketch without personality specialization.
-2. **Codex — Generic** — or **Claude (Generic)** fallback: same generic prompt as Cursor-Generic.
+1. **Cursor — Generic** (skipped if Cursor unavailable): a broad-scope sketch without personality specialization.
+2. **Codex — Generic** (skipped if Codex unavailable): same generic prompt as Cursor-Generic.
 
 ### Sketch phase (regular and quick mode)
 
@@ -518,23 +520,25 @@ The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent off
 
 If `design_classification == SIMPLE`, perform the SIMPLE branch sentinel writes above and proceed directly to Step 2b.
 
-**Regular mode**: when `sketch_budget=4`, 4 sketch agents run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety), with per-slot Claude Agent-tool fallback when an external tool is unavailable so the 4-agent count is preserved.
+**Regular mode**: when `sketch_budget=4`, up to 4 sketch slots run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety). A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
 
-**Quick/simple mode**: when `sketch_budget=2`, 2 sketch agents run in parallel: 1 Cursor-Generic + 1 Codex-Generic, with per-slot Claude Agent-tool fallback so the 2-agent count is preserved.
+**Quick/simple mode**: when `sketch_budget=2`, up to 2 sketch slots run in parallel: 1 Cursor-Generic + 1 Codex-Generic. A slot whose tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
 
 **MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the four personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
 
-**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 4 regular-mode external slots (2 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes.
+**MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 4 regular-mode external slots (2 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot **skip** notes (#3207: an unavailable tool's slot is skipped, not Claude-replaced).
 
 **`<FEATURE_DESCRIPTION>` substitution (outline + brainstorm additive)**: Read `$DESIGN_TMPDIR/feature-description.txt` as the base feature text. If `$DESIGN_TMPDIR/design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists, prepend a concise `## Approved direction (outline)` section containing the approved outline. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, also prepend a short `## Brainstorm context` section containing a tight digest of `brainstorm.md` (do not dump the entire file if large). Replace each `<FEATURE_DESCRIPTION>` token in the resolved sketch prompt bodies with this combined string before launch.
 
-Execute the launches per `sketch-launch.md` — all external and fallback launches issued in a single message, Cursor slots first, then Codex slots, then any Claude fallbacks.
+Execute the launches per `sketch-launch.md` — all **available** external launches issued in a single message, Cursor slots first, then Codex slots; skip any slot whose tool is unavailable (no Claude fallback, #3207).
 
 ### 2a.3 — Wait and Validate Sketches
 
-Collect and validate external sketch outputs using the shared collection script. Pass the output paths for whichever external slots were actually launched (omit any slot where the tool was unavailable and a Claude subagent fallback is returning via Agent tool instead).
+Collect and validate external sketch outputs using the shared collection script. Pass the output paths for whichever external slots were actually launched (omit any slot whose tool was unavailable — that slot is skipped, not Claude-substituted, per #3207).
 
 If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `collect-agent-results.sh`.
+
+**Zero-sketches guard (#3207, NEVER #4).** If `design_classification == HARD` but **no** sketch slots were launched (both Cursor and Codex unavailable), do NOT call `collect-agent-results.sh` with zero entries. Instead take the no-sketches path: write the same sentinels as the SIMPLE branch (`NO_SKETCHES_CLASSIFIED_SIMPLE` → `approach-synthesis.txt`, `NO_CONTESTED_DECISIONS` → `contested-decisions.md`, empty `dialectic-resolutions.md`), log a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` noting "Step 2a — both external tools unavailable; ran 0 sketches (degraded)", then skip Step 2a.5 and proceed directly to Step 2b. When at least one slot was launched, collect only the launched outputs below.
 
 **Regular mode** (4 external output files when both tools available):
 
@@ -558,11 +562,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
 ```
 
-Use `timeout: 1260000` on the Bash tool call. Use a foreground Bash tool call with a sufficiently large timeout. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).
+Use `timeout: 1260000` on the Bash tool call. Use a foreground Bash tool call with a sufficiently large timeout. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (it is skipped, not Claude-substituted — fewer sketches, per #3207).
 
 Note: This is a separate `collect-agent-results.sh` call from the one in Step 3. Both are permitted because they operate on completely distinct output file sets (`*-sketch-*-output.txt` vs `*-plan-output.txt`).
 
-Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For sketches, a valid output is non-empty and contains substantive architectural content (at least a paragraph). If a reviewer's `STATUS` is not `OK`, follow the **Runtime Waterfall Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` for that slot.
+Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For sketches, a valid output is non-empty and contains substantive architectural content (at least a paragraph). If a launched sketch slot's `STATUS` is not `OK`, **drop that slot** (fewer sketches) — do NOT substitute a Claude replacement and do NOT run the cross-tool waterfall for sketches (#3207); the sketch phase is best-effort and proceeds with whatever valid sketches returned (possibly zero, which takes the no-sketches path above).
 
 For every non-`OK` sketch collector result, compose `$DESIGN_TMPDIR/sketch-collector-<reviewer>.failure.log` with the structured collector block, the full `REVIEWER_FILE` content if present, and the full `${REVIEWER_FILE}.diag` content if present. Append that file with `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2a.3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --output-file "$failure_log" --redact || true`.
 
@@ -570,7 +574,7 @@ After this collection boundary, consult any `${OUTPUT}.dirty-tree` launcher side
 
 ### 2a.4 — Synthesis
 
-Read all sketches (or their Claude fallbacks if an external tool was unavailable). Produce a synthesis that:
+Read all sketches that ran (fewer when an external tool was unavailable; if zero ran, the no-sketches path above was already taken). Produce a synthesis that:
 
 1. Identifies where the approaches **agree** (likely the majority)
 2. Identifies where they **diverge** and makes a reasoned call on each contested point with justification

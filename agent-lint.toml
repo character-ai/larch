@@ -368,6 +368,12 @@ exclude = [
   # the harness is covered by the test-append-tool-failure target.
   "scripts/test-append-tool-failure.sh",
   "scripts/test-append-tool-failure.md",
+  # scripts/test-degraded-tools-gate.sh is the Makefile-only regression harness
+  # for scripts/degraded-tools-gate.sh (issue #3207). The detector itself is
+  # runtime-referenced from /design, /implement, /review, /research Step 0; the
+  # harness is covered by the test-degraded-tools-gate target.
+  "scripts/test-degraded-tools-gate.sh",
+  "scripts/test-degraded-tools-gate.md",
   # scripts/test-launch-claude-subprocess.sh is the Makefile-only regression
   # harness for scripts/launch-claude-subprocess.sh. The launcher itself is
   # runtime-referenced from /review; the harness is not invoked from skill
