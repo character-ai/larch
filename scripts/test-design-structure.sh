@@ -842,8 +842,10 @@ contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
 contains "$SKILL_MD" 'passive-summary Continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
 contains "$SKILL_MD" 'Passive-summary Continue routes through Step 3.6 before Step 3b' 'SKILL.md missing passive-summary Continue Step 3.6 routing pin'
 contains "$SKILL_MD" 'bypass Step 3.5 **and Step 3.6** and continue to Step 3b instead' 'SKILL.md missing Step 3.5 Gate-B-bypass Step 3.6 coverage pin'
+# shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
 contains "$SKILL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`' 'SKILL.md missing Gate-B-bypass short-circuit list in Step 3.5 entry'
 contains "$APPROVAL_MD" 'Passive-summary Continue routes through Step 3.6 before Step 3b' 'approval-gates.md missing passive-summary Continue Step 3.6 routing pin'
+# shellcheck disable=SC2016 # backticks are literal markdown pins
 contains "$APPROVAL_MD" 'Gate-B-bypass short-circuits (`cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
 contains "$SKILL_MD" 'cancelled-assessor-worse' 'SKILL.md missing cancelled-assessor-worse outcome'
 contains "$REPO_ROOT/skills/design/scripts/render-final-summary.sh" 'cancelled-assessor-worse' 'render-final-summary.sh missing cancelled-assessor-worse outcome'
