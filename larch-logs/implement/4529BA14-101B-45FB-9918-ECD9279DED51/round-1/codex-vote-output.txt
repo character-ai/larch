@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- missing exports in Case 14 still fail via value checks; symmetric cursor-only coverage is a small test-gap, not worth blocking
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- first-write missing-output behavior is already exercised by existing no-flag cases
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- both-explicit contradictory alias flags are custom-caller input and not worth filing as a separate issue
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the mismatch is real, but constraining a caller-supplied output path is a broader pre-existing hardening change
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the symlink race is documented pre-existing operational risk and hardening it is larger than this concern warrants
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- byte-preserving no-flag recovery of already-mismatched prior state is a narrow edge case
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- only legacy or already-corrupt resume envs without reviewer keys hit this, so it is not worth filing separately
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- strict consumer argv validation is acceptable if the producer contract is fixed
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- implement run logs are an allowed committed surface in this repository
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is contextual analysis, not a defect or actionable finding
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- explicit empty boolean flags are custom-caller misuse and do not warrant extra recovery-state complexity
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this states that a scenario is not a defect, so there is no problem to raise
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch commit inventory is metadata, not a review finding

@@ -49,6 +49,10 @@ CODEX_PRESENT=""
 CURSOR_PRESENT=""
 CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
+CODEX_PRESENT_SET=false
+CURSOR_PRESENT_SET=false
+CODEX_AVAILABLE_SET=false
+CURSOR_AVAILABLE_SET=false
 REPO=""
 ISSUE_NUMBER=""
 CLAUDE_PID=""
@@ -61,10 +65,10 @@ while [[ $# -gt 0 ]]; do
     --design-tmpdir)    DESIGN_TMPDIR_ARG="$2"; shift 2 ;;
     --session-id)       SESSION_ID="$2"; shift 2 ;;
     --manual-requested) MANUAL_REQUESTED="$2"; shift 2 ;;
-    --codex-present)    CODEX_PRESENT="$2"; shift 2 ;;
-    --cursor-present)   CURSOR_PRESENT="$2"; shift 2 ;;
-    --codex-available)  CODEX_AVAILABLE="$2"; shift 2 ;;
-    --cursor-available) CURSOR_AVAILABLE="$2"; shift 2 ;;
+    --codex-present)    CODEX_PRESENT="$2"; CODEX_PRESENT_SET=true; shift 2 ;;
+    --cursor-present)   CURSOR_PRESENT="$2"; CURSOR_PRESENT_SET=true; shift 2 ;;
+    --codex-available)  CODEX_AVAILABLE="$2"; CODEX_AVAILABLE_SET=true; shift 2 ;;
+    --cursor-available) CURSOR_AVAILABLE="$2"; CURSOR_AVAILABLE_SET=true; shift 2 ;;
     --repo)             REPO="$2"; shift 2 ;;
     --issue-number)     ISSUE_NUMBER="$2"; shift 2 ;;
     --claude-pid)       CLAUDE_PID="$2"; CLAUDE_PID_SPECIFIED=1; shift 2 ;;
@@ -145,6 +149,46 @@ build_export() {
   local key="$1" val="$2"
   printf 'export %s=%q\n' "$key" "$val"
 }
+
+recover_prior_bool_value() {
+  local key="$1"
+  local prior_file="$2"
+  if [[ ! -f "$prior_file" ]]; then
+    return 0
+  fi
+  local line=""
+  line=$(grep -E "^export ${key}=(true|false)$" "$prior_file" 2>/dev/null | tail -1) || true
+  if [[ -z "$line" ]]; then
+    return 0
+  fi
+  printf '%s' "${line#*=}"
+}
+
+# Mirror a partial explicit *_PRESENT / *_AVAILABLE override to its alias peer.
+if [[ "$CODEX_PRESENT_SET" == true && "$CODEX_AVAILABLE_SET" != true ]]; then
+  CODEX_AVAILABLE="$CODEX_PRESENT"
+elif [[ "$CODEX_AVAILABLE_SET" == true && "$CODEX_PRESENT_SET" != true ]]; then
+  CODEX_PRESENT="$CODEX_AVAILABLE"
+fi
+if [[ "$CURSOR_PRESENT_SET" == true && "$CURSOR_AVAILABLE_SET" != true ]]; then
+  CURSOR_AVAILABLE="$CURSOR_PRESENT"
+elif [[ "$CURSOR_AVAILABLE_SET" == true && "$CURSOR_PRESENT_SET" != true ]]; then
+  CURSOR_PRESENT="$CURSOR_AVAILABLE"
+fi
+
+for _recover_key in CODEX_PRESENT CURSOR_PRESENT CODEX_AVAILABLE CURSOR_AVAILABLE; do
+  if [[ -z "${!_recover_key}" ]]; then
+    _recovered=$(recover_prior_bool_value "$_recover_key" "$OUTPUT") || true
+    if [[ -n "$_recovered" ]]; then
+      printf -v "$_recover_key" '%s' "$_recovered"
+    fi
+  fi
+done
+
+validate_bool codex-present "$CODEX_PRESENT"
+validate_bool cursor-present "$CURSOR_PRESENT"
+validate_bool codex-available "$CODEX_AVAILABLE"
+validate_bool cursor-available "$CURSOR_AVAILABLE"
 
 {
   printf '#!/usr/bin/env bash\n'

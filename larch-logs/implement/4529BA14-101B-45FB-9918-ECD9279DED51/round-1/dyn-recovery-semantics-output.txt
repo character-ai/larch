@@ -1,0 +1,14 @@
+Reviewing the branch diff and tracing recovery semantics in the changed files.
+Checking how callers invoke the writer and whether empty reviewer flags are reachable.
+Checking whether recovered values are re-validated and reviewing the documentation contract.
+### In-Scope Findings
+
+- **correctness** `scripts/write-design-current-env.sh:84-94,180-187` — Recovery uses `[[ -z "${!_recover_key}" ]]` (lines 180–187) while explicit argv presence is tracked separately via `*_SET` (lines 68–71, 169–178). `validate_bool` (lines 84–89) accepts an empty value when the flag was passed (`-n "$val"` is false for `""`), so `--codex-present ""` sets `CODEX_PRESENT_SET=true` with `CODEX_PRESENT=""`, skips alias mirroring only when the peer is also SET, then recovery repopulates from the prior `source-env.sh`—contradicting the contract text “An explicit flag overrides the recovered value” in `scripts/write-design-current-env.md:39`. **Reachability:** documented `/design` callers do not hit this: Step 0 only appends reviewer flags when non-empty (`skills/design/SKILL.md:174-177`), Step 0b/5.5-bis refresh invocations omit reviewer flags entirely (`skills/design/SKILL.md:270,275-293`), and `session-setup.sh` only emits `CODEX_PRESENT=` lines when probed values are non-empty (`scripts/session-setup.sh:408`). The production #3181 failure mode (flag omitted on refresh) is fixed correctly; this gap is manual or custom-caller only. **Suggested fix:** Gate recovery on omission, not value emptiness—for example `case "$_recover_key" in CODEX_PRESENT) [[ "$CODEX_PRESENT_SET" != true ]] && ...`—or reject empty argv with `validate_bool` when the matching `*_SET` is true; add a harness case for `--codex-present ""` if you want that contract pinned.
+
+### Out-of-Scope Observations
+
+- **Alias pair, both explicit:** When `CODEX_PRESENT_SET` and `CODEX_AVAILABLE_SET` are both true (including conflicting values), neither branch at `scripts/write-design-current-env.sh:169-178` runs, so mirroring does not overwrite either side; recovery only fills keys that remain empty after parse/mirror. No defect there for the scout’s “both SET, differing values” scenario.
+
+- **Branch diff noise:** The precomputed diff also adds `larch-logs/implement/4529BA14-.../` run artifacts (commit `f8684b9e1`); those are unrelated to the writer fix and are not correctness issues for #3181.
+
+- **Commits on branch:** `30b14b5e0` (fix), `f8684b9e1` (implement log flush).
