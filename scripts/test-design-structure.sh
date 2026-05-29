@@ -3,6 +3,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# shellcheck source=lib-p3119-fence-absence.sh
+source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/design/SKILL.md"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
@@ -409,17 +411,12 @@ grep -Fq 'skills/design/references/brainstorm-prompts.md' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing brainstorm-prompts.md path literal"
 grep -Fq 'ScheduleWakeup' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing ScheduleWakeup prohibition anchor"
-# shellcheck disable=SC2016 # Stage 4: Family-B fence shape removed from brainstorm.md
-_p3119_bc_mon=$(printf '%b' '\x62\x72\x65\x61\x64\x63\x72\x75\x6d\x62-\x6d\x6f\x6e\x69\x74\x6f\x72')
-_p3119_bg_pair=$(printf '%s %s' 'Background pair' 'required')
-_p3119_auth_doc=$(printf '%s%s.md §4' 'BASH_AUTHORING' '')
-_p3119_pair_banner=$(printf '%s%s.sh.**' '**⚠ Background required — must be paired with ' "$_p3119_bc_mon")
-grep -Fq "$_p3119_pair_banner" "$BRAINSTORM_MD" \
-  && fail "(3119) brainstorm.md still has background-pair banner in collector fence"
-grep -Fq "# ${_p3119_bg_pair}: see ${_p3119_auth_doc}" "$BRAINSTORM_MD" \
-  && fail "(3119) brainstorm.md still has BASH_AUTHORING §4 in-fence comment"
-grep -Fq "${_p3119_bc_mon}.sh" "$BRAINSTORM_MD" \
-  && fail "(3119) brainstorm.md still references breadcrumb-monitor.sh"
+# Stage 4 (#3119): Family-B fence shape must stay absent from design orchestrator docs.
+assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md"
+assert_p3119_family_b_fence_absent "$BRAINSTORM_MD" "brainstorm.md"
+assert_p3119_family_b_fence_absent "$DIALEXEC_MD" "dialectic-execution.md"
+assert_p3119_family_b_fence_absent "$PLAN_REVIEW_MD" "plan-review.md"
+assert_p3119_family_b_fence_absent "$DIALPROTO_MD" "dialectic-protocol.md"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
   || fail "(2754) SKILL.md write-run-params invocation missing --brainstorm-requested"

@@ -37,6 +37,8 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
+# shellcheck source=lib-p3119-fence-absence.sh
+source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/review/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/review/references"
 REVIEW_SCRIPTS_DIR="$REPO_ROOT/skills/review/scripts"
@@ -412,6 +414,15 @@ LIB_MD="$REPO_ROOT/scripts/lib-vote-tally.md"
   || fail "(20) scripts/lib-vote-tally.md missing"
 grep -Fq 'focus-area\s*=\s*security' "$LIB_MD" \
   || fail "(20d) lib-vote-tally.md must document canonical focus-area\\s*=\\s*security token for is_security_block"
+
+# ---------------------------------------------------------------------------
+# (21) Stage 4 (#3119): Family-B fence shape must stay absent from review orchestrator docs.
+# ---------------------------------------------------------------------------
+HEAVY_WORKER_MD="$REFS_DIR/heavy-worker.md"
+EXTERNAL_REVIEWERS_MD="$REPO_ROOT/skills/shared/external-reviewers.md"
+assert_p3119_family_b_fence_absent "$HEAVY_WORKER_MD" "heavy-worker.md"
+assert_p3119_family_b_fence_absent "$EXTERNAL_REVIEWERS_MD" "external-reviewers.md"
+assert_p3119_family_b_fence_absent "$PROTOCOL_MD" "voting-protocol.md"
 
 echo "PASS: test-review-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

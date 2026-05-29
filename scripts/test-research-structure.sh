@@ -25,6 +25,8 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
+# shellcheck source=lib-p3119-fence-absence.sh
+source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/research/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/research/references"
 RESEARCH_MD="$REFS_DIR/research-phase.md"
@@ -156,6 +158,12 @@ if grep -F -- '--no-issue' "$SKILL_MD" >/dev/null; then
 else
   fail "[flag surface] SKILL.md must surface --no-issue"
 fi
+
+# ---------- Check 9: Stage 4 (#3119) Family-B fence absence ----------
+
+assert_p3119_family_b_fence_absent "$RESEARCH_MD" "research-phase.md"
+assert_p3119_family_b_fence_absent "$VALIDATION_MD" "validation-phase.md"
+PASS=$((PASS + 2))
 
 # ---------- Summary ----------
 

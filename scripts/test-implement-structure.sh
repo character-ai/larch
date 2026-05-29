@@ -4,6 +4,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# shellcheck source=lib-p3119-fence-absence.sh
+source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/implement/references"
 RESTORE_FINALIZE_SH="$REPO_ROOT/scripts/restore-finalize-state.sh"
@@ -629,19 +631,9 @@ grep -Fq "seed \`\$IMPLEMENT_TMPDIR/ship-pr-state.sh\` from the canonical Step 8
 grep -Fq 'copy the full canonical key set' "$SKILL_MD" \
   || fail "SKILL.md Step 5 stall path must require copying the full canonical ship-pr-state key set"
 
-# shellcheck disable=SC2016 # Stage 4: Family-B fence shape removed from implement SKILL.md
-_p3119_bc_mon=$(printf '%b' '\x62\x72\x65\x61\x64\x63\x72\x75\x6d\x62-\x6d\x6f\x6e\x69\x74\x6f\x72')
-_p3119_bg_pair=$(printf '%s %s' 'Background pair' 'required')
-_p3119_auth_doc=$(printf '%s%s.md §4' 'BASH_AUTHORING' '')
-_p3119_pair_banner=$(printf '%s%s.sh.**' '**⚠ Background required — must be paired with ' "$_p3119_bc_mon")
-grep -Fq "$_p3119_pair_banner" "$SKILL_MD" \
-  && fail "(3119) SKILL.md still has background-pair banner in a skill fence"
-grep -Fq "# ${_p3119_bg_pair}: see ${_p3119_auth_doc}" "$SKILL_MD" \
-  && fail "(3119) SKILL.md still has BASH_AUTHORING §4 in-fence comment"
-grep -Fq "${_p3119_bc_mon}.sh" "$SKILL_MD" \
-  && fail "(3119) SKILL.md still references breadcrumb-monitor.sh"
-_p3119_bg_mon=$(printf '%s+%s' 'background' 'monitor')
-grep -Fq "${_p3119_bg_mon} invocation" "$SKILL_MD" \
-  && fail "(3119) SKILL.md still mandates background+monitor ship-pr invocation"
+# Stage 4 (#3119): Family-B fence shape must stay absent from implement orchestrator docs.
+assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md" ship-pr-invocation
+assert_p3119_family_b_fence_absent "$STALL_RECOVERY_MD" "stall-recovery.md"
+assert_p3119_family_b_fence_absent "$REFS_DIR/rebase-rebump-subprocedure.md" "rebase-rebump-subprocedure.md"
 
 echo "All assertions passed."

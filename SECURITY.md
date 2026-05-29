@@ -264,11 +264,12 @@ By default, `/research` creates a GitHub issue at the end of each successful run
 Breadcrumb streams cross from session-local runtime state into durable logs only
 through the redaction and publication path described here.
 
-1. **Live streams are session-tmpdir-only**: raw breadcrumb stream files live
-   under `$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
-   `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`; never
-   committed without redaction. These stream files are session-local runtime
-   artifacts only; committed publication uses quiet logs instead.
+1. **Session breadcrumb directories are publication hints only**: session-tmpdir
+   `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
+   `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are hints only;
+   committed publication stages matching `larch-quiet-<script>-<pid>.log` quiet logs
+   from the session root, not live runtime streams under those directories. Legacy
+   `*.ndjson` stream files and other non-quiet-log artifacts stay session-local.
 2. **Committed copies are routed through `larch-log.sh commit` and
    `design-log-publish.sh`**: both entrypoints invoke the shared
    `larch_log_publish_breadcrumbs_shared` helper in `scripts/lib-larch-log.sh`.

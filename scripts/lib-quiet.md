@@ -54,7 +54,8 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.
 
-Family B scripts surface progress via `larch_err` / `larch_errf` on the
+Long-running quiet scripts (for example `ship-pr.sh`, `ci-wait.sh`, and
+`collect-agent-results.sh`) surface progress via `larch_err` / `larch_errf` on the
 operator-visible stderr channel (FD 4 after `larch_quiet_init`).
 
 ## Harness
