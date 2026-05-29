@@ -1,0 +1,17 @@
+Reviewing the branch diff and the rebase-push fetch-retry harness for git-stub isolation and correctness.
+Checking production changes for harness-related gaps and reviewing merge-pr CI refresh logic.
+Verifying `emit_kv` output routing for the persistent-failure assertion and scanning the diff for harness-related issues.
+**Commits** (since `main`):
+
+- `8b3f28d26` — Add transient retry to rebase-push, create-pr, and merge-pr network calls  
+- `bdf5c3904` — chore(larch-logs): flush implement run …
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **Harness-isolation (verified, not a defect):** In `scripts/test-rebase-push-no-push-fetch-retry.sh`, `REAL_GIT` is captured at line 9 via `command -v git` before any stub directory is on `PATH`, and `write_git_stub` bakes that absolute path into the generated stub (`REAL_GIT="${REAL_GIT}"` at lines 65/1417). The stub always ends with `exec "$REAL_GIT" "$@"` (lines 88/1440), so delegated calls cannot recurse into the stub. Only `git fetch` with `origin` / `main` is simulated; `symbolic-ref`, `merge-base`, and other `--no-push` git usage delegate to the real binary. Repo setup (`setup_fresh_repo`) uses `git -C …` before `PATH` is stubbed, so bootstrap fetches are unaffected. `trap 'rm -rf "$TMPDIR_ROOT"' EXIT` (line 48) matches sibling rebase-push harnesses; failure paths use `set +e` / explicit `$?` checks, so a failing assertion’s exit code is not masked by cleanup.
+
+- **Coverage note (not introduced as a correctness bug):** The new harness only asserts the `--no-push` path that reaches `SKIPPED_ALREADY_FRESH=true` after a retried fetch; it does not exercise fetch success followed by an actual rebase. That is a scope choice, not a stub-isolation flaw.

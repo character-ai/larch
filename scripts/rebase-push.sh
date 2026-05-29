@@ -192,7 +192,15 @@ else
     # In --no-push mode, fetch failure is fatal (the whole point is freshness).
     # In default mode, fetch failure is tolerated to allow rebasing against the cached $BASE_TARGET.
     if [[ "$NO_PUSH" == "true" ]]; then
-        if ! git fetch "$BASE_REMOTE" "$BASE_REF" --quiet 2>/dev/null; then
+        fetch_fail_file=$(mktemp "${TMPDIR:-/tmp}/rebase-push-fetch.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$fetch_fail_file" \
+            git fetch "$BASE_REMOTE" "$BASE_REF" --quiet; then
+            fetch_rc=0
+        else
+            fetch_rc=$_WTR_RC
+        fi
+        rm -f "$fetch_fail_file"
+        if [[ "$fetch_rc" -ne 0 ]]; then
             emit_kv REBASE_ERROR "git fetch $BASE_REMOTE $BASE_REF failed (network/auth issue)"
             exit 3
         fi

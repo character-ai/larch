@@ -7,11 +7,12 @@ fi
 is_transient_net_signature() {
     local text="$1"
     case "$text" in
+        *"no such hosted"*|*"no such hostname"*) return 1 ;;
         *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|\
         *"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|\
-        *"network/auth issue"*|*"connection reset"*|*"EOF"*"during"*|\
-        *"context deadline exceeded"*|*"no valid output 3 times"*|\
-        *"git fetch"*"failed"*) return 0 ;;
+        *"network/auth issue"*|*"connection reset"*|*"Connection reset by peer"*|\
+        *"EOF"*"during"*|*"context deadline exceeded"*|*"no valid output 3 times"*|\
+        *"git fetch"*"failed"*|*"lookup"*"no such host"*|*"no such host"*) return 0 ;;
         *) return 1 ;;
     esac
 }

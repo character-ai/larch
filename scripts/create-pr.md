@@ -80,6 +80,8 @@ PR_TITLE=<existing title, when available>
 PR_STATUS=existing
 ```
 
+Conflict-recovery `gh pr list` retries transient failures via `with_transient_retry` before falling through to the conflict-text URL regex, closing the lost-success duplicate-PR window when create succeeded server-side but the client retried into an "already exists" conflict.
+
 If the list query cannot recover the PR, the script falls back to the PR URL embedded in the `gh pr create` diagnostic. Other `gh pr create` failures still exit 2 with the diagnostic block.
 
 ## Exit-code parity invariant
