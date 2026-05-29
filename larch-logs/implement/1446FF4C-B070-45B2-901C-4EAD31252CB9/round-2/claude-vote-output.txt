@@ -1,0 +1,25 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan edge-cases section explicitly acknowledged 180s and accepted it as potentially adequate without a required increase
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- probe is a fast gate checking array shape only; post-winner runs full per-archetype schema validation; these are distinct layers not true duplication
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- CURSOR_PRESENT accepted-but-unused is explicit design for API parity; code comment documents intent
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- mixed probe-miss+launcher-failure behavior is intentionally documented in scout-dynamic-archetypes.md and covered by waterfall-probe-claude-fail harness
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=true -- exit-0 empty Codex raw skips had_probe_miss and does not update last_scout_status; severity depends on whether launch-review.sh has a fail-loud guard matching launch-claude-subprocess.sh
+FINDING_10: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- plan explicitly scoped runtime verification to verify-external-tool-invocations.md manual check; SECURITY.md documents the residual risk
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- plan scoped to manual verification + SECURITY.md documentation; adding automated denial tests is out of scope for this PR
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- implementation narrowing allowedTools from Read/Grep/Glob to Read-only is a deliberate security tightening; SECURITY.md reflects the implementation
+FINDING_19: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- staged-context retention under session tmpdir is intentional; cleanup happens at session level; not worth a separate issue given FINDING_17 covers the actual leak
+OOS_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

@@ -1,0 +1,25 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- default timeout unchanged; large-diff timeout is speculative without measured failures
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate probe helper is maintainability-only; behavior is consistent today
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- repeated terminal KV blocks are DRY-only; emitted contract matches current branches
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- inline comment documents Cursor flag as API parity only
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- commit-log/diff trim mismatch is latent until log-driven reviewers exist
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- probe-miss plus final launcher failure emits launcher status, conflicting with plan empty-on-probe-exhaustion rule
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- exit-0 empty tier raw skips had_probe_miss and can emit spurious claude-failed
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- multi-tier launcher-failure and >1MB staged paths lack dedicated harness cases
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- read-tools CLI reject paths are not covered in launch-claude-subprocess tests
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- WARN=staged for files >256KB is implemented but not asserted in tests
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- argv-only CI is documented pattern; full Read integration is disproportionate for scout lint
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Codex --add-dir is full review tmpdir while Claude is scoped to staged-context only
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Read-only argv/permission-mode is tested; runtime denial smoke is optional hardening
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- LAUNCH_* overrides are intentional trusted-operator test seams
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- empty fenced_tmp cp failure path leaves fenced-probe temp behind
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Read-only allowlist matches tests and security boundary; Grep/Glob is plan wording only
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- dynamic4/8/empty/oversized-diff stub Claude only and can run real launch-review Codex tier
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- issue acceptance still implies Cursor tier while scout waterfall is Codex→Claude only
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- waterfall terminal matrix cases (3) and (4) lack harness assertions
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- default last_scout_status=claude-failed amplifies exit-0 empty-raw mis-reporting in FINDING_9
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- no harness covers large staged description argv/E2BIG boundary for Codex tier
+OOS_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- staged/launch-env retention is intentional; only fenced-probe leak is actionable (FINDING_17)
+OOS_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan documents PATH codex fallthrough tradeoff; FINDING_19 captures the actionable harness gap
