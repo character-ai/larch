@@ -1,0 +1,137 @@
+# Implementation Plan — #3181: env-refresh drops CODEX_PRESENT/CURSOR_PRESENT
+
+## Summary
+
+`scripts/write-design-current-env.sh` rewrites `source-env.sh` from scratch on
+every call and only emits the four reviewer keys when their shell var is
+non-empty (lines 158-161). A no-flag refresh (Step 0b sub-step 6, Step 5.5-bis)
+omits the flags, so `CODEX_PRESENT` / `CURSOR_PRESENT` / `CODEX_AVAILABLE` /
+`CURSOR_AVAILABLE` are dropped. Step 3 then passes empty `--codex-present` /
+`--cursor-present` to `plan-review-loop.sh`, tripping its `${2:?}` argv guard.
+
+Fix approach #1 (issue's preferred): make the writer **preserve/merge** those
+four keys from the existing `--output` file when the matching flag is omitted,
+while treating `*_PRESENT` and `*_AVAILABLE` as paired aliases during explicit
+partial overrides so one fresh value cannot be combined with one stale recovered
+value. No SKILL.md or consumer changes (Round 1 decisions).
+
+## Files to modify/create
+
+### UPDATED: `scripts/write-design-current-env.sh`
+- Track whether each of the four reviewer flags was explicitly provided, e.g. `CODEX_PRESENT_SET=false`, `CURSOR_PRESENT_SET=false`, `CODEX_AVAILABLE_SET=false`, `CURSOR_AVAILABLE_SET=false`, flipped to `true` in the corresponding argv-parse branch after `validate_bool`.
+- After argv validation and before the env-file build block (the
+  `{ ... } > "${OUTPUT}.tmp.$$"` heredoc-style group), add a recovery pass that
+  backfills the four presence/availability vars from the existing `--output`
+  file **only when the corresponding flag was omitted** (var is empty).
+- Add a small helper:
+  ```bash
+  # Preserve reviewer presence/availability across no-flag refreshes (#3181).
+  # These four keys are session-stable facts (reviewer availability does not
+  # change mid-session); recover the prior value from the existing --output
+  # file when the matching flag is omitted instead of dropping it. An
+  # explicitly-passed flag still wins. MANUAL_REQUESTED / REPO / ISSUE_NUMBER
+  # intentionally keep clear-on-omit (see test Case 12) and are NOT recovered.
+  recover_prior_env_value() {
+    local key="$1"
+    [[ -f "$OUTPUT" ]] || return 0
+    local prefix="export ${key}="
+    local line
+    line=$(grep "^${prefix}" "$OUTPUT" 2>/dev/null | tail -n 1 || true)
+    [[ -n "$line" ]] || return 0
+    printf '%s' "${line#"$prefix"}"
+  }
+  ```
+- Then, before recovery, normalize explicit partial overrides within each alias
+  pair so a fresh explicit value wins over a stale recovered peer:
+  ```bash
+  if [[ "$CODEX_PRESENT_SET" == true && "$CODEX_AVAILABLE_SET" != true ]]; then
+    CODEX_AVAILABLE="$CODEX_PRESENT"
+  elif [[ "$CODEX_AVAILABLE_SET" == true && "$CODEX_PRESENT_SET" != true ]]; then
+    CODEX_PRESENT="$CODEX_AVAILABLE"
+  fi
+  if [[ "$CURSOR_PRESENT_SET" == true && "$CURSOR_AVAILABLE_SET" != true ]]; then
+    CURSOR_AVAILABLE="$CURSOR_PRESENT"
+  elif [[ "$CURSOR_AVAILABLE_SET" == true && "$CURSOR_PRESENT_SET" != true ]]; then
+    CURSOR_PRESENT="$CURSOR_AVAILABLE"
+  fi
+  ```
+- Then recover only still-empty values before the build block:
+  ```bash
+  [[ -z "$CODEX_PRESENT" ]]    && CODEX_PRESENT="$(recover_prior_env_value CODEX_PRESENT)"
+  [[ -z "$CURSOR_PRESENT" ]]   && CURSOR_PRESENT="$(recover_prior_env_value CURSOR_PRESENT)"
+  [[ -z "$CODEX_AVAILABLE" ]]  && CODEX_AVAILABLE="$(recover_prior_env_value CODEX_AVAILABLE)"
+  [[ -z "$CURSOR_AVAILABLE" ]] && CURSOR_AVAILABLE="$(recover_prior_env_value CURSOR_AVAILABLE)"
+  ```
+- The existing `[[ -n "$KEY" ]] && build_export KEY "$KEY"` emit lines (158-161) are unchanged: they now emit because pair-normalization and/or recovery filled the var.
+- Recovery reads `$OUTPUT` before the temp-write+`mv`, so it sees prior content.
+- Do NOT touch the `MANUAL_REQUESTED` / `REPO` / `ISSUE_NUMBER` emit lines.
+
+### UPDATED: `scripts/write-design-current-env.md`
+- Under "## Keys", add a short paragraph documenting refresh-preservation: the
+  four presence/availability keys are recovered from the existing `--output`
+  file when their flag is omitted; an explicit flag overrides the recovered
+  value; when only one side of a `*_PRESENT` / `*_AVAILABLE` alias pair is
+  explicitly passed, the omitted peer is updated to the explicit value instead
+  of recovered from stale output; `MANUAL_REQUESTED` / `REPO` / `ISSUE_NUMBER` keep clear-on-omit and are
+  not recovered. Cross-reference issue #3181 and harness Case 12.
+
+### UPDATED: `skills/design/scripts/test-write-design-current-env.sh`
+- Add Case 13 (preserve on no-flag refresh): write once WITH `--manual-requested
+  true` + all four presence/availability flags (mixed true/false), then re-write
+  to the SAME `--output` WITHOUT those flags. Source the result and assert the
+  four keys survived with their original values AND `MANUAL_REQUESTED` is unset
+  (proves preservation is scoped to the four keys, leaving Case 12 semantics).
+- Add Case 14 (explicit override wins): write with `--codex-present true`, then
+  `--cursor-present false`, `--codex-available true`, and `--cursor-available false`; then re-write the same output with only `--codex-present false`. Assert `CODEX_PRESENT=false` and `CODEX_AVAILABLE=false` (explicit partial override updates the omitted alias peer), while `CURSOR_PRESENT=false` and `CURSOR_AVAILABLE=false` are preserved from the prior write.
+
+## Approach
+
+- Smallest change that resolves the launch failure: pair-normalize, then
+  recover-then-emit inside the writer. The four emit guards stay as-is; only the
+  vars feeding them are backfilled. Generated values are `%q` of `true`/`false` (bare tokens), so
+  prefix-strip recovery round-trips cleanly through `build_export`.
+- Pair-normalization is scoped to the two alias pairs. This prevents
+  `--codex-present false` from emitting `CODEX_PRESENT=false` while recovering a
+  stale `CODEX_AVAILABLE=true` from the previous file.
+- Scope the merge to exactly the four reviewer keys. `MANUAL_REQUESTED` clear-on-
+  omit is a tested invariant (Case 12); recovering it would regress that test.
+
+## Edge cases
+
+- First write (Step 0a): `$OUTPUT` does not exist → `recover_prior_env_value`
+  returns nothing; Step 0a passes the flags explicitly anyway. No behavior change.
+- Flag explicitly passed on refresh: explicit pair-normalization runs first, then var is non-empty → recovery skipped →
+  passed value wins (override). Covered by Case 14.
+- Fresh per-run tmpdir: no cross-run stale values; recovery only ever reads the
+  current run's own prior write.
+- Recovered values bypass `validate_bool`, but originate from a prior validated
+  machine-only write ("Do not edit" banner). Acceptable; not re-validated.
+- `grep` runs inside a `bash` script (real `/usr/bin/grep`, not the Bash-tool
+  wrapper), and `|| true` guards the no-match exit under `set -o pipefail`.
+
+## Failure modes
+
+- A corrupted/hand-edited `source-env.sh` could feed a non-boolean recovered
+  value. Earliest signal: `plan-review-loop.sh` argv error on a non-`true|false`
+  token. Mitigation: the file is machine-generated and banner-marked do-not-edit;
+  if hardening is later wanted, re-run `validate_bool` after recovery (out of
+  scope here per Round 1 "writer fix only"). Explicit partial overrides do not
+  use recovered peer values because pair-normalization happens before recovery.
+- Regression risk to `test-session-env-roundtrip.sh` (item H, cache-root mtime):
+  none — recovery does not alter cache-touch or symlink logic.
+
+## Testing strategy
+
+- Extend `skills/design/scripts/test-write-design-current-env.sh` with Case 13
+  (preserve) and Case 14 (override); existing Cases 1-12 must still pass
+  (especially Case 12 — `MANUAL_REQUESTED` clear-on-omit).
+- Run: `make test-write-design-current-env` and `bash scripts/relevant-checks.sh`
+  (shellcheck + bash32 + script-md-sibling + markdownlint over the touched files).
+- No Makefile change (target already registered in `test-harnesses-6`).
+
+## Diff size estimate
+
+Three small edits: ~30 lines in the script (flag-presence tracking + pair
+normalization + helper + 4 recovery lines + comments), ~8 lines in the `.md`, ~40 lines for two test cases.
+
+diff_lines: 78
