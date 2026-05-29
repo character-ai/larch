@@ -7,7 +7,7 @@ fi
 is_transient_net_signature() {
     local text="$1"
     case "$text" in
-        *"no such hosted"*) return 1 ;;
+        *"no such hosted"*|*"no such hostname"*) return 1 ;;
         *"Could not resolve"*|*"unable to access"*|*"Connection refused"*|\
         *"Temporary failure"*|*"timed out"*|*"TLS handshake"*|*"HTTP 5"*|\
         *"network/auth issue"*|*"connection reset"*|*"Connection reset by peer"*|\
