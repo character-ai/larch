@@ -774,6 +774,7 @@ run_case "checks_transient_exhaust" \
 assert_stdout_contains "checks_transient_exhaust" "MERGE_RESULT=ci_not_ready" "S4: exhausted transient checks emit ci_not_ready"
 assert_no_merge_commands "checks_transient_exhaust" "S4: exhausted transient checks skip merge"
 assert_command_count "checks_transient_exhaust" "gh.log" "pr checks 123 --repo owner/repo --json name,state,bucket,link" "3" "S4: json checks exhaust retry budget"
+assert_command_count "checks_transient_exhaust" "gh.log" "pr checks 123 --repo owner/repo" "0" "S4: exhausted transient json checks never fall back to text checks"
 
 echo
 echo "Sub-test R: post-force-push UNKNOWN persists, fails after 3 retries (#2342)"
