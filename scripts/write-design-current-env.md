@@ -32,6 +32,16 @@ whenever it is set in the writer's environment, mirroring
 `scripts/write-session-env.sh`'s `LARCH_CLAUDE_PLUGIN_ROOT` shape but as
 the directly-usable variable name (sourceable, not parsed).
 
+**Refresh preservation (issue #3181)**: on a no-flag refresh (Step 0b / Step 5.5-bis
+shape — only `--output`, `--design-tmpdir`, `--session-id`, and friends), the four
+reviewer keys (`CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`)
+are recovered from the existing `--output` file when the matching flag is omitted.
+An explicit flag overrides the recovered value. When exactly one side of a
+`*_PRESENT` / `*_AVAILABLE` alias pair is passed, the writer mirrors that value to
+the omitted peer so a partial override cannot leave a stale peer (see harness Case 14).
+`MANUAL_REQUESTED`, `REPO`, and `ISSUE_NUMBER` keep clear-on-omit behavior (harness
+Case 12 for `MANUAL_REQUESTED`).
+
 When `CLAUDE_PLUGIN_ROOT` is set and validates, the script also invokes
 `larch_touch_executing_cache_root` from `scripts/lib-larch-cache-touch.sh`
 best-effort so the corresponding larch cache directory's mtime reflects recent

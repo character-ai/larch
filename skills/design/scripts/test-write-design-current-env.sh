@@ -287,4 +287,66 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "${MANUAL_REQUESTED+x}" != x ] || exit 122
 ) || fail "case12: stale MANUAL_REQUESTED=true was not cleared by omitted follow-up write (subshell exit $?)"
 
+# Case 13 — no-flag refresh preserves reviewer keys; MANUAL_REQUESTED still clears
+case13_dir="$TMPROOT/case13"
+design13="$case13_dir/design"
+out13="$case13_dir/source-env.sh"
+mkdir -p "$design13"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out13" \
+    --design-tmpdir "$design13" \
+    --session-id "PRESERVE-SEED" \
+    --manual-requested true \
+    --codex-present true \
+    --cursor-present false \
+    --codex-available true \
+    --cursor-available false \
+    --claude-pid "$TEST_CLAUDE_PID"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out13" \
+    --design-tmpdir "$design13" \
+    --session-id "PRESERVE-REFRESH" \
+    --claude-pid "$TEST_CLAUDE_PID"
+(
+    set -u
+    # shellcheck disable=SC1090,SC2153
+    source "$out13"
+    [ "$SESSION_ID" = "PRESERVE-REFRESH" ] || exit 131
+    [ "${MANUAL_REQUESTED+x}" != x ] || exit 132
+    [ "$CODEX_PRESENT" = "true" ] || exit 133
+    [ "$CURSOR_PRESENT" = "false" ] || exit 134
+    [ "$CODEX_AVAILABLE" = "true" ] || exit 135
+    [ "$CURSOR_AVAILABLE" = "false" ] || exit 136
+) || fail "case13: no-flag refresh did not preserve reviewer keys or clear MANUAL_REQUESTED (subshell exit $?)"
+
+# Case 14 — partial codex override mirrors alias peer; cursor keys preserved
+case14_dir="$TMPROOT/case14"
+design14="$case14_dir/design"
+out14="$case14_dir/source-env.sh"
+mkdir -p "$design14"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out14" \
+    --design-tmpdir "$design14" \
+    --session-id "PARTIAL-SEED" \
+    --codex-present true \
+    --cursor-present true \
+    --codex-available false \
+    --cursor-available true \
+    --claude-pid "$TEST_CLAUDE_PID"
+CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out14" \
+    --design-tmpdir "$design14" \
+    --session-id "PARTIAL-OVERRIDE" \
+    --codex-present false \
+    --claude-pid "$TEST_CLAUDE_PID"
+(
+    # shellcheck disable=SC1090,SC2153
+    source "$out14"
+    [ "$SESSION_ID" = "PARTIAL-OVERRIDE" ] || exit 141
+    [ "$CODEX_PRESENT" = "false" ] || exit 142
+    [ "$CODEX_AVAILABLE" = "false" ] || exit 143
+    [ "$CURSOR_PRESENT" = "true" ] || exit 144
+    [ "$CURSOR_AVAILABLE" = "true" ] || exit 145
+) || fail "case14: partial codex override did not mirror peer or preserve cursor keys (subshell exit $?)"
+
 echo "PASS: test-write-design-current-env.sh"
