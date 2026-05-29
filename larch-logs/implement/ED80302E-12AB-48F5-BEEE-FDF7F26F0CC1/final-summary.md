@@ -1,10 +1,10 @@
-## /implement run ED80302E-12AB-48F5-BEEE-FDF7F26F0CC1 — bailed
+## /implement run ED80302E-12AB-48F5-BEEE-FDF7F26F0CC1 — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 04:48:51
-- **Cost**: 💰 TOTAL ~$81.88 — Claude $53.73, Codex $2.46, Cursor $25.69  |  Tokens: 184331k
+- **Cost**: 💰 TOTAL ~$83.56 — Claude $55.41, Codex $2.46, Cursor $25.69  |  Tokens: 187217k
 - **Issue**: #3117 — https://github.com/character-ai/larch/issues/3117
 - **PR**: #3169 — https://github.com/character-ai/larch/pull/3169
 - **Plan review**: N/A
