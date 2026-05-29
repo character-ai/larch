@@ -49,4 +49,18 @@ printf '# Revised Plan\n\ndiff_lines: 9\n' > "$case_dir/plan.txt"
 "$SUBJECT" --design-tmpdir "$case_dir" >/dev/null
 [[ "$(cat "$case_dir/diff-lines.txt")" == "9" ]] || fail "idempotent re-run did not update diff-lines.txt"
 
+cat >"$case_dir/plan.txt" <<'EOF'
+# Plan
+
+body
+diff_added: 10
+diff_deleted: 20
+mechanical_churn: true
+diff_lines: 30
+EOF
+out=$("$SUBJECT" --design-tmpdir "$case_dir")
+printf '%s\n' "$out" | grep -q '^EMIT_PLAN_STATUS=ok$' || fail "optional trailers above diff_lines did not emit ok"
+printf '%s\n' "$out" | grep -q '^DIFF_LINES=30$' || fail "optional trailers plan did not emit DIFF_LINES total"
+[[ "$(cat "$case_dir/diff-lines.txt")" == "30" ]] || fail "diff-lines.txt must use final diff_lines total with optional trailers present"
+
 echo "PASS: test-emit-plan.sh"

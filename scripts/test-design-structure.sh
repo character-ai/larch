@@ -378,6 +378,55 @@ grep -Fq 'semantic sprawl heuristic' "$DISCUSSION_MD" \
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 grep -Fq 'Step 2b.5' "$APPROVAL_MD" \
   || fail "(FINDING_21) approval-gates.md missing Step 2b.5 reference after Gate B EMIT_PLAN"
+grep -Fq 'SOFT_ADVISORY=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse SOFT_ADVISORY"
+grep -Fq 'DIFF_ADDED=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse DIFF_ADDED"
+grep -Fq 'DIFF_DELETED=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse DIFF_DELETED"
+grep -Fq 'MECHANICAL_CHURN=' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Step 2b.5 must parse MECHANICAL_CHURN"
+grep -Fq 'plan-body gate still requires Split/Cancel' "$SKILL_MD" \
+  || fail "(3175) SKILL.md must document plan-body hard + SOFT_ADVISORY combined advisory"
+grep -Fq 'diff_added' "$SKILL_MD" \
+  || fail "(3175) SKILL.md missing diff_added preservation/recompute language"
+grep -Fq 'diff_deleted' "$SKILL_MD" \
+  || fail "(3175) SKILL.md missing diff_deleted preservation language"
+grep -Fq 'mechanical_churn' "$SKILL_MD" \
+  || fail "(3175) SKILL.md missing mechanical_churn preservation language"
+grep -Fq 'gate-b-dedup-plan.sh' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing mechanical gate-b-dedup-plan.sh post-apply hook"
+grep -Fq "gate-b-dedup-plan.sh\" --design-tmpdir \"\$DESIGN_TMPDIR\" --snapshot-trailers" "$SKILL_MD" \
+  || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --snapshot-trailers hook"
+grep -Fq 'gate-b-dedup-plan.sh --dedup' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --dedup hook"
+grep -Fq 'snapshot' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing optional trailer snapshot language"
+grep -Fq 'diff_added' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing diff_added preservation language"
+grep -Fq 'snapshot' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing optional trailer snapshot language"
+grep -Fq 'mechanical_churn' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing mechanical_churn preservation language"
+FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
+grep -Fq 'diff_deleted' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing diff_deleted preservation language"
+grep -Fq 'diff_deleted' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing diff_deleted preservation language"
+grep -Fq 'diff_deleted' "$FLAGS_MD" \
+  || fail "(3175) flags.md missing diff_deleted preservation language"
+# shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
+grep -Fq 'before `ACTION=EMIT_PLAN`' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing validate-before-EMIT_PLAN guard"
+# shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
+grep -Fq 'before `ACTION=EMIT_PLAN`' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing validate-before-EMIT_PLAN guard"
+grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh" \
+  || fail "(3175) revise-plan-with-waterfall.sh must source shared optional-trailer lib"
+grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
+  || fail "(3175) plan-review-loop.sh must source shared optional-trailer lib"
+grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/check-plan-size.sh" \
+  || fail "(3175) check-plan-size.sh must source shared optional-trailer lib"
 # Check 19 (#2754): --brainstorm / Step 1d.5 / run-params / plan-review feature-context pins.
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 BRAINSTORM_PROMPTS="$REPO_ROOT/skills/design/references/brainstorm-prompts.md"

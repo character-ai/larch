@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Bash 08/09 filter mirrors awk defensively; drift risk is low while check-plan-size.md documents the shared rule.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Leading-zero and 08/09 behavior are already specified in check-plan-size.md and harness case 32; flags.md only needs a cross-link.
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Pre-existing redundant trailer_nr reads; optimization not worth a change in this PR.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Three awk passes on size_out are a minor cleanup, not a functional defect.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Optional trailers are an intentional operator-authored trust boundary for diff gating, not an implementation bug.
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Arbitrary --plan-file is read-only misconfiguration in a single-user plugin; low practical risk.
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- LARCH_DEDUP_PLAN_LINES_PY override is standard dev-plugin env surface; document trusted-env rather than harden now.
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Empty-snapshot forbids new trailers matches documented fail-closed policy; clarify operator workflow rather than relax mechanics.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Empty keys_file restore skip is a rare dedup edge case unlikely in normal Gate A/B snapshot flows.

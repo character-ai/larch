@@ -21,7 +21,7 @@ PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$PLUGIN_ROOT/skills/design
 DESIGN_DRIVER_SH="$PLUGIN_ROOT/skills/design/scripts/design-driver.sh"
 CHECK_PLAN_SIZE_SH="$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh"
 INVOKE_PLAN_VALIDATOR_SH="$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh"
-DEDUP_PLAN_LINES_PY="$PLUGIN_ROOT/skills/design/scripts/dedup-plan-lines.py"
+DEDUP_PLAN_LINES_PY="${LARCH_DEDUP_PLAN_LINES_PY:-$PLUGIN_ROOT/skills/design/scripts/dedup-plan-lines.py}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -33,6 +33,8 @@ source "$SCRIPT_DIR/lib-findings-classification.sh"
 # shellcheck source=scripts/lib-design-round-artifacts.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
+# shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
+source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
 
 usage() {
     larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] [--convergence-threshold N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
@@ -496,27 +498,34 @@ _run_post_apply_pipeline() {
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
-    local dedup_tmp dedup_removed
-    dedup_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-dedup.XXXXXX")
-    if ! dedup_removed=$(python3 "$DEDUP_PLAN_LINES_PY" "$plan_path" "$dedup_tmp"); then
-        rm -f "$dedup_tmp"
-        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
-        rm -f "$plan_backup"
-        LOOP_STATUS=emit-plan-failed
-        LOOP_REASON=dedup-python-failed
-        return 1
-    fi
-    # dedup_removed must be a non-negative integer; empty means the Python pass failed
-    if [[ ! "$dedup_removed" =~ ^[0-9]+$ ]]; then
-        rm -f "$dedup_tmp"
-        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
-        rm -f "$plan_backup"
-        LOOP_STATUS=emit-plan-failed
-        LOOP_REASON=dedup-python-failed
-        return 1
-    fi
-    mv -f "$dedup_tmp" "$plan_path"
-    printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
+    local optional_keys_file dedup_rc
+    optional_keys_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-keys.XXXXXX")
+    snapshot_optional_trailer_keys "$plan_path" "$optional_keys_file"
+    local optional_had_trailers=0
+    [[ -s "$optional_keys_file" ]] && optional_had_trailers=1
+    dedup_rc=0
+    dedup_plan_preserve_optional_trailers "$plan_path" "$optional_keys_file" "$DESIGN_TMPDIR" "$DEDUP_PLAN_LINES_PY" || dedup_rc=$?
+    case "$dedup_rc" in
+        1)
+            rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
+            if (( optional_had_trailers == 0 )) && [[ -n "$plan_backup" ]]; then
+                cp -f "$plan_backup" "$plan_path"
+            fi
+            rm -f "$plan_backup"
+            LOOP_STATUS=optional-trailer-dedup-loss
+            LOOP_REASON=optional-trailer-dedup-loss
+            return 1
+            ;;
+        2)
+            rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
+            [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
+            rm -f "$plan_backup"
+            LOOP_STATUS=emit-plan-failed
+            LOOP_REASON=dedup-python-failed
+            return 1
+            ;;
+    esac
+    rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
     local emit_out emit_rc
     set +e
     emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")
@@ -545,7 +554,7 @@ _run_post_apply_pipeline() {
     set -e
     val_st=$(printf '%s\n' "$val_out" | awk -F= '$1 == "VALIDATE_STATUS" { split($2, parts, /[[:space:]]+/); print parts[1]; found=1; exit } END { if (!found) print "" }')
     if (( val_rc != 0 )) || [[ "$val_st" == "defects-found" ]]; then
-        LOOP_STATUS=plan-validator-defects
+        LOOP_STATUS="plan-validator-defects"
         if [[ "$val_st" == "defects-found" ]]; then
             LOOP_REASON=validator-defects
         else
@@ -554,12 +563,25 @@ _run_post_apply_pipeline() {
         rm -f "$plan_backup"
         return 1
     fi
-    local size_out hard
+    local size_out hard soft diff_added diff_deleted diff_lines
     size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path")
     hard=$(printf '%s\n' "$size_out" | awk -F= '$1 == "HARD_TRIGGER_FIRED" { print $2; found=1 } END { if (!found) print "false" }')
+    soft=$(printf '%s\n' "$size_out" | awk -F= '$1 == "SOFT_ADVISORY" { print $2; found=1 } END { if (!found) print "false" }')
+    if [[ "$soft" == "true" ]]; then
+        diff_added=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_ADDED" { print $2; found=1 } END { if (!found) print "" }')
+        diff_deleted=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_DELETED" { print $2; found=1 } END { if (!found) print "" }')
+        diff_lines=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_LINES" { print $2; found=1 } END { if (!found) print "" }')
+        if [[ "$hard" == "true" ]]; then
+            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); plan-body gate still requires Split/Cancel\n' \
+                "${diff_added:-}" "${diff_deleted:-}" "${diff_lines:-}"
+        else
+            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); proceeding\n' \
+                "${diff_added:-}" "${diff_deleted:-}" "${diff_lines:-}"
+        fi
+    fi
     if [[ "$hard" == "true" ]]; then
-        LOOP_STATUS=plan-size-trigger
-        LOOP_REASON=plan-size-hard
+        LOOP_STATUS="plan-size-trigger"
+        LOOP_REASON="plan-size-hard"
         rm -f "$plan_backup"
         return 1
     fi

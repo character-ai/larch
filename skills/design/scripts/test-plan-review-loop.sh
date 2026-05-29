@@ -1317,6 +1317,137 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_size=$(run_loop "$DSIZE" 1 --round-cap 2 --convergence-threshold 3)
 printf '%s\n' "$out_size" | grep -q '^LOOP_STATUS=plan-size-trigger$' || fail "plan-size hard trigger should surface plan-size-trigger"
 
+echo "=== multi-round: mechanical churn revised plan avoids plan-size-trigger ==="
+DMECH="$TMP/mr-mech-churn"
+mkdir -p "$DMECH"
+printf 'plan\n\ndiff_lines: 1\n' >"$DMECH/plan.txt"
+printf 'feat\n' >"$DMECH/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+{
+    printf '## Plan\n\n'
+    awk 'BEGIN { for (i = 1; i <= 10; i++) print "line " i }'
+    printf 'diff_added: 5000\n'
+    printf 'diff_deleted: 100\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5100\n'
+} >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_mech=$(run_loop "$DMECH" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_mech" | grep -q '^REVISE_STATUS=ok$' || fail "mechanical churn path should record revise ok"
+printf '%s\n' "$out_mech" | grep -qv '^LOOP_STATUS=plan-size-trigger$' || fail "mechanical churn revised plan must not surface plan-size-trigger"
+grep -q '^diff_added: 5000$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_added trailer"
+grep -q '^diff_deleted: 100$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_deleted trailer"
+grep -q '^mechanical_churn: true$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep mechanical_churn trailer"
+grep -q '^diff_lines: 5100$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_lines trailer"
+
+echo "=== multi-round: post-revision dedup preserves optional size trailers ==="
+DDEDUP="$TMP/mr-dedup-trailers"
+mkdir -p "$DDEDUP"
+printf 'plan\n\ndiff_lines: 1\n' >"$DDEDUP/plan.txt"
+printf 'feat\n' >"$DDEDUP/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+{
+    printf '## Plan\n\n'
+    awk 'BEGIN { for (i = 1; i <= 5; i++) print "line " i }'
+    printf 'line 5\n'
+    printf 'diff_added: 0\n'
+    printf '\n'
+    printf 'diff_added: 5000\n'
+    printf 'diff_deleted: 100\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5100\n'
+} >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_dedup=$(run_loop "$DDEDUP" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_dedup" | grep -q '^REVISE_STATUS=ok$' || fail "dedup trailer fixture should record revise ok"
+line5_count=$(grep -c '^line 5$' "$DDEDUP/plan.txt" || true)
+[[ "$line5_count" == "1" ]] || fail "dedup trailer fixture must collapse duplicate body line"
+grep -q '^diff_added: 0$' "$DDEDUP/plan.txt" || fail "dedup trailer fixture must preserve body decoy diff_added line"
+printf '%s\n' "$out_dedup" | grep -qv '^LOOP_STATUS=plan-size-trigger$' || fail "dedup must not collapse optional trailers into plan-size-trigger"
+grep -q '^diff_added: 5000$' "$DDEDUP/plan.txt" || fail "dedup must preserve diff_added trailer"
+grep -q '^diff_deleted: 100$' "$DDEDUP/plan.txt" || fail "dedup must preserve diff_deleted trailer"
+grep -q '^mechanical_churn: true$' "$DDEDUP/plan.txt" || fail "dedup must preserve mechanical_churn trailer"
+
+echo "=== multi-round: optional-trailer dedup loss surfaces optional-trailer-dedup-loss ==="
+DDLOSS="$TMP/mr-dedup-trailer-loss"
+mkdir -p "$DDLOSS"
+printf 'seed\n\ndiff_lines: 1\n' >"$DDLOSS/plan.txt"
+printf 'feat\n' >"$DDLOSS/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+{
+    printf '## Plan\n\nrevised\n'
+    printf 'diff_added: 5000\n'
+    printf 'diff_deleted: 100\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5100\n'
+} >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+cat >"$STUB/dedup-strip-optional-trailers.py" <<'PY'
+import sys
+src, dst = sys.argv[1], sys.argv[2]
+lines = open(src, encoding="utf-8").read().splitlines()
+filtered = [
+    line for line in lines
+    if not line.startswith(("diff_added:", "diff_deleted:", "mechanical_churn:"))
+]
+open(dst, "w", encoding="utf-8").write("\n".join(filtered) + "\n")
+print(len(lines) - len(filtered))
+PY
+chmod +x "$STUB/dedup-strip-optional-trailers.py"
+export LARCH_DEDUP_PLAN_LINES_PY="$STUB/dedup-strip-optional-trailers.py"
+out_dedup_loss=$(run_loop "$DDLOSS" 1 --round-cap 2 --convergence-threshold 3)
+unset LARCH_DEDUP_PLAN_LINES_PY
+printf '%s\n' "$out_dedup_loss" | grep -q '^LOOP_STATUS=optional-trailer-dedup-loss$' || fail "dedup trailer loss should surface optional-trailer-dedup-loss"
+printf '%s\n' "$out_dedup_loss" | grep -q '^REASON=optional-trailer-dedup-loss$' || fail "dedup trailer loss should surface optional-trailer-dedup-loss reason"
+grep -q '^diff_added: 5000$' "$DDLOSS/plan.txt" || fail "dedup trailer loss must restore revised plan not pre-revise seed"
+grep -q '^diff_deleted: 100$' "$DDLOSS/plan.txt" || fail "dedup trailer loss must preserve diff_deleted on restored revised plan"
+grep -q '^mechanical_churn: true$' "$DDLOSS/plan.txt" || fail "dedup trailer loss must preserve mechanical_churn on restored revised plan"
+
 echo "=== snapshot allowlist: raw reviewer output excluded from round-1 ==="
 DS="$TMP/snap"
 mkdir -p "$DS"
@@ -1793,7 +1924,9 @@ dedup_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
 )
@@ -1845,7 +1978,9 @@ dedup_unclosed_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
 )
@@ -1885,7 +2020,9 @@ dedup_pyfail_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_pyfail" 2>&1
 )
@@ -1927,7 +2064,9 @@ dedup_nonnumeric_log=$(
         source "$1/scripts/lib-quiet.sh"
         larch_quiet_init
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
-        eval "$(awk "/^_run_post_apply_pipeline\\(\\)/,/^}$/" "$2")"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_nonnumeric" 2>&1
 )

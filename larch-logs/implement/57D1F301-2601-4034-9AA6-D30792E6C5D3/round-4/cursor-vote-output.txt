@@ -1,0 +1,17 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- narrow latent harness gap; case 29 already covers the no-hard-trigger side of diff_deleted-only plans
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- self-declared plan metadata is an intentional trust boundary, not a regression from this change
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan byte-stable note is accurate but harness-backed extraction is low-risk deviation
+OOS_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicates in-scope FINDING_1; not worth a separate issue
+OOS_2: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- pre-existing test override hook in a trusted operator environment
+OOS_3: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- documented exit-2 proceed-without-check behavior in SKILL Step 2b.5

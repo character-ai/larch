@@ -10,6 +10,8 @@ source "$REPO_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$REPO_ROOT/scripts/lib-design-tmpdir.sh"
+# shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
+source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -122,6 +124,9 @@ heading_count() {
 HASH_BEFORE=$(sha256_file "$PLAN_FILE")
 ORIG_FILE_HEADING_COUNT=$(heading_count "$PLAN_FILE")
 cp "$PLAN_FILE" "$SNAPSHOT"
+OPTIONAL_TRAILER_KEYS_FILE="$SNAPSHOT.optional-trailer-keys"
+
+snapshot_optional_trailer_keys "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"
 
 compose_prompt() {
     {
@@ -132,6 +137,9 @@ compose_prompt() {
             printf "%s\n\n" "Emit ONLY the complete replacement plan in your final response, beginning with \`## Plan\` and ending with \`diff_lines: <N>\`."
         fi
         printf "%s\n\n" "Hard rules: the revised plan must end with \`diff_lines: <N>\`. When the original plan has \`### NEW:\`, \`### UPDATED:\`, or \`### REWRITTEN:\` headings, preserve at least one such heading."
+        if [[ -s "$OPTIONAL_TRAILER_KEYS_FILE" ]]; then
+            printf "%s\n\n" "When the original plan has optional size trailers (\`diff_added:\`, \`diff_deleted:\`, \`mechanical_churn:\`) in the final metadata block immediately above \`diff_lines:\`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior."
+        fi
         printf '<plan>\n'
         sed -n '1,$p' "$PLAN_FILE"
         printf '\n</plan>\n\n<findings>\n'
@@ -511,6 +519,33 @@ apply_patch_file() {
     fi
 }
 
+_try_one_unified_diff_candidate() {
+    local candidate="$1" patch_file="$2" post_heading_count
+    if ! validate_unified_headers "$candidate"; then
+        return 1
+    fi
+    if ! check_git_apply "$candidate"; then
+        return 1
+    fi
+    cp "$candidate" "$patch_file"
+    if ! apply_patch_file "$patch_file"; then
+        restore_plan
+        return 1
+    fi
+    if [[ "$ORIG_FILE_HEADING_COUNT" -gt 0 ]]; then
+        post_heading_count=$(heading_count "$PLAN_FILE")
+        if [[ "$post_heading_count" -eq 0 ]]; then
+            restore_plan
+            return 1
+        fi
+    fi
+    if ! validate_optional_trailer_keys_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"; then
+        restore_plan
+        return 1
+    fi
+    return 0
+}
+
 run_emit_plan_gate() {
     local out status
     set +e
@@ -541,7 +576,8 @@ launch_tier() {
 }
 
 attempt_tier() {
-    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count candidate candidate_ok candidate_list
+    local ordinal="$1" tier="$2" output="$3" patch_file output_name post_heading_count candidate candidate_ok candidate_list unified_diff_applied
+    unified_diff_applied=false
 
     if [[ "$tier" == "codex" && "$CODEX_PRESENT" == "false" ]]; then
         set_tier_status "$ordinal" skipped-not-present
@@ -578,32 +614,20 @@ attempt_tier() {
             while IFS= read -r candidate || [[ -n "$candidate" ]]; do
                 [[ -n "$candidate" ]] || continue
                 [[ -e "$candidate" ]] || continue
-                if ! validate_unified_headers "$candidate"; then
-                    continue
+                if _try_one_unified_diff_candidate "$candidate" "$patch_file"; then
+                    candidate_ok=true
+                    unified_diff_applied=true
+                    break
                 fi
-                if ! check_git_apply "$candidate"; then
-                    continue
-                fi
-                if [[ "$candidate" != "$patch_file" ]]; then
-                    cp "$candidate" "$patch_file"
-                fi
-                candidate_ok=true
-                break
             done <"$candidate_list"
         else
             for candidate in "$REVISE_DIR/${output_name%.txt}-candidate"*.patch; do
                 [[ -e "$candidate" ]] || break
-                if ! validate_unified_headers "$candidate"; then
-                    continue
+                if _try_one_unified_diff_candidate "$candidate" "$patch_file"; then
+                    candidate_ok=true
+                    unified_diff_applied=true
+                    break
                 fi
-                if ! check_git_apply "$candidate"; then
-                    continue
-                fi
-                if [[ "$candidate" != "$patch_file" ]]; then
-                    cp "$candidate" "$patch_file"
-                fi
-                candidate_ok=true
-                break
             done
         fi
         if [[ "$candidate_ok" != "true" ]]; then
@@ -614,17 +638,28 @@ attempt_tier() {
     elif ! validate_file_replacement "$patch_file"; then
         set_tier_status "$ordinal" invalid-patch
         return 1
-    fi
-
-    if ! apply_patch_file "$patch_file"; then
-        set_tier_status "$ordinal" apply-failed
-        restore_plan_or_die
+    elif ! validate_optional_trailer_keys_preserved "$patch_file" "$OPTIONAL_TRAILER_KEYS_FILE"; then
+        set_tier_status "$ordinal" invalid-patch
         return 1
     fi
 
-    if [[ "$ORIG_FILE_HEADING_COUNT" -gt 0 ]]; then
-        post_heading_count=$(heading_count "$PLAN_FILE")
-        if [[ "$post_heading_count" -eq 0 ]]; then
+    if [[ "$unified_diff_applied" != "true" ]]; then
+        if ! apply_patch_file "$patch_file"; then
+            set_tier_status "$ordinal" apply-failed
+            restore_plan_or_die
+            return 1
+        fi
+
+        if [[ "$ORIG_FILE_HEADING_COUNT" -gt 0 ]]; then
+            post_heading_count=$(heading_count "$PLAN_FILE")
+            if [[ "$post_heading_count" -eq 0 ]]; then
+                set_tier_status "$ordinal" invalid-patch
+                restore_plan_or_die
+                return 1
+            fi
+        fi
+
+        if ! validate_optional_trailer_keys_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"; then
             set_tier_status "$ordinal" invalid-patch
             restore_plan_or_die
             return 1

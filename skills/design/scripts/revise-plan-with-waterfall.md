@@ -72,7 +72,7 @@ In `unified-diff` mode, `extract_patch` uses Bash/Awk-only extraction. It scans 
 
 In `file-replacement` mode, `extract_patch` prefers the last complete `## Plan` block, strips preamble/fences, and extracts through the last `diff_lines: <N>` trailer recorded for that block. A trailer placed immediately after a closing fence is still accepted. The candidate must be non-empty and its last non-blank line must be `diff_lines: <N>` with numeric `N`.
 
-After either apply path, if the original plan had any `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, the revised plan must still have at least one such heading. The final structural gate is `ACTION=EMIT_PLAN` through the design driver. The script does not parse further plan semantics.
+After either apply path, if the original plan had any `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, the revised plan must still have at least one such heading. When the original plan has strict optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final contiguous metadata block immediately above `diff_lines:`, every accepted candidate (unified-diff and file-replacement) must preserve each original key with strict trailer grammar in its own final metadata block before `run_emit_plan_gate` wins — prompt prose is advisory; post-apply validation is authoritative and restores the snapshot on failure. The final structural gate is `ACTION=EMIT_PLAN` through the design driver. The script does not parse further plan semantics.
 
 ## Apply And Revert
 

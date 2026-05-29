@@ -91,7 +91,7 @@ Determine Gate B mode only after the zero-findings short-circuit above proves th
 
 - When `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`, or `cap-reached`, Gate B is **bypassed** — Step 3 already routed to Step 3b or the Step 2b.5 handler; Step 3.6 is skipped too on those short-circuits. Step 3 prints the matching skip breadcrumb: `⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)`, `⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)`, `⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)`, `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`, `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)`, or `⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)`.
 - When `LOOP_STATUS` is `converged` or `cap-hit` and `manual_gate_b=false`, enter **passive-summary mode** (below) instead of the auto-apply path — findings were already applied inside `plan-review-loop.sh`.
-- When `LOOP_STATUS` is `revision-failed` or `emit-plan-failed`, use the full 3-option `AskUserQuestion` form so the operator can apply or inspect the final-round findings manually. Gate-B-settled paths `complete|revision-failed|emit-plan-failed` proceed through Step 3.6 after Gate B and any Step 2b.5 return.
+- When `LOOP_STATUS` is `revision-failed`, `emit-plan-failed`, or `optional-trailer-dedup-loss`, use the full 3-option `AskUserQuestion` form so the operator can apply or inspect the final-round findings manually. Gate-B-settled paths `complete|revision-failed|emit-plan-failed|optional-trailer-dedup-loss` proceed through Step 3.6 after Gate B and any Step 2b.5 return.
 - When `LOOP_STATUS` is `main-agent-vote-required`, after successful MainAgent adjudication and re-tally, parse the re-tally output and refresh the active Step 3 result state (including `.step3-plan-review-result.env`) before continuing to Gate B as complete-equivalent. The re-tally must pass `--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"` before refreshing the active state. Settled Gate B paths proceed through Step 3.6. If re-tally emits `tally-error`, use that short-circuit.
 - When `manual_gate_b=true`, always use the full 3-option form regardless of `LOOP_STATUS` (the loop exits after one round with `LOOP_STATUS=complete REASON=manual-gate-b` and does not auto-apply).
 
@@ -131,7 +131,7 @@ Header: `"Plan findings"`. Substitute the actual counts before asking.
 
 ### Apply-all body
 
-Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`), then Execute `### Shared post-apply pipeline` verbatim.
+Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:` — preserve or explicitly recompute them; do not drop mechanical/deletion-heavy estimates while retaining only the legacy total), then Execute `### Shared post-apply pipeline` verbatim.
 
 ### One-by-one iteration prompt
 
@@ -148,18 +148,20 @@ After iteration completes (all findings answered without an early abort), the or
 
 After the chosen findings have been applied to `plan.txt` (either the full accepted set or the one-by-one applied subset), run the same post-apply sequence for both Gate B branches:
 
-1. Re-read the freshly revised `plan.txt` and perform a duplicate-content sweep using your own reasoning to identify semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once — not just byte-identical text).
-2. Preserve intentional repetition where the same content appears in distinct context sections (for example, a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section.
-3. Rewrite `plan.txt` via the Write tool with duplicates removed.
-4. Print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran).
-5. Only after the breadcrumb proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
-6. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
-7. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
-8. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
+1. **Optional trailer guard (direct rewrites)**: before any prompt-side `plan.txt` replacement or dedup rewrite, run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` to snapshot strict optional trailer keys and values (`diff_added`, `diff_deleted`, `mechanical_churn`) from the final metadata block into `$DESIGN_TMPDIR/.gate-b-optional-trailer-keys` (companion `.gate-b-optional-trailer-keys.values`). An empty snapshot forbids introducing new optional trailers on later validation.
+2. Re-read the freshly revised `plan.txt` and perform a duplicate-content sweep using your own reasoning to identify semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once — not just byte-identical text).
+3. Preserve intentional repetition where the same content appears in distinct context sections (for example, a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section.
+4. Rewrite `plan.txt` via the Write tool with duplicates removed.
+5. Run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --dedup` only after step 1 (mechanical section-aware dedup plus trailer key/value preservation — same `dedup_plan_preserve_optional_trailers` helper as `plan-review-loop.sh`). Missing `.gate-b-optional-trailer-keys` is exit **3** (fail closed). It prints exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found). On exit **1** (optional trailer keys/values lost or newly introduced), revise again rather than continuing with a legacy total-only estimate; on exit **2** (dedup failure), treat like `emit-plan-failed` manual handling.
+6. After step 5 succeeds and before `ACTION=EMIT_PLAN` / Step 2b.5, the snapshotted keys are already validated by `gate-b-dedup-plan.sh`; do not skip step 5.
+7. Only after the breadcrumb and optional trailer guard (when applicable) proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
+8. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
+9. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
+10. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
 
 ### Gate B plan revision and Step 2b.5
 
-Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partition`) routes directly to Split-path with no `AskUserQuestion`; hard trigger (`PLAN_LINES > 800` or `DIFF_LINES > 1500`) fires an `AskUserQuestion` with Split / Cancel only (no Continue option); otherwise Step 2b.5 returns silently. If Step 2b.5 exits the skill on **Cancel** (cost line + exit 0) or **Split** (Split-path: decomposition panel + exit 1), `$DESIGN_TMPDIR` is preserved and the operator can re-run after addressing sprawl.
+Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partition`) routes directly to Split-path with no `AskUserQuestion`; hard trigger (plan body `> 800`, or `diff_added > 2000` when the trailer is present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades only the diff trigger to `SOFT_ADVISORY`) fires an `AskUserQuestion` with Split / Cancel only (no Continue option) when `HARD_TRIGGER_FIRED=true`; otherwise Step 2b.5 returns silently (possibly after a mechanical-churn advisory line). Authoritative machine contract: `skills/design/scripts/check-plan-size.md`. If Step 2b.5 exits the skill on **Cancel** (cost line + exit 0) or **Split** (Split-path: decomposition panel + exit 1), `$DESIGN_TMPDIR` is preserved and the operator can re-run after addressing sprawl.
 
 ---
 
