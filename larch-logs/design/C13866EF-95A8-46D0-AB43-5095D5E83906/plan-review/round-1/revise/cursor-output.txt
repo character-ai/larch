@@ -1,0 +1,109 @@
+Gathering caller sites and related files to incorporate the reviewer findings into the plan revision.
+Compiling the unified plan diff from the codebase sweep and accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ ## Implementation Plan — Breadcrumbs Deprecation Stage 3: Monitor contract removal (#3118)
+ 
+-Stage 3 of the 5-piece rip-out (#3111). Remove the breadcrumb-monitor contract at the **scripts + lint** layer only. Skill-fence collapse, `BASH_AUTHORING.md §4`, and public-doc trims are Stage 4 (#3119); #3063 hardening is Stage 5 (#3120). Two Round 1 decisions shape the plan: keep `breadcrumb-monitor.sh` as a **no-op shim** (not deleted) so the 13 still-live fences keep working until Stage 4; **preserve `larch_err` redaction** by calling `redact-secrets.sh --streaming` directly.
++Stage 3 of the 5-piece rip-out (#3111). Remove the breadcrumb-monitor contract at the **scripts + lint** layer only. Skill-fence collapse, `BASH_AUTHORING.md §4`, and public-doc trims are Stage 4 (#3119); #3063 hardening is Stage 5 (#3120). Two Round 1 decisions shape the plan: keep `breadcrumb-monitor.sh` as a **no-op shim** (not deleted) so the 13 still-live fences keep working until Stage 4; **preserve `larch_err` redaction** by calling `redact-secrets.sh --streaming` directly. **Caller sweep (review FINDING_1)**: delete `larch_quiet_append_done_trap` / `larch_quiet_write_paired_pid_file` from `lib-quiet.sh` with **no** compatibility shims — remove every live call site in the same PR (11 scripts; see Approach step 2).
+ 
+ ### Reviewer note — delete-vs-shrink for lint-foreground-markers
+ The issue says "shrink `scripts/lint-foreground-markers.*`". Verified: `lint-foreground-markers.sh` is **100% Family-B fence enforcement** (all 30+ functions are `fence_*`/`scan_*`/`family_b_*`); it contains **no** polling-loop-ban logic. The polling-loop ban lives entirely in `test-implement-anti-polling-rule.sh` (AGENTS.md literal pins). So the plan **deletes** `lint-foreground-markers.sh` + harness and retains the polling-ban in `test-implement-anti-polling-rule.sh`. If reviewers prefer literally keeping a shrunk `lint-foreground-markers.sh`, that requires writing new polling-ban lint logic (not minimal); flag at review.
+@@ -10,6 +10,9 @@
+ ### REWRITTEN: `scripts/breadcrumb-monitor.sh`
+ Replace the full monitor with a tiny no-op shim: accept all current flags (`--stream`, `--done-sentinel`, `--status-file`, `--quiet-log`, `--surfaced-sentinel`, `--paired-pid-file`, `--poll-interval=`, `--rate-cap=`, `--final-tail-lines=`, `--mode=`, `-h/--help`) by consuming argv, then `exit 0`. Do **not** source `lib-quiet.sh` / `lib-larch-log.sh`. Exit 0 keeps the fences' `monitor_rc=0` branch firing so the backgrounded writer is still `wait`ed and its real exit code propagates. Stage 4 (#3119) deletes the shim + the fences together.
+ 
++### UPDATED: `scripts/breadcrumb-monitor.md`
++Replace streaming/sentinel/paired-PID/timeout/redaction/harness prose with the Stage 3 **compatibility shim** contract only: argv consumption, unconditional `exit 0`, no `lib-quiet`/`lib-redact-streaming` sourcing, and pointer that Stage 4 deletes the script with the skill fences. Drop references to deleted harnesses (`test-breadcrumb-monitor*`, `test-background-monitor-wait*`).
++
+ ### REWRITTEN: `scripts/lib-quiet.sh`
+ Remove all breadcrumb/sentinel/paired-PID plumbing: `larch_quiet_fd3_is_visible`; the `LARCH_BREADCRUMBS_SURFACED_FILE` write inside `larch_quiet_init`; `larch_quiet_bc_valid_category`; the done-sentinel trap machinery (`larch_quiet__exit_write_done`, `larch_quiet__exit_combo`, `larch_quiet_append_done_trap`); the paired-PID machinery (`larch_quiet_warn_paired_pid_invalid`, `larch_quiet_write_paired_pid_file`); and the now-orphaned `larch_quiet_source_larch_log_lib` (only caller was the paired-PID writer). **Preserve** `larch_err`/`larch_errf` redaction (Decision 2): rewire `larch_quiet_redact_diagnostic_stream` to pipe through `redact-secrets.sh --streaming --state-file "$state"` directly instead of `lib-redact-streaming.sh`; keep `larch_quiet_redaction_state_file` and the `[ ! -x ]` graceful-fallback. Keep `emit`/`emit_kv`/`larch_quiet_init` (minus the surfaced write)/`sanitize_diagnostic_line` (Stage 5 audits the latter).
+ 
+@@ -22,28 +25,52 @@
+ Remove the `larch_quiet_bc_valid_category` test, the paired-PID write/invalid/race test block, and any done-sentinel/`LARCH_BREADCRUMBS_SURFACED_FILE` assertions. Update the `larch_err` redaction test to the direct-call path. Keep `emit`/`emit_kv` coverage.
+ 
+ ### UPDATED: `skills/design/scripts/assess-plan-round.sh`
+-Drop the `MONITOR_SH` definition + the `breadcrumb-monitor.sh` foreground call and the `LARCH_BREADCRUMB_STREAM`/`LARCH_DONE_SENTINEL`/`LARCH_STATUS_FILE`/`LARCH_BREADCRUMBS_SURFACED_FILE`/`LARCH_PAIRED_PID_FILE` exports and the `monitor_rc` warning block. Keep the background dispatch, its existing `wait "$dispatch_pid"` (already provides completion), and the `LARCH_QUIET_LOG_FILE` forensics redirect. Update sibling `.md` and harnesses `test-assess-plan-round.sh` / `test-dispatch-plan-assessors.sh` to match.
++Drop the `larch_quiet_append_done_trap` call, the `MONITOR_SH` definition + the `breadcrumb-monitor.sh` foreground call, and the `LARCH_BREADCRUMB_STREAM`/`LARCH_DONE_SENTINEL`/`LARCH_STATUS_FILE`/`LARCH_BREADCRUMBS_SURFACED_FILE`/`LARCH_PAIRED_PID_FILE` exports and the `monitor_rc` warning block. Keep the background dispatch, its existing `wait "$dispatch_pid"` (already provides completion), and the `LARCH_QUIET_LOG_FILE` forensics redirect. Update sibling `.md` and harnesses `test-assess-plan-round.sh` / `test-dispatch-plan-assessors.sh` to match.
++
++### UPDATED: `skills/design/scripts/dispatch-plan-assessors.sh`
++Remove the `larch_quiet_append_done_trap` and `larch_quiet_write_paired_pid_file` calls and the `unset LARCH_PAIRED_PID_FILE` barrier before nested launchers (dead). Update sibling `.md` and `test-dispatch-plan-assessors.sh` (drop `LARCH_PAIRED_PID_FILE`/`LARCH_BREADCRUMB_STREAM` export fixtures tied to removed plumbing).
++
++### UPDATED: `scripts/ci-wait.sh`
++Remove the `larch_quiet_append_done_trap` call (nested Family-B child; no paired-PID writer). Update sibling `.md` if it documents the trap.
++
++### UPDATED: `scripts/dispatch-with-waterfall.sh`
++Remove the `larch_quiet_append_done_trap` call. Update sibling `.md` if needed.
+ 
+ ### UPDATED: `scripts/ship-pr.sh`
+-Remove the `larch_quiet_write_paired_pid_file` call and `LARCH_PAIRED_PID_FILE`/breadcrumb-stream handling + the `unset LARCH_PAIRED_PID_FILE` barrier before nested children. Update sibling `.md`.
++Remove the `larch_quiet_append_done_trap` and `larch_quiet_write_paired_pid_file` calls and `LARCH_PAIRED_PID_FILE`/breadcrumb-stream handling + the `unset LARCH_PAIRED_PID_FILE` barrier before nested children. Update sibling `.md`.
+ 
+ ### UPDATED: `scripts/run-step5-review.sh`
+-Same pattern as `ship-pr.sh` (drop paired-PID writer call + breadcrumb plumbing + unset barrier). Update sibling `.md`.
++Same pattern as `ship-pr.sh` (drop `larch_quiet_append_done_trap` + paired-PID writer calls + breadcrumb plumbing + unset barrier). Update sibling `.md`.
+ 
+ ### UPDATED: `scripts/dispatch-plan-voters.sh`
+-Same pattern (paired-PID writer call + breadcrumb plumbing + unset barrier). Update sibling `.md`.
++Same pattern (`larch_quiet_append_done_trap` + paired-PID writer calls + breadcrumb plumbing + unset barrier). Update sibling `.md`.
+ 
+ ### UPDATED: `scripts/collect-agent-results.sh`
+-Same pattern (paired-PID writer call + breadcrumb plumbing + unset barrier). Update sibling `.md`.
++Same pattern (`larch_quiet_append_done_trap` + paired-PID writer calls + breadcrumb plumbing + unset barrier). Update sibling `.md`.
+ 
+ ### UPDATED: `skills/implement/scripts/run-step2-dispatch.sh`
+-Same pattern (paired-PID writer call + breadcrumb plumbing + unset barrier). Update sibling `.md`.
++Same pattern (`larch_quiet_append_done_trap` + paired-PID writer calls + breadcrumb plumbing + unset barrier). Update sibling `.md`.
++
++### UPDATED: `skills/implement/scripts/step2-implement.sh`
++Remove the `larch_quiet_append_done_trap` call (nested child). Update sibling `.md` if needed.
++
++### UPDATED: `skills/review-and-fix/scripts/review-and-fix.sh`
++Remove the `larch_quiet_append_done_trap` call (nested child). Update sibling `.md` if needed.
+ 
+ ### UPDATED: `scripts/dispatch-code-voters.sh`
+ Remove the `unset LARCH_PAIRED_PID_FILE` / `env -u` barrier (now dead). Update sibling `.md` if it documents the barrier.
+@@ -68,6 +95,9 @@
+ ### UPDATED: `scripts/relevant-checks.sh`
+ Remove the `test-background-monitor-wait` routing case (breadcrumb-monitor.sh/ship-pr/run-step5-review/collect-agent-results/dispatch-plan-voters/run-step2-dispatch) and the `test-lint-foreground-markers` routing case (lint-foreground-markers files). Leave generic redaction/collector routing intact.
+ 
++### UPDATED: `scripts/test-relevant-checks.sh`
++Update Section 3e expected direct-target strings: drop `test-lint-foreground-markers` from the `skills/design/references/*.md` change routing assertion (that target is deleted with `lint-foreground-markers.*`). Keep `test-design-structure` + pin-verifier expectations.
++
+ ### UPDATED: grep-based structure tests
+ Audit `scripts/test-design-structure.sh`, `scripts/test-implement-structure.sh`, `scripts/test-research-structure.sh`, `scripts/test-review-structure.sh` and any `test-*-anchor*`/`test-references-headers.sh` for assertions that reference the **removed** surfaces (lint-foreground-markers behavior, breadcrumb-monitor harness presence, `lib-redact-streaming`). Relax only those. Do **not** touch assertions about skill-fence banners that still exist (those stay until Stage 4).
+ 
++### UPDATED: `SECURITY.md`
++Reflect Stage 3 security posture in this PR (review FINDING_2): remove or replace the **Paired breadcrumb monitor PID file** paragraph (~211-221) — no live paired-PID timeout signaling in Stage 3. In **Breadcrumb stream redaction**, replace bullet 2 (**Monitor-side per-line drop-on-fail**) with Stage 3 behavior: `breadcrumb-monitor.sh` is a compatibility no-op (no live stream redaction or timeout kill); **`larch_err`/`larch_errf`** redact via direct `redact-secrets.sh --streaming`; committed `larch-logs/.../breadcrumbs/` publication still redacts through `larch_log_publish_breadcrumbs_shared` / `design-log-publish.sh` (bullet 3 unchanged).
++
+ ### UPDATED: `scripts/lib-redact-streaming.sh`
+ **Delete this file** (only consumers were `breadcrumb-monitor.sh` + `lib-quiet.sh`; `lib-quiet.sh` is rewired to call `redact-secrets.sh --streaming` directly).
+ 
+@@ -99,7 +129,8 @@
+ **Delete this file** (harness for the deleted lint).
+ 
+ ## Approach
+-- Order to keep CI green at each commit: (1) rewire `lib-quiet.sh` (remove paired-PID writer + breadcrumb plumbing, rewire `larch_err` to `redact-secrets.sh --streaming`); (2) update every `larch_quiet_write_paired_pid_file` caller in the **same** change (they break with an undefined function otherwise); (3) shim `breadcrumb-monitor.sh`; (4) delete `lib-redact-streaming.sh` + the breadcrumb/lint harnesses + `lint-foreground-markers.*`; (5) update `Makefile`/`agent-lint.toml`/`.pre-commit-config.yaml`/`relevant-checks.sh`/structure tests so `make lint` + harness shards pass.
++- Order to keep CI green at each commit: (1) rewire `lib-quiet.sh` (remove paired-PID/sentinel helpers + breadcrumb plumbing, rewire `larch_err` to `redact-secrets.sh --streaming`); (2) in the **same** change, remove every `larch_quiet_write_paired_pid_file` and `larch_quiet_append_done_trap` call from all live scripts — `scripts/ship-pr.sh`, `scripts/run-step5-review.sh`, `scripts/collect-agent-results.sh`, `scripts/dispatch-plan-voters.sh`, `scripts/ci-wait.sh`, `scripts/dispatch-with-waterfall.sh`, `skills/implement/scripts/run-step2-dispatch.sh`, `skills/implement/scripts/step2-implement.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`, `skills/design/scripts/assess-plan-round.sh`, `skills/design/scripts/dispatch-plan-assessors.sh` (no lib-quiet shims); (3) shim `breadcrumb-monitor.sh` + rewrite `breadcrumb-monitor.md`; (4) delete `lib-redact-streaming.sh` + the breadcrumb/lint harnesses + `lint-foreground-markers.*`; (5) update `Makefile`/`agent-lint.toml`/`.pre-commit-config.yaml`/`relevant-checks.sh`/`test-relevant-checks.sh`/`SECURITY.md`/structure tests so `make lint` + harness shards pass.
+ - `--streaming` mode of `redact-secrets.sh` stays (surviving consumers: `lib-larch-log.sh:393` and the rewired `larch_err`).
+ - The committed `larch-logs/<run-id>/breadcrumbs/` forensics directory and the Stage 1 quiet-log bridge are untouched.
+ - **Size**: this is a deletion-heavy rip-out (~4700 changed lines, mostly removals, ~30 files). It will trip the Step 2b.5 hard plan-size trigger (`diff_lines > 1500`). That is expected; the gate lets the operator split into sub-pieces or proceed via the decomposition panel.
+@@ -112,7 +143,7 @@
+ - Makefile shard re-balancing: removing 6 targets from `test-harnesses-16/18/19` must not leave an empty or mis-numbered shard that `test-harness-shards-coverage` rejects.
+ 
+ ## Failure modes
+-- **Undefined-function break**: removing `larch_quiet_write_paired_pid_file` from `lib-quiet.sh` while any caller still invokes it → runtime error in ship-pr/dispatch/etc. Earliest signal: `make test-lib-quiet` + the caller harnesses. Mitigation: update all 6 callers in the same change (Approach step 2).
++- **Undefined-function break**: removing `larch_quiet_write_paired_pid_file` / `larch_quiet_append_done_trap` from `lib-quiet.sh` while any of the 11 live caller scripts still invoke either → runtime error under `set -e`. Earliest signal: `make test-lib-quiet` + Family-B/design assessor harnesses. Mitigation: update every caller in Approach step 2 (no shims).
+ - **CI-red from stale references**: a leftover `agent-lint.toml` exclusion or `Makefile` target pointing at a deleted file fails `make agent-lint` / `make`. Signal: `make lint`. Mitigation: the agent-lint/Makefile/pre-commit/relevant-checks edits land with the deletions.
+ - **Silent redaction regression**: a botched `larch_err` rewire could de-redact operator diagnostics. Signal: `test-lib-quiet.sh` redaction assertion. Mitigation: keep the direct `redact-secrets.sh --streaming` call + fallback branch.
+ 
+@@ -121,6 +152,7 @@
+ - `make test-lib-quiet` updated to cover the rewired `larch_err` redaction and the absence of the removed helpers.
+ - `make test-implement-anti-polling-rule` updated to assert only the polling-loop-ban pins.
+ - `make test-assess-plan-round` / `test-dispatch-plan-assessors` updated for the monitor-free dispatch.
++- `make test-relevant-checks` passes with updated Section 3e expectations (no `test-lint-foreground-markers`).
+ - Manual: confirm `make lint-foreground-markers` / `test-breadcrumb-monitor` / `test-background-monitor-wait` targets no longer exist (removed cleanly, no dangling `make` references).
+ 
+-diff_lines: 4700
++diff_lines: 4850

@@ -1,0 +1,16 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt","fallback_group":"plan-arch"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt","fallback_group":"plan-arch"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt","fallback_group":"plan-edge"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt","fallback_group":"plan-edge"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt","fallback_group":"plan-innovation"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt","fallback_group":"plan-innovation"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt","fallback_group":"plan-pragmatic"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt","fallback_group":"plan-pragmatic"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt","fallback_group":"plan-requirements"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt","fallback_group":"plan-requirements"}
+{"slot":"dyn-cursor-plan-caller-sweep","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-caller-sweep-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-caller-sweep.prompt","fallback_group":"plan-dyn-caller-sweep"}
+{"slot":"dyn-codex-plan-caller-sweep","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-caller-sweep-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-caller-sweep.prompt","fallback_group":"plan-dyn-caller-sweep"}
+{"slot":"dyn-cursor-plan-env-var-scope","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-env-var-scope-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-env-var-scope.prompt","fallback_group":"plan-dyn-env-var-scope"}
+{"slot":"dyn-codex-plan-env-var-scope","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-env-var-scope-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-env-var-scope.prompt","fallback_group":"plan-dyn-env-var-scope"}
+{"slot":"dyn-cursor-plan-shard-balance","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-shard-balance-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-shard-balance.prompt","fallback_group":"plan-dyn-shard-balance"}
+{"slot":"dyn-codex-plan-shard-balance","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-shard-balance-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-shard-balance.prompt","fallback_group":"plan-dyn-shard-balance"}

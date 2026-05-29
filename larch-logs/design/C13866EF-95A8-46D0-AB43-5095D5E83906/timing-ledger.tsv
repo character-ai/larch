@@ -1,0 +1,35 @@
+v1	mark	1780033238	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1780034380	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1780034701	design	design Step 1d.7 — outline	-	-	-	-	-	-	-	-
+v1	mark	1780035195	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1780035195	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1780035251	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1780035944	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1780036175	implement	-	codex	codex-phase1-dyn-codex-plan-shard-balance	1780036111	1780036175	64	codex-primary-plan-dyn-shard-balance-output.txt	0	complete
+v1	vendor	1780036204	implement	-	cursor	cursor-phase1-dyn-cursor-plan-shard-balance	1780036111	1780036204	93	cursor-plan-dyn-shard-balance-output.txt	0	complete
+v1	vendor	1780036233	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780036111	1780036233	122	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780036234	implement	-	codex	codex-phase1-codex-plan-requirements	1780036111	1780036234	123	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1780036236	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780036111	1780036236	125	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780036238	implement	-	cursor	cursor-phase1-dyn-cursor-plan-caller-sweep	1780036111	1780036237	126	cursor-plan-dyn-caller-sweep-output.txt	0	complete
+v1	vendor	1780036242	implement	-	codex	codex-phase1-dyn-codex-plan-caller-sweep	1780036111	1780036242	131	codex-primary-plan-dyn-caller-sweep-output.txt	0	complete
+v1	vendor	1780036243	implement	-	codex	codex-phase1-codex-plan-innovation	1780036111	1780036243	132	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1780036255	implement	-	codex	codex-phase1-codex-plan-edge	1780036111	1780036254	143	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1780036256	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780036111	1780036256	145	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780036266	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780036111	1780036266	155	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780036273	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780036111	1780036273	162	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780036273	implement	-	cursor	cursor-phase1-dyn-cursor-plan-env-var-scope	1780036111	1780036273	162	cursor-plan-dyn-env-var-scope-output.txt	0	complete
+v1	vendor	1780036282	implement	-	codex	codex-phase1-codex-plan-arch	1780036111	1780036282	171	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1780036283	implement	-	codex	codex-phase1-codex-plan-pragmatic	1780036111	1780036283	172	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780036306	implement	-	codex	codex-phase1-dyn-codex-plan-env-var-scope	1780036111	1780036305	194	codex-primary-plan-dyn-env-var-scope-output.txt	0	complete
+v1	vendor	1780036376	implement	-	codex	codex-phase1-aggregator	1780036315	1780036376	61	aggregator-output.txt	0	complete
+v1	vendor	1780036572	implement	-	cursor	cursor-phase1-voter-3	1780036521	1780036572	51	cursor-vote-output.txt	0	complete
+v1	vendor	1780036582	implement	-	codex	codex-phase1-voter-2	1780036521	1780036582	61	codex-vote-output.txt	0	complete
+v1	vendor	1780036643	implement	-	codex	codex-phase2-voter-3	1780036583	1780036643	60	cursor-vote-output-phase2.txt	0	complete
+v1	vendor	1780036728	implement	-	codex	codex-review	1780036648	1780036728	80	codex-output.txt	0	complete
+v1	vendor	1780036820	implement	-	cursor	cursor-review	1780036729	1780036820	91	cursor-output.txt	0	complete
+v1	vendor	1780036891	implement	-	codex	codex-review	1780036821	1780036891	70	codex-output.txt	0	complete
+v1	mark	1780037106	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1780037150	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1780037237	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1780037257	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1780044201	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

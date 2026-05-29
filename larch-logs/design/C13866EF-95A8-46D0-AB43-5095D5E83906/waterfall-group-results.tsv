@@ -1,0 +1,16 @@
+plan-arch	codex-plan-arch	codex	<TMPDIR>/codex-primary-plan-arch-output.txt	ok
+plan-edge	codex-plan-edge	codex	<TMPDIR>/codex-primary-plan-edge-output.txt	ok
+plan-innovation	codex-plan-innovation	codex	<TMPDIR>/codex-primary-plan-innovation-output.txt	ok
+plan-pragmatic	codex-plan-pragmatic	codex	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	ok
+plan-requirements	codex-plan-requirements	codex	<TMPDIR>/codex-primary-plan-requirements-output.txt	ok
+plan-dyn-caller-sweep	dyn-codex-plan-caller-sweep	codex	<TMPDIR>/codex-primary-plan-dyn-caller-sweep-output.txt	ok
+plan-dyn-env-var-scope	dyn-codex-plan-env-var-scope	codex	<TMPDIR>/codex-primary-plan-dyn-env-var-scope-output.txt	ok
+plan-dyn-shard-balance	dyn-codex-plan-shard-balance	codex	<TMPDIR>/codex-primary-plan-dyn-shard-balance-output.txt	ok
+plan-arch	cursor-plan-arch	codex	<TMPDIR>/cursor-plan-arch-output.txt	reused	codex-plan-arch
+plan-edge	cursor-plan-edge	codex	<TMPDIR>/cursor-plan-edge-output.txt	reused	codex-plan-edge
+plan-innovation	cursor-plan-innovation	codex	<TMPDIR>/cursor-plan-innovation-output.txt	reused	codex-plan-innovation
+plan-pragmatic	cursor-plan-pragmatic	codex	<TMPDIR>/cursor-plan-pragmatic-output.txt	reused	codex-plan-pragmatic
+plan-requirements	cursor-plan-requirements	codex	<TMPDIR>/cursor-plan-requirements-output.txt	reused	codex-plan-requirements
+plan-dyn-caller-sweep	dyn-cursor-plan-caller-sweep	codex	<TMPDIR>/cursor-plan-dyn-caller-sweep-output.txt	reused	dyn-codex-plan-caller-sweep
+plan-dyn-env-var-scope	dyn-cursor-plan-env-var-scope	codex	<TMPDIR>/cursor-plan-dyn-env-var-scope-output.txt	reused	dyn-codex-plan-env-var-scope
+plan-dyn-shard-balance	dyn-cursor-plan-shard-balance	codex	<TMPDIR>/cursor-plan-dyn-shard-balance-output.txt	reused	dyn-codex-plan-shard-balance
