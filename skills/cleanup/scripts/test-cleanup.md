@@ -9,7 +9,8 @@ Covered cases:
 - **multiple-claude-no-abort**: stub `pgrep -x claude` reports three PIDs; cleanup exits 0 and emits `SESSION_COUNT=3` (informational only — no singleton abort)
 - **stale-dir-removed**: session directory with stale mtime (newest activity before retention cutoff) is deleted; `CACHE_REMOVED=1`
 - **fresh-dir-kept**: session directory with recent mtime is retained; `CACHE_REMOVED=0`
-- **stale-dir-with-keepalive-removed**: stale session directory that still carries `.larch-keepalive` is deleted; `CACHE_REMOVED=1`
+- **stale-dir-with-keepalive-kept**: stale session directory that still carries `.larch-keepalive` is retained; `CACHE_REMOVED=0`
+- **symlinked-session-dir-skipped**: top-level session entry that is a symlink to another tree is not traversed with `rm -rf`; `CACHE_REMOVED=0`
 - **stale-with-fresh-depth1-child**: stale session root mtime but a fresh file at depth 1; directory kept because `newest_activity_mtime` scans `find -mindepth 1 -maxdepth 5`
 - **stale-with-fresh-depth2-grandchild**: stale ancestors with a fresh file at depth 2; directory kept
 - **stale-with-fresh-depth4-manifest**: stale ancestors with fresh `larch-logs/implement/<RUN_ID>/manifest.json` at depth 4 from the session root; directory kept

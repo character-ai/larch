@@ -165,8 +165,8 @@ run_cleanup "$work"
 [[ -d "$CASE_SESSIONS/fresh-session" ]] || fail "fresh-dir-kept should keep recent session dir"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "fresh-dir-kept CACHE_REMOVED"
 
-# --- stale-dir-with-keepalive-removed -----------------------------------------
-work="$TMP/stale-dir-with-keepalive-removed"
+# --- stale-dir-with-keepalive-kept --------------------------------------------
+work="$TMP/stale-dir-with-keepalive-kept"
 mkdir -p "$work/xdg-cache/larch/sessions/stale-session"
 printf '# larch session identity (hook routing)\nCLONE_PATH=%s\nSESSION_ID=%s\n' \
     "/tmp/repo" "stale-session" > "$work/xdg-cache/larch/sessions/stale-session/.larch-keepalive"
@@ -174,9 +174,21 @@ touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-session" \
     "$work/xdg-cache/larch/sessions/stale-session/.larch-keepalive"
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-dir-with-keepalive-removed exit $CASE_RC"
-[[ ! -d "$CASE_SESSIONS/stale-session" ]] || fail "stale-dir-with-keepalive-removed should delete stale keepalive dir"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "stale-dir-with-keepalive-removed CACHE_REMOVED"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-dir-with-keepalive-kept exit $CASE_RC"
+[[ -d "$CASE_SESSIONS/stale-session" ]] || fail "stale-dir-with-keepalive-kept should retain stale keepalive dir"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-dir-with-keepalive-kept CACHE_REMOVED"
+
+# --- symlinked-session-dir-skipped --------------------------------------------
+work="$TMP/symlinked-session-dir-skipped"
+mkdir -p "$work/xdg-cache/larch/sessions" "$work/victim"
+touch -t "$STALE_TS" -- "$work/victim"
+ln -s "$work/victim" "$work/xdg-cache/larch/sessions/claude-implement-evil"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "symlinked-session-dir-skipped exit $CASE_RC"
+[[ -d "$work/victim" ]] || fail "symlinked-session-dir-skipped must not rm -rf through session symlink"
+[[ -L "$CASE_SESSIONS/claude-implement-evil" ]] || fail "symlinked-session-dir-skipped should leave symlink entry"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "symlinked-session-dir-skipped CACHE_REMOVED"
 
 # --- stale-with-fresh-depth1-child --------------------------------------------
 work="$TMP/stale-with-fresh-depth1-child"

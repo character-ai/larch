@@ -79,6 +79,8 @@ should_remove_by_age() {
     local entry="$1"
     local newest
 
+    [[ -d "$entry" && ! -L "$entry" ]] || return 1
+    [ -f "$entry/.larch-keepalive" ] && return 1
     newest=$(newest_activity_mtime "$entry") || return 1
     [ "$newest" -lt "$CUTOFF" ]
 }
@@ -89,7 +91,6 @@ CACHE_REMOVED=0
 
 if [[ -d "$CACHE_DIR" ]]; then
     while IFS= read -r -d $'\0' entry; do
-        [[ -d "$entry" ]] || continue
         if should_remove_by_age "$entry"; then
             rm -rf "$entry"
             (( CACHE_REMOVED++ )) || true
@@ -127,7 +128,7 @@ TMP_PATTERNS=(
 for pattern in "${TMP_PATTERNS[@]}"; do
     for entry in "$TMP_ROOT"/${pattern}; do
         [[ -e "$entry" || -L "$entry" ]] || continue
-        if [[ -d "$entry" ]]; then
+        if [[ -d "$entry" && ! -L "$entry" ]]; then
             if should_remove_by_age "$entry"; then
                 rm -rf "$entry"
                 (( TMP_REMOVED++ )) || true

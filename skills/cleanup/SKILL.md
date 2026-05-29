@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # cleanup
 
-Remove stale larch session temp directories from `~/.cache/larch/sessions/` (the canonical location) and from `/tmp` (legacy fallback). Retention is age-based (`LARCH_CLEANUP_RETENTION_DAYS`, default 7): an entry is removed only when its newest activity (entry mtime or any descendant within depth 5) is older than the cutoff. Also reaps dangling `current-design-env-*.sh` symlinks in the sessions parent. Always runnable — multiple concurrent Claude sessions do not block cleanup.
+Remove stale larch session temp directories from `~/.cache/larch/sessions/` (the canonical location) and from `/tmp` (legacy fallback). Retention is age-based (`LARCH_CLEANUP_RETENTION_DAYS`, default 7): an entry is removed only when its newest activity (entry mtime or any descendant within depth 5) is older than the cutoff. Entries carrying `.larch-keepalive` are never removed. Symlinked top-level session or pattern entries are skipped. Also reaps dangling `current-design-env-*.sh` symlinks in the sessions parent. Always runnable — multiple concurrent Claude sessions do not block cleanup.
 
 ## NEVER
 

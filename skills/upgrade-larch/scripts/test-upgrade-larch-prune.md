@@ -17,7 +17,8 @@ Covered cases:
 - stamp-write-failure-existing-target: a failed target stamp write still retains the seeded existing target dir
 - target-in-top-eight-exact-count: when the install target is already among the newest eight, exactly eight dirs remain (no off-by-one to nine)
 - already-latest-prunes: idempotent already-latest path binds the installed version, refreshes its stamp, and prunes without reinstalling
-- legacy-unstamped-backfilled-before-prune: legacy dirs without `.larch-installed-at` are backfilled from directory mtime before prune ordering
-- stat-backfill-skipped-still-prunes: when `stat` fails for a legacy dir during backfill (`STAT_FAIL_VERSION` stub), that dir is not stamped, other legacy dirs are still backfilled, and prune completes at eight dirs
+- exactly-eight-no-prune: exactly eight stamped cache dirs yields zero deletions and `No old versions to prune.`
+- cap-pressure-newer-than-stable-survives: semver-newer-than-stable `99.0.0` in the newest-eight stamp set survives cap pressure after install
+- already-latest-seeds-plugin-root: metadata reports stable newer than `basename(PLUGIN_ROOT)`; executing plugin root is retained without mtime backfill stamp
 
 Edit in sync: update this harness, `upgrade-larch.sh`, `upgrade-larch.md`, `skills/upgrade-larch/SKILL.md`, `docs/installation-and-setup.md`, and `Makefile` when changing install-stamp pruning behavior or validation commands.

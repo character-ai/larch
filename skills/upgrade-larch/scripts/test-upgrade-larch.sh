@@ -152,6 +152,7 @@ run_case() {
     local cache_root="$work/cache"
     local plugin_root
     local stamp_pair stamp_version stamp_epoch
+    local mtime_override mtime_version mtime_ts
     local output rc
 
     mkdir -p "$home/.claude/plugins" "$bin" "$cache_root"
@@ -184,6 +185,13 @@ JSON
         [[ -n "$stamp_version" && -n "$stamp_epoch" ]] || continue
         [[ -d "$cache_root/$stamp_version" ]] || continue
         write_install_stamp "$cache_root" "$stamp_version" "$stamp_epoch"
+    done
+    for mtime_override in ${CACHE_MTIME_OVERRIDES:-}; do
+        mtime_version="${mtime_override%%:*}"
+        mtime_ts="${mtime_override#*:}"
+        [[ -n "$mtime_version" && -n "$mtime_ts" ]] || continue
+        [[ -d "$cache_root/$mtime_version" ]] || continue
+        touch -t "$mtime_ts" -- "$cache_root/$mtime_version"
     done
 
     set +e
@@ -279,16 +287,18 @@ INSTALL_RESULT_VERSION="31.0.0"
 INSTALL_CACHE_VERSION="31.0.0"
 CACHED_VERSIONS="31.0.0 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0"
 INSTALL_STAMPS="32.0.0:820 33.0.0:830 34.0.0:840 35.0.0:850 36.0.0:860 37.0.0:870 38.0.0:880 39.0.0:890"
+export CACHE_MTIME_OVERRIDES="30.9.0:200001010000"
 run_case cap-trims-to-eight-keeps-target
 [[ "$CASE_RC" -eq 0 ]] || fail "cap-trims-to-eight-keeps-target exit $CASE_RC"
 [[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "cap-trims-to-eight-keeps-target should keep 31.0.0"
 [[ -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "cap-trims-to-eight-keeps-target should keep the executing plugin root"
+[[ ! -f "$CASE_CACHE_ROOT/30.9.0/.larch-installed-at" ]] || fail "cap-trims-to-eight-keeps-target should retain plugin root via seeding, not backfill stamp"
 [[ ! -d "$CASE_CACHE_ROOT/32.0.0" ]] || fail "cap-trims-to-eight-keeps-target should prune 32.0.0"
 [[ ! -d "$CASE_CACHE_ROOT/33.0.0" ]] || fail "cap-trims-to-eight-keeps-target should prune 33.0.0"
 for version in 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0; do
     [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-trims-to-eight-keeps-target should keep $version"
 done
-unset INSTALL_STAMPS
+unset INSTALL_STAMPS CACHE_MTIME_OVERRIDES
 
 # Failed prune removals are warned and the directory remains on disk.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'

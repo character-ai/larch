@@ -1410,6 +1410,10 @@ exclude = [
   "scripts/test-redact-tmpdir-paths.md",
   "scripts/test-keepalive-sentinel.sh",
   "scripts/test-keepalive-sentinel.md",
+  # skills/implement/scripts/test-resolve-implement-tmpdir.sh — Makefile-only harness
+  # (test-resolve-implement-tmpdir target); sibling contract in test-resolve-implement-tmpdir.md.
+  "skills/implement/scripts/test-resolve-implement-tmpdir.sh",
+  "skills/implement/scripts/test-resolve-implement-tmpdir.md",
   "scripts/test-cache-root-validation.sh",
   "scripts/test-cache-root-validation.md",
   "scripts/test-cache-key-discipline.sh",

@@ -49,6 +49,13 @@ resolve_for_cwd() {
         bash -c "source \"\$1\"; resolve_implement_tmpdir \"\$2\"" _ "$LIB" "$1"
 }
 
+resolve_for_cwd_with_session() {
+    env LARCH_TOKEN_SESSION_ID="$2" \
+        XDG_CACHE_HOME="$TMP/cache" \
+        HOME="$TMP/home" \
+        bash -c "source \"\$1\"; resolve_implement_tmpdir \"\$2\"" _ "$LIB" "$1"
+}
+
 resolved=$(resolve_for_cwd "$WORKTREE_A")
 [[ "$resolved" == "$DIR_A" ]] || fail "expected worktree A session dir, got [$resolved]"
 
@@ -58,5 +65,19 @@ resolved=$(resolve_for_cwd "$WORKTREE_B")
 # B has a fresher manifest, but cwd binding must not cross-route to B when asking for A.
 resolved=$(resolve_for_cwd "$WORKTREE_A")
 [[ "$resolved" != "$DIR_B" ]] || fail "worktree A cwd must not resolve to worktree B session"
+
+DIR_C="$SESSIONS/claude-implement-worktree-a-alt"
+mkdir -p "$DIR_C/design-export"
+printf 'export PLAN=1\n' > "$DIR_C/design-export/manifest.env"
+touch -t "$FRESH_TS" -- "$DIR_C/design-export/manifest.env"
+printf '# larch session identity (hook routing)\nCLONE_PATH=%s\nSESSION_ID=sid-c\n' \
+    "$WORKTREE_A" > "$DIR_C/.larch-keepalive"
+
+resolved=$(resolve_for_cwd_with_session "$WORKTREE_A" "sid-a")
+[[ "$resolved" == "$DIR_A" ]] || fail "expected sid-a session dir, got [$resolved]"
+[[ "$resolved" != "$DIR_C" ]] || fail "sid-a must not resolve to sid-c session with same CLONE_PATH"
+
+resolved=$(resolve_for_cwd_with_session "$WORKTREE_A" "sid-c")
+[[ "$resolved" == "$DIR_C" ]] || fail "expected sid-c session dir, got [$resolved]"
 
 printf 'PASS: test-resolve-implement-tmpdir.sh\n'

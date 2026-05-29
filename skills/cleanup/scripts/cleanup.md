@@ -10,7 +10,8 @@
 - Clock failures are fatal: if `date +%s` does not yield a numeric epoch, cleanup exits non-zero and removes nothing.
 - Activity scan: `newest_activity_mtime` compares the entry's own mtime with the newest mtime among descendants found by `find "$entry" -mindepth 1 -maxdepth 5`.
 - Activity-scan failures fail closed per entry: if `find` cannot enumerate an entry's descendants, cleanup warns and skips deleting that entry.
-- Does not skip entries because they contain `.larch-keepalive`; hook routing uses the slim identity record (`CLONE_PATH`, `SESSION_ID`) but cleanup is age-only.
+- Skips session entries that contain `.larch-keepalive` (active or long-paused `/design` / `/implement` sessions) even when shallow activity looks stale.
+- Rejects symlinked top-level session or `/tmp` pattern entries (`-L`); never `rm -rf` through a symlink.
 - Reaps broken `current-design-env-*.sh` symlinks in the sessions parent (`-type l` and `! -e`).
 - Never removes an entry it cannot prove exists (`[[ -e "$entry" || -L "$entry" ]]` guard).
 - Uses bash 3.2-compatible `while IFS= read -r -d $'\0'` — not `mapfile`.
