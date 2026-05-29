@@ -45,9 +45,9 @@ parse_plan_optional_metadata() {
         -f "$LARCH_PLAN_OPTIONAL_TRAILERS_AWK" "$plan"
 }
 
-validate_optional_trailers_preserved() {
+validate_optional_trailer_keys_preserved() {
     local plan="$1" keys_file="$2"
-    local key values_file probe
+    local key
     [[ -f "$keys_file" ]] || return 0
 
     if [[ ! -s "$keys_file" ]]; then
@@ -61,6 +61,13 @@ validate_optional_trailers_preserved() {
         [[ -n "$key" ]] || continue
         plan_has_optional_trailer_key "$plan" "$key" || return 1
     done <"$keys_file"
+    return 0
+}
+
+validate_optional_trailers_preserved() {
+    local plan="$1" keys_file="$2"
+    local values_file probe
+    validate_optional_trailer_keys_preserved "$plan" "$keys_file" || return 1
 
     values_file=$(_optional_trailer_values_file "$keys_file")
     if [[ -f "$values_file" ]]; then
