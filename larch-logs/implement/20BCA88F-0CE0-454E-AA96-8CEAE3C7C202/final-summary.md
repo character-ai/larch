@@ -1,6 +1,6 @@
-## /implement run 20BCA88F-0CE0-454E-AA96-8CEAE3C7C202 — bailed
+## /implement run 20BCA88F-0CE0-454E-AA96-8CEAE3C7C202 — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 02:39:57
