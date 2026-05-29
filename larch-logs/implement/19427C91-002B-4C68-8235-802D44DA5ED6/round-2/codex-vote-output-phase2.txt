@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bounded maxdepth-5 scan per session; full-buffer cost is unlikely to matter in practice
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- plan-specified version-string tiebreak; equal-stamp collisions are rare
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate stat_mtime is real but extracting a shared helper is out of scope for this PR
+FINDING_4: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- first-run backfill can freeze pre-touch inflated mtimes into permanent install stamps
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- redundant stamp read is real but harmless micro-optimization
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- space-separated retained list is brittle style, not a functional defect for version tokens
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- "up to 8" accurately describes the cap when fewer than eight dirs exist
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- claude-design-* /tmp dirs are a real cleanup gap worth a follow-up issue
+FINDING_9: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- stable release selection still trusts first API tag without semver-latest ordering
+FINDING_10: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- TMP_PATTERNS includes file-like entries but cleanup only removes directories
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- cross-worktree eviction is an explicit operator-accepted max-8 tradeoff per plan
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- sessionstart-health has no stale keepalive prose; SECURITY.md already reflects slim identity
+FINDING_13: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- no offline test proves resolver picks the tmpdir matching cwd among multiple CLONE_PATH roots
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- maxdepth 5 is plan-specified; depth-6 omission is intentional boundary behavior
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- resolver awk ignores legacy PID/PPID fields and still matches CLONE_PATH/SESSION_ID
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- STAT_FAIL_VERSION stub exists but is harmless unused harness wiring
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- prune harness already asserts exactly eight retained dirs in multiple cases
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- symlink stamp writes are theoretical in the single-user cache threat model
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- symlink-following activity scan is a low-likelihood local hardening edge case
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- keepalive ownership checks are worthwhile hardening but predate this change set
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- backfill_legacy_install_stamps is a documented migration helper with harness coverage
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- read-only review meta-finding; not a code defect in the diff
