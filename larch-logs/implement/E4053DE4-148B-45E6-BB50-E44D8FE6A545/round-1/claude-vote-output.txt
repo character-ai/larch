@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- lib-net.md not in diff but may not document signatures; the pattern of sibling-doc updates (create-pr.md, merge-pr.md, rebase-push.md all changed) makes the absence notable
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- GH_CHECKS_TRANSIENT_EXHAUST=1 fails both JSON and text paths so the skip invariant is not isolated; a regression removing checks_json_transient_exhausted guard would still produce ci_not_ready and pass S4
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- one mktemp/rm per retry iteration is negligible overhead and not worth a dedicated issue
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the "no such hosted" guard only blocks that specific phrase; "no such hostname" does not match "no such hosted" but does match "no such host" and is not covered by adversarial fixtures
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real coverage gap: no test proves text-fallback transient-once recovery; distinct from S4 which exhausts both paths
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing design unchanged by this PR; regex parsing of gh CLI diagnostic is standard practice and the URL is not used as a security boundary
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- SLEEP_SCRIPT_DIR is an internal test hook; an attacker controlling it already has broader access
