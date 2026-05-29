@@ -1,0 +1,3 @@
+skills/design/references/approval-gates.md
+skills/design/SKILL.md
+scripts/test-design-structure.sh
