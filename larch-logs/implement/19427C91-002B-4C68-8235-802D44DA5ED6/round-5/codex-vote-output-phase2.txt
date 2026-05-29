@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate stat_mtime is real but a shared lib for two call sites is more surface than the drift risk
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- double read_install_stamp is redundant I/O, not a functional defect
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- space-delimited retained set is brittle in theory but safe for current numeric version tokens
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- lexicographic k3 tie-break can mis-order only when stamp second and tier already match
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- buffered find is a latent scale issue; streaming rewrite outweighs typical session-tree sizes
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- harness write_install_stamp name overlap is confusing but signatures differ and scope is test-only
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan promised sessionstart-health keepalive commentary that this branch did not add
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- get_stable_releases takes first tag, not semver max; pre-existing latent upgrade-selection risk
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- prune seeds metadata ACTUAL_VERSION only and can delete basename PLUGIN_ROOT still in use
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- already-latest no-restart docs conflict with prune deleting the unstamped executing cache dir
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- depth-5 scan is an accepted plan boundary; deep-only activity is an edge case
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- max-8 without cross-clone pins is the documented accepted tradeoff
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- parse_retention_days rejects 0 so zero-day disable is impossible without doc or harness clarity
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- corrupt-stamp mtime-tier gap is real but narrow; extra harness is optional hardening
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- max-8 behavior is already covered by prune harness cases; ninth-release scenario is plan-level not missing core tests
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- LARCH_TEST_TMP_ROOT override is an intentional harness seam documented in test-cleanup.md
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same-UID stamp trust is already stated in SECURITY.md upgrade-larch prune paragraph
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- SECURITY.md documents upgrade-larch prune trust but not the new age-only /cleanup deletion model
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- prune rm -rf without symlink guard is a real pre-existing same-UID footgun worth a follow-up issue
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- lib-resolve-implement-tmpdir scans /tmp without ownership checks; pre-existing trust-boundary gap
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- first post-change prune ranks legacy unstamped dirs by mtime only and can evict an in-use unstamped root
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- age-only reaping despite keepalive is intentional per plan and exercised by test-cleanup harness

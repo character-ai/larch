@@ -2,9 +2,10 @@
 
 set -euo pipefail
 
-# Coverage includes active-session pins plus mtime-based prune ordering:
-# deterministic touch -t seeding, lexicographic equal-mtime tiebreaks, and
-# STAT_FAIL_VERSION forcing both stat probes to fail for one cache directory.
+# Coverage for max-8 install-stamp prune in upgrade-larch.sh:
+# .larch-installed-at ordering (stamped before un-stamped, timestamp desc,
+# version desc), dir-mtime fallback for un-stamped dirs,
+# ACTUAL_VERSION target seeding, and already-latest stamp+prune without reinstall.
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/upgrade-larch/scripts/upgrade-larch.sh"
@@ -21,11 +22,26 @@ assert_contains() {
     grep -Fq "$needle" <<< "$haystack" || fail "$label: missing [$needle]"
 }
 
-assert_occurrences() {
-    local haystack="$1" needle="$2" expected="$3" label="$4"
-    local actual
-    actual=$(grep -Foc "$needle" <<< "$haystack")
-    [[ "$actual" -eq "$expected" ]] || fail "$label: expected $expected occurrences of [$needle], found $actual"
+assert_not_contains() {
+    local haystack="$1" needle="$2" label="$3"
+    if grep -Fq "$needle" <<< "$haystack"; then
+        fail "$label: unexpectedly found [$needle]"
+    fi
+}
+
+count_cached_versions() {
+    local cache_root="$1"
+    local count=0
+    local dir version
+    shopt -s nullglob
+    for dir in "$cache_root"/[0-9]*/; do
+        [ -d "$dir" ] || continue
+        version=$(basename "${dir%/}")
+        [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]] || continue
+        count=$((count + 1))
+    done
+    shopt -u nullglob
+    printf '%s\n' "$count"
 }
 
 make_plugin_root() {
@@ -34,6 +50,11 @@ make_plugin_root() {
     mkdir -p "$root/scripts"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     printf '%s\n' "$root"
+}
+
+write_install_stamp() {
+    local cache_root="$1" version="$2" epoch="$3"
+    printf '%s\n' "$epoch" > "$cache_root/$version/.larch-installed-at"
 }
 
 write_stub_claude() {
@@ -83,7 +104,9 @@ LIST
         ;;
     install)
         INSTALLED_VERSION="${INSTALL_RESULT_VERSION:?}"
-        mkdir -p "$cache_dir/$INSTALL_RESULT_VERSION"
+        if [[ -n "${INSTALL_CACHE_VERSION:-}" ]]; then
+            mkdir -p "$cache_dir/$INSTALL_CACHE_VERSION"
+        fi
         write_state
         ;;
     marketplace)
@@ -139,18 +162,6 @@ if [[ -n "${STAT_FAIL_VERSION:-}" && "$target" == */"$STAT_FAIL_VERSION" ]]; the
     done
 fi
 
-if [[ -n "${STAT_GNU_F_GARBAGE_VERSION:-}" && "$target" == */"$STAT_GNU_F_GARBAGE_VERSION" ]]; then
-    for arg in "$@"; do
-        case "$arg" in
-            -c) exit 1 ;;
-            -f)
-                printf 'garbage filesystem info\n'
-                exit 0
-                ;;
-        esac
-    done
-fi
-
 /usr/bin/stat "$@"
 EOF
     chmod +x "$path"
@@ -163,16 +174,12 @@ run_case() {
     local bin="$work/bin"
     local state_file="$work/state.sh"
     local cache_root="$work/cache"
-    local sessions_root="$work/sessions"
-    local xdg_cache_home="$work/xdg-cache"
-    local fallback_session_roots
-    local plugin_root session_idx tmp_session_name
-    local _seed_idx _ts _override _override_version _override_ts
+    local plugin_root
+    local stamp_pair stamp_version stamp_epoch
+    local mtime_override mtime_version mtime_ts
     local output rc
 
-    mkdir -p "$home/.claude/plugins" "$bin" "$cache_root" "$sessions_root" "$xdg_cache_home"
-    fallback_session_roots="${FALLBACK_SESSION_ROOTS:-$work/fallback-sessions}"
-    mkdir -p "$work/fallback-sessions"
+    mkdir -p "$home/.claude/plugins" "$bin" "$cache_root"
     plugin_root=$(make_plugin_root "$cache_root" "${PLUGIN_ROOT_VERSION:-29.1.20}")
     write_stub_claude "$bin/claude"
     write_stub_gh "$bin/gh"
@@ -181,393 +188,314 @@ run_case() {
     cat > "$state_file" <<STATE
 INSTALLED_VERSION="${INITIAL_INSTALLED_VERSION:-}"
 STATE
+    if [[ -n "${INSTALLED_PLUGINS_VERSION:-}" ]]; then
+        cat > "$home/.claude/plugins/installed_plugins.json" <<JSON
+{
+  "plugins": {
+    "larch@larch-local": {
+      "version": "${INSTALLED_PLUGINS_VERSION}"
+    }
+  }
+}
+JSON
+    fi
     for version in ${CACHED_VERSIONS:-}; do
         mkdir -p "$cache_root/$version"
     done
-    _seed_idx=0
-    for version in ${CACHED_VERSIONS:-}; do
-        _seed_idx=$((_seed_idx + 1))
-        printf -v _ts '20%02d01010001' "$((10 + _seed_idx))"
-        touch -t "$_ts" -- "$cache_root/$version"
+    for stamp_pair in ${INSTALL_STAMPS:-}; do
+        stamp_version="${stamp_pair%%:*}"
+        stamp_epoch="${stamp_pair#*:}"
+        [[ -n "$stamp_version" && -n "$stamp_epoch" ]] || continue
+        [[ -d "$cache_root/$stamp_version" ]] || continue
+        write_install_stamp "$cache_root" "$stamp_version" "$stamp_epoch"
     done
-    for _override in ${CACHE_MTIME_OVERRIDES:-}; do
-        _override_version="${_override%%:*}"
-        _override_ts="${_override#*:}"
-        [[ -n "$_override_version" && -n "$_override_ts" ]] || continue
-        [[ -d "$cache_root/$_override_version" ]] || continue
-        touch -t "$_override_ts" -- "$cache_root/$_override_version"
+    for mtime_override in ${CACHE_MTIME_OVERRIDES:-}; do
+        mtime_version="${mtime_override%%:*}"
+        mtime_ts="${mtime_override#*:}"
+        [[ -n "$mtime_version" && -n "$mtime_ts" ]] || continue
+        [[ -d "$cache_root/$mtime_version" ]] || continue
+        touch -t "$mtime_ts" -- "$cache_root/$mtime_version"
     done
-    session_idx=0
-    for version in ${SESSION_PINNED_VERSIONS:-}; do
-        session_idx=$((session_idx + 1))
-        write_session_env "$sessions_root" "claude-implement-larch-$session_idx" "$cache_root/$version"
-    done
-    if [[ -n "${SESSION_PINNED_ROOT:-}" ]]; then
-        session_idx=$((session_idx + 1))
-        write_session_env "$sessions_root" "claude-implement-larch-$session_idx" "$SESSION_PINNED_ROOT"
-    fi
-    if [[ -n "${SESSION_PINNED_ROOT_LITERAL:-}" ]]; then
-        session_idx=$((session_idx + 1))
-        write_session_env_literal "$sessions_root" "claude-implement-larch-$session_idx" "$SESSION_PINNED_ROOT_LITERAL"
-    fi
-    if [[ -n "${XDG_SESSION_PINNED_VERSIONS:-}" ]]; then
-        session_idx=0
-        for version in ${XDG_SESSION_PINNED_VERSIONS:-}; do
-            session_idx=$((session_idx + 1))
-            write_session_env "$xdg_cache_home/larch/sessions" "claude-implement-larch-xdg-$session_idx" "$cache_root/$version"
-        done
-    fi
-    if [[ -n "${TMP_SESSION_PINNED_VERSIONS:-}" ]]; then
-        session_idx=0
-        for version in ${TMP_SESSION_PINNED_VERSIONS:-}; do
-            session_idx=$((session_idx + 1))
-            tmp_session_name="claude-implement-larch-upgrade-prune-$session_idx-$$"
-            rm -rf "/tmp/$tmp_session_name"
-            write_session_env "/tmp" "$tmp_session_name" "$cache_root/$version"
-        done
+    if [[ -n "${READONLY_STAMP_VERSION:-}" && -d "$cache_root/$READONLY_STAMP_VERSION" ]]; then
+        chmod 500 "$cache_root/$READONLY_STAMP_VERSION"
     fi
 
     set +e
-    if [[ -n "${SET_LARCH_SESSIONS_DIR:-}" ]]; then
-        output=$(
-            HOME="$home" \
-            PATH="$bin:$PATH" \
-            CLAUDE_PLUGIN_ROOT="$plugin_root" \
-            XDG_CACHE_HOME="$xdg_cache_home" \
-            LARCH_SESSIONS_DIR="$sessions_root" \
-            TEST_STATE_FILE="$state_file" \
-            TEST_CACHE_DIR="$cache_root" \
-            GH_OUTPUT="${GH_OUTPUT:-}" \
-            INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
-            RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
-            STAT_FAIL_VERSION="${STAT_FAIL_VERSION:-}" \
-            STAT_GNU_F_GARBAGE_VERSION="${STAT_GNU_F_GARBAGE_VERSION:-}" \
-            LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="$fallback_session_roots" \
-            LARCH_BREADCRUMB_STREAM='' \
-            LARCH_QUIET_DISABLE=1 \
-            "$SCRIPT" 2>&1
-        )
-    else
-        output=$(
-            HOME="$home" \
-            PATH="$bin:$PATH" \
-            CLAUDE_PLUGIN_ROOT="$plugin_root" \
-            XDG_CACHE_HOME="$xdg_cache_home" \
-            TEST_STATE_FILE="$state_file" \
-            TEST_CACHE_DIR="$cache_root" \
-            GH_OUTPUT="${GH_OUTPUT:-}" \
-            INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
-            RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
-            STAT_FAIL_VERSION="${STAT_FAIL_VERSION:-}" \
-            STAT_GNU_F_GARBAGE_VERSION="${STAT_GNU_F_GARBAGE_VERSION:-}" \
-            LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="$fallback_session_roots" \
-            LARCH_BREADCRUMB_STREAM='' \
-            LARCH_QUIET_DISABLE=1 \
-            "$SCRIPT" 2>&1
-        )
-    fi
+    output=$(
+        HOME="$home" \
+        PATH="$bin:$PATH" \
+        CLAUDE_PLUGIN_ROOT="$plugin_root" \
+        TEST_STATE_FILE="$state_file" \
+        TEST_CACHE_DIR="$cache_root" \
+        GH_OUTPUT="${GH_OUTPUT:-}" \
+        INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
+        INSTALL_CACHE_VERSION="${INSTALL_CACHE_VERSION:-}" \
+        RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
+        STAT_FAIL_VERSION="${STAT_FAIL_VERSION:-}" \
+        LARCH_BREADCRUMB_STREAM='' \
+        LARCH_QUIET_DISABLE=1 \
+        "$SCRIPT" 2>&1
+    )
     rc=$?
     set -e
 
-    rm -rf /tmp/claude-implement-larch-upgrade-prune-*-"$$"
+    if [[ -n "${READONLY_STAMP_VERSION:-}" && -d "$cache_root/$READONLY_STAMP_VERSION" ]]; then
+        chmod 700 "$cache_root/$READONLY_STAMP_VERSION"
+    fi
 
     CASE_OUTPUT="$output"
     CASE_RC="$rc"
     CASE_CACHE_ROOT="$cache_root"
 }
 
-write_session_env() {
-    local sessions_root="$1" session_name="$2" plugin_root="$3"
-    mkdir -p "$sessions_root/$session_name"
-    printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$plugin_root" > "$sessions_root/$session_name/session-env.sh"
-}
-
-write_session_env_literal() {
-    local sessions_root="$1" session_name="$2" literal_line="$3"
-    mkdir -p "$sessions_root/$session_name"
-    printf '%s\n' "$literal_line" > "$sessions_root/$session_name/session-env.sh"
-}
-
 GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
-SESSION_PINNED_VERSIONS="29.1.21"
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS
-unset SESSION_PINNED_ROOT
-export CACHE_MTIME_OVERRIDES="29.1.20:209901010001 29.1.22:200001010001"
-run_case active-session-keeps-version
-[[ "$CASE_RC" -eq 0 ]] || fail "active-session-keeps-version exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "active-session-keeps-version should keep newest-touched unpinned version"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "active-session-keeps-version should prune next oldest unpinned version"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.23" ]] || fail "active-session-keeps-version should prune oldest-by-mtime version"
-for version in 29.1.20 29.1.21 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "active-session-keeps-version should keep $version"
-done
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." "active-session-keeps-version warning"
+INSTALL_STAMPS="29.1.20:1000000 29.1.21:1000001 29.1.22:1000002 29.1.23:1000003 29.1.24:1000004 29.1.25:1000005 29.1.26:1000006 29.1.27:1000007 29.1.28:1000008"
 unset CACHE_MTIME_OVERRIDES
+run_case over-eight-stamped-keeps-eight-newest
+[[ "$CASE_RC" -eq 0 ]] || fail "over-eight-stamped-keeps-eight-newest exit $CASE_RC"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "over-eight-stamped-keeps-eight-newest should retain exactly 8 dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "over-eight-stamped-keeps-eight-newest should prune 29.1.20"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "over-eight-stamped-keeps-eight-newest should prune 29.1.21"
+[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "over-eight-stamped-keeps-eight-newest should keep 29.1.22 in newest eight"
+for version in 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "over-eight-stamped-keeps-eight-newest should keep $version"
+done
+assert_contains "$CASE_OUTPUT" "Pruning old larch versions" "over-eight-stamped-keeps-eight-newest prune banner"
 
 GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.20"
 PLUGIN_ROOT_VERSION="29.1.20"
 INSTALL_RESULT_VERSION="29.1.22"
+INSTALL_CACHE_VERSION="29.1.22"
 CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS
-run_case no-sessions-keeps-under-cap
-[[ "$CASE_RC" -eq 0 ]] || fail "no-sessions-keeps-under-cap exit $CASE_RC"
+INSTALL_STAMPS="29.1.19:100 29.1.20:101 29.1.21:102 29.1.22:103"
+unset CACHE_MTIME_OVERRIDES
+run_case under-cap-keeps-all
+[[ "$CASE_RC" -eq 0 ]] || fail "under-cap-keeps-all exit $CASE_RC"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 4 ]] || fail "under-cap-keeps-all should retain all 4 dirs"
 for version in 29.1.19 29.1.20 29.1.21 29.1.22; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "no-sessions-keeps-under-cap should keep $version"
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "under-cap-keeps-all should keep $version"
 done
-
-GH_OUTPUT=$'29.1.22\n29.1.21\n'
-INITIAL_INSTALLED_VERSION="29.1.20"
-PLUGIN_ROOT_VERSION="29.1.20"
-INSTALL_RESULT_VERSION="29.1.22"
-CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
-SET_LARCH_SESSIONS_DIR=1
-unset SESSION_PINNED_VERSIONS XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SESSION_PINNED_ROOT="/cache/not-a-version"
-unset FALLBACK_SESSION_ROOTS
-run_case unparseable-session-keeps-under-cap
-[[ "$CASE_RC" -eq 0 ]] || fail "unparseable-session-keeps-under-cap exit $CASE_RC"
-for version in 29.1.19 29.1.20 29.1.21 29.1.22; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "unparseable-session-keeps-under-cap should keep $version"
-done
+assert_contains "$CASE_OUTPUT" "No old versions to prune." "under-cap-keeps-all no-op prune"
 
 GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
-SET_LARCH_SESSIONS_DIR=1
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SESSION_PINNED_ROOT_LITERAL=$'LARCH_CLAUDE_PLUGIN_ROOT=/ignored/prefix/29.1.21\r   '
-unset FALLBACK_SESSION_ROOTS
-run_case crlf-session-root-keeps-version
-[[ "$CASE_RC" -eq 0 ]] || fail "crlf-session-root-keeps-version exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "crlf-session-root-keeps-version should prune oldest unpinned version"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "crlf-session-root-keeps-version should prune next oldest unpinned version"
-for version in 29.1.21 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "crlf-session-root-keeps-version should keep $version"
-done
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." "crlf-session-root-keeps-version warning"
-
-GH_OUTPUT=$'29.1.22\n29.1.21\n'
-INITIAL_INSTALLED_VERSION="29.1.21"
-PLUGIN_ROOT_VERSION="29.1.21"
-INSTALL_RESULT_VERSION="29.1.22"
-CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL TMP_SESSION_PINNED_VERSIONS
-XDG_SESSION_PINNED_VERSIONS="29.1.20"
-unset SET_LARCH_SESSIONS_DIR
-unset FALLBACK_SESSION_ROOTS
-run_case xdg-default-sessions-root-keeps-version
-[[ "$CASE_RC" -eq 0 ]] || fail "xdg-default-sessions-root-keeps-version exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "xdg-default-sessions-root-keeps-version should keep old version under cap"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "xdg-default-sessions-root-keeps-version should keep XDG-pinned version"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "xdg-default-sessions-root-keeps-version should keep predecessor"
-[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "xdg-default-sessions-root-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "xdg-default-sessions-root-keeps-version warning"
-
-GH_OUTPUT=$'29.1.22\n29.1.21\n'
-INITIAL_INSTALLED_VERSION="29.1.21"
-PLUGIN_ROOT_VERSION="29.1.21"
-INSTALL_RESULT_VERSION="29.1.22"
-CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT XDG_SESSION_PINNED_VERSIONS SET_LARCH_SESSIONS_DIR
-TMP_SESSION_PINNED_VERSIONS="29.1.20"
-FALLBACK_SESSION_ROOTS="/tmp"
-run_case tmp-fallback-sessions-root-keeps-version
-[[ "$CASE_RC" -eq 0 ]] || fail "tmp-fallback-sessions-root-keeps-version exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep old version under cap"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep /tmp-pinned version"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep predecessor"
-[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "tmp-fallback-sessions-root-keeps-version warning"
-
-GH_OUTPUT=$'29.1.30\n29.1.29\n'
-INITIAL_INSTALLED_VERSION="29.1.29"
-PLUGIN_ROOT_VERSION="29.1.29"
-INSTALL_RESULT_VERSION="29.1.30"
-CACHED_VERSIONS="29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS
-export CACHE_MTIME_OVERRIDES="29.1.21:209901010001 29.1.28:200001010001"
-run_case cap-prune-trims-to-eight
-[[ "$CASE_RC" -eq 0 ]] || fail "cap-prune-trims-to-eight exit $CASE_RC"
-for version in 29.1.22 29.1.28; do
-    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-prune-trims-to-eight should prune $version"
-done
-for version in 29.1.21 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.29 29.1.30; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-prune-trims-to-eight should keep $version"
-done
+INSTALL_STAMPS="29.1.20:9000000000 29.1.21:8000000000 29.1.22:7000000000 29.1.23:6000000000 29.1.24:5000000000 29.1.25:4000000000 29.1.26:3000000000 29.1.27:2000000000 29.1.28:1000000000"
+export CACHE_MTIME_OVERRIDES="29.1.20:200001010001 29.1.28:209901010001"
+run_case install-stamp-ordering
+[[ "$CASE_RC" -eq 0 ]] || fail "install-stamp-ordering exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "install-stamp-ordering should keep newest-stamped 29.1.20 despite oldest mtime"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.28" ]] || fail "install-stamp-ordering should prune oldest-stamped 29.1.28 despite newest mtime"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.27" ]] || fail "install-stamp-ordering should prune 29.1.27"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "install-stamp-ordering should retain exactly 8 dirs"
 unset CACHE_MTIME_OVERRIDES
 
 GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
-PLUGIN_ROOT_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.30"
 INSTALL_RESULT_VERSION="29.1.30"
-CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
-SESSION_PINNED_VERSIONS="29.1.20 29.1.21"
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS
-unset SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-export CACHE_MTIME_OVERRIDES="29.1.28:200001010001 29.1.22:209901010001"
-run_case multi-pinned-oldest-still-trims-to-eight
-[[ "$CASE_RC" -eq 0 ]] || fail "multi-pinned-oldest-still-trims-to-eight exit $CASE_RC"
-for version in 29.1.23 29.1.28; do
-    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "multi-pinned-oldest-still-trims-to-eight should prune $version"
-done
-for version in 29.1.20 29.1.21 29.1.22 29.1.24 29.1.25 29.1.26 29.1.27 29.1.30; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "multi-pinned-oldest-still-trims-to-eight should keep $version"
-done
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "multi-pinned-oldest-still-trims-to-eight warning 29.1.20"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." "multi-pinned-oldest-still-trims-to-eight warning 29.1.21"
-assert_occurrences "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." 1 "multi-pinned-oldest-still-trims-to-eight dedupe 29.1.20"
-assert_occurrences "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." 1 "multi-pinned-oldest-still-trims-to-eight dedupe 29.1.21"
-unset CACHE_MTIME_OVERRIDES
-
-GH_OUTPUT=$'29.1.30\n29.1.29\n'
-INITIAL_INSTALLED_VERSION="29.1.29"
-PLUGIN_ROOT_VERSION="29.1.29"
-INSTALL_RESULT_VERSION="29.1.30"
-CACHED_VERSIONS="29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
-RM_FAIL_VERSION="29.1.21"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS
-run_case cap-prune-rm-failure-skips-retry
-[[ "$CASE_RC" -eq 0 ]] || fail "cap-prune-rm-failure-skips-retry exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "cap-prune-rm-failure-skips-retry should retain failed version"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "cap-prune-rm-failure-skips-retry should prune next oldest version"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.23" ]] || fail "cap-prune-rm-failure-skips-retry should prune the second-oldest remaining version"
-for version in 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29 29.1.30; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-prune-rm-failure-skips-retry should keep $version"
-done
-assert_contains "$CASE_OUTPUT" "Warning: failed to prune cached larch version '29.1.21'." "cap-prune-rm-failure-skips-retry warning"
-assert_occurrences "$CASE_OUTPUT" "Warning: failed to prune cached larch version '29.1.21'." 1 "cap-prune-rm-failure-skips-retry warning count"
-unset RM_FAIL_VERSION
+INSTALL_CACHE_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
+INSTALL_STAMPS="29.1.20:9999999999999"
+export CACHE_MTIME_OVERRIDES="29.1.21:209901010001 29.1.22:209901010002 29.1.23:209901010003 29.1.24:209901010004 29.1.25:209901010005 29.1.26:209901010006 29.1.27:209901010007 29.1.28:209901010008 29.1.29:209901010009"
+run_case stamp-beats-unstamped-mtime
+[[ "$CASE_RC" -eq 0 ]] || fail "stamp-beats-unstamped-mtime exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "stamp-beats-unstamped-mtime should keep stamped 29.1.20 when its install stamp is newest"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "stamp-beats-unstamped-mtime should prune oldest un-stamped 29.1.21"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "stamp-beats-unstamped-mtime should prune 29.1.22"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.23" ]] || fail "stamp-beats-unstamped-mtime should prune 29.1.23"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "stamp-beats-unstamped-mtime should retain exactly 8 dirs"
+unset CACHE_MTIME_OVERRIDES INSTALL_STAMPS
 
 GH_OUTPUT=$'42.0.10\n'
 INITIAL_INSTALLED_VERSION="42.0.5"
 PLUGIN_ROOT_VERSION="42.0.5"
 INSTALL_RESULT_VERSION="42.0.10"
+INSTALL_CACHE_VERSION="42.0.10"
 CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION STAT_FAIL_VERSION
+unset INSTALL_STAMPS
 export CACHE_MTIME_OVERRIDES="42.0.9:200001010001 42.0.1:209901010001"
-run_case mtime-asc-evicts-oldest-touched
-[[ "$CASE_RC" -eq 0 ]] || fail "mtime-asc-evicts-oldest-touched exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/42.0.9" ]] || fail "mtime-asc-evicts-oldest-touched should prune newest semver with oldest mtime"
-[[ -d "$CASE_CACHE_ROOT/42.0.1" ]] || fail "mtime-asc-evicts-oldest-touched should keep oldest semver with newest mtime"
-[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "mtime-asc-evicts-oldest-touched should keep latest"
+run_case mtime-fallback-unstamped
+[[ "$CASE_RC" -eq 0 ]] || fail "mtime-fallback-unstamped exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/42.0.9" ]] || fail "mtime-fallback-unstamped should prune oldest-mtime 42.0.9"
+[[ -d "$CASE_CACHE_ROOT/42.0.1" ]] || fail "mtime-fallback-unstamped should keep newest-mtime 42.0.1"
+[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "mtime-fallback-unstamped should keep latest install"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "mtime-fallback-unstamped should retain exactly 8 dirs"
 unset CACHE_MTIME_OVERRIDES
 
-GH_OUTPUT=$'9.0.0\n'
-INITIAL_INSTALLED_VERSION="1.0.2"
-PLUGIN_ROOT_VERSION="1.0.2"
-INSTALL_RESULT_VERSION="9.0.0"
-CACHED_VERSIONS="1.0.1 1.0.2 1.0.3 1.0.4 5.0.1 5.0.2 5.0.3 5.0.4 5.0.5"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION STAT_FAIL_VERSION
-export CACHE_MTIME_OVERRIDES="1.0.1:209901010001 1.0.2:209901010002 5.0.4:200001010001 5.0.5:200001010002"
-run_case sparse-used-versions-survive-large-semver-jump
-[[ "$CASE_RC" -eq 0 ]] || fail "sparse-used-versions-survive-large-semver-jump exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/1.0.1" ]] || fail "sparse-used-versions-survive-large-semver-jump should keep touched 1.0.1"
-[[ -d "$CASE_CACHE_ROOT/1.0.2" ]] || fail "sparse-used-versions-survive-large-semver-jump should keep touched 1.0.2"
-[[ ! -d "$CASE_CACHE_ROOT/5.0.4" ]] || fail "sparse-used-versions-survive-large-semver-jump should prune stale higher-semver 5.0.4"
-[[ ! -d "$CASE_CACHE_ROOT/5.0.5" ]] || fail "sparse-used-versions-survive-large-semver-jump should prune stale higher-semver 5.0.5"
-[[ -d "$CASE_CACHE_ROOT/9.0.0" ]] || fail "sparse-used-versions-survive-large-semver-jump should keep latest"
+GH_OUTPUT=$'29.1.20\n'
+INITIAL_INSTALLED_VERSION="29.1.20"
+PLUGIN_ROOT_VERSION="29.1.20"
+INSTALL_RESULT_VERSION="29.1.20"
+unset INSTALL_CACHE_VERSION
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
+INSTALL_STAMPS="29.1.20:100 29.1.21:9999999991 29.1.22:9999999992 29.1.23:9999999993 29.1.24:9999999994 29.1.25:9999999995 29.1.26:9999999996 29.1.27:9999999997 29.1.28:9999999998 29.1.29:9999999999"
 unset CACHE_MTIME_OVERRIDES
+run_case just-installed-seeded
+[[ "$CASE_RC" -eq 0 ]] || fail "just-installed-seeded exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "just-installed-seeded should retain seeded ACTUAL_VERSION 29.1.20"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "just-installed-seeded should prune 29.1.21"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "just-installed-seeded should prune 29.1.22"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "just-installed-seeded should retain exactly 8 dirs"
+assert_contains "$CASE_OUTPUT" "Already at latest stable larch release (29.1.20)." "just-installed-seeded already-latest path"
 
-GH_OUTPUT=$'42.1.0\n'
-INITIAL_INSTALLED_VERSION="42.0.5"
-PLUGIN_ROOT_VERSION="42.0.5"
-INSTALL_RESULT_VERSION="42.1.0"
-CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.7 42.0.8 42.0.9"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION STAT_FAIL_VERSION
-export CACHE_MTIME_OVERRIDES="42.0.1:209901010001 42.0.2:209901010001 42.0.3:209901010001 42.0.4:209901010001 42.0.5:209901010001 42.0.7:200001010001 42.0.8:200001010001 42.0.9:200001010001"
-run_case mtime-tiebreaker-lexicographic-basename
-[[ "$CASE_RC" -eq 0 ]] || fail "mtime-tiebreaker-lexicographic-basename exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/42.0.7" ]] || fail "mtime-tiebreaker-lexicographic-basename should prune lexicographically earliest equal-mtime version"
-[[ -d "$CASE_CACHE_ROOT/42.0.8" ]] || fail "mtime-tiebreaker-lexicographic-basename should keep 42.0.8"
-[[ -d "$CASE_CACHE_ROOT/42.0.9" ]] || fail "mtime-tiebreaker-lexicographic-basename should keep 42.0.9"
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.30"
+INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:1000000 29.1.21:1000001 29.1.22:1000002 29.1.23:1000003 29.1.24:1000004 29.1.25:1000005 29.1.26:1000006 29.1.27:1000007 29.1.28:1000008"
 unset CACHE_MTIME_OVERRIDES
-
-GH_OUTPUT=$'42.0.10\n'
-INITIAL_INSTALLED_VERSION="42.0.9"
-PLUGIN_ROOT_VERSION="42.0.9"
-INSTALL_RESULT_VERSION="42.0.10"
-CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-STAT_FAIL_VERSION="42.0.5"
-unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION
-run_case stat-fallback-mtime-zero
-[[ "$CASE_RC" -eq 0 ]] || fail "stat-fallback-mtime-zero exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/42.0.5" ]] || fail "stat-fallback-mtime-zero should prune stat-failed version first"
-[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "stat-fallback-mtime-zero should keep latest"
-unset STAT_FAIL_VERSION
-
-GH_OUTPUT=$'42.0.10\n'
-INITIAL_INSTALLED_VERSION="42.0.9"
-PLUGIN_ROOT_VERSION="42.0.9"
-INSTALL_RESULT_VERSION="42.0.10"
-CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
-unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SET_LARCH_SESSIONS_DIR=1
-STAT_GNU_F_GARBAGE_VERSION="42.0.6"
-unset FALLBACK_SESSION_ROOTS RM_FAIL_VERSION STAT_FAIL_VERSION
-run_case stat-garbage-fallback-mtime-zero
-[[ "$CASE_RC" -eq 0 ]] || fail "stat-garbage-fallback-mtime-zero exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/42.0.6" ]] || fail "stat-garbage-fallback-mtime-zero should prune non-numeric stat-fallback version first"
-[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "stat-garbage-fallback-mtime-zero should keep latest"
-unset STAT_GNU_F_GARBAGE_VERSION
+unset READONLY_STAMP_VERSION
+run_case install-then-prune-fills-eight
+[[ "$CASE_RC" -eq 0 ]] || fail "install-then-prune-fills-eight exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.30" ]] || fail "install-then-prune-fills-eight should create installed target dir"
+[[ -f "$CASE_CACHE_ROOT/29.1.30/.larch-installed-at" ]] || fail "install-then-prune-fills-eight should write fresh install stamp"
+stamp_contents=$(tr -d '\r\n' < "$CASE_CACHE_ROOT/29.1.30/.larch-installed-at")
+[[ "$stamp_contents" =~ ^[0-9]+$ ]] || fail "install-then-prune-fills-eight stamp must be numeric epoch"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "install-then-prune-fills-eight should retain exactly 8 dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "install-then-prune-fills-eight should prune oldest stamped 29.1.20"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "install-then-prune-fills-eight should prune 29.1.21"
 
 GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.30"
+unset INSTALL_CACHE_VERSION
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
-SESSION_PINNED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
-SET_LARCH_SESSIONS_DIR=1
-unset FALLBACK_SESSION_ROOTS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL
-unset XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS RM_FAIL_VERSION STAT_FAIL_VERSION
+INSTALL_STAMPS="29.1.20:1000000 29.1.21:1000001 29.1.22:1000002 29.1.23:1000003 29.1.24:1000004 29.1.25:1000005 29.1.26:1000006 29.1.27:1000007 29.1.28:1000008"
+unset CACHE_MTIME_OVERRIDES READONLY_STAMP_VERSION
+run_case absent-target-cache-dir-fills-eight
+[[ "$CASE_RC" -eq 0 ]] || fail "absent-target-cache-dir-fills-eight exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.30" ]] || fail "absent-target-cache-dir-fills-eight should leave missing target cache dir absent"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "absent-target-cache-dir-fills-eight should retain exactly 8 real dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "absent-target-cache-dir-fills-eight should prune oldest stamped 29.1.20"
+[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "absent-target-cache-dir-fills-eight should not count missing target toward the cap"
+
+GH_OUTPUT=$'29.1.28\n'
+INITIAL_INSTALLED_VERSION="29.1.28"
+PLUGIN_ROOT_VERSION="29.1.28"
+INSTALL_RESULT_VERSION="29.1.28"
+INSTALL_CACHE_VERSION="29.1.28"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:100 29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107"
 unset CACHE_MTIME_OVERRIDES
-run_case all-pinned-cap-overflow-warns
-[[ "$CASE_RC" -eq 0 ]] || fail "all-pinned-cap-overflow-warns exit $CASE_RC"
-assert_contains "$CASE_OUTPUT" "cache cap (8) exceeded" "all-pinned-cap-overflow-warns cap warning"
-for version in 29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "all-pinned-cap-overflow-warns should keep $version"
+READONLY_STAMP_VERSION="29.1.28"
+run_case stamp-write-failure-existing-target
+[[ "$CASE_RC" -eq 0 ]] || fail "stamp-write-failure-existing-target exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "Warning: failed to write install stamp for cached larch version '29.1.28'." "stamp-write-failure-existing-target warning"
+[[ -d "$CASE_CACHE_ROOT/29.1.28" ]] || fail "stamp-write-failure-existing-target should retain seeded target dir"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "stamp-write-failure-existing-target should retain exactly 8 dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "stamp-write-failure-existing-target should prune only the oldest competitor"
+
+GH_OUTPUT=$'29.1.28\n'
+INITIAL_INSTALLED_VERSION="29.1.28"
+PLUGIN_ROOT_VERSION="29.1.28"
+INSTALL_RESULT_VERSION="29.1.28"
+INSTALL_CACHE_VERSION="29.1.28"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:100 29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107 29.1.28:108"
+unset CACHE_MTIME_OVERRIDES READONLY_STAMP_VERSION
+run_case target-in-top-eight-exact-count
+[[ "$CASE_RC" -eq 0 ]] || fail "target-in-top-eight-exact-count exit $CASE_RC"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "target-in-top-eight-exact-count should retain exactly 8 dirs, not 9"
+[[ -d "$CASE_CACHE_ROOT/29.1.28" ]] || fail "target-in-top-eight-exact-count should keep target 29.1.28"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "target-in-top-eight-exact-count should prune only 29.1.20"
+for version in 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "target-in-top-eight-exact-count should keep $version"
 done
 
-GH_OUTPUT=$'10.0.9\n10.0.8\n'
-INITIAL_INSTALLED_VERSION="10.0.2"
-PLUGIN_ROOT_VERSION="10.0.2"
-INSTALL_RESULT_VERSION="10.0.9"
-CACHED_VERSIONS="10.0.1 10.0.2 10.0.3 10.0.4 10.0.5 10.0.6 10.0.7 10.0.8"
-SESSION_PINNED_VERSIONS="10.0.2 10.0.3 10.0.4 10.0.5 10.0.6 10.0.7 10.0.8"
-SET_LARCH_SESSIONS_DIR=1
-RM_FAIL_VERSION="10.0.1"
-unset FALLBACK_SESSION_ROOTS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL
-unset XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS STAT_FAIL_VERSION
-unset CACHE_MTIME_OVERRIDES
-run_case rm-fail-cap-overflow-warns
-[[ "$CASE_RC" -eq 0 ]] || fail "rm-fail-cap-overflow-warns exit $CASE_RC"
-assert_contains "$CASE_OUTPUT" "cache cap (8) exceeded" "rm-fail-cap-overflow-warns cap warning"
-[[ -d "$CASE_CACHE_ROOT/10.0.1" ]] || fail "rm-fail-cap-overflow-warns should retain rm-failed version"
-for version in 10.0.2 10.0.3 10.0.4 10.0.5 10.0.6 10.0.7 10.0.8 10.0.9; do
-    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "rm-fail-cap-overflow-warns should keep $version"
+GH_OUTPUT=$'29.1.28\n'
+INITIAL_INSTALLED_VERSION="29.1.28"
+PLUGIN_ROOT_VERSION="29.1.28"
+INSTALL_RESULT_VERSION="29.1.28"
+INSTALL_CACHE_VERSION="29.1.28"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:100 29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107 29.1.28:108"
+unset CACHE_MTIME_OVERRIDES READONLY_STAMP_VERSION
+run_case already-latest-prunes
+[[ "$CASE_RC" -eq 0 ]] || fail "already-latest-prunes exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "Pruning old larch versions" "already-latest-prunes prune banner"
+assert_contains "$CASE_OUTPUT" "Already at latest stable larch release (29.1.28)." "already-latest-prunes already-latest message"
+assert_not_contains "$CASE_OUTPUT" "Installing larch plugin" "already-latest-prunes skips install"
+assert_not_contains "$CASE_OUTPUT" "Uninstalling larch plugin" "already-latest-prunes skips uninstall"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "already-latest-prunes should retain exactly 8 dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "already-latest-prunes should prune oldest 29.1.20"
+for version in 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "already-latest-prunes should keep $version"
 done
-unset RM_FAIL_VERSION
+
+GH_OUTPUT=$'29.1.28\n'
+INITIAL_INSTALLED_VERSION="29.1.28"
+PLUGIN_ROOT_VERSION="29.1.28"
+INSTALL_RESULT_VERSION="29.1.28"
+unset INSTALL_CACHE_VERSION
+CACHED_VERSIONS="29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107 29.1.28:108"
+unset CACHE_MTIME_OVERRIDES READONLY_STAMP_VERSION
+run_case exactly-eight-no-prune
+[[ "$CASE_RC" -eq 0 ]] || fail "exactly-eight-no-prune exit $CASE_RC"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "exactly-eight-no-prune should retain all 8 dirs"
+assert_contains "$CASE_OUTPUT" "No old versions to prune." "exactly-eight-no-prune no-op prune"
+for version in 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "exactly-eight-no-prune should keep $version"
+done
+
+GH_OUTPUT=$'31.0.0\n30.9.0\n'
+INITIAL_INSTALLED_VERSION="30.8.0"
+PLUGIN_ROOT_VERSION="30.8.0"
+INSTALL_RESULT_VERSION="31.0.0"
+INSTALL_CACHE_VERSION="31.0.0"
+CACHED_VERSIONS="29.0.0 30.0.0 31.0.0 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 99.0.0"
+INSTALL_STAMPS="29.0.0:100 30.0.0:200 32.0.0:400 33.0.0:500 34.0.0:600 35.0.0:700 36.0.0:800 99.0.0:900"
+run_case cap-pressure-newer-than-stable-survives
+[[ "$CASE_RC" -eq 0 ]] || fail "cap-pressure-newer-than-stable-survives exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should keep semver-newer-than-stable 99.0.0"
+[[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should keep installed 31.0.0"
+[[ -d "$CASE_CACHE_ROOT/30.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should keep stamped 30.0.0 in newest eight"
+[[ ! -d "$CASE_CACHE_ROOT/29.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should prune 29.0.0"
+[[ ! -d "$CASE_CACHE_ROOT/30.8.0" ]] || fail "cap-pressure-newer-than-stable-survives should prune unstamped plugin root outside cap"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "cap-pressure-newer-than-stable-survives should retain exactly 8 dirs"
+unset INSTALL_STAMPS
+
+GH_OUTPUT=$'31.0.0\n30.9.0\n'
+INITIAL_INSTALLED_VERSION="31.0.0"
+INSTALLED_PLUGINS_VERSION="31.0.0"
+PLUGIN_ROOT_VERSION="30.9.0"
+unset INSTALL_RESULT_VERSION INSTALL_CACHE_VERSION
+CACHED_VERSIONS="29.0.0 30.0.0 30.8.0 30.9.0 31.0.0 32.0.0 33.0.0 34.0.0 35.0.0"
+INSTALL_STAMPS="29.0.0:100 30.0.0:200 30.8.0:300 32.0.0:500 33.0.0:600 34.0.0:700 35.0.0:800"
+export CACHE_MTIME_OVERRIDES="30.9.0:209901010001"
+run_case already-latest-prunes-unstamped-plugin-root
+[[ "$CASE_RC" -eq 0 ]] || fail "already-latest-prunes-unstamped-plugin-root exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "already-latest-prunes-unstamped-plugin-root should prune unstamped plugin root outside newest eight"
+assert_contains "$CASE_OUTPUT" "Already at latest stable larch release (31.0.0)." "already-latest-prunes-unstamped-plugin-root message"
+unset CACHE_MTIME_OVERRIDES INSTALL_STAMPS INSTALLED_PLUGINS_VERSION
+
+GH_OUTPUT=$'42.0.10\n'
+INITIAL_INSTALLED_VERSION="42.0.5"
+PLUGIN_ROOT_VERSION="42.0.5"
+INSTALL_RESULT_VERSION="42.0.10"
+INSTALL_CACHE_VERSION="42.0.10"
+CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
+unset INSTALL_STAMPS
+export CACHE_MTIME_OVERRIDES="42.0.9:200001010001 42.0.1:209901010001 42.0.5:209901010002"
+STAT_FAIL_VERSION="42.0.5"
+run_case stat-failure-falls-back-to-zero
+[[ "$CASE_RC" -eq 0 ]] || fail "stat-failure-falls-back-to-zero exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/42.0.5" ]] || fail "stat-failure-falls-back-to-zero should prune unstamped dir when stat mtime falls back to 0"
+[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "stat-failure-falls-back-to-zero should keep install target"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "stat-failure-falls-back-to-zero should retain exactly 8 dirs"
+unset CACHE_MTIME_OVERRIDES STAT_FAIL_VERSION
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'

@@ -12,20 +12,15 @@ distinguishable while preserving `mktemp`'s random suffix.
 
 Immediately after `mktemp -d`, the script writes `session-id` and emits
 `SESSION_ID=<value>` on stdout. It prefers `uuidgen` and falls back to
-`hostname-pid-epoch` when `uuidgen` is unavailable. It also writes
-`.larch-keepalive` with `PID=`, `PPID=`, `CLONE_PATH=`, `SESSION_ID=`,
-`PREFIX=`, `CREATED=`, and `NOTE=ext-cleaners-please-skip`. The sentinel is
-advisory; write failures warn on stderr and do not abort setup.
+`hostname-pid-epoch` when `uuidgen` is unavailable. It also writes `.larch-keepalive`, a slim session-identity record with
+`CLONE_PATH=` and `SESSION_ID=` only (filename unchanged). Hook routing and
+`/implement` tmpdir resolution consume these fields; write failures warn on
+stderr and do not abort setup.
 
 The script also emits `LARCH_RENDER_CACHE_DIR=$SESSION_TMPDIR/render-cache`.
 Callers that evaluate the session-env output inherit a session-scoped cache for
 `scripts/render-specialist-prompt.sh`; the renderer creates the directory
 lazily and falls back to uncached rendering if the directory cannot be created.
-
-On every invocation, the script sources `scripts/lib-larch-cache-touch.sh` and
-invokes `larch_touch_executing_cache_root` best-effort so the executing larch
-cache root mtime is refreshed once per session boot. `/upgrade-larch` consumes
-that mtime when pruning old cache directories.
 
 ## Reviewer Presence Contract
 
@@ -47,4 +42,4 @@ run-log batches. Missing paths and copy failures are ignored.
 
 ## Edit-in-sync
 
-Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer presence semantics. Update `scripts/write-session-id.sh` when changing session-id ownership or idempotency. Update `scripts/lib-larch-cache-touch.sh` and `skills/upgrade-larch/scripts/upgrade-larch.sh` when changing cache-root touch semantics.
+Update `scripts/check-reviewers.sh`, `scripts/write-session-env.sh`, `skills/shared/subskill-invocation.md`, and `skills/shared/external-reviewers.md` when changing session-env keys or reviewer presence semantics. Update `scripts/write-session-id.sh` when changing session-id ownership or idempotency. Update `skills/implement/scripts/lib-resolve-implement-tmpdir.sh` and `scripts/test-keepalive-sentinel.sh` when changing `.larch-keepalive` identity fields.

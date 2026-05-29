@@ -1,0 +1,42 @@
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+2026-05-29T17:55:31.256054Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh:
+unset CACHE_MTIME_OVERRIDES
+
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:1000000 29.1.21:1000001 29.1.22:1000002 29.1.23:1000003 29.1.24:1000004 29.1.25:1000005 29.1.26:1000006 29.1.27:1000007 29.1.28:1000008"
+unset CACHE_MTIME_OVERRIDES
+run_case absent-target-fills-eight
+[[ "$CASE_RC" -eq 0 ]] || fail "absent-target-fills-eight exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.30" ]] || fail "absent-target-fills-eight should create installed target dir"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "absent-target-fills-eight should retain exactly 8 dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "absent-target-fills-eight should prune oldest stamped 29.1.20"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "absent-target-fills-eight should prune 29.1.21"
+
+GH_OUTPUT=$'29.1.28\n'
+INITIAL_INSTALLED_VERSION="29.1.28"
+PLUGIN_ROOT_VERSION="29.1.28"
+INSTALL_RESULT_VERSION="29.1.28"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:100 29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107 29.1.28:108"
+unset CACHE_MTIME_OVERRIDES
+run_case target-in-top-eight-exact-count
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+⏳ codex agent: still running (7m elapsed)
+⏳ codex agent: still running (8m elapsed)
+⏳ codex agent: still running (9m elapsed)
+⏳ codex agent: still running (10m elapsed)
+⏳ codex agent: still running (11m elapsed)
+2026-05-29T18:03:04.617740Z ERROR codex_core::tools::router: error=write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open
+⏳ codex agent: still running (12m elapsed)
+⏳ codex agent: still running (13m elapsed)
+2026-05-29T18:04:56.030642Z ERROR codex_core::session: failed to record rollout items: thread 019e74dc-9ff1-7b60-8127-e55ce904173b not found
+✓ codex agent: completed (exit code 0, 831s elapsed, output 363 bytes)

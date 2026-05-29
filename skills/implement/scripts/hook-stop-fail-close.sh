@@ -30,8 +30,8 @@ fi
 # into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
 # is reachable in production (same pattern as hook-post-bump-version.sh). Empty /
 # missing / null falls through to TTL. See lib-resolve-implement-tmpdir.sh
-# session-id binding for the resolver-side .larch-keepalive SESSION_ID match
-# this export feeds.
+# session-id binding for the resolver-side slim session-identity record
+# (`.larch-keepalive` `SESSION_ID=` match) this export feeds.
 SID=""
 if command -v jq >/dev/null 2>&1; then
     SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""

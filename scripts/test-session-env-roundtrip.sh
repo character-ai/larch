@@ -10,11 +10,7 @@
 #   C. write-session-env.sh validates and persists PREV_IMPLEMENT_TMPDIR.
 #   D. write-session-env.sh validates and persists CLAUDE_PLUGIN_ROOT.
 #   E. write-session-env.sh validates and persists LARCH_DYNAMIC_ARCHETYPES_MAX.
-#   F. write-session-env.sh refreshes numeric cache-root mtimes and no-ops for
-#      non-numeric plugin-root basenames.
-#   G. session-setup.sh refreshes numeric cache-root mtimes before setup.
-#   H. write-design-current-env.sh refreshes numeric cache-root mtimes and
-#      no-ops for non-numeric plugin-root basenames.
+#   F. write-design-current-env.sh rejects invalid CLAUDE_PLUGIN_ROOT values.
 
 set -euo pipefail
 
@@ -23,7 +19,6 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 READ_SCRIPT="$REPO_ROOT/scripts/read-session-env-key.sh"
 WRITE_SCRIPT="$REPO_ROOT/scripts/write-session-env.sh"
-SESSION_SETUP_SCRIPT="$REPO_ROOT/scripts/session-setup.sh"
 WRITE_DESIGN_CURRENT_ENV_SCRIPT="$REPO_ROOT/scripts/write-design-current-env.sh"
 PASS=0
 FAIL=0
@@ -40,20 +35,6 @@ assert_contains() {
         *"$2"*) pass ;;
         *) fail "$1: missing '$2' in: $3" ;;
     esac
-}
-
-stat_mtime() {
-    local path="$1"
-    local mt
-    if mt=$(stat -c '%Y' -- "$path" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
-        printf '%s\n' "$mt"
-        return 0
-    fi
-    if mt=$(stat -f '%m' -- "$path" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
-        printf '%s\n' "$mt"
-        return 0
-    fi
-    printf '0\n'
 }
 
 TMPDIR_TEST="$(mktemp -d "${TMPDIR:-/tmp}/test-session-env-roundtrip.XXXXXX")"
@@ -265,83 +246,7 @@ else
 fi
 
 # ------------------------------------------------------------
-# F. write-session-env.sh — cache-root mtime touch behavior
-# ------------------------------------------------------------
-
-numeric_root="$TMPDIR_TEST/cache/42.5.36"
-mkdir -p "$numeric_root"
-touch -t 200001010001 -- "$numeric_root"
-before=$(stat_mtime "$numeric_root")
-if CLAUDE_PLUGIN_ROOT="$numeric_root" "$WRITE_SCRIPT" \
-    --output "$OUT" --repo a/b --repo-unavailable false 2>/dev/null; then
-    after=$(stat_mtime "$numeric_root")
-    if [[ "$after" -gt "$before" ]]; then
-        pass
-    else
-        fail "F.1 numeric CLAUDE_PLUGIN_ROOT mtime was not refreshed (before=$before after=$after)"
-    fi
-else
-    fail "F.1 numeric CLAUDE_PLUGIN_ROOT writer invocation failed"
-fi
-
-non_numeric_root="$TMPDIR_TEST/cache/dev-checkout"
-mkdir -p "$non_numeric_root"
-touch -t 200001010001 -- "$non_numeric_root"
-before=$(stat_mtime "$non_numeric_root")
-if CLAUDE_PLUGIN_ROOT="$non_numeric_root" "$WRITE_SCRIPT" \
-    --output "$OUT" --repo a/b --repo-unavailable false 2>/dev/null; then
-    after=$(stat_mtime "$non_numeric_root")
-    if [[ "$after" -eq "$before" ]]; then
-        pass
-    else
-        fail "F.2 non-numeric CLAUDE_PLUGIN_ROOT mtime changed (before=$before after=$after)"
-    fi
-else
-    fail "F.2 non-numeric CLAUDE_PLUGIN_ROOT writer invocation failed"
-fi
-
-# ------------------------------------------------------------
-# G. session-setup.sh — cache-root mtime touch behavior
-# ------------------------------------------------------------
-
-numeric_root="$TMPDIR_TEST/cache/42.5.37"
-mkdir -p "$numeric_root"
-touch -t 200001010001 -- "$numeric_root"
-before=$(stat_mtime "$numeric_root")
-if CLAUDE_PLUGIN_ROOT="$numeric_root" "$SESSION_SETUP_SCRIPT" \
-    --prefix test-session-env-roundtrip \
-    --skip-preflight \
-    --skip-repo-check >/dev/null 2>/dev/null; then
-    after=$(stat_mtime "$numeric_root")
-    if [[ "$after" -gt "$before" ]]; then
-        pass
-    else
-        fail "G.1 numeric CLAUDE_PLUGIN_ROOT mtime was not refreshed by session-setup (before=$before after=$after)"
-    fi
-else
-    fail "G.1 numeric CLAUDE_PLUGIN_ROOT session-setup invocation failed"
-fi
-
-non_numeric_root="$TMPDIR_TEST/cache/dev-session-setup"
-mkdir -p "$non_numeric_root"
-touch -t 200001010001 -- "$non_numeric_root"
-before=$(stat_mtime "$non_numeric_root")
-if CLAUDE_PLUGIN_ROOT="$non_numeric_root" "$SESSION_SETUP_SCRIPT" \
-    --prefix test-session-env-roundtrip \
-    --skip-preflight \
-    --skip-repo-check >/dev/null 2>/dev/null; then
-    after=$(stat_mtime "$non_numeric_root")
-    if [[ "$after" -eq "$before" ]]; then
-        pass
-    else
-        fail "G.2 non-numeric CLAUDE_PLUGIN_ROOT mtime changed via session-setup (before=$before after=$after)"
-    fi
-else
-    fail "G.2 non-numeric CLAUDE_PLUGIN_ROOT session-setup invocation failed"
-fi
-
-# ------------------------------------------------------------
-# H. write-design-current-env.sh — cache-root mtime touch behavior
+# F. write-design-current-env.sh — CLAUDE_PLUGIN_ROOT validation
 # ------------------------------------------------------------
 
 design_out="$TMPDIR_TEST/design-source-env.sh"
@@ -355,9 +260,9 @@ if err=$(HOME="$design_home" CLAUDE_PLUGIN_ROOT="/tmp/bad plugin-root" "$WRITE_D
     --design-tmpdir "$design_tmpdir" \
     --session-id test-design-roundtrip \
     --claude-pid 7654321 2>&1); then
-    fail "H.0a CLAUDE_PLUGIN_ROOT with space accepted by write-design-current-env"
+    fail "F.1 CLAUDE_PLUGIN_ROOT with space accepted by write-design-current-env"
 else
-    assert_contains "H.0a error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
+    assert_contains "F.1 error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
 fi
 
 if err=$(HOME="$design_home" CLAUDE_PLUGIN_ROOT="relative/plugin-root" "$WRITE_DESIGN_CURRENT_ENV_SCRIPT" \
@@ -365,47 +270,9 @@ if err=$(HOME="$design_home" CLAUDE_PLUGIN_ROOT="relative/plugin-root" "$WRITE_D
     --design-tmpdir "$design_tmpdir" \
     --session-id test-design-roundtrip \
     --claude-pid 7654321 2>&1); then
-    fail "H.0b relative CLAUDE_PLUGIN_ROOT accepted by write-design-current-env"
+    fail "F.2 relative CLAUDE_PLUGIN_ROOT accepted by write-design-current-env"
 else
-    assert_contains "H.0b error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
-fi
-
-numeric_root="$TMPDIR_TEST/cache/42.5.38"
-mkdir -p "$numeric_root"
-touch -t 200001010001 -- "$numeric_root"
-before=$(stat_mtime "$numeric_root")
-if HOME="$design_home" CLAUDE_PLUGIN_ROOT="$numeric_root" "$WRITE_DESIGN_CURRENT_ENV_SCRIPT" \
-    --output "$design_out" \
-    --design-tmpdir "$design_tmpdir" \
-    --session-id test-design-roundtrip \
-    --claude-pid 7654321 >/dev/null 2>/dev/null; then
-    after=$(stat_mtime "$numeric_root")
-    if [[ "$after" -gt "$before" ]]; then
-        pass
-    else
-        fail "H.1 numeric CLAUDE_PLUGIN_ROOT mtime was not refreshed by write-design-current-env (before=$before after=$after)"
-    fi
-else
-    fail "H.1 numeric CLAUDE_PLUGIN_ROOT write-design-current-env invocation failed"
-fi
-
-non_numeric_root="$TMPDIR_TEST/cache/dev-design"
-mkdir -p "$non_numeric_root"
-touch -t 200001010001 -- "$non_numeric_root"
-before=$(stat_mtime "$non_numeric_root")
-if HOME="$design_home" CLAUDE_PLUGIN_ROOT="$non_numeric_root" "$WRITE_DESIGN_CURRENT_ENV_SCRIPT" \
-    --output "$design_out" \
-    --design-tmpdir "$design_tmpdir" \
-    --session-id test-design-roundtrip \
-    --claude-pid 7654321 >/dev/null 2>/dev/null; then
-    after=$(stat_mtime "$non_numeric_root")
-    if [[ "$after" -eq "$before" ]]; then
-        pass
-    else
-        fail "H.2 non-numeric CLAUDE_PLUGIN_ROOT mtime changed via write-design-current-env (before=$before after=$after)"
-    fi
-else
-    fail "H.2 non-numeric CLAUDE_PLUGIN_ROOT write-design-current-env invocation failed"
+    assert_contains "F.2 error message" "Invalid CLAUDE_PLUGIN_ROOT" "$err"
 fi
 
 # ------------------------------------------------------------

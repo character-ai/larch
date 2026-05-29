@@ -178,9 +178,9 @@ make_impl_tmpdir() {
     impl="$XDG_TEST/larch/sessions/claude-implement-$name"
     mkdir -p "$impl/design-export"
     if [[ -n "$sid" ]]; then
-        printf 'CLONE_PATH=%s\nSESSION_ID=%s\n' "$cwd" "$sid" > "$impl/.larch-keepalive"
+        printf '# larch session identity (hook routing)\nCLONE_PATH=%s\nSESSION_ID=%s\n' "$cwd" "$sid" > "$impl/.larch-keepalive"
     else
-        printf 'CLONE_PATH=%s\n' "$cwd" > "$impl/.larch-keepalive"
+        printf '# larch session identity (hook routing)\nCLONE_PATH=%s\nSESSION_ID=test-session\n' "$cwd" > "$impl/.larch-keepalive"
     fi
     printf '%s\n' "$impl"
 }

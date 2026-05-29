@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- shared-lib extraction adds abstraction overhead for a 12-line helper; duplication is real but not breakage-prone at current scope
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- space-delimited + wc -w is safe for numeric-only version tokens in this codebase; alternatives add complexity without practical benefit
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- sort -k3,3rn on "10.x" extracts leading numeric 10 > "9.x" leading numeric 9, so 10.x ranks above 9.x in descending order; the stated mis-ranking direction is backwards
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- -maxdepth 5 keeps the buffered set small in practice; streaming find output adds complexity without meaningful benefit at this depth
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a missing code comment is not worth filing a separate GitHub issue
+FINDING_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false -- explicitly accepted plan tradeoff ("currently-running version retained only if among 8 newest-installed"); covered by dedicated test cases already-latest-prunes-unstamped-plugin-root and cap-pressure-newer-than-stable-survives
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=important QUALITY=adequate UNCERTAIN=false -- diff already updated docs to note "install-stamp refresh and cache prune may still have run"; remaining gap follows from the operator-accepted executing-root tradeoff
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- plan explicitly chose -maxdepth 5 based on documented deepest artifact paths (larch-logs round files at depth 5); boundary is intentional
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- explicitly accepted tradeoff per plan operator override; no session pins is a design decision not a gap
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- positive-only semantics are intentional and documented in configuration-and-permissions.md; 0-day test coverage gap not worth accepting
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- has_stamp=1 stamped dirs always sort before has_stamp=0 unstamped/corrupt-stamp dirs; a corrupt stamp can never outrank a valid stamped install
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- tests cover the cap behavior (exactly-8 retention, oldest pruned); lack of an explicit "8-release survival model" comment does not warrant acceptance
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same-UID trust is the expected model for user-owned cache dirs; documenting it is a minor nice-to-have
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false -- stamped installs always outrank all unstamped dirs regardless of mtime; legacy mtime inflation only affects ordering within the unstamped tier; narrow migration window
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false -- plan explicitly removed keepalive skip as a design choice; paused /design state is preserved on GitHub via larch:design-pause marker; accepted tradeoff

@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Single-session bounded depth-5 scan; memory impact is negligible in practice; fix via process substitution is marginal improvement over here-string redirect
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Requires two installs at the same epoch second to matter; virtually impossible in practice and tiebreak outcome has no correctness consequence
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Duplication is real but extracting to a shared lib for two self-contained scripts adds more complexity than warranted
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Touch-inflated mtimes reflected recently-used versions; backfilling them as stamps is a reasonable proxy for recency; one-time migration edge case that self-corrects after next real install
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Double read is correct and the prune path runs infrequently; fix introduces local variable complexity for trivial gain
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Intentional Bash 3.2 compat; space-separated tracking is functionally correct and the plan mandates Bash 3.2 portability
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Operator explicitly accepted this tradeoff in Round 1 + Gate B; plan documents it as a known failure mode with no fix; raising it again adds no new information
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- sessionstart-health.sh contains no keepalive prose to update; verified no grep matches for keepalive/larch-keepalive in the file
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Resolver's awk parser extracts only the CLONE_PATH= line and is insensitive to extra fields; backward compat is inherent to the parse approach with no regression risk
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Multiple test cases (over-eight-stamped-keeps-eight-newest, target-in-top-eight-exact-count, etc.) explicitly assert count_cached_versions -eq 8
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Same-UID user-owned cache; attacker needs write access to the user's own cache tree which grants far broader access already
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Symlink in session dir only delays cleanup by at most retention_days; attacker needs write access to user-owned session dir
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Backfill is clearly within the spirit of the plan's legacy-dir mtime-fallback requirement; it is documented and migration-tested
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Inherent to all read-only code reviews; not worth filing as a GitHub issue since CI is the correct gate for this

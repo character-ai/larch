@@ -6,8 +6,9 @@ enumerates `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions`, `/tmp`, and
 `/private/tmp` for `claude-implement-*` directories that have `design-export/manifest.env`
 (normal path), `review-round-summary.md` (both-externals-down path that skips
 `/design` — issue #1862), or `.bump-version-armed` (post-/bump resume when
-manifest/review artifacts are absent). Each candidate must provide `.larch-keepalive` whose `CLONE_PATH` exactly matches the
-supplied hook cwd. The helper returns the freshest eligible sentinel mtime with
+manifest/review artifacts are absent). Each candidate must provide `.larch-keepalive`,
+a slim session-identity record whose `CLONE_PATH` exactly matches the
+supplied hook cwd. The helper returns the freshest eligible manifest mtime with
 lexicographic tie-break.
 **Empty `<hook-cwd>` is fail-open by construction**: the helper returns
 immediately without scanning any session root, so a hook stdin that omits
@@ -48,4 +49,6 @@ arm halt protection. The TTL-only path applies when no authoritative session
 signal is available.
 
 Edit in sync with `hook-stop-fail-close.sh`, `hook-post-bump-version.sh`,
-`hooks/hooks.json`, and `scripts/test-implement-anti-halt.sh`.
+`hooks/hooks.json`, `scripts/test-implement-anti-halt.sh`, and
+`skills/implement/scripts/test-resolve-implement-tmpdir.sh` (concurrent
+worktree `CLONE_PATH` routing).

@@ -12,10 +12,10 @@ resolve_implement_tmpdir() {
         "/private/tmp"
     )
     # Fail-OPEN when caller did not supply a cwd. Without cwd we cannot bind
-    # the candidate to the active session via .larch-keepalive — picking the
-    # globally-newest manifest would attach hook state to the wrong session
-    # under concurrent or stale runs (and bypass the documented binding rule
-    # exercised by the test harness). Empty hook_cwd means: no resolution,
+    # the candidate to the active session via the slim session-identity record
+    # in .larch-keepalive — picking the globally-newest manifest would attach
+    # hook state to the wrong session under concurrent or stale runs (and bypass
+    # the documented binding rule exercised by the test harness). Empty hook_cwd means: no resolution,
     # no breadcrumb injection, no Stop block.
     if [[ -z "$hook_cwd" ]]; then
         return 0
