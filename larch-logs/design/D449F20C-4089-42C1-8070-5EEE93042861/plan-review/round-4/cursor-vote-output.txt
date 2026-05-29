@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- isolated test cursor helper is acceptable drift risk for this harness-only change
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already aligns intent; exact shared sentence is optional polish
+FINDING_7: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Gate B-settled routing implies Step 3.6 but plan omits explicit dispositions for three LOOP_STATUS values against its own every-exit contract
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- skipped-cap-reached is covered by planned cap-reached skip text; skipped-empty-findings routes via existing Gate B zero-findings short-circuit to Step 3.6

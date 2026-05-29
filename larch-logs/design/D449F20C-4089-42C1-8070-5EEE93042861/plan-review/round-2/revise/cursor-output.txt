@@ -1,0 +1,154 @@
+Checking a few paths in the repo so the revised plan matches the codebase.
+Building the unified plan diff from the accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -12,7 +12,8 @@
+   Step 3b", and SKILL.md Step 3.5 settle-path prose lists "passive-summary
+   Continue ... proceed to Step 3.6". Residual work = a one-line explicit
+   cross-reference in the SKILL.md branch matrix.
+-- Gap 2 (short-circuit paths) is the real consistency gap: SKILL.md's branch
++- Gap 2 (short-circuit paths + main-agent path) is the real consistency gap:
++  SKILL.md's branch
+   matrix names Step 3.6 only for `degraded-empty-collector`; `tally-error`,
+-  `panel-failed`, and `cap-reached` are silent on Step 3.6. `approval-gates.md`
+-  Gate C bypass list omits `panel-failed`.
++  `panel-failed`, `cap-reached`, and `main-agent-vote-required` are silent on
++  Step 3.6 disposition after inline adjudication. `approval-gates.md` Gate C
++  bypass list omits `panel-failed`.
+ - Gap 3: no offline test exercises cursor-advance → Gate B settle →
+   `write-after` → second Step 3 entry end-to-end.
+ 
+@@ -40,6 +41,12 @@
+   `⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)`.
+ - **Gap 2 — `cap-reached` paragraph** (the "do NOT enter Gate B ... short-circuits
+   directly to Step 3b, then Step 4, then Gate C" sentence; editable, not pinned):
+   append "Step 3.6 is also skipped on this path; print
+   `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`."
++- **Gap 2 — `main-agent-vote-required` entry** (editable; not pinned): after
++  successful MainAgent re-tally, continue to Gate B as `complete`-equivalent;
++  zero-findings and settled Gate B paths proceed through Step 3.6 before Step
++  3b. If re-tally emits `tally-error`, follow the `tally-error` short-circuit
++  (skip Gate B and Step 3.6 with the per-status breadcrumb). Do **not** add
++  `main-agent-vote-required` to any Step 3.6 skip list.
+ - **Gap 2 — `plan-size-trigger|plan-validator-defects` branch entry**:
+   make its Step 3.6 disposition explicit: it skips Gate B **and Step 3.6**.
+   Add matching breadcrumbs for both statuses:
+@@ -64,6 +71,11 @@
+   Gate C bypass list omits `panel-failed`. Preserve the
+   pinned forward-link substrings (passive-summary section heading, "Continue to
+   Step 3.6 and Gate C" option text, the zero-findings and passive-summary
+   "→ Step 3.6 → Step 3b → Step 4 → Step 4b" links, the shared post-apply link).
++- **`main-agent-vote-required` routing** (new prose; do not alter pinned
++  passive-summary / zero-findings forward links): after successful MainAgent
++  re-tally, Gate B runs as on `complete`; zero-findings and every settled Gate
++  B path proceed through Step 3.6 before Step 3b. If re-tally emits
++  `tally-error`, use the existing `tally-error` Gate-B bypass (Step 3.6
++  skipped). Do **not** add `main-agent-vote-required` to any skip list.
+ 
+ - Gate C "When" paragraph bypass sentence: add `panel-failed` to the existing
+   list `` `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, and `plan-validator-defects` `` (which already reads "skip
+@@ -78,28 +90,40 @@
+ - Add a local helper that replicates SKILL.md Step 3 HARD cursor-advance:
+   `read-cursor`; if `plan-after-round-<cursor>.txt` exists, `write-cursor`
+   `<cursor+1>`; echo the resulting cursor.
+-- Fresh HARD state in a clean sub-tmpdir (or reset $TMP files): `write_params
+-  HARD`, `plan.txt`, `feature-description.txt`, `snapshot-plan-round.sh
+-  write-original`, no cursor file (defaults to 1). Reset any
+-  `plan-after-round-*.txt`, cursor, and `assessor-verdict-*` artifacts first.
++- Add a tiny `write_params_for "$tmpdir" HARD` helper (leave the existing
++  `write_params` helper writing only `$TMP` unchanged) so isolated cases pass
++  `--design-tmpdir` correctly.
++- Fresh HARD state in a dedicated `case_tmp=$(mktemp -d ...)` sub-tmpdir:
++  `write_params_for "$case_tmp" HARD`, `plan.txt`, `feature-description.txt`,
++  `snapshot-plan-round.sh write-original`, no cursor file (defaults to 1).
++  Before Entry 1, reset `plan-after-round-*.txt`, cursor, and
++  `assessor-verdict-*` artifacts **in `case_tmp` only** (not between Entry 1 and
++  Entry 2 — preserve `plan-after-round-1.txt` through Entry 2).
+ - Entry 1: run the cursor-advance helper → assert cursor stays 1. Run
+-  `snapshot-plan-round.sh write-after --round 1` → assert
++  `snapshot-plan-round.sh write-after --round 1 --design-tmpdir "$case_tmp"`
++  → assert
+   `plan-after-round-1.txt` exists. Run `assess-plan-round.sh` → assert
+   `ASSESSOR_STATUS=skipped` and `ASSESSOR_VERDICT=skipped` (round 1 has no
+   previous plan), and that no `assessor-verdict-round-1.txt` is written.
+-- Simulate a revised plan: overwrite `plan.txt` with new content.
++- Simulate a revised plan: overwrite `$case_tmp/plan.txt` with new content.
+ - Entry 2: run the cursor-advance helper → assert it advances to 2 and the
+   cursor file now reads `2`. Run `write-after --round 2` → assert
+   `plan-after-round-2.txt` exists and differs from round 1. Use a round-2
+-  dispatch stub (worse/tie) and run `assess-plan-round.sh` → assert the
+-  assessor FIRES on round 2 (`ASSESSOR_VERDICT` is a real verdict and
+-  `assessor-verdict-round-2.txt` exists).
+-- Isolation requirement: run this integration case in its own `mktemp`
+-  sub-tmpdir, reset the round artifacts there, and restore fresh default
+-  harness stubs before Entry 1. In particular, do not inherit earlier mutated
+-  dispatch/monitor mocks; explicitly point `LARCH_TALLY_PLAN_ASSESSOR_SH` back
+-  at the real `scripts/tally-plan-assessor.sh` for this case.
++  dispatch stub (2×WORSE + 1×TIE, matching existing round-2 harness) and run
++  `assess-plan-round.sh --design-tmpdir "$case_tmp"` with
++  `LARCH_TALLY_PLAN_ASSESSOR_SH="$ROOT/skills/design/scripts/tally-plan-assessor.sh"`
++  → assert `ASSESSOR_STATUS=ok`, `ASSESSOR_VERDICT=worse-majority`,
++  `EFFECTIVE_ASSESSORS=3`, and `assessor-verdict-round-2.txt` exists (guards
++  against fail-open `not-worse` when tally path is missing).
++- Isolation requirement: run this integration case in `case_tmp`, reset round
++  artifacts there **before Entry 1** and between **independent** harness cases
++  (not between Entry 1 and Entry 2), and restore fresh default harness stubs
++  before Entry 1. Do not inherit earlier mutated dispatch/monitor/tally mocks;
++  explicitly set `LARCH_TALLY_PLAN_ASSESSOR_SH` to the real
++  `skills/design/scripts/tally-plan-assessor.sh` for this case.
+ - Keep all assertions offline and deterministic; no external tools, no network.
+ 
+ ### UPDATED: `skills/design/scripts/test-assess-plan-round.md`
+@@ -109,6 +133,8 @@
+ ## Approach
+ - Treat gaps 1-2 as documentation consistency: enumerate Step 3.6 routing on
+   EVERY Step 3 exit path, including `plan-size-trigger` and
+-  `plan-validator-defects`, append-only so structural pins survive.
++  `plan-validator-defects` and post-adjudication `main-agent-vote-required`,
++  append-only so structural pins survive.
+ - Treat gap 3 as the one new behavioral guard: an offline state-machine
+   integration case in the existing harness, proving the assessor only fires on
+   the second review run and that the cursor/snapshot scripts compose correctly.
+@@ -121,8 +147,10 @@
+   in the branch-matrix tail; only the editable tail sentence (not the pinned
+   entry-guard substring) carries the new breadcrumb instruction.
+-- The integration test must reset `plan-after-round-*` / cursor / verdict
+-  artifacts between entries so write-once `snapshot-plan-round.sh` does not
+-  preserve stale files and mask a regression.
++- The integration test resets `plan-after-round-*` / cursor / verdict artifacts
++  in `case_tmp` before Entry 1 and between independent harness cases, **not**
++  between Entry 1 and Entry 2; Entry 2 requires `plan-after-round-1.txt` from
++  Entry 1 so the cursor helper advances and the round-2 assessor path fires.
++- `write_params_for` (or explicit `"$case_tmp/run-params.json"`) is required so
++  `assess-plan-round.sh --design-tmpdir "$case_tmp"` sees `workflow_path=HARD`.
+ - The new integration case must not reuse harness globals that earlier subtests
+   intentionally mutate. Its tempdir, stubs, artifact paths, and assessor/tally
+   script pointers are reset before Entry 1.
+@@ -137,7 +165,8 @@
+   markdownlint failure. Mitigation: keep code spans whitespace-clean; insert
+   prose into existing list items, add no new headings.
+ - **Flaky/over-coupled integration test**: reusing $TMP without resetting
+-  snapshot artifacts yields false passes (write-once preserves round-1 files)
+-  or false fails. Signal: non-deterministic `test-assess-plan-round.sh`.
+-  Mitigation: explicit artifact reset + assert both round files exist and
+-  differ before asserting the round-2 verdict.
++  `case_tmp` snapshot artifacts before Entry 1, or clearing round-1 between
++  entries, yields false passes/fails. Signal: non-deterministic
++  `test-assess-plan-round.sh`. Mitigation: reset only before the case and
++  between independent cases; assert both round files exist and differ before
++  asserting round-2 `ASSESSOR_STATUS=ok` / `worse-majority`.
+ - **Mutated-stub inheritance**: earlier harness cases leave dispatch, monitor,
+   or tally-assessor mocks in a state that makes the integration case test the
+   harness instead of the real Step 3.6 composition. Mitigation: isolate the case
+@@ -151,7 +180,8 @@
+ - `make lint` (markdownlint MD038/MD001, `make lint-bash32`, bare-grep-probe,
+   pre-commit) over the changed files.
+ - Manual read-through of the Step 3 branch matrix confirming every
+   `LOOP_STATUS` exit names its Step 3.6 disposition (route-through or
+-  skip-with-breadcrumb), including plan-size and validator-defect exits.
++  skip-with-breadcrumb), including plan-size, validator-defect, and
++  `main-agent-vote-required` exits.
+ 
+-diff_lines: 115
++diff_lines: 132
+
