@@ -1,0 +1,9 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Codex-Requirements, Cursor-dyn-revision-path-coverage, Codex-dyn-revision-path-coverage	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Cursor-Requirements	accepted	YES	true	major	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
+FINDING_3	Codex-Requirements	accepted	YES	true	major	adequate	false	Claude	YES	true	major	adequate	false	Codex	EXONERATE	true	minor	adequate	false	Cursor
+FINDING_4	Cursor-dyn-cross-doc-trailer-contract, Codex-dyn-cross-doc-trailer-contract	exonerated	EXONERATE	partially-true	minor	adequate	false	Claude	EXONERATE	partially-true	minor	adequate	false	Codex	EXONERATE	partially-true	minor	adequate	false	Cursor
+FINDING_5	Cursor-dyn-acceptance-test-gap, Codex-dyn-acceptance-test-gap	accepted	YES	true	major	good	false	Claude	YES	true	minor	good	false	Codex	EXONERATE	partially-true	minor	good	false	Cursor
+FINDING_6	Cursor-dyn-acceptance-test-gap, Codex-dyn-acceptance-test-gap	accepted	YES	true	minor	adequate	false	Claude	YES	true	minor	adequate	false	Codex	EXONERATE	true	minor	adequate	false	Cursor
+FINDING_7	Cursor-dyn-acceptance-test-gap, Codex-dyn-acceptance-test-gap	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_8	Cursor-dyn-revision-path-coverage, Codex-dyn-revision-path-coverage	accepted	YES	true	major	adequate	false	Claude	YES	true	major	adequate	false	Codex	EXONERATE	true	major	adequate	false	Cursor
