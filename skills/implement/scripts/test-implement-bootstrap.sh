@@ -1281,10 +1281,11 @@ out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderExpl
 err=$(cat "$stderrf")
 rm -f "$stderrf"
 assert_rc "$rc" 0 "B5-coder-explicit-unavailable-binary-missing exit 0"
-assert_line "coder=" "$out" "B5-coder-explicit-unavailable-binary-missing empty coder"
-assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-binary-missing bail"
-assert_contains "STALL_TRACKING=true" "$out" "B5-coder-explicit-unavailable-binary-missing stall"
+assert_line "coder=codex" "$out" "B5-coder-explicit-unavailable-binary-missing waterfalls cursor->codex (#3207)"
+assert_not_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-binary-missing no bail (#3207 waterfall)"
+assert_line "STALL_TRACKING=false" "$out" "B5-coder-explicit-unavailable-binary-missing no stall (#3207 waterfall)"
 assert_contains "--coder=cursor requested but Cursor binary not found" "$err" "B5-coder-explicit-unavailable-binary-missing warning"
+assert_contains "Waterfalling to Codex" "$err" "B5-coder-explicit-unavailable-binary-missing waterfall target"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-coder-explicit-unavailable-undeterminable ---
@@ -1309,9 +1310,10 @@ out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderUnde
 err=$(cat "$stderrf")
 rm -f "$stderrf"
 assert_rc "$rc" 0 "B5-coder-explicit-unavailable-undeterminable exit 0"
-assert_line "coder=" "$out" "B5-coder-explicit-unavailable-undeterminable empty coder"
-assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-undeterminable bail"
+assert_line "coder=codex" "$out" "B5-coder-explicit-unavailable-undeterminable waterfalls cursor->codex (#3207)"
+assert_not_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-undeterminable no bail (#3207 waterfall)"
 assert_contains "CURSOR_BINARY_FOUND could not be determined" "$err" "B5-coder-explicit-unavailable-undeterminable warning"
+assert_contains "Waterfalling to Codex" "$err" "B5-coder-explicit-unavailable-undeterminable waterfall target"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-coder-explicit-unavailable-runtime-probe-failed ---
@@ -1336,9 +1338,10 @@ out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderRunt
 err=$(cat "$stderrf")
 rm -f "$stderrf"
 assert_rc "$rc" 0 "B5-coder-explicit-unavailable-runtime-probe-failed exit 0"
-assert_line "coder=" "$out" "B5-coder-explicit-unavailable-runtime-probe-failed empty coder"
-assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-runtime-probe-failed bail"
+assert_line "coder=cursor" "$out" "B5-coder-explicit-unavailable-runtime-probe-failed waterfalls codex->cursor (#3207)"
+assert_not_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-unavailable-runtime-probe-failed no bail (#3207 waterfall)"
 assert_contains "--coder=codex requested but Codex runtime probe failed / auth error" "$err" "B5-coder-explicit-unavailable-runtime-probe-failed warning"
+assert_contains "Waterfalling to Cursor" "$err" "B5-coder-explicit-unavailable-runtime-probe-failed waterfall target"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-coder-explicit-codex-binary-missing ---
@@ -1363,10 +1366,39 @@ out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCode
 err=$(cat "$stderrf")
 rm -f "$stderrf"
 assert_rc "$rc" 0 "B5-coder-explicit-codex-binary-missing exit 0"
-assert_line "coder=" "$out" "B5-coder-explicit-codex-binary-missing empty coder"
-assert_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-codex-binary-missing bail"
-assert_contains "STALL_TRACKING=true" "$out" "B5-coder-explicit-codex-binary-missing stall"
+assert_line "coder=cursor" "$out" "B5-coder-explicit-codex-binary-missing waterfalls codex->cursor (#3207)"
+assert_not_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-codex-binary-missing no bail (#3207 waterfall)"
+assert_line "STALL_TRACKING=false" "$out" "B5-coder-explicit-codex-binary-missing no stall (#3207 waterfall)"
 assert_contains "--coder=codex requested but Codex binary not found" "$err" "B5-coder-explicit-codex-binary-missing warning"
+assert_contains "Waterfalling to Cursor" "$err" "B5-coder-explicit-codex-binary-missing waterfall target"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-coder-explicit-both-external-unavailable (#3207: codex -> cursor -> claude) ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=owner/repo
+echo REPO_UNAVAILABLE=false
+echo CODEX_PRESENT=false
+echo CURSOR_PRESENT=false
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+write_preflight_plan
+stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder-both-unavail.XXXXXX")
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderBothUnavail --preflight-tmpdir "$SANDBOX/preflight" --coder codex 2>"$stderrf") && rc=$? || rc=$?
+err=$(cat "$stderrf")
+rm -f "$stderrf"
+assert_rc "$rc" 0 "B5-coder-explicit-both-external-unavailable exit 0"
+assert_line "coder=claude" "$out" "B5-coder-explicit-both-external-unavailable waterfalls codex->cursor->claude (#3207)"
+assert_line "coder_fallback=true" "$out" "B5-coder-explicit-both-external-unavailable coder_fallback set"
+assert_not_contains "IMPLEMENT_BAIL_REASON=coder-unavailable" "$out" "B5-coder-explicit-both-external-unavailable no bail (#3207 waterfall)"
+assert_contains "Cursor also unavailable" "$err" "B5-coder-explicit-both-external-unavailable claude fallback warning"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-coder-skip-repo-unavailable ---

@@ -8,7 +8,7 @@ Without the sketch phase, the first idea considered tends to dominate the plan. 
 
 ## Sketch Agents
 
-The sketch phase runs the topology selected by `/design`'s run-depth router. Each non-zero external slot has a Claude subagent fallback that activates when the respective tool is unavailable, preserving the configured lane shape.
+The sketch phase runs the topology selected by `/design`'s run-depth router. Per issue #3207, a slot whose external tool is unavailable is **skipped** — the phase runs with fewer sketches rather than substituting a Claude subagent. If both Cursor and Codex are down, it runs zero sketches and falls through to the no-sketches path.
 
 ### Simple Mode
 
@@ -20,18 +20,18 @@ HARD mode keeps one slot per personality across a Cursor/Codex diagonal split (C
 
 | Agent | Harness | Role | Focus |
 |---|---|---|---|
-| **Cursor — Arch** (fallback: Claude) | Cursor | Architecture/Standards | Clean design, proper layering, reuse of existing libraries |
-| **Cursor — Edge** (fallback: Claude) | Cursor | Edge-cases/Failure-modes | Boundary conditions, error handling, failure recovery |
-| **Codex — Innovation** (fallback: Claude) | Codex | Innovation/Exploration | Creative alternatives, unconventional solutions, questioned assumptions |
-| **Codex — Pragmatic** (fallback: Claude) | Codex | Pragmatism/Safety | Smallest change set, avoid regressions, protect existing features |
+| **Cursor — Arch** (skipped if Cursor down) | Cursor | Architecture/Standards | Clean design, proper layering, reuse of existing libraries |
+| **Cursor — Edge** (skipped if Cursor down) | Cursor | Edge-cases/Failure-modes | Boundary conditions, error handling, failure recovery |
+| **Codex — Innovation** (skipped if Codex down) | Codex | Innovation/Exploration | Creative alternatives, unconventional solutions, questioned assumptions |
+| **Codex — Pragmatic** (skipped if Codex down) | Codex | Pragmatism/Safety | Smallest change set, avoid regressions, protect existing features |
 
 ### Important Distinction
 
 The sketch agents are **completely separate** from the plan-review agents that evaluate the plan later in `/design` Step 3. The sketch agents explore the design space; the plan reviewers validate the resulting plan using the panel described in [Review Agents](review-agents.md). They have different roles, different prompts, and serve different purposes.
 
-## Per-Slot Fallback
+## Per-Slot Skip (no Claude substitution)
 
-When Cursor or Codex is unavailable, each affected slot falls back to a Claude subagent carrying the **same prompt** as the original external slot. This preserves the mode-specific topology above regardless of external tool availability.
+When Cursor or Codex is unavailable, each affected slot is **skipped** (issue #3207) — the sketch phase proceeds with fewer sketches rather than substituting a Claude subagent. When both tools are down, zero sketches run and `/design` falls through to its no-sketches path (same sentinels as SIMPLE). The Step 0 degraded-tools gate warns the operator about this degradation before the run proceeds.
 
 ## Fallback Behavior by Phase
 
@@ -39,7 +39,7 @@ The handling of unavailable external tools differs across workflow phases:
 
 | Phase | Unavailable Tool Handling |
 |---|---|
-| **Sketch phase** (`/design`) | Per-slot Claude fallbacks with matching prompt — the mode-specific topology stays intact |
+| **Sketch phase** (`/design`) | **Skip** any slot whose tool is unavailable — fewer sketches, no Claude substitution (#3207); both down → zero sketches (no-sketches path) |
 | **Plan review** (`/design`) | Per-archetype Cursor → Codex → Claude fallback chain; Codex generic → Claude — the configured panel stays intact |
 | **Code review** (`/review`) | Cursor down → skip Cursor specialist slots; Codex down → skip Codex specialist slots; both down → no slots launched (voting skipped per threshold rules) |
 | **Voting (plan review)** | Claude replacement voters used — always 3 voters. 3 voters: 2+ YES to accept; 2 voters: unanimous YES; <2 voters: voting skipped, all findings accepted |
@@ -64,7 +64,7 @@ flowchart TD
     PLAN --> REVIEW[Full plan review panel]
 ```
 
-1. **Parallel launch** — HARD launches all external and per-slot Claude fallback sketches simultaneously: all Cursor slots first (slowest), then all Codex slots, then any Claude fallback sketches. SIMPLE launches nothing and writes sentinel artifacts instead.
+1. **Parallel launch** — HARD launches all **available** external sketches simultaneously: all Cursor slots first (slowest), then all Codex slots; a slot whose tool is unavailable is skipped (no Claude substitution, #3207). SIMPLE launches nothing and writes sentinel artifacts instead.
 
 2. **Each agent produces** a short sketch covering:
    - Key architectural decisions and approach

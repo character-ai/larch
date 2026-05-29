@@ -1,22 +1,22 @@
 # Sketch Launch Choreography
 
-**Consumer**: `/design` Step 2a.2 — external sketch launches (Cursor/Codex) and per-slot Claude fallbacks.
+**Consumer**: `/design` Step 2a.2 — external sketch launches (Cursor/Codex). A slot whose tool is unavailable is **skipped** (no Claude substitution, #3207).
 
-**Contract**: SIMPLE launches 0 sketch agents and writes sentinel artifacts. HARD launches 4 regular sketch slots: 2 Cursor + 2 Codex personality slots on the diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic), plus the spawn-order rule, `run_in_background: true` + `timeout: 1260000` requirements, and per-slot Claude fallback rules. Token bodies (`<ARCH_PROMPT>` etc.) are resolved from `references/sketch-prompts.md`, not here. Sketch-phase collection (`collect-agent-results.sh` for Step 2a.3) is NOT defined here.
+**Contract**: SIMPLE launches 0 sketch agents and writes sentinel artifacts. HARD launches up to 4 regular sketch slots: 2 Cursor + 2 Codex personality slots on the diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic), plus the spawn-order rule, `run_in_background: true` + `timeout: 1260000` requirements, and per-slot **skip** rules (a slot whose tool is unavailable is skipped — fewer sketches, no Claude substitution). Token bodies (`<ARCH_PROMPT>` etc.) are resolved from `references/sketch-prompts.md`, not here. Sketch-phase collection (`collect-agent-results.sh` for Step 2a.3) is NOT defined here.
 
-**Sketch fallback divergence from plan-review waterfall**: Sketch phase Claude fallbacks use the Agent tool (Claude Code Reviewer subagent), not `dispatch-with-waterfall.sh` / `launch-claude-review.sh` subprocess.
+**Sketch degradation — no Claude substitution (#3207)**: unlike the plan-review waterfall, the sketch phase does NOT substitute a Claude subagent when an external tool is unavailable. The affected slot is skipped and the phase runs with **fewer sketches** (possibly zero when both Cursor and Codex are down — Step 2a.3 then skips the collector and Step 2a falls through to the no-sketches path).
 
 **When to load**: at Step 2a.2 entry, AFTER `references/sketch-prompts.md` has been loaded. Do NOT load during Steps 0, 1, 2a.3, 2a.4, 2a.5, 2b, 3, 3.5, 3b, 4, or 5.
 
-**Binding convention**: single normative source for the external-slot launch shell blocks (4 HARD slots), the SIMPLE sentinel path, the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes. Token substitution placeholders (`<ARCH_PROMPT>`, `<EDGE_PROMPT>`, `<INNOVATION_PROMPT>`, `<PRAGMATIC_PROMPT>`) are resolved from `references/sketch-prompts.md`.
+**Binding convention**: single normative source for the external-slot launch shell blocks (up to 4 HARD slots), the SIMPLE sentinel path, the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot skip notes. Token substitution placeholders (`<ARCH_PROMPT>`, `<EDGE_PROMPT>`, `<INNOVATION_PROMPT>`, `<PRAGMATIC_PROMPT>`) are resolved from `references/sketch-prompts.md`.
 
 ---
 
-**Critical sequencing**: For `design_classification == HARD`, you MUST launch all external sketch Bash tool calls (with `run_in_background: true`) AND any Claude subagent fallback sketches in a single message. Issue Cursor slots first (slowest), then Codex slots, then any Claude subagent fallbacks. For `design_classification == SIMPLE`, launch nothing and do not call `collect-agent-results.sh`.
+**Critical sequencing**: For `design_classification == HARD`, you MUST launch all **available** external sketch Bash tool calls (with `run_in_background: true`) in a single message. Issue Cursor slots first (slowest), then Codex slots. Skip any slot whose tool is unavailable — do NOT substitute a Claude subagent (#3207). For `design_classification == SIMPLE`, launch nothing and do not call `collect-agent-results.sh`.
 
 **Launch failure logging**: For every `launch-review.sh` Bash block below, capture launcher stdout/stderr to `$DESIGN_TMPDIR/<slot>-launch.failure.log`. If the Bash tool reports a non-zero exit, append that capture verbatim to `$DESIGN_TMPDIR/execution-issues.md`.
 
-**Personality prompts**: the four personality prompts are shared across external slots (Cursor/Codex) and Claude fallbacks (Agent tool). Token bodies are defined in `references/sketch-prompts.md`.
+**Personality prompts**: the four personality prompts are used by the external slots (Cursor/Codex). Token bodies are defined in `references/sketch-prompts.md`.
 
 **MANDATORY — READ ENTIRE FILE before assembling sketch prompts: `skills/design/references/readability-style.md`.**
 
@@ -38,7 +38,7 @@ Do not call `collect-agent-results.sh` on this path.
 
 Use when `design_classification == HARD`.
 
-**Spawn order**: all 2 Cursor slots first (slowest), then all 2 Codex slots, then any Claude subagent fallbacks. Issue all Bash and Agent tool calls in a single message.
+**Spawn order**: all available Cursor slots first (slowest), then all available Codex slots. Skip any slot whose tool is unavailable (no Claude substitution). Issue all Bash tool calls in a single message.
 
 **Cursor — Architecture/Standards** (if `cursor_available`):
 
@@ -48,7 +48,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$DESIGN_T
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Cursor — Architecture/Standards fallback** (if `cursor_available` is false): Launch a Claude subagent via the Agent tool with `<ARCH_PROMPT>`.
+**Cursor — Architecture/Standards — skipped** (if `cursor_available` is false): do NOT launch this slot and do NOT substitute a Claude subagent (#3207). The sketch phase proceeds with fewer sketches.
 
 **Cursor — Edge-cases/Failure-modes** (if `cursor_available`):
 
@@ -58,7 +58,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor --output "$DESIGN_T
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Cursor — Edge-cases/Failure-modes fallback** (if `cursor_available` is false): Claude subagent with `<EDGE_PROMPT>`.
+**Cursor — Edge-cases/Failure-modes — skipped** (if `cursor_available` is false): do NOT launch this slot and do NOT substitute a Claude subagent (#3207). Fewer sketches.
 
 **Codex — Innovation/Exploration** (if `codex_available`):
 
@@ -68,7 +68,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$DESIGN_TM
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Codex — Innovation/Exploration fallback** (if `codex_available` is false): Claude subagent with `<INNOVATION_PROMPT>`.
+**Codex — Innovation/Exploration — skipped** (if `codex_available` is false): do NOT launch this slot and do NOT substitute a Claude subagent (#3207). Fewer sketches.
 
 **Codex — Pragmatism/Safety** (if `codex_available`):
 
@@ -78,4 +78,4 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$DESIGN_TM
 
 Use `run_in_background: true` and `timeout: 1260000` on the Bash tool call.
 
-**Codex — Pragmatism/Safety fallback** (if `codex_available` is false): Claude subagent with `<PRAGMATIC_PROMPT>`.
+**Codex — Pragmatism/Safety — skipped** (if `codex_available` is false): do NOT launch this slot and do NOT substitute a Claude subagent (#3207). Fewer sketches.

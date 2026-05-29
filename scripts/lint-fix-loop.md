@@ -86,8 +86,15 @@ Behavior:
    `LINT_FIX_DELTA_PATHS_FILE` is computed from
    `git diff --name-only <baseline_head>..<current_head>`, `LINT_FIX_COMMIT_SHA`
    is the current `HEAD`, and `LINT_FIX_HEAD_CHANGED=true` is emitted.
-9. If every available dispatch path fails, emit `LINT_FIX_STATUS=failed`,
-   `FAILURE_REASON=dispatch-failed`, and exit 1.
+9. If every available external dispatch path is unavailable or fails (codex →
+   cursor both exhausted), **waterfall to the Claude/main-agent tier** (#3207):
+   emit `LINT_FIX_STATUS=main-agent-required`, `FAILURE_REASON=dispatch-failed`,
+   and exit 0 — matching the both-absent `main-agent-required` path at the top of
+   the script and the implementer's codex → cursor → claude chain. (Previously
+   this branch emitted `LINT_FIX_STATUS=failed` / exit 1.) In `ship-pr.sh`'s
+   subprocess context, `main-agent-required` converges to the same terminal
+   handling as the prior `failed`/dispatch-failed status — it falls through to
+   `run_recovery_waterfall`'s `launch-claude-ci` tier.
 10. Forbidden paths use prefix semantics: a path equal to a forbidden entry or
     under that entry is forbidden. For accepted coder-owned commits, committed
     content is checked first; a forbidden committed path triggers

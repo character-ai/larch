@@ -13,10 +13,10 @@ Flags:
 
 Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
-- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required|no-changes|fix-applied|converged-small-changes`
+- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|coder-main-agent-required|main-agent-vote-required|no-changes|fix-applied|converged-small-changes`
 - `FIX_COUNT=N`
 - `CODER_TOOL=none|codex|cursor`
-- `CODER_STATUS=skipped|applied|no-changes|failed|submodule-violation`
+- `CODER_STATUS=skipped|applied|no-changes|failed|main-agent-required|submodule-violation`
 - `CODER_LOG_FILE=<path>` when a coder ran
 - `CODER_COMMIT_SHA=<sha>` when the script committed the round's accepted-fixes
 - `SUBMODULE_SCRUB_COUNT=N`
@@ -57,7 +57,7 @@ Step 5 ledger marks are owned by the parent `/implement` Step 5 preamble, not by
 
 Exit codes:
 
-- `0`: no accepted findings remain for this round (`complete`), OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point), OR `fix-applied` (`REVIEW_AND_FIX_STATUS=fix-applied`) when a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)` — the parent runs relevant checks and decides whether to call the script for the next round, OR `converged-small-changes` when two consecutive non-degraded rounds both had `ACCEPTED_COUNT ≤ convergence-threshold` and neither contained Important findings — the parent must stop the review loop.
+- `0`: no accepted findings remain for this round (`complete`), OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `coder-main-agent-required` (#3207) when no external coder could apply the accepted fixes (Codex → Cursor both exhausted) and the parent main agent must apply them itself — the Claude tier of the coder waterfall, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point), OR `fix-applied` (`REVIEW_AND_FIX_STATUS=fix-applied`) when a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)` — the parent runs relevant checks and decides whether to call the script for the next round, OR `converged-small-changes` when two consecutive non-degraded rounds both had `ACCEPTED_COUNT ≤ convergence-threshold` and neither contained Important findings — the parent must stop the review loop.
 - `2`: panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
 
 Compatibility note: out-of-tree callers must detect applied fixes via `REVIEW_AND_FIX_STATUS=fix-applied` on exit `0`. Do not rely on exit `3`; successful fix application no longer uses that exit code.

@@ -478,7 +478,9 @@ fi
 grep -Fq 'parse-codex-usage.sh:' "$case0a2_run_dir/codex.sidecar" \
     || fail "case0a2 telemetry sidecar should capture parse diagnostics"
 
-# Case 0b: failed Codex still writes events and telemetry while dispatch fails non-zero.
+# Case 0b: Codex fails at runtime and Cursor is absent; #3207 waterfalls to the
+# Claude/main-agent tier (main-agent-required, exit 0) instead of hard-failing.
+# Codex events and telemetry are still written.
 CASE0B="$TMPROOT/case0b"
 REPO0B="$CASE0B/repo"
 SCRIPTS0B="$CASE0B/scripts"
@@ -495,8 +497,9 @@ write_wrapper_codex_telemetry "$WRAPPER0B"
 case0b_result=$(TEST_CODEX_RC=23 LARCH_TOKEN_LEDGER="$LEDGER0B" run_case "$SCRIPTS0B" "$REPO0B" "$SESSION0B" "$CHECKS0B" "$WRAPPER0B")
 case0b_rc=$(printf '%s\n' "$case0b_result" | sed -n '1p')
 case0b_out=$(printf '%s\n' "$case0b_result" | sed -n '2,$p')
-[[ "$case0b_rc" == "1" ]] || fail "case0b expected rc 1 from failed dispatch, got $case0b_rc"
-assert_contains "$case0b_out" 'FAILURE_REASON=dispatch-failed' "case0b failed dispatch"
+[[ "$case0b_rc" == "0" ]] || fail "case0b expected rc 0 (#3207 waterfall to main-agent), got $case0b_rc"
+assert_contains "$case0b_out" 'LINT_FIX_STATUS=main-agent-required' "case0b waterfalls to main-agent (#3207)"
+assert_contains "$case0b_out" 'FAILURE_REASON=dispatch-failed' "case0b retains dispatch-failed diagnostic"
 case0b_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case0b_out")
 [[ -s "$case0b_run_dir/codex.events.jsonl" ]] || fail "case0b expected codex.events.jsonl despite failure"
 jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_lint_fix" and .total==1050)' "$LEDGER0B" >/dev/null \

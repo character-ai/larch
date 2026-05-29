@@ -21,6 +21,26 @@ Mirror the same two-tier pattern for Cursor (`CURSOR_BINARY_FOUND` / `CURSOR_PRE
 
 Launch eligibility requires `*_PRESENT=true`. Runtime failures do not mutate `session-env.sh`; multi-slot dispatchers handle them through per-slot waterfall fallback.
 
+## Degraded-tools gate (Step 0)
+
+Issue #3207: when an external tool is unhealthy at session start, the skill MUST **tell the operator and let them choose** rather than silently proceeding degraded. Immediately after presence detection, run the gate detector with the four `--check-reviewers` keys (contract: `scripts/degraded-tools-gate.md`):
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh \
+  --codex-binary-found "$CODEX_BINARY_FOUND" --codex-present "$CODEX_PRESENT" \
+  --cursor-binary-found "$CURSOR_BINARY_FOUND" --cursor-present "$CURSOR_PRESENT" \
+  --skill <design|implement|review|research>
+```
+
+Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`:
+
+- **`DEGRADED=false`** — both tools healthy; proceed silently (the per-tool warning prints above are unaffected).
+- **`DEGRADED=true`** — lift the explanation block between `DEGRADED_EXPLANATION_BEGIN` / `DEGRADED_EXPLANATION_END`, then:
+  - **Interactive run** — present the explanation block and fire `AskUserQuestion` with two options: **Continue (degraded waterfall)** and **Abort**. On **Continue**, proceed with the backup waterfall (Codex→Cursor→Claude and Cursor→Codex→Claude per slot). On **Abort**, print `**⚠ /<skill>: aborted by operator — external tool unhealthy; re-run once it recovers.**`, clean up the session tmpdir, and stop the skill (run no further steps).
+  - **Non-interactive / autonomous run** (cron, `claude -p`, `<<autonomous-loop>>`, eval) — do **NOT** block. Print the explanation block once as a notice and, when a session tmpdir exists, log it to `execution-issues.md` under `Warnings`; then proceed degraded — the waterfall guarantees completion. This mirrors the autonomous carve-outs that already bracket `AskUserQuestion` in `/implement`.
+
+Fire the gate **once per run**: guard it with a `.degraded-tools-gate-prompted` sentinel under the session tmpdir so Step 0 re-entry (e.g. `/implement` dirty-tree / resume-plan-tail) does not re-prompt. The gate is advisory about availability only — it does **not** flip `codex_available` / `cursor_available`, which continue to drive per-slot launch eligibility and the runtime waterfall below.
+
 ## Runtime Waterfall Fallback
 
 When processing reviewer results, failed external slots should fall through the waterfall dispatcher rather than flipping session-wide availability:

@@ -15,7 +15,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--emergency-requested` | no | `true` \| `false` | Default `false`. Forwarded to run-flag persistence and metadata summaries; also controls whether a Preflight `emergency-bypass.log` is surfaced as a warning for the current run. |
 | `--upstream-repo` | no | `OWNER/REPO` | Required by callers in fork mode when upstream issue context should be fetched. Validated as one owner/repo slash with GitHub-safe characters. |
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
-| `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. On availability mismatch emits the explicit-coder warning, sets `STALL_TRACKING=true`, and `IMPLEMENT_BAIL_REASON=coder-unavailable`. When omitted, `phase_coder_select` runs the Cursor → Codex → Claude waterfall. |
+| `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. When the pinned external tool is unavailable, `phase_coder_select` **waterfalls instead of bailing** (#3207): `--coder codex` → Cursor → Claude; `--coder cursor` → Codex → Claude (`claude` is the always-available main-agent path, so `--coder claude` resolves to claude). A warning names the unavailable tool and the waterfall target. When omitted, `phase_coder_select` runs the Cursor → Codex → Claude waterfall. |
 | `--preflight-tmpdir` | with `--issue-number` when `--up-to-phase` is `plan`, `coder`, or `all` | path | Directory containing `plan-from-issue.txt` from Preflight. |
 | `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh`, re-runs the dirty-tree checkpoint, and resumes only the Phase 3 tail after that checkpoint succeeds. Reviewer availability is reloaded from the persisted session-env keys; no fresh reviewer probes run on this path. |
 
@@ -72,7 +72,7 @@ Tracking phase may also emit:
 - `→ step0: larch:plan posted`
 - `→ step0: coder=<claude|codex|cursor>`
 
-`LARCH_QUIET_DISABLE=1` keeps stdout readable for KV parsing, but these breadcrumbs still surface on stderr via `larch_err` and are mirrored into the quiet log. `coder-unavailable`, `REPO_UNAVAILABLE`, and missing-plan early-return paths skip the coder breadcrumb because `coder` is never selected there.
+`LARCH_QUIET_DISABLE=1` keeps stdout readable for KV parsing, but these breadcrumbs still surface on stderr via `larch_err` and are mirrored into the quiet log. `REPO_UNAVAILABLE` and missing-plan early-return paths skip the coder breadcrumb because `coder` is never selected there. An explicit `--coder` naming an unavailable tool still emits the breadcrumb — it now resolves to a waterfall target (#3207) rather than bailing.
 
 ## Exit codes
 
@@ -95,7 +95,8 @@ Additional Phase 3 exit-2 diagnostics: `STEP_FAILED=copy-plan` when `$PREFLIGHT_
 | `run-flags-persist-failed` | `persist-implement-run-flags.sh` returned non-zero; `STALL_TRACKING=true`. |
 | `dirty-tree` | `check-mid-run-dirty-tree.sh --mode checkpoint` reported `STATUS=dirty` or `STATUS=unknown`; no stall flag so the orchestrator can route to dirty-tree recovery, then re-enter with `--resume-plan-tail` inside the existing `IMPLEMENT_TMPDIR` for another checkpoint before any Phase 3 tail helper runs. |
 | `branch-create-failed` | `create-branch.sh --branch` returned non-zero, or `git-current-branch.sh` could not capture a non-empty branch name after plan materialization; `STALL_TRACKING=true`. |
-| `coder-unavailable` | Explicit `--coder` requested an unavailable external tool. Warning text distinguishes binary missing, undetermined `*_BINARY_FOUND`, and runtime probe/auth failure. `STALL_TRACKING=true`; re-run with another `--coder` value or omit `--coder` to engage the implicit waterfall. |
+
+**Removed (#3207):** `coder-unavailable` is no longer emitted. An explicit `--coder` naming an unavailable external tool now **waterfalls** to the alternate external then Claude (see the `--coder` row above) instead of bailing, so a pinned-but-unhealthy tool degrades gracefully rather than stalling the run.
 
 ## Phase-skip semantics
 

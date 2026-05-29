@@ -732,8 +732,8 @@ out=$(TEST_AGENT_BEHAVIOR=claude-success run_review_and_fix "$work_claude" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
-[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "claude removed expected exit 2 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "claude removed status"
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "claude removed expected exit 0 (#3207 main-agent handoff) got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=coder-main-agent-required' <<< "$out" || fail "claude removed status (#3207 waterfall handoff, not a claude subprocess)"
 grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "claude removed tool"
 grep -Fq 'claude-subagent' "$implement_tmp/review-and-fix-summary.json" && fail "claude removed summary must not report claude-subagent"
 
@@ -747,10 +747,10 @@ out=$(TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_fail" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
-[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "all-fail expected exit 2 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "all-fail status"
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "all-fail expected exit 0 (#3207 main-agent handoff) got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=coder-main-agent-required' <<< "$out" || fail "all-fail status (#3207)"
 grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "all-fail tool"
-grep -Fq 'CODER_STATUS=failed' <<< "$out" || fail "all-fail coder status"
+grep -Fq 'CODER_STATUS=main-agent-required' <<< "$out" || fail "all-fail coder status (#3207)"
 
 work_fail_early="$TMP/all-fail-early-breadcrumb"
 make_work_repo "$work_fail_early"
@@ -762,8 +762,8 @@ out=$(CLAUDE_PLUGIN_OPTION_CURSOR_MODEL=' ' TEST_AGENT_BEHAVIOR=all-fail run_rev
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" 2>&1)
 rc=$?
 set -e
-[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "all-fail early breadcrumb expected exit 2 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "all-fail early breadcrumb status"
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "all-fail early breadcrumb expected exit 0 (#3207 main-agent handoff) got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=coder-main-agent-required' <<< "$out" || fail "all-fail early breadcrumb status (#3207)"
 grep -Fq 'coder dispatch failed (both codex and cursor)' <<< "$out" || fail "all-fail early breadcrumb warning"
 
 work_sub="$TMP/submodule-violation"

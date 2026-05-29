@@ -1,5 +1,9 @@
 # Changelog
 
+## 47.0.3 (2026-05-29)
+
+- Codex/Cursor backup-waterfall gaps + degraded-tools health gate (#3207): new Step-0 `scripts/degraded-tools-gate.sh` detector wired into `/design`, `/implement`, `/review`, `/research` — when Codex or Cursor is unavailable the skill presents an explanation and asks (via `AskUserQuestion`) whether to continue with the backup waterfall or abort; non-interactive/autonomous runs auto-proceed with a logged notice. Explicit `--coder` now waterfalls (`codex`→cursor→claude, `cursor`→codex→claude) instead of bailing; `review-and-fix` / `lint-fix` coders waterfall to the Claude main-agent tier when both externals are exhausted; `/design` sketches skip an unavailable tool's slot (fewer sketches) rather than substituting Claude.
+
 ## 47.0.2 (2026-05-29)
 
 - Resilient dynamic archetype scout: Codex→Claude waterfall with staged context reads; trim `larch-logs/**` from review diff in `gather-branch-context.sh`; thread `--codex-present`/`--cursor-present` through dispatch-panel, scout-plan-archetypes-wrapper, and plan-review-loop; remove 256 KB bulk-file gate from `scout-dynamic-archetypes.sh`.

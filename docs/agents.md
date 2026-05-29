@@ -50,7 +50,7 @@ The persistent [Code Reviewer archetype](review-agents.md) — a unified reviewe
 
 ### Sketch Agents
 
-The agents in the [collaborative sketch phase](collaborative-sketches.md) follow the regular or quick topology listed in that document. When an external tool is unavailable, the affected slot falls back to a Claude subagent with the matching prompt. These are ephemeral — launched with inline prompts, not persistent agent definitions.
+The agents in the [collaborative sketch phase](collaborative-sketches.md) follow the regular or quick topology listed in that document. When an external tool is unavailable, the affected slot is **skipped** (issue #3207) — the phase runs with fewer sketches rather than substituting a Claude subagent. Launched slots are ephemeral — inline prompts, not persistent agent definitions.
 
 ### Dialectic Debaters
 

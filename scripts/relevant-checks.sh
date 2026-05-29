@@ -101,6 +101,11 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/degraded-tools-gate.sh|scripts/degraded-tools-gate.md|scripts/test-degraded-tools-gate.sh)
+                append_target_once test-degraded-tools-gate
+                ;;
+        esac
+        case "$f" in
             scripts/design-log-publish.sh|scripts/test-design-log-publish.sh|scripts/test-design-multi-round-integration.sh|scripts/test-design-multi-round-integration.md)
                 append_target_once test-design-log-publish
                 append_target_once test-design-multi-round-integration

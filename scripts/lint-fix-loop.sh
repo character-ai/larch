@@ -361,11 +361,18 @@ elif [[ "$CURSOR_PRESENT" == "true" ]] && run_cursor "$run_dir" "$prompt_body"; 
     coder_tool="cursor"
     coder_log="$run_dir/cursor.log"
 else
-    emit_kv LINT_FIX_STATUS failed
+    # #3207: at least one external was present but its runtime dispatch failed
+    # (codex -> cursor both attempted/unavailable). Waterfall to the Claude/
+    # main-agent tier instead of hard-failing, matching the implementer's
+    # codex -> cursor -> claude chain and the both-absent main-agent-required
+    # path above. In ship-pr's subprocess context (no main agent), main-agent-
+    # required converges to run_recovery_waterfall's launch-claude-ci tier, the
+    # same terminal handling the prior `failed`/dispatch-failed status received.
+    emit_kv LINT_FIX_STATUS main-agent-required
     emit_kv FAILURE_REASON dispatch-failed
     emit_kv LINT_FIX_SITE "$SITE"
     emit_kv LINT_FIX_RUN_DIR "$run_dir"
-    exit 1
+    exit 0
 fi
 
 commit_sha=""

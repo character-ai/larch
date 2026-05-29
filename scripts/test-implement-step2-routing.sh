@@ -34,11 +34,15 @@ assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selec
 assert_contains "$BOOTSTRAP_MD" 'Cursor → Codex → Claude' "implement waterfall"
 assert_contains "$IMPLEMENT_SKILL" '--up-to-phase coder' "Step 0 bootstrap coder phase"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
-assert_contains "$BOOTSTRAP_SH" '--coder=${tool} requested but ${tool_caps} runtime probe failed' "explicit runtime unavailable bail"
+assert_contains "$BOOTSTRAP_SH" '--coder=${requested} requested but ${requested_caps} runtime probe failed' "explicit runtime unavailable waterfall (#3207)"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '--coder=${tool} requested but ${tool_caps} binary not found' "explicit binary not found bail"
+assert_contains "$BOOTSTRAP_SH" '--coder=${requested} requested but ${requested_caps} binary not found' "explicit binary not found waterfall (#3207)"
 # shellcheck disable=SC2016 # literal source text, not shell.
-assert_contains "$BOOTSTRAP_SH" '${binary_key} could not be determined' "explicit binary-found undetermined bail"
+assert_contains "$BOOTSTRAP_SH" '${requested_binary_key} could not be determined' "explicit binary-found undetermined waterfall (#3207)"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" 'Waterfalling to ${alt_caps} → Claude' "explicit-coder waterfalls instead of bailing (#3207)"
+# shellcheck disable=SC2016 # literal source text, not shell.
+assert_contains "$BOOTSTRAP_SH" '${alt_caps} also unavailable — falling back to Claude implementer' "explicit-coder claude terminal tier (#3207)"
 assert_not_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "deleted prompt-side waterfall heading"
 assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "old waterfall order"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
