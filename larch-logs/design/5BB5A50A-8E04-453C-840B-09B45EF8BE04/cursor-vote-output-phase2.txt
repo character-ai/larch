@@ -1,0 +1,1 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- conflicting both-explicit aliases are a real edge case, but normal Step 0 sources emit consistent pairs and defining a new conflict contract is more scope than this env-refresh fix warrants.
