@@ -421,11 +421,10 @@ grep -Fq '<reviewer_description>' "$TMP/description-too-large/staged-context/sco
 
 mkdir -p "$TMP/description-text-inline-cap"
 seed_case_inputs "$TMP/description-text-inline-cap"
-huge_inline=$(python3 - <<'PY'
-import sys
-sys.stdout.write("x" * 270000)
-PY
-)
+# Use a temp file for the large string to avoid shell argument-length limits on some systems.
+_huge_inline_file="$TMP/description-text-inline-cap/huge-inline.txt"
+python3 -c "import sys; sys.stdout.write('x' * 270000)" > "$_huge_inline_file"
+huge_inline=$(cat "$_huge_inline_file")
 set +e
 PATH="$BIN:$PATH" "$SCRIPT" \
     --mode description \
