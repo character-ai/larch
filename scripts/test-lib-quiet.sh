@@ -137,6 +137,33 @@ if grep -Fq 'ghp_abcdefghijklmnopqrstuvwxyz123456' "$SCRATCH/larch_err_redact.er
     fail "larch_err redaction leaked token"
 fi
 
+# 10d. Missing redactor emits a warning and preserves the original message.
+helper="$SCRATCH/larch_err_redact_missing.sh"
+log="$SCRATCH/larch_err_redact_missing.log"
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; LARCH_LIB_QUIET_DIR=$2; export LARCH_LIB_QUIET_DIR; larch_quiet_init; larch_err "plain diagnostic"; emit_kv STATUS ok'
+"$helper" "$log" "$SCRATCH/missing-helper-dir" >"$SCRATCH/larch_err_redact_missing.out" 2>"$SCRATCH/larch_err_redact_missing.err"
+assert_eq "$(cat "$SCRATCH/larch_err_redact_missing.out")" "STATUS=ok" "larch_err missing redactor stdout"
+assert_eq "$(cat "$SCRATCH/larch_err_redact_missing.err")" $'WARN larch_err-redaction-unavailable\nplain diagnostic' "larch_err missing redactor stderr"
+assert_file_contains "$log" "WARN larch_err-redaction-unavailable" "missing redactor warning logged"
+assert_file_contains "$log" "plain diagnostic" "missing redactor original message logged"
+
+# 10e. Redactor failure emits a warning and preserves the original message.
+helper="$SCRATCH/larch_err_redact_fail.sh"
+log="$SCRATCH/larch_err_redact_fail.log"
+redactor_dir="$SCRATCH/redactor-fail"
+mkdir -p "$redactor_dir"
+{
+    printf '#!/usr/bin/env bash\n'
+    printf 'exit 9\n'
+} > "$redactor_dir/redact-secrets.sh"
+chmod +x "$redactor_dir/redact-secrets.sh"
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; LARCH_LIB_QUIET_DIR=$2; export LARCH_LIB_QUIET_DIR; larch_quiet_init; larch_err "plain diagnostic"; emit_kv STATUS ok'
+"$helper" "$log" "$redactor_dir" >"$SCRATCH/larch_err_redact_fail.out" 2>"$SCRATCH/larch_err_redact_fail.err"
+assert_eq "$(cat "$SCRATCH/larch_err_redact_fail.out")" "STATUS=ok" "larch_err failed redactor stdout"
+assert_eq "$(cat "$SCRATCH/larch_err_redact_fail.err")" $'WARN larch_err-redaction-failed\nplain diagnostic' "larch_err failed redactor stderr"
+assert_file_contains "$log" "WARN larch_err-redaction-failed" "failed redactor warning logged"
+assert_file_contains "$log" "plain diagnostic" "failed redactor original message logged"
+
 # 11. Stage 3 compatibility shims are harmless no-ops.
 helper="$SCRATCH/shim-noop.sh"
 write_helper "$helper" 'larch_quiet_append_done_trap; larch_quiet_write_paired_pid_file; printf "ok\n"'
