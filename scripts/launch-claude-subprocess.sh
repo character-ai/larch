@@ -22,10 +22,12 @@ CONTEXT_FILES=()
 CONTEXT_COUNT=0
 EXTRA_ROOTS=()
 READ_TOOLS=false
+READ_TOOLS_ADD_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --read-tools) READ_TOOLS=true; shift ;;
+        --read-tools-add-dir) READ_TOOLS_ADD_DIR="${2:?--read-tools-add-dir requires a value}"; shift 2 ;;
         --model) MODEL="${2:?--model requires a value}"; shift 2 ;;
         --prompt-file) PROMPT_FILE="${2:?--prompt-file requires a value}"; shift 2 ;;
         --output-file) OUTPUT_FILE="${2:?--output-file requires a value}"; shift 2 ;;
@@ -77,6 +79,16 @@ canonical_output_path() {
     printf '%s/%s\n' "$dir" "$base"
 }
 
+canonical_existing_dir() {
+    local p="$1"
+    [[ -n "$p" ]] || return 1
+    has_control_chars "$p" && return 1
+    [[ "$p" != *..* ]] || return 1
+    [[ -d "$p" ]] || return 1
+    [[ ! -L "$p" ]] || return 1
+    (cd "$p" && pwd -P) || return 1
+}
+
 under_root() {
     local path="$1" root="$2"
     [[ "$path" == "$root" || "$path" == "$root/"* ]]
@@ -85,6 +97,7 @@ under_root() {
 [[ -n "$PROMPT_FILE" ]] || fail "--prompt-file is required"
 [[ -n "$OUTPUT_FILE" ]] || fail "--output-file is required"
 [[ -n "$TIMEOUT" ]] || fail "--timeout is required"
+[[ "$READ_TOOLS" == "true" || -z "$READ_TOOLS_ADD_DIR" ]] || fail "--read-tools-add-dir requires --read-tools"
 case "$TIMEOUT" in ''|*[!0-9]*|0) fail "--timeout must be a positive integer" ;; esac
 (( 10#$TIMEOUT <= 1800 )) || fail "--timeout must be <= 1800"
 case "$MODEL" in *[[:space:]]*|*[$'\n\r\t']*|"") fail "--model must be a single non-empty token" ;; esac
@@ -115,6 +128,18 @@ ctx_under_allowed_root() {
 under_root "$PROMPT_CANON" "$PLUGIN_ROOT" || under_root "$PROMPT_CANON" "$SESSION_ROOT" || fail "--prompt-file outside allowed roots"
 under_root "$OUTPUT_CANON" "$SESSION_ROOT" || fail "--output-file outside session root"
 
+READ_TOOLS_ROOT=""
+if [[ "$READ_TOOLS" == "true" ]]; then
+    if [[ -n "$READ_TOOLS_ADD_DIR" ]]; then
+        READ_TOOLS_ROOT=$(canonical_existing_dir "$READ_TOOLS_ADD_DIR") || fail "invalid --read-tools-add-dir"
+        under_root "$READ_TOOLS_ROOT" "$SESSION_ROOT" || fail "--read-tools-add-dir outside session root"
+    else
+        READ_TOOLS_ROOT="$SESSION_ROOT/staged-context"
+        [[ -d "$READ_TOOLS_ROOT" ]] || fail "--read-tools requires staged-context/ under session root or --read-tools-add-dir"
+        READ_TOOLS_ROOT=$(canonical_existing_dir "$READ_TOOLS_ROOT") || fail "invalid staged-context directory"
+    fi
+fi
+
 CONTEXT_CANON=()
 for ctx in "${CONTEXT_FILES[@]+"${CONTEXT_FILES[@]}"}"; do
     ctx_canon=$(canonical_existing_file "$ctx") || fail "invalid context file: $ctx"
@@ -138,9 +163,9 @@ if [[ "$READ_TOOLS" == "true" ]]; then
         printf '%s\n\n' "You are a read-only reviewer. Do NOT use Edit, Write, or Bash tools. Do NOT modify files."
         cat "$PROMPT_CANON"
     } > "$PROMPT_RENDERED"
-    # Verified on dev host: claude --print accepts --add-dir, --allowedTools, --permission-mode default.
-    CMD_JSON=$(jq -cn --arg model "$MODEL" --arg session_root "$SESSION_ROOT" \
-        '["claude","--model",$model,"--print","--add-dir",$session_root,"--allowedTools","Read Grep Glob","--permission-mode","default"]')
+    # Verified on dev host: claude --print accepts --add-dir, --allowedTools, --permission-mode plan (read-only).
+    CMD_JSON=$(jq -cn --arg model "$MODEL" --arg read_root "$READ_TOOLS_ROOT" \
+        '["claude","--model",$model,"--print","--add-dir",$read_root,"--allowedTools","Read","--permission-mode","plan"]')
 else
     {
         printf '%s\n\n' "You are a read-only reviewer. Do NOT use Edit, Write, or Bash tools. Do NOT modify files."
@@ -166,7 +191,7 @@ fi
 status="OK"
 exit_code=0
 if [[ "$READ_TOOLS" == "true" ]]; then
-    _claude_argv=(claude --model "$MODEL" --print --add-dir "$SESSION_ROOT" --allowedTools "Read Grep Glob" --permission-mode default)
+    _claude_argv=(claude --model "$MODEL" --print --add-dir "$READ_TOOLS_ROOT" --allowedTools Read --permission-mode plan)
 else
     _claude_argv=(claude --model "$MODEL" --print)
 fi

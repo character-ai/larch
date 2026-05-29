@@ -325,7 +325,8 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                 scout_args+=(--scope-files "$SCOPE_FILES" --description-text "${DESCRIPTION_TEXT:-description review}")
             fi
             set +e
-            scout_output=$("$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh" "${scout_args[@]}")
+            scout_bin="${SCOUT_DYNAMIC_ARCHETYPES_SH:-$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh}"
+            scout_output=$("$scout_bin" "${scout_args[@]}")
             scout_rc=$?
             set -e
             if [[ "$scout_rc" -ne 0 ]]; then

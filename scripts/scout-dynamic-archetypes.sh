@@ -28,6 +28,7 @@ CURSOR_PRESENT="false"
 LAUNCH_CLAUDE_SUBPROCESS_SH="${SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH:-$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh}"
 LAUNCH_REVIEW_SH="${SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH:-$PLUGIN_ROOT/scripts/launch-review.sh}"
 MAX_CONTEXT_BYTES=262144
+MAX_STAGED_BYTES=1048576
 IMPLEMENT_TMPDIR_ROOT="${IMPLEMENT_TMPDIR:-}"
 PROMPT_OVERRIDE_FILE=""
 
@@ -129,8 +130,13 @@ validate_context_input_file() {
 
 stage_context_file() {
     local label="$1" src="$2" staged_basename="$3"
-    local dest="$STAGED_DIR/$staged_basename"
+    local dest="$STAGED_DIR/$staged_basename" size
     cp -f "$src" "$dest" || fail "failed to stage $label: $src"
+    size=$(wc -c < "$dest" | tr -d ' ')
+    (( size <= MAX_STAGED_BYTES )) || fail "staged $label exceeds $MAX_STAGED_BYTES bytes: $src"
+    if (( size > MAX_CONTEXT_BYTES )); then
+        emit_kv WARN "staged $label is ${size} bytes (>${MAX_CONTEXT_BYTES}); scout tiers may truncate or time out"
+    fi
     printf '%s\n' "$dest"
 }
 
@@ -219,11 +225,6 @@ escape_prompt_data() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
 
-print_escaped_file() {
-    local path="$1"
-    escape_prompt_data < "$path"
-}
-
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || fail "--mode must be diff or description"
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || fail "--codex-present must be true or false"
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || fail "--cursor-present must be true or false"
@@ -278,6 +279,15 @@ if [[ -n "$PLAN_FILE" ]]; then
     PLAN_FILE_CANON=$(validate_context_input_file "--plan-file" "$PLAN_FILE")
 fi
 
+if (( 10#$MAX_ARCHETYPES == 0 )); then
+    write_empty_manifest "$OUTPUT"
+    emit_kv SCOUT_STATUS empty
+    emit_kv SCOUT_OUTPUT "$OUTPUT"
+    emit_kv SCOUT_ARCHETYPE_COUNT 0
+    emit_kv SCOUT_LATENCY_MS 0
+    exit 0
+fi
+
 STAGED_DIR="$SESSION_ROOT/staged-context"
 mkdir -p "$STAGED_DIR"
 STAGED_DIFF=""
@@ -300,16 +310,7 @@ fi
 # session env file even when this script is invoked directly.
 export SESSION_ENV_PATH
 
-if (( 10#$MAX_ARCHETYPES == 0 )); then
-    write_empty_manifest "$OUTPUT"
-    emit_kv SCOUT_STATUS empty
-    emit_kv SCOUT_OUTPUT "$OUTPUT"
-    emit_kv SCOUT_ARCHETYPE_COUNT 0
-    emit_kv SCOUT_LATENCY_MS 0
-    exit 0
-fi
-
-prompt_file="$(dirname "$OUTPUT")/scout-dynamic-archetypes-prompt.md"
+prompt_file="$STAGED_DIR/scout-dynamic-archetypes-prompt.md"
 raw_output="${OUTPUT}.raw"
 parse_error="${OUTPUT}.parse-error"
 parse_input="$raw_output"
@@ -379,7 +380,11 @@ run_codex_tier() {
         codex_args+=(--diff-file "$STAGED_DIFF")
     else
         codex_args+=(--scope-files "$STAGED_SCOPE")
-        [[ -n "$DESCRIPTION_TEXT" ]] && codex_args+=(--description-text "$DESCRIPTION_TEXT")
+        if [[ -n "${STAGED_DESC:-}" ]]; then
+            codex_args+=(--description-text "$(head -c "$MAX_CONTEXT_BYTES" "$STAGED_DESC")")
+        elif [[ -n "$DESCRIPTION_TEXT" ]]; then
+            codex_args+=(--description-text "$DESCRIPTION_TEXT")
+        fi
     fi
     [[ -n "$STAGED_PLAN" ]] && codex_args+=(--plan-file "$STAGED_PLAN")
     set +e
@@ -390,7 +395,7 @@ run_codex_tier() {
     if [[ "$last_launch_rc" -ne 0 ]]; then
         local launch_status
         launch_status=$(awk -F= '$1=="STATUS"{print $2; exit}' "$launch_stdout" 2>/dev/null || true)
-        last_scout_status="claude-failed"
+        last_scout_status="codex-failed"
         [[ "$launch_status" == "TIMEOUT" || "$launch_status" == "cap_hit" ]] && last_scout_status="timeout"
         return 1
     fi
@@ -413,6 +418,7 @@ run_claude_tier() {
         --timeout "$TIMEOUT" \
         --timing-task-kind scout-dynamic-archetypes \
         --read-tools \
+        --read-tools-add-dir "$STAGED_DIR" \
         >"$launch_stdout"
     last_launch_rc=$?
     set -e
@@ -446,7 +452,11 @@ if [[ -z "$winner_raw" ]]; then
     if [[ "$CODEX_PRESENT" == "true" ]]; then
         if (( had_probe_miss )); then
             write_empty_manifest "$OUTPUT"
-            emit_kv SCOUT_STATUS empty
+            if [[ "$last_launch_rc" -ne 0 ]]; then
+                emit_kv SCOUT_STATUS "$last_scout_status"
+            else
+                emit_kv SCOUT_STATUS empty
+            fi
             emit_kv SCOUT_OUTPUT "$OUTPUT"
             emit_kv SCOUT_ARCHETYPE_COUNT 0
             emit_kv SCOUT_LATENCY_MS "$latency_ms"

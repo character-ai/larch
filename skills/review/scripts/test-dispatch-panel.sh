@@ -88,6 +88,16 @@ printf 'STATUS=OK\nOUTPUT_FILE=%s\nELAPSED=0\n' "$out"
 STUB
 chmod +x "$scout_launch"
 
+scout_wrapper="$TMP/scout-dynamic-wrapper.sh"
+cat > "$scout_wrapper" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -n "\${SCOUT_SCOUT_ARGV_LOG:-}" ]] && printf '%s\n' "\$*" >>"\$SCOUT_SCOUT_ARGV_LOG"
+export SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch"
+exec "$REPO_ROOT/scripts/scout-dynamic-archetypes.sh" "\$@"
+STUB
+chmod +x "$scout_wrapper"
+
 cat > "$TMP/scout-valid4.json" <<'JSON'
 {"archetypes":[
   {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"API changes are central.","prompt_body":"Check API contract compatibility."},
@@ -173,7 +183,8 @@ grep -Fq 'SLOT_COUNT=6' <<< "$out"
 [[ ! -e "$TMP/hard-round2/codex-union-output.txt" ]]
 
 seed_case_inputs "$TMP/dynamic4"
-out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
+export SCOUT_SCOUT_ARGV_LOG="$TMP/dynamic4/scout-argv.log"
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/dynamic4/review.diff" \
     --review-tmpdir "$TMP/dynamic4" \
@@ -183,6 +194,9 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --plan-file "$TMP/dynamic4/plan.md" \
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
+grep -Fq -- '--codex-present' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --codex-present to scout" >&2; exit 1; }
+grep -Fq -- '--cursor-present' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --cursor-present to scout" >&2; exit 1; }
+grep -Fq -- 'true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: scout presence flags must be true in argv log" >&2; exit 1; }
 grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 grep -Fq 'SLOT_COUNT=10' <<< "$out"
