@@ -161,9 +161,10 @@ fi
 
 # ---------- Check 9: Stage 4 (#3119) Family-B fence absence ----------
 
+assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md"
 assert_p3119_family_b_fence_absent "$RESEARCH_MD" "research-phase.md"
 assert_p3119_family_b_fence_absent "$VALIDATION_MD" "validation-phase.md"
-PASS=$((PASS + 2))
+PASS=$((PASS + 3))
 
 # ---------- Summary ----------
 
