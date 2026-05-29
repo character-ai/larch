@@ -1,0 +1,29 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-ship-pr.sh:11; skills/design/scripts/test-dispatch-plan-assessors.sh:5; skills/design/scripts/test-assess-plan-round.sh:5; skills/design/scripts/test-tally-plan-assessor.sh:5; skills/review/scripts/test-dispatch-panel.sh:12; skills/review-and-fix/scripts/test-review-and-fix.sh:11; skills/implement/scripts/test-run-step2-dispatch.sh:68	Final grep gate lists LARCH_DONE_SENTINEL / LARCH_STATUS_FILE / LARCH_PAIRED_PID_FILE / LARCH_BREADCRUMB_STREAM but the file list omits these harness unset lines	PR can pass skill/doc edits yet still fail the plan’s own zero-hit grep gate on test-only env hygiene	Extend the plan file list (or add one “grep-gate harness sweep” step) to strip or narrow these unset lines in the same PR
+2	in_scope	important	correctness	skills/implement/SKILL.md:390,644,800,947,1217,1245,1280; skills/design/SKILL.md:362,1038	Foreground fences still cite deleted BASH_AUTHORING.md §4; grep gate explicitly forbids that string	Operators keep a dead cross-reference; acceptance grep fails even if Family-B fences collapse cleanly	While editing those skills, retarget “Foreground required” comments to surviving BASH_AUTHORING guidance (or drop the §4 pointer) everywhere §4 is removed
+3	in_scope	important	correctness	skills/implement/references/stall-recovery.md:23-24,53; skills/implement/references/rebase-rebump-subprocedure.md:189-192; skills/review/references/heavy-worker.md:55; skills/shared/voting-protocol.md:184	Plan labels these as “collapse fence (1 ref)” but they are prose-only (no breadcrumb-monitor fence); rebase still documents LARCH_PAIRED_PID_FILE / breadcrumb-monitor routing	Implementer may skip post-collapse routing rewrites; stall recovery and Step 18a can keep monitor-failure semantics after monitors are deleted	Add explicit prose-only tasks: rewrite stall-recovery dispatch to plain foreground ship-pr/run-step5-review; delete rebase-rebump L189-192 paired-PID paragraph; update heavy-worker and voting-protocol collector guidance to foreground collect-agent-results (no breadcrumb-monitor)
+
+### 1. correctness — grep-gate harnesses omitted from the file list
+
+The plan’s final grep gate forbids `LARCH_DONE_SENTINEL`, `LARCH_STATUS_FILE`, `LARCH_PAIRED_PID_FILE`, and `LARCH_BREADCRUMB_STREAM` outside `larch-logs/**` and `CHANGELOG.md`, but several live test harnesses still `unset` those names and are not listed under **Files to modify/create** (only `test-design-structure.sh`, `test-lib-quiet.sh`, and `test-collect-agent-results.sh` are). Examples: `scripts/test-ship-pr.sh:11`, `skills/design/scripts/test-dispatch-plan-assessors.sh:5`, `skills/review/scripts/test-dispatch-panel.sh:12`.
+
+**Suggested revision:** Add one sweep step (or enumerate these paths) so harness hygiene is updated in the same PR as the grep gate.
+
+### 2. correctness — foreground fences still point at deleted §4
+
+Deleting `BASH_AUTHORING.md` §4 is in scope, and the grep gate includes `BASH_AUTHORING.md §4`, but multiple **non–Family-B** fences still carry `# Foreground required: see BASH_AUTHORING.md §4` in `skills/implement/SKILL.md` (e.g. `390`, `644`, `800`) and `skills/design/SKILL.md` (`362`, `1038`). The plan’s skill edits focus on Family-B collapse, not these anchors.
+
+**Suggested revision:** Retarget or remove those foreground comments during the same skill pass so §4 deletion and the grep gate stay aligned.
+
+### 3. correctness — prose-only monitor routing not specified
+
+Several listed files have **no** Family-B fence to collapse but still teach monitor/paired-PID semantics that must disappear:
+
+- `skills/implement/references/stall-recovery.md:23-24,53` — `background+monitor envelope`, `breadcrumb-monitor.sh` infrastructure failures, “Family B background+monitor pair”
+- `skills/implement/references/rebase-rebump-subprocedure.md:189-192` — `LARCH_PAIRED_PID_FILE` / `breadcrumb-monitor.sh` (no ci-wait/ship-pr fence exists here; only sync ci-wait policy at `187`)
+- `skills/review/references/heavy-worker.md:55` — collector must pair with `breadcrumb-monitor.sh` (prose only)
+- `skills/shared/voting-protocol.md:184` — same for voter collection (dispatch fence lives in `plan-review.md`, which is covered)
+
+**Suggested revision:** Replace “collapse fence (1 ref)” with explicit prose rewrites for these locations so FINDING_1-style routing and the grep gate are not left stale.
+
+[OUT_OF_SCOPE] `/.gitleaks.toml:25-26` still allowlists deleted `scripts/test-breadcrumb-monitor*` paths; harmless but stale after shim deletion—optional cleanup in a follow-up.

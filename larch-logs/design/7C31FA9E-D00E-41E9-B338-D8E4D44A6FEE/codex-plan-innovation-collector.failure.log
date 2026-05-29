@@ -1,0 +1,24 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-innovation-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 10s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-innovation-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-lib-quiet.sh:167-171	Case 11 still exercises deleted shims	Deleting `larch_quiet_append_done_trap` / `larch_quiet_write_paired_pid_file` without updating this harness makes `make test-lib-quiet` fail with `command not found`	Add an explicit `### UPDATED: scripts/test-lib-quiet.sh` step to remove or replace case 11 (the plan lists the harness in Testing strategy but not Files to modify)
+2	in_scope	important	correctness	skills/implement/SKILL.md:1378-1397	Step 8 post-invoke prose still routes via `LARCH_STATUS_FILE` and `breadcrumb-monitor.sh`	After the proposed plain-foreground `ship-pr.sh` fence, those paths are not created and `ship-pr.sh` does not write `LARCH_STATUS_FILE`; following L1378/L1397 mis-routes stalls and resume	Extend the `skills/implement/SKILL.md` edit to reframe post-return handling on the Bash exit code plus `ship-pr-state.sh`, and drop monitor/`LARCH_STATUS_FILE` wrapper-routing text in the exit matrix
+3	in_scope	important	architecture	skills/implement/references/stall-recovery.md:6-53	Stall-recovery monitor contract trimmed as one fence only	The file has no Family-B bash fence; lines 6, 23-24, and 53 still mandate background+monitor pairs and `breadcrumb-monitor.sh`, so the final grep gate and Step 18a redispatch stay wrong	Expand the `stall-recovery.md` task to reframe all dispatch bullets and Safety Constraints for plain foreground + `<task-notification>` (same model as Step 8), not a single fence collapse
+4	in_scope	important	risk-integration	plan.txt:137-143	Final grep gate omits several live harness/doc hits	Post-change grep for `LARCH_BREADCRUMB_*`, `LARCH_PAIRED_PID_FILE`, and `breadcrumb-monitor` will still match files such as `skills/design/scripts/test-assess-plan-round.sh` (`LARCH_BREADCRUMB_MONITOR_SH`), `skills/design/scripts/test-dispatch-plan-assessors.sh`, `scripts/test-ci-wait.sh`, and `skills/implement/references/rebase-rebump-subprocedure.md:189-192`	Add those paths to Files to modify (trim or rename test-only symbols) or narrow the grep gate patterns so forensics/test isolation strings are not accidental failures
+
+1. **correctness** — `scripts/test-lib-quiet.sh:167-171`: Case 11 still calls the shims the plan deletes. The harness is named in Testing strategy but not in Files to modify; `make test-lib-quiet` will break unless case 11 is removed or rewritten.
+
+2. **correctness** — `skills/implement/SKILL.md:1378-1397`: After collapsing the Step 8 fence, L1378 still tells the orchestrator to parse `EXIT_CODE` from `$LARCH_STATUS_FILE`, and L1397 still distinguishes `monitor_rc` from writer stalls. `ship-pr.sh` does not populate `LARCH_STATUS_FILE`, and Stage 3 already made the done trap a no-op. Extend the SKILL edit to use foreground exit code + `ship-pr-state.sh` only.
+
+3. **architecture** — `skills/implement/references/stall-recovery.md:6-53`: The plan scopes this file as one Family-B fence collapse, but the file is procedural prose (monitor pairs, six `LARCH_*` paths, `breadcrumb-monitor.sh` failure surface, Safety Constraint line 53). Without a broader trim, Step 18a redispatch and the grep gate stay inconsistent with Stage 4.
+
+4. **risk-integration** — `plan.txt:137-143`: The mandatory zero-hit grep list will fail on harness/doc files not listed under Files to modify—notably `skills/design/scripts/test-assess-plan-round.sh` (env name `LARCH_BREADCRUMB_MONITOR_SH` matches the `breadcrumb-monitor` pattern), design/review/implement test `unset` barriers, and `rebase-rebump-subprocedure.md:189-192` (`LARCH_PAIRED_PID_FILE` / monitor pairing note). Enumerate them in the plan or adjust grep patterns.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+
+Failed with exit code 1 after 10s. Output size: 0 bytes.
+

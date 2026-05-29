@@ -1,0 +1,30 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-pragmatic-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 10s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-pragmatic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-lib-quiet.sh:167-171	Plan lists make test-lib-quiet in Testing strategy but not in Files to modify; case 11 still invokes removed shims	Final grep gate requires zero larch_quiet_append_done_trap / larch_quiet_write_paired_pid_file; test-lib-quiet.sh fails grep and exercises deleted symbols	Add scripts/test-lib-quiet.sh to Files to modify: drop or rewrite case 11 after shim removal
+2	in_scope	important	correctness	scripts/test-collect-agent-results.sh:211-222	Plan only updates the Stage-3 comment; C_DONE still exports LARCH_DONE_SENTINEL and LARCH_STATUS_FILE	Final grep gate forbids those env vars outside allowed paths; make test-collect-agent-results may pass while repo grep fails	Remove sentinel/status env from C_DONE or rewrite the case for plain foreground collector behavior only
+3	in_scope	important	correctness	skills/implement/SKILL.md:1378-1397	Step 8+ prose still routes on LARCH_STATUS_FILE monitor_rc writer_rc and breadcrumb-monitor failures after fences become plain foreground	Orchestrator may parse a status file the trap no longer writes or treat monitor infrastructure failures as ship-pr stalls	Add explicit Step 8/18a prose update: use foreground exit code and ship-pr-state.sh keys only; drop monitor wrapper routing
+4	in_scope	important	risk-integration	skills/implement/references/stall-recovery.md:5-53	skills/review/references/heavy-worker.md:55	skills/shared/voting-protocol.md:184	skills/design/SKILL.md:668	skills/implement/references/rebase-rebump-subprocedure.md:189-192	Plan says collapse Family-B fence but these paths are prose-only (or mis-targeted file for dispatch-plan-voters); grep gate will still hit breadcrumb-monitor LARCH_PAIRED_PID_FILE must be paired with	Implementer completes fence collapse yet final grep or stall-recovery dispatch guidance stays wrong	Expand each listed file entry to trim surviving prose (foreground collector / plain ship-pr / ci-wait sync) not only fences
+5	in_scope	important	correctness	scripts/ship-pr.md:183-185	Top-level Family B / LARCH_PAIRED_PID_FILE note not in plan file list	Grep gate matches LARCH_PAIRED_PID_FILE; doc contradicts post-Stage-4 model	Add scripts/ship-pr.md to Files to modify: reword nested ci-wait note without paired-PID / Family-B monitor vocabulary
+6	in_scope	important	architecture	skills/implement/SKILL.md:390-1280	skills/design/SKILL.md:362-1038	Nine # Foreground required: see BASH_AUTHORING.md §4 anchors survive §4 deletion; plan scopes implement/design edits to Family-B fence collapse only	Final grep requires zero BASH_AUTHORING.md §4; anchors become dead pointers	When deleting BASH_AUTHORING.md §4 add explicit step to retarget or remove non-Family-B foreground fence comments in both SKILL files
+
+**1. Test harnesses omitted from the change set** (`scripts/test-lib-quiet.sh:167-171`, `scripts/test-collect-agent-results.sh:211-222`). The plan’s final grep gate forbids `larch_quiet_append_done_trap`, `larch_quiet_write_paired_pid_file`, `LARCH_DONE_SENTINEL`, and `LARCH_STATUS_FILE`, but only `test-collect-agent-results.sh` appears under Files to modify—and only for a comment refresh. Case 11 in `test-lib-quiet.sh` still calls both shims; C_DONE still exports sentinel/status env vars the collector no longer uses.
+
+**2. Step 8 orchestration prose not tied to fence collapse** (`skills/implement/SKILL.md:1378-1397`, plus related blocks at ~981, ~762). Collapsing Family-B fences to plain foreground calls does not update instructions to parse `EXIT_CODE` from `$LARCH_STATUS_FILE` or branch on `monitor_rc` vs `writer_rc`. After Stage 3, the done trap is a no-op; after Stage 4, the monitor wrapper is gone—this prose becomes actively misleading for stall and resume routing.
+
+**3. “Collapse fence” entries that are prose-only or mis-targeted** (`stall-recovery.md`, `heavy-worker.md`, `voting-protocol.md:184`, `design/SKILL.md:668`, `rebase-rebump-subprocedure.md:189-192`). `stall-recovery.md` and `heavy-worker.md` have no `breadcrumb-monitor.sh` fence to collapse—only dispatch/resume prose. `voting-protocol.md` does not host the `dispatch-plan-voters.sh` fence (that lives in `plan-review.md`); line 184 still mandates `run_in_background` + monitor pairing. `design/SKILL.md:668` is free-standing prose outside the seven collector-fence refs. `rebase-rebump-subprocedure.md` has no ci-wait/ship-pr monitor fence but still documents `LARCH_PAIRED_PID_FILE` / `breadcrumb-monitor.sh` (grep gate hit).
+
+**4. `scripts/ship-pr.md` grep survivor** (`183-185`). Documents top-level Family B and `LARCH_PAIRED_PID_FILE` removal in Stage 3; not listed in Files to modify. Will fail the planned repo-wide grep unless trimmed.
+
+**5. `BASH_AUTHORING.md §4` foreground anchors** (`skills/implement/SKILL.md` seven `# Foreground required` lines; `skills/design/SKILL.md:362`, `1038`). Deleting §4 is in scope; retargeting these non–Family-B fence comments is not. The testing grep gate requires zero `BASH_AUTHORING.md §4` hits—implementers need an explicit step beyond Family-B fence collapse.
+
+[OUT_OF_SCOPE] `docs/configuration-and-permissions.md` — plan’s conditional trim appears unnecessary today (no `LARCH_BREADCRUMB_*` live-stream env docs found; only unrelated “step breadcrumb” wording at ~229).
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.diag)
+
+Failed with exit code 1 after 10s. Output size: 0 bytes.
+

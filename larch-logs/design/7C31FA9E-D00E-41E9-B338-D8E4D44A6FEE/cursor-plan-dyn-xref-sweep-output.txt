@@ -1,0 +1,38 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:139	Rebase Checkpoint Macro still cites deleted `scripts/lint-foreground-markers.sh` denylist	Post-PR operators follow a dead script path for foreground-marker rules	Add an explicit implement-SKILL edit to drop or replace the L139 denylist pointer (e.g. point at `rebase-checkpoint-probe.md` only)
+2	in_scope	important	correctness	skills/implement/SKILL.md:390,644,800,947,1217,1245,1280; skills/design/SKILL.md:362,1038	Plan mandates removing `# Background pair required: see BASH_AUTHORING.md §4` but not the `# Foreground required: see BASH_AUTHORING.md §4` variant	Mechanical pass leaves §4 anchors in non–Family-B fences; grep gate may catch late but plan step 2 underspecifies the comment family	Extend the implement/design SKILL edit bullets to delete or retarget all `BASH_AUTHORING.md §4` in-fence comments, not only Background-pair lines
+3	in_scope	important	integration	skills/implement/references/stall-recovery.md:6,23-24,53	Plan says “Collapse the Family-B fence (1 ref)” but file has prose-only background+monitor / `breadcrumb-monitor.sh` / six-path wiring, no fence	Stall-recovery dispatch prose still instructs deleted monitor pairing and monitor-failure routing after Stage 4	Add an explicit stall-recovery trim: Contract L6, Procedure `step5-review`/`step8-shippr` bullets, Safety L53 — plain foreground + `ship-pr-state.sh` / Bash exit codes only
+4	in_scope	important	integration	skills/review/references/heavy-worker.md:55	Plan says “Collapse the Family-B fence (1 ref)” but Wait Discipline is prose-only `breadcrumb-monitor.sh` pairing	No fence to collapse; heavy-worker subagent contract keeps deleted wait mechanism	Rewrite L55 to require plain foreground `collect-agent-results.sh` (or `<task-notification>` where applicable); drop monitor pairing sentence
+5	in_scope	latent	correctness	skills/implement/references/rebase-rebump-subprocedure.md:189-192	`LARCH_PAIRED_PID_FILE` / `breadcrumb-monitor.sh` explanatory prose outside the ci-wait fence	Plan highlights only fence collapse; L189-192 can survive until grep gate	Fold into the rebase-rebump bullet: reframe ci-wait as nested synchronous under `ship-pr.sh` without monitor/paired-PID vocabulary
+6	out_of_scope	nit	architecture	scripts/implement-bootstrap.md:163	Stale `lint-foreground-markers.sh` DENYLIST pointer after Stage 3 deletion	Contributors bootstrapping implement may search for a removed linter	Add a one-line bootstrap trim in a follow-up or widen Stage 4 public-doc sweep
+7	out_of_scope	nit	correctness	scripts/relevant-checks.sh:137	Stale `# lint-foreground-markers: ok` comment on collect-agent-results routing	Misleading grep hits for removed linter	Remove or retarget the comment when touching relevant-checks (optional nit; not blocking Stage 4 grep gate)
+
+**1. [correctness] `skills/implement/SKILL.md:139` — dead denylist pointer**
+
+The Rebase Checkpoint Macro still says foreground markers + denylist come from `scripts/lint-foreground-markers.sh`, which Stage 3 deleted. The plan rewrites implement fences and NEVER rules but never calls out L139.
+
+**2. [correctness] `# Foreground required` §4 comments omitted from plan wording**
+
+Implement and design SKILLs still carry `# Foreground required: see BASH_AUTHORING.md §4` at the line ranges above. The plan only names `# Background pair required` removal for implement; design is covered only by generic “collapse fences.” A fence-only pass can miss these anchors until the final grep.
+
+**3. [integration] `skills/implement/references/stall-recovery.md` — prose-only monitor contract**
+
+There is no Family-B fence here. Contract L6, Procedure L23–24, and Safety L53 still require the background+monitor pair, six `LARCH_*` paths, and `breadcrumb-monitor.sh` infrastructure-failure routing. The plan’s “1 ref” fence collapse does not map to this file.
+
+**4. [integration] `skills/review/references/heavy-worker.md:55` — prose-only monitor contract**
+
+Same pattern: Wait Discipline mandates `collect-agent-results.sh` + `breadcrumb-monitor.sh` with no matching fence in the file.
+
+**5. [latent] `skills/implement/references/rebase-rebump-subprocedure.md:189-192`**
+
+Explanatory paired-PID / monitor prose remains after the planned ci-wait/ship-pr fence work. The final grep gate should force cleanup; the plan should still name this prose explicitly so the rebase-rebump edit is not fence-only.
+
+**[OUT_OF_SCOPE] `scripts/implement-bootstrap.md:163`** — `lint-foreground-markers.sh` DENYLIST reference; not on the plan file list.
+
+**[OUT_OF_SCOPE] `scripts/relevant-checks.sh:137`** — stale `lint-foreground-markers` comment; not on the plan file list (nit).
+
+**AGENTS.md L57–58 (exonerated):** The plan trims the Family B exception, drops `BASH_AUTHORING.md §4`, `scripts/breadcrumb-monitor.md`, and `make lint-foreground*`, and restates long-script completion via `<task-notification>`. `scripts/test-implement-anti-polling-rule.sh` pins only the opening polling-ban literals (`Don't spawn a Monitor or a Bash`, etc.), not the deleted tail — so the rewrite should not break CI if executed as written.
+
+**`.claude/rules/*.md`:** No hits for the searched literals.
+
+**`larch-logs/**` and `CHANGELOG.md`:** Historical hits only; the plan’s grep gate excludes them.
