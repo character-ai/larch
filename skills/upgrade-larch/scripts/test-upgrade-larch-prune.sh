@@ -188,6 +188,17 @@ run_case() {
     cat > "$state_file" <<STATE
 INSTALLED_VERSION="${INITIAL_INSTALLED_VERSION:-}"
 STATE
+    if [[ -n "${INSTALLED_PLUGINS_VERSION:-}" ]]; then
+        cat > "$home/.claude/plugins/installed_plugins.json" <<JSON
+{
+  "plugins": {
+    "larch@larch-local": {
+      "version": "${INSTALLED_PLUGINS_VERSION}"
+    }
+  }
+}
+JSON
+    fi
     for version in ${CACHED_VERSIONS:-}; do
         mkdir -p "$cache_root/$version"
     done
