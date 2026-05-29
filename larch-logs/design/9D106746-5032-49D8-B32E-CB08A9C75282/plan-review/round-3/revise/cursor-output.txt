@@ -1,0 +1,186 @@
+Incorporating the reviewer finding: checking the sibling contract doc so the plan diff is accurate.
+Building the unified diff that adds the sibling contract doc per FINDING_1.
+--- a/plan.txt
++++ b/plan.txt
+@@ -58,6 +58,11 @@
+ - Remove `cancelled-tier-gate` from the accepted-`--outcome` case branch. The gate (its only producer) is gone, so the outcome is dead.
+ 
+ ### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
++- Empty-mode default block: swap `SUMMARY_OUTCOME=cancelled-tier-gate` for a surviving early-cancellation outcome (`cancelled-sprawl`); update the `## /design run ... — cancelled-...` title grep to match.
++- All-outcomes acceptance loop: remove the `cancelled-tier-gate` entry.
++
++### UPDATED: `skills/design/scripts/render-final-summary.md`
++- **Callers** header count: decrement from twelve to eleven when removing the retired Step 0b caller.
++- Step 0b callers bullet: remove `tier-gate cancel` (and its comma); keep title-filter, clarify exit, and already-planned cancel.
++- `SUMMARY_OUTCOME` / cancelled-* note (~line 20): align with the post-retirement outcome set — no `cancelled-tier-gate`; same token set as `render-final-summary.sh` allowlist and SKILL.md Final summary enum.
++
++### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
+ - Empty-mode default block: swap `SUMMARY_OUTCOME=cancelled-tier-gate` for a surviving early-cancellation outcome (`cancelled-sprawl`); update the `## /design run ... — cancelled-...` title grep to match.
+ - All-outcomes acceptance loop: remove the `cancelled-tier-gate` entry.
+ 
+@@ -88,7 +93,7 @@
+ - Single-tier-flag model. The orchestrator resolves `design_classification` during flag parsing: HARD when `--hard` is present, SIMPLE otherwise. There is no interactive tier gate.
+ - Disallowed-flag rejection: rely on a generic "unrecognized or disallowed leading public `--` flag is a hard error before Step 0" rule so retired argv tokens are never swallowed as positional/verbal feature text. No removed-flag-specific message — honors complete excision of the retired token from the live surface while still preventing the footgun.
+ - Tier semantics are unchanged; only the default and the flag surface move. All SIMPLE-branch prose, the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel, and per-tier emphasis stay.
+-- `cancelled-tier-gate` retirement is a bounded consequence of the Q1 gate removal. The gate is the outcome's only producer (verified), so the outcome becomes dead. Retire it across the SKILL enum, the renderer allowlist, that renderer's test, and the run-summary doc table to keep the outcome enum consistent (SKILL ↔ script ↔ doc ↔ test). If reviewers prefer strict minimalism, this retirement is the one separable sub-change.
++- `cancelled-tier-gate` retirement is a bounded consequence of the Q1 gate removal. The gate is the outcome's only producer (verified), so the outcome becomes dead. Retire it across the SKILL enum, the renderer allowlist, the renderer sibling contract doc, that renderer's test, and the run-summary doc table to keep the outcome enum consistent (SKILL ↔ script ↔ sibling `.md` ↔ run-summary doc ↔ test). If reviewers prefer strict minimalism, this retirement is the one separable sub-change.
+ - Run-params layer is untouched. `write-run-params.sh` enum-validates only classification/budgets; `--reason` and `--source` are free text; its tests use `--hard` fixtures; `read-design-classification.sh` reads the SIMPLE/HARD enum. Only the SKILL default-Simple `reason` string changes; `source=caller-forwarded` stays (it describes SKILL-to-script forwarding, still accurate).
+ - Keep the argument-hint and the flag table in sync; the skill-md flag-signature lint cross-validates them, and removing the retired tier flag from both preserves consistency.
+ 
+@@ -104,7 +109,7 @@
+ ## Failure modes
+ 1. Incomplete removal — a stale retired-flag literal lingers in a doc or test. Earliest signal: the completeness grep gate or `test-design-structure.sh`. Mitigation: run the completeness grep before finishing.
+ 2. Test pins drift from prose — `test-design-structure.sh`, `test-design-driver.sh`, or `test-render-final-summary.sh` fail in CI. Earliest signal: `make lint` / the named harnesses. Mitigation: edit the three test files in lock-step with the prose.
+-3. `cancelled-tier-gate` retired in the renderer allowlist but still emitted somewhere — the renderer rejects the outcome. Earliest signal: a design run that reaches the (removed) gate. Mitigation: confirm the gate is the sole producer (verified) and is fully removed.
++3. `cancelled-tier-gate` retired in the renderer allowlist but still documented or emitted — the renderer rejects the outcome, or the sibling contract doc still lists `tier-gate cancel`. Earliest signal: a design run that reaches the (removed) gate, or stale prose in `render-final-summary.md`. Mitigation: confirm the gate is the sole producer (verified), remove it fully from SKILL and scripts, and align `render-final-summary.md` Callers / `SUMMARY_OUTCOME` notes with the post-retirement set.
+ 4. Stale Gate C tier-gate contrast — `approval-gates.md` still documents Step 0 tier-gate `Other` as a terminal cancel. Earliest signal: the new structure-test `absent` pin or a live-surface grep for `Step 0 tier-gate`. Mitigation: rewrite the Gate C `Other` paragraph per the approval-gates edit above.
+ 
+ ## Testing strategy
+@@ -112,9 +117,10 @@
+ - `bash skills/design/scripts/test-design-driver.sh` — passes with the removed-tier table-row assertion removed.
+ - `bash skills/design/scripts/test-render-final-summary.sh` — passes with `cancelled-tier-gate` retired.
+ - `bash scripts/test-write-run-params.sh` — unchanged; must still pass.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — repo-wide lint, including `agent-lint`, the skill-md flag-signature lint, markdownlint, and drift checks.
++- Contract doc: `skills/design/scripts/render-final-summary.md` Callers bullet has no `tier-gate cancel`; header count is eleven; cancelled-* note matches SKILL and shell allowlist.
+ - Completeness gate (manual): live-surface grep for the retired tier argv token (same exclusions as #3176); must return no rows.
+ 
+-diff_lines: 105
++diff_lines: 114
+
+Fixing a duplicate section introduced in the diff.
+--- a/plan.txt
++++ b/plan.txt
+@@ -58,6 +58,11 @@
+ ### UPDATED: `skills/design/scripts/render-final-summary.sh`
+ - Remove `cancelled-tier-gate` from the accepted-`--outcome` case branch. The gate (its only producer) is gone, so the outcome is dead.
+ 
++### UPDATED: `skills/design/scripts/render-final-summary.md`
++- **Callers** header count: decrement from twelve to eleven when removing the retired Step 0b caller.
++- Step 0b callers bullet: remove `tier-gate cancel` (and its comma); keep title-filter, clarify exit, and already-planned cancel.
++- `SUMMARY_OUTCOME` / cancelled-* note (~line 20): align with the post-retirement outcome set — no `cancelled-tier-gate`; same token set as `render-final-summary.sh` allowlist and SKILL.md Final summary enum.
++
+ ### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
+ - Empty-mode default block: swap `SUMMARY_OUTCOME=cancelled-tier-gate` for a surviving early-cancellation outcome (`cancelled-sprawl`); update the `## /design run ... — cancelled-...` title grep to match.
+ - All-outcomes acceptance loop: remove the `cancelled-tier-gate` entry.
+@@ -88,7 +93,7 @@
+ - Single-tier-flag model. The orchestrator resolves `design_classification` during flag parsing: HARD when `--hard` is present, SIMPLE otherwise. There is no interactive tier gate.
+ - Disallowed-flag rejection: rely on a generic "unrecognized or disallowed leading public `--` flag is a hard error before Step 0" rule so retired argv tokens are never swallowed as positional/verbal feature text. No removed-flag-specific message — honors complete excision of the retired token from the live surface while still preventing the footgun.
+ - Tier semantics are unchanged; only the default and the flag surface move. All SIMPLE-branch prose, the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel, and per-tier emphasis stay.
+-- `cancelled-tier-gate` retirement is a bounded consequence of the Q1 gate removal. The gate is the outcome's only producer (verified), so the outcome becomes dead. Retire it across the SKILL enum, the renderer allowlist, that renderer's test, and the run-summary doc table to keep the outcome enum consistent (SKILL ↔ script ↔ doc ↔ test). If reviewers prefer strict minimalism, this retirement is the one separable sub-change.
++- `cancelled-tier-gate` retirement is a bounded consequence of the Q1 gate removal. The gate is the outcome's only producer (verified), so the outcome becomes dead. Retire it across the SKILL enum, the renderer allowlist, the renderer sibling contract doc, that renderer's test, and the run-summary doc table to keep the outcome enum consistent (SKILL ↔ script ↔ sibling `.md` ↔ run-summary doc ↔ test). If reviewers prefer strict minimalism, this retirement is the one separable sub-change.
+ - Run-params layer is untouched. `write-run-params.sh` enum-validates only classification/budgets; `--reason` and `--source` are free text; its tests use `--hard` fixtures; `read-design-classification.sh` reads the SIMPLE/HARD enum. Only the SKILL default-SIMPLE `reason` string changes; `source=caller-forwarded` stays (it describes SKILL-to-script forwarding, still accurate).
+ - Keep the argument-hint and the flag table in sync; the skill-md flag-signature lint cross-validates them, and removing the retired tier flag from both preserves consistency.
+ 
+@@ -104,7 +109,7 @@
+ ## Failure modes
+ 1. Incomplete removal — a stale retired-flag literal lingers in a doc or test. Earliest signal: the completeness grep gate or `test-design-structure.sh`. Mitigation: run the completeness grep before finishing.
+ 2. Test pins drift from prose — `test-design-structure.sh`, `test-design-driver.sh`, or `test-render-final-summary.sh` fail in CI. Earliest signal: `make lint` / the named harnesses. Mitigation: edit the three test files in lock-step with the prose.
+-3. `cancelled-tier-gate` retired in the renderer allowlist but still emitted somewhere — the renderer rejects the outcome. Earliest signal: a design run that reaches the (removed) gate. Mitigation: confirm the gate is the sole producer (verified) and is fully removed.
++3. `cancelled-tier-gate` retired in the renderer allowlist but still documented or emitted — the renderer rejects the outcome, or the sibling contract doc still lists `tier-gate cancel`. Earliest signal: a design run that reaches the (removed) gate, or stale prose in `render-final-summary.md`. Mitigation: confirm the gate is the sole producer (verified), remove it fully from SKILL and scripts, and align `render-final-summary.md` Callers / `SUMMARY_OUTCOME` notes with the post-retirement set.
+ 4. Stale Gate C tier-gate contrast — `approval-gates.md` still documents Step 0 tier-gate `Other` as a terminal cancel. Earliest signal: the new structure-test `absent` pin or a live-surface grep for `Step 0 tier-gate`. Mitigation: rewrite the Gate C `Other` paragraph per the approval-gates edit above.
+ 
+ ## Testing strategy
+@@ -112,9 +117,10 @@
+ - `bash skills/design/scripts/test-design-driver.sh` — passes with the removed-tier table-row assertion removed.
+ - `bash skills/design/scripts/test-render-final-summary.sh` — passes with `cancelled-tier-gate` retired.
+ - `bash scripts/test-write-run-params.sh` — unchanged; must still pass.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — repo-wide lint, including `agent-lint`, the skill-md flag-signature lint, markdownlint, and drift checks.
++- Contract doc: `skills/design/scripts/render-final-summary.md` Callers bullet has no `tier-gate cancel`; header count is eleven; cancelled-* note matches SKILL and shell allowlist.
+ - Completeness gate (manual): live-surface grep for the retired tier argv token (same exclusions as #3176); must return no rows.
+ 
+-diff_lines: 105
++diff_lines: 113
+
+Verifying line count: original 105 + 5 new section + 0 approach (same lines, longer text) + 0 failure (same) + 1 testing = 111? 
+
+Added lines:
+- blank before new section? In diff I have +5 lines for section (heading + 3 bullets + blank after sh section is context)
+Actually:
++ ### UPDATED: render-final-summary.md
++ - Callers...
++ - Step 0b...
++ - SUMMARY_OUTCOME...
+
+That's 4 content lines + the section needs a blank line before it in "Files" - the diff shows insertion after render-final-summary.sh block without extra blank in files list - other sections don't have blank between them in original.
+
++5 lines in Files section (1 heading + 3 bullets - wait that's 4 lines)
+
+```
++### UPDATED: `skills/design/scripts/render-final-summary.md`
++- **Callers** header count: ...
++- Step 0b callers bullet: ...
++- `SUMMARY_OUTCOME` / cancelled-* note ...
+```
+
+4 lines added to Files section
+
+Approach: same line count (1 line replaced)
+Failure 3: same line count  
+Testing: +1 line
+
+Total: 105 + 4 + 1 = 110, not 113.
+
+Let me recount original plan lines from user message more carefully...
+
+Actually the diff_lines in plan might mean something else - like the number of lines in the unified diff output? The user said "the revised plan must end with `diff_lines: <N>`" - in the original plan it was 105 which likely is total lines in plan document.
+
+105 original
++4 (new section - 4 lines)
++1 (testing bullet)
+= 110
+
+I should use diff_lines: 110 not 113.
+
+Wait - did approach/failure lines wrap to multiple lines? No, they're single line replacements.
+
+110 is correct.
+
+But let me also verify - is there a blank line between file sections in the original? Looking at original plan between render-final-summary.sh and test-render-final-summary.sh - no blank line between ### UPDATED sections.
+
+So +4 lines for new section.
+
+diff_lines: 110
+
+Correcting `diff_lines` to 110 (105 + 4 new section lines + 1 testing line).
+--- a/plan.txt
++++ b/plan.txt
+@@ -58,6 +58,11 @@
+ ### UPDATED: `skills/design/scripts/render-final-summary.sh`
+ - Remove `cancelled-tier-gate` from the accepted-`--outcome` case branch. The gate (its only producer) is gone, so the outcome is dead.
+ 
++### UPDATED: `skills/design/scripts/render-final-summary.md`
++- **Callers** header count: decrement from twelve to eleven when removing the retired Step 0b caller.
++- Step 0b callers bullet: remove `tier-gate cancel` (and its comma); keep title-filter, clarify exit, and already-planned cancel.
++- `SUMMARY_OUTCOME` / cancelled-* note (~line 20): align with the post-retirement outcome set — no `cancelled-tier-gate`; same token set as `render-final-summary.sh` allowlist and SKILL.md Final summary enum.
++
+ ### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
+ - Empty-mode default block: swap `SUMMARY_OUTCOME=cancelled-tier-gate` for a surviving early-cancellation outcome (`cancelled-sprawl`); update the `## /design run ... — cancelled-...` title grep to match.
+ - All-outcomes acceptance loop: remove the `cancelled-tier-gate` entry.
+@@ -88,7 +93,7 @@
+ - Single-tier-flag model. The orchestrator resolves `design_classification` during flag parsing: HARD when `--hard` is present, SIMPLE otherwise. There is no interactive tier gate.
+ - Disallowed-flag rejection: rely on a generic "unrecognized or disallowed leading public `--` flag is a hard error before Step 0" rule so retired argv tokens are never swallowed as positional/verbal feature text. No removed-flag-specific message — honors complete excision of the retired token from the live surface while still preventing the footgun.
+ - Tier semantics are unchanged; only the default and the flag surface move. All SIMPLE-branch prose, the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel, and per-tier emphasis stay.
+-- `cancelled-tier-gate` retirement is a bounded consequence of the Q1 gate removal. The gate is the outcome's only producer (verified), so the outcome becomes dead. Retire it across the SKILL enum, the renderer allowlist, that renderer's test, and the run-summary doc table to keep the outcome enum consistent (SKILL ↔ script ↔ doc ↔ test). If reviewers prefer strict minimalism, this retirement is the one separable sub-change.
++- `cancelled-tier-gate` retirement is a bounded consequence of the Q1 gate removal. The gate is the outcome's only producer (verified), so the outcome becomes dead. Retire it across the SKILL enum, the renderer allowlist, the renderer sibling contract doc, that renderer's test, and the run-summary doc table to keep the outcome enum consistent (SKILL ↔ script ↔ sibling `.md` ↔ run-summary doc ↔ test). If reviewers prefer strict minimalism, this retirement is the one separable sub-change.
+ - Run-params layer is untouched. `write-run-params.sh` enum-validates only classification/budgets; `--reason` and `--source` are free text; its tests use `--hard` fixtures; `read-design-classification.sh` reads the SIMPLE/HARD enum. Only the SKILL default-SIMPLE `reason` string changes; `source=caller-forwarded` stays (it describes SKILL-to-script forwarding, still accurate).
+ - Keep the argument-hint and the flag table in sync; the skill-md flag-signature lint cross-validates them, and removing the retired tier flag from both preserves consistency.
+ 
+@@ -104,7 +109,7 @@
+ ## Failure modes
+ 1. Incomplete removal — a stale retired-flag literal lingers in a doc or test. Earliest signal: the completeness grep gate or `test-design-structure.sh`. Mitigation: run the completeness grep before finishing.
+ 2. Test pins drift from prose — `test-design-structure.sh`, `test-design-driver.sh`, or `test-render-final-summary.sh` fail in CI. Earliest signal: `make lint` / the named harnesses. Mitigation: edit the three test files in lock-step with the prose.
+-3. `cancelled-tier-gate` retired in the renderer allowlist but still emitted somewhere — the renderer rejects the outcome. Earliest signal: a design run that reaches the (removed) gate. Mitigation: confirm the gate is the sole producer (verified) and is fully removed.
++3. `cancelled-tier-gate` retired in the renderer allowlist but still documented or emitted — the renderer rejects the outcome, or the sibling contract doc still lists `tier-gate cancel`. Earliest signal: a design run that reaches the (removed) gate, or stale prose in `render-final-summary.md`. Mitigation: confirm the gate is the sole producer (verified), remove it fully from SKILL and scripts, and align `render-final-summary.md` Callers / `SUMMARY_OUTCOME` notes with the post-retirement set.
+ 4. Stale Gate C tier-gate contrast — `approval-gates.md` still documents Step 0 tier-gate `Other` as a terminal cancel. Earliest signal: the new structure-test `absent` pin or a live-surface grep for `Step 0 tier-gate`. Mitigation: rewrite the Gate C `Other` paragraph per the approval-gates edit above.
+ 
+ ## Testing strategy
+@@ -112,9 +117,10 @@
+ - `bash skills/design/scripts/test-design-driver.sh` — passes with the removed-tier table-row assertion removed.
+ - `bash skills/design/scripts/test-render-final-summary.sh` — passes with `cancelled-tier-gate` retired.
+ - `bash scripts/test-write-run-params.sh` — unchanged; must still pass.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — repo-wide lint, including `agent-lint`, the skill-md flag-signature lint, markdownlint, and drift checks.
++- Contract doc: `skills/design/scripts/render-final-summary.md` Callers bullet has no `tier-gate cancel`; header count is eleven; cancelled-* note matches SKILL and shell allowlist.
+ - Completeness gate (manual): live-surface grep for the retired tier argv token (same exclusions as #3176); must return no rows.
+ 
+-diff_lines: 105
++diff_lines: 110

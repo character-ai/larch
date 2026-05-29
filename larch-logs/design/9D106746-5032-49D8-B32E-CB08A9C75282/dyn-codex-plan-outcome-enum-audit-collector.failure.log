@@ -1,0 +1,21 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-outcome-enum-audit-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 21s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-outcome-enum-audit-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:12,26,35,85-86	Proposed SKILL.md / flags.md text and test-design-structure.sh pin spell literal `--simple` while the plan also requires zero live-surface `--simple` matches	Implementer cannot satisfy both the completeness grep and the listed prose edits; a new structure-test pin for "`--simple`-rejected" prose would itself fail the gate	Keep rejection behavior generic (any unrecognized leading `--` flag is a hard error before Step 0) with no `--simple` literal in runtime/docs/tests; pin default-SIMPLE + `--hard` only in test-design-structure.sh
+
+1. **[correctness]** `plan.txt:12,26,35,85-86` — The plan requires removing every live-surface mention of `--simple` (completeness grep at lines 85–86) but the proposed `skills/design/SKILL.md` Flags edit (line 12), `skills/design/references/flags.md` mutual-exclusion edit (line 26), and `scripts/test-design-structure.sh` replacement pin (line 35, “`--simple`-rejected-as-disallowed-flag prose”) all reintroduce the literal substring. That contradicts Approach Q2 (line 74: no `--simple`-specific message) and makes the stated manual gate unrunnable as written. **Revision:** describe argv rejection only as “any disallowed leading `--` token” (no examples naming `--simple`); assert default SIMPLE + sole `--hard` tier flag in structure tests without embedding the removed flag name.
+
+**`cancelled-tier-gate` audit (live surface, excluding `larch-logs/**`):** Grep finds the string only in the four retirement targets the plan names — `skills/design/SKILL.md:268` (sole producer: `export SUMMARY_OUTCOME=cancelled-tier-gate`), `skills/design/SKILL.md:356` (enum), `skills/design/scripts/render-final-summary.sh:51` (consumer allowlist), `skills/design/scripts/test-render-final-summary.sh:474,483,527` (harness), `scripts/render-run-summary.md:91` (doc table). No extra live producers or consumers. Retiring gate + enum + renderer + test + run-summary doc is internally consistent; `cancelled-tier-gate` is the only `SUMMARY_OUTCOME` value whose producer is solely the Step 0b tier gate (others are emitted from multiple SKILL/reference paths, e.g. `cancelled-sprawl` in `skills/design/references/discussion-rounds.md:27,48`). Swapping the empty-mode fixture to `cancelled-sprawl` is sound.
+
+[OUT_OF_SCOPE] `skills/design/scripts/render-final-summary.md:14` — Callers list still includes “tier-gate cancel”; after gate removal that caller path is gone. Plan does not list this file; consider dropping or rewording when touching summary contracts.
+
+[OUT_OF_SCOPE] `skills/design/references/approval-gates.md:191` — Gate C `Other` prose still contrasts with “Step 0 tier-gate `Other`”; tier gate removal makes that comparison stale. Plan only updates tier flag spellings elsewhere in that file (lines 29–30).
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-outcome-enum-audit-output.txt.diag)
+
+Failed with exit code 1 after 21s. Output size: 0 bytes.
+

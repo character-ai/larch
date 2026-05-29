@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:33-37	Plan updates arg-hint and duplicate-tier pins but does not add an absent guard for retired Step 0b tier-gate prose in SKILL.md	Implementer can land default-SIMPLE pins and approval-gates absent Step 0 tier-gate while leaving skills/design/SKILL.md:268 AskUserQuestion tier gate and cancelled-tier-gate path; /design without --hard still prompts instead of defaulting	Extend test-design-structure.sh edits with absent "$SKILL_MD" '**Tier gate**' (or equivalent) plus contains for **Tier resolution** / default-tier reason string
+
+### FINDING 1: correctness — `scripts/test-design-structure.sh:33-37`
+
+The plan replaces duplicate-tier mutual-exclusion pins with default-SIMPLE and disallowed-flag needles, and adds an `approval-gates.md` absent pin for Step 0 tier-gate contrast prose. It does not add a matching **absent** pin for the producer block in `skills/design/SKILL.md` (sub-step 5 **Tier gate** / `AskUserQuestion` / `cancelled-tier-gate`). An incomplete edit can satisfy the new positive pins while leaving the interactive gate live, so `/design <issue>` still prompts for tier despite the default-SIMPLE intent.
+
+**Suggested revision:** In the `scripts/test-design-structure.sh` section, require `absent "$SKILL_MD" '**Tier gate**'` (or `cancelled-tier-gate` export prose) and `contains` for **Tier resolution** or `default tier: SIMPLE (no --hard)`.

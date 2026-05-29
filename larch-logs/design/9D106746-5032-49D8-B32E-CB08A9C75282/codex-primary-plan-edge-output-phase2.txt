@@ -1,0 +1,23 @@
+Reading the implementation plan and tracing cited paths in the codebase.
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:13,26,35-36,85-86	Completeness zero-grep for `--simple` conflicts with proposed SKILL/flags/test text that still names `--simple`	Implementer cannot satisfy both the manual gate (zero `--simple` hits) and pins for disallowed-flag prose that embed `--simple`; likely skips the grep or leaves stale strings	Adopt one contract: implicit rejection only (public argv whitelist omits `--simple`; no literal `--simple` in live prose/tests) and drop the zero-grep gate, OR keep the grep and use generic unknown-flag language everywhere with no `--simple` substring
+2	in_scope	important	risk-integration	skills/design/scripts/render-final-summary.md:14	`render-final-summary.md` still documents tier-gate cancel but is absent from the plan file list	After `cancelled-tier-gate` retirement, sibling doc still lists a removed Step 0b caller; violates script-md sibling sync and can mislead implementers auditing outcomes	Add `skills/design/scripts/render-final-summary.md` to Files to modify: remove tier-gate cancel from the callers list (and any `cancelled-tier-gate` mention if present elsewhere in that file)
+3	in_scope	important	correctness	skills/design/references/approval-gates.md:191	Stale Step 0 tier-gate `Other` contrast survives; plan only rewrites approval-gates.md:13,43	Post-change Gate C prose still claims distinction from a removed Step 0 tier-gate terminal cancel, confusing Gate C `Other` behavior for operators and reviewers	In the same approval-gates.md edit, delete or rewrite the sentence at :191 so it no longer references Step 0 tier-gate `Other`; Gate C `Other` behavior stands alone
+
+**1. Correctness — completeness grep vs explicit `--simple` rejection prose (important)**  
+The plan title and edge-case section require rejecting `/design --simple …`, while the completeness gate (plan lines 85–86) demands zero live-surface matches for the literal `--simple`. The same plan also directs SKILL.md, `flags.md`, and `test-design-structure.sh` to embed `--simple` in disallowed-flag / test-pin prose (lines 13, 26, 35–36). An implementer cannot satisfy all three without dropping one requirement. Minimum-change resolution: rely on the tightened public-argv whitelist (omit `--simple` from allowed flags) so rejection is implicit—matching the #3176 `--trivial` pattern—and do not name `--simple` in rejection copy or structure tests.
+
+**2. Risk-integration — missing `render-final-summary.md` sync (important)**  
+`render-final-summary.sh` and its test are in scope; the sibling doc at `skills/design/scripts/render-final-summary.md:14` still lists “tier-gate cancel” as a caller. The plan does not list this file (unlike the #3176 sibling-sync pattern). After outcome retirement, this doc becomes wrong and may be missed because the manual `--simple` grep does not cover “tier-gate” wording.
+
+**3. Correctness — `approval-gates.md` tier-gate `Other` reference (important)**  
+Planned approval-gates edits cover cross-tier flag spellings (lines 13, 43) but not line 191, which still contrasts Gate C `Other` with “Step 0 tier-gate `Other` (which is a terminal cancel).” Once sub-step 5 becomes non-interactive tier resolution, that comparison is false and can mis-route operator expectations at Gate C.
+
+**Exonerated (SIMPLE lane)**  
+- Prompt-only flag enforcement (no new shell validator): consistent with current `/design` argv model; not required for this flag-surface change.  
+- `/design --hard --hard` duplicate: single tier-flag type; out of scope for material correctness unless duplicate boolean flags are already normatively defined elsewhere.  
+- `design_classification_source=caller-forwarded` for default SIMPLE: telemetry wording only.  
+- Historical `larch-logs/**` `argv tier: --simple` in `run-params.json`: immutable artifacts, excluded by plan.  
+- Manual completeness grep not wired into `make lint`: forward-looking hygiene; not a correctness gap for this PR’s stated file set.

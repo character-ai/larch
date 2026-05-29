@@ -1,0 +1,26 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-pragmatic-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 20s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-pragmatic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:74-86 vs plan.txt:12,26,35	Completeness gate forbids any live `--simple` substring while other plan bullets require naming `--simple` for rejection prose and harness pins	Implementer cannot satisfy both zero-grep and pins like flags.md "including `--simple`" or test-design-structure `--simple`-rejected prose; risk of either grep failure or weak rejection docs	Pick one contract: (a) grep-clean surface with generic "unknown/disallowed public flag" only and pins on that wording, or (b) allow `--simple` only in negative-test/absent assertions with an explicit grep exclusion list; align SKILL, flags.md, and test-design-structure.sh to the chosen rule
+2	in_scope	important	correctness	skills/design/references/approval-gates.md:191	Plan updates approval-gates.md for tier flag spellings but not the Gate C paragraph that still contrasts Gate C `Other` with a removed Step 0 tier-gate terminal cancel	After tier-gate removal, operators/readers are told a Step 0 cancel path exists that no longer does; Gate C behavior doc is wrong	Add approval-gates.md:191 to the file list: drop or rewrite the "distinct from the Step 0 tier-gate `Other`" sentence now that tier resolution is non-interactive
+3	in_scope	nit	architecture	skills/design/scripts/render-final-summary.md:14	Outcome retirement list omits the renderer contract doc that still documents tier-gate cancel alongside script/run-summary updates	`cancelled-tier-gate` is removed from allowlist/tests but render-final-summary.md still lists tier-gate cancel as a Step 0b outcome	Extend the cancelled-tier-gate retirement bullet to update render-final-summary.md:14 (remove tier-gate cancel or replace with a surviving early-cancel outcome)
+4	in_scope	nit	correctness	plan.txt:81-82 vs skills/design/SKILL.md:130-189	Edge cases say reject `--simple` "before Step 0" but Step 0 fenced bash runs session-setup before Step 0b flag parse	Literal reading invites a new Pre-Step-0 gate (scope creep) or leaves rejection after tmpdir allocation ambiguous	Clarify rejection happens at Step 0b sub-step 1 public-flag parse (first orchestrator action after Step 0), not before the Step 0 session-setup fence
+
+**1. [correctness]** The plan’s “remove all mentions of `--simple`” completeness gate (`plan.txt:85-86`) conflicts with its own SKILL/flags/test instructions that still embed `--simple` for disallowed-flag behavior (`plan.txt:12`, `flags.md` mutual-exclusion bullet in `plan.txt:26`, `test-design-structure.sh` pin in `plan.txt:35`). An implementer cannot land both without violating one acceptance criterion.
+
+**2. [correctness]** `skills/design/references/approval-gates.md:191` still documents Gate C `Other` versus a Step 0 tier-gate terminal cancel. The plan only rewrites lines 13 and 43 in that file; after interactive tier selection is removed, this paragraph is stale and misleading.
+
+**3. [architecture]** `skills/design/scripts/render-final-summary.md:14` still lists “tier-gate cancel” while the plan retires `cancelled-tier-gate` across `render-final-summary.sh`, `test-render-final-summary.sh`, and `scripts/render-run-summary.md` only. The stated SKILL ↔ script ↔ doc ↔ test enum consistency is incomplete.
+
+**4. [correctness]** Edge cases require hard-rejecting `--simple` “before Step 0” (`plan.txt:81-82`), but the live skill runs `session-setup.sh` in the Step 0 fenced block before Step 0b flag parsing (`skills/design/SKILL.md:130-189`). Wording should target Step 0b sub-step 1 so implementers do not add a new Pre-Step-0 gate.
+
+[OUT_OF_SCOPE] Completeness grep for `--simple` is manual only (mirroring #3176’s `--trivial` gate) and is not registered in `Makefile` / `relevant-checks.sh`; future doc drift could pass CI while violating the plan’s acceptance check. Affected paths: `plan.txt:85-98`, `Makefile` (no matching target today).
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.diag)
+
+Failed with exit code 1 after 20s. Output size: 0 bytes.
+

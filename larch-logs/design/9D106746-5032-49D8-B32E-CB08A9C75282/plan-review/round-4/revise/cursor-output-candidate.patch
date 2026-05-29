@@ -1,0 +1,15 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -18,6 +18,7 @@
+ - Step 0b sub-step 6 tier mapping: reframe the `simple:` mapping as the default — `design_classification=SIMPLE`, `design_classification_reason="default tier: SIMPLE (no --hard)"`, `design_classification_source=caller-forwarded`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`. Keep the `hard:` mapping unchanged.
+ - Step 0b bash block: change the SIMPLE-branch `design_classification_reason` from the legacy argv-tier reason string to `"default tier: SIMPLE (no --hard)"`. The `if [[ "$design_classification" == SIMPLE ]] ... elif ... HARD` branch is otherwise unchanged (the orchestrator resolves the classification before this block).
++- **Final summary block `When` clause** (`### Final summary block`): replace `tier-flag mutual-exclusion abort` with `disallowed public argv abort before Step 0` (no `DESIGN_TMPDIR` yet).
+ - SUMMARY_OUTCOME enum (Final summary block orchestrator contract): remove `cancelled-tier-gate`.
+ - Resume-path skip list that names "tier gate": change "tier gate" to "tier resolution".
+ - Verify the Anti-halt reminder's sub-step transition list still matches the kept numbering; no step numbers change.
+@@ -110,4 +111,4 @@
+ - Contract doc: `skills/design/scripts/render-final-summary.md` Callers bullet has no `tier-gate cancel`; header count is eleven; cancelled-* note matches SKILL and shell allowlist.
+ - Completeness gate (manual): live-surface grep for the retired tier argv token (same exclusions as #3176); must return no rows.
+ 
+-diff_lines: 113
++diff_lines: 114
