@@ -12,8 +12,11 @@ Covered cases:
 - stamp-beats-unstamped-mtime: a stamped dir outranks an un-stamped dir with a newer directory mtime
 - mtime-fallback-unstamped: un-stamped dirs fall back to directory mtime for ordering
 - just-installed-seeded: the verified install target is retained even when its pre-install stamp would sort outside the cap
-- absent-target-fills-eight: a missing install-target cache dir does not consume a retention slot
+- install-then-prune-fills-eight: a successful install still prunes back to exactly eight cached dirs
+- absent-target-cache-dir-fills-eight: a missing install-target cache dir does not consume a retention slot
+- stamp-write-failure-existing-target: a failed target stamp write still retains the seeded existing target dir
 - target-in-top-eight-exact-count: when the install target is already among the newest eight, exactly eight dirs remain (no off-by-one to nine)
 - already-latest-prunes: idempotent already-latest path binds the installed version, refreshes its stamp, and prunes without reinstalling
+- legacy-unstamped-backfilled-before-prune: legacy dirs without `.larch-installed-at` are backfilled from directory mtime before prune ordering
 
 Edit in sync: update this harness, `upgrade-larch.sh`, `upgrade-larch.md`, `skills/upgrade-larch/SKILL.md`, `docs/installation-and-setup.md`, and `Makefile` when changing install-stamp pruning behavior or validation commands.

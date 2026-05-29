@@ -34,15 +34,21 @@ stat_mtime() {
 newest_activity_mtime() {
     local entry="$1"
     local newest path mt
+    local paths
 
     newest=$(stat_mtime "$entry")
+    if ! paths=$(find "$entry" -mindepth 1 -maxdepth 5 -print 2>/dev/null); then
+        larch_err "Warning: failed to scan session activity for '$entry'; skipping deletion."
+        return 1
+    fi
+
     while IFS= read -r path; do
         [ -n "$path" ] || continue
         mt=$(stat_mtime "$path")
         if [ "$mt" -gt "$newest" ]; then
             newest="$mt"
         fi
-    done < <(find "$entry" -mindepth 1 -maxdepth 5 2>/dev/null || true)
+    done <<< "$paths"
     printf '%s\n' "$newest"
 }
 
@@ -57,7 +63,11 @@ parse_retention_days() {
 }
 
 RETENTION_DAYS=$(parse_retention_days)
-NOW=$(date +%s 2>/dev/null || printf '0\n')
+NOW=$(date +%s 2>/dev/null || true)
+if ! [[ "$NOW" =~ ^[0-9]+$ ]]; then
+    larch_err "Error: failed to determine the current epoch time; refusing cleanup."
+    exit 1
+fi
 CUTOFF=$((NOW - RETENTION_DAYS * 86400))
 
 # --- Session count (informational only) ---------------------------------------
@@ -69,7 +79,7 @@ should_remove_by_age() {
     local entry="$1"
     local newest
 
-    newest=$(newest_activity_mtime "$entry")
+    newest=$(newest_activity_mtime "$entry") || return 1
     [ "$newest" -lt "$CUTOFF" ]
 }
 
@@ -91,6 +101,7 @@ emit_kv CACHE_REMOVED "$CACHE_REMOVED"
 
 # --- Clean /tmp larch patterns -------------------------------------------------
 TMP_REMOVED=0
+TMP_ROOT="${LARCH_TEST_TMP_ROOT:-/tmp}"
 TMP_PATTERNS=(
     "claude-implement-*"
     "claude-fix-issue-*"
@@ -114,7 +125,7 @@ TMP_PATTERNS=(
 )
 
 for pattern in "${TMP_PATTERNS[@]}"; do
-    for entry in /tmp/${pattern}; do
+    for entry in "$TMP_ROOT"/${pattern}; do
         [[ -e "$entry" || -L "$entry" ]] || continue
         [[ -d "$entry" ]] || continue
         if should_remove_by_age "$entry"; then

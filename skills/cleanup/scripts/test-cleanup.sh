@@ -10,13 +10,6 @@ SCRIPT="$REPO_ROOT/skills/cleanup/scripts/cleanup.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-cleanup.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
-# Host /tmp may contain many larch-pattern dirs; redirect the TMP scan to an
-# empty fixture root without changing production cleanup.sh.
-TEST_SCRIPT="$TMP/cleanup-under-test.sh"
-sed "s|for entry in /tmp/\${pattern}; do|for entry in \"\${LARCH_TEST_TMP_ROOT:-/tmp}/\${pattern}\"; do|g" \
-    "$SCRIPT" > "$TEST_SCRIPT"
-chmod +x "$TEST_SCRIPT"
-
 STALE_TS='200001010000'
 FRESH_TS='209901010000'
 
@@ -62,6 +55,45 @@ EOF
     chmod +x "$path"
 }
 
+write_stub_date_failure() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "+%s" ]]; then
+    exit 1
+fi
+exec /bin/date "$@"
+EOF
+    chmod +x "$path"
+}
+
+write_stub_find_failure() {
+    local path="$1"
+    local fail_target="$2"
+    cat > "$path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail_target="${fail_target}"
+target=""
+for arg in "\$@"; do
+    if [[ "\$arg" != -* ]]; then
+        target="\$arg"
+        break
+    fi
+done
+
+if [[ "\$target" == "\$fail_target" ]]; then
+    exit 1
+fi
+
+exec /usr/bin/find "\$@"
+EOF
+    chmod +x "$path"
+}
+
 run_cleanup() {
     local work="$1"
     local home="$work/home"
@@ -83,7 +115,7 @@ run_cleanup() {
             CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
             LARCH_QUIET_DISABLE=1 \
             LARCH_CLEANUP_RETENTION_DAYS="$retention" \
-            "$TEST_SCRIPT" 2>&1
+            "$SCRIPT" 2>&1
         )
     else
         CASE_OUTPUT=$(
@@ -93,7 +125,7 @@ run_cleanup() {
             LARCH_TEST_TMP_ROOT="$tmp_root" \
             CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
             LARCH_QUIET_DISABLE=1 \
-            "$TEST_SCRIPT" 2>&1
+            "$SCRIPT" 2>&1
         )
     fi
     CASE_RC=$?
@@ -132,6 +164,19 @@ run_cleanup "$work"
 [[ "$CASE_RC" -eq 0 ]] || fail "fresh-dir-kept exit $CASE_RC"
 [[ -d "$CASE_SESSIONS/fresh-session" ]] || fail "fresh-dir-kept should keep recent session dir"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "fresh-dir-kept CACHE_REMOVED"
+
+# --- stale-dir-with-keepalive-removed -----------------------------------------
+work="$TMP/stale-dir-with-keepalive-removed"
+mkdir -p "$work/xdg-cache/larch/sessions/stale-session"
+printf '# larch session identity (hook routing)\nCLONE_PATH=%s\nSESSION_ID=%s\n' \
+    "/tmp/repo" "stale-session" > "$work/xdg-cache/larch/sessions/stale-session/.larch-keepalive"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-session" \
+    "$work/xdg-cache/larch/sessions/stale-session/.larch-keepalive"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-dir-with-keepalive-removed exit $CASE_RC"
+[[ ! -d "$CASE_SESSIONS/stale-session" ]] || fail "stale-dir-with-keepalive-removed should delete stale keepalive dir"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "stale-dir-with-keepalive-removed CACHE_REMOVED"
 
 # --- stale-with-fresh-depth1-child --------------------------------------------
 work="$TMP/stale-with-fresh-depth1-child"
@@ -223,5 +268,41 @@ run_cleanup "$work"
 [[ "$CASE_RC" -eq 0 ]] || fail "live-symlink-kept exit $CASE_RC"
 [[ -L "$CASE_SESSIONS/current-design-env-live.sh" ]] || fail "live-symlink-kept should keep live symlink"
 assert_eq "$(kv_get SYMLINKS_REMOVED "$CASE_OUTPUT")" "0" "live-symlink-kept SYMLINKS_REMOVED"
+
+# --- stale-tmp-dir-removed ----------------------------------------------------
+work="$TMP/stale-tmp-dir-removed"
+mkdir -p "$work/tmp-root/claude-implement-fixture"
+touch -t "$STALE_TS" -- "$work/tmp-root/claude-implement-fixture"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-tmp-dir-removed exit $CASE_RC"
+[[ ! -d "$work/tmp-root/claude-implement-fixture" ]] || fail "stale-tmp-dir-removed should delete stale /tmp fixture"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "1" "stale-tmp-dir-removed TMP_REMOVED"
+
+# --- date-failure-errors ------------------------------------------------------
+work="$TMP/date-failure-errors"
+mkdir -p "$work/bin"
+write_stub_date_failure "$work/bin/date"
+PATH_PREFIX="$work/bin:"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -ne 0 ]] || fail "date-failure-errors should exit non-zero"
+assert_contains "$CASE_OUTPUT" "Error: failed to determine the current epoch time; refusing cleanup." "date-failure-errors stderr"
+unset PATH_PREFIX
+
+# --- find-failure-skips-deletion ----------------------------------------------
+work="$TMP/find-failure-skips-deletion"
+mkdir -p "$work/xdg-cache/larch/sessions/fail-find"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/fail-find"
+mkdir -p "$work/bin"
+write_stub_find_failure "$work/bin/find" "$work/xdg-cache/larch/sessions/fail-find"
+PATH_PREFIX="$work/bin:"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "find-failure-skips-deletion exit $CASE_RC"
+[[ -d "$CASE_SESSIONS/fail-find" ]] || fail "find-failure-skips-deletion should keep dir when find fails"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion CACHE_REMOVED"
+assert_contains "$CASE_OUTPUT" "Warning: failed to scan session activity for '$work/xdg-cache/larch/sessions/fail-find'; skipping deletion." "find-failure-skips-deletion warning"
+unset PATH_PREFIX
 
 printf 'PASS: test-cleanup.sh\n'

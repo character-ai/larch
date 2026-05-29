@@ -8,6 +8,11 @@ allowed-tools: Bash
 
 Remove stale larch session temp directories from `~/.cache/larch/sessions/` (the canonical location) and from `/tmp` (legacy fallback). Retention is age-based (`LARCH_CLEANUP_RETENTION_DAYS`, default 7): an entry is removed only when its newest activity (entry mtime or any descendant within depth 5) is older than the cutoff. Also reaps dangling `current-design-env-*.sh` symlinks in the sessions parent. Always runnable — multiple concurrent Claude sessions do not block cleanup.
 
+## NEVER
+
+- Never abort cleanup just because `SESSION_COUNT` is greater than `1`; the count is informational only.
+- Never invent removal counts if the cleanup script exits non-zero or omits any required stdout key.
+
 ## Flags
 
 - `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).

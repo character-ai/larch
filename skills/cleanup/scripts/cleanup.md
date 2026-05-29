@@ -7,7 +7,9 @@
 **Invariants**:
 - Always runnable: `pgrep -x claude` count is emitted for operator visibility only; the script never aborts because multiple Claude processes are running.
 - Age-based retention: removes entries under `${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions/` and matching `/tmp` larch patterns when newest activity is older than the retention cutoff (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Invalid env values warn on stderr and fall back to 7.
+- Clock failures are fatal: if `date +%s` does not yield a numeric epoch, cleanup exits non-zero and removes nothing.
 - Activity scan: `newest_activity_mtime` compares the entry's own mtime with the newest mtime among descendants found by `find "$entry" -mindepth 1 -maxdepth 5`.
+- Activity-scan failures fail closed per entry: if `find` cannot enumerate an entry's descendants, cleanup warns and skips deleting that entry.
 - Does not skip entries because they contain `.larch-keepalive`; hook routing uses the slim identity record (`CLONE_PATH`, `SESSION_ID`) but cleanup is age-only.
 - Reaps broken `current-design-env-*.sh` symlinks in the sessions parent (`-type l` and `! -e`).
 - Never removes an entry it cannot prove exists (`[[ -e "$entry" || -L "$entry" ]]` guard).

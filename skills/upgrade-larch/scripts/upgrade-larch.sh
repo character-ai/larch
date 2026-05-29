@@ -109,6 +109,31 @@ write_install_stamp() {
     fi
 }
 
+backfill_legacy_install_stamps() {
+    local dirs=()
+    local dir version_dir version ts
+
+    shopt -s nullglob
+    dirs=("$LARCH_CACHE_DIR"/[0-9]*/)
+    shopt -u nullglob
+
+    for dir in "${dirs[@]}"; do
+        [ -d "$dir" ] || continue
+        version_dir="${dir%/}"
+        version=$(basename "$version_dir")
+        is_safe_version "$version" || continue
+        if read_install_stamp "$version_dir" >/dev/null 2>&1; then
+            continue
+        fi
+        ts=$(stat_mtime "$version_dir")
+        [[ "$ts" =~ ^[0-9]+$ ]] || continue
+        [ "$ts" -gt 0 ] || continue
+        if ! printf '%s\n' "$ts" > "$version_dir/.larch-installed-at"; then
+            warn_install_stamp_failure "$version"
+        fi
+    done
+}
+
 list_cached_versions_by_install_stamp() {
     local dirs=()
     local dir version_dir version has_stamp ts
@@ -151,6 +176,7 @@ prune_cached_versions() {
     local retained="" version version_dir removed=0
 
     larch_err "Pruning old larch versions (keeping up to ${keep_versions} most-recently-installed)..."
+    backfill_legacy_install_stamps
 
     if [ -n "$target_version" ] && is_safe_version "$target_version" && [ -d "$LARCH_CACHE_DIR/$target_version" ]; then
         retained="$target_version"

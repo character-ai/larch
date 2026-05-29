@@ -4,8 +4,8 @@ set -euo pipefail
 
 # Coverage for max-8 install-stamp prune in upgrade-larch.sh:
 # .larch-installed-at ordering (stamped before un-stamped, timestamp desc,
-# version desc), dir-mtime fallback for un-stamped dirs, target seeding, and
-# already-latest stamp+prune without reinstall.
+# version desc), legacy-stamp backfill, dir-mtime fallback for un-stamped dirs,
+# target seeding, and already-latest stamp+prune without reinstall.
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/upgrade-larch/scripts/upgrade-larch.sh"
@@ -104,7 +104,9 @@ LIST
         ;;
     install)
         INSTALLED_VERSION="${INSTALL_RESULT_VERSION:?}"
-        mkdir -p "$cache_dir/$INSTALL_RESULT_VERSION"
+        if [[ -n "${INSTALL_CACHE_VERSION:-}" ]]; then
+            mkdir -p "$cache_dir/$INSTALL_CACHE_VERSION"
+        fi
         write_state
         ;;
     marketplace)
@@ -203,6 +205,9 @@ STATE
         [[ -d "$cache_root/$mtime_version" ]] || continue
         touch -t "$mtime_ts" -- "$cache_root/$mtime_version"
     done
+    if [[ -n "${READONLY_STAMP_VERSION:-}" && -d "$cache_root/$READONLY_STAMP_VERSION" ]]; then
+        chmod 500 "$cache_root/$READONLY_STAMP_VERSION"
+    fi
 
     set +e
     output=$(
@@ -213,6 +218,7 @@ STATE
         TEST_CACHE_DIR="$cache_root" \
         GH_OUTPUT="${GH_OUTPUT:-}" \
         INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
+        INSTALL_CACHE_VERSION="${INSTALL_CACHE_VERSION:-}" \
         RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
         STAT_FAIL_VERSION="${STAT_FAIL_VERSION:-}" \
         LARCH_BREADCRUMB_STREAM='' \
@@ -221,6 +227,10 @@ STATE
     )
     rc=$?
     set -e
+
+    if [[ -n "${READONLY_STAMP_VERSION:-}" && -d "$cache_root/$READONLY_STAMP_VERSION" ]]; then
+        chmod 700 "$cache_root/$READONLY_STAMP_VERSION"
+    fi
 
     CASE_OUTPUT="$output"
     CASE_RC="$rc"
@@ -231,6 +241,7 @@ GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
 INSTALL_STAMPS="29.1.20:1000000 29.1.21:1000001 29.1.22:1000002 29.1.23:1000003 29.1.24:1000004 29.1.25:1000005 29.1.26:1000006 29.1.27:1000007 29.1.28:1000008"
 unset CACHE_MTIME_OVERRIDES
@@ -249,6 +260,7 @@ GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.20"
 PLUGIN_ROOT_VERSION="29.1.20"
 INSTALL_RESULT_VERSION="29.1.22"
+INSTALL_CACHE_VERSION="29.1.22"
 CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
 INSTALL_STAMPS="29.1.19:100 29.1.20:101 29.1.21:102 29.1.22:103"
 unset CACHE_MTIME_OVERRIDES
@@ -264,6 +276,7 @@ GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
 INSTALL_STAMPS="29.1.20:9000000000 29.1.21:8000000000 29.1.22:7000000000 29.1.23:6000000000 29.1.24:5000000000 29.1.25:4000000000 29.1.26:3000000000 29.1.27:2000000000 29.1.28:1000000000"
 export CACHE_MTIME_OVERRIDES="29.1.20:200001010001 29.1.28:209901010001"
@@ -279,12 +292,13 @@ GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
-INSTALL_STAMPS="29.1.20:100"
+INSTALL_STAMPS="29.1.20:9999999999999"
 export CACHE_MTIME_OVERRIDES="29.1.21:209901010001 29.1.22:209901010002 29.1.23:209901010003 29.1.24:209901010004 29.1.25:209901010005 29.1.26:209901010006 29.1.27:209901010007 29.1.28:209901010008 29.1.29:209901010009"
 run_case stamp-beats-unstamped-mtime
 [[ "$CASE_RC" -eq 0 ]] || fail "stamp-beats-unstamped-mtime exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "stamp-beats-unstamped-mtime should keep stamped 29.1.20 over newer un-stamped mtimes"
+[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "stamp-beats-unstamped-mtime should keep stamped 29.1.20 when its install stamp is newest"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "stamp-beats-unstamped-mtime should prune oldest un-stamped 29.1.21"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "stamp-beats-unstamped-mtime should prune 29.1.22"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.23" ]] || fail "stamp-beats-unstamped-mtime should prune 29.1.23"
@@ -295,6 +309,7 @@ GH_OUTPUT=$'42.0.10\n'
 INITIAL_INSTALLED_VERSION="42.0.5"
 PLUGIN_ROOT_VERSION="42.0.5"
 INSTALL_RESULT_VERSION="42.0.10"
+INSTALL_CACHE_VERSION="42.0.10"
 CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
 unset INSTALL_STAMPS
 export CACHE_MTIME_OVERRIDES="42.0.9:200001010001 42.0.1:209901010001"
@@ -310,6 +325,7 @@ GH_OUTPUT=$'29.1.20\n'
 INITIAL_INSTALLED_VERSION="29.1.20"
 PLUGIN_ROOT_VERSION="29.1.20"
 INSTALL_RESULT_VERSION="29.1.20"
+unset INSTALL_CACHE_VERSION
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
 INSTALL_STAMPS="29.1.20:100 29.1.21:9999999991 29.1.22:9999999992 29.1.23:9999999993 29.1.24:9999999994 29.1.25:9999999995 29.1.26:9999999996 29.1.27:9999999997 29.1.28:9999999998 29.1.29:9999999999"
 unset CACHE_MTIME_OVERRIDES
@@ -325,23 +341,57 @@ GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
 INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
 INSTALL_STAMPS="29.1.20:1000000 29.1.21:1000001 29.1.22:1000002 29.1.23:1000003 29.1.24:1000004 29.1.25:1000005 29.1.26:1000006 29.1.27:1000007 29.1.28:1000008"
 unset CACHE_MTIME_OVERRIDES
-run_case absent-target-fills-eight
-[[ "$CASE_RC" -eq 0 ]] || fail "absent-target-fills-eight exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/29.1.30" ]] || fail "absent-target-fills-eight should create installed target dir"
-[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "absent-target-fills-eight should retain exactly 8 dirs"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "absent-target-fills-eight should prune oldest stamped 29.1.20"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "absent-target-fills-eight should prune 29.1.21"
+unset READONLY_STAMP_VERSION
+run_case install-then-prune-fills-eight
+[[ "$CASE_RC" -eq 0 ]] || fail "install-then-prune-fills-eight exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.30" ]] || fail "install-then-prune-fills-eight should create installed target dir"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "install-then-prune-fills-eight should retain exactly 8 dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "install-then-prune-fills-eight should prune oldest stamped 29.1.20"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "install-then-prune-fills-eight should prune 29.1.21"
+
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.30"
+unset INSTALL_CACHE_VERSION
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:1000000 29.1.21:1000001 29.1.22:1000002 29.1.23:1000003 29.1.24:1000004 29.1.25:1000005 29.1.26:1000006 29.1.27:1000007 29.1.28:1000008"
+unset CACHE_MTIME_OVERRIDES READONLY_STAMP_VERSION
+run_case absent-target-cache-dir-fills-eight
+[[ "$CASE_RC" -eq 0 ]] || fail "absent-target-cache-dir-fills-eight exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.30" ]] || fail "absent-target-cache-dir-fills-eight should leave missing target cache dir absent"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "absent-target-cache-dir-fills-eight should retain exactly 8 real dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "absent-target-cache-dir-fills-eight should prune oldest stamped 29.1.20"
+[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "absent-target-cache-dir-fills-eight should not count missing target toward the cap"
 
 GH_OUTPUT=$'29.1.28\n'
 INITIAL_INSTALLED_VERSION="29.1.28"
 PLUGIN_ROOT_VERSION="29.1.28"
 INSTALL_RESULT_VERSION="29.1.28"
+INSTALL_CACHE_VERSION="29.1.28"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+INSTALL_STAMPS="29.1.20:100 29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107"
+unset CACHE_MTIME_OVERRIDES
+READONLY_STAMP_VERSION="29.1.28"
+run_case stamp-write-failure-existing-target
+[[ "$CASE_RC" -eq 0 ]] || fail "stamp-write-failure-existing-target exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "Warning: failed to write install stamp for cached larch version '29.1.28'." "stamp-write-failure-existing-target warning"
+[[ -d "$CASE_CACHE_ROOT/29.1.28" ]] || fail "stamp-write-failure-existing-target should retain seeded target dir"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "stamp-write-failure-existing-target should retain exactly 8 dirs"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "stamp-write-failure-existing-target should prune only the oldest competitor"
+
+GH_OUTPUT=$'29.1.28\n'
+INITIAL_INSTALLED_VERSION="29.1.28"
+PLUGIN_ROOT_VERSION="29.1.28"
+INSTALL_RESULT_VERSION="29.1.28"
+INSTALL_CACHE_VERSION="29.1.28"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
 INSTALL_STAMPS="29.1.20:100 29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107 29.1.28:108"
-unset CACHE_MTIME_OVERRIDES
+unset CACHE_MTIME_OVERRIDES READONLY_STAMP_VERSION
 run_case target-in-top-eight-exact-count
 [[ "$CASE_RC" -eq 0 ]] || fail "target-in-top-eight-exact-count exit $CASE_RC"
 [[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "target-in-top-eight-exact-count should retain exactly 8 dirs, not 9"
@@ -355,9 +405,10 @@ GH_OUTPUT=$'29.1.28\n'
 INITIAL_INSTALLED_VERSION="29.1.28"
 PLUGIN_ROOT_VERSION="29.1.28"
 INSTALL_RESULT_VERSION="29.1.28"
+INSTALL_CACHE_VERSION="29.1.28"
 CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
 INSTALL_STAMPS="29.1.20:100 29.1.21:101 29.1.22:102 29.1.23:103 29.1.24:104 29.1.25:105 29.1.26:106 29.1.27:107 29.1.28:108"
-unset CACHE_MTIME_OVERRIDES
+unset CACHE_MTIME_OVERRIDES READONLY_STAMP_VERSION
 run_case already-latest-prunes
 [[ "$CASE_RC" -eq 0 ]] || fail "already-latest-prunes exit $CASE_RC"
 assert_contains "$CASE_OUTPUT" "Pruning old larch versions" "already-latest-prunes prune banner"
@@ -369,5 +420,24 @@ assert_not_contains "$CASE_OUTPUT" "Uninstalling larch plugin" "already-latest-p
 for version in 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28; do
     [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "already-latest-prunes should keep $version"
 done
+
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
+unset INSTALL_STAMPS
+export CACHE_MTIME_OVERRIDES="29.1.20:209901010000 29.1.21:209901010001 29.1.22:209901010002 29.1.23:209901010003 29.1.24:209901010004 29.1.25:209901010005 29.1.26:209901010006 29.1.27:209901010007 29.1.28:200001010000 29.1.29:200001010001"
+unset READONLY_STAMP_VERSION
+run_case legacy-unstamped-backfilled-before-prune
+[[ "$CASE_RC" -eq 0 ]] || fail "legacy-unstamped-backfilled-before-prune exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "legacy-unstamped-backfilled-before-prune should keep the executing legacy plugin root"
+[[ -d "$CASE_CACHE_ROOT/29.1.27" ]] || fail "legacy-unstamped-backfilled-before-prune should keep the freshest legacy cache dir"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "legacy-unstamped-backfilled-before-prune should prune the stalest legacy dir"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.28" ]] || fail "legacy-unstamped-backfilled-before-prune should prune older legacy dir"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.29" ]] || fail "legacy-unstamped-backfilled-before-prune should prune next older legacy dir"
+[[ -f "$CASE_CACHE_ROOT/29.1.21/.larch-installed-at" ]] || fail "legacy-unstamped-backfilled-before-prune should backfill install stamp for retained legacy dir"
+unset CACHE_MTIME_OVERRIDES INSTALL_CACHE_VERSION
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'
