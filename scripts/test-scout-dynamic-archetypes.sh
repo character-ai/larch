@@ -437,7 +437,7 @@ PATH="$BIN:$PATH" "$SCRIPT" \
     > "$TMP/description-text-inline-cap/stdout.env" 2> "$TMP/description-text-inline-cap/stderr.env"
 inline_rc=$?
 set -e
-[[ "$inline_rc" -eq 2 ]] || fail "inline description-text over 256 KB should fail validation"
+[[ "$inline_rc" -eq 2 ]] || fail "inline description-text over 256 KB should fail validation (got rc=$inline_rc; stderr=$(cat $TMP/description-text-inline-cap/stderr.env); len=${#huge_inline})"
 grep -Fq 'description-text exceeds 256 KB' "$TMP/description-text-inline-cap/stderr.env" || fail "inline cap stderr"
 
 mkdir -p "$TMP/large-diff"
