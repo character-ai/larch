@@ -1,0 +1,291 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {
+      "path": "AGENTS.md",
+      "lines_added": 1,
+      "lines_removed": 2
+    },
+    {
+      "path": "BASH_AUTHORING.md",
+      "lines_added": 0,
+      "lines_removed": 72
+    },
+    {
+      "path": "SECURITY.md",
+      "lines_added": 1,
+      "lines_removed": 12
+    },
+    {
+      "path": "docs/linting.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/breadcrumb-monitor.md",
+      "lines_added": 0,
+      "lines_removed": 29
+    },
+    {
+      "path": "scripts/breadcrumb-monitor.sh",
+      "lines_added": 0,
+      "lines_removed": 30
+    },
+    {
+      "path": "scripts/ci-wait.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/collect-agent-results.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/dispatch-plan-voters.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/dispatch-with-waterfall.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/lib-quiet.md",
+      "lines_added": 1,
+      "lines_removed": 5
+    },
+    {
+      "path": "scripts/lib-quiet.sh",
+      "lines_added": 0,
+      "lines_removed": 9
+    },
+    {
+      "path": "scripts/ship-pr.md",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/ship-pr.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-ci-wait.sh",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/test-collect-agent-results.sh",
+      "lines_added": 2,
+      "lines_removed": 6
+    },
+    {
+      "path": "scripts/test-design-structure.sh",
+      "lines_added": 5,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/test-implement-finalize.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-larch-log.sh",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/test-lib-quiet.md",
+      "lines_added": 1,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/test-lib-quiet.sh",
+      "lines_added": 6,
+      "lines_removed": 12
+    },
+    {
+      "path": "scripts/test-rebase-checkpoint-probe.sh",
+      "lines_added": 2,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/test-ship-pr.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/SKILL.md",
+      "lines_added": 6,
+      "lines_removed": 113
+    },
+    {
+      "path": "skills/design/references/brainstorm.md",
+      "lines_added": 3,
+      "lines_removed": 73
+    },
+    {
+      "path": "skills/design/references/dialectic-execution.md",
+      "lines_added": 4,
+      "lines_removed": 71
+    },
+    {
+      "path": "skills/design/references/plan-review.md",
+      "lines_added": 2,
+      "lines_removed": 73
+    },
+    {
+      "path": "skills/design/scripts/test-assess-plan-round.sh",
+      "lines_added": 1,
+      "lines_removed": 14
+    },
+    {
+      "path": "skills/design/scripts/test-dispatch-plan-assessors.sh",
+      "lines_added": 1,
+      "lines_removed": 2
+    },
+    {
+      "path": "skills/design/scripts/test-tally-plan-assessor.sh",
+      "lines_added": 1,
+      "lines_removed": 2
+    },
+    {
+      "path": "skills/implement/SKILL.md",
+      "lines_added": 19,
+      "lines_removed": 177
+    },
+    {
+      "path": "skills/implement/references/rebase-rebump-subprocedure.md",
+      "lines_added": 0,
+      "lines_removed": 6
+    },
+    {
+      "path": "skills/implement/references/stall-recovery.md",
+      "lines_added": 4,
+      "lines_removed": 4
+    },
+    {
+      "path": "skills/implement/scripts/run-step2-dispatch.md",
+      "lines_added": 0,
+      "lines_removed": 5
+    },
+    {
+      "path": "skills/implement/scripts/run-step2-dispatch.sh",
+      "lines_added": 0,
+      "lines_removed": 8
+    },
+    {
+      "path": "skills/implement/scripts/step2-implement.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/scripts/test-implement-bootstrap.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/scripts/test-run-step2-dispatch.sh",
+      "lines_added": 1,
+      "lines_removed": 2
+    },
+    {
+      "path": "skills/research/references/research-phase.md",
+      "lines_added": 2,
+      "lines_removed": 36
+    },
+    {
+      "path": "skills/research/references/validation-phase.md",
+      "lines_added": 2,
+      "lines_removed": 36
+    },
+    {
+      "path": "skills/review-and-fix/scripts/review-and-fix.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/review-and-fix/scripts/test-review-and-fix.sh",
+      "lines_added": 1,
+      "lines_removed": 3
+    },
+    {
+      "path": "skills/review/references/heavy-worker.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/review/scripts/test-dispatch-panel.sh",
+      "lines_added": 2,
+      "lines_removed": 4
+    },
+    {
+      "path": "skills/review/scripts/test-review-core.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/review/scripts/test-tally-code-votes.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/shared/dialectic-protocol.md",
+      "lines_added": 2,
+      "lines_removed": 36
+    },
+    {
+      "path": "skills/shared/external-reviewers.md",
+      "lines_added": 2,
+      "lines_removed": 36
+    },
+    {
+      "path": "skills/shared/voting-protocol.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/upgrade-larch/scripts/test-upgrade-larch.sh",
+      "lines_added": 0,
+      "lines_removed": 1
+    }
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-design-structure.sh",
+    "scripts/test-implement-structure.sh",
+    "scripts/test-research-structure.sh",
+    "scripts/test-review-structure.sh",
+    "scripts/test-ship-pr.sh",
+    "scripts/test-collect-agent-results.sh",
+    "scripts/test-dispatch-plan-voters.sh",
+    "scripts/test-lib-quiet.sh",
+    "skills/implement/scripts/test-step2-implement.sh",
+    "skills/implement/scripts/test-run-step2-dispatch.sh",
+    "scripts/test-implement-anti-polling-rule.sh",
+    "skills/design/scripts/test-dispatch-plan-assessors.sh",
+    "skills/design/scripts/test-assess-plan-round.sh",
+    "skills/design/scripts/test-tally-plan-assessor.sh",
+    "skills/review/scripts/test-dispatch-panel.sh",
+    "skills/review-and-fix/scripts/test-review-and-fix.sh",
+    "skills/review/scripts/test-tally-code-votes.sh"
+  ],
+  "summary_bullets": [
+    "Collapse Family-B skill fences to plain foreground Bash invocations across design, implement, research, review, and shared docs",
+    "Remove BASH_AUTHORING.md section 4, breadcrumb-monitor shims, and Stage 3 lib-quiet trap helpers",
+    "Rewrite implement Step 8+ routing to use foreground exit codes and ship-pr-state.sh only",
+    "Update structure and script harnesses to assert absence of removed Family-B symbols",
+    "Trim AGENTS.md and SECURITY.md while preserving committed breadcrumbs forensics publication"
+  ],
+  "commit_message": "Remove Family-B breadcrumb fences and monitor shims (Stage 4)\n\nCollapse skill fences to foreground calls, delete breadcrumb-monitor and lib-quiet trap shims, and align tests and public docs with the #3111 rip-out.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": ""
+}

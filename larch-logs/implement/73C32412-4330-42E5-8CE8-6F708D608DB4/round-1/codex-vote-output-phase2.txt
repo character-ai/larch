@@ -1,0 +1,29 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate timeout sentences are confusing but low operational risk
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- obsolete gitleaks allowlist paths are harmless clutter
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan-review-loop.sh parses dispatch stdout KVs; broken snippet hurts manual copy-paste only
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- broader inverted greps are worthwhile hardening but not required to fix the cited doc bugs
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- manual final grep gate is plan-process debt, not a functional defect in shipped code
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- writer_rc harness pins are useful regression armor beyond fixing stale prose
+FINDING_19: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_24: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_25: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- timeout recovery already points at ship-pr-state.sh; explicit matrix precedence would add orchestration complexity
+FINDING_26: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_29: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
