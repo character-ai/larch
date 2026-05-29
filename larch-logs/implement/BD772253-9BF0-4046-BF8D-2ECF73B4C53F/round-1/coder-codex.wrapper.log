@@ -1,0 +1,24 @@
+Reading additional input from stdin...
+2026-05-29T09:23:43.707901Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/skills/design/scripts/test-plan-review-loop.sh:
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_ddpl=$(REAL_PYTHON="$REAL_PYTHON_DDPL" PATH="$PYWRAP_DDPL:$PATH" run_loop "$DDPL" 1 --round-cap 2 --convergence-threshold 3)
+printf '%s\n' "$out_ddpl" | grep -q '^LOOP_STATUS=emit-plan-failed$' || fail "plan-line dedup failure should surface emit-plan-failed"
+printf '%s\n' "$out_ddpl" | grep -q '^REASON=dedup-python-failed$' || fail "plan-line dedup failure should surface dedup-python-failed reason"
+printf '%s\n' "$out_ddpl" | grep -q 'LOOP_REASON=dedup-python-failed' && fail "helper should not print LOOP_REASON directly"
+grep -q '^REASON=dedup-python-failed$' "$DDPL/.step3-plan-review-result.env" || fail "result env should carry dedup-python-failed reason"
+
+echo "=== snapshot fails closed on symlinked revise artifact sources ==="
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+⏳ codex agent: still running (7m elapsed)
+2026-05-29T09:30:54.830625Z ERROR codex_core::session: failed to record rollout items: thread 019e730b-83ae-7081-9e84-3ffe46afe6da not found
+✓ codex agent: completed (exit code 0, 471s elapsed, output 19 bytes)

@@ -455,6 +455,10 @@ exclude = [
   # from oos-issue-cap.sh and its sibling contract stub.
   "skills/implement/scripts/oos-issue-cap-excerpt.py",
   "skills/implement/scripts/oos-issue-cap-excerpt.md",
+  # skills/design/scripts/dedup-plan-lines.py is invoked from
+  # skills/design/scripts/plan-review-loop.sh through $DEDUP_PLAN_LINES_PY;
+  # agent-lint's G004/dead-script rule does not follow shell variable indirection.
+  "skills/design/scripts/dedup-plan-lines.py",
   # scripts/classify-diff-mode.sh is invoked from scripts/render-specialist-prompt.sh
   # via a `CLASSIFIER="$SCRIPT_DIR/classify-diff-mode.sh"` shell variable rather
   # than a literal path — agent-lint's G004/dead-script rule does not follow shell
@@ -1313,6 +1317,7 @@ exclude = [
   "skills/implement/scripts/check-review-changes.md",
   "skills/implement/scripts/test-check-review-changes.md",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
+  "skills/design/scripts/dedup-plan-lines.md",
   # scripts/check-reviewers.md is the sibling contract for the health-probe
   # script. scripts/test-check-reviewers.md is the sibling contract for the
   # probe acceptance regression harness. Both follow the harness-sibling pattern.
