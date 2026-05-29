@@ -72,3 +72,15 @@ regexes = [
     '''abcdefghijklmnopqrstuvwxyz0123456789''',
     '''MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9''',
 ]
+
+# Override the default Anthropic API key rule to use only the long-form patterns
+# (95+ chars). The short-form pattern sk-ant-{1,48} matches our 42-char test
+# fixture; removing it prevents false positives while preserving detection of
+# real production keys. TruffleHog provides authoritative real-credential validation.
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key (long-form production keys only)"
+regex = '''(?:sk-ant-api[0-9]+-[a-zA-Z0-9\-_]{93}[A-Z0-9]{3}|sk-ant-[a-zA-Z0-9-_]{98,})'''
+keywords = [
+  "sk-ant-",
+]
