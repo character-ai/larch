@@ -1,0 +1,184 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — /design plan-size gate: split add/delete thresholds, relax mechanical churn (#3175)
+
+## Summary
+
+Make the `/design` Step 2b.5 hard plan-size gate key on estimated ADDED lines instead of total churn. Deletions never trip it. A self-declared `mechanical_churn: true` trailer downgrades the diff gate to a soft advisory. The change is additive and backward compatible: the required final `diff_lines: <N>` trailer and its ~41 consumers are untouched, and plans without the new trailers reproduce today's behavior byte-for-byte.
+
+Settled directions (Step 1c/1d):
+- New OPTIONAL trailers `diff_added: <N>`, `diff_deleted: <N>`, `mechanical_churn: true`, placed ABOVE the still-required last-line `diff_lines: <N>`.
+- Hard diff trigger fires on `diff_added > 2000` (strict `>`) when `diff_added` is present; otherwise legacy `diff_lines > 1500`.
+- Deletions (`diff_deleted`) are informational only — never a trigger, no cap.
+- `mechanical_churn: true` suppresses the diff hard trigger and emits a SOFT advisory instead (no Split/Cancel).
+- `plan_lines > 800` plan-body hard trigger is UNCHANGED and is NOT affected by `mechanical_churn` or deletions (out of scope per Round 1).
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/check-plan-size.sh`
+Core threshold logic. After the existing `diff_lines:` last-line validation (unchanged), add a full-file scan for the three optional trailers and recompute the diff trigger.
+
+- Keep lines 1-90 (argv, `larch_design_tmpdir_validate`, plan/last-line/`diff_lines:` trailer validation, `plan_lines` computation) exactly as today. Exit codes 2/3 and `PLAN_SIZE_STATUS` paths unchanged.
+- Parse optional trailers anywhere in the file, last full-line match wins, same strict grammar as `diff_lines` (literal token, exactly one ASCII space, then the value to end-of-line):
+  - `diff_added` from lines matching `^diff_added: [0-9]+$` (digits). Empty when absent or malformed.
+  - `diff_deleted` from lines matching `^diff_deleted: [0-9]+$` (digits). Empty when absent or malformed. INFORMATIONAL ONLY.
+  - `mechanical_churn` from lines matching `^mechanical_churn: (true|false)$`. Normalize to `true` only on an explicit final `true`; otherwise `false` (covers absent and explicit `false`).
+  Tabs / multiple spaces / non-digit values fail the anchored regex and are treated as absent — mirror `emit-plan.sh` strictness (harness case 12 analog).
+- Recompute triggers:
+  - `hard_plan = (plan_lines > 800)` — UNCHANGED.
+  - Raw diff hardness + reason basis: if `diff_added` non-empty → `hard_diff_raw = (diff_added > 2000)`, `diff_basis="diff-added"`; else → `hard_diff_raw = (diff_lines > 1500)`, `diff_basis="diff-lines"`.
+  - Mechanical downgrade: if `mechanical_churn == true` → `soft_advisory = hard_diff_raw`, `hard_diff = 0`; else → `soft_advisory = 0`, `hard_diff = hard_diff_raw`.
+  - `hard_trigger = hard_plan OR hard_diff`.
+- `TRIGGER_REASONS` priority order: `plan-body-lines` (when `hard_plan`), then `$diff_basis` (when `hard_diff`). When `mechanical_churn` downgraded the diff trigger, no diff reason is added (only the advisory). Empty string when no hard crossing.
+- Emit keys (exit 0): keep `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_LINES` (all as today). ADD always-emitted keys: `DIFF_ADDED` (integer or empty), `DIFF_DELETED` (integer or empty), `MECHANICAL_CHURN` (`true`/`false`), `SOFT_ADVISORY` (`true`/`false`).
+- HIDDEN CONSTRAINT: do NOT name the advisory key `SOFT_TRIGGER_FIRED` and do NOT reintroduce `FILES_COUNT`. The harness string-splits both as retired keys and asserts their absence; use `SOFT_ADVISORY`. Keep `> 800` / `> 1500` / `> 2000` strict (equality does not trip).
+
+### UPDATED: `skills/design/scripts/check-plan-size.md`
+Document the new input trailers and output keys.
+- Input contract: note the three OPTIONAL trailers, their grammar (same as `diff_lines`), that they may appear anywhere with last-match-wins, and that `diff_lines:` MUST remain the final non-empty line.
+- Output table: add `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY` rows with meanings (`DIFF_ADDED`/`DIFF_DELETED` empty when trailer absent).
+- Threshold prose: hard diff keys on `diff_added > 2000` when present else `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades diff to `SOFT_ADVISORY`; `plan_lines > 800` unchanged. Update `TRIGGER_REASONS` line to `plan-body-lines`, then `diff-added` (new-style) or `diff-lines` (legacy). Keep the existing "Edit in sync" list.
+
+### UPDATED: `skills/design/SKILL.md`
+Two surfaces — preserve the `ACTION=EMIT_PLAN` → `check-plan-size.sh` ordering inside the Step 2b block (pinned by `scripts/test-design-structure.sh`).
+- Step 2b "Diff size estimate" bullet: keep the required final `diff_lines: <N>` line and its wording. Add that the designer MAY append `diff_added: <N>` / `diff_deleted: <N>` / `mechanical_churn: true` lines ABOVE the final `diff_lines: <N>` line to refine the Step 2b.5 gate (additions-keyed trigger, deletions exempt, mechanical advisory); when absent the gate falls back to `diff_lines > 1500` unchanged.
+- Step 2b.5 sub-step 3 (rc=0 parse): add `DIFF_ADDED=`, `DIFF_DELETED=`, `MECHANICAL_CHURN=`, `SOFT_ADVISORY=` to the parsed keys.
+- Step 2b.5: add a soft-advisory note, evaluated after the rc=0 parse and before the hard/partition/no-trigger branches: when `SOFT_ADVISORY=true`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); proceeding` (informational; never prompts/blocks), then continue to the existing branches.
+- Step 2b.5 hard branch (`## Plan Size — Hard Trigger`): include `DIFF_ADDED` / `DIFF_DELETED` in the printed section when non-empty, alongside `PLAN_LINES` / `DIFF_LINES`. Keep the two-option Split/Cancel prompt (no Continue) unchanged.
+
+### UPDATED: `skills/design/references/flags.md`
+- "Plan-size thresholds (Step 2b.5)" → "Hard trigger" bullets: replace the single `diff_lines > 1500` bullet with: plan body `> 800` (unchanged); `diff_added > 2000` when the `diff_added:` trailer is present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades the diff trigger to a soft advisory (no Split/Cancel). Keep strict `>` note.
+- "Helper output — TRIGGER_REASONS": update fixed priority order to `plan-body-lines`, then the diff token (`diff-added` new-style or `diff-lines` legacy).
+- "check-plan-size.sh contract (summary)": add the optional input trailers and the four new machine-output keys.
+
+### UPDATED: `skills/design/scripts/test-check-plan-size.sh`
+Add regression cases (keep all existing cases passing, including the `assert_no_key SOFT_TRIGGER_FIRED` / `FILES_COUNT` retired-key checks):
+- Boundary: `diff_added: 2000` → `HARD_TRIGGER_FIRED=false`; `diff_added: 2001` → `HARD_TRIGGER_FIRED=true`, `TRIGGER_REASONS=diff-added`.
+- Deletions exempt: `diff_added: 100` + `diff_deleted: 9999` → `HARD_TRIGGER_FIRED=false`, `DIFF_DELETED=9999`.
+- Legacy fallback intact: no `diff_added`, `diff_lines: 1501` → `HARD_TRIGGER_FIRED=true`, `TRIGGER_REASONS=diff-lines` (re-asserts existing case 3 semantics).
+- Mechanical advisory (new-style): `diff_added: 5000` + `mechanical_churn: true` → `HARD_TRIGGER_FIRED=false`, `SOFT_ADVISORY=true`, `DIFF_ADDED=5000`, `TRIGGER_REASONS=`.
+- Mechanical advisory (#3118 legacy case): `diff_lines: 4700` + `mechanical_churn: true`, no `diff_added` → `HARD_TRIGGER_FIRED=false`, `SOFT_ADVISORY=true`.
+- Plan-body unaffected by mechanical_churn: `plan_lines 801` + `diff_added: 5000` + `mechanical_churn: true` → `HARD_TRIGGER_FIRED=true`, `TRIGGER_REASONS=plan-body-lines`, `SOFT_ADVISORY=true`.
+- `mechanical_churn: false` explicit → no downgrade (`diff_added: 2001` still hard).
+- Malformed/strict grammar: `diff_added:\t1` and `diff_added:  1` (tab / double space) treated as absent → legacy fallback; assert all four new keys appear in normal output (`DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`).
+
+### UPDATED: `skills/design/scripts/test-check-plan-size.md`
+Note the added cases (add/delete split, deletions-exempt, mechanical advisory, legacy fallback, strict-grammar rejection) and the four new output keys.
+
+## Approach
+
+- Additive, backward-compatible contract: the final `diff_lines: <N>` line stays required and last, so `emit-plan.sh` (reads only the last non-empty line) and `design-driver.sh` (`ACTION=EMIT_PLAN` dispatch) need NO change. Verified: `design-driver.sh` never parses `diff_lines`; `diff-lines.txt` and `composed-plan.md` (Step 5c) keep using the total estimate.
+- `plan-review-loop.sh` consumes only `HARD_TRIGGER_FIRED` (awk, line ~640) for the `plan-size-trigger` `LOOP_STATUS`. The mechanical/deletion downgrades yield `HARD_TRIGGER_FIRED=false`, which correctly avoids forcing a split mid-review-loop. No change needed there; cover with a spot-check.
+- All new logic lives in `check-plan-size.sh`; the orchestrator (SKILL.md Step 2b.5) only learns to parse the new keys and print the advisory.
+
+## Edge cases
+
+- `diff_deleted` present without `diff_added`: deletions are informational, so the gate uses the legacy `diff_lines` fallback; `diff_deleted` never affects the trigger.
+- `diff_added` present, `diff_deleted` absent: fine — additions-keyed trigger applies; `DIFF_DELETED=` emitted empty.
+- `mechanical_churn: true` with the diff already under threshold: `soft_advisory=0` (nothing to downgrade); advisory line not printed.
+- `mechanical_churn: true` + `plan_lines > 800`: plan-body hard trigger still fires; the diff side may also set `SOFT_ADVISORY=true`. Both surfaces are coherent (hard prompt + advisory line).
+- Malformed optional trailer (`diff_added: 12x`, tab, double space): rejected by the anchored regex, treated as absent → legacy fallback. No exit-code change.
+- Multiple `diff_added:` lines (e.g. prose mention then real trailer): last full-line match wins, mirroring the `diff_lines` last-line robustness (harness case 11 analog).
+
+## Failure modes
+
+1. **Silent gate bypass via stale parser.** If SKILL.md Step 2b.5 is not updated to parse `SOFT_ADVISORY`/`DIFF_ADDED`, the advisory is computed but never surfaced, so operators lose the signal. Earliest signal: advisory never prints on a known mechanical-churn plan. Mitigation: update Step 2b.5 parse + advisory print in the same change; `test-design-structure.sh` keeps the EMIT_PLAN→check-plan-size ordering honest.
+2. **Backward-compat regression for the ~41 `diff_lines` consumers.** A grammar/last-line change would break `emit-plan.sh` and legacy plans. Earliest signal: `test-check-plan-size.sh` cases 1-13 or `test-emit-plan.sh` fail. Mitigation: keep `diff_lines:` last-line-required and lines 1-90 byte-stable; legacy cases stay green; do not touch `emit-plan.sh`.
+3. **Retired-key collision.** Reintroducing `SOFT_TRIGGER_FIRED`/`FILES_COUNT` would clash with the harness retired-key asserts (and any drift lint). Earliest signal: `assert_no_key` failures. Mitigation: use `SOFT_ADVISORY`; leave the retired-key asserts in place.
+
+## Testing strategy
+
+- Extend `test-check-plan-size.sh` with the cases above; run `make test-check-plan-size` (target already registered).
+- Run `bash scripts/relevant-checks.sh` (or `make lint`) after edits — exercises bash 3.2 portability, bare-grep-probe, script-md-sibling, markdownlint, and `test-design-structure.sh`.
+- Spot-check `plan-review-loop.sh` / `test-plan-review-loop.sh` still pass (additive keys only).
+- Grep `docs/` and `README.md` for stale `1500` / `diff_lines` threshold prose; update or confirm none (drift-prone-prose rule). No `SECURITY.md` change — behavior is not security-relevant.
+
+## Acceptance
+
+- `check-plan-size.sh` keys the diff hard trigger on `diff_added > 2000` when present, else `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` yields `HARD_TRIGGER_FIRED=false` + `SOFT_ADVISORY=true`.
+- New keys `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY` are always emitted on exit 0; existing keys unchanged; legacy plans behave identically (`test-check-plan-size.sh` cases 1-13 green).
+- `emit-plan.sh`, `design-driver.sh`, `diff-lines.txt`, and `composed-plan.md` contracts are unchanged.
+- SKILL.md Step 2b.5 parses the new keys and prints the mechanical-churn advisory; the hard Split/Cancel prompt stays two-option (no Continue).
+- `check-plan-size.md`, `flags.md`, `test-check-plan-size.sh`, `test-check-plan-size.md` updated in sync; `make test-check-plan-size` and `bash scripts/relevant-checks.sh` pass.
+
+diff_lines: 300
+
+</plan>
+
+<findings>
+### FINDING_1: Gate B docs retain legacy diff hard-trigger semantics
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Codex-Edge, Codex-Pragmatic, Codex-dyn-doc-sync
+- **Severity**: important
+- **Concern**: `skills/design/references/approval-gates.md` still describes the old `DIFF_LINES > 1500` hard gate, so Gate B guidance can contradict the new `diff_added` / deletion / `mechanical_churn` behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add skills/design/references/approval-gates.md to the plan (mirror the flags.md hard-trigger bullets: diff_added > 2000 when present, else diff_lines > 1500, deletions exempt, mechanical_churn soft advisory) and extend the testing-strategy grep beyond docs/ and README.md to skills/design/references/
+  - From Cursor-Edge, Codex-Edge: Update this Gate B summary in the plan to match the new Step 2b.5 contract: plan body > 800; diff_added > 2000 when present else diff_lines > 1500; deletions exempt; mechanical_churn advisory only
+  - From Codex-Pragmatic: Add approval-gates.md to the plan and replace the parenthetical with the new Step 2b.5 semantics or a direct pointer to SKILL.md/check-plan-size.sh
+  - From Codex-dyn-doc-sync: Add skills/design/references/approval-gates.md to Files to modify/create or broaden the testing/doc-sync step to grep/update skills/**/*.md as well as docs/ and README.md
+
+
+### FINDING_2: Plan revision paths can drop optional size trailers
+- **Reviewer(s)**: Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Requirements
+- **Severity**: important
+- **Concern**: Gate B and plan-review revision flows can rewrite `plan.txt` while preserving only `diff_lines`, causing later size checks to lose `diff_added`, `diff_deleted`, or `mechanical_churn` and fall back to the legacy hard gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Update the plan to preserve or carry forward diff_added, diff_deleted, and mechanical_churn above the final diff_lines line in Gate B apply-all and revise-plan-with-waterfall, with a focused regression for one revision path.
+  - From Cursor-Innovation, Codex-Innovation: Update the revision prompts and Gate B prose to preserve or recompute diff_added, diff_deleted, and mechanical_churn above final diff_lines when present; add one regression that a mechanical_churn plan survives plan-review or Gate B revision without becoming plan-size-trigger
+  - From Codex-Requirements: Add the minimum contract edits for Gate B and revise-plan-with-waterfall to preserve existing diff_added, diff_deleted, and mechanical_churn trailers across plan rewrites, update the stale Gate B hard-trigger prose, and add one regression or spot-check where a revised mechanical_churn plan does not return plan-size-trigger
+
+
+### FINDING_3: Optional trailer parsing can be spoofed by plan body text
+- **Reviewer(s)**: Cursor-Edge, Codex-Edge
+- **Severity**: important
+- **Concern**: `check-plan-size.sh` scans the full file for optional trailer keys, so ordinary prose or code blocks containing lines like `mechanical_churn: true` or `diff_added: 0` can unintentionally change gate behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge, Codex-Edge: Restrict optional trailer parsing to a final contiguous metadata block immediately above the required final diff_lines line, then update the tests/docs to pin that narrower contract
+
+
+### FINDING_4: Soft advisory text can contradict a remaining hard gate
+- **Reviewer(s)**: Cursor-dyn-combined-gate-flow, Codex-dyn-combined-gate-flow
+- **Severity**: important
+- **Concern**: Step 2b.5 can print a “proceeding” advisory when the diff gate is downgraded even though `HARD_TRIGGER_FIRED` remains true because the plan-body line gate still requires Split/Cancel.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-combined-gate-flow, Codex-dyn-combined-gate-flow: Keep the minimum change: make the advisory text conditional. Use "proceeding" only when HARD_TRIGGER_FIRED=false; when HARD_TRIGGER_FIRED=true, print "diff gate downgraded; plan-body gate still requires Split/Cancel" or include the advisory inside the hard section.
+
+
+
+</findings>
+
+<feature>
+/design plan-size gate: split add/delete thresholds, relax mechanical churn
+
+## Motivation
+
+The `/design` Step 2b.5 hard plan-size trigger (`skills/design/scripts/check-plan-size.sh`) fires on a single `diff_lines: <N>` total-churn estimate with a fixed `> 1500` threshold and offers only **Split / Cancel** (no Continue — hard triggers are non-downgradeable). This conflates two very different kinds of large change:
+
+- **Deletion-heavy rip-outs** — a plan that mostly *removes* code is large by line count but low in review complexity.
+- **Trivial mechanical modifications** — large rename / mechanical-substitution churn that is high line count but low complexity.
+
+Concrete trigger case: issue #3118 ("Breadcrumbs Deprecation Stage 3: Monitor contract removal") produced a ~4700-line plan that is overwhelmingly *deletions* (deleting `lint-foreground-markers.sh` ~1037 lines + `test-lint-foreground-markers.sh` ~1721 + `test-breadcrumb-monitor.sh` ~902, plus plumbing removal). The hard gate fired and offered only Split/Cancel on a leaf partition piece (already piece 3 of a 5-way split) where neither fit; the operator had to use the `AskUserQuestion` "Other" escape to override and proceed.
+
+## Proposed change
+
+1. Have `check-plan-size.sh` distinguish **added** vs **deleted** line estimates instead of one `diff_lines` total. Either accept separate trailers (e.g. `diff_added: <N>` / `diff_deleted: <N>`) or derive the add/delete split from the plan, and key the hard trigger primarily on **additions / net new complexity**, not raw total churn.
+2. Allow **basically arbitrary-size deletions** — deletions should not trip the hard trigger (or only at a very high, separate cap). Large removals are low-risk.
+3. **Strongly relax** the limit for **trivial mechanical modifications** even when the count is very large (e.g. mechanical rename / substitution churn), so high-count-but-low-complexity changes are not forced into Split/Cancel.
+4. Consider giving the hard trigger a Continue/override affordance for these low-complexity-large cases, or reclassifying them as soft (advisory) rather than hard.
+
+## Scope / surfaces
+
+- `skills/design/scripts/check-plan-size.sh` (+ sibling `.md`) — threshold logic and machine output (`HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_LINES`).
+- The `diff_lines` trailer contract: `skills/design/scripts/emit-plan.sh`, `skills/design/scripts/design-driver.sh`, and the Step 2b "Diff size estimate" instruction in `skills/design/SKILL.md`.
+- Threshold documentation in `skills/design/references/flags.md` (Plan-size thresholds section).
+- Step 2b.5 hard-branch handling in `skills/design/SKILL.md`.
+- Regression harness `skills/design/scripts/test-check-plan-size.sh`.
+
+---
+*Filed via `/larch:issue --no-dedup` per operator request during a `/design` run on #3118.*
+
+</feature>

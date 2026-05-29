@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly specifies a "contiguous" block where scanning stops at the first non-trailer line; blank lines stopping the scan is correct by contract, not a defect
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- "same as diff_lines" is misleading for mechanical_churn whose value is true|false not digits; exact regexes should be spelled out in the contract doc
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- authoring surfaces need not reproduce the full machine contract; a cross-reference to check-plan-size.md is sufficient
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan provides sufficient direction (carry forward or recompute, adjust prompt text); specifying exact line numbers and a rejection validator are implementation details beyond design-plan scope
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

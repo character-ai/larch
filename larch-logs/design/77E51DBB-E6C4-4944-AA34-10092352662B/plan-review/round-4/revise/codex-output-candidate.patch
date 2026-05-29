@@ -1,0 +1,122 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -68,7 +68,7 @@
+ 
+ ### UPDATED: `skills/design/SKILL.md`
+ Two surfaces — preserve the `ACTION=EMIT_PLAN` → `check-plan-size.sh` ordering inside the Step 2b block (pinned by `scripts/test-design-structure.sh`).
+-- Step 2b "Diff size estimate" bullet: keep the required final `diff_lines: <N>` line and its wording. Add that the designer MAY append `diff_added: <N>` / `diff_deleted: <N>` / `mechanical_churn: true` lines in the final contiguous metadata block immediately ABOVE the final `diff_lines: <N>` line to refine the Step 2b.5 gate (additions-keyed trigger, deletions exempt, mechanical advisory); when absent the gate falls back to `diff_lines > 1500` unchanged.
++- Step 2b "Diff size estimate" bullet: keep the required final `diff_lines: <N>` line and its wording. Add that the designer MAY append `diff_added: <N>` / `diff_deleted: <N>` / `mechanical_churn: true` lines in the final contiguous metadata block immediately ABOVE the final `diff_lines: <N>` line to refine the Step 2b.5 gate (additions-keyed trigger, deletions exempt, mechanical advisory); when absent the gate falls back to `diff_lines > 1500` unchanged. Strengthen the instruction for plans relying on deletion-heavy or mechanical-churn relief: if the designer classifies the estimate as deletion-heavy or asks the gate to ignore deletion churn, `diff_added:` MUST be emitted; if the plan self-identifies as trivial mechanical churn, `mechanical_churn: true` MUST be emitted, and `diff_added:` SHOULD be emitted so the mechanical advisory is based on additions rather than legacy total churn.
+ - Step 2b.5 sub-step 3 (rc=0 parse): add `DIFF_ADDED=`, `DIFF_DELETED=`, `MECHANICAL_CHURN=`, `SOFT_ADVISORY=` to the parsed keys.
+ - Step 2b.5: add a soft-advisory note, evaluated after the rc=0 parse and before the hard/partition/no-trigger branches:
+   - When `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=false`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); proceeding` (informational; never prompts/blocks).
+@@ -77,22 +77,25 @@
+ - Step 2b.5 hard branch (`## Plan Size — Hard Trigger`): include `DIFF_ADDED` / `DIFF_DELETED` in the printed section when non-empty, alongside `PLAN_LINES` / `DIFF_LINES`. Keep the two-option Split/Cancel prompt (no Continue) unchanged.
+ - Gate B apply-all / revise-plan instruction surfaces: preserve or recompute the optional size trailers when rewriting `plan.txt`; if preserved, keep them in the final contiguous metadata block above the required final `diff_lines:` line. Do not emit a revised plan that drops `mechanical_churn: true`, `diff_added`, or `diff_deleted` while retaining only the old total unless the revision intentionally invalidates those estimates and recomputes them.
++- Gate A discussion revision and Gate B direct rewrite surfaces: before any prompt-side `plan.txt` replacement/dedup rewrite, snapshot the original strict optional trailer keys from the final metadata block; after the rewrite and before `ACTION=EMIT_PLAN` / Step 2b.5, verify those keys are still present with strict grammar in the revised final metadata block or that the rewrite explicitly recomputed the estimates. If the check fails, revise again rather than continuing with a legacy total-only estimate.
+ 
+ ### UPDATED: `skills/design/references/approval-gates.md`
+ Update Gate B plan-size prose and revision contract.
+ - Replace the legacy `DIFF_LINES > 1500` hard-gate summary with the Step 2b.5 semantics: plan body `> 800`; `diff_added > 2000` when the trailer is present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades only the diff trigger to `SOFT_ADVISORY`.
+-- In Gate B apply-all / plan revision guidance, require preservation or recomputation of `diff_added`, `diff_deleted`, and `mechanical_churn` trailers when a revised plan is emitted. The final `diff_lines:` line remains required and last.
++- In Gate B apply-all / plan revision guidance, require preservation or recomputation of `diff_added`, `diff_deleted`, and `mechanical_churn` trailers when a revised plan is emitted. Add the same minimum post-rewrite check for direct rewrites: snapshot original strict optional trailer keys, then require the revised final metadata block to preserve those keys with strict grammar or explicitly recompute them before `ACTION=EMIT_PLAN` and Step 2b.5. The final `diff_lines:` line remains required and last.
+ - Prefer pointing to `skills/design/scripts/check-plan-size.md` for the authoritative machine contract rather than duplicating threshold prose in multiple places.
+ 
+ ### UPDATED: `skills/design/references/discussion-rounds.md`
+ Cover the post-plan Gate A discussion revision path.
+ - When discussion rounds directly revise `plan.txt` and rerun `ACTION=EMIT_PLAN` / Step 2b.5, require preservation or recomputation of `diff_added`, `diff_deleted`, and `mechanical_churn` trailers in the final contiguous metadata block above the required final `diff_lines:` line.
+ - Add prompt/contract text so discussion revisions do not accidentally collapse accepted mechanical/deletion-heavy estimates back to total-churn-only legacy behavior.
++- Add a direct-rewrite guard mirroring Gate B: snapshot original strict optional trailer keys before the discussion rewrite, then require the revised plan to preserve those keys with strict grammar or explicitly recompute them before rerunning `ACTION=EMIT_PLAN` and Step 2b.5.
+ 
+ ### UPDATED: `skills/design/references/flags.md`
+ - "Plan-size thresholds (Step 2b.5)" → "Hard trigger" bullets: replace the single `diff_lines > 1500` bullet with: plan body `> 800` (unchanged); `diff_added > 2000` when the `diff_added:` trailer is present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades the diff trigger to a soft advisory (no Split/Cancel). Keep strict `>` note.
+ - "Helper output — TRIGGER_REASONS": update fixed priority order to `plan-body-lines`, then the diff token (`diff-added` new-style or `diff-lines` legacy).
+ - "check-plan-size.sh contract (summary)": add the optional input trailers, exact grammar summary, `PLAN_LINES` excluding recognized optional metadata trailers, and the four new machine-output keys.
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+-Pin the Step 2b.5 orchestration copy that `test-check-plan-size.sh` cannot observe.
++Pin the Step 2b.5 orchestration copy and rewrite-preservation prose that `test-check-plan-size.sh` cannot observe.
+ - Add a structural check that `skills/design/SKILL.md` parses `SOFT_ADVISORY`, `DIFF_ADDED`, `DIFF_DELETED`, and `MECHANICAL_CHURN` after `check-plan-size.sh`.
+ - Add a structural check for the combined advisory copy: when `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=true`, the text must say the plan-body gate still requires Split/Cancel; do not assert this in `test-check-plan-size.sh`, which only validates helper KV output.
++- Add contains/order checks for `diff_added` / `diff_deleted` / `mechanical_churn` preservation or recomputation language in `skills/design/SKILL.md`, `skills/design/references/approval-gates.md`, and `skills/design/references/discussion-rounds.md`, including the snapshot-before-rewrite and validate-before-`ACTION=EMIT_PLAN` contract for Gate A and Gate B direct rewrites.
+ 
+ ### UPDATED: `skills/design/scripts/revise-plan-with-waterfall.sh` and sibling docs/prompts if present
+ Preserve optional plan-size trailers across plan rewrites.
+ - When constructing the revised `plan.txt`, carry forward or recompute `diff_added`, `diff_deleted`, and `mechanical_churn` in the final contiguous metadata block above the final `diff_lines:` line.
+-- Add/adjust prompt text so reviewers and revision agents do not accidentally collapse a mechanical/deletion-heavy estimate back to total-churn-only legacy behavior.
+-- Add a small validation layer for file-replacement candidates: read the original plan's final metadata block, and when the original contains any strict optional trailer keys, require a replacement candidate to include those same keys with strict trailer grammar in its own final metadata block immediately above final `diff_lines:` before accepting it. Keep `extract_file_replacement_candidate` unchanged; it already captures content through `diff_lines:`.
++- Add/adjust prompt text for both unified-diff and file-replacement formats so reviewers and revision agents do not accidentally collapse a mechanical/deletion-heavy estimate back to total-churn-only legacy behavior.
++- Add a shared post-apply validation layer for every accepted candidate format, not only file-replacement candidates: read the original plan's final metadata block from the snapshot, and when the original contains any strict optional trailer keys, require the resulting `plan.txt` after apply to include those same keys with strict trailer grammar in its own final metadata block immediately above final `diff_lines:` before running `run_emit_plan_gate` or accepting the tier. On failure, restore the snapshot and continue to the next candidate/tier. Keep `extract_file_replacement_candidate` unchanged; it already captures content through `diff_lines:`.
++- File-replacement candidates may still receive an early validation check before write for clearer rejection, but the common post-apply check is authoritative and must cover default unified-diff tiers used by `plan-review-loop.sh`.
++
++### UPDATED: `skills/design/scripts/test-emit-plan.sh`
++Add one EMIT_PLAN acceptance regression for optional trailers above the required final `diff_lines:` line.
++- Create a plan with `diff_added`, `diff_deleted`, `mechanical_churn`, and final `diff_lines`; assert `ACTION=EMIT_PLAN` succeeds with `EMIT_PLAN_STATUS=ok`, `DIFF_LINES=<total>`, and `diff-lines.txt` containing the final total. This pins that optional metadata does not break the legacy total-diff artifact.
+ 
+ ### UPDATED: `skills/design/scripts/test-check-plan-size.sh`
+ Add regression cases (keep all existing cases passing, including the `assert_no_key SOFT_TRIGGER_FIRED` / `FILES_COUNT` retired-key checks):
+@@ -124,11 +127,20 @@
+ 
+ ### UPDATED: `scripts/test-revise-plan-with-waterfall.sh`
+ Add one focused automated preservation regression.
+-- Start with a `plan.txt` containing `diff_added`, `diff_deleted`, `mechanical_churn`, and final `diff_lines`.
+-- Include a candidate revision that drops optional trailers and verify it is rejected or falls through; include a winning candidate that preserves the optional trailers in the final metadata block immediately above `diff_lines:`.
++- Start with a `plan.txt` containing `diff_added`, `diff_deleted`, `mechanical_churn`, and final `diff_lines`.
++- Add a default unified-diff preservation regression: the first candidate applies cleanly but removes optional trailers while leaving final `diff_lines:` valid, and must be rejected/restored by the common post-apply validation; a later unified-diff candidate preserves the optional trailers in the final metadata block immediately above `diff_lines:` and wins.
++- Add or adjust a separate file-replacement preservation regression that explicitly runs with `--patch-format file-replacement` (or an equivalent tier-4-only fixture) so the file-replacement validation path is exercised rather than accidentally covered only by the default unified-diff mode.
++- Assert both regressions leave the winning revised `plan.txt` with the original strict optional trailer keys present above final `diff_lines:`.
+ 
+ ### UPDATED: `scripts/test-revise-plan-with-waterfall.md`
+-Document the new preservation regression and note that it covers root-level `scripts/test-revise-plan-with-waterfall.sh`, not a skill-local harness.
++Document the new preservation regressions and note that they cover root-level `scripts/test-revise-plan-with-waterfall.sh`, not a skill-local harness. Call out both candidate formats: default unified-diff post-apply rejection and explicit `--patch-format file-replacement` preservation.
++
++### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
++Convert the plan-review-loop mechanical-churn spot-check into an automated regression.
++- Stub or fixture a revision path that writes a plan with `diff_added` over threshold plus `mechanical_churn: true` and a large `diff_lines`, then assert the loop does not emit `LOOP_STATUS=plan-size-trigger`.
++- Keep the assertion focused on the in-loop post-revision behavior: the revised plan should pass through the mechanical advisory path unless the plan-body gate independently trips.
+ 
+ ## Approach
+ 
+@@ -139,11 +151,13 @@
+ - Revision flows that rewrite `plan.txt` must preserve or recompute the optional trailers so a mechanical/deletion-heavy plan does not regress to legacy total-churn gating after Gate B or waterfall revisions.
+ - Post-plan Gate A discussion rewrites are part of the same preservation contract: any direct `plan.txt` revision before rerunning `ACTION=EMIT_PLAN` must keep or recompute the optional trailers above final `diff_lines:`.
+ - To avoid optional metadata causing false plan-body hard triggers, parse the final metadata block before final trigger evaluation and subtract recognized optional trailer lines from `PLAN_LINES`. This preserves legacy counts when no optional trailers exist while making the new trailers cost-free for the 800-line body gate.
+-- Waterfall file-replacement validation is the mechanical enforcement point for accepted replacement candidates: prompt prose asks agents to preserve trailers, and the script rejects candidates that drop original strict optional trailer keys before they can win.
++- Waterfall post-apply validation is the mechanical enforcement point for accepted revision candidates across both unified-diff and file-replacement formats: prompt prose asks agents to preserve trailers, and the script rejects any applied candidate that drops original strict optional trailer keys before it can win.
++- Gate A and Gate B direct rewrite surfaces remain prompt-side rather than helper-script-owned, so pin them with explicit snapshot/validate instructions plus `test-design-structure.sh` contains checks.
++- `emit-plan.sh` remains unchanged, but add an acceptance harness case to prove optional trailers above final `diff_lines:` still produce the same `diff-lines.txt` total artifact.
+ 
+ ## Edge cases
+ 
+@@ -171,7 +185,8 @@
+ 5. **Plan-body spoofing.** Prose or code samples containing `mechanical_churn: true` could suppress the diff gate if the parser scans the whole file. Earliest signal: spoof-resistance regression fails. Mitigation: parse only the final contiguous metadata block above `diff_lines:`.
+ 6. **Metadata scan crosses block boundary.** A scanner that skips blank lines could parse a separated body `diff_added:` line or subtract it from `PLAN_LINES`. Earliest signal: blank-separated trailer regression fails. Mitigation: stop upward scanning on any non-matching line, including blanks.
+ 7. **Duplicate-key inversion.** Implementing "last wins" as last encountered while scanning upward would choose the farthest value from `diff_lines:` and can invert the hard trigger. Earliest signal: duplicate optional-key regression fails. Mitigation: collect the final block in file order or only overwrite as iteration proceeds toward `diff_lines:`.
+-8. **Metadata false positive on plan-body gate.** Adding three optional trailers to an 800-line body could create a hard trigger if `PLAN_LINES` remains the raw line count. Earliest signal: 800-body-plus-trailers regression fails. Mitigation: subtract recognized optional metadata trailer lines from `PLAN_LINES` after parsing the final block; malformed lines remain body text.
++8. **Metadata false positive on plan-body gate.** Adding three optional trailers to an 800-line body could create a hard trigger if `PLAN_LINES` remains the raw line count. Earliest signal: 800-body-plus-trailers regression fails. Mitigation: subtract recognized optional metadata trailer lines from `PLAN_LINES` after parsing the final block; malformed lines remain body text.
++9. **Unified-diff revision bypass.** If preservation validation is attached only to file-replacement parsing, the default waterfall unified-diff path can remove optional trailers and still pass `ACTION=EMIT_PLAN`. Earliest signal: default unified-diff preservation regression fails or a plan-review-loop revised mechanical plan returns `LOOP_STATUS=plan-size-trigger`. Mitigation: validate the resulting `plan.txt` after every successful candidate apply before `run_emit_plan_gate`, restore on failure, and add both unified-diff and file-replacement regressions.
+ 
+ ## Testing strategy
+ 
+@@ -179,9 +194,12 @@
+ - Run `bash scripts/relevant-checks.sh` (or `make lint`) after edits — exercises bash 3.2 portability, bare-grep-probe, script-md-sibling, markdownlint, and `test-design-structure.sh`.
+-- Spot-check `plan-review-loop.sh` / `test-plan-review-loop.sh` still pass (additive keys only), including a revised mechanical-churn plan that does not return `plan-size-trigger`.
+-- Add the focused automated root-level `scripts/test-revise-plan-with-waterfall.sh` regression for preserving `diff_added`, `diff_deleted`, and `mechanical_churn` above final `diff_lines:`; keep `scripts/test-revise-plan-with-waterfall.md` in sync; do not create a skill-local unregistered harness and do not leave this as a manual spot-check.
+-- Add `scripts/test-design-structure.sh` assertions for `SOFT_ADVISORY` parsing and the `HARD_TRIGGER_FIRED=true` advisory copy that says plan-body still requires Split/Cancel.
++- Add `skills/design/scripts/test-emit-plan.sh` coverage for optional trailers above final `diff_lines:` and assert `EMIT_PLAN_STATUS=ok`, `DIFF_LINES=<total>`, and `diff-lines.txt=<total>`.
++- Extend `test-plan-review-loop.sh` with the revised mechanical-churn plan case and assert it does not return `LOOP_STATUS=plan-size-trigger`.
++- Add focused automated root-level `scripts/test-revise-plan-with-waterfall.sh` regressions for preserving `diff_added`, `diff_deleted`, and `mechanical_churn` above final `diff_lines:` in both default unified-diff mode and explicit `--patch-format file-replacement`; keep `scripts/test-revise-plan-with-waterfall.md` in sync; do not create a skill-local unregistered harness and do not leave this as a manual spot-check.
++- Add `scripts/test-design-structure.sh` assertions for `SOFT_ADVISORY` parsing, the `HARD_TRIGGER_FIRED=true` advisory copy that says plan-body still requires Split/Cancel, and preservation/recompute language for Gate A, Gate B, and discussion rewrite surfaces.
+ - Grep `docs/`, `README.md`, and `skills/**/*.md` for stale `1500` / `diff_lines` threshold prose; update `skills/design/references/approval-gates.md`, `skills/design/references/discussion-rounds.md`, and any other drift-prone prose found. No `SECURITY.md` change — behavior is not security-relevant.
+ 
+ ## Acceptance
+@@ -193,8 +211,9 @@
+ - `PLAN_LINES` excludes recognized optional `diff_added`, `diff_deleted`, and `mechanical_churn` metadata trailers above final `diff_lines:`; 800 body lines plus optional trailers does not hard-trigger the plan-body gate.
+ - SKILL.md Step 2b.5 parses the new keys and prints the mechanical-churn advisory; when plan-body still hard-triggers, advisory copy says Split/Cancel is still required. The hard prompt stays two-option (no Continue).
+-- Gate A discussion, Gate B, and waterfall revision paths preserve or recompute optional trailers above final `diff_lines:` so accepted mechanical/deletion-heavy estimates survive plan rewrites; waterfall file-replacement candidates that drop original optional trailer keys are rejected before acceptance.
+-- `check-plan-size.md`, `flags.md`, `approval-gates.md`, `discussion-rounds.md`, `scripts/test-design-structure.sh`, `test-check-plan-size.sh`, `test-check-plan-size.md`, `scripts/test-revise-plan-with-waterfall.sh`, and `scripts/test-revise-plan-with-waterfall.md` updated in sync; `make test-check-plan-size`, the root waterfall preservation test, `scripts/test-design-structure.sh`, and `bash scripts/relevant-checks.sh` pass.
++- Step 2b instructs designers to emit `diff_added:` when relying on deletion-heavy relief and `mechanical_churn: true` when relying on mechanical-churn relief, while preserving backward compatibility for legacy total-only plans.
++- Gate A discussion, Gate B, and waterfall revision paths preserve or recompute optional trailers above final `diff_lines:` so accepted mechanical/deletion-heavy estimates survive plan rewrites; waterfall unified-diff and file-replacement candidates that drop original optional trailer keys are rejected before acceptance, and Gate A/Gate B direct rewrites include a snapshot-and-validate contract before rerunning `ACTION=EMIT_PLAN`.
++- `check-plan-size.md`, `flags.md`, `approval-gates.md`, `discussion-rounds.md`, `scripts/test-design-structure.sh`, `test-check-plan-size.sh`, `test-check-plan-size.md`, `test-emit-plan.sh`, `test-plan-review-loop.sh`, `scripts/test-revise-plan-with-waterfall.sh`, and `scripts/test-revise-plan-with-waterfall.md` updated in sync; `make test-check-plan-size`, the EMIT_PLAN optional-trailer case, the plan-review-loop mechanical-churn case, both root waterfall preservation tests, `scripts/test-design-structure.sh`, and `bash scripts/relevant-checks.sh` pass.
+ 
+-diff_lines: 540
++diff_lines: 650

@@ -1,0 +1,19 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:21-28,75-88	Final metadata block boundary test omits a blank-separated full-line optional trailer	A valid-looking diff_added line above a blank separator can be incorrectly parsed or subtracted if the upward scan crosses blanks; the proposed spoof test does not explicitly assert PLAN_LINES includes that separated line	Add one focused check-plan-size case with diff_added above a blank and true metadata below it; assert scan stops at the blank, separated diff_added is body, and PLAN_LINES includes it
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:21-24,107-116; skills/design/scripts/test-check-plan-size.sh:178-192	Duplicate optional key winner is ambiguous for an upward scan	Last full-line match wins can mean last in file order or last encountered while scanning upward; those choose different diff_added values and can invert HARD_TRIGGER_FIRED	Specify the intended order explicitly, e.g. last in file order closest to diff_lines wins, and add a duplicate optional-key regression
+
+1. [correctness] <TMPDIR>/plan.txt:21-28,75-88
+
+Concern: The plan defines scanning as stopping at the first non-trailer line, which implies a blank line stops the block. But the proposed tests do not exercise the critical shape: a full-line valid optional trailer above a blank, followed by the true final metadata block.
+
+Scenario: `diff_added: 100`, blank, `diff_deleted: 50`, `diff_lines: 200`. A bad parser could scan through the blank, parse `DIFF_ADDED=100`, and subtract that line from `PLAN_LINES`. The plan’s spoof-resistance test at line 87 only says paragraph/fenced-code text is ignored; it does not explicitly prove that a blank-separated full-line trailer is excluded from parsing and subtraction.
+
+Suggested revision: Add one focused regression to `skills/design/scripts/test-check-plan-size.sh` that asserts the scan stops at the blank and `PLAN_LINES` includes the separated `diff_added:` line.
+
+2. [correctness] <TMPDIR>/plan.txt:21-24,107-116; skills/design/scripts/test-check-plan-size.sh:178-192
+
+Concern: “Last full-line match wins” is ambiguous for duplicate optional keys because the parser will scan upward from `diff_lines:`. The current case 11 analogy in `skills/design/scripts/test-check-plan-size.sh:178-192` only proves last non-empty `diff_lines:` in file order, not duplicate-key behavior inside a reverse scan.
+
+Scenario: With two valid `diff_added:` lines in the final block, an implementation that overwrites while scanning upward makes the farthest line from `diff_lines:` win. An implementation that preserves the first upward match makes the closest line win. Those can produce different hard-gate outcomes.
+
+Suggested revision: State the intended order explicitly in the plan and docs. If the intended behavior is “last in file order,” say “the closest matching key above `diff_lines:` wins; when scanning upward, keep the first value seen for each key.” Then add one duplicate-key test.
