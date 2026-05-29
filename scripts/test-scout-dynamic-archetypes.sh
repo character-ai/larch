@@ -23,7 +23,7 @@ export REAL_JQ
 cat > "$BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-cat >/dev/null
+grep -q 'You are a read-only reviewer' || exit 7
 if [[ "${SCOUT_STUB_FAIL:-false}" == "true" ]]; then
     exit 17
 fi
@@ -374,14 +374,19 @@ grep -Fq 'WARN=validated archetypes exceed max cap: 3 > 2; truncating' "$out_dir
 
 mkdir -p "$TMP/description-too-large"
 seed_case_inputs "$TMP/description-too-large"
-# Oversized payloads cannot be passed on argv on Linux (MAX_ARG_STRLEN); use --description-file.
 huge_file="$TMP/description-too-large/huge-description.bin"
 python3 - <<'PY' > "$huge_file"
 import sys
 sys.stdout.write("x" * 270000)
 PY
-set +e
-PATH="$BIN:$PATH" "$SCRIPT" \
+desc_launch="$TMP/description-stub-launch.sh"
+cat > "$desc_launch" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+exec "$REPO_ROOT/scripts/launch-claude-subprocess.sh" "\$@"
+STUB
+chmod +x "$desc_launch"
+PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
     --mode description \
     --scope-files "$TMP/description-too-large/scope-files.txt" \
     --description-file "$huge_file" \
@@ -389,11 +394,53 @@ PATH="$BIN:$PATH" "$SCRIPT" \
     --max-archetypes 4 \
     --output "$TMP/description-too-large/scout-manifest.json" \
     --timeout 5 \
-    > "$TMP/description-too-large/stdout.env" 2> "$TMP/description-too-large/stderr.env"
-rc=$?
+    > "$TMP/description-too-large/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/description-too-large/stdout.env" || fail "large description-file should succeed"
+staged_desc="$TMP/description-too-large/staged-context/description.txt"
+[[ -f "$staged_desc" ]] || fail "description file not staged"
+grep -Fq "$staged_desc" "$TMP/description-too-large/scout-dynamic-archetypes-prompt.md" || fail "prompt must reference staged description path"
+grep -Fq '<reviewer_description>' "$TMP/description-too-large/scout-dynamic-archetypes-prompt.md" && fail "prompt must not embed bulk description"
+
+mkdir -p "$TMP/description-text-inline-cap"
+seed_case_inputs "$TMP/description-text-inline-cap"
+huge_inline=$(python3 - <<'PY'
+import sys
+sys.stdout.write("x" * 270000)
+PY
+)
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode description \
+    --scope-files "$TMP/description-text-inline-cap/scope-files.txt" \
+    --description-text "$huge_inline" \
+    --plan-file "$TMP/description-text-inline-cap/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/description-text-inline-cap/scout-manifest.json" \
+    --timeout 5 \
+    > "$TMP/description-text-inline-cap/stdout.env" 2> "$TMP/description-text-inline-cap/stderr.env"
+inline_rc=$?
 set -e
-[[ "$rc" -eq 2 ]] || fail "description too large should fail validation"
-grep -Fq 'exceeds 256 KB' "$TMP/description-too-large/stderr.env" || fail "description too large stderr"
+[[ "$inline_rc" -eq 2 ]] || fail "inline description-text over 256 KB should fail validation"
+grep -Fq 'description-text exceeds 256 KB' "$TMP/description-text-inline-cap/stderr.env" || fail "inline cap stderr"
+
+mkdir -p "$TMP/large-diff"
+seed_case_inputs "$TMP/large-diff"
+python3 - <<'PY' >> "$TMP/large-diff/review.diff"
+import sys
+sys.stdout.write("diff --git a/big b/big\n+" + "x" * 300000 + "\n")
+PY
+large_launch="$desc_launch"
+PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$large_launch" SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/large-diff/review.diff" \
+    --plan-file "$TMP/large-diff/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/large-diff/scout-manifest.json" \
+    --timeout 5 \
+    > "$TMP/large-diff/stdout.env" 2> "$TMP/large-diff/stderr.env"
+large_diff_rc=$?
+[[ "$large_diff_rc" -eq 0 ]] || fail "large diff should not fail size gate"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/large-diff/stdout.env" || fail "large diff scout status"
 
 # --prompt-override-file: must be a regular file under CLAUDE_PLUGIN_ROOT (max 256KB).
 mkdir -p "$TMP/prompt-override-good"
@@ -480,5 +527,135 @@ rm -f "$huge_ov"
 [[ "$ov_big_rc" -eq 2 ]] || fail "prompt override over 256KB must exit 2"
 grep -Fq 'FAILURE_REASON=prompt-override-invalid' "$TMP/prompt-override-oversize/stdout.env" \
     || fail "prompt override oversize: expected FAILURE_REASON on stdout"
+
+codex_tier_stub="$TMP/codex-tier-stub.sh"
+cat > "$codex_tier_stub" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) out="${2:?}"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$out" ]] || exit 2
+if [[ "${SCOUT_CODEX_CAP_HIT:-false}" == "true" ]]; then
+    printf 'cap hit prose\n' >"$out"
+    printf 'STATUS=cap_hit\n' >"${out}.cap-hit"
+    printf '0\n' >"${out}.done"
+    exit 0
+fi
+if [[ "${SCOUT_CODEX_PROSE:-false}" == "true" ]]; then
+    printf 'not json prose\n' >"$out"
+    printf '0\n' >"${out}.done"
+    exit 0
+fi
+cat "${SCOUT_CODEX_JSON_FILE:?SCOUT_CODEX_JSON_FILE required}" >"$out"
+printf '0\n' >"${out}.done"
+exit 0
+STUB
+chmod +x "$codex_tier_stub"
+
+mkdir -p "$TMP/waterfall-codex-win"
+seed_case_inputs "$TMP/waterfall-codex-win"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
+    SCOUT_CODEX_JSON_FILE="$TMP/valid4.json" \
+    SCOUT_STUB_OUTPUT_FILE="$TMP/malformed.json" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/waterfall-codex-win/review.diff" \
+    --plan-file "$TMP/waterfall-codex-win/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/waterfall-codex-win/scout-manifest.json" \
+    --codex-present true \
+    --cursor-present true \
+    --timeout 5 \
+    >"$TMP/waterfall-codex-win/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-codex-win/stdout.env" || fail "codex tier should win waterfall"
+cmp -s "$TMP/valid4.json" "$TMP/waterfall-codex-win/scout-manifest.json.raw" || fail "codex raw should be winner"
+
+mkdir -p "$TMP/waterfall-fallthrough"
+seed_case_inputs "$TMP/waterfall-fallthrough"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
+    SCOUT_CODEX_PROSE=true \
+    SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/waterfall-fallthrough/review.diff" \
+    --plan-file "$TMP/waterfall-fallthrough/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/waterfall-fallthrough/scout-manifest.json" \
+    --codex-present true \
+    --timeout 5 \
+    >"$TMP/waterfall-fallthrough/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-fallthrough/stdout.env" || fail "codex prose should fall through to claude"
+cmp -s "$TMP/valid4.json" "$TMP/waterfall-fallthrough/scout-manifest.json.raw" || fail "claude should supply winning raw"
+
+mkdir -p "$TMP/waterfall-cap-hit-cleanup"
+seed_case_inputs "$TMP/waterfall-cap-hit-cleanup"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
+    SCOUT_CODEX_CAP_HIT=true \
+    SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/waterfall-cap-hit-cleanup/review.diff" \
+    --plan-file "$TMP/waterfall-cap-hit-cleanup/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/waterfall-cap-hit-cleanup/scout-manifest.json" \
+    --codex-present true \
+    --timeout 5 \
+    >"$TMP/waterfall-cap-hit-cleanup/stdout.env"
+grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-cap-hit-cleanup/stdout.env" || fail "stale cap-hit must not block claude winner"
+[[ ! -f "$TMP/waterfall-cap-hit-cleanup/scout-manifest.json.raw.cap-hit" ]] || fail "cap-hit sidecar should be removed before claude tier"
+
+mkdir -p "$TMP/waterfall-exhausted"
+seed_case_inputs "$TMP/waterfall-exhausted"
+printf 'still not json\n' >"$TMP/codex-bad.raw"
+PATH="$BIN:$PATH" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH="$codex_tier_stub" \
+    SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" \
+    SCOUT_CODEX_PROSE=true \
+    SCOUT_STUB_OUTPUT_FILE="$TMP/malformed.json" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/waterfall-exhausted/review.diff" \
+    --plan-file "$TMP/waterfall-exhausted/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/waterfall-exhausted/scout-manifest.json" \
+    --codex-present true \
+    --timeout 5 \
+    >"$TMP/waterfall-exhausted/stdout.env"
+grep -Fq 'SCOUT_STATUS=empty' "$TMP/waterfall-exhausted/stdout.env" || fail "multi-tier probe exhaustion should be empty"
+grep -Fq 'SCOUT_FAIL_REASON' "$TMP/waterfall-exhausted/stdout.env" && fail "probe exhaustion must not set SCOUT_FAIL_REASON"
+[[ "$(jq -c . "$TMP/waterfall-exhausted/scout-manifest.json")" == '{"archetypes":[]}' ]] || fail "probe exhaustion manifest"
+
+implement_root="$TMP/implement-tmp-root"
+mkdir -p "$implement_root"
+cp "$diff_file" "$implement_root/outside.diff"
+mkdir -p "$TMP/staging-outside"
+cp "$scope_file" "$TMP/staging-outside/scope-files.txt"
+cp "$plan_file" "$TMP/staging-outside/plan.md"
+PATH="$BIN:$PATH" IMPLEMENT_TMPDIR="$implement_root" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$implement_root/outside.diff" \
+    --plan-file "$TMP/staging-outside/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/staging-outside/scout-manifest.json" \
+    --timeout 5 \
+    >"$TMP/staging-outside/stdout.env"
+[[ -f "$TMP/staging-outside/staged-context/diff.txt" ]] || fail "outside diff not staged"
+grep -Fq "$TMP/staging-outside/staged-context/diff.txt" "$TMP/staging-outside/scout-dynamic-archetypes-prompt.md" || fail "prompt must use staged diff path"
+grep -Fq '<reviewer_diff>' "$TMP/staging-outside/scout-dynamic-archetypes-prompt.md" && fail "prompt must not embed diff"
+
+prompt_path="$TMP/staging-outside/scout-dynamic-archetypes-prompt.md"
+grep -Fq 'Read the file at' "$prompt_path" || fail "prompt must reference Read tool paths"
+grep -Fq 'review.diff' "$prompt_path" && fail "prompt must not reference raw review.diff basename from caller path"
 
 echo "All assertions passed."

@@ -61,8 +61,8 @@ FILE_LIST_FILE="$OUTPUT_DIR/file-list.txt"
 COMMIT_LOG_FILE="$OUTPUT_DIR/commit-log.txt"
 
 MERGE_BASE=$(git merge-base HEAD main)
-git diff -U20 "${MERGE_BASE}"...HEAD > "$DIFF_FILE"
-git diff "${MERGE_BASE}"...HEAD --name-only > "$FILE_LIST_FILE"
+git diff -U20 "${MERGE_BASE}"...HEAD -- . ':(exclude)larch-logs/**' > "$DIFF_FILE"
+git diff "${MERGE_BASE}"...HEAD --name-only -- . ':(exclude)larch-logs/**' > "$FILE_LIST_FILE"
 git log "${MERGE_BASE}"..HEAD --oneline > "$COMMIT_LOG_FILE"
 COMMIT_COUNT=$(wc -l < "$COMMIT_LOG_FILE" | tr -d ' ')
 

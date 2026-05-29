@@ -315,7 +315,8 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
             SCOUT_STATUS="missing-diff-file"
             write_scout_status_file
         else
-            scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST")
+            scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST"
+                --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE")
             [[ -n "$SESSION_ENV_PATH" ]] && scout_args+=(--session-env-path "$SESSION_ENV_PATH")
             [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && scout_args+=(--plan-file "$PLAN_FILE")
             if [[ "$MODE" == "diff" ]]; then

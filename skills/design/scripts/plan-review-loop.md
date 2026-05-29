@@ -19,7 +19,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 
 ## Argv
 
-`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (starting round; default 1), optional `--round-cap N` (enables multi-round when present on argv; default value from `LARCH_DESIGN_ROUND_CAP` only applies when the flag is passed), optional `--convergence-threshold N` (default `${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}`), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`.
+`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (starting round; default 1), optional `--round-cap N` (enables multi-round when present on argv; default value from `LARCH_DESIGN_ROUND_CAP` only applies when the flag is passed), optional `--convergence-threshold N` (default `${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}`), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`. The per-round scout invocation (`$PLAN_REVIEW_SCOUT_SH`, default `scout-plan-archetypes-wrapper.sh`) receives the same `--codex-present` / `--cursor-present` values.
 
 **Legacy contract**: omit `--round-cap` → single pass, `LOOP_STATUS=complete`, no inner revise loop.
 

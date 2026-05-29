@@ -148,4 +148,22 @@ grep -Fq 'context file exceeds 1 MB' "$TMP/over-err" || fail "over-cap rejection
 # Pin against the stale 256 KB wording to prevent reverts.
 grep -Fq '256 KB' "$TMP/over-err" && fail "stale '256 KB' wording in rejection message; #2292 wording regressed"
 
+read_tools_session="$TMP/read-tools-session"
+mkdir -p "$read_tools_session"
+read_tools_prompt="$read_tools_session/prompt.md"
+printf 'Read staged context by path.\n' >"$read_tools_prompt"
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --prompt-file "$read_tools_prompt" \
+    --output-file "$read_tools_session/out.txt" \
+    --timeout 5 \
+    --read-tools \
+    --timing-task-kind scout-dynamic-archetypes \
+    >"$TMP/read-tools-stdout" 2>"$TMP/read-tools-err" \
+    || fail "--read-tools launch failed"
+grep -Fq 'STATUS=OK' "$TMP/read-tools-stdout" || fail "--read-tools missing STATUS=OK"
+grep -Fq 'add-dir' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing --add-dir"
+grep -Fq 'allowedTools' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing allowedTools"
+grep -Fq 'Read Grep Glob' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing Read Grep Glob allowlist"
+grep -Fq 'permission-mode' "$read_tools_session/out.txt.meta" || fail "--read-tools CMD_JSON missing permission-mode"
+
 echo "All assertions passed."

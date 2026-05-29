@@ -39,6 +39,7 @@ while [[ $# -gt 0 ]]; do
         --max-archetypes) max="${2:?}"; shift 2 ;;
         --session-env-path) session="${2:?}"; shift 2 ;;
         --mode|--timeout) shift 2 ;;
+        --codex-present|--cursor-present) shift 2 ;;
         --prompt-override-file) shift 2 ;;
         *) shift 1 ;;
     esac
@@ -80,13 +81,18 @@ JSON
     --description-file "$D1/feature-description.txt" \
     --output "$D1/scout-plan-manifest.json" \
     --max-archetypes 6 \
-    --session-env-path "$D1/source-env.sh" >"$D1/out.env"
+    --session-env-path "$D1/source-env.sh" \
+    --codex-present true \
+    --cursor-present false >"$D1/out.env"
 grep -Fq 'SCOUT_STATUS=ok' "$D1/out.env" || fail "d1 status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$D1/out.env" || fail "d1 count"
 [[ -f "$D1/scout-plan-scope-files.txt" ]] || fail "scope file missing"
 [[ "$(wc -l <"$D1/scout-plan-scope-files.txt" | tr -d ' ')" == "3" ]] || fail "expected 3 scope lines"
 grep -Fq -- '--scope-files' "$D1/argv.log" || fail "scope-files not passed"
 grep -Fq -- '--prompt-override-file' "$D1/argv.log" || fail "prompt override not passed"
+grep -Fq -- '--codex-present' "$D1/argv.log" || fail "codex-present not forwarded"
+grep -Fq -- '--cursor-present' "$D1/argv.log" || fail "cursor-present not forwarded"
+grep -Fq -- 'true' "$D1/argv.log" || fail "codex-present value missing from argv log"
 
 echo "=== scope stub when no parseable paths ==="
 D0="$TMP/d0"

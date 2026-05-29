@@ -690,7 +690,9 @@ _run_plan_review_round() {
     --description-file "$FEATURE_FILE" \
     --output "$DESIGN_TMPDIR/scout-plan-manifest.json" \
     --max-archetypes 6 \
-    --session-env-path "$DESIGN_TMPDIR/source-env.sh" || true
+    --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
+    --codex-present "$CODEX_PRESENT" \
+    --cursor-present "$CURSOR_PRESENT" || true
 
 # --- Step 3: panel dispatch ---
 _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \

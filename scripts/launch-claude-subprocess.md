@@ -14,7 +14,8 @@ Invariants:
 - It writes `${OUTPUT_FILE}.dirty-tree` so review dirty-tree aggregation can treat Claude subprocesses like external reviewers.
 - Prompt and context paths must be regular non-symlink files under an allowed root. Allowed roots: `PLUGIN_ROOT` (the installed plugin directory), `SESSION_ROOT` (the parent directory of `--output-file`), and any directories added via `--allow-root DIR` (repeatable; each must be an existing directory; canonical path is resolved via `cd`). Context is capped at 20 files and 1 MB each. The 1 MB per-file cap was raised from 256 KB in #2292 after real-world `/implement` runs on non-trivial PRs produced `git diff -U20 MERGE_BASE...HEAD` outputs above 256 KB (PR #2289 was 274 KB), tripping `context file exceeds 256 KB` for the diff context file silently because `dispatch-code-voters.sh` was swallowing the launcher's stderr. The new ceiling is well below Claude Sonnet 4-6's 200 K-token context window (≈ 800 KB after prompt overhead) while still bounding pathological inputs.
 - `--allow-root DIR` is used by `dispatch-code-voters.sh` and `dispatch-panel.sh` to allow context files such as `review-diff.patch` that live under `IMPLEMENT_TMPDIR` rather than the launch session tmpdir.
-- Read-only posture is prompt-level only; the Claude CLI has no mechanical read-only flag in this wrapper.
+- Read-only posture is prompt-level only for the default path; the Claude CLI has no mechanical read-only flag in this wrapper.
+- Optional `--read-tools` (scout Claude tier): launches `claude --print --add-dir "$SESSION_ROOT" --allowedTools "Read Grep Glob" --permission-mode default` without embedding `--context-files` in the rendered prompt. `CMD_JSON` records the tool-capable argv. Verified on dev hosts per `.claude/rules/verify-external-tool-invocations.md`.
 
 Harness: `scripts/test-launch-claude-subprocess.sh`, wired into `make lint` through `test-launch-claude-subprocess`.
 

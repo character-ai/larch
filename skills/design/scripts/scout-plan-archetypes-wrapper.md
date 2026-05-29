@@ -1,6 +1,6 @@
 # scout-plan-archetypes-wrapper.sh
 
-**Purpose**: `/design` Step 3 scout — derives `--scope-files` from the plan’s Files-to-modify headings, invokes `scripts/scout-dynamic-archetypes.sh` in description mode with the plan-review prompt override, then post-filters reserved slugs (`arch`, `edge`, `innovation`, `pragmatic`, `requirements`) and enforces cap 6.
+**Purpose**: `/design` Step 3 scout — derives `--scope-files` from the plan’s Files-to-modify headings, invokes `scripts/scout-dynamic-archetypes.sh` in description mode with the plan-review prompt override (forwarding `--codex-present` / `--cursor-present`), then post-filters reserved slugs (`arch`, `edge`, `innovation`, `pragmatic`, `requirements`) and enforces cap 6.
 
 **Primary callers**: `skills/design/SKILL.md` Step 3.
 
