@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Two-tier design flow (SIMPLE/HARD) with full plan review and clarify loop; verbal prompts create an issue first."
-argument-hint: "[--simple|--hard] [-p|--partition] [--brainstorm] [--manual|-m] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
+argument-hint: "[--hard] [-p|--partition] [--brainstorm] [--manual|-m] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -9,19 +9,18 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Design an implementation plan for a feature and review it with the **full** panel on both tiers (10 static reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the full plan-review panel; HARD runs 4 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--simple`, `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
+**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--simple` | `false` | Tier: `design_classification=SIMPLE` (no sketches, no dialectic, full review panel, 3 total review runs) |
-| `--hard` | `false` | Tier: `design_classification=HARD` (4 sketches, dialectic when contested, full review panel, 5 total review runs) |
+| `--hard` | `false` | Opt into HARD (default is SIMPLE): 4 sketches, dialectic when contested, full review panel, 5 total review runs |
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
 | `--manual` / `-m` | `false` | Restore today's Gate B 3-option `AskUserQuestion`. Default is auto-apply every accepted finding (persisted as `manual_gate_b` in `run-params.json`; see `references/flags.md` and `references/approval-gates.md` §Gate B). |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one of `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0.
+**Mutual exclusion**: at most one `--hard` may appear on argv; duplicate `--hard` is a hard error before Step 0. Any other unrecognized or disallowed leading public `--` flag is a hard error before Step 0 (never swallowed as positional/verbal feature text).
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
@@ -121,6 +120,14 @@ Read `skills/design/references/readability-style.md` as the single source of sty
 
 Print: `> **🔶 /design 0: setup**`
 
+### 0-pre — Public argv validation (before session-setup)
+
+**When**: immediately after reading `references/flags.md` and before invoking the Step 0a Bash block. No `session-setup.sh`, no `DESIGN_TMPDIR`, and no Final summary block on this path.
+
+1. Parse public flags (`--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. For each leading `--` token, accept only that allowlist (`--run-id` consumes the next argv token as its value). Boolean flags must not repeat (duplicate `--hard` is a hard error).
+2. Any other leading `--` token (including retired tier flags) is unrecognized/disallowed. On duplicate `--hard` or any unrecognized/disallowed leading `--` flag: print `**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**` to stderr (substitute the offending token when helpful) and exit **1**. Do **not** invoke Step 0a.
+3. On success, bind mental booleans `hard_requested`, `partition_requested`, `brainstorm_requested`, `manual_requested`, `no_dedup_requested`, and optional `run_id` from argv for Step 0b (Step 0b sub-step 1 consumes these bindings; it does not re-validate allowlist membership).
+
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
 `/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `session-setup.sh` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session-setup.sh` stdout is parsed and `write-design-current-env.sh` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
@@ -188,7 +195,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
-1. Parse public flags (`--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Remaining tokens after flags:
+1. Consume the mental argv bindings from Step **0-pre** (`hard_requested`, `partition_requested`, `brainstorm_requested`, `manual_requested`, `no_dedup_requested`, optional `run_id`). Remaining tokens after flags:
    - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
    - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`. The title-eligibility filter at sub-step **2.5** still applies once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
 2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field.
@@ -198,7 +205,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
    ```
 
-   Parse `LOAD_OK=` from stdout. On `LOAD_OK=true`, re-export `SESSION_ID`, `RUN_ID`, `TIER`, and `BRAINSTORM_DONE` from the loader stdout; print any returned `WARN=` lines as warning breadcrumbs before resuming; refresh the stable env symlink with `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID"` (plus `--manual-requested true` if restored run params require it); print `🔓 resumed from STEP=<id>`. If `STEP=0c`, do **not** skip Step 0b clarify handling; resume at Step 0b sub-step 3 (Clarify loop), then continue through Step 0c and onward. Otherwise skip sub-steps 2.5 through 6 and route directly to the named `STEP=<id>`. Do not rerun title filtering, already-planned routing, tier gate, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes on the resumed non-`0c` path. On `LOAD_OK=false`, print any `WARN=` / `ERROR=` as a warning breadcrumb and continue as a fresh run through sub-step 2.5.
+   Parse `LOAD_OK=` from stdout. On `LOAD_OK=true`, re-export `SESSION_ID`, `RUN_ID`, `TIER`, and `BRAINSTORM_DONE` from the loader stdout; print any returned `WARN=` lines as warning breadcrumbs before resuming; refresh the stable env symlink with `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID"` (plus `--manual-requested true` if restored run params require it); print `🔓 resumed from STEP=<id>`. If `STEP=0c`, do **not** skip Step 0b clarify handling; resume at Step 0b sub-step 3 (Clarify loop), then continue through Step 0c and onward. Otherwise skip sub-steps 2.5 through 6 and route directly to the named `STEP=<id>`. Do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes on the resumed non-`0c` path. On `LOAD_OK=false`, print any `WARN=` / `ERROR=` as a warning breadcrumb and continue as a fresh run through sub-step 2.5.
 2.5. **Title-eligibility filter** — run **after** resume detection and **before** sub-step 3. Mandatory predicate order: (a) lifecycle-reject (exit on match), (b) archival-report (exit on match), (c) brainstorm (set flag and continue on match). Earlier checks short-circuit.
 
    1. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-title-eligibility.sh`.
@@ -265,7 +272,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
 4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**. Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
-5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **two options** `simple` / `hard`. SIMPLE description: "No upfront sketches, no dialectic. Full external review panel still runs. Designer + reviewers bias toward simplicity and minimum-change. Re-run cap: 3 total review runs." HARD description: "4 personality sketches + dialectic + full review panel. Designer + reviewers bias toward thoroughness. Re-run cap: 5 total review runs." Non-tier `Other` answers → export `SUMMARY_OUTCOME=cancelled-tier-gate` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
+5. **Tier resolution**: set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). No `AskUserQuestion` on this sub-step.
 5.5. **Rename issue to `[DESIGNING]`** (best-effort, idempotent) now that all cancel paths have been cleared. Resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` or `gh repo view` fallback if not already bound. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). On non-zero exit, log `Step 0 — [DESIGNING] rename failed` to `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` and continue.
 5.5-bis. **Refresh issue-bound env immediately after rename** so `/larch:pause` can find `ISSUE_NUMBER` even if pause is invoked before sub-step 6. Re-run `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID"` and append `--manual-requested true` only when `manual_requested=true`.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh` and **partition + brainstorm + manual Gate B persistence**:
@@ -273,8 +280,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    - Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv **or** auto-enabled by the Step 0b Brainstorm title-prefix check, else `false`.
    - Set mental boolean `manual_requested` to `true` when `--manual` or `-m` was parsed on argv, else `false`.
    - Immediately refresh `$DESIGN_TMPDIR/source-env.sh` via `write-design-current-env.sh` so subsequent Bash blocks can source `ISSUE_NUMBER` and `MANUAL_REQUESTED` from the stable session-env file instead of relying on prompt-local argv memory. Pass `--issue-number "$ISSUE_NUMBER"` on that follow-up invocation, and append `--manual-requested true` only when `manual_requested=true` (omit the flag entirely when `manual_requested=false`). Keep the existing `--output`, `--design-tmpdir`, `--session-id`, and `--claude-pid "$PPID"` arguments.
-   - `simple`: `design_classification=SIMPLE`, `design_classification_reason="argv tier: --simple"`, `design_classification_source=caller-forwarded`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`.
-   - `hard`: `design_classification=HARD`, `design_classification_reason="argv tier: --hard"`, `design_classification_source=caller-forwarded`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`.
+   - Default (no `--hard`): `design_classification=SIMPLE`, `design_classification_reason="default tier: SIMPLE (no --hard)"`, `design_classification_source=caller-forwarded`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`.
+   - `--hard`: `design_classification=HARD`, `design_classification_reason="argv tier: --hard"`, `design_classification_source=caller-forwarded`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`.
    Set `design_classification_source=caller-forwarded` (the orchestrator forwards tier selection; `run-params.json` is not re-derived from argv here).
 
 ```bash
@@ -293,7 +300,7 @@ fi
 "${_wdce_step0b_args[@]}"
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [[ "$design_classification" == SIMPLE ]]; then
-  design_classification_reason="argv tier: --simple"
+  design_classification_reason="default tier: SIMPLE (no --hard)"
   design_classification_source=caller-forwarded
   # SIMPLE skips the sketch phase; Step 2a consumes 0 as the no-sketch sentinel.
   sketch_budget=0
@@ -351,9 +358,9 @@ fi
 
 ### Final summary block
 
-**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
+**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or disallowed public argv abort before Step 0 (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
 
-**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-assessor-worse` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-tier-gate` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Step 5c happy path uses the **two-phase** callsites in Step 5c prose (`--pre-publish-only` before `design-log-publish.sh`, then `--post-publish-only` after publish) instead of this single-phase fence.
+**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-assessor-worse` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Step 5c happy path uses the **two-phase** callsites in Step 5c prose (`--pre-publish-only` before `design-log-publish.sh`, then `--post-publish-only` after publish) instead of this single-phase fence.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 

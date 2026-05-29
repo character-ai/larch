@@ -99,9 +99,7 @@ printf '%s\n' "$out2" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail 
 
 [[ -f "$DESIGN_SKILL" ]] || fail "missing skills/design/SKILL.md"
 
-simple_row=$'| `--simple` |'
 hard_row=$'| `--hard` |'
-grep -Fq "$simple_row" "$DESIGN_SKILL" || fail "design SKILL missing simple tier row"
 grep -Fq "$hard_row" "$DESIGN_SKILL" || fail "design SKILL missing hard tier row"
 grep -Fq 'design_classification=SIMPLE' "$DESIGN_SKILL" || fail "design SKILL missing SIMPLE v2 mapping pin"
 grep -Fq 'design_classification=HARD' "$DESIGN_SKILL" || fail "design SKILL missing HARD v2 mapping pin"

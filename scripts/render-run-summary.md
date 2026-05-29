@@ -88,5 +88,5 @@ The flag is compatible with token flags; when both are present,
 | Skill | Outcome values with `- **Outcome**:` bullet |
 |-------|-----------------------------------------------|
 | `/implement` | `bailed*`, `stalled`, `cancelled-*`, `failed-*` (shell pattern; includes design-style strings if ever passed) |
-| `/design` | `cancelled-clarify`, `cancelled-already-planned`, `cancelled-reentry-guard`, `cancelled-tier-gate`, `cancelled-sprawl`, `cancelled-plan-size-hard`, `failed-plan-write` (plus implement-style `bailed*` / `stalled` if reused) |
+| `/design` | `cancelled-clarify`, `cancelled-already-planned`, `cancelled-reentry-guard`, `cancelled-sprawl`, `cancelled-plan-size-hard`, `failed-plan-write` (plus implement-style `bailed*` / `stalled` if reused) |
 | Both | `approved` and other happy-path implement outcomes **omit** the Outcome bullet |

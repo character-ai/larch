@@ -30,8 +30,20 @@ absent() {
   fi
 }
 
-contains "$SKILL_MD" '[--simple|--hard]' 'SKILL argument hint must expose only SIMPLE/HARD tiers'
-contains "$SKILL_MD" 'if two or more tier flags appear' 'SKILL must document duplicate-tier rejection before Step 0'
+contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the sole tier flag'
+absent "$SKILL_MD" '[--simple|' 'SKILL argument hint must not restore [--simple|--hard] tier alternation'
+contains "$SKILL_MD" 'The default tier is SIMPLE' 'SKILL must document default SIMPLE tier resolution'
+contains "$SKILL_MD" '**Tier resolution**' 'SKILL must document non-interactive Tier resolution sub-step'
+contains "$SKILL_MD" 'default tier: SIMPLE (no --hard)' 'SKILL must pin default-tier write-run-params reason string'
+absent "$SKILL_MD" '**Tier gate**' 'SKILL must not retain retired Step 0 Tier gate sub-step'
+absent "$SKILL_MD" 'cancelled-tier-gate' 'SKILL must not retain cancelled-tier-gate outcome'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+absent "$SKILL_MD" 'the tier `AskUserQuestion`' 'SKILL must not retain interactive tier AskUserQuestion gate'
+absent "$SKILL_MD" 'argv tier: --simple' 'SKILL must not retain legacy argv-tier --simple reason string'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" 'unrecognized or disallowed leading public `--` flag is a hard error before Step 0' 'SKILL must document disallowed-public-flag rejection before Step 0'
+contains "$SKILL_MD" 'before invoking the Step 0a Bash block' 'SKILL must validate public argv before session-setup'
+absent "$APPROVAL_MD" 'Step 0 tier-gate' 'approval-gates.md must not retain retired Step 0 tier-gate contrast'
 contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'unless `design_classification == SIMPLE`, where the user-confirmed no-sketch carve-out applies' 'SKILL missing SIMPLE Design Mindset carve-out'
@@ -507,7 +519,7 @@ echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \
   || fail "(2930) SKILL.md argument-hint missing [--manual|-m] between brainstorm and no-dedup"
 # shellcheck disable=SC2016 # Markdown literal contains backticks and "$manual" text intentionally.
-grep -Fq 'Parse public flags (`--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`)' "$SKILL_MD" \
+grep -Fq 'Parse public flags (`--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`)' "$SKILL_MD" \
   || fail "(FINDING_5) SKILL.md Step 0b public-flag parse list missing --manual|-m"
 # shellcheck disable=SC2016 # Markdown table cell literal
 grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
