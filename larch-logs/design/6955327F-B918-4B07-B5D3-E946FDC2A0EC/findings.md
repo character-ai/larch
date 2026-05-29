@@ -1,0 +1,15 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: Makefile:4; Makefile:32-34
+- **Concern**: New harness target omitted from .PHONY union. Scenario: Plan adds test-gather-branch-context recipe and test-harnesses-8 membership but not a .PHONY entry; scripts/test-harness-shards-coverage.sh fails make lint with missing from .PHONY
+- **Proposed resolution**: Add test-gather-branch-context to an existing .PHONY line (e.g. Makefile:4) in the same Makefile change
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/review/scripts/test-dispatch-panel.sh:212-277
+- **Concern**: Plan does not retarget `dynamic-fail` / `dynamic-parse-failed*` fixtures for multi-tier terminal status. Scenario: With `--codex-available true`, dispatch will forward `--codex-present true`; PATH `codex` stub writes non-JSON to `${OUTPUT}.raw` (probe miss), then Claude stub runs. `SCOUT_LAUNCH_FAIL` / malformed JSON no longer yield `SCOUT_STATUS=claude-failed` or `parse-failed` + diag — they yield `SCOUT_STATUS=empty` per the new exhaustion rule, breaking grep expectations and parse-failed sidecar tests
+- **Proposed resolution**: In `### UPDATED: skills/review/scripts/test-dispatch-panel.sh`, explicitly require: (1) `dynamic-parse-failed*` and prod warn cases use `--codex-available false` (single-tier `parse-failed` + diag), or update assertions to `empty` and drop parse-failed diag checks; (2) `dynamic-fail` use `--codex-available false` or a `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH` stub that fails launch so the last-tier status stays `claude-failed`; document that ok/empty paths may rely on Codex non-JSON fallthrough but failure-path fixtures must be retargeted

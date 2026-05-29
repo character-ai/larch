@@ -1,0 +1,19 @@
+Reviewing the plan and tracing presence-flag propagation through the cited scripts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:19	`tier_raw_is_scout_json` documents `${raw_path%.raw}.cap-hit` as an alternate cap-hit sibling path	`launch-review.sh` writes `${OUTPUT}.cap-hit` where `OUTPUT` is the tier `--output` (e.g. `…/scout-manifest.json.raw` → `…/scout-manifest.json.raw.cap-hit`). `${raw_path%.raw}.cap-hit` resolves to `…/scout-manifest.json.cap-hit`, so a cap-hit check using the stripped form never fires; tier logic may treat a budget-capped Codex run as a normal non-empty raw and rely only on JSON probing	In `tier_raw_is_scout_json`, test only `[[ -f "${raw_path}.cap-hit" ]]` (and/or first-line `STATUS=cap_hit` on `"$raw_path"`); drop the `${raw_path%.raw}.cap-hit` variant from the plan and implementation
+
+### 1. [correctness] `plan.txt:19` — cap-hit sibling path typo
+
+The plan’s `tier_raw_is_scout_json` helper lists two cap-hit locations: `${raw_path%.raw}.cap-hit` and `${raw}.cap-hit`. For the scout waterfall, Codex is invoked with `--output` set to the tier raw path (today `raw_output="${OUTPUT}.raw"` in `scripts/scout-dynamic-archetypes.sh` around line 247). `launch-review.sh` writes the cap-hit sidecar as `${OUTPUT}.cap-hit` (see `scripts/launch-review.sh` around lines 185–186), so the real file is `*.raw.cap-hit`, not `*.cap-hit` with `.raw` stripped.
+
+An implementer who follows the stripped form will never see the sidecar. Parse-gating on JSON still usually prevents a false win, but the documented fast-path is wrong and weakens the FINDING_1 guard against prose/`cap_hit` wins.
+
+**Suggested revision:** In the plan and helper, check only `"${raw_path}.cap-hit"` (optionally also `head -1` == `STATUS=cap_hit` on `"$raw_path"`).
+
+---
+
+**Trace verification (no plan gaps found on presence threading):**
+
+- **`skills/review/scripts/dispatch-panel.sh`:** `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` are set from argv (`--codex-available` / `--cursor-available` at lines 50–51), validated at 74–75, not from a sourced env file. The scout call at lines 318–327 does not yet forward them; the plan’s `scout_args+=(--codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE")` matches that source.
+- **`skills/design/scripts/plan-review-loop.sh`:** `CODEX_PRESENT` / `CURSOR_PRESENT` are script-level variables from argv (48–49, 83–84, validated 93–94). They are in scope inside `_run_plan_review_round` (panel dispatch already passes them at 676–677), but the scout invocation at 666–671 omits them today; the plan’s explicit `"$PLAN_REVIEW_SCOUT_SH" … --codex-present "$CODEX_PRESENT" …` fix is the right minimum change (not dependent on ambient export).
+- **`skills/design/scripts/scout-plan-archetypes-wrapper.sh`:** Does not yet accept or forward presence flags (`SCOUT_ARGS` at 152–160); the plan’s wrapper hop is required for the two-hop `/design` path.

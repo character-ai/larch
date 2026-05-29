@@ -1,0 +1,18 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-innovation-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 21s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-innovation-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:44; plan.txt:84-85	Conflicting terminal status when every tier fails JSON probe	Testing strategy line 44 groups launch failure and JSON-probe failure under one fail-open assertion, while edge cases line 85 requires SCOUT_STATUS=parse-failed when the last tier fails the probe with no winner; dispatch-panel.sh:274-307 only appends scout parse diagnostics on parse-failed	Keep line 85: all tiers fail launch → empty manifest plus claude-failed/timeout; all tiers fail probe → parse-failed with SCOUT_FAIL_REASON. Retarget line 44 harness text to assert status separately (parse-failed vs launch-failed), not a single bundled fail-open case
+2	in_scope	important	correctness	plan.txt:13-18; scripts/scout-dynamic-archetypes.sh:297-310; scripts/launch-review.sh:562-568	Waterfall omits how SCOUT_LATENCY_MS is sourced for a Codex-winning tier	Current scout reads ELAPSED only from launch-claude-subprocess.sh stdout (launch_stdout); launch-review.sh exits with a code and sidecars but emits no ELAPSED kv, so a Codex win yields SCOUT_LATENCY_MS=0 or a stale value from an overwritten launch_stdout	Codex tier: wrap launch-review.sh with wall-clock or read timing-ledger.sh from the tier output path; Claude tier: keep ELAPSED from launch-claude-subprocess. Emit SCOUT_LATENCY_MS from the winning tier only; document in scout-dynamic-archetypes.md
+
+1. **[correctness]** `plan.txt:44` vs `plan.txt:84-85` — Terminal scout status when every tier fails the JSON probe is specified two ways. The testing section bundles launch failure and JSON-probe failure into one “fail-open” assertion, while edge cases require `SCOUT_STATUS=parse-failed` when the last tier fails the probe with no winner (`dispatch-panel.sh` only posts parse diagnostics on `parse-failed`). Reconcile before implementation: preserve `parse-failed` for all-probe-miss (current single-tier behavior) and narrow line 44 tests to manifest plus explicit status expectations.
+
+2. **[correctness]** `plan.txt:13-18`, `scripts/scout-dynamic-archetypes.sh:297-310`, `scripts/launch-review.sh:562-568` — The waterfall plan does not define latency accounting for a Codex-winning tier. Today `SCOUT_LATENCY_MS` comes from `ELAPSED` on `launch-claude-subprocess.sh` stdout; `launch-review.sh` does not emit that. A Codex win would report zero or stale latency unless the plan adds wall-clock or timing-ledger sourcing for the winning tier only.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+
+Failed with exit code 1 after 21s. Output size: 0 bytes.
+

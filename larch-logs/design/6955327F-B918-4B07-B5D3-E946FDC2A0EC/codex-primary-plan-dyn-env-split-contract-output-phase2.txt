@@ -1,0 +1,27 @@
+Reviewing the plan and tracing env-var usage across harnesses and callers.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:21	`tier_raw_is_scout_json` cap-hit sidecar path is wrong	Plan lists `${raw_path%.raw}.cap-hit`; `launch-review.sh` writes `${OUTPUT}.cap-hit` when `--output` is already `${OUTPUT}.raw` (e.g. `scout-manifest.json.raw.cap-hit`). Implementer following `%.raw` looks for `scout-manifest.json.cap-hit`, misses budget cap, and may mishandle Codex tier outcomes	Use `[[ -f "${raw_path}.cap-hit" ]]` only (match `scripts/launch-review.sh:186`); drop the `%.raw` variant in plan and `scripts/scout-dynamic-archetypes.md`
+2	in_scope	important	risk-integration	skills/review/scripts/test-dispatch-panel.sh:474-498	`limits` oversized-diff case not in plan retarget list	Case uses `--dynamic-archetypes 4` and `--codex-available true` without `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` or `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH`; it expects `SCOUT_STATUS=validation-failed` from the 256 KB gate. After gate removal and `--codex-present` forwarding, scout runs the waterfall (PATH `codex`/`claude` stubs return prose), probe fails, and status becomes `empty` (or another non-`validation-failed` value)—`make test-dispatch-panel-limits` fails	Add this case to the `test-dispatch-panel.sh` update: stub `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_REVIEW_SH` (and keep `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` for Claude) or set `--codex-available false` and rewrite assertions for staged large-diff success per the new contract
+
+1. **correctness** — The plan’s `tier_raw_is_scout_json` helper (plan.txt:21) documents two cap-hit sidecar patterns; only `${raw_path}.cap-hit` matches `launch-review.sh`, which writes `${OUTPUT}.cap-hit` when scout passes `--output` as `${OUTPUT}.raw`:
+
+```186:186:scripts/launch-review.sh
+        printf 'STATUS=cap_hit\n%s\n' "$_budget_out" > "${OUTPUT}.cap-hit"
+```
+
+The `${raw_path%.raw}.cap-hit` form would resolve to `scout-manifest.json.cap-hit` instead of `scout-manifest.json.raw.cap-hit`.
+
+2. **risk-integration** — Env-var split coverage is otherwise sound: only `test-dispatch-panel.sh` and `test-scout-dynamic-archetypes.sh` set `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` today, and the plan updates both plus sibling `.md` contracts. The gap is the `limits` oversized-diff scenario (474–498), which never sets either override but still depends on the removed file-size gate:
+
+```486:495:skills/review/scripts/test-dispatch-panel.sh
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/oversized-diff/review.diff" \
+    ...
+    --dynamic-archetypes 4)
+grep -Fq 'SCOUT_STATUS=validation-failed' <<< "$out"
+```
+
+After the PR, that path forwards `--codex-present true`, runs Codex via `launch-review.sh` (not `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH`), and no longer fails at `validate_context_input_file` line 123. PATH stubs avoid host Codex/Claude binaries, but assertions still break.
+
+**Exonerated (plan already covers):** core `test-dispatch-panel.sh` dynamic cases with only `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` (FINDING_1 / line 63); `parse-failed` cases via `--codex-present false` or `LAUNCH_REVIEW_SH` stub; `plan-review-loop.sh` presence forwarding (FINDING_8); `scout-plan-archetypes-wrapper.sh` forwarding; sibling `.md` env-var split docs; `test-scout-dynamic-archetypes.sh` description-too-large retarget.

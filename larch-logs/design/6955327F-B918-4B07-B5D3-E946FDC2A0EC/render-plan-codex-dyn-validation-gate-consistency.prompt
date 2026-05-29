@@ -1,0 +1,98 @@
+You are a supplementary plan-review specialist (dynamic archetype `validation-gate-consistency`). The static /design panel already covers Arch, Edge, Innovation, Pragmatic, and Requirements (Cursor + Codex). Apply the same evidence discipline: compare the written plan to current repository state. Focus directive:
+
+Read validate_context_input_file in scripts/scout-dynamic-archetypes.sh and list every remaining guard that stays after the plan's 256 KB removal. Determine whether the allowed-root check enumerates a fixed set of permitted path prefixes and whether $SESSION_ROOT/staged-context/ would fall inside that set, or whether a new allowed-root entry must be added. Also check whether the stage_context_file helper's cp destination produces canonical, symlink-free paths that would re-pass the no-symlink and no-.. guards if the staged file is itself re-validated on a subsequent call. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.
+
+**Tier emphasis: SIMPLE.** This is a minimum-change review lane. Bias your findings toward flagging **scope creep and unnecessary complexity**. Do NOT request additions unless they are materially required for correctness, security, or safety hardening. Accept YES only for findings that keep or restore that minimum-change contract. Prefer EXONERATE on nits, style concerns, and forward-looking issues. When in doubt, EXONERATE.
+Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel {"no_issues_found": true} (when you have none). Do not write any preamble, no "I'll review...", no "Examining the plan...", no "Looking at file X...". The first non-whitespace character of your response must be either `s` (start of `schema_version`) or `{` (start of the sentinel).
+Review the implementation plan file at <TMPDIR>/plan.txt. Explore the codebase following file paths named in the plan, then inspect adjacent files only when needed to validate contracts and integration points.
+The plan describes the codebase AFTER this PR lands. Files cited in `### NEW:` / `### UPDATED:` / `### REWRITTEN:` subsections have NOT yet been changed when you read them — the plan PROPOSES those changes. Do NOT flag a current-state behavior as a finding when the plan already addresses it; the plan's mention of current state is motivation for the change, not a claim about post-change state. Findings should target deficiencies of the PROPOSED change: missing steps, wrong target file, incomplete contracts, conflicts with other proposed changes, or actual code paths the plan fails to address.
+Walk five focus areas: code-quality / risk-integration / correctness / architecture / security.
+Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision.
+Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges so downstream issue filing can detect same-file conflicts.
+When you have findings, include a TSV structured-record block with this exact header (literal tab characters between fields; no markdown fences around the TSV):
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+For each finding, add one record:
+1	<scope>	<severity>	<focus_area>	<location>	<what>	<scenario_or_breakage>	<suggested_fix>
+Use scope in_scope or out_of_scope; severity important, nit, or latent; and replace literal tabs or newlines inside field values with spaces.
+Acceptable TSV block example (one finding):
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/foo.sh:42-45	Lock acquired before parameter validation	Race between two concurrent runs	Move lock acquisition after validation passes
+
+If no issues were identified, your entire response content MUST be exactly the single-line JSON literal {"no_issues_found": true} — no surrounding prose, no TSV records, no out-of-scope items, no trailing whitespace beyond a single newline. For Cursor's --output-format json invocation this becomes .result = "{\"no_issues_found\": true}" in Cursor's JSON envelope; the larch tooling extracts .result and JSON-parses it to detect the sentinel. For Codex (which writes plain stdout), the literal is captured verbatim. Do NOT modify files.
+# Readability Style
+
+**Consumer**: `/design` prompt surfaces that produce user-facing text, either through an external-agent prompt token or through inline orchestration prose.
+
+**Contract**: this file is the only source of truth for the `/design` readability preamble. External prompt files embed the literal `<READABILITY_STYLE>` token, and assembly code or orchestration expands it to this full file. Inline composition sites read this file before writing user-facing text.
+
+**When to load**: load only when a `/design` step is about to compose user-facing prose or render a prompt that asks another agent to compose such prose. Do not load during setup, pure validation, or byte-stable artifact handling.
+
+---
+
+## Style Axes
+
+Write in three styles at once:
+
+- **Strunk & White**: use active voice. Omit needless words. Prefer concrete nouns and verbs.
+- **Dyslexia-friendly**: use short sentences. Prefer simple words. Break dense ideas into headings and bullets.
+- **Brevity**: shorter is better. Minimize the total artifact length while preserving meaning.
+
+## Precision Contract
+
+Keep these byte-stable unless the task explicitly edits them:
+
+- fenced code blocks
+- backticked tokens
+- file paths
+- identifiers
+- flag names
+- `### NEW:` / `### UPDATED:` / `### REWRITTEN:` plan grammar
+- the trailing `diff_lines: <N>` line
+
+Do not rewrite those items for style. Explain around them instead.
+
+## Precedence
+
+When rules conflict, use this order:
+
+`code references > meaning > brevity > dyslexia-friendly chunking > Strunk & White micro-rewrites`
+
+Apply it directly:
+
+- Preserve code references first.
+- Preserve exact meaning next.
+- Cut words before adding layout.
+- Add headings or bullets only when they improve scanning.
+- Polish grammar last.
+
+## Substitution Token
+
+External-agent prompt files MUST embed this literal token:
+
+`<READABILITY_STYLE>`
+
+Before launch, replace every literal `<READABILITY_STYLE>` token with the full contents of this file.
+
+## Examples
+
+Before: "It is recommended that the implementer should consider adding a validation step."
+
+After: "Add a validation step."
+
+Before: "The plan should make sure that users are not able to continue when the file cannot be read."
+
+After: "Block the flow when the file cannot be read."
+
+Before: "In order to avoid potential future confusion, documentation can be updated."
+
+After: "Update the docs to avoid confusion."
+
+Before: "The script performs an operation that checks if the path exists."
+
+After: "The script checks that the path exists."
+
+Before: "This could possibly be out of scope depending on how the team wants to proceed."
+
+After: "This may be out of scope."
+

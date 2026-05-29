@@ -1,0 +1,15 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-requirements-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 10s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-requirements-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-scout-dynamic-archetypes.sh:375-396	Plan removes the 256 KB check from validate_context_input_file but only calls out a new >256 KB diff case; it does not revise the existing description-file oversize harness	The harness at 375-396 still expects exit 2 and stderr contains exceeds 256 KB for a 270 KB --description-file; after the gate removal that case should succeed (with staging), so make lint fails unless the implementer discovers the conflict outside the plan	In scripts/test-scout-dynamic-archetypes.sh testing strategy: replace the description-too-large failure assertions with a success path (staged path in prompt, SCOUT_STATUS ok or empty per stub) or drop the case if redundant with the new large diff assertion; state this explicitly beside the >256 KB diff harness bullet
+
+1. **[correctness]** `scripts/test-scout-dynamic-archetypes.sh:375-396` — The plan deletes the `validate_context_input_file` size cap (plan lines 16–17, 43) but the testing section only mandates a new “large (>256 KB) **diff**” case. The existing `description-too-large` block still requires `exit 2` and `exceeds 256 KB` for a 270 KB `--description-file`, which goes through the same validator. After the change that test contradicts the stated goal (“scout runs on inputs of any size”) and will break `make lint` unless fixed ad hoc. **Suggested revision:** In `### UPDATED: scripts/test-scout-dynamic-archetypes.sh`, explicitly require flipping or removing the `description-too-large` case (assert staging + success) alongside the new large-diff assertion.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-requirements-output.txt.diag)
+
+Failed with exit code 1 after 10s. Output size: 0 bytes.
+
