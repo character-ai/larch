@@ -32,6 +32,15 @@ setup_repo() {
     printf '%s\n' "$repo"
 }
 
+sleep_stub_dir="$TMPROOT/sleep-stub"
+mkdir -p "$sleep_stub_dir"
+cat > "$sleep_stub_dir/sleep-seconds.sh" <<'SLEEPSTUB'
+#!/usr/bin/env bash
+exit 0
+SLEEPSTUB
+chmod +x "$sleep_stub_dir/sleep-seconds.sh"
+export SLEEP_SCRIPT_DIR="$sleep_stub_dir"
+
 stub_dir="$TMPROOT/bin"
 mkdir -p "$stub_dir"
 cat > "$stub_dir/gh" <<'GH'
@@ -87,6 +96,35 @@ case "${GH_MODE:-create}" in
             exit 1
         fi
         ;;
+    create_exists_transient_list)
+        if [[ "$1 $2" == "pr view" ]]; then
+            exit 1
+        elif [[ "$1 $2" == "pr list" ]]; then
+            _count=$(( $(cat "${GH_LIST_COUNT_FILE:?}" 2>/dev/null || echo 0) + 1 ))
+            printf '%s\n' "$_count" > "${GH_LIST_COUNT_FILE:?}"
+            if [[ "$_count" -eq 1 ]]; then
+                echo 'fatal: unable to access '"'"'https://github.com/fork/repo.git/'"'"': Could not resolve host' >&2
+                exit 1
+            fi
+            printf '[{"number":789,"url":"https://github.com/fork/repo/pull/789","title":"Existing branch PR"}]\n'
+        else
+            echo 'a pull request for branch "feature" into branch "develop" already exists:' >&2
+            echo 'https://github.com/fork/repo/pull/789' >&2
+            exit 1
+        fi
+        ;;
+    create_exists_persistent_list)
+        if [[ "$1 $2" == "pr view" ]]; then
+            exit 1
+        elif [[ "$1 $2" == "pr list" ]]; then
+            echo 'fatal: unable to access '"'"'https://github.com/fork/repo.git/'"'"': Could not resolve host' >&2
+            exit 1
+        else
+            echo 'a pull request for branch "feature" into branch "develop" already exists:' >&2
+            echo 'https://github.com/fork/repo/pull/789' >&2
+            exit 1
+        fi
+        ;;
 esac
 GH
 chmod +x "$stub_dir/gh"
@@ -118,6 +156,25 @@ out=$(cd "$repo" && GH_LOG="$TMPROOT/create-exists-gh.log" GH_MODE=create_exists
 grep -Fxq 'PR_STATUS=existing' <<<"$out" || fail "create-exists recovery path did not report existing"
 grep -Fxq 'PR_NUMBER=789' <<<"$out" || fail "create-exists recovery path did not emit recovered PR number"
 grep -Fq -- 'pr list --repo fork/repo --head feature --state open --json number,url,title --limit 1' "$TMPROOT/create-exists-gh.log" || fail "create-exists recovery path did not query by head branch"
+
+repo=$(setup_repo create-exists-transient-list)
+list_count_file="$TMPROOT/create-exists-transient-list-count"
+printf '0\n' >"$list_count_file"
+out=$(cd "$repo" && GH_LOG="$TMPROOT/create-exists-transient-list-gh.log" GH_MODE=create_exists_transient_list GH_LIST_COUNT_FILE="$list_count_file" PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo)
+grep -Fxq 'PR_STATUS=existing' <<<"$out" || fail "transient list recovery path did not report existing"
+list_calls=$(grep -c '^pr list ' "$TMPROOT/create-exists-transient-list-gh.log" || true)
+[[ "$list_calls" -ge 2 ]] || fail "transient list recovery should retry gh pr list (got $list_calls calls)"
+
+repo=$(setup_repo create-exists-persistent-list)
+set +e
+out=$(cd "$repo" && GH_LOG="$TMPROOT/create-exists-persistent-list-gh.log" GH_MODE=create_exists_persistent_list PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo 2>"$TMPROOT/create-exists-persistent-list.err")
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || fail "persistent list failure should fall through to conflict URL (rc=$rc)"
+grep -Fxq 'PR_STATUS=existing' <<<"$out" || fail "persistent list failure should recover via conflict URL"
+grep -Fxq 'PR_NUMBER=789' <<<"$out" || fail "persistent list failure should emit PR number from conflict URL"
+list_calls=$(grep -c '^pr list ' "$TMPROOT/create-exists-persistent-list-gh.log" || true)
+[[ "$list_calls" -ge 3 ]] || fail "persistent transient list should exhaust retry budget (got $list_calls calls)"
 
 repo=$(setup_repo existing)
 out=$(cd "$repo" && GH_LOG="$TMPROOT/existing-gh.log" GH_MODE=existing PATH="$stub_dir:$PATH" "$SCRIPT" --title "Test PR" --body-file body.md --repo fork/repo)

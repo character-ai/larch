@@ -111,7 +111,15 @@ MERGE_PR_INITIAL_UNKNOWN_RETRIES=4
 MERGE_PR_POST_PUSH_UNKNOWN_RETRIES=3
 
 refresh_pr_info() {
-    PR_INFO=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid 2>/dev/null || echo "")
+    local view_fail_file
+    view_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-view.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$view_fail_file" \
+        gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid; then
+        PR_INFO=$_WTR_OUT
+    else
+        PR_INFO=""
+    fi
+    rm -f "$view_fail_file"
     MERGE_STATE=$(echo "$PR_INFO" | jq -r '.mergeStateStatus // ""' 2>/dev/null || echo "")
     PR_HEAD_OID=$(echo "$PR_INFO" | jq -r '.headRefOid // ""' 2>/dev/null || echo "")
 }
@@ -131,8 +139,23 @@ retry_pr_info_unknown_recovery() {
 }
 
 refresh_ci_state() {
+    local json_fail_file text_fail_file fail_content checks_json_transient_exhausted=false
+
     # Use gh pr checks --json with bucket field (consistent with ci-status.sh)
-    CHECKS_JSON=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json name,state,bucket,link 2>/dev/null || echo "")
+    json_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-checks-json.XXXXXX")
+    if with_transient_retry transient_envelope_predicate_none "$json_fail_file" \
+        gh pr checks "$PR_NUMBER" --repo "$REPO" --json name,state,bucket,link; then
+        CHECKS_JSON=$_WTR_OUT
+    else
+        fail_content=$(cat "$json_fail_file" 2>/dev/null || true)
+        if is_transient_net_signature "$fail_content"; then
+            CHECKS_JSON=""
+            checks_json_transient_exhausted=true
+        else
+            CHECKS_JSON=$_WTR_OUT
+        fi
+    fi
+    rm -f "$json_fail_file"
 
     CI_GOOD=false
     if [[ -n "$CHECKS_JSON" ]] && [[ "$CHECKS_JSON" != "null" ]] \
@@ -151,9 +174,24 @@ refresh_ci_state() {
                 CI_GOOD=true
             fi
         fi
+    elif [[ "$checks_json_transient_exhausted" == "true" ]]; then
+        CHECKS_TEXT=""
+        # Exhausted transient on JSON checks — skip text fallback; keep CI_GOOD=false.
     else
         # Fallback: parse text output — conservative: only accept if all lines show pass
-        CHECKS_TEXT=$(gh pr checks "$PR_NUMBER" --repo "$REPO" 2>/dev/null || echo "")
+        text_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-checks-text.XXXXXX")
+        if with_transient_retry transient_envelope_predicate_none "$text_fail_file" \
+            gh pr checks "$PR_NUMBER" --repo "$REPO"; then
+            CHECKS_TEXT=$_WTR_OUT
+        else
+            fail_content=$(cat "$text_fail_file" 2>/dev/null || true)
+            if is_transient_net_signature "$fail_content"; then
+                CHECKS_TEXT=""
+            else
+                CHECKS_TEXT=$_WTR_OUT
+            fi
+        fi
+        rm -f "$text_fail_file"
         if [[ -n "$CHECKS_TEXT" ]]; then
             if ! echo "$CHECKS_TEXT" | grep -qiE '\bfail|pending|in_progress|queued|cancelled|skipping'; then
                 CI_GOOD=true

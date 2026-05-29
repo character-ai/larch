@@ -1032,6 +1032,11 @@ exclude = [
   # sibling scripts/test-rebase-push-fork-mode.md. Same Makefile-only pattern
   # as other test-* harnesses.
   "scripts/test-rebase-push-fork-mode.sh",
+  # scripts/test-rebase-push-no-push-fetch-retry.sh is the offline regression
+  # harness for scripts/rebase-push.sh's --no-push fetch transient-retry path.
+  # Referenced only from Makefile (test-rebase-push-no-push-fetch-retry target)
+  # and the sibling scripts/test-rebase-push-no-push-fetch-retry.md.
+  "scripts/test-rebase-push-no-push-fetch-retry.sh",
   "scripts/test-implement-structure.sh",
   # scripts/test-implement-step8-exit3-first-fixer.sh — structural pins for the
   # first-fixer-non-health autonomous CI-fix path in skills/implement/SKILL.md.
@@ -1393,6 +1398,7 @@ exclude = [
   "scripts/test-auto-resolve-changelog.md",
   "scripts/test-rebase-push-force-lease.md",
   "scripts/test-rebase-push-fork-mode.md",
+  "scripts/test-rebase-push-no-push-fetch-retry.md",
   "scripts/test-implement-timing-rehydration.md",
   "scripts/test-git-push.md",
   # scripts/promote-release.sh is a standalone operator utility for promoting

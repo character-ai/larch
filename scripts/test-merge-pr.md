@@ -13,6 +13,7 @@ The harness uses PATH-stubbed `gh` and `git` binaries and the real `scripts/merg
 5. Safety gates short-circuit before any merge command: `BEHIND` returns `main_advanced`, and non-pass CI returns `ci_not_ready`.
 6. Initial empty or `UNKNOWN` merge state retries before failing closed as `MERGE_RESULT=error`; transient `UNKNOWN` and empty states that resolve to `CLEAN` continue to `admin_merged`; transient `UNKNOWN` and empty states that resolve to `BEHIND` take the early `main_advanced` exit with empty `ERROR`, matching the first-shot `BEHIND` fast path. These are the G1-G6 cases in the harness.
 7. Post-force-push `UNKNOWN` retry coverage includes success to `CLEAN`, persistent `UNKNOWN` failure, Q2 `post_force_push_unknown_recovers_behind` (UNKNOWN→BEHIND emits `main_advanced`, preserves a single empty `ERROR` line, skips merge commands, and performs five `gh pr view` calls), and Q2g `post_force_push_empty_recovers_behind` (EMPTY→BEHIND after force-push, symmetric to Q2 but starting from an empty post-push state).
+8. Transient-once `gh pr view` and `gh pr checks` retry via `with_transient_retry` (Sub-test S); non-transient pending `gh pr checks` does not retry; exhausted transient checks with misleading stdout emit `ci_not_ready` without merge. Each Sub-test S case uses a no-op `sleep-seconds.sh` stub via `SLEEP_SCRIPT_DIR`.
 
 ### Same-version gate
 

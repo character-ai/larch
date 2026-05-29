@@ -25,6 +25,8 @@ Emits `MERGE_RESULT=...` and `ERROR=...` on stdout via an EXIT trap. Exits 0 unc
 
 ## --no-admin-fallback
 
+`gh pr view` (`refresh_pr_info`) and `gh pr checks` (`refresh_ci_state`) retry transient failures via `with_transient_retry`, layered under the existing UNKNOWN-recovery loop. Exhausted transient `gh pr checks --json` failures leave `CI_GOOD=false` and skip the text fallback so misleading stdout cannot become `MERGE_RESULT=merged`.
+
 When set, the script reaches the same admin-eligible gate (CI good + branch fresh) but invokes only `gh pr merge --squash`; if that plain merge fails, it emits `MERGE_RESULT=policy_denied` instead of invoking `gh pr merge --squash --admin`. This is opt-out: the default behavior (no flag) is to try `--admin` first, then retry without `--admin` if the privileged attempt is rejected.
 
 The flag applies to **all admin-eligible mergeStateStatus values** — `CLEAN`, `UNSTABLE`, `HAS_HOOKS`, and `BLOCKED`. Any state where default mode would have tried `--admin` first becomes a plain-only merge path when the flag is set; this is broader than just review-required denials. Document this in caller-side flag specs so operators understand the scope.

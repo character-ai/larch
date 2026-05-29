@@ -191,20 +191,26 @@ fi
 
 recover_existing_pr_after_create_conflict() {
     local conflict_text="$1"
-    local pr_json pr_number pr_url pr_title
+    local pr_json pr_number pr_url pr_title list_fail_file
 
     case "$conflict_text" in
         *"pull request for branch"*"already exists"*) ;;
         *) return 1 ;;
     esac
 
-    pr_json=$(gh pr list \
+    list_fail_file=$(mktemp "${TMPDIR:-/tmp}/create-pr-recover-list.XXXXXX")
+    NET_FAIL_FILES+=("$list_fail_file")
+    if with_transient_retry transient_envelope_predicate_none "$list_fail_file" \
+        gh pr list \
         ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} \
         --head "$BRANCH" \
         --state open \
         --json number,url,title \
-        --limit 1 \
-        2>/dev/null || echo "")
+        --limit 1; then
+        pr_json=$_WTR_OUT
+    else
+        pr_json=$_WTR_OUT
+    fi
     pr_number=$(printf '%s\n' "$pr_json" | jq -r '.[0].number // empty' 2>/dev/null || echo "")
     pr_url=$(printf '%s\n' "$pr_json" | jq -r '.[0].url // empty' 2>/dev/null || echo "")
     pr_title=$(printf '%s\n' "$pr_json" | jq -r '.[0].title // empty' 2>/dev/null || echo "")

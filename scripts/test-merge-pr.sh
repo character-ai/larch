@@ -52,6 +52,15 @@ case "$2" in
         # GH_VIEW_FLIP_AT_CALL / GH_VIEW_FLIP_MERGE_STATE: if set, override
         # MERGE_STATE starting at the given call count (post-force-push UNKNOWN
         # retry tests).
+        # GH_VIEW_TRANSIENT_ONCE: first call emits net signature + exit 1.
+        if [[ "${GH_VIEW_TRANSIENT_ONCE:-}" == "1" ]] && [[ -n "${GH_VIEW_COUNT_FILE:-}" ]]; then
+            _count=$(( $(cat "$GH_VIEW_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+            printf '%s\n' "$_count" > "$GH_VIEW_COUNT_FILE"
+            if [[ "$_count" -eq 1 ]]; then
+                echo 'fatal: unable to access https://github.com/owner/repo: Connection reset by peer' >&2
+                exit 1
+            fi
+        fi
         HEAD_OID="${STUB_PR_HEAD_OID:-aaaa1111}"
         MERGE_STATE="${GH_MERGE_STATE:-CLEAN}"
         if [[ -n "${GH_VIEW_SECOND_HEAD_OID:-}" ]] && [[ -n "${GH_VIEW_COUNT_FILE:-}" ]]; then
@@ -72,6 +81,30 @@ case "$2" in
         fi
         ;;
     checks)
+        # GH_CHECKS_TRANSIENT_ONCE: first call emits net signature + exit 1.
+        # GH_CHECKS_PENDING_ONCE: first call returns pending JSON + exit 1 (no retry).
+        # GH_CHECKS_TRANSIENT_EXHAUST: every call emits transient + misleading stdout.
+        if [[ "${GH_CHECKS_TRANSIENT_EXHAUST:-}" == "1" ]]; then
+            printf '[{"name":"ci","bucket":"pass"}]\n'
+            echo 'fatal: unable to access https://github.com/owner/repo: Connection reset by peer' >&2
+            exit 1
+        fi
+        if [[ "${GH_CHECKS_PENDING_ONCE:-}" == "1" ]] && [[ -n "${GH_CHECKS_COUNT_FILE:-}" ]]; then
+            _count=$(( $(cat "$GH_CHECKS_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+            printf '%s\n' "$_count" > "$GH_CHECKS_COUNT_FILE"
+            if [[ "$_count" -eq 1 ]]; then
+                printf '[{"name":"ci","bucket":"pending"}]\n'
+                exit 1
+            fi
+        fi
+        if [[ "${GH_CHECKS_TRANSIENT_ONCE:-}" == "1" ]] && [[ -n "${GH_CHECKS_COUNT_FILE:-}" ]]; then
+            _count=$(( $(cat "$GH_CHECKS_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+            printf '%s\n' "$_count" > "$GH_CHECKS_COUNT_FILE"
+            if [[ "$_count" -eq 1 ]]; then
+                echo 'fatal: unable to access https://github.com/owner/repo: Connection reset by peer' >&2
+                exit 1
+            fi
+        fi
         CHECKS_JSON="${GH_CHECKS_JSON:-}"
         if [[ -n "${GH_CHECKS_SECOND_JSON:-}" ]] && [[ -n "${GH_CHECKS_COUNT_FILE:-}" ]]; then
             _count=$(( $(cat "$GH_CHECKS_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
@@ -220,6 +253,8 @@ run_case() {
     # No-op sleep so git-force-push.sh's 5s retry delay doesn't slow tests.
     printf '#!/usr/bin/env bash\nexit 0\n' > "$case_dir/bin/sleep"
     chmod +x "$case_dir/bin/sleep"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$case_dir/bin/sleep-seconds.sh"
+    chmod +x "$case_dir/bin/sleep-seconds.sh"
     : > "$case_dir/gh.log"
     : > "$case_dir/git.log"
     : > "$case_dir/trace.log"
@@ -231,6 +266,7 @@ run_case() {
     TRACE_LOG_FILE="$case_dir/trace.log" \
     GH_VIEW_COUNT_FILE="$case_dir/gh_view_count" \
     GH_CHECKS_COUNT_FILE="$case_dir/gh_checks_count" \
+    SLEEP_SCRIPT_DIR="$case_dir/bin" \
     PATH="$case_dir/bin:$PATH" \
     "$@" > "$case_dir/stdout.log" 2> "$case_dir/stderr.log"
 }
@@ -711,6 +747,33 @@ assert_stdout_contains "post_force_push_empty_recovers_behind" "ERROR=" "Q2h: po
 assert_no_merge_commands "post_force_push_empty_recovers_behind" "Q2i: post-force-push empty BEHIND skips merge commands"
 assert_command_count "post_force_push_empty_recovers_behind" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "5" "Q2j: pr view called 5x before BEHIND recovery from empty"
 assert_stdout_line_count "post_force_push_empty_recovers_behind" '^ERROR=$' "1" "Q2k: post-force-push empty BEHIND emits exactly one empty ERROR line"
+
+echo
+echo "Sub-test S: transient network retry on gh pr view and gh pr checks"
+run_case "view_transient_once" \
+    env GH_MERGE_STATE=CLEAN GH_VIEW_TRANSIENT_ONCE=1 GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "view_transient_once" "MERGE_RESULT=admin_merged" "S1: transient pr view recovers to admin_merged"
+assert_command_count "view_transient_once" "gh.log" "pr view 123 --repo owner/repo --json mergeStateStatus,headRefOid" "2" "S1: pr view retried once after transient"
+
+run_case "checks_transient_once" \
+    env GH_MERGE_STATE=CLEAN GH_CHECKS_TRANSIENT_ONCE=1 GH_CHECKS_JSON='[{"name":"ci","bucket":"pass"}]' GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "checks_transient_once" "MERGE_RESULT=admin_merged" "S2: transient pr checks recovers to admin_merged"
+assert_command_count "checks_transient_once" "gh.log" "pr checks 123 --repo owner/repo --json name,state,bucket,link" "2" "S2: json checks retried once after transient"
+
+run_case "checks_pending_no_retry" \
+    env GH_MERGE_STATE=CLEAN GH_CHECKS_PENDING_ONCE=1 GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "checks_pending_no_retry" "MERGE_RESULT=ci_not_ready" "S3: pending checks without transient stays ci_not_ready"
+assert_command_count "checks_pending_no_retry" "gh.log" "pr checks 123 --repo owner/repo --json name,state,bucket,link" "1" "S3: pending checks do not retry"
+
+run_case "checks_transient_exhaust" \
+    env GH_MERGE_STATE=CLEAN GH_CHECKS_TRANSIENT_EXHAUST=1 GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "checks_transient_exhaust" "MERGE_RESULT=ci_not_ready" "S4: exhausted transient checks emit ci_not_ready"
+assert_no_merge_commands "checks_transient_exhaust" "S4: exhausted transient checks skip merge"
+assert_command_count "checks_transient_exhaust" "gh.log" "pr checks 123 --repo owner/repo --json name,state,bucket,link" "3" "S4: json checks exhaust retry budget"
 
 echo
 echo "Sub-test R: post-force-push UNKNOWN persists, fails after 3 retries (#2342)"
