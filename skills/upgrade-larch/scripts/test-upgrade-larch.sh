@@ -278,8 +278,7 @@ for version in 29.0.0 30.0.0 31.0.0 99.0.0; do
 done
 unset INSTALL_STAMPS
 
-# Pruning keeps the just-installed version, retains the executing plugin root
-# when it is still present in cache, and trims back to eight total dirs.
+# Pruning keeps the just-installed version and trims back to eight total dirs.
 GH_OUTPUT=$'31.0.0\n30.9.0\n'
 INITIAL_INSTALLED_VERSION="30.8.0"
 PLUGIN_ROOT_VERSION="30.9.0"
@@ -287,14 +286,13 @@ INSTALL_RESULT_VERSION="31.0.0"
 INSTALL_CACHE_VERSION="31.0.0"
 CACHED_VERSIONS="31.0.0 32.0.0 33.0.0 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0"
 INSTALL_STAMPS="32.0.0:820 33.0.0:830 34.0.0:840 35.0.0:850 36.0.0:860 37.0.0:870 38.0.0:880 39.0.0:890"
-export CACHE_MTIME_OVERRIDES="30.9.0:200001010000"
+export CACHE_MTIME_OVERRIDES="30.9.0:209901010001"
 run_case cap-trims-to-eight-keeps-target
 [[ "$CASE_RC" -eq 0 ]] || fail "cap-trims-to-eight-keeps-target exit $CASE_RC"
 [[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "cap-trims-to-eight-keeps-target should keep 31.0.0"
-[[ -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "cap-trims-to-eight-keeps-target should keep the executing plugin root"
-[[ ! -f "$CASE_CACHE_ROOT/30.9.0/.larch-installed-at" ]] || fail "cap-trims-to-eight-keeps-target should retain plugin root via seeding, not backfill stamp"
+[[ ! -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "cap-trims-to-eight-keeps-target should prune unstamped plugin root outside newest eight"
 [[ ! -d "$CASE_CACHE_ROOT/32.0.0" ]] || fail "cap-trims-to-eight-keeps-target should prune 32.0.0"
-[[ ! -d "$CASE_CACHE_ROOT/33.0.0" ]] || fail "cap-trims-to-eight-keeps-target should prune 33.0.0"
+[[ -d "$CASE_CACHE_ROOT/33.0.0" ]] || fail "cap-trims-to-eight-keeps-target should keep 33.0.0 in newest eight"
 for version in 34.0.0 35.0.0 36.0.0 37.0.0 38.0.0 39.0.0; do
     [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-trims-to-eight-keeps-target should keep $version"
 done
@@ -313,10 +311,10 @@ run_case prune-rm-failure-retains-version
 [[ "$CASE_RC" -eq 0 ]] || fail "prune-rm-failure-retains-version exit $CASE_RC"
 [[ -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "prune-rm-failure-retains-version should retain 99.0.0 on rm failure"
 assert_contains "$CASE_OUTPUT" "Warning: failed to prune cached larch version '99.0.0'." "prune-rm-failure-retains-version warning"
-[[ -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "prune-rm-failure-retains-version should keep the executing plugin root"
+[[ ! -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "prune-rm-failure-retains-version should prune unstamped plugin root outside newest eight"
 [[ ! -d "$CASE_CACHE_ROOT/21.0.0" ]] || fail "prune-rm-failure-retains-version should prune 21.0.0"
 [[ ! -d "$CASE_CACHE_ROOT/22.0.0" ]] || fail "prune-rm-failure-retains-version should prune 22.0.0"
-[[ ! -d "$CASE_CACHE_ROOT/23.0.0" ]] || fail "prune-rm-failure-retains-version should prune 23.0.0"
+[[ -d "$CASE_CACHE_ROOT/23.0.0" ]] || fail "prune-rm-failure-retains-version should keep 23.0.0 in newest eight"
 for version in 24.0.0 25.0.0 26.0.0 27.0.0 28.0.0 29.0.0 31.0.0; do
     [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "prune-rm-failure-retains-version should keep $version"
 done

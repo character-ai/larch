@@ -165,8 +165,8 @@ run_cleanup "$work"
 [[ -d "$CASE_SESSIONS/fresh-session" ]] || fail "fresh-dir-kept should keep recent session dir"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "fresh-dir-kept CACHE_REMOVED"
 
-# --- stale-dir-with-keepalive-kept --------------------------------------------
-work="$TMP/stale-dir-with-keepalive-kept"
+# --- stale-dir-with-keepalive-removed -----------------------------------------
+work="$TMP/stale-dir-with-keepalive-removed"
 mkdir -p "$work/xdg-cache/larch/sessions/stale-session"
 printf '# larch session identity (hook routing)\nCLONE_PATH=%s\nSESSION_ID=%s\n' \
     "/tmp/repo" "stale-session" > "$work/xdg-cache/larch/sessions/stale-session/.larch-keepalive"
@@ -174,9 +174,9 @@ touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-session" \
     "$work/xdg-cache/larch/sessions/stale-session/.larch-keepalive"
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-dir-with-keepalive-kept exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/stale-session" ]] || fail "stale-dir-with-keepalive-kept should retain stale keepalive dir"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-dir-with-keepalive-kept CACHE_REMOVED"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-dir-with-keepalive-removed exit $CASE_RC"
+[[ ! -d "$CASE_SESSIONS/stale-session" ]] || fail "stale-dir-with-keepalive-removed should delete stale keepalive dir by age"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "stale-dir-with-keepalive-removed CACHE_REMOVED"
 
 # --- symlinked-session-dir-skipped --------------------------------------------
 work="$TMP/symlinked-session-dir-skipped"
@@ -258,6 +258,19 @@ run_cleanup "$work"
 assert_contains "$CASE_OUTPUT" "Warning: invalid LARCH_CLEANUP_RETENTION_DAYS='abc'; using 7." "invalid-retention-fallback warning"
 [[ ! -d "$CASE_SESSIONS/old-session" ]] || fail "invalid-retention-fallback should remove stale dir under 7-day fallback"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "invalid-retention-fallback CACHE_REMOVED"
+unset LARCH_CLEANUP_RETENTION_DAYS
+
+# --- custom-retention-one-day -------------------------------------------------
+work="$TMP/custom-retention-one-day"
+mkdir -p "$work/xdg-cache/larch/sessions/stale-session" "$work/xdg-cache/larch/sessions/fresh-session"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-session"
+touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/fresh-session"
+LARCH_CLEANUP_RETENTION_DAYS='1'
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "custom-retention-one-day exit $CASE_RC"
+[[ ! -d "$CASE_SESSIONS/stale-session" ]] || fail "custom-retention-one-day should remove stale session dir"
+[[ -d "$CASE_SESSIONS/fresh-session" ]] || fail "custom-retention-one-day should keep fresh session dir"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "custom-retention-one-day CACHE_REMOVED"
 unset LARCH_CLEANUP_RETENTION_DAYS
 
 # --- dangling-symlink-reaped --------------------------------------------------

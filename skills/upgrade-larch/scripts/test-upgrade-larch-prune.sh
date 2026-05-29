@@ -5,7 +5,7 @@ set -euo pipefail
 # Coverage for max-8 install-stamp prune in upgrade-larch.sh:
 # .larch-installed-at ordering (stamped before un-stamped, timestamp desc,
 # version desc), dir-mtime fallback for un-stamped dirs,
-# target seeding, and already-latest stamp+prune without reinstall.
+# ACTUAL_VERSION target seeding, and already-latest stamp+prune without reinstall.
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/upgrade-larch/scripts/upgrade-larch.sh"
@@ -260,8 +260,8 @@ run_case over-eight-stamped-keeps-eight-newest
 [[ "$CASE_RC" -eq 0 ]] || fail "over-eight-stamped-keeps-eight-newest exit $CASE_RC"
 [[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "over-eight-stamped-keeps-eight-newest should retain exactly 8 dirs"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "over-eight-stamped-keeps-eight-newest should prune 29.1.20"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "over-eight-stamped-keeps-eight-newest should prune 29.1.22"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "over-eight-stamped-keeps-eight-newest should keep executing plugin root 29.1.21"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "over-eight-stamped-keeps-eight-newest should prune 29.1.21"
+[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "over-eight-stamped-keeps-eight-newest should keep 29.1.22 in newest eight"
 for version in 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
     [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "over-eight-stamped-keeps-eight-newest should keep $version"
 done
@@ -360,6 +360,9 @@ unset READONLY_STAMP_VERSION
 run_case install-then-prune-fills-eight
 [[ "$CASE_RC" -eq 0 ]] || fail "install-then-prune-fills-eight exit $CASE_RC"
 [[ -d "$CASE_CACHE_ROOT/29.1.30" ]] || fail "install-then-prune-fills-eight should create installed target dir"
+[[ -f "$CASE_CACHE_ROOT/29.1.30/.larch-installed-at" ]] || fail "install-then-prune-fills-eight should write fresh install stamp"
+stamp_contents=$(tr -d '\r\n' < "$CASE_CACHE_ROOT/29.1.30/.larch-installed-at")
+[[ "$stamp_contents" =~ ^[0-9]+$ ]] || fail "install-then-prune-fills-eight stamp must be numeric epoch"
 [[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "install-then-prune-fills-eight should retain exactly 8 dirs"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "install-then-prune-fills-eight should prune oldest stamped 29.1.20"
 [[ ! -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "install-then-prune-fills-eight should prune 29.1.21"
@@ -459,8 +462,9 @@ run_case cap-pressure-newer-than-stable-survives
 [[ "$CASE_RC" -eq 0 ]] || fail "cap-pressure-newer-than-stable-survives exit $CASE_RC"
 [[ -d "$CASE_CACHE_ROOT/99.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should keep semver-newer-than-stable 99.0.0"
 [[ -d "$CASE_CACHE_ROOT/31.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should keep installed 31.0.0"
+[[ -d "$CASE_CACHE_ROOT/30.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should keep stamped 30.0.0 in newest eight"
 [[ ! -d "$CASE_CACHE_ROOT/29.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should prune 29.0.0"
-[[ ! -d "$CASE_CACHE_ROOT/30.0.0" ]] || fail "cap-pressure-newer-than-stable-survives should prune 30.0.0"
+[[ ! -d "$CASE_CACHE_ROOT/30.8.0" ]] || fail "cap-pressure-newer-than-stable-survives should prune unstamped plugin root outside cap"
 [[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "cap-pressure-newer-than-stable-survives should retain exactly 8 dirs"
 unset INSTALL_STAMPS
 
@@ -471,12 +475,27 @@ PLUGIN_ROOT_VERSION="30.9.0"
 unset INSTALL_RESULT_VERSION INSTALL_CACHE_VERSION
 CACHED_VERSIONS="29.0.0 30.0.0 30.8.0 30.9.0 31.0.0 32.0.0 33.0.0 34.0.0 35.0.0"
 INSTALL_STAMPS="29.0.0:100 30.0.0:200 30.8.0:300 32.0.0:500 33.0.0:600 34.0.0:700 35.0.0:800"
-export CACHE_MTIME_OVERRIDES="30.9.0:200001010000"
-run_case already-latest-seeds-plugin-root
-[[ "$CASE_RC" -eq 0 ]] || fail "already-latest-seeds-plugin-root exit $CASE_RC"
-[[ -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "already-latest-seeds-plugin-root should retain executing plugin root"
-[[ ! -f "$CASE_CACHE_ROOT/30.9.0/.larch-installed-at" ]] || fail "already-latest-seeds-plugin-root should not rely on backfill stamp for unstamped plugin root"
-assert_contains "$CASE_OUTPUT" "Already at latest stable larch release (31.0.0)." "already-latest-seeds-plugin-root message"
+export CACHE_MTIME_OVERRIDES="30.9.0:209901010001"
+run_case already-latest-prunes-unstamped-plugin-root
+[[ "$CASE_RC" -eq 0 ]] || fail "already-latest-prunes-unstamped-plugin-root exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/30.9.0" ]] || fail "already-latest-prunes-unstamped-plugin-root should prune unstamped plugin root outside newest eight"
+assert_contains "$CASE_OUTPUT" "Already at latest stable larch release (31.0.0)." "already-latest-prunes-unstamped-plugin-root message"
 unset CACHE_MTIME_OVERRIDES INSTALL_STAMPS INSTALLED_PLUGINS_VERSION
+
+GH_OUTPUT=$'42.0.10\n'
+INITIAL_INSTALLED_VERSION="42.0.5"
+PLUGIN_ROOT_VERSION="42.0.5"
+INSTALL_RESULT_VERSION="42.0.10"
+INSTALL_CACHE_VERSION="42.0.10"
+CACHED_VERSIONS="42.0.1 42.0.2 42.0.3 42.0.4 42.0.5 42.0.6 42.0.7 42.0.8 42.0.9"
+unset INSTALL_STAMPS
+export CACHE_MTIME_OVERRIDES="42.0.9:200001010001 42.0.1:209901010001 42.0.5:209901010002"
+STAT_FAIL_VERSION="42.0.5"
+run_case stat-failure-falls-back-to-zero
+[[ "$CASE_RC" -eq 0 ]] || fail "stat-failure-falls-back-to-zero exit $CASE_RC"
+[[ ! -d "$CASE_CACHE_ROOT/42.0.5" ]] || fail "stat-failure-falls-back-to-zero should prune unstamped dir when stat mtime falls back to 0"
+[[ -d "$CASE_CACHE_ROOT/42.0.10" ]] || fail "stat-failure-falls-back-to-zero should keep install target"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "stat-failure-falls-back-to-zero should retain exactly 8 dirs"
+unset CACHE_MTIME_OVERRIDES STAT_FAIL_VERSION
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'

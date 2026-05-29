@@ -155,11 +155,6 @@ prune_cached_versions() {
     if [ -n "$target_version" ] && is_safe_version "$target_version" && [ -d "$LARCH_CACHE_DIR/$target_version" ]; then
         retained="$target_version"
     fi
-    if [ -n "$INSTALLED_VERSION" ] && is_safe_version "$INSTALLED_VERSION" \
-        && [ -d "$LARCH_CACHE_DIR/$INSTALLED_VERSION" ] \
-        && ! version_is_retained "$INSTALLED_VERSION" "$retained"; then
-        retained="${retained:+$retained }$INSTALLED_VERSION"
-    fi
 
     while IFS= read -r version; do
         [ -n "$version" ] || continue

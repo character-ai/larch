@@ -18,7 +18,8 @@ Covered cases:
 - target-in-top-eight-exact-count: when the install target is already among the newest eight, exactly eight dirs remain (no off-by-one to nine)
 - already-latest-prunes: idempotent already-latest path binds the installed version, refreshes its stamp, and prunes without reinstalling
 - exactly-eight-no-prune: exactly eight stamped cache dirs yields zero deletions and `No old versions to prune.`
-- cap-pressure-newer-than-stable-survives: semver-newer-than-stable `99.0.0` in the newest-eight stamp set survives cap pressure after install
-- already-latest-seeds-plugin-root: metadata reports stable newer than `basename(PLUGIN_ROOT)`; executing plugin root is retained without mtime backfill stamp
+- cap-pressure-newer-than-stable-survives: semver-newer-than-stable `99.0.0` in the newest-eight stamp set survives cap pressure after install; unstamped plugin root outside the cap is pruned
+- already-latest-prunes-unstamped-plugin-root: metadata reports stable newer than `basename(PLUGIN_ROOT)`; unstamped plugin root outside the newest eight is pruned
+- stat-failure-falls-back-to-zero: `stat` failure on an unstamped dir falls back to mtime 0 and that dir is pruned under cap pressure
 
 Edit in sync: update this harness, `upgrade-larch.sh`, `upgrade-larch.md`, `skills/upgrade-larch/SKILL.md`, `docs/installation-and-setup.md`, and `Makefile` when changing install-stamp pruning behavior or validation commands.

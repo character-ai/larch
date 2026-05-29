@@ -80,7 +80,6 @@ should_remove_by_age() {
     local newest
 
     [[ -d "$entry" && ! -L "$entry" ]] || return 1
-    [ -f "$entry/.larch-keepalive" ] && return 1
     newest=$(newest_activity_mtime "$entry") || return 1
     [ "$newest" -lt "$CUTOFF" ]
 }
