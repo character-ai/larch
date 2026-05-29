@@ -68,4 +68,4 @@ Emitted keys (exit **0** only):
 
 ## Edit in sync
 
-Update [`test-check-plan-size.sh`](test-check-plan-size.sh), [`test-check-plan-size.md`](test-check-plan-size.md), `Makefile` (`test-check-plan-size`), `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b.5 when changing thresholds or contracts.
+Update [`test-check-plan-size.sh`](test-check-plan-size.sh), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.sh`](lib-plan-optional-trailers.sh), [`lib-plan-optional-trailers.awk`](lib-plan-optional-trailers.awk), `Makefile` (`test-check-plan-size`), `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b.5 when changing thresholds or contracts.

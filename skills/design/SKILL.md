@@ -968,7 +968,7 @@ if [[ "${LOOP_STATUS:-}" != "cap-reached" ]]; then
       WARN) printf '%s\n' "WARN=$_value" ;;
     esac
   done <<<"${_plan_review_out:-}"
-  if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|panel-failed|main-agent-vote-required)$ ]]; then
+  if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|optional-trailer-dedup-loss|panel-failed|main-agent-vote-required)$ ]]; then
     LOOP_STATUS=panel-failed
     printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after plan-review-loop.sh; treating as panel-failed**"
   fi
@@ -1002,6 +1002,7 @@ Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected fi
 - `LOOP_STATUS=plan-size-trigger` — run the Step 2b.5 Split-path / Cancel `AskUserQuestion` handler first, then short-circuit to Step 3b; skip Gate B and Step 3.6. Print `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)`.
 - `LOOP_STATUS=plan-validator-defects` — run the shared plan-command validator failure body first, then short-circuit to Step 3b; skip Gate B and Step 3.6. Print `⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)`.
 - `LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure and route through Gate B's warning/manual handling, not the Split-path prompt. Gate-B-settled path proceeds through Step 3.6 after Gate B and any Step 2b.5 return.
+- `LOOP_STATUS=optional-trailer-dedup-loss` — optional size trailers were stripped by post-revision dedup; route through Gate B's warning/manual handling like `emit-plan-failed`, not the Split-path prompt.
 - `LOOP_STATUS=panel-failed` (`rc=1`) — short-circuit to Step 3b (skip Gate B **and Step 3.6**). Print `⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)`.
 - `LOOP_STATUS=main-agent-vote-required` — inline main-agent vote path below; after successful adjudication and re-tally, proceed through Gate B and Step 3.6 like other Gate-B-settled paths (not a skip status).
 

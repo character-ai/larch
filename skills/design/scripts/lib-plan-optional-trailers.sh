@@ -33,35 +33,12 @@ parse_plan_optional_metadata() {
 }
 
 validate_optional_trailers_preserved() {
-    local plan="$1" keys_file="$2" values_file="${3:-}"
-    local key expect
+    local plan="$1" keys_file="$2"
+    local key
     [[ -f "$keys_file" ]] || return 0
     while IFS= read -r key || [[ -n "$key" ]]; do
         [[ -n "$key" ]] || continue
         plan_has_optional_trailer_key "$plan" "$key" || return 1
     done <"$keys_file"
-    [[ -f "$values_file" ]] || return 0
-    local parsed parsed_added parsed_deleted parsed_mech
-    parsed=$(parse_plan_optional_metadata "$plan")
-    parsed_added=$(printf '%s\n' "$parsed" | sed -n '2p')
-    parsed_deleted=$(printf '%s\n' "$parsed" | sed -n '3p')
-    parsed_mech=$(printf '%s\n' "$parsed" | sed -n '4p')
-    while IFS= read -r expect || [[ -n "$expect" ]]; do
-        [[ -n "$expect" ]] || continue
-        key="${expect%%=*}"
-        expect="${expect#*=}"
-        case "$key" in
-            diff_added)
-                [[ "$parsed_added" != "-" && "$parsed_added" == "$expect" ]] || return 1
-                ;;
-            diff_deleted)
-                [[ "$parsed_deleted" != "-" && "$parsed_deleted" == "$expect" ]] || return 1
-                ;;
-            mechanical_churn)
-                [[ "$parsed_mech" == "$expect" ]] || return 1
-                ;;
-            *) return 1 ;;
-        esac
-    done <"$values_file"
     return 0
 }

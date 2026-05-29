@@ -416,6 +416,7 @@ mkdir -p "$d"
 } >"$d/plan.txt"
 out=$(run_ok "$d")
 assert_kv_eq DIFF_ADDED 100 "$out"
+assert_kv_eq PLAN_LINES 11 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 
 # --- Case 26: combined gate KV ---

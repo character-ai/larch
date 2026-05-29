@@ -1376,7 +1376,9 @@ done
 {
     printf '## Plan\n\n'
     awk 'BEGIN { for (i = 1; i <= 5; i++) print "line " i }'
-    printf 'mechanical_churn: true\n'
+    printf 'line 5\n'
+    printf 'diff_added: 0\n'
+    printf '\n'
     printf 'diff_added: 5000\n'
     printf 'diff_deleted: 100\n'
     printf 'mechanical_churn: true\n'
@@ -1388,6 +1390,9 @@ chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_dedup=$(run_loop "$DDEDUP" 1 --round-cap 2 --convergence-threshold 3)
 printf '%s\n' "$out_dedup" | grep -q '^REVISE_STATUS=ok$' || fail "dedup trailer fixture should record revise ok"
+line5_count=$(grep -c '^line 5$' "$DDEDUP/plan.txt" || true)
+[[ "$line5_count" == "1" ]] || fail "dedup trailer fixture must collapse duplicate body line"
+grep -q '^diff_added: 0$' "$DDEDUP/plan.txt" || fail "dedup trailer fixture must preserve body decoy diff_added line"
 printf '%s\n' "$out_dedup" | grep -qv '^LOOP_STATUS=plan-size-trigger$' || fail "dedup must not collapse optional trailers into plan-size-trigger"
 grep -q '^diff_added: 5000$' "$DDEDUP/plan.txt" || fail "dedup must preserve diff_added trailer"
 grep -q '^diff_deleted: 100$' "$DDEDUP/plan.txt" || fail "dedup must preserve diff_deleted trailer"
@@ -1437,7 +1442,7 @@ chmod +x "$STUB/dedup-strip-optional-trailers.py"
 export LARCH_DEDUP_PLAN_LINES_PY="$STUB/dedup-strip-optional-trailers.py"
 out_dedup_loss=$(run_loop "$DDLOSS" 1 --round-cap 2 --convergence-threshold 3)
 unset LARCH_DEDUP_PLAN_LINES_PY
-printf '%s\n' "$out_dedup_loss" | grep -q '^LOOP_STATUS=emit-plan-failed$' || fail "dedup trailer loss should surface emit-plan-failed"
+printf '%s\n' "$out_dedup_loss" | grep -q '^LOOP_STATUS=optional-trailer-dedup-loss$' || fail "dedup trailer loss should surface optional-trailer-dedup-loss"
 printf '%s\n' "$out_dedup_loss" | grep -q '^REASON=optional-trailer-dedup-loss$' || fail "dedup trailer loss should surface optional-trailer-dedup-loss reason"
 grep -q '^diff_added: 5000$' "$DDLOSS/plan.txt" || fail "dedup trailer loss must restore revised plan not pre-revise seed"
 grep -q '^diff_deleted: 100$' "$DDLOSS/plan.txt" || fail "dedup trailer loss must preserve diff_deleted on restored revised plan"

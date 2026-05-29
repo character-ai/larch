@@ -498,11 +498,9 @@ _run_post_apply_pipeline() {
     export DESIGN_TMPDIR
     export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     local plan_path="$DESIGN_TMPDIR/plan.txt"
-    local dedup_tmp dedup_removed optional_keys_file optional_values_file pre_dedup_snapshot
+    local dedup_tmp dedup_removed optional_keys_file pre_dedup_snapshot
     optional_keys_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-keys.XXXXXX")
-    optional_values_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-values.XXXXXX")
     snapshot_optional_trailer_keys "$plan_path" "$optional_keys_file"
-    snapshot_optional_trailer_values "$plan_path" "$optional_values_file"
     if [[ -s "$optional_keys_file" ]]; then
         pre_dedup_snapshot=$(mktemp "$DESIGN_TMPDIR/.plan-pre-dedup.XXXXXX")
         cp -f "$plan_path" "$pre_dedup_snapshot"
@@ -530,15 +528,15 @@ _run_post_apply_pipeline() {
     mv -f "$dedup_tmp" "$plan_path"
     printf 'dedup-sweep: removed %s duplicate line(s) from plan.txt\n' "${dedup_removed:-0}"
     if [[ -n "$pre_dedup_snapshot" ]] &&
-        ! validate_optional_trailers_preserved "$plan_path" "$optional_keys_file" "$optional_values_file"; then
+        ! validate_optional_trailers_preserved "$plan_path" "$optional_keys_file"; then
         cp -f "$pre_dedup_snapshot" "$plan_path"
-        rm -f "$pre_dedup_snapshot" "$optional_keys_file" "$optional_values_file"
+        rm -f "$pre_dedup_snapshot" "$optional_keys_file"
         rm -f "$plan_backup"
-        LOOP_STATUS=emit-plan-failed
+        LOOP_STATUS=optional-trailer-dedup-loss
         LOOP_REASON=optional-trailer-dedup-loss
         return 1
     fi
-    rm -f "$pre_dedup_snapshot" "$optional_keys_file" "$optional_values_file"
+    rm -f "$pre_dedup_snapshot" "$optional_keys_file"
     local emit_out emit_rc
     set +e
     emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")

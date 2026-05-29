@@ -125,10 +125,8 @@ HASH_BEFORE=$(sha256_file "$PLAN_FILE")
 ORIG_FILE_HEADING_COUNT=$(heading_count "$PLAN_FILE")
 cp "$PLAN_FILE" "$SNAPSHOT"
 OPTIONAL_TRAILER_KEYS_FILE="$SNAPSHOT.optional-trailer-keys"
-OPTIONAL_TRAILER_VALUES_FILE="$SNAPSHOT.optional-trailer-values"
 
 snapshot_optional_trailer_keys "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"
-snapshot_optional_trailer_values "$PLAN_FILE" "$OPTIONAL_TRAILER_VALUES_FILE"
 
 compose_prompt() {
     {
@@ -542,7 +540,7 @@ _try_one_unified_diff_candidate() {
         fi
     fi
     if [[ -s "$OPTIONAL_TRAILER_KEYS_FILE" ]] &&
-        ! validate_optional_trailers_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE" "$OPTIONAL_TRAILER_VALUES_FILE"; then
+        ! validate_optional_trailers_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"; then
         restore_plan
         return 1
     fi
@@ -642,7 +640,7 @@ attempt_tier() {
         set_tier_status "$ordinal" invalid-patch
         return 1
     elif [[ -s "$OPTIONAL_TRAILER_KEYS_FILE" ]] &&
-        ! validate_optional_trailers_preserved "$patch_file" "$OPTIONAL_TRAILER_KEYS_FILE" "$OPTIONAL_TRAILER_VALUES_FILE"; then
+        ! validate_optional_trailers_preserved "$patch_file" "$OPTIONAL_TRAILER_KEYS_FILE"; then
         set_tier_status "$ordinal" invalid-patch
         return 1
     fi
@@ -663,7 +661,7 @@ attempt_tier() {
             fi
         fi
 
-        if ! validate_optional_trailers_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE" "$OPTIONAL_TRAILER_VALUES_FILE"; then
+        if ! validate_optional_trailers_preserved "$PLAN_FILE" "$OPTIONAL_TRAILER_KEYS_FILE"; then
             set_tier_status "$ordinal" invalid-patch
             restore_plan_or_die
             return 1

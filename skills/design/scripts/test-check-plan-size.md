@@ -30,8 +30,11 @@ Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captu
 24. Blank line stops metadata scan.
 25. Duplicate optional keys — last match closest to `diff_lines:` wins.
 26. Combined plan-body hard + downgraded diff (`SOFT_ADVISORY=true`).
+27. 801 raw body lines minus optional metadata avoids plan-body hard trigger (`PLAN_LINES=798`).
+28. `mechanical_churn` under already-soft `diff_added` does not set `SOFT_ADVISORY`.
+29. `diff_deleted`-only legacy fallback (no `diff_added`).
 
-Cases 14–26 also assert `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, and `SOFT_ADVISORY` where relevant.
+Cases 14–29 also assert `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, and `SOFT_ADVISORY` where relevant.
 
 ## Run
 
