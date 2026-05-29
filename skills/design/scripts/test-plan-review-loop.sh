@@ -1541,6 +1541,14 @@ write_collect one
 write_voters_three
 cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
 #!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+printf '## Plan\n\nmissing trailer on purpose\n' >"$DESIGN_TMPDIR/plan.txt"
 printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
@@ -1562,6 +1570,7 @@ printf '%s\n' "$out_ddpl" | grep -q '^LOOP_STATUS=emit-plan-failed$' || fail "pl
 printf '%s\n' "$out_ddpl" | grep -q '^REASON=dedup-python-failed$' || fail "plan-line dedup failure should surface dedup-python-failed reason"
 printf '%s\n' "$out_ddpl" | grep -q 'LOOP_REASON=dedup-python-failed' && fail "helper should not print LOOP_REASON directly"
 grep -q '^REASON=dedup-python-failed$' "$DDPL/.step3-plan-review-result.env" || fail "result env should carry dedup-python-failed reason"
+cmp -s "$DDPL/plan.txt" <(printf 'plan\n\ndiff_lines: 1\n') || fail "plan-line dedup failure must restore the prior plan"
 
 echo "=== snapshot fails closed on symlinked revise artifact sources ==="
 DSREV="$TMP/snap-revise-symlink"
