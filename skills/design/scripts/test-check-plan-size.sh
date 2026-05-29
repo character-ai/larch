@@ -561,6 +561,22 @@ assert_kv_eq DIFF_ADDED "" "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 
+# --- Case 32e: sandwiched 08/09 placeholders must not terminate metadata scan ---
+d="$TMPROOT/c32e"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_added: 100\n'
+    printf 'diff_deleted: 5000\n'
+    printf 'diff_added: 08\n'
+    printf 'diff_lines: 5100\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
+assert_kv_eq DIFF_ADDED 100 "$out"
+assert_kv_eq DIFF_DELETED 5000 "$out"
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+
 # --- Case 33: diff_deleted-only with legacy diff_lines hard trigger ---
 d="$TMPROOT/c33"
 mkdir -p "$d"

@@ -396,6 +396,10 @@ grep -Fq 'mechanical_churn' "$SKILL_MD" \
   || fail "(3175) SKILL.md missing mechanical_churn preservation language"
 grep -Fq 'gate-b-dedup-plan.sh' "$APPROVAL_MD" \
   || fail "(3175) approval-gates.md missing mechanical gate-b-dedup-plan.sh post-apply hook"
+grep -Fq 'gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --snapshot-trailers hook"
+grep -Fq 'gate-b-dedup-plan.sh --dedup' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --dedup hook"
 grep -Fq 'snapshot' "$APPROVAL_MD" \
   || fail "(3175) approval-gates.md missing optional trailer snapshot language"
 grep -Fq 'diff_added' "$APPROVAL_MD" \

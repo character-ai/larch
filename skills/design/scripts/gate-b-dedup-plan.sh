@@ -80,6 +80,12 @@ if [[ ! -f "$TRAILER_KEYS_FILE" ]]; then
     exit 3
 fi
 
+if ! validate_optional_trailer_keys_preserved "$plan_path" "$TRAILER_KEYS_FILE"; then
+    echo "gate-b-dedup-plan.sh: optional trailer keys lost before dedup" >&2
+    exit 1
+fi
+snapshot_optional_trailer_values "$plan_path" "$(_optional_trailer_values_file "$TRAILER_KEYS_FILE")"
+
 dedup_rc=0
 dedup_plan_preserve_optional_trailers "$plan_path" "$TRAILER_KEYS_FILE" "$DESIGN_TMPDIR" "$DEDUP_PLAN_LINES_PY" || dedup_rc=$?
 case "$dedup_rc" in

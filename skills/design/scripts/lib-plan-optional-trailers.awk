@@ -16,11 +16,17 @@ END {
     block_len = 0
     for (i = trailer_nr - 1; i >= 1; i--) {
         line = lines[i]
-        if (line ~ /^diff_added: [0-9]+$/ && substr(line, 13) !~ /^0[89]$/) {
+        if (line ~ /^diff_added: [0-9]+$/) {
+            if (substr(line, 13) ~ /^0[89]$/) {
+                continue
+            }
             block[++block_len] = line
             continue
         }
-        if (line ~ /^diff_deleted: [0-9]+$/ && substr(line, 15) !~ /^0[89]$/) {
+        if (line ~ /^diff_deleted: [0-9]+$/) {
+            if (substr(line, 15) ~ /^0[89]$/) {
+                continue
+            }
             block[++block_len] = line
             continue
         }

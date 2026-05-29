@@ -75,8 +75,8 @@ rc=$?
 set -e
 [[ "$rc" == 1 ]] || fail "dedup should reject newly introduced optional trailers, got rc=$rc"
 
-# --- dedup rejects trailer value change ---
-d="$TMPROOT/value-change"
+# --- dedup allows pre-dedup trailer value recompute when keys preserved ---
+d="$TMPROOT/value-recompute"
 write_plan "$d" <<'EOF'
 body
 diff_added: 100
@@ -84,11 +84,22 @@ diff_lines: 200
 EOF
 "$SUBJECT" --design-tmpdir "$d" --snapshot-trailers
 printf 'body\ndiff_added: 999\ndiff_lines: 200\n' >"$d/plan.txt"
+"$SUBJECT" --design-tmpdir "$d" --dedup >/dev/null
+grep -q '^diff_added: 999$' "$d/plan.txt" || fail "pre-dedup value recompute should preserve revised diff_added"
+
+# --- dedup rejects trailer key loss before mechanical dedup ---
+d="$TMPROOT/key-loss"
+write_plan "$d" <<'EOF'
+body
+diff_added: 100
+diff_lines: 200
+EOF
+"$SUBJECT" --design-tmpdir "$d" --snapshot-trailers
+printf 'body\ndiff_lines: 200\n' >"$d/plan.txt"
 set +e
 "$SUBJECT" --design-tmpdir "$d" --dedup 2>/dev/null
 rc=$?
 set -e
-[[ "$rc" == 1 ]] || fail "dedup should reject trailer value change, got rc=$rc"
-grep -q '^diff_added: 999$' "$d/plan.txt" || fail "value-change failure should leave revised plan for operator rework"
+[[ "$rc" == 1 ]] || fail "dedup should reject trailer key loss before dedup, got rc=$rc"
 
 echo "PASS: test-gate-b-dedup-plan.sh"
