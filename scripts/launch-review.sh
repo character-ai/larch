@@ -367,10 +367,35 @@ fi
 OUTPUT_DIR=$(dirname -- "$OUTPUT")
 CANON_OUTPUT_DIR=$(cd "$OUTPUT_DIR" && pwd -P)
 CODEX_SANDBOX_DIR="$CANON_OUTPUT_DIR"
+_codex_add_dir_has_control_chars() {
+    printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
+_codex_canonical_existing_dir() {
+    local p="$1"
+    [[ -n "$p" ]] || return 1
+    _codex_add_dir_has_control_chars "$p" && return 1
+    [[ "$p" != *..* ]] || return 1
+    [[ -d "$p" ]] || return 1
+    [[ ! -L "$p" ]] || return 1
+    (cd "$p" && pwd -P) || return 1
+}
+_codex_under_root() {
+    local path="$1" root="$2"
+    [[ "$path" == "$root" || "$path" == "$root/"* ]]
+}
 if [[ -n "$CODEX_ADD_DIR" ]]; then
-    [[ -d "$CODEX_ADD_DIR" ]] || { larch_err "launch-review.sh: --codex-add-dir is not a directory: $CODEX_ADD_DIR"; exit 2; }
-    CODEX_SANDBOX_DIR=$(cd "$CODEX_ADD_DIR" && pwd -P)
+    _canon_codex_add_dir=$(_codex_canonical_existing_dir "$CODEX_ADD_DIR") || {
+        larch_err "launch-review.sh: --codex-add-dir is not a directory: $CODEX_ADD_DIR"
+        exit 2
+    }
+    _codex_under_root "$_canon_codex_add_dir" "$CANON_OUTPUT_DIR" || {
+        larch_err "launch-review.sh: --codex-add-dir outside session root: $CODEX_ADD_DIR"
+        exit 2
+    }
+    CODEX_SANDBOX_DIR="$_canon_codex_add_dir"
+    unset _canon_codex_add_dir
 fi
+unset -f _codex_add_dir_has_control_chars _codex_canonical_existing_dir _codex_under_root
 CODEX_HOME_DIR=$(mktemp -d /tmp/larch-codex-review-home-XXXXXX)
 PROJECT_KEY=${PWD//\\/\\\\}
 PROJECT_KEY=${PROJECT_KEY//\"/\\\"}

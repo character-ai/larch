@@ -223,9 +223,8 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_SH="$scout_wrapper" SCOUT_
     --plan-file "$TMP/dynamic4/plan.md" \
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
-grep -Fq -- '--codex-present' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --codex-present to scout" >&2; exit 1; }
-grep -Fq -- '--cursor-present' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --cursor-present to scout" >&2; exit 1; }
-grep -Fq -- 'true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: scout presence flags must be true in argv log" >&2; exit 1; }
+grep -Fq -- '--codex-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --codex-present true to scout" >&2; exit 1; }
+grep -Fq -- '--cursor-present true' "$SCOUT_SCOUT_ARGV_LOG" || { echo "FAIL: dispatch-panel must forward --cursor-present true to scout" >&2; exit 1; }
 grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
 grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 grep -Fq 'SLOT_COUNT=10' <<< "$out"

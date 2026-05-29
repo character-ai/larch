@@ -41,6 +41,16 @@ exec "${REAL_JQ:?REAL_JQ required}" "$@"
 STUB
 chmod +x "$BIN/jq"
 
+claude_launch_log="$TMP/claude-launch-log.sh"
+cat > "$claude_launch_log" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+[[ -n "\${SCOUT_CLAUDE_ARGV_LOG:-}" ]] && printf '%s\n' "\$*" >>"\$SCOUT_CLAUDE_ARGV_LOG"
+exec "$REPO_ROOT/scripts/launch-claude-subprocess.sh" "\$@"
+STUB
+chmod +x "$claude_launch_log"
+desc_launch="$claude_launch_log"
+
 diff_file="$TMP/review.diff"
 scope_file="$TMP/scope-files.txt"
 plan_file="$TMP/plan.md"
@@ -62,7 +72,9 @@ run_case() {
     seed_case_inputs "$out_dir"
     output="$out_dir/scout-manifest.json"
     stdout_file="$out_dir/stdout.env"
-    PATH="$BIN:$PATH" SCOUT_STUB_OUTPUT_FILE="$fixture" "$SCRIPT" \
+    export SCOUT_CLAUDE_ARGV_LOG="$out_dir/claude-argv.log"
+    : > "$SCOUT_CLAUDE_ARGV_LOG"
+    PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$claude_launch_log" SCOUT_STUB_OUTPUT_FILE="$fixture" "$SCRIPT" \
         --mode diff \
         --diff-file "$out_dir/review.diff" \
         --plan-file "$out_dir/plan.md" \
@@ -70,6 +82,8 @@ run_case() {
         --output "$output" \
         --timeout 5 \
         > "$stdout_file"
+    grep -Fq -- '--read-tools' "$SCOUT_CLAUDE_ARGV_LOG" || fail "$label claude tier must pass --read-tools"
+    grep -Fq -- '--read-tools-add-dir' "$SCOUT_CLAUDE_ARGV_LOG" || fail "$label claude tier must pass --read-tools-add-dir"
     printf '%s\n' "$stdout_file"
 }
 
@@ -80,7 +94,9 @@ run_case_description() {
     seed_case_inputs "$out_dir"
     output="$out_dir/scout-manifest.json"
     stdout_file="$out_dir/stdout.env"
-    PATH="$BIN:$PATH" SCOUT_STUB_OUTPUT_FILE="$fixture" "$SCRIPT" \
+    export SCOUT_CLAUDE_ARGV_LOG="$out_dir/claude-argv.log"
+    : > "$SCOUT_CLAUDE_ARGV_LOG"
+    PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$claude_launch_log" SCOUT_STUB_OUTPUT_FILE="$fixture" "$SCRIPT" \
         --mode description \
         --scope-files "$out_dir/scope-files.txt" \
         --description-text "$description_text" \
@@ -89,6 +105,8 @@ run_case_description() {
         --output "$output" \
         --timeout 5 \
         > "$stdout_file"
+    grep -Fq -- '--read-tools' "$SCOUT_CLAUDE_ARGV_LOG" || fail "$label claude tier must pass --read-tools"
+    grep -Fq -- '--read-tools-add-dir' "$SCOUT_CLAUDE_ARGV_LOG" || fail "$label claude tier must pass --read-tools-add-dir"
     printf '%s\n' "$stdout_file"
 }
 
@@ -379,14 +397,8 @@ python3 - <<'PY' > "$huge_file"
 import sys
 sys.stdout.write("x" * 300000)
 PY
-desc_launch="$TMP/description-stub-launch.sh"
-cat > "$desc_launch" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-[[ -n "\${SCOUT_CLAUDE_ARGV_LOG:-}" ]] && printf '%s\n' "\$*" >>"\$SCOUT_CLAUDE_ARGV_LOG"
-exec "$REPO_ROOT/scripts/launch-claude-subprocess.sh" "\$@"
-STUB
-chmod +x "$desc_launch"
+export SCOUT_CLAUDE_ARGV_LOG="$TMP/description-too-large/claude-argv.log"
+: > "$SCOUT_CLAUDE_ARGV_LOG"
 PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
     --mode description \
     --scope-files "$TMP/description-too-large/scope-files.txt" \
@@ -396,6 +408,8 @@ PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_O
     --output "$TMP/description-too-large/scout-manifest.json" \
     --timeout 5 \
     > "$TMP/description-too-large/stdout.env"
+grep -Fq -- '--read-tools' "$SCOUT_CLAUDE_ARGV_LOG" || fail "description-too-large claude tier must pass --read-tools"
+grep -Fq -- '--read-tools-add-dir' "$SCOUT_CLAUDE_ARGV_LOG" || fail "description-too-large claude tier must pass --read-tools-add-dir"
 grep -Fq 'SCOUT_STATUS=ok' "$TMP/description-too-large/stdout.env" || fail "large description-file should succeed"
 staged_desc="$TMP/description-too-large/staged-context/description.txt"
 [[ -f "$staged_desc" ]] || fail "description file not staged"
@@ -589,6 +603,9 @@ grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-codex-win/stdout.env" || fail "codex 
 cmp -s "$TMP/valid4.json" "$TMP/waterfall-codex-win/scout-manifest.json.raw" || fail "codex raw should be winner"
 grep -Fq -- '--tool codex' "$SCOUT_CODEX_ARGV_LOG" || fail "codex tier must use --tool codex"
 grep -Fq -- '--tool cursor' "$SCOUT_CODEX_ARGV_LOG" && fail "scout must not invoke --tool cursor"
+grep -Fq -- 'staged-context' "$SCOUT_CODEX_ARGV_LOG" || fail "codex tier must pass staged-context --codex-add-dir"
+grep -Fq -- "$TMP/waterfall-codex-win/review.diff" "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass caller diff path"
+grep -Fq -- '--diff-file' "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass unused --diff-file on --prompt-file launches"
 
 mkdir -p "$TMP/waterfall-fallthrough"
 seed_case_inputs "$TMP/waterfall-fallthrough"
@@ -610,6 +627,7 @@ PATH="$BIN:$PATH" \
 grep -Fq 'SCOUT_STATUS=ok' "$TMP/waterfall-fallthrough/stdout.env" || fail "codex prose should fall through to claude"
 cmp -s "$TMP/valid4.json" "$TMP/waterfall-fallthrough/scout-manifest.json.raw" || fail "claude should supply winning raw"
 grep -Fq -- '--read-tools' "$SCOUT_CLAUDE_ARGV_LOG" || fail "claude tier must pass --read-tools"
+grep -Fq -- '--read-tools-add-dir' "$SCOUT_CLAUDE_ARGV_LOG" || fail "claude tier must pass --read-tools-add-dir"
 
 mkdir -p "$TMP/waterfall-cap-hit-cleanup"
 seed_case_inputs "$TMP/waterfall-cap-hit-cleanup"
@@ -775,6 +793,7 @@ python3 - <<'PY' >"$TMP/staged-over-1mb-diff/review.diff"
 import sys
 sys.stdout.write("diff --git a/big b/big\n+" + "x" * 1048600 + "\n")
 PY
+set +e
 PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
     --mode diff \
     --diff-file "$TMP/staged-over-1mb-diff/review.diff" \
@@ -782,9 +801,11 @@ PATH="$BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$desc_launch" SCOUT_STUB_O
     --max-archetypes 4 \
     --output "$TMP/staged-over-1mb-diff/scout-manifest.json" \
     --timeout 5 \
-    >"$TMP/staged-over-1mb-diff/stdout.env"
-grep -Fq 'SCOUT_STATUS=ok' "$TMP/staged-over-1mb-diff/stdout.env" || fail ">1 MB staged diff should fail-open with stub launcher"
-grep -Fq 'staged --diff-file' "$TMP/staged-over-1mb-diff/stdout.env" || fail ">1 MB staged diff should emit staged WARN over cap"
+    >"$TMP/staged-over-1mb-diff/stdout.env" 2>"$TMP/staged-over-1mb-diff/stderr.env"
+over_1mb_rc=$?
+set -e
+[[ "$over_1mb_rc" -eq 2 ]] || fail ">1 MB staged diff must hard-fail before staging"
+grep -Fq 'staged --diff-file exceeds' "$TMP/staged-over-1mb-diff/stderr.env" || fail ">1 MB staged diff stderr"
 
 mkdir -p "$TMP/codex-no-description-text-argv"
 seed_case_inputs "$TMP/codex-no-description-text-argv"
@@ -807,6 +828,7 @@ PATH="$BIN:$PATH" \
     >"$TMP/codex-no-description-text-argv/stdout.env"
 grep -Fq -- '--description-text' "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass --description-text on --prompt-file launches"
 grep -Fq -- '--codex-add-dir' "$SCOUT_CODEX_ARGV_LOG" || fail "codex tier must pass --codex-add-dir"
+grep -Fq -- '--scope-files' "$SCOUT_CODEX_ARGV_LOG" && fail "codex tier must not pass unused --scope-files on --prompt-file launches"
 
 mkdir -p "$TMP/max-zero-no-stage"
 seed_case_inputs "$TMP/max-zero-no-stage"

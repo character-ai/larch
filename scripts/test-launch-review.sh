@@ -1281,6 +1281,79 @@ rm -f "$SL_OBS_NONTRANSIENT_COUNT"
 # Restore normal codex stub for remaining tests.
 ln -sf "$CODEX_DEFAULT_STUB" "$STUB_BIN/codex"
 
+# --codex-add-dir validation (accept under session root; reject non-directory).
+CAD_ACCEPT_DIR="$TMPDIR/codex-add-dir-accept"
+mkdir -p "$CAD_ACCEPT_DIR/staged-context"
+printf 'scout prompt\n' >"$CAD_ACCEPT_DIR/staged-context/prompt.md"
+CAD_ACCEPT_OUT="$CAD_ACCEPT_DIR/out.txt"
+CAD_ACCEPT_ARGV="$TMPDIR/codex-add-dir-accept-argv.txt"
+CAD_ACCEPT_COUNT="$TMPDIR/codex-add-dir-accept-count.txt"
+printf '0\n' >"$CAD_ACCEPT_COUNT"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-codex-add-dir-accept-$$" \
+    CODEX_STUB_ARGV_LOG="$CAD_ACCEPT_ARGV" \
+    CODEX_STUB_COUNT_FILE="$CAD_ACCEPT_COUNT" \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" \
+    --output "$CAD_ACCEPT_OUT" \
+    --timeout 5 \
+    --prompt-file "$CAD_ACCEPT_DIR/staged-context/prompt.md" \
+    --codex-add-dir "$CAD_ACCEPT_DIR/staged-context" \
+    >/dev/null 2>"$TMPDIR/codex-add-dir-accept.stderr"
+CAD_ACCEPT_RC=$?
+set -e
+assert_eq "codex-add-dir accept exit" "0" "$CAD_ACCEPT_RC"
+assert_grep "codex-add-dir accept argv add-dir" "--add-dir" "$CAD_ACCEPT_ARGV"
+assert_grep "codex-add-dir accept argv staged-context" "staged-context" "$CAD_ACCEPT_ARGV"
+
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-codex-add-dir-reject-$$" \
+    "$LAUNCHER" \
+    --output "$TMPDIR/codex-add-dir-reject.txt" \
+    --timeout 5 \
+    --prompt "x" \
+    --codex-add-dir "$TMPDIR/codex-add-dir-not-a-dir" \
+    >/dev/null 2>"$TMPDIR/codex-add-dir-reject.stderr"
+CAD_REJECT_RC=$?
+set -e
+assert_eq "codex-add-dir reject non-directory exit" "2" "$CAD_REJECT_RC"
+assert_grep "codex-add-dir reject non-directory message" "--codex-add-dir is not a directory" "$TMPDIR/codex-add-dir-reject.stderr"
+
+CAD_OUTSIDE_DIR="$TMPDIR/codex-add-dir-outside"
+mkdir -p "$CAD_OUTSIDE_DIR/session"
+CAD_OUTSIDE_ADD="$TMPDIR/codex-add-dir-outside-add"
+mkdir -p "$CAD_OUTSIDE_ADD"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-codex-add-dir-outside-$$" \
+    "$LAUNCHER" \
+    --output "$CAD_OUTSIDE_DIR/session/out.txt" \
+    --timeout 5 \
+    --prompt "x" \
+    --codex-add-dir "$CAD_OUTSIDE_ADD" \
+    >/dev/null 2>"$TMPDIR/codex-add-dir-outside.stderr"
+CAD_OUTSIDE_RC=$?
+set -e
+assert_eq "codex-add-dir reject outside session root exit" "2" "$CAD_OUTSIDE_RC"
+assert_grep "codex-add-dir reject outside session root message" "--codex-add-dir outside session root" "$TMPDIR/codex-add-dir-outside.stderr"
+
+CAD_SYMLINK_DIR="$TMPDIR/codex-add-dir-symlink"
+mkdir -p "$CAD_SYMLINK_DIR/staged-context"
+CAD_SYMLINK_TARGET="$TMPDIR/codex-add-dir-symlink-target"
+mkdir -p "$CAD_SYMLINK_TARGET"
+ln -sf "$CAD_SYMLINK_TARGET" "$CAD_SYMLINK_DIR/staged-context-link"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-codex-add-dir-symlink-$$" \
+    "$LAUNCHER" \
+    --output "$CAD_SYMLINK_DIR/out.txt" \
+    --timeout 5 \
+    --prompt "x" \
+    --codex-add-dir "$CAD_SYMLINK_DIR/staged-context-link" \
+    >/dev/null 2>"$TMPDIR/codex-add-dir-symlink.stderr"
+CAD_SYMLINK_RC=$?
+set -e
+assert_eq "codex-add-dir reject symlink exit" "2" "$CAD_SYMLINK_RC"
+assert_grep "codex-add-dir reject symlink message" "--codex-add-dir is not a directory" "$TMPDIR/codex-add-dir-symlink.stderr"
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-review.sh --tool codex - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAILURES[@]}" >&2

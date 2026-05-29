@@ -130,7 +130,11 @@ validate_context_input_file() {
 
 stage_context_file() {
     local label="$1" src="$2" staged_basename="$3"
-    local dest="$STAGED_DIR/$staged_basename"
+    local dest="$STAGED_DIR/$staged_basename" size
+    size=$(wc -c < "$src" | tr -d '[:space:]')
+    if [ "$size" -gt "$MAX_STAGED_BYTES" ]; then
+        fail "staged $label exceeds ${MAX_STAGED_BYTES} bytes ($size)"
+    fi
     cp -f "$src" "$dest" || fail "failed to stage $label: $src"
     printf '%s\n' "$dest"
 }
@@ -139,9 +143,7 @@ emit_staged_size_warning() {
     local label="$1" staged_path="$2" size
     [[ -n "$staged_path" && -f "$staged_path" ]] || return 0
     size=$(wc -c < "$staged_path" | tr -d '[:space:]')
-    if [ "$size" -gt "$MAX_STAGED_BYTES" ]; then
-        emit_kv WARN "staged $label is ${size} bytes (>${MAX_STAGED_BYTES}); scout tiers may truncate or time out"
-    elif [ "$size" -gt "$MAX_CONTEXT_BYTES" ]; then
+    if [ "$size" -gt "$MAX_CONTEXT_BYTES" ]; then
         emit_kv WARN "staged $label is ${size} bytes (>${MAX_CONTEXT_BYTES}); scout tiers may truncate or time out"
     fi
 }
@@ -285,6 +287,10 @@ if [[ -n "$PLAN_FILE" ]]; then
     PLAN_FILE_CANON=$(validate_context_input_file "--plan-file" "$PLAN_FILE")
 fi
 
+# Export so nested timing-ledger fallback can resolve the caller-provided
+# session env file even when this script exits before staging (e.g. max 0).
+export SESSION_ENV_PATH
+
 if (( 10#$MAX_ARCHETYPES == 0 )); then
     write_empty_manifest "$OUTPUT"
     emit_kv SCOUT_STATUS empty
@@ -315,10 +321,6 @@ if [[ -n "${PLAN_FILE_CANON:-}" ]]; then
     STAGED_PLAN=$(stage_context_file "--plan-file" "$PLAN_FILE_CANON" "plan.txt")
     emit_staged_size_warning "--plan-file" "$STAGED_PLAN"
 fi
-
-# Export so nested timing-ledger fallback can resolve the caller-provided
-# session env file even when this script is invoked directly.
-export SESSION_ENV_PATH
 
 prompt_file="$STAGED_DIR/scout-dynamic-archetypes-prompt.md"
 raw_output="${OUTPUT}.raw"
@@ -365,6 +367,8 @@ fenced_json_tmp=""
 tier_raw="$raw_output"
 winner_raw=""
 had_probe_miss=0
+codex_had_probe_miss=0
+claude_supplied_winner=0
 last_launch_rc=1
 last_scout_status="claude-failed"
 latency_ms=0
@@ -385,14 +389,8 @@ run_codex_tier() {
         --mode "$MODE"
         --timeout "$TIMEOUT"
         --timing-task-kind scout-dynamic-archetypes
+        --codex-add-dir "$STAGED_DIR"
     )
-    if [[ "$MODE" == "diff" ]]; then
-        codex_args+=(--diff-file "$STAGED_DIFF")
-    else
-        codex_args+=(--scope-files "$STAGED_SCOPE")
-    fi
-    [[ -n "$STAGED_PLAN" ]] && codex_args+=(--plan-file "$STAGED_PLAN")
-    codex_args+=(--codex-add-dir "$STAGED_DIR")
     set +e
     "$LAUNCH_REVIEW_SH" "${codex_args[@]}" >"$launch_stdout"
     last_launch_rc=$?
@@ -407,6 +405,7 @@ run_codex_tier() {
     fi
     if [[ ! -s "$tier_raw" ]]; then
         had_probe_miss=1
+        codex_had_probe_miss=1
         return 1
     fi
     if tier_raw_is_scout_json "$tier_raw"; then
@@ -414,6 +413,7 @@ run_codex_tier() {
         return 0
     fi
     had_probe_miss=1
+    codex_had_probe_miss=1
     return 1
 }
 
@@ -445,6 +445,7 @@ run_claude_tier() {
     fi
     if tier_raw_is_scout_json "$tier_raw"; then
         winner_raw="$tier_raw"
+        claude_supplied_winner=1
         return 0
     fi
     had_probe_miss=1
@@ -611,6 +612,10 @@ if (( valid_count == 0 )); then
     scout_status="empty"
 else
     scout_status="ok"
+fi
+
+if [[ "$MODE" == "description" && "$CODEX_PRESENT" == "true" && "$codex_had_probe_miss" -eq 1 && "$claude_supplied_winner" -eq 1 && "$scout_status" == "ok" ]]; then
+    emit_kv WARN "codex description-mode tier missed scout JSON; claude tier supplied winner"
 fi
 
 emit_kv SCOUT_STATUS "$scout_status"

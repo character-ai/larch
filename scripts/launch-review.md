@@ -28,7 +28,8 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   per-invocation `CODEX_HOME/config.toml`; Cursor receives the same compact
   prohibition in the wrapped prompt plus a `--mode ask` enforcement note.
 - Optional `--codex-add-dir DIR` narrows Codex `codex exec --add-dir` to a
-  directory other than the parent of `--output` (scout passes staged-context only).
+  directory under the session root that owns `--output` (scout passes staged-context only).
+  Rejects symlinks, control characters, `..`, and paths outside the session root.
 - Cursor auth setup runs the Darwin preflight, then best-effort pre-reads the
   `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`
   before composing argv. A successful pre-read becomes an explicit `--api-key`
