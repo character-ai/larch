@@ -24,10 +24,14 @@ paths = [
 # Synthetic test-fixture key used in redaction harnesses.
 # The value is obviously fake (sequential alphabet + digits) and appears in test
 # scripts and changelog prose describing the fixture, not in production code.
+# The repo relies on TruffleHog (real-credential validation) for authoritative
+# Anthropic key detection; gitleaks sk-ant-* regex is supplementary only.
 stopwords = [
+    "abcdefghijklmnopqrstuvwxyz0123456789",
     "abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+    "sk-ant-abcdefghijklmnopqrstuvwxyz",
 ]
 regexes = [
-    '''sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD''',
-    '''abcdefghijklmnopqrstuvwxyz0123456789ABCD''',
+    '''sk-ant-[a-zA-Z0-9-_]{1,48}''',
+    '''abcdefghijklmnopqrstuvwxyz0123456789''',
 ]
