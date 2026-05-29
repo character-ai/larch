@@ -3,9 +3,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-unset LARCH_BREADCRUMB_STREAM LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
-    LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG LARCH_QUIET_BREADCRUMB_FD \
-    LARCH_BREADCRUMBS_SURFACED_FILE 2>/dev/null || true
+unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID \
+    LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG LARCH_QUIET_BREADCRUMB_FD 2>/dev/null || true
 
 SUT_PROD="$REPO_ROOT/scripts/rebase-checkpoint-probe.sh"
 fail() { echo "FAIL: $1" >&2; exit 1; }

@@ -305,7 +305,6 @@ WAIT_STDERR=$(mktemp "${TMPDIR:-/tmp}/collect-wait-stderr.XXXXXX") || {
     exit 1
 }
 trap 'rm -f -- "$WAIT_STDERR"' EXIT
-larch_quiet_append_done_trap
 WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
 WAIT_RC=$?
 if [[ "$WAIT_RC" -ne 0 ]]; then

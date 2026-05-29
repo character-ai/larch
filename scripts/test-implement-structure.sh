@@ -4,6 +4,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# shellcheck source=scripts/lib-p3119-fence-absence.sh
+source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
 REFS_DIR="$REPO_ROOT/skills/implement/references"
 RESTORE_FINALIZE_SH="$REPO_ROOT/scripts/restore-finalize-state.sh"
@@ -628,5 +630,16 @@ grep -Fq "seed \`\$IMPLEMENT_TMPDIR/ship-pr-state.sh\` from the canonical Step 8
   || fail "SKILL.md Step 5 stall path must pin the canonical write-initial-state-keys block as the ship-pr-state seed source"
 grep -Fq 'copy the full canonical key set' "$SKILL_MD" \
   || fail "SKILL.md Step 5 stall path must require copying the full canonical ship-pr-state key set"
+
+# Stage 4 (#3119): Family-B fence shape must stay absent from implement orchestrator docs.
+assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md" ship-pr-invocation
+assert_p3119_family_b_fence_absent "$STALL_RECOVERY_MD" "stall-recovery.md"
+assert_p3119_family_b_fence_absent "$REFS_DIR/rebase-rebump-subprocedure.md" "rebase-rebump-subprocedure.md"
+grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
+  || fail "(3119) SKILL.md Step 8+ must pin foreground writer_rc routing (post ship-pr return)"
+grep -Fq "Treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
+  || fail "(3119) SKILL.md Exit 4 must pin foreground writer_rc routing"
+grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$STALL_RECOVERY_MD" \
+  || fail "(3119) stall-recovery.md step8-shippr must pin foreground writer_rc routing"
 
 echo "All assertions passed."

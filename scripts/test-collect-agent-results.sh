@@ -208,18 +208,14 @@ assert_transient_signature "lib-net detects no valid output retry exhaustion" "c
 assert_transient_signature "lib-net detects git fetch failures" "git fetch origin main failed (network/auth issue)"
 assert_not_transient_signature "lib-net rejects non-network errors" "reviewer prompt malformed"
 
-# C_DONE: collector exits cleanly (larch_quiet_append_done_trap is a no-op shim in Stage 3).
-echo "# Case: done sentinel written on normal collector exit"
+# C_OK: collector status OK on normal external output (.done present).
+echo "# Case: collector status OK on normal external output"
 OUT_DONE="$TMPROOT/cursor-done-sentinel.txt"
 printf 'NO_ISSUES_FOUND\n' > "$OUT_DONE"
 printf '0\n' > "${OUT_DONE}.done"
-COLLECTOR_DONE_SENTINEL="$TMPROOT/collector.done"
-COLLECTOR_STATUS_FILE="$TMPROOT/collector.status"
 RESULT_DONE=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    LARCH_DONE_SENTINEL="$COLLECTOR_DONE_SENTINEL" \
-    LARCH_STATUS_FILE="$COLLECTOR_STATUS_FILE" \
     bash "$COLLECTOR" --timeout 5 "$OUT_DONE" 2>/dev/null)
-assert_line "C_DONE collector status OK" "STATUS=OK" "$RESULT_DONE"
+assert_line "C_OK collector status OK" "STATUS=OK" "$RESULT_DONE"
 
 # C_T1: initial FAILED with transient network diagnostic retries and recovers.
 OUT_T1="$TMPROOT/cursor-t1.txt"

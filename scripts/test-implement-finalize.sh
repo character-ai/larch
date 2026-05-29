@@ -4,7 +4,6 @@
 set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
-unset LARCH_BREADCRUMB_STREAM
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REAL_SCRIPT="$SCRIPT_DIR/implement-finalize.sh"

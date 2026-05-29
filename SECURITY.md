@@ -208,13 +208,6 @@ The local sentinel reader validates non-empty `ISSUE_NUMBER` values as digits on
 
 **`larch-logs/` as durable run store**: reviewer findings, tallies, version-bump reasoning, OOS links, execution issues, run statistics, token reports, and timing reports are written through `scripts/larch-log.sh` into `larch-logs/<skill>/<run-id>/` and committed by explicit lifecycle log-flush paths before the business PR merges. Diagrams are not written through a larch-log batch; the public diagram surface is the `larch:diagrams` issue comment described above. After a merge-success result, `scripts/ship-pr.sh` writes `$IMPLEMENT_TMPDIR/post-merge-sentinel`; `scripts/larch-log-flush.sh` no-ops on that sentinel and `scripts/larch-log.sh commit` refuses, so prompt-side teardown cannot create or push new log-only commits to `main`. The sentinel check therefore depends on `IMPLEMENT_TMPDIR` being exported into subprocesses that may call `larch-log.sh commit`; Step 7a and `scripts/refresh-run-logs.sh` provide that export before their transcript/log refresh paths run. Defense-in-depth commit refusal lives at `scripts/larch-log.sh commit`; `scripts/refresh-run-logs.sh` also short-circuits entirely when `MERGE_RESULT` already reports a merged terminal state, so post-merge retry refreshes do not attempt transcript/log writes. `capture-session-transcript.sh` itself no longer owns an independent default-branch refusal policy; it delegates commit enforcement to `larch-log.sh commit` (or to its caller when `--defer-commit` is used). Callers pass the staging root explicitly with `--log-root`; the helper no longer falls back to `$IMPLEMENT_TMPDIR` or the repository root when the root is omitted. `larch-logs/ export-ignore` keeps those audit files out of plugin release archives. Payload batches are redacted before writing. Tool-failure captures routed through `scripts/append-tool-failure.sh` preserve command stdout/stderr verbatim for debugging and use `scripts/redact-secrets.sh` when callers pass `--redact`; `/implement` final-summary degraded-render warnings now also use that redacted capture path before stderr is appended into `execution-issues.md`. This is a secrets-family backstop only, so internal URLs, private hostnames, PII, and domain-specific sensitive content still require prompt-level/operator discipline before logs are pushed. `manifest.json` schema version 2 records `operator_cwd` and `operator_repo_root` as local absolute paths for provenance; these fields are JSON-escaped but not path-redacted, so public repositories may expose local username/workspace path components in committed run logs. Slim marker-keyed tracking comments contain summaries and links only, except for the diagrams comment; operators should still treat committed log files and tracking comments as public once pushed to a public repository.
 
-**Breadcrumb monitor (Stage 3)**: `scripts/breadcrumb-monitor.sh` is a temporary
-no-op compatibility shim (always exit 0) retained until Stage 4 removes the
-remaining Family B foreground fences. It does not stream breadcrumbs, watch
-sentinels, or signal paired PIDs on timeout. `larch_quiet_write_paired_pid_file`
-and `larch_quiet_append_done_trap` in `scripts/lib-quiet.sh` are matching no-op
-shims for deferred fences.
-
 **Operator diagnostic redaction**: `larch_err` / `larch_errf` still pipe through
 `redact-secrets.sh --streaming` directly (the `lib-redact-streaming.sh` wrapper
 was removed in Stage 3). Durable log publication redaction remains in
@@ -271,16 +264,13 @@ By default, `/research` creates a GitHub issue at the end of each successful run
 Breadcrumb streams cross from session-local runtime state into durable logs only
 through the redaction and publication path described here.
 
-1. **Live streams are session-tmpdir-only**: raw breadcrumb stream files live
-   under `$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
-   `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`; never
-   committed without redaction. These stream files are session-local runtime
-   artifacts only; committed publication uses quiet logs instead.
-2. **Live monitor streaming removed (Stage 3)**: the foreground monitor is a
-   no-op shim; there is no per-line live redaction or operator-visible breadcrumb
-   stream. Operator diagnostics from `larch_err` / `larch_errf` still use
-   `redact-secrets.sh --streaming` directly.
-3. **Committed copies are routed through `larch-log.sh commit` and
+1. **Session breadcrumb directories are publication hints only**: session-tmpdir
+   `breadcrumbs/` paths (`$IMPLEMENT_TMPDIR/breadcrumbs/`, `$DESIGN_TMPDIR/breadcrumbs/`,
+   `$REVIEW_TMPDIR/breadcrumbs/`, or `$RESEARCH_TMPDIR/breadcrumbs/`) are hints only;
+   committed publication stages matching `larch-quiet-<script>-<pid>.log` quiet logs
+   from the session root, not live runtime streams under those directories. Legacy
+   `*.ndjson` stream files and other non-quiet-log artifacts stay session-local.
+2. **Committed copies are routed through `larch-log.sh commit` and
    `design-log-publish.sh`**: both entrypoints invoke the shared
    `larch_log_publish_breadcrumbs_shared` helper in `scripts/lib-larch-log.sh`.
    The helper stages each accepted source file through

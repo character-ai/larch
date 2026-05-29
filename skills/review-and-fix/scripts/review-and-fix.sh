@@ -12,7 +12,6 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
-larch_quiet_append_done_trap
 
 # lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
 # directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.

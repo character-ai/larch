@@ -1,0 +1,152 @@
+Structured aggregator output from the supplied reviewer findings (read-only; no repo verification).
+
+### FINDING_1: Duplicate Quick mode collector blocks in design Step 2a.3
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: Step 2a.3 in `skills/design/SKILL.md` (lines 542–560) contains two identical Quick mode `collect-agent-results` fences after fence collapse. An orchestrator may treat both as mandatory, run sketch collection twice, or waste tokens reconciling duplicate instructions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_2: Stale background+monitor / phantom-probe wording for Step 8+ ship-pr
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: `skills/implement/SKILL.md` (around line 1156) still directs a phantom probe or background+monitor pattern before `ship-pr` despite collapsed foreground fences. Models may search for a monitor pair, mis-order Step 8 pre-bump vs ship-pr, or follow deprecated Family-B patterns inconsistent with NEVER #16 and the foreground Invoke block.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_3: run-logs.md still documents live-stream / monitor semantics
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Severity**: important
+- **Concern**: `docs/run-logs.md` (lines 85–117) was not trimmed for Stage 4: it still describes live breadcrumb streams, ndjson live streams, and hidden monitor sidecars. Operators and reviewers get publication semantics inconsistent with post-rip-out quiet-log forensics and SECURITY.md; they may expect artifacts Stage 4 no longer creates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_4: linting.md Usage still lists removed foreground-markers lint
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: `docs/linting.md` (line 29) Usage still claims `make lint` runs foreground markers after `lint-foreground-markers` was removed in Stage 3. Contributors expect a target that no longer exists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_5: AGENTS.md canonical lib-quiet bullet still mentions emit_breadcrumb
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: `AGENTS.md` (line 40) canonical `lib-quiet` bullet still lists `emit_breadcrumb` though `scripts/lib-quiet.md` no longer documents that API. Readers search for a removed helper when authoring quiet streams.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_6: Redundant timeout guidance in design Step 2a.3 collector
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `skills/design/SKILL.md` (around line 562) duplicates foreground vs `timeout: 1260000` guidance after fence collapse, causing minor confusion when copying Step 2a.3 collector calls.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_7: Missing implement-structure inverted greps for forbidden orchestration prose
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: `scripts/test-implement-structure.sh` lacks inverted assertions that forbid background+monitor or breadcrumb-monitor prose returning to `skills/implement/SKILL.md` (and peers). Only `test-design-structure.sh` partially covers Family-B absence (e.g. `brainstorm.md`); re-added forbidden blocks in implement/design skill markdown can pass `make lint` until manual grep. Extend structure harnesses (at minimum `test-implement-structure.sh`) with the same `&& fail` pattern on plan-listed skill paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_8: plan-review.md uses undefined _launch_id in mktemp path
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: important
+- **Concern**: After fence collapse, `skills/design/references/plan-review.md` (around line 142) uses `_launch_id` in a `mktemp` path without assigning it. Under `set -u` the fence aborts; otherwise `dispatch-plan-voters` stdout paths can collide across runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_9: plan-review.md collapsed fence does not read/eval dispatch stdout KVs
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: important
+- **Concern**: The collapsed `dispatch-plan-voters` fence in `skills/design/references/plan-review.md` (lines 141–149) no longer reads or evals stdout KVs the prose requires. A manual fence run leaves `VOTER_*` unset so tallying mis-routes voter paths and statuses. After foreground dispatch, cat the stdout file and eval or parse `VOTER_*` KVs like the old success branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_10: voting-protocol.md still backgrounds dispatch-plan-voters for plan review
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: `skills/shared/voting-protocol.md` (lines 149, 170) still claims plan review uses `run_in_background` from `dispatch-plan-voters` after foreground collapse, contradicting `plan-review` and NEVER #16. Plan-review dispatch should be described as foreground; limit `run_in_background` to direct external launch paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_11: Final grep gate manual; not wired into make lint / CI
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: The plan’s final grep gate is manual only—not registered in Makefile or CI—so `make lint` can stay green while new harness prose violates acceptance (e.g. `LARCH_DONE_SENTINEL`). Add `scripts/test-breadcrumb-ripout-grep-gate.sh` and wire it into `make lint`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_12: No harness pins for writer_rc routing in implement Step 8 ship-pr prose
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `skills/implement/SKILL.md` (lines 1224–1247) documents `writer_rc` routing only in prose with no structure-test pins. Partial revert to `monitor_rc` or `LARCH_STATUS_FILE` routing could mis-handle ship-pr stalls without test failure. Add `test-implement-structure.sh` contains/absent greps for `writer_rc` routing and forbidden `monitor_rc` symbols.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_13: LARCH_CLAUDE_SOURCE_FILE not exported before token-report child calls
+- **Reviewer(s)**: cursor-specialist-security-output.txt, cursor-specialist-security-output.txt (FINDING_22, FINDING_24)
+- **Severity**: important
+- **Concern**: `skills/implement/SKILL.md` (lines 1533–1536) removed `export LARCH_CLAUDE_SOURCE_FILE=` before child `token-report.sh` calls while `token-claude-source.sh` only reads that path from the environment. Parent-only assignment lets concurrent sessions bind the newest-mtime transcript and write wrong token usage into committed `larch-logs` batches. `scripts/test-implement-timing-rehydration.sh` (lines 116–118) still expects export count to match rehydration reads—`make lint` may not catch the drift unless exports are restored or harness and contract are updated together (including `LARCH_TIMING_LEDGER` where timing-ledger needs it).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_14: ship-pr exit matrix branches on Bash rc vs ship-pr-state stall semantics
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: `skills/implement/SKILL.md` (lines 1224–1247) exit matrix branches on Bash tool return code while stall semantics live in `ship-pr-state.sh` without an explicit timeout/mismatch guard. Harness timeout or auto-background can return non-4 while state already has `STALL_TRACKING` / `EXIT_CODE=4`, so the orchestrator skips Exit 4 → Step 16 or mis-routes continuation. Add precedence: on timeout/mismatch, skip the exit matrix and follow state-driven re-invoke (per ~L1188); branch the matrix on `ship-pr-state` `EXIT_CODE` when the call completes normally.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_15: test-design-structure.sh inverted greps embed plan-forbidden literals
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `scripts/test-design-structure.sh` (lines 401–406) inverted absence tests embed final-grep-forbidden literals (`breadcrumb-monitor`, Background pair required, `BASH_AUTHORING.md` §4). Pre-close repo grep for plan acceptance tokens can hit the harness even when skill prose is clean, contradicting a zero-hit grep gate. Rewrite assertions without forbidden substrings in tracked source, or document a single allowed exclusion in the close checklist if the project accepts that tradeoff.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_16: Stale LARCH_DONE_SENTINEL comment in test-collect-agent-results
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/test-collect-agent-results.sh` (lines 211–212) `C_DONE` comment still refers to a done sentinel after sentinel env strip was removed, inviting reintroduction of `LARCH_DONE_SENTINEL` setup.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### OOS_1: [OUT_OF_SCOPE] implement-bootstrap.md stale lint-foreground-markers reference
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/implement-bootstrap.md` (around line 163) still references deleted `lint-foreground-markers` DENYLIST. Pre-existing doc drift outside the Stage 4 file list; trim in a separate sweep.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### OOS_2: [OUT_OF_SCOPE] .gitleaks.toml allowlist names deleted breadcrumb-monitor harness paths
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `.gitleaks.toml` (lines 25–26) allowlist still names deleted `test-breadcrumb-monitor` harness paths. No functional impact; config clutter only.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### OOS_3: [OUT_OF_SCOPE] linting.md foreground-markers (correctness / plan-fidelity lens)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Same `docs/linting.md:29` drift as in-scope FINDING_4, flagged out of scope for correctness/plan-fidelity reviewers (Stage 3 removal; not necessarily in Stage 4 file list). Update Usage to drop foreground-markers from the local `make lint` bullet.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### OOS_4: [OUT_OF_SCOPE] AGENTS.md emit_breadcrumb (correctness lens)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: Same `AGENTS.md:40` drift as in-scope FINDING_5, flagged out of scope for correctness. Trim canonical line to `emit`/`emit_kv` only.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### OOS_5: [OUT_OF_SCOPE] relevant-checks.sh stale lint-foreground-markers pragma
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/relevant-checks.sh` (line 137) has a stale `lint-foreground-markers` pragma on a case pattern; not in Stage 4 plan file list. Remove or retarget when touching that script.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+---
+
+**Merge notes (for voters, not machine output):** 29 raw slots → 16 in-scope `FINDING_*` + 5 `OOS_*`. Overlaps: run-logs (3+12), ship-pr Step 8 wording (2+23), implement inverted greps (7+16), token export + timing harness (22+24), linting.md and AGENTS.md split in-scope vs OOS per source `[OUT_OF_SCOPE]` tags; implement-bootstrap OOS (8+28). `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` omitted because findings remain.

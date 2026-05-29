@@ -6,11 +6,9 @@ set -euo pipefail
 # Do not inherit a parent larch quiet-session/log/tmpdir environment.
 # These harness cases create their own temp roots and should not try to write
 # breadcrumb or quiet logs into a parent /implement session directory.
-unset LARCH_BREADCRUMB_STREAM \
-    LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_PID \
+unset LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_PID \
     LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
-    LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_PAIRED_PID_FILE \
-    LARCH_BREADCRUMBS_SURFACED_FILE LARCH_DONE_OWNER_PID \
+    LARCH_DONE_OWNER_PID \
     IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR RESEARCH_TMPDIR 2>/dev/null || true
 
 # --section CLI selector (closes #2349): shards the main scenarios into 3 groups.

@@ -146,7 +146,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "<tmp
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "<voter prompt with ballot>.")"
 ```
 
-Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
+Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
 **Cursor voter replacement** (plan review and code review; if `cursor_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
 
@@ -167,7 +167,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpd
     "<voter prompt with ballot>."
 ```
 
-Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review gets this behavior from `dispatch-plan-voters.sh`.
+Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.
 
 **Codex voter replacement** (plan review and code review; if `codex_available` is false): Launch a Claude voter in its place. For plan review this happens via the Agent tool; for code review `dispatch-code-voters.sh` launches a Claude subprocess automatically. The total voter count always remains 3.
 
@@ -181,7 +181,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/wait-for-reviewers.sh --timeout 1260 \
   "<tmpdir>/codex-vote-output.txt.done"
 ```
 
-Use `timeout: 1260000` on the Bash tool call. Set `run_in_background: true` on the long-script Bash tool call and pair with foreground `breadcrumb-monitor.sh`. Note: voter output files use the `-vote-` infix to avoid collision with reviewer output files (`-plan-output` or `-output`).
+Use `timeout: 1260000` on the Bash tool call. Use a foreground Bash tool call with a sufficiently large timeout. Note: voter output files use the `-vote-` infix to avoid collision with reviewer output files (`-plan-output` or `-output`).
 
 **Collecting voter results**: Use `collect-agent-results.sh` to validate external voter outputs (same as for reviewer outputs). Parse `STATUS` and `FAILURE_REASON` for each voter. If a voter fails (`STATUS != OK`), print: `**⚠ <Voter> voter failed — <FAILURE_REASON>. Proceeding with <N> voters (<remaining voter names>).**` Always include the `FAILURE_REASON` so the user can see why the voter failed (e.g., timeout, crash, empty output). Reduce the eligible voter count accordingly and apply the threshold rules above.
 

@@ -539,7 +539,6 @@ run_bootstrap() {
         env \
             CLAUDE_PLUGIN_ROOT="$SANDBOX" \
             PATH="$SANDBOX/bin:$PATH" \
-            LARCH_BREADCRUMB_STREAM= \
             LARCH_QUIET_BREADCRUMB_FD="${LARCH_QUIET_BREADCRUMB_FD:-}" \
             bash "$SANDBOX/scripts/implement-bootstrap.sh" "$@"
     )

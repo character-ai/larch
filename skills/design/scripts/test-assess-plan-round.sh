@@ -2,8 +2,7 @@
 # Offline harness for assess-plan-round.sh
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
-unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE \
-  LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE LARCH_PAIRED_PID_FILE || true
+unset LARCH_QUIET_LOG_FILE || true
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SUBJECT="$ROOT/skills/design/scripts/assess-plan-round.sh"
@@ -279,7 +278,6 @@ write_params_for() {
 echo "=== two-entry Step 3 cursor + round-2 assessor integration ==="
 case_tmp=$(mktemp -d "${TMPDIR:-/tmp}/tapr-two-entry.XXXXXX")
 saved_dispatch_plan_assessors_sh=${LARCH_DISPATCH_PLAN_ASSESSORS_SH-__UNSET__}
-saved_breadcrumb_monitor_sh=${LARCH_BREADCRUMB_MONITOR_SH-__UNSET__}
 saved_tally_plan_assessor_sh=${LARCH_TALLY_PLAN_ASSESSOR_SH-__UNSET__}
 saved_snapshot_plan_round_sh=${LARCH_SNAPSHOT_PLAN_ROUND_SH-__UNSET__}
 rm -f "$case_tmp"/plan-after-round-*.txt \
@@ -310,13 +308,7 @@ printf 'ASSESSMENT: WORSE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/codex-plan-
 printf 'ASSESSMENT: TIE\nREASONING: x\nQUALIFICATIONS: y\n' >"$DIR/cursor-plan-assessor-round-2.txt"
 STUB
 chmod +x "$case_tmp/mock-dispatch.sh"
-cat >"$case_tmp/mock-monitor.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-chmod +x "$case_tmp/mock-monitor.sh"
 export LARCH_DISPATCH_PLAN_ASSESSORS_SH="$case_tmp/mock-dispatch.sh"
-export LARCH_BREADCRUMB_MONITOR_SH="$case_tmp/mock-monitor.sh"
 export LARCH_TALLY_PLAN_ASSESSOR_SH="$ROOT/skills/design/scripts/tally-plan-assessor.sh"
 export LARCH_SNAPSHOT_PLAN_ROUND_SH="$ROOT/skills/design/scripts/snapshot-plan-round.sh"
 
@@ -347,11 +339,6 @@ if [[ "$saved_dispatch_plan_assessors_sh" == "__UNSET__" ]]; then
   unset LARCH_DISPATCH_PLAN_ASSESSORS_SH
 else
   export LARCH_DISPATCH_PLAN_ASSESSORS_SH="$saved_dispatch_plan_assessors_sh"
-fi
-if [[ "$saved_breadcrumb_monitor_sh" == "__UNSET__" ]]; then
-  unset LARCH_BREADCRUMB_MONITOR_SH
-else
-  export LARCH_BREADCRUMB_MONITOR_SH="$saved_breadcrumb_monitor_sh"
 fi
 if [[ "$saved_tally_plan_assessor_sh" == "__UNSET__" ]]; then
   unset LARCH_TALLY_PLAN_ASSESSOR_SH

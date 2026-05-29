@@ -180,9 +180,9 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 - `⚠ ship-pr: transient network failure` — on every `exit_transient_net` call
 - `⛔ ship-pr: stalled at step N` — on every `mark_stall` call (covers all `exit_stall` codes)
 
-`ship-pr.sh` is a top-level Family B writer; nested synchronous `ci-wait.sh`
-invocations no longer use `LARCH_PAIRED_PID_FILE` barriers (removed in
-breadcrumbs Stage 3).
+`ship-pr.sh` is a long-running orchestrator entrypoint; nested synchronous
+`ci-wait.sh` invocations run in the foreground inside the ship-pr process tree
+(breadcrumbs Stages 3–4 removed paired-PID barriers).
 
 ## Edit In Sync
 

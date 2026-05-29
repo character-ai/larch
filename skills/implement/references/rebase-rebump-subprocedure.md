@@ -47,7 +47,6 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    ```bash
    LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
    LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-   export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
    "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
    "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
    "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch token-report --input-file "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
@@ -185,11 +184,6 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    - **`step8_apply_bump_same_version`** (from Step 8's `apply-bump.sh` same-version failure handler): **return control to Step 8 immediately after the `/bump-version` invocation** with the freshly created bump commit. Step 8 then captures `REASONING_FILE`, runs `check-bump-version.sh --mode post`, writes the `version-bump-reasoning` log batch, and proceeds to Step 8a. Do NOT increment `rebase_count` / `iteration`, sleep, push, or re-invoke `ci-wait.sh`.
 
    **`ci-wait.sh` MUST be invoked synchronously** at every re-invocation site above (no `run_in_background: true`). Use `timeout: 1860000` on the Bash tool call to allow up to 31 minutes of blocking; do NOT background it. Backgrounding `ci-wait.sh` disconnects the orchestrator from its return code and creates a leaked-polling-loop risk if a later session-exit attempt force-kills the shell mid-poll (closes #842). See `${CLAUDE_PLUGIN_ROOT}/scripts/ci-wait.md` and `skills/implement/SKILL.md` Step 10 / Step 12a for the canonical wording.
-
-   `ci-wait.sh` is intentionally excluded from the `LARCH_PAIRED_PID_FILE`
-   writer list for the same reason: it is a nested synchronous child under
-   `ship-pr.sh`, not the top-level background process paired with
-   `breadcrumb-monitor.sh`. `ship-pr.sh` unsets the env var before invoking it.
 
 ## Phase 4 caller path (`rebase_already_done=true`)
 

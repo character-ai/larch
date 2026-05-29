@@ -3,6 +3,8 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# shellcheck source=scripts/lib-p3119-fence-absence.sh
+source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/design/SKILL.md"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
@@ -409,11 +411,12 @@ grep -Fq 'skills/design/references/brainstorm-prompts.md' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing brainstorm-prompts.md path literal"
 grep -Fq 'ScheduleWakeup' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing ScheduleWakeup prohibition anchor"
-# shellcheck disable=SC2016 # Markdown fence literal in brainstorm.md
-grep -Fq '**⚠ Background required — must be paired with breadcrumb-monitor.sh.**' "$BRAINSTORM_MD" \
-  || fail "(2754) brainstorm.md missing background-pair banner in collector fence"
-grep -Fq '# Background pair required: see BASH_AUTHORING.md §4' "$BRAINSTORM_MD" \
-  || fail "(2754) brainstorm.md missing BASH_AUTHORING §4 in-fence comment"
+# Stage 4 (#3119): Family-B fence shape must stay absent from design orchestrator docs.
+assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md"
+assert_p3119_family_b_fence_absent "$BRAINSTORM_MD" "brainstorm.md"
+assert_p3119_family_b_fence_absent "$DIALEXEC_MD" "dialectic-execution.md"
+assert_p3119_family_b_fence_absent "$PLAN_REVIEW_MD" "plan-review.md"
+assert_p3119_family_b_fence_absent "$DIALPROTO_MD" "dialectic-protocol.md"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
   || fail "(2754) SKILL.md write-run-params invocation missing --brainstorm-requested"

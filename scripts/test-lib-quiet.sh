@@ -164,19 +164,13 @@ assert_eq "$(cat "$SCRATCH/larch_err_redact_fail.err")" $'WARN larch_err-redacti
 assert_file_contains "$log" "WARN larch_err-redaction-failed" "failed redactor warning logged"
 assert_file_contains "$log" "plain diagnostic" "failed redactor original message logged"
 
-# 11. Stage 3 compatibility shims are harmless no-ops.
-helper="$SCRATCH/shim-noop.sh"
-write_helper "$helper" 'larch_quiet_append_done_trap; larch_quiet_write_paired_pid_file; printf "ok\n"'
-out=$("$helper")
-assert_eq "$out" "ok" "compatibility shims no-op"
-
-# 12. sanitize_diagnostic_line strips C0 control bytes from one line.
+# 11. sanitize_diagnostic_line strips C0 control bytes from one line.
 helper="$SCRATCH/sanitize.sh"
 write_helper "$helper" 'printf "before\x01\x02\x03after\x07.end\n" | sanitize_diagnostic_line'
 out=$("$helper" 2>/dev/null)
 [ "$out" = "beforeafter.end" ] || fail "sanitize_diagnostic_line did not strip controls: '$out'"
 
-# 13. emit_kv rejects embedded LF.
+# 12. emit_kv rejects embedded LF.
 helper="$SCRATCH/emit-kv-lf.sh"
 write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; emit_kv BAD $'"'"'line1\nline2'"'"' || printf "rc=%s\n" "$?"'
 "$helper" >"$SCRATCH/emit-kv-lf.out" 2>"$SCRATCH/emit-kv-lf.err"
@@ -184,25 +178,25 @@ assert_eq "$(cat "$SCRATCH/emit-kv-lf.out")" "rc=2" "emit_kv lf reject rc"
 grep -Fq 'emit_kv: value for key BAD must not contain newline or carriage return' "$SCRATCH/emit-kv-lf.err" \
     || fail "emit_kv lf reject message"
 
-# 14. emit_kv rejects embedded CR.
+# 13. emit_kv rejects embedded CR.
 helper="$SCRATCH/emit-kv-cr.sh"
 write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; emit_kv BAD $'"'"'line1\rline2'"'"' || printf "rc=%s\n" "$?"'
 "$helper" >"$SCRATCH/emit-kv-cr.out" 2>"$SCRATCH/emit-kv-cr.err"
 assert_eq "$(cat "$SCRATCH/emit-kv-cr.out")" "rc=2" "emit_kv cr reject rc"
 
-# 15. emit_kv rejects both LF and CR.
+# 14. emit_kv rejects both LF and CR.
 helper="$SCRATCH/emit-kv-both.sh"
 write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; emit_kv BAD $'"'"'a\n\rb'"'"' || printf "rc=%s\n" "$?"'
 "$helper" >"$SCRATCH/emit-kv-both.out" 2>"$SCRATCH/emit-kv-both.err"
 assert_eq "$(cat "$SCRATCH/emit-kv-both.out")" "rc=2" "emit_kv both reject rc"
 
-# 16. emit_kv allows literal backslash-n (not a newline byte).
+# 15. emit_kv allows literal backslash-n (not a newline byte).
 helper="$SCRATCH/emit-kv-literal.sh"
 write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; emit_kv OK "literal\\n text"'
 out=$("$helper")
 assert_eq "$out" 'OK=literal\n text' "emit_kv literal backslash-n"
 
-# 17. emit_kv allows long single-line values.
+# 16. emit_kv allows long single-line values.
 helper="$SCRATCH/emit-kv-long.sh"
 write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; emit_kv LONG "$(printf "%2000s" "" | tr " " "A")"'
 out=$("$helper")
