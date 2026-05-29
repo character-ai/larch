@@ -39,6 +39,17 @@ recovery_merge_if_needed() {
   fi
 }
 
+write_then_recover() {
+  local out="$1" classification="$2" spy="$3" r_partition="$4" r_brainstorm="$5" r_manual="$6"
+  if ! "$WRITER" --classification "$classification" \
+      --partition-requested false --brainstorm-requested false --manual-gate-b false \
+      --output "$out" >/dev/null 2>&1; then
+    return 1
+  fi
+  recovery_merge_if_needed "$out" "$r_partition" "$r_brainstorm" "$r_manual" || return 1
+  : > "$spy"
+}
+
 # Case 1: successful write; manual-only argv => manual=true (FINDING_9 success path).
 OUT1="$TMPROOT/case1.json"
 "$WRITER" --classification SIMPLE --partition-requested false --brainstorm-requested false --manual-gate-b false --output "$OUT1" >/dev/null
@@ -86,5 +97,28 @@ warning_case6=$(recovery_merge_if_needed "$OUT6" true false false)
 [[ ! -e "$OUT6" ]] || fail "case6: missing-file degraded path recreated $OUT6"
 [[ "$warning_case6" == "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**" ]] \
   || fail "case6: missing-file degraded warning drifted; got: $warning_case6"
+
+# Case 7: a failing writer aborts BEFORE recovery (#3161). Spy absence proves recovery never
+# ran; captured stdout proves the missing-file recovery warning was not emitted.
+OUT7="$TMPROOT/case7.json"; SPY7="$TMPROOT/case7-recovery-reached"; rm -f "$SPY7"
+set +e
+out7_stdout=$(write_then_recover "$OUT7" BOGUS "$SPY7" false false true 2>/dev/null)
+rc7=$?
+set -e
+[[ "$rc7" -ne 0 ]] || fail "case7: failing writer must abort before recovery; rc=$rc7"
+[[ ! -e "$SPY7" ]] || fail "case7: recovery completed after writer failure (spy present)"
+[[ ! -e "$OUT7" ]] || fail "case7: failing writer created $OUT7"
+[[ "$out7_stdout" != *"refusing to recreate it with fallback defaults"* ]] \
+  || fail "case7: missing-file recovery warning emitted after writer failure (recovery not bypassed)"
+
+# Case 7b (positive control): a successful write reaches AND completes recovery. Writer writes
+# manual_gate_b=false; recovery (manual=true) must FLIP it to true. Spy present only because
+# recovery returned 0.
+OUT7B="$TMPROOT/case7b.json"; SPY7B="$TMPROOT/case7b-recovery-reached"; rm -f "$SPY7B"
+set +e; write_then_recover "$OUT7B" SIMPLE "$SPY7B" false false true; rc7b=$?; set -e
+[[ "$rc7b" -eq 0 ]] || fail "case7b: successful write_then_recover returned $rc7b"
+[[ -e "$SPY7B" ]] || fail "case7b: recovery did not complete after successful write (spy absent)"
+jq -e '.manual_gate_b == true' "$OUT7B" >/dev/null \
+  || fail "case7b: recovery did not flip manual_gate_b false->true; got $(cat "$OUT7B")"
 
 echo "PASS: test-step0b-router-flag-recovery.sh"
