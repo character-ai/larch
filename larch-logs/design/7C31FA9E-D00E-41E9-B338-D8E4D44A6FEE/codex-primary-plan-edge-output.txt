@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/references/stall-recovery.md:5-53	Plan scopes stall-recovery as “collapse the Family-B fence (1 ref)” but the file has no `breadcrumb-monitor.sh` fence—only contract/dispatch prose mandating background+monitor pairs and monitor-specific Exit 4 routing	A fence-only pass leaves Step 18a `step5-review` / `step8-shippr` dispatch and Safety Constraints still prescribing deleted machinery; recovery can mis-route stalls after Stage 4	Replace the listed edit with explicit prose rewrite: plain foreground `run-step5-review.sh` / `ship-pr.sh`, drop six-path exports and monitor-failure branch; align with FINDING_1 (use Bash exit code + `ship-pr-state.sh` only)
+2	in_scope	important	correctness	skills/review/references/heavy-worker.md:55	Plan scopes heavy-worker as “collapse the Family-B fence (1 ref)” but the only monitor reference is Wait Discipline prose, not a fence	Fence-only work leaves “collect-agent-results + breadcrumb-monitor” as the sole wait mechanism; subagent workers can still follow removed pairing	Expand the heavy-worker task to rewrite Wait Discipline (foreground collector, harness auto-background on overrun); do not assume a fence collapse exists
+3	in_scope	important	risk-integration	skills/implement/references/stall-recovery.md:24	skills/implement/SKILL.md FINDING_1 rewrites Step 8+ routing but stall-recovery Exit 4 text still splits wrapper `monitor_rc` from writer `EXIT_CODE=4`	After fences become plain foreground, Step 18a may still treat a normal `ship-pr.sh` stall exit as monitor infrastructure and skew `same-cause-repeat` / `RESUME_HINT`	Update stall-recovery `step8-shippr` Exit 4 handling in the same PR as implement SKILL FINDING_1: classify from foreground exit + `ship-pr-state.sh` only; remove `breadcrumb-monitor.sh` timeout/argv branch
+4	in_scope	latent	architecture	plan.txt:147-148	Final grep gate omits phrases like `background+monitor` and `Family B background+monitor` that lack removed token substrings	Post-gate pass can leave misleading dispatch guidance in files that grep clean on `breadcrumb-monitor` / `LARCH_STATUS_FILE`	Add those phrases to the final grep gate, or enumerate prose-only files (stall-recovery, heavy-worker, `run-step2-dispatch.md`) in the Approach step
+
+**1. `stall-recovery.md` mis-scoped (correctness)**  
+The plan lists “Collapse the Family-B fence (1 ref)” for `skills/implement/references/stall-recovery.md`, but that file has no monitor fence—only prose at L5, L23–24, and L53 about background+monitor dispatch and monitor-specific Exit 4 routing. A fence-only edit would leave Step 18a recovery instructing deleted machinery.
+
+**2. `heavy-worker.md` mis-scoped (correctness)**  
+Same pattern: the plan cites one fence, but `skills/review/references/heavy-worker.md:55` is Wait Discipline prose requiring `collect-agent-results.sh` paired with `breadcrumb-monitor.sh`, with no Family-B fence in the file.
+
+**3. FINDING_1 vs stall-recovery Exit 4 (risk-integration)**  
+FINDING_1 correctly targets `skills/implement/SKILL.md` Post-Invoke / Exit-4 wrapper routing (~L1378, L1397). `stall-recovery.md:24` still teaches monitor-vs-writer Exit 4 split; it must be updated in the same change or Step 18a classification can diverge from the collapsed foreground model.
+
+**4. Grep gate gap (latent)**  
+The planned final grep (plan L147–148) would not catch surviving phrases like “Family B background+monitor pair” without removed tokens. Extending the gate or naming prose-only files in Approach reduces doc drift after a green grep.
+
+[OUT_OF_SCOPE] **Companion script docs** — `scripts/run-step5-review.md:9-11` and `skills/implement/scripts/run-step2-dispatch.md:10-13` still describe top-level Family B / historical monitor pairing; the plan only trims the shim bullet on `run-step2-dispatch.md`, not these paragraphs. Worth a follow-up doc sweep; not required for fence collapse correctness if skill fences and grep gate pass.
+
+[OUT_OF_SCOPE] **`skills/design/scripts/test-assess-plan-round.sh:282-354`** — sets `LARCH_BREADCRUMB_MONITOR_SH` to a mock script, but `assess-plan-round.sh` no longer reads that override (forensics `breadcrumbs/` dir only). Dead harness noise; no runtime breakage from Stage 4.
+
+The plan’s shim ordering, FINDING_1 post-invoke rewrite, `test-design-structure.sh` / `test-lib-quiet.sh` / `test-collect-agent-results.sh` lockstep, and “breadcrumb” overload guardrails are otherwise aligned with the repo; `run-step5-review.sh` has no `larch_quiet_append_done_trap` caller (plan edge-case check is satisfied).

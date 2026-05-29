@@ -1,0 +1,12 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-test-gap-output-phase3.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=2|FAILURE_REASON=Process failed with exit code 2
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-test-gap-output-phase3.txt)
+
+(file missing: <TMPDIR>/codex-primary-plan-dyn-test-gap-output-phase3.txt)
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-test-gap-output-phase3.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-dyn-test-gap-output-phase3.txt.diag)
+

@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-lib-quiet.sh:167-171	Plan lists make test-lib-quiet in Testing strategy but not in Files to modify; case 11 still invokes removed shims	Final grep gate requires zero larch_quiet_append_done_trap / larch_quiet_write_paired_pid_file; test-lib-quiet.sh fails grep and exercises deleted symbols	Add scripts/test-lib-quiet.sh to Files to modify: drop or rewrite case 11 after shim removal

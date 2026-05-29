@@ -1,0 +1,32 @@
+Reviewing the plan and scanning test harnesses for gaps against the stated focus.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:147	Manual final grep gate omits test harness carve-out while many harnesses outside the plan file list still contain forbidden literals	After skill/doc/script rip-out, `rg 'LARCH_BREADCRUMB_STREAM|LARCH_DONE_SENTINEL|LARCH_STATUS_FILE|LARCH_PAIRED_PID_FILE|breadcrumb-monitor'` still hits ~15 `test-*.sh` files (e.g. `scripts/test-ship-pr.sh:11`, `skills/implement/scripts/test-run-step2-dispatch.sh:68-69`, `skills/design/scripts/test-dispatch-plan-assessors.sh:5-6`) that the plan does not list for update; implementer cannot satisfy the stated zero-hit gate without undocumented edits	Add an explicit grep exclusion for `scripts/test-*.sh` and `skills/**/scripts/test-*.sh`, or one Approach step to drop obsolete Family-B `unset`/`env -u` hygiene from those harnesses in the same PR
+
+1. **[correctness]** `plan.txt:147` (Testing strategy final grep gate) — The plan requires repo-wide zero hits for `breadcrumb-monitor`, `LARCH_BREADCRUMB_STREAM`, `LARCH_DONE_SENTINEL`, `LARCH_STATUS_FILE`, `LARCH_PAIRED_PID_FILE`, etc., with only `larch-logs/**`, `CHANGELOG.md`, and forensics `breadcrumbs/` carved out. Many harnesses **not** in `### UPDATED:` still embed those strings as test hygiene only (not Family-B shape assertions), for example:
+
+```11:11:scripts/test-ship-pr.sh
+unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE
+```
+
+```68:69:skills/implement/scripts/test-run-step2-dispatch.sh
+    env -u LARCH_DONE_SENTINEL -u LARCH_STATUS_FILE -u LARCH_QUIET_LOG_FILE \
+        -u LARCH_BREADCRUMBS_SURFACED_FILE -u LARCH_PAIRED_PID_FILE -u LARCH_BREADCRUMB_STREAM
+```
+
+```5:6:skills/design/scripts/test-dispatch-plan-assessors.sh
+unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE \
+  LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE LARCH_PAIRED_PID_FILE || true
+```
+
+The plan updates `test-collect-agent-results.sh` C_DONE for this reason (failure mode #4) but does not cover the other harnesses, so the documented exit gate conflicts with minimum-change test cleanup.
+
+**Suggested revision:** Extend the grep gate exclusions to all `test-*.sh` harness paths, or add a single sweep step to remove obsolete Family-B env hygiene from the affected harness list.
+
+---
+
+**Exonerated / no issue (for traceability):**
+
+- `scripts/test-implement-structure.sh` and `scripts/test-research-structure.sh` — no `breadcrumb-monitor`, `Background pair required`, `monitor_rc`, or `LARCH_STATUS_FILE` fence assertions (only unrelated step-marker “breadcrumb” pins, e.g. `scripts/test-implement-structure.sh:498-499`).
+- `scripts/test-design-structure.sh:399-402` — already slated for removal/inversion in the plan.
+- `scripts/test-lib-quiet.sh` case 11 / cases 12–17 renumbering — plan covers delete + renumber + `scripts/test-lib-quiet.md` trim; no Makefile/CI ordinal references to old case numbers found.
+- Other `test-*.sh` hits are `unset`/`env -u` hygiene, not assertions that the old banner/monitor fence must remain; they fail the **grep gate**, not `make lint`, unless the gate is narrowed as above.

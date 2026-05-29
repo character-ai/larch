@@ -1,0 +1,87 @@
+Incorporating the three accepted findings into the plan. Verifying affected paths and current references in the repo.
+Building the unified plan diff incorporating all three findings.
+--- a/plan.txt	2026-05-29 11:48:26
++++ b/plan.txt	2026-05-29 11:48:37
+@@ -7,7 +7,7 @@
+ ## Files to modify/create
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+-Heaviest fence file (16 `breadcrumb-monitor.sh` refs). Collapse every `ship-pr.sh` / `ci-wait.sh` / `review-and-fix.sh` / `run-step5-review.sh` / `run-step2-dispatch.sh` Family-B fence to a plain foreground call: drop the `LARCH_BREADCRUMB_*` / sentinel / `LARCH_PAIRED_PID_FILE` exports, the shell `&`, PID capture, `breadcrumb-monitor.sh` invocation, `monitor_rc` branch, post-monitor `wait`, the `**⚠ Background required ...**` banners, and the `# Background pair required: see BASH_AUTHORING.md §4` comments. Rewrite the L1304 "MUST launch with `run_in_background: true` and a foreground `breadcrumb-monitor.sh` pair" warning block into a plain foreground-invocation note (keep the `ship-pr-state.sh` resume-after-timeout recovery prose — the harness auto-backgrounds an overrunning foreground call and notifies on completion). **Post-Invoke routing (FINDING_1):** after fence collapse, rewrite orchestration prose that still depends on the removed status-file / monitor pair — the Step 8+ "Post-/bump-version boundary" block (~L1378), Exit-4 "Wrapper-routing note" (~L1397), and any Step 2 / Step 5 wrapper notes that distinguish `monitor_rc` vs `writer_rc` or instruct parsing `EXIT_CODE` from `$LARCH_STATUS_FILE`. Replace with: treat the foreground Bash tool exit code from the collapsed fence as `writer_rc`; read continuation keys from `ship-pr-state.sh` (and related state files) only; drop `monitor_rc`, `$LARCH_STATUS_FILE`, and `breadcrumb-monitor.sh` routing entirely. Tombstone NEVER #16 in place following the existing NEVER #12 `(removed — see ...)` precedent (no renumbering). Trim NEVER #9: keep the ScheduleWakeup / polling-loop ban, remove the `breadcrumb-monitor.sh` pairing reference. Leave the L1399 Exit-6 `see NEVER #9` pointer valid.
++Heaviest fence file (16 `breadcrumb-monitor.sh` refs). **Rebase Checkpoint Macro (L139):** drop the dead `scripts/lint-foreground-markers.sh` foreground-marker/denylist pointer (removed in Stage 3); restate checkpoint guidance as one foreground Bash invocation per Call-site registry row with argv/exit/KV authority in `scripts/rebase-checkpoint-probe.md` only. Collapse every `ship-pr.sh` / `ci-wait.sh` / `review-and-fix.sh` / `run-step5-review.sh` / `run-step2-dispatch.sh` Family-B fence to a plain foreground call: drop the `LARCH_BREADCRUMB_*` / sentinel / `LARCH_PAIRED_PID_FILE` exports, the shell `&`, PID capture, `breadcrumb-monitor.sh` invocation, `monitor_rc` branch, post-monitor `wait`, the `**⚠ Background required ...**` banners, and the `# Background pair required: see BASH_AUTHORING.md §4` comments. Rewrite the L1304 "MUST launch with `run_in_background: true` and a foreground `breadcrumb-monitor.sh` pair" warning block into a plain foreground-invocation note (keep the `ship-pr-state.sh` resume-after-timeout recovery prose — the harness auto-backgrounds an overrunning foreground call and notifies on completion). **Post-Invoke routing (FINDING_1):** after fence collapse, rewrite orchestration prose that still depends on the removed status-file / monitor pair — the Step 8+ "Post-/bump-version boundary" block (~L1378), Exit-4 "Wrapper-routing note" (~L1397), and any Step 2 / Step 5 wrapper notes that distinguish `monitor_rc` vs `writer_rc` or instruct parsing `EXIT_CODE` from `$LARCH_STATUS_FILE`. Replace with: treat the foreground Bash tool exit code from the collapsed fence as `writer_rc`; read continuation keys from `ship-pr-state.sh` (and related state files) only; drop `monitor_rc`, `$LARCH_STATUS_FILE`, and `breadcrumb-monitor.sh` routing entirely. Tombstone NEVER #16 in place following the existing NEVER #12 `(removed — see ...)` precedent (no renumbering). Trim NEVER #9: keep the ScheduleWakeup / polling-loop ban, remove the `breadcrumb-monitor.sh` pairing reference. Leave the L1399 Exit-6 `see NEVER #9` pointer valid.
+ 
+ ### UPDATED: `skills/design/SKILL.md`
+ Collapse the `collect-agent-results.sh` Family-B fences (7 refs) to plain foreground calls; strip banners + per-anchor comments + breadcrumb env plumbing.
+@@ -25,7 +25,7 @@
+ Collapse the `ci-wait.sh` / `ship-pr.sh` fence (1 ref); keep the long-wait policy prose, reframed as plain-foreground + auto-background-on-overrun.
+ 
+ ### UPDATED: `skills/implement/references/stall-recovery.md`
+-Collapse the Family-B fence (1 ref).
++No `breadcrumb-monitor.sh` fence — procedural contract only. Rewrite dispatch + safety prose that still mandates Family B background+monitor pairs: Contract intro (L5), Procedure step 5 `step5-review` / `step8-shippr` bullets (L23-24), and Safety Constraints (L53). Replace with plain foreground `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh` and `ship-pr.sh` invocations (same argv as today); drop six-path `LARCH_*` breadcrumb exports and monitor-failure vs writer-stall routing. Align with FINDING_1: treat the Bash tool exit code as `writer_rc`; read continuation/classification evidence from `ship-pr-state.sh` / `BAIL_FAILURE_DETAIL_LOG` only — no `breadcrumb-monitor.sh`, `monitor_rc`, or `$LARCH_STATUS_FILE` branches.
+ 
+ ### UPDATED: `skills/research/references/research-phase.md`
+ Collapse the `collect-agent-results.sh` collector fences (3 refs).
+@@ -111,6 +111,28 @@
+ ### UPDATED: `scripts/test-design-structure.sh`
+ Remove (or invert to assert-absence) the background-pair banner + `# Background pair required` in-fence assertions (L398-402) and the `breadcrumb-monitor` reference. Ensure `assert_bash_fences_have_pause_check` still passes for the remaining `/design` fences (the pause-check prelude is orthogonal to Family-B and must survive).
+ 
++
++### UPDATED: `scripts/test-ship-pr.sh`
++Strip top-level `unset` lines for removed Family-B env vars (`LARCH_BREADCRUMB_STREAM`, `LARCH_DONE_SENTINEL`, `LARCH_STATUS_FILE`, `LARCH_BREADCRUMBS_SURFACED_FILE`, etc.); keep only isolation for symbols still used post-rip-out.
++
++### UPDATED: `skills/implement/scripts/test-run-step2-dispatch.sh`
++Remove `env -u LARCH_DONE_SENTINEL` / `LARCH_STATUS_FILE` / `LARCH_PAIRED_PID_FILE` / `LARCH_BREADCRUMB_STREAM` (and related) from dispatch harness invocations.
++
++### UPDATED: `skills/review/scripts/test-dispatch-panel.sh`
++Narrow the preamble `unset` list to drop removed sentinel/stream/paired-PID names.
++
++### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
++Same: drop removed Family-B names from harness `unset` hygiene.
++
++### UPDATED: `skills/design/scripts/test-dispatch-plan-assessors.sh`
++Drop removed sentinel/stream/paired-PID names from harness `unset` hygiene.
++
++### UPDATED: `skills/design/scripts/test-tally-plan-assessor.sh`
++Same.
++
++### UPDATED: `skills/design/scripts/test-assess-plan-round.sh`
++Remove the `LARCH_BREADCRUMB_MONITOR_SH` save/restore + `mock-monitor.sh` stub (L282-354); keep dispatch/tally/snapshot stub overrides only.
++
+ ## Approach
+ 
+ 1. Pre-flight grep to enumerate exact fence boundaries and confirm the caller set is unchanged from this plan.
+@@ -118,7 +140,8 @@
+ 3. Trim root + public docs (`BASH_AUTHORING.md` §4, `AGENTS.md`, `SECURITY.md`, `docs/run-logs.md`, `docs/linting.md`, `docs/configuration-and-permissions.md`), distinguishing removed live machinery from preserved forensics/redaction/progress-breadcrumb content.
+ 4. Remove the 8 dead `larch_quiet_append_done_trap` call sites, then delete the two shim definitions from `lib-quiet.sh`, then delete `breadcrumb-monitor.sh` + `.md` — in that order so no script ever references a missing function.
+ 5. Update `test-design-structure.sh`, `test-lib-quiet.sh` (drop case 11), and `test-collect-agent-results.sh` (C_DONE sentinel strip) in lockstep with shim removal.
+-6. Run the full grep gate (Testing strategy) + `make lint` until green.
++6. **Grep-gate harness sweep:** strip or narrow removed-symbol `unset` / `env -u` hygiene in the test harnesses listed above (and any sibling harness that still names `LARCH_DONE_SENTINEL`, `LARCH_STATUS_FILE`, `LARCH_PAIRED_PID_FILE`, `LARCH_BREADCRUMB_STREAM`, or `LARCH_BREADCRUMB_MONITOR_SH`); do not add grep exclusions for test-only isolation lines.
++7. Run the full grep gate (Testing strategy) + `make lint` until green.
+ 
+ ## Edge cases
+ 
+@@ -131,6 +154,7 @@
+ - **`orchestrator-never.md` is a no-op.** It contains only the ScheduleWakeup ban; it has no Family-B content. Audit only — do not invent edits.
+ - **`#2919` is already closed.** No code change; an optional back-reference comment is the only possible action.
+ - **Verify no residual caller** in `run-step5-review.sh` and any dynamic caller before deleting the shims.
++- **Harness-only grep hits.** Unit tests can pass while the pre-close grep gate still matches `unset`/`env -u` lines or `LARCH_BREADCRUMB_MONITOR_SH` mock stubs in test harnesses. Mitigation: apply the grep-gate harness sweep (Approach step 6) in the same PR — no narrow test-only grep exclusions.
+ 
+ ## Failure modes
+ 
+@@ -138,13 +162,15 @@
+ 2. **Over-removal of preserved content.** Earliest signal: `docs/run-logs.md` forensics section missing, polling-loop-ban harness fails, or script progress-breadcrumb tests fail. Mitigation: scope every deletion to the Family-B apparatus; run `test-implement-anti-polling-rule.sh` and the affected script harnesses.
+ 3. **Shim deleted with a caller remaining.** Earliest signal: `ship-pr.sh` / `ci-wait.sh` abort at runtime with `larch_quiet_append_done_trap: command not found`. Mitigation: enforce the remove-callers-then-delete-shim ordering; final grep must show zero callers before shim deletion.
+ 4. **Shim harness still exercises deleted symbols.** Earliest signal: `make test-lib-quiet` fails in case 11 with `command not found` under `set -euo pipefail`, or C_DONE leaves `LARCH_DONE_SENTINEL` / `LARCH_STATUS_FILE` in `test-collect-agent-results.sh` and trips the final grep gate. Mitigation: update `scripts/test-lib-quiet.sh` and rewrite C_DONE in `scripts/test-collect-agent-results.sh` in the same PR as shim deletion.
++5. **Pre-close grep fails on harness hygiene only.** Earliest signal: skill/doc edits and unit tests are green but the final grep gate hits `unset`/`env -u` lines in `test-ship-pr.sh`, `test-run-step2-dispatch.sh`, design/review harnesses, or `LARCH_BREADCRUMB_MONITOR_SH` in `test-assess-plan-round.sh`. Mitigation: complete Approach step 6 before declaring the PR grep-clean.
+ 
+ ## Testing strategy
+ 
+ - `make lint` (runs the pre-commit hooks repo-wide) must pass.
+ - Structure harnesses: `scripts/test-design-structure.sh`, `scripts/test-implement-structure.sh`, `scripts/test-research-structure.sh`, `scripts/test-review-structure.sh`.
+ - Affected-script harnesses: `scripts/test-ship-pr.sh`, `scripts/test-collect-agent-results.sh`, `scripts/test-dispatch-plan-voters.sh`, `scripts/test-lib-quiet.sh`, `skills/implement/scripts/test-step2-implement.sh`, `skills/implement/scripts/test-run-step2-dispatch.sh`, `scripts/test-implement-anti-polling-rule.sh`, plus any `ci-wait` / `dispatch-with-waterfall` / `review-and-fix` harness present.
++- Grep-gate harness sweep (same PR): `skills/implement/scripts/test-run-step2-dispatch.sh`, `skills/review/scripts/test-dispatch-panel.sh`, `skills/review-and-fix/scripts/test-review-and-fix.sh`, `skills/design/scripts/test-dispatch-plan-assessors.sh`, `skills/design/scripts/test-assess-plan-round.sh`, `skills/design/scripts/test-tally-plan-assessor.sh`; re-grep repo for any remaining harness `unset`/`env -u` of removed symbols before close.
+ - `bash scripts/relevant-checks.sh` on the changed set.
+-- Final grep gate (must return zero outside `larch-logs/**`, `CHANGELOG.md`, and preserved `breadcrumbs/` forensics-dir references): `breadcrumb-monitor`, `LARCH_BREADCRUMB_STREAM`, `LARCH_DONE_SENTINEL`, `LARCH_STATUS_FILE`, `LARCH_PAIRED_PID_FILE`, `LARCH_BREADCRUMBS_SURFACED_FILE`, `larch_quiet_append_done_trap`, `larch_quiet_write_paired_pid_file`, `Background pair required`, `must be paired with breadcrumb-monitor`, `BASH_AUTHORING.md §4`.
++- Final grep gate (must return zero outside `larch-logs/**`, `CHANGELOG.md`, and preserved `breadcrumbs/` forensics-dir references): `breadcrumb-monitor`, `LARCH_BREADCRUMB_MONITOR_SH`, `LARCH_BREADCRUMB_STREAM`, `LARCH_DONE_SENTINEL`, `LARCH_STATUS_FILE`, `LARCH_PAIRED_PID_FILE`, `LARCH_BREADCRUMBS_SURFACED_FILE`, `larch_quiet_append_done_trap`, `larch_quiet_write_paired_pid_file`, `Background pair required`, `must be paired with breadcrumb-monitor`, `BASH_AUTHORING.md §4`.
+ 
+-diff_lines: 1428
++diff_lines: 1548
