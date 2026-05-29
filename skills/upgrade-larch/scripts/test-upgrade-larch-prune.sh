@@ -440,4 +440,22 @@ run_case legacy-unstamped-backfilled-before-prune
 [[ -f "$CASE_CACHE_ROOT/29.1.21/.larch-installed-at" ]] || fail "legacy-unstamped-backfilled-before-prune should backfill install stamp for retained legacy dir"
 unset CACHE_MTIME_OVERRIDES INSTALL_CACHE_VERSION
 
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.21"
+PLUGIN_ROOT_VERSION="29.1.21"
+INSTALL_RESULT_VERSION="29.1.30"
+INSTALL_CACHE_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
+unset INSTALL_STAMPS
+export CACHE_MTIME_OVERRIDES="29.1.20:209901010000 29.1.21:209901010001 29.1.22:209901010002 29.1.23:209901010003 29.1.24:209901010004 29.1.25:209901010005 29.1.26:209901010006 29.1.27:209901010007 29.1.28:200001010000 29.1.29:200001010001"
+export STAT_FAIL_VERSION="29.1.20"
+unset READONLY_STAMP_VERSION
+run_case stat-backfill-skipped-still-prunes
+[[ "$CASE_RC" -eq 0 ]] || fail "stat-backfill-skipped-still-prunes exit $CASE_RC"
+[[ ! -f "$CASE_CACHE_ROOT/29.1.20/.larch-installed-at" ]] || fail "stat-backfill-skipped-still-prunes should skip backfill when stat fails"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "stat-backfill-skipped-still-prunes should prune legacy dir with failed stat"
+[[ -f "$CASE_CACHE_ROOT/29.1.21/.larch-installed-at" ]] || fail "stat-backfill-skipped-still-prunes should still backfill dirs where stat succeeds"
+[[ "$(count_cached_versions "$CASE_CACHE_ROOT")" -eq 8 ]] || fail "stat-backfill-skipped-still-prunes should retain exactly 8 dirs"
+unset CACHE_MTIME_OVERRIDES STAT_FAIL_VERSION
+
 printf 'PASS: test-upgrade-larch-prune.sh\n'

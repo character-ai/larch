@@ -279,6 +279,17 @@ run_cleanup "$work"
 [[ ! -d "$work/tmp-root/claude-implement-fixture" ]] || fail "stale-tmp-dir-removed should delete stale /tmp fixture"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "1" "stale-tmp-dir-removed TMP_REMOVED"
 
+# --- stale-tmp-file-removed ---------------------------------------------------
+work="$TMP/stale-tmp-file-removed"
+mkdir -p "$work/tmp-root"
+printf 'stale\n' > "$work/tmp-root/larch4-review.diff"
+touch -t "$STALE_TS" -- "$work/tmp-root/larch4-review.diff"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-tmp-file-removed exit $CASE_RC"
+[[ ! -f "$work/tmp-root/larch4-review.diff" ]] || fail "stale-tmp-file-removed should delete stale /tmp fixture file"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "1" "stale-tmp-file-removed TMP_REMOVED"
+
 # --- date-failure-errors ------------------------------------------------------
 work="$TMP/date-failure-errors"
 mkdir -p "$work/bin"

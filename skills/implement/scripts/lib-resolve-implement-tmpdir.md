@@ -49,4 +49,6 @@ arm halt protection. The TTL-only path applies when no authoritative session
 signal is available.
 
 Edit in sync with `hook-stop-fail-close.sh`, `hook-post-bump-version.sh`,
-`hooks/hooks.json`, and `scripts/test-implement-anti-halt.sh`.
+`hooks/hooks.json`, `scripts/test-implement-anti-halt.sh`, and
+`skills/implement/scripts/test-resolve-implement-tmpdir.sh` (concurrent
+worktree `CLONE_PATH` routing).

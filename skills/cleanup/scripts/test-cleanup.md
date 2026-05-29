@@ -18,6 +18,7 @@ Covered cases:
 - **dangling-symlink-reaped**: broken `current-design-env-test.sh` symlink in the sessions parent (`-L` and `! -e`) is removed; `SYMLINKS_REMOVED=1`
 - **live-symlink-kept**: `current-design-env-*.sh` symlink pointing at an existing file is retained; `SYMLINKS_REMOVED=0`
 - **stale-tmp-dir-removed**: stale `claude-implement-*` directory under `LARCH_TEST_TMP_ROOT` is deleted; `TMP_REMOVED=1`
+- **stale-tmp-file-removed**: stale loose file matching a `/tmp` pattern (e.g. `larch4-review.diff`) under `LARCH_TEST_TMP_ROOT` is deleted; `TMP_REMOVED=1`
 - **date-failure-errors**: `date +%s` failure exits non-zero with a loud stderr error instead of silently disabling deletion
 - **find-failure-skips-deletion**: `find` failure while scanning an entry warns and keeps the directory rather than misclassifying it stale
 

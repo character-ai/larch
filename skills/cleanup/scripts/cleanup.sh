@@ -127,10 +127,16 @@ TMP_PATTERNS=(
 for pattern in "${TMP_PATTERNS[@]}"; do
     for entry in "$TMP_ROOT"/${pattern}; do
         [[ -e "$entry" || -L "$entry" ]] || continue
-        [[ -d "$entry" ]] || continue
-        if should_remove_by_age "$entry"; then
-            rm -rf "$entry"
-            (( TMP_REMOVED++ )) || true
+        if [[ -d "$entry" ]]; then
+            if should_remove_by_age "$entry"; then
+                rm -rf "$entry"
+                (( TMP_REMOVED++ )) || true
+            fi
+        elif [[ -f "$entry" ]]; then
+            if [ "$(stat_mtime "$entry")" -lt "$CUTOFF" ]; then
+                rm -f "$entry"
+                (( TMP_REMOVED++ )) || true
+            fi
         fi
     done
 done
