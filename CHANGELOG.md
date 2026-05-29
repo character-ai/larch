@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Preserve reviewer presence/availability keys across no-flag /design env refreshes so Step 3 plan-review launch receives non-empty argv
-- Mirror partial explicit *_PRESENT / *_AVAILABLE overrides to the omitted alias peer to avoid stale mixed pairs
+- Mirror partial explicit `*_PRESENT` / `*_AVAILABLE` overrides to the omitted alias peer to avoid stale mixed pairs
 - Add harness Cases 13–14 for preserve-on-refresh and partial codex override behavior
 
 ## [45.3.25] - 2026-05-29
