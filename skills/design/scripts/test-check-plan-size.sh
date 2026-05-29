@@ -36,6 +36,14 @@ assert_no_key() {
     fi
 }
 
+assert_always_emitted_keys() {
+    local blob="$1"
+    printf '%s\n' "$blob" | grep -q '^DIFF_ADDED=' || fail "exit 0 must emit DIFF_ADDED (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^DIFF_DELETED=' || fail "exit 0 must emit DIFF_DELETED (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^MECHANICAL_CHURN=' || fail "exit 0 must emit MECHANICAL_CHURN (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^SOFT_ADVISORY=' || fail "exit 0 must emit SOFT_ADVISORY (output: $blob)"
+}
+
 run_ok() {
     local d="$1"
     set +e
@@ -62,6 +70,7 @@ mkdir -p "$d"
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq TRIGGER_REASONS "" "$out"
 assert_no_key "$SOFT_KEY" "$out"
@@ -76,6 +85,7 @@ mkdir -p "$d"
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "case2 rc"
+assert_always_emitted_keys "$out"
 assert_kv_eq PLAN_LINES 801 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
@@ -90,6 +100,7 @@ mkdir -p "$d"
     printf 'diff_lines: 1501\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "case3 rc"
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 
@@ -102,6 +113,7 @@ mkdir -p "$d"
     printf 'diff_lines: 700\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
 assert_no_key "$FILES_KEY" "$out"
@@ -115,6 +127,7 @@ mkdir -p "$d"
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "case5 rc"
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 assert_kv_eq TRIGGER_REASONS "" "$out"
 assert_no_key "$FILES_KEY" "$out"
@@ -159,12 +172,14 @@ d="$TMPROOT/c9a"
 mkdir -p "$d"
 { for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 795 'b'; printf 'diff_lines: 400\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c9a"
+assert_always_emitted_keys "$out"
 assert_kv_eq PLAN_LINES 800 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 d="$TMPROOT/c9b"
 mkdir -p "$d"
 { for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 195 'b'; printf 'diff_lines: 1500\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c9b"
+assert_always_emitted_keys "$out"
 assert_kv_eq DIFF_LINES 1500 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 
@@ -173,6 +188,7 @@ d="$TMPROOT/c10"
 mkdir -p "$d"
 { fill_lines 199 'only body'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c10"
+assert_always_emitted_keys "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 
 # --- Case 11: multi diff_lines in body ---
@@ -219,6 +235,7 @@ mkdir -p "$d"
     printf 'diff_lines: 400\n'
 } >"$d/alternate-plan.txt"
 out=$(run_ok "$d" "$d/alternate-plan.txt")
+assert_always_emitted_keys "$out"
 assert_kv_eq PLAN_LINES 246 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 
@@ -348,7 +365,12 @@ d="$TMPROOT/c22b"
 mkdir -p "$d"
 { fill_lines 10 'b'; printf 'diff_added:  1\n'; printf 'diff_lines: 2001\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 assert_kv_eq DIFF_ADDED "" "$out"
+assert_kv_eq DIFF_DELETED "" "$out"
+assert_kv_eq MECHANICAL_CHURN false "$out"
+assert_kv_eq SOFT_ADVISORY false "$out"
 
 # --- Case 23: spoof resistance ---
 d="$TMPROOT/c23"
@@ -410,5 +432,49 @@ out=$(run_ok "$d")
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
 assert_kv_eq SOFT_ADVISORY true "$out"
+
+# --- Case 27: 801 raw body lines minus optional metadata avoids plan-body hard trigger ---
+d="$TMPROOT/c27"
+mkdir -p "$d"
+{
+    for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done
+    fill_lines 793 'b'
+    printf 'diff_added: 100\n'
+    printf 'diff_deleted: 50\n'
+    printf 'mechanical_churn: false\n'
+    printf 'diff_lines: 5000\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq PLAN_LINES 798 "$out"
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq DIFF_ADDED 100 "$out"
+
+# --- Case 28: mechanical_churn under already-soft diff_added does not set SOFT_ADVISORY ---
+d="$TMPROOT/c28"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_added: 2000\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5000\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq SOFT_ADVISORY false "$out"
+assert_kv_eq MECHANICAL_CHURN true "$out"
+
+# --- Case 29: diff_deleted-only legacy fallback (no diff_added) ---
+d="$TMPROOT/c29"
+mkdir -p "$d"
+{
+    fill_lines 10 'b'
+    printf 'diff_deleted: 9999\n'
+    printf 'diff_lines: 500\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DIFF_DELETED 9999 "$out"
+assert_kv_eq DIFF_ADDED "" "$out"
+assert_kv_eq HARD_TRIGGER_FIRED false "$out"
+assert_kv_eq TRIGGER_REASONS "" "$out"
 
 echo "PASS: test-check-plan-size.sh"

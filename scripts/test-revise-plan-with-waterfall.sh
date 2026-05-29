@@ -1322,6 +1322,7 @@ assert_kv "$out12" REVISE_STATUS ok
 assert_kv "$out12" REVISE_TIER_1_STATUS invalid-patch
 assert_kv "$out12" REVISE_TIER_2_STATUS ok
 grep -q '^diff_added: 100$' "$C12/plan.txt" || fail "case12 should preserve diff_added trailer"
+grep -q '^diff_deleted: 50$' "$C12/plan.txt" || fail "case12 should preserve diff_deleted trailer"
 grep -q '^mechanical_churn: true$' "$C12/plan.txt" || fail "case12 should preserve mechanical_churn trailer"
 grep -q '^diff_lines: 150$' "$C12/plan.txt" || fail "case12 should preserve diff_lines trailer"
 
@@ -1353,6 +1354,7 @@ printf '\n' >"$C13/responses/claude.txt"
 out13=$(run_case "$C13" --patch-format file-replacement)
 assert_kv "$out13" REVISE_STATUS ok
 grep -q '^diff_added: 200$' "$C13/plan.txt" || fail "case13 file-replacement should preserve diff_added"
+grep -q '^diff_deleted: 10$' "$C13/plan.txt" || fail "case13 file-replacement should preserve diff_deleted"
 grep -q '^mechanical_churn: false$' "$C13/plan.txt" || fail "case13 file-replacement should preserve mechanical_churn"
 
 printf '%s\n' 'test-revise-plan-with-waterfall: ok'

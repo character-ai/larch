@@ -400,6 +400,23 @@ grep -Fq 'snapshot' "$DISCUSSION_MD" \
   || fail "(3175) discussion-rounds.md missing optional trailer snapshot language"
 grep -Fq 'mechanical_churn' "$DISCUSSION_MD" \
   || fail "(3175) discussion-rounds.md missing mechanical_churn preservation language"
+FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
+grep -Fq 'diff_deleted' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing diff_deleted preservation language"
+grep -Fq 'diff_deleted' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing diff_deleted preservation language"
+grep -Fq 'diff_deleted' "$FLAGS_MD" \
+  || fail "(3175) flags.md missing diff_deleted preservation language"
+grep -Fq 'before `ACTION=EMIT_PLAN`' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing validate-before-EMIT_PLAN guard"
+grep -Fq 'before `ACTION=EMIT_PLAN`' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing validate-before-EMIT_PLAN guard"
+grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh" \
+  || fail "(3175) revise-plan-with-waterfall.sh must source shared optional-trailer lib"
+grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
+  || fail "(3175) plan-review-loop.sh must source shared optional-trailer lib"
+grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/check-plan-size.sh" \
+  || fail "(3175) check-plan-size.sh must source shared optional-trailer lib"
 # Check 19 (#2754): --brainstorm / Step 1d.5 / run-params / plan-review feature-context pins.
 BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
 BRAINSTORM_PROMPTS="$REPO_ROOT/skills/design/references/brainstorm-prompts.md"

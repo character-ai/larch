@@ -9,6 +9,8 @@ source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/../../../scripts/lib-design-tmpdir.sh"
+# shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
+source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
 
 DESIGN_TMPDIR=""
 PLAN_FILE=""
@@ -89,65 +91,7 @@ if [[ "$initial_plan_lines" -lt 0 ]]; then
     initial_plan_lines=0
 fi
 
-_metadata_parse=$(
-awk -v trailer_nr="$trailer_nr" '
-{
-    lines[NR] = $0
-}
-END {
-    block_len = 0
-    for (i = trailer_nr - 1; i >= 1; i--) {
-        line = lines[i]
-        if (line ~ /^diff_added: [0-9]+$/) {
-            block[++block_len] = line
-            continue
-        }
-        if (line ~ /^diff_deleted: [0-9]+$/) {
-            block[++block_len] = line
-            continue
-        }
-        if (line ~ /^mechanical_churn: (true|false)$/) {
-            block[++block_len] = line
-            continue
-        }
-        break
-    }
-    diff_added = ""
-    diff_deleted = ""
-    mechanical_churn = "false"
-    for (j = block_len; j >= 1; j--) {
-        line = block[j]
-        if (line ~ /^diff_added: [0-9]+$/) {
-            diff_added = substr(line, 13)
-            continue
-        }
-        if (line ~ /^diff_deleted: [0-9]+$/) {
-            diff_deleted = substr(line, 15)
-            continue
-        }
-        if (line ~ /^mechanical_churn: true$/) {
-            mechanical_churn = "true"
-            continue
-        }
-        if (line ~ /^mechanical_churn: false$/) {
-            mechanical_churn = "false"
-        }
-    }
-    printf "%d\n", block_len
-    if (diff_added == "") {
-        print "-"
-    } else {
-        print diff_added
-    }
-    if (diff_deleted == "") {
-        print "-"
-    } else {
-        print diff_deleted
-    }
-    print mechanical_churn
-}
-' "$PLAN_FILE"
-)
+_metadata_parse=$(parse_plan_optional_metadata "$PLAN_FILE")
 metadata_trailer_lines=$(printf '%s\n' "$_metadata_parse" | sed -n '1p')
 _diff_added_raw=$(printf '%s\n' "$_metadata_parse" | sed -n '2p')
 _diff_deleted_raw=$(printf '%s\n' "$_metadata_parse" | sed -n '3p')
