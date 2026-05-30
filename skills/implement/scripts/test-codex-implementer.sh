@@ -14,10 +14,10 @@ AGENT_PROMPT="$REPO_ROOT/agents/codex-implementer.md"
 [[ -x "$LAUNCHER" ]] || { echo "FAIL: launcher not executable: $LAUNCHER" >&2; exit 1; }
 [[ -f "$AGENT_PROMPT" ]] || { echo "FAIL: agent prompt missing: $AGENT_PROMPT" >&2; exit 1; }
 
-if grep -F -- '--stderr-sink "$SIDECAR_LOG"' "$LAUNCHER"; then
+if grep -F -- "--stderr-sink \"\$SIDECAR_LOG\"" "$LAUNCHER"; then
     :
 else
-    echo 'FAIL: launch-codex-implement.sh must forward --stderr-sink "$SIDECAR_LOG"' >&2
+    echo "FAIL: launch-codex-implement.sh must forward --stderr-sink \"\$SIDECAR_LOG\"" >&2
     exit 1
 fi
 

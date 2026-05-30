@@ -469,6 +469,7 @@ printf 'diag boilerplate\n' >"${STDERR_SINK_OUT}.diag"
 RUN_STDOUT="$TMPDIR/stderr-sink-accept.stdout"
 RUN_STDERR="$TMPDIR/stderr-sink-accept.stderr"
 set +e
+# shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
 "$WRAPPER" --tool codex --output "$STDERR_SINK_OUT" --timeout 5 \
     --stderr-sink "$STDERR_SINK_FILE" -- \
     bash -c 'printf "agent stderr from sink\n" >&2; exit 1' \
