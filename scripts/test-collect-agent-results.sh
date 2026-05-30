@@ -657,7 +657,7 @@ fi
 echo "# Case: WAIT_STDERR relay strips control bytes (SCRIPT_DIR sibling harness)"
 HARNESS_WAIT="$TMPROOT/wait-relay-harness"
 mkdir -p "$HARNESS_WAIT/scripts"
-for dep in collect-agent-results.sh external-tool-registry.sh lib-net.sh lib-quiet.sh; do
+for dep in collect-agent-results.sh external-tool-registry.sh lib-failed-agent-stderr-tail.sh lib-net.sh lib-quiet.sh; do
     cp "$REPO_ROOT/scripts/$dep" "$HARNESS_WAIT/scripts/"
 done
 chmod +x "$HARNESS_WAIT/scripts"/*.sh
