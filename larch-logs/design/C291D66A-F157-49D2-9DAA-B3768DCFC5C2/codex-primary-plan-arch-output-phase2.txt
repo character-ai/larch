@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:72-83	Acceptance and testing name `make test-cleanup` but the plan never wires a Makefile target and none exists today	No `test-cleanup:` recipe in `Makefile`; `test-harnesses-12` omits it while `docs/linting.md:284` claims it runs there — implementer gate fails or harness never runs in CI	Add `test-cleanup` target (`bash scripts/harness-timer.sh $@ bash skills/cleanup/scripts/test-cleanup.sh`), append to `test-harnesses-12` and `.PHONY`, or change acceptance to direct `bash skills/cleanup/scripts/test-cleanup.sh`
+1	out_of_scope	latent	security	SECURITY.md:234	`/cleanup` trust-boundary prose still documents depth-5 activity scan clock-fatal exit and per-entry find fail-closed skip	Post-PR SECURITY.md contradicts runtime: no `date +%s` fatal path no descendant scan no per-entry skip-on-find-failure — auditors misread deletion guarantees	Add `### UPDATED: SECURITY.md` replacing depth-5/newest-activity and clock-fatal wording with top-level `find -mtime` semantics per AGENTS.md
+
+### 1. [correctness] `make test-cleanup` gate is not wired (`plan.txt:72-83`, `Makefile`, `docs/linting.md:284`)
+
+The plan’s testing strategy and acceptance criteria require `make test-cleanup`, and it updates the `docs/linting.md` row for that target, but the file list has no `Makefile` change. There is no `test-cleanup:` recipe in the repo today (`test-harnesses-12` also omits it), so the stated gate fails while `docs/linting.md` still claims the harness runs via that shard.
+
+**Suggested revision:** Add the standard harness target and shard membership, or rewrite acceptance/testing to invoke `bash skills/cleanup/scripts/test-cleanup.sh` directly and fix the linting row accordingly.
+
+### 2. [OUT_OF_SCOPE] [security] `SECURITY.md` retention paragraph not in plan (`SECURITY.md:234`)
+
+The plan updates three consumer docs for top-level mtime but not `SECURITY.md`, which still documents depth-5 newest-activity scanning, fatal `date +%s` refusal, and per-entry find fail-closed skips — all removed by the proposed rewrite. AGENTS.md expects `SECURITY.md` updates when security-relevant behavior changes.
+
+**Suggested revision:** Add a minimal `SECURITY.md` subsection update in the plan (top-level mtime, no clock-fatal path, symlink skip via `! -type l`) or track as a follow-up issue.
