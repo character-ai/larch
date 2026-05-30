@@ -335,7 +335,7 @@ capture_round_tracked_paths() {
 pre_coder_path_diff_file() {
     local round_dir="$1" path="$2"
     local safe
-    safe=$(printf '%s' "$path" | tr '/\\' '__')
+    safe=$(printf '%s' "$path" | tr "/\\" "__")
     printf '%s/pre-coder-path-diffs/%s.patch\n' "$round_dir" "$safe"
 }
 
