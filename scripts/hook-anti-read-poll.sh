@@ -25,7 +25,14 @@ session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || se
 if [ -z "$session_id" ]; then
     session_id=$(printf '%s' "$INPUT" | jq -r '.conversation_id // ""' 2>/dev/null) || session_id=""
 fi
-session_hash=$(printf '%s' "${session_id:-nosession}" | cksum 2>/dev/null | awk '{print $1}') || session_hash="0"
+if [ -n "$session_id" ]; then
+    session_key="$session_id"
+elif [ -n "${HOOK_ANTI_READ_POLL_DISCRIMINATOR:-}" ]; then
+    session_key="nosession-${HOOK_ANTI_READ_POLL_DISCRIMINATOR}"
+else
+    session_key="nosession"
+fi
+session_hash=$(printf '%s' "$session_key" | cksum 2>/dev/null | awk '{print $1}') || session_hash="0"
 
 if [ -n "${HOOK_ANTI_READ_POLL_NOW:-}" ]; then
     now=$HOOK_ANTI_READ_POLL_NOW
@@ -51,8 +58,9 @@ is_read_task_output_path() {
 }
 
 bash_strip_quoted_for_read_verb() {
-    local cmd="$1"
-    printf '%s' "$cmd" | sed -E "s/'[^']*'//g; s/\"([^\"]|\\\\.)*\"//g"
+    local cmd="$1" normalized
+    normalized=$(printf '%s' "$cmd" | sed "s/'\\\\''//g")
+    printf '%s' "$normalized" | sed -E "s/'[^']*'//g; s/\"([^\"]|\\\\.)*\"//g"
 }
 
 bash_has_read_verb() {
@@ -228,7 +236,13 @@ handle_task_output_poll() {
         age=0
     fi
 
-    printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    _state_tmp=$(mktemp "${state_dir}/taskout-state.XXXXXX" 2>/dev/null) || _state_tmp=""
+    if [ -n "$_state_tmp" ]; then
+        printf '%s\t%s\n' "$count" "$first_ts" > "$_state_tmp" 2>/dev/null || true
+        mv -f "$_state_tmp" "$taskout_file" 2>/dev/null || printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    else
+        printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    fi
     chmod 600 "$taskout_file" 2>/dev/null || true
 
     if [ "$age" -eq 0 ] && [ "$count" -gt 1 ]; then
@@ -267,7 +281,13 @@ handle_generic_read_poll() {
         first_ts=$now
     fi
 
-    printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+    _state_tmp=$(mktemp "${state_dir}/read-poll-state.XXXXXX" 2>/dev/null) || _state_tmp=""
+    if [ -n "$_state_tmp" ]; then
+        printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$_state_tmp" 2>/dev/null || true
+        mv -f "$_state_tmp" "$state_file" 2>/dev/null || printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+    else
+        printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+    fi
     chmod 600 "$state_file" 2>/dev/null || true
 
     age=$(( now - first_ts ))

@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=../../../scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/../../../scripts/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 usage() { larch_err "Usage: collect-findings.sh --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]"; }
@@ -103,8 +105,9 @@ replay_collector_failed_stderr_tails() {
                 case "$_status" in
                     OK|cap_hit|'') ;;
                     *)
-                        _tail="${_reviewer}.stderr-tail"
+                        _tail=$(resolve_collector_stderr_tail_file "$_reviewer" 2>/dev/null || true)
                         _write_failed_stderr_tail_block "$_tail" 1 >>"$_replay_tmp" 2>/dev/null || true
+                        [[ "${_tail:-}" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_tail"
                         ;;
                 esac
             fi
@@ -131,8 +134,9 @@ replay_collector_failed_stderr_tails() {
         case "$_status" in
             OK|cap_hit|'') ;;
             *)
-                _tail="${_reviewer}.stderr-tail"
+                _tail=$(resolve_collector_stderr_tail_file "$_reviewer" 2>/dev/null || true)
                 _write_failed_stderr_tail_block "$_tail" 1 >>"$_replay_tmp" 2>/dev/null || true
+                [[ "${_tail:-}" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_tail"
                 ;;
         esac
     fi
@@ -221,24 +225,15 @@ append_non_ok_collector_results_from_file() {
             # log it as External Reviewer Issues.
             if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
                 combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
-                {
-                    printf 'COLLECTOR_STATUS=%s\n' "$status"
-                    printf 'REVIEWER_FILE=%s\n' "$reviewer_file"
-                    printf 'TOOL=%s\n' "${tool:-unknown}"
-                    printf 'EXIT_CODE=%s\n\n' "${exit_code:-0}"
-                    if [[ -f "$reviewer_file" ]]; then
-                        printf -- '--- reviewer output ---\n'
-                        cat "$reviewer_file"
-                        printf '\n'
-                    fi
-                    if [[ -f "${reviewer_file}.diag" ]]; then
-                        printf -- '\n--- diagnostic sidecar ---\n'
-                        cat "${reviewer_file}.diag"
-                        printf '\n'
-                    fi
-                } > "$combined"
+                _structured_record=$(printf 'COLLECTOR_STATUS=%s\nREVIEWER_FILE=%s\nTOOL=%s\nEXIT_CODE=%s\n' \
+                    "$status" "$reviewer_file" "${tool:-unknown}" "${exit_code:-0}")
+                "$PLUGIN_ROOT/scripts/compose-collector-failure-log.sh" \
+                    --reviewer-file "$reviewer_file" \
+                    --structured-record "$_structured_record" \
+                    --output "$combined" >/dev/null 2>&1 || true
                 append_review_failure "review Step 3a" "collect-agent-results.sh ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
                 rm -f "$combined"
+                unset _structured_record
             fi
             reviewer_file=""; tool=""; status=""; exit_code=""
             continue
@@ -254,24 +249,15 @@ append_non_ok_collector_results_from_file() {
     # NOT a failure.
     if [[ -n "$reviewer_file" && "$status" != "" && "$status" != "OK" && "$status" != "cap_hit" ]]; then
         combined=$(mktemp "${TMPDIR:-/tmp}/review-collector-failure.XXXXXX")
-        {
-            printf 'COLLECTOR_STATUS=%s\n' "$status"
-            printf 'REVIEWER_FILE=%s\n' "$reviewer_file"
-            printf 'TOOL=%s\n' "${tool:-unknown}"
-            printf 'EXIT_CODE=%s\n\n' "${exit_code:-0}"
-            if [[ -f "$reviewer_file" ]]; then
-                printf -- '--- reviewer output ---\n'
-                cat "$reviewer_file"
-                printf '\n'
-            fi
-            if [[ -f "${reviewer_file}.diag" ]]; then
-                printf -- '\n--- diagnostic sidecar ---\n'
-                cat "${reviewer_file}.diag"
-                printf '\n'
-            fi
-        } > "$combined"
+        _structured_record=$(printf 'COLLECTOR_STATUS=%s\nREVIEWER_FILE=%s\nTOOL=%s\nEXIT_CODE=%s\n' \
+            "$status" "$reviewer_file" "${tool:-unknown}" "${exit_code:-0}")
+        "$PLUGIN_ROOT/scripts/compose-collector-failure-log.sh" \
+            --reviewer-file "$reviewer_file" \
+            --structured-record "$_structured_record" \
+            --output "$combined" >/dev/null 2>&1 || true
         append_review_failure "review Step 3a" "collect-agent-results.sh ${tool:-unknown} $status" "${exit_code:-1}" "$combined"
         rm -f "$combined"
+        unset _structured_record
     fi
 }
 

@@ -393,6 +393,24 @@ else
     pass
 fi
 
+# 19e. Default review mode prefers .sidecar over .diag for stderr-tail source.
+SIDECAR_PREF_OUT="$TMPDIR/sidecar-pref.txt"
+printf 'sidecar stderr line\n' >"${SIDECAR_PREF_OUT}.sidecar"
+printf 'diag stderr line\n' >"${SIDECAR_PREF_OUT}.diag"
+run_subject "sidecar-pref-fail" "$SIDECAR_PREF_OUT" -- bash -c 'exit 1'
+assert_equals "sidecar-pref-fail exit" "1" "$RUN_CODE"
+if [[ -s "${SIDECAR_PREF_OUT}.stderr-tail" ]] && grep -Fq 'sidecar stderr line' "${SIDECAR_PREF_OUT}.stderr-tail"; then
+    pass
+else
+    fail "sidecar-pref-fail missing sidecar-sourced .stderr-tail"
+fi
+if grep -Fq 'diag stderr line' "${SIDECAR_PREF_OUT}.stderr-tail" 2>/dev/null; then
+    fail "sidecar-pref-fail should not prefer .diag over .sidecar"
+else
+    pass
+fi
+assert_grep "sidecar-pref-fail stderr fence" "sidecar stderr line" "$RUN_STDERR"
+
 # 19c. TIMED_OUT writes .stderr-tail from merged stderr source.
 TIMEOUT_TAIL_OUT="$TMPDIR/timeout-tail.txt"
 set +e

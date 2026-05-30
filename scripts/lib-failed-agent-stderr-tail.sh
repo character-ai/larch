@@ -136,6 +136,66 @@ write_failed_agent_stderr_tail() {
     return 1
 }
 
+collector_stderr_tail_candidates() {
+    local reviewer_file="$1"
+    printf '%s\n' "$reviewer_file"
+    case "$reviewer_file" in
+        *-phase3.txt)
+            printf '%s\n' "${reviewer_file%-phase3.txt}-phase2.txt"
+            printf '%s\n' "${reviewer_file%-phase3.txt}.txt"
+            ;;
+        *-phase2.txt)
+            printf '%s\n' "${reviewer_file%-phase2.txt}.txt"
+            ;;
+        *-phase1.txt)
+            printf '%s\n' "${reviewer_file%-phase1.txt}.txt"
+            ;;
+    esac
+}
+
+resolve_collector_stderr_tail_file() {
+    local reviewer_file="$1" _retry_tail _ns_retry_tail _candidate _tmp_tail
+    _retry_tail="${reviewer_file%.txt}-retry.txt.stderr-tail"
+    if [[ -s "$_retry_tail" ]]; then
+        printf '%s' "$_retry_tail"
+        return 0
+    fi
+    _ns_retry_tail="${reviewer_file%.txt}-ns-retry.txt.stderr-tail"
+    if [[ -s "$_ns_retry_tail" ]]; then
+        printf '%s' "$_ns_retry_tail"
+        return 0
+    fi
+    while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
+        [[ -n "$_candidate" ]] || continue
+        if [[ -s "${_candidate}.stderr-tail" ]]; then
+            printf '%s' "${_candidate}.stderr-tail"
+            return 0
+        fi
+    done < <(collector_stderr_tail_candidates "$reviewer_file")
+    if [[ -s "${reviewer_file}.launch-stderr" ]]; then
+        _tmp_tail=$(mktemp "${TMPDIR:-/tmp}/larch-launch-stderr-tail.XXXXXX") || return 1
+        if render_failed_agent_stderr_tail "${reviewer_file}.launch-stderr" >"$_tmp_tail" 2>/dev/null && [[ -s "$_tmp_tail" ]]; then
+            printf '%s' "$_tmp_tail"
+            return 0
+        fi
+        rm -f "$_tmp_tail"
+    fi
+    return 1
+}
+
+emit_failed_agent_stderr_tail_larch_err() {
+    local output_file="$1" tail_file="${1}.stderr-tail"
+    [[ -s "$tail_file" ]] || return 1
+    larch_err '--- failed agent stderr tail ---'
+    while IFS= read -r _tail_line || [[ -n "$_tail_line" ]]; do
+        [[ -n "$_tail_line" ]] || continue
+        _emit_failed_agent_stderr_tail_line "$_tail_line"
+    done <"$tail_file"
+    larch_err '--- end failed agent stderr tail ---'
+    unset _tail_line
+    return 0
+}
+
 _escape_sed_ere_literal() {
     printf '%s' "$1" | sed 's/[][\\^.$*+?(){}|]/\\&/g'
 }

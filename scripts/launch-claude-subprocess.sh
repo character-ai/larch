@@ -108,6 +108,7 @@ case "$TIMING_TASK_KIND" in ""|--*) fail "--timing-task-kind requires a non-empt
 
 PROMPT_CANON=$(canonical_existing_file "$PROMPT_FILE") || fail "invalid --prompt-file"
 OUTPUT_CANON=$(canonical_output_path "$OUTPUT_FILE") || fail "invalid --output-file"
+rm -f "${OUTPUT_CANON}.stderr-tail"
 SESSION_ROOT=$(cd "$(dirname "$OUTPUT_CANON")" && pwd -P)
 
 EXTRA_ROOTS_CANON=()
@@ -223,6 +224,8 @@ if [[ ! -s "$OUTPUT_CANON" && "$exit_code" -eq 0 ]]; then
 fi
 if [[ "$exit_code" -ne 0 ]] && [[ -s "${OUTPUT_CANON}.stderr" ]]; then
     write_failed_agent_stderr_tail "${OUTPUT_CANON}.stderr" "$OUTPUT_CANON" || true
+else
+    rm -f "${OUTPUT_CANON}.stderr-tail"
 fi
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 printf 'STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n' > "${OUTPUT_CANON}.dirty-tree"

@@ -41,6 +41,11 @@ run_bash_hook() {
     mk_bash_payload "$command" "$cwd" "$session_id" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
 }
 
+run_bash_hook_disc() {
+    local now="$1" command="$2" cwd="${3:-/tmp/test-proj}" disc="${4:?discriminator required}"
+    mk_bash_payload "$command" "$cwd" "" | HOOK_ANTI_READ_POLL_NOW="$now" HOOK_ANTI_READ_POLL_DISCRIMINATOR="$disc" "$HOOK"
+}
+
 assert_reminder() {
     local out="$1" label="$2"
     if printf '%s' "$out" | grep -q 'additionalContext'; then
@@ -387,6 +392,29 @@ out_nl1=$(run_bash_hook 0 "$nl_cmd" "/proj-nl-read")
 assert_silent "$out_nl1" 'newline-separated cat call 1 silent'
 out_nl2=$(run_bash_hook 1 "$nl_cmd" "/proj-nl-read")
 assert_reminder "$out_nl2" 'newline-separated cat call 2 fires reminder'
+
+echo "=== nosession discriminators do not share task-output state ==="
+TASK_OUT_A='/tmp/proj-a/tasks/taskdisca.output'
+TASK_OUT_B='/tmp/proj-b/tasks/taskdiscb.output'
+run_bash_hook_disc 0 "cat $TASK_OUT_A" "/proj-a" alpha >/dev/null
+out_alpha2=$(run_bash_hook_disc 1 "cat $TASK_OUT_A" "/proj-a" alpha)
+assert_reminder "$out_alpha2" 'nosession discriminator alpha call 2 fires reminder'
+out_beta1=$(run_bash_hook_disc 0 "cat $TASK_OUT_B" "/proj-b" beta)
+assert_silent "$out_beta1" 'nosession discriminator beta independent after alpha threshold'
+session_alpha=$(printf '%s' "nosession-alpha" | cksum | awk '{print $1}')
+state_alpha="$TMP/larch-read-poll/state-taskout-${session_alpha}-$(printf '%s' "/proj-a" | cksum | awk '{print $1}')-taskdisca.tsv"
+if [ -f "$state_alpha" ]; then
+    pass 'nosession discriminator alpha state file exists'
+else
+    fail "expected discriminator-alpha state file: $state_alpha"
+fi
+
+echo "=== bash single-quote escape does not false-positive read verb in quoted path ==="
+sq_cmd="sed -n '1,5p' '/tmp/my'\''file/notes.txt'"
+out_sq1=$(run_bash_hook 0 "$sq_cmd" "/proj-sq-escape")
+assert_silent "$out_sq1" 'bash sq-escape call 1 silent'
+out_sq2=$(run_bash_hook 1 "$sq_cmd" "/proj-sq-escape")
+assert_silent "$out_sq2" 'bash sq-escape call 2 silent'
 
 echo "=== state file is private ==="
 state_file="$TMP/larch-read-poll/state-$(printf '%s' "/proj-window" | cksum | awk '{print $1}').tsv"

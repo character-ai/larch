@@ -1154,7 +1154,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                     else
                         RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
                     fi
-                    rm -f "${ORIG_OUTPUT}.stderr-tail"
+                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${RETRY_OUTPUT}.stderr-tail"
                 else
                     # Retry also failed.
                     if [[ "$RETRY_EXIT" == "124" ]]; then
@@ -1392,10 +1392,10 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 fi
                                 if _classify_sentinel_status "$ORIG_OUTPUT"; then
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (structured ns-retry)"
-                                    rm -f "${ORIG_OUTPUT}.stderr-tail"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 else
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
-                                    rm -f "${ORIG_OUTPUT}.stderr-tail"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 fi
                             fi
                         else
@@ -1408,10 +1408,10 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 fi
                                 if _classify_sentinel_status "$ORIG_OUTPUT"; then
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (substantive ns-retry)"
-                                    rm -f "${ORIG_OUTPUT}.stderr-tail"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 else
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
-                                    rm -f "${ORIG_OUTPUT}.stderr-tail"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 fi
                             fi
                         fi
@@ -1445,53 +1445,8 @@ _emit_collector_stderr_tail_file() {
     done <"$tail_file"
     larch_err '--- end failed agent stderr tail ---'
 }
-_collector_stderr_tail_candidates() {
-    local reviewer_file="$1"
-    printf '%s\n' "$reviewer_file"
-    case "$reviewer_file" in
-        *-phase3.txt)
-            printf '%s\n' "${reviewer_file%-phase3.txt}-phase2.txt"
-            printf '%s\n' "${reviewer_file%-phase3.txt}.txt"
-            ;;
-        *-phase2.txt)
-            printf '%s\n' "${reviewer_file%-phase2.txt}.txt"
-            ;;
-        *-phase1.txt)
-            printf '%s\n' "${reviewer_file%-phase1.txt}.txt"
-            ;;
-    esac
-}
 _resolve_collector_stderr_tail_file() {
-    local reviewer_file="$1" _retry_tail _ns_retry_tail _candidate _launch_stderr _tmp_tail
-    _retry_tail="${reviewer_file%.txt}-retry.txt.stderr-tail"
-    if [[ -s "$_retry_tail" ]]; then
-        printf '%s' "$_retry_tail"
-        return 0
-    fi
-    _ns_retry_tail="${reviewer_file%.txt}-ns-retry.txt.stderr-tail"
-    if [[ -s "$_ns_retry_tail" ]]; then
-        printf '%s' "$_ns_retry_tail"
-        return 0
-    fi
-    while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
-        [[ -n "$_candidate" ]] || continue
-        if [[ -s "${_candidate}.stderr-tail" ]]; then
-            printf '%s' "${_candidate}.stderr-tail"
-            return 0
-        fi
-    done < <(_collector_stderr_tail_candidates "$reviewer_file")
-    while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
-        [[ -n "$_candidate" ]] || continue
-        if [[ -s "${_candidate}.launch-stderr" ]]; then
-            _tmp_tail=$(mktemp "${TMPDIR:-/tmp}/larch-launch-stderr-tail.XXXXXX") || return 1
-            if render_failed_agent_stderr_tail "${_candidate}.launch-stderr" >"$_tmp_tail" 2>/dev/null && [[ -s "$_tmp_tail" ]]; then
-                printf '%s' "$_tmp_tail"
-                return 0
-            fi
-            rm -f "$_tmp_tail"
-        fi
-    done < <(_collector_stderr_tail_candidates "$reviewer_file")
-    return 1
+    resolve_collector_stderr_tail_file "$1"
 }
 for _dedup_result in "${RESULTS[@]}"; do
     _dedup_status=""

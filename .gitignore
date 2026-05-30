@@ -10,3 +10,4 @@ node_modules/
 .parallel-tests-timings.json
 .parallel-tests-last-failures.txt
 .parallel-tests-last-output/
+.tmp-debug-*.sh
