@@ -542,6 +542,8 @@ apply_findings_with_coder() {
             return 2
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
+        # --untracked-files=no intentional: coder output may include legitimately
+        # untracked new files; untracked-only hook residue is handled by ship-pr.
         if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
             if stage_round_dirty_paths "$round_dir" "$round_dir/coder-commit.log" && \
                 "$PLUGIN_ROOT/scripts/git-commit.sh" \
