@@ -36,7 +36,7 @@ Scan upward from the line above `diff_lines:`. Lines matching strict optional-tr
 
 ### Octal guard
 
-`diff_added: 08`, `diff_added: 09`, `diff_deleted: 08`, and `diff_deleted: 09` match the strict line regex but are rejected as absent (`has_key` exit **1**; omitted from `keys`/`values`). Values such as `010` are retained.
+`diff_added: 08`, `diff_added: 09`, `diff_deleted: 08`, and `diff_deleted: 09` match the strict line regex but are rejected as absent (`has_key` exit **1**; omitted from `keys`/`values`; those physical lines do **not** increment `block_len`). Values such as `010` are retained. Harnesses: `octal-rejected` (`block_len=0`), `octal-then-valid` (only the valid `diff_added: 5` line counts).
 
 ### `block_len` (`parse` line 1)
 

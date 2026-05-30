@@ -240,6 +240,28 @@ run_cleanup "$work"
 [[ -d "$work/tmp-root/unrelated-junk" ]] || fail "nonlarch-tmp-untouched should keep non-larch entry"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "nonlarch-tmp-untouched TMP_REMOVED"
 
+# --- deep-session-freshness-probe-bounded -------------------------------------
+work="$TMP/deep-session-freshness-probe-bounded"
+mkdir -p "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f" \
+    "$work/xdg-cache/larch/sessions/stale-within-probe/a/b/c"
+printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f/deep.txt"
+touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f/deep.txt"
+find "$work/xdg-cache/larch/sessions/stale-beyond-probe" -mindepth 0 -maxdepth 5 ! -path "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f/deep.txt" \
+    -exec touch -t "$STALE_TS" -- {} +
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-beyond-probe"
+printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-within-probe/a/b/c/shallow.txt"
+touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-within-probe/a/b/c/shallow.txt"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-within-probe"
+SECONDS=0
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+elapsed=$SECONDS
+[[ "$CASE_RC" -eq 0 ]] || fail "deep-session-freshness-probe-bounded exit $CASE_RC"
+[[ ! -d "$CASE_SESSIONS/stale-beyond-probe" ]] || fail "deep-session-freshness-probe-bounded should remove stale dir when fresh activity is beyond maxdepth"
+[[ -d "$CASE_SESSIONS/stale-within-probe" ]] || fail "deep-session-freshness-probe-bounded should retain dir when fresh activity is within maxdepth"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "deep-session-freshness-probe-bounded CACHE_REMOVED"
+[ "$elapsed" -lt 10 ] || fail "deep-session-freshness-probe-bounded took ${elapsed}s (expected < 10)"
+
 # --- large-tmp-scales ---------------------------------------------------------
 work="$TMP/large-tmp-scales"
 mkdir -p "$work/tmp-root"

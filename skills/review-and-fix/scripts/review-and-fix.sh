@@ -325,14 +325,61 @@ post_dispatch_submodule_revert() {
     printf '%s\n' "$revert_count"
 }
 
-collect_round_stage_paths() {
-    local round_dir="$1"
-    local paths_file="$round_dir/coder-stage-paths.txt"
+capture_round_tracked_paths() {
     {
         git diff --name-only 2>/dev/null || true
         git diff --name-only --cached 2>/dev/null || true
-        git status --porcelain --untracked-files=no 2>/dev/null | awk '{print $2}'
-    } | awk 'NF && !seen[$0]++' > "$paths_file"
+    } | awk 'NF && !seen[$0]++ { print }'
+}
+
+pre_coder_path_diff_file() {
+    local round_dir="$1" path="$2"
+    local safe
+    safe=$(printf '%s' "$path" | tr '/\\' '__')
+    printf '%s/pre-coder-path-diffs/%s.patch\n' "$round_dir" "$safe"
+}
+
+snapshot_pre_coder_tracked_state() {
+    local round_dir="$1" pre_head="$2"
+    local paths_file="$round_dir/pre-coder-tracked-paths.txt"
+    local snap_dir="$round_dir/pre-coder-path-diffs" path
+
+    capture_round_tracked_paths > "$paths_file"
+    mkdir -p "$snap_dir"
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        git diff "$pre_head" -- "$path" > "$(pre_coder_path_diff_file "$round_dir" "$path")" 2>/dev/null || true
+    done < "$paths_file"
+}
+
+round_coder_delta_paths() {
+    local round_dir="$1" pre_head="$2" paths_file="$3"
+    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt" path snap
+
+    {
+        git diff --name-only "$pre_head" 2>/dev/null || true
+    } | while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        if [[ -s "$pre_tracked" ]] && grep -Fxq "$path" "$pre_tracked"; then
+            snap=$(pre_coder_path_diff_file "$round_dir" "$path")
+            if [[ -f "$snap" ]] && git diff "$pre_head" -- "$path" | cmp -s - "$snap"; then
+                continue
+            fi
+        fi
+        printf '%s\n' "$path"
+    done | awk 'NF && !seen[$0]++ { print }' > "$paths_file"
+}
+
+collect_round_stage_paths() {
+    local round_dir="$1"
+    local paths_file="$round_dir/coder-stage-paths.txt"
+    local pre_head_file="$round_dir/pre-coder-head.txt"
+
+    if [[ -s "$pre_head_file" ]]; then
+        round_coder_delta_paths "$round_dir" "$(cat "$pre_head_file")" "$paths_file"
+    else
+        capture_round_tracked_paths | awk 'NF && !seen[$0]++ { print }' > "$paths_file"
+    fi
 }
 
 stage_round_dirty_paths() {
@@ -350,11 +397,11 @@ stage_round_dirty_paths() {
 
 round_tracked_dirty_outside_manifest() {
     local manifest="$1" path
-    while IFS= read -r path; do
+    while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
         grep -Fxq "$path" "$manifest" 2>/dev/null && continue
         return 0
-    done < <(git status --porcelain --untracked-files=no 2>/dev/null | awk '{print $2}')
+    done < <(capture_round_tracked_paths)
     return 1
 }
 
@@ -1172,6 +1219,9 @@ _implement_round_body() {
         if (( in_scope_count > 0 )); then
             coder_env="$round_dir/coder.env"
             git rev-parse HEAD > "$round_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$round_dir/pre-coder-head.txt"
+            if [[ -s "$round_dir/pre-coder-head.txt" ]]; then
+                snapshot_pre_coder_tracked_state "$round_dir" "$(cat "$round_dir/pre-coder-head.txt")"
+            fi
             set +e
             apply_findings_with_coder "$in_scope_file" "$round_dir" "$coder_env" "$round_num_dec"
             coder_rc=$?

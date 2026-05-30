@@ -466,6 +466,7 @@ printf 'outside manifest\n' >> "$work_manifest_outside/other.txt"
 manifest_outside_file="$work_manifest_outside/implement/round-1/coder-stage-paths.txt"
 mkdir -p "$(dirname "$manifest_outside_file")"
 printf 'src/main.py\n' > "$manifest_outside_file"
+eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
 (
     cd "$work_manifest_outside"
@@ -474,6 +475,27 @@ eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
     fi
     exit 1
 ) || fail "manifest-outside-guard should detect dirty tracked path outside manifest"
+
+work_manifest_outside_orchestrator="$TMP/manifest-outside-orchestrator"
+make_work_repo "$work_manifest_outside_orchestrator"
+printf 'outside manifest\n' >> "$work_manifest_outside_orchestrator/other.txt"
+git -C "$work_manifest_outside_orchestrator" add other.txt
+git -C "$work_manifest_outside_orchestrator" commit -qm 'add other.txt'
+printf 'outside manifest\n' >> "$work_manifest_outside_orchestrator/other.txt"
+implement_manifest_outside="$work_manifest_outside_orchestrator/implement"
+mkdir -p "$implement_manifest_outside"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_manifest_outside/session-env.sh"
+manifest_outside_initial_head=$(git -C "$work_manifest_outside_orchestrator" rev-parse HEAD)
+set +e
+out_manifest_outside=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_manifest_outside_orchestrator" \
+    --implement-tmpdir "$implement_manifest_outside" --mode diff --round-num 1 \
+    --session-env-path "$implement_manifest_outside/session-env.sh" --run-id manifest-outside-run)
+rc_manifest_outside=$?
+set -e
+[[ "$rc_manifest_outside" -eq 2 ]] || { echo "$out_manifest_outside" >&2; fail "manifest-outside-orchestrator expected exit 2 got $rc_manifest_outside"; }
+grep -Fq 'CODER_STATUS=failed' <<< "$out_manifest_outside" || fail "manifest-outside-orchestrator coder failed"
+[[ "$(git -C "$work_manifest_outside_orchestrator" rev-parse HEAD)" == "$manifest_outside_initial_head" ]] \
+    || fail "manifest-outside-orchestrator should not create round commit"
 
 work_codex_telemetry="$TMP/codex-telemetry"
 make_work_repo "$work_codex_telemetry"

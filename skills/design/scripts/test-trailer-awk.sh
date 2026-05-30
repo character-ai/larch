@@ -178,6 +178,7 @@ assert_keys "$TMPROOT/duplicate-diff-added" 'diff_added'
 assert_keys "$TMPROOT/block-boundary" 'diff_added'
 
 # --- values ---
+assert_values "$TMPROOT/block-boundary" 'diff_added=5'
 assert_values "$TMPROOT/none-present" ''
 assert_values "$TMPROOT/octal-rejected" ''
 assert_values "$TMPROOT/octal-then-valid" 'diff_added=5'
