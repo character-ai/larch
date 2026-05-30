@@ -1,0 +1,8 @@
+Validating the plan against the codebase and issue #3218.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/test-codex-implementer.sh:75-320	Launcher forwarding test says wrapper-argv capture/stub but harness cannot observe wrapper argv	`launch-codex-implement.sh` calls `$SCRIPT_DIR/run-external-agent.sh` with no `RUN_EXTERNAL_AGENT_SH` override; the harness only stubs `codex` and records `codex-argv.txt`, so an implementer may add a no-op or codex-side check and still satisfy the plan while `--stderr-sink "$SIDECAR_LOG"` is missing from the launcher	Replace wrapper-argv capture/stub with a minimum contract: e.g. `grep -Fq '--stderr-sink "$SIDECAR_LOG"'` on `scripts/launch-codex-implement.sh`, or document an env-gated wrapper stub only if runtime argv proof is required
+
+### 1. correctness: `skills/implement/scripts/test-codex-implementer.sh` (plan Testing strategy)
+
+- **Concern**: The plan requires asserting `--stderr-sink "$SIDECAR_LOG"` on the `run-external-agent.sh` invocation via “wrapper-argv capture / stub”, but `test-codex-implementer.sh` only stubs the `codex` binary and records `codex-argv.txt`. `launch-codex-implement.sh` invokes `$SCRIPT_DIR/run-external-agent.sh` directly (no `RUN_EXTERNAL_AGENT_SH` hook), so the planned test step is underspecified and can be implemented without proving forwarding.
+- **Suggested revision**: Pin the minimum test as a source assertion on `scripts/launch-codex-implement.sh` (e.g. `grep -Fq '--stderr-sink "$SIDECAR_LOG"'`), matching how `lint-fix-loop` / `review-and-fix` can grep their scripts or extend existing `LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH` / `REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH` stubs.

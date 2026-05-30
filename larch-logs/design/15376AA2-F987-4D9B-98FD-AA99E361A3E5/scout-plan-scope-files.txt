@@ -1,0 +1,15 @@
+scripts/lib-failed-agent-stderr-tail.sh
+scripts/run-external-agent.sh
+scripts/launch-codex-implement.sh
+scripts/lint-fix-loop.sh
+skills/review-and-fix/scripts/review-and-fix.sh
+scripts/run-external-agent.md
+scripts/lib-failed-agent-stderr-tail.md
+scripts/launch-codex-implement.md
+scripts/lint-fix-loop.md
+skills/review-and-fix/scripts/review-and-fix.md
+scripts/test-lib-failed-agent-stderr-tail.sh
+scripts/test-run-external-agent.sh
+skills/implement/scripts/test-codex-implementer.sh
+scripts/test-lint-fix-loop.sh
+skills/review-and-fix/scripts/test-review-and-fix.sh
