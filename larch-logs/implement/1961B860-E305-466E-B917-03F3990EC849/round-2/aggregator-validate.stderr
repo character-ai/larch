@@ -1,0 +1,6 @@
+warning: fix text for slot 'dyn-set-e-safety-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Wrap the fixup git steps in an errexit-safe idiom: `set +e` … capture `rc` … `se')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] fix-loop harness shard siz')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] larch-logs on branch unrel')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] Fixup subject not mistaken')
+warning: fix text for slot 'dyn-set-e-safety-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_9: [OUT_OF_SCOPE] _stage_and_push_ci_fixes b')
+warning: fix text for slot 'dyn-set-e-safety-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_10: [OUT_OF_SCOPE] Stale rc after fixup not ')

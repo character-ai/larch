@@ -363,6 +363,79 @@ run_orchestrator_case() {
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
 
+work_hook_residue="$TMP/round-hook-residue"
+make_work_repo "$work_hook_residue"
+mkdir -p "$work_hook_residue/.git/hooks"
+cat > "$work_hook_residue/.git/hooks/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+stamp="${GIT_DIR:-.git}/hooks/.pre-commit-residue-once"
+if [[ -f "$stamp" ]]; then
+  exit 0
+fi
+printf 'hook residue\n' >> src/main.py
+: > "$stamp"
+exit 0
+HOOK
+chmod +x "$work_hook_residue/.git/hooks/pre-commit"
+implement_hook="$work_hook_residue/implement"
+mkdir -p "$implement_hook"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_hook/session-env.sh"
+hook_residue_initial_head=$(git -C "$work_hook_residue" rev-parse HEAD)
+set +e
+out_hook=$(TEST_AGENT_BEHAVIOR=cursor-success run_review_and_fix "$work_hook_residue" \
+    --implement-tmpdir "$implement_hook" --mode diff --round-num 1 \
+    --session-env-path "$implement_hook/session-env.sh" --run-id hook-residue-run)
+rc_hook=$?
+set -e
+[[ "$rc_hook" -eq 0 ]] || { echo "$out_hook" >&2; fail "round hook residue expected exit 0 got $rc_hook"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=fix-applied' <<< "$out_hook" || fail "round hook residue status"
+grep -Fq 'CODER_STATUS=applied' <<< "$out_hook" || fail "round hook residue coder applied"
+if [[ -z "$(git -C "$work_hook_residue" status --porcelain --untracked-files=no)" ]]; then
+    pass "round hook residue: tracked tree clean after follow-up"
+else
+    git -C "$work_hook_residue" status --porcelain | sed 's/^/    status: /' || true
+    fail "round hook residue should leave tracked tree clean"
+fi
+hook_residue_commit_count=$(git -C "$work_hook_residue" rev-list --count "${hook_residue_initial_head}..HEAD")
+[[ "$hook_residue_commit_count" -eq 2 ]] || fail "round hook residue should add primary plus one follow-up commit"
+primary_sha=$(git -C "$work_hook_residue" rev-parse HEAD~1)
+follow_sha=$(git -C "$work_hook_residue" rev-parse HEAD)
+git -C "$work_hook_residue" log -1 --format='%s' "$primary_sha" | grep -Fq 'Address code review feedback (round 1)' \
+    || fail "round hook residue primary commit message"
+git -C "$work_hook_residue" log -1 --format='%s' "$follow_sha" | grep -Fq 'Address code review feedback (round 1) — follow-up' \
+    || fail "round hook residue follow-up commit message"
+git -C "$work_hook_residue" show "HEAD:src/main.py" | grep -Fq 'hook residue' \
+    || fail "round hook residue follow-up commit should contain hook residue in src/main.py"
+grep -Eq "^CODER_COMMIT_SHA=${follow_sha}$" <<< "$out_hook" || fail "round hook residue CODER_COMMIT_SHA is follow-up"
+
+work_persistent_hook="$TMP/round-persistent-hook-residue"
+make_work_repo "$work_persistent_hook"
+mkdir -p "$work_persistent_hook/.git/hooks"
+cat > "$work_persistent_hook/.git/hooks/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'persistent hook residue\n' >> src/main.py
+exit 0
+HOOK
+chmod +x "$work_persistent_hook/.git/hooks/pre-commit"
+implement_persistent="$work_persistent_hook/implement"
+mkdir -p "$implement_persistent"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_persistent/session-env.sh"
+set +e
+out_persistent=$(TEST_AGENT_BEHAVIOR=cursor-success run_review_and_fix "$work_persistent_hook" \
+    --implement-tmpdir "$implement_persistent" --mode diff --round-num 1 \
+    --session-env-path "$implement_persistent/session-env.sh" --run-id persistent-hook-residue-run)
+rc_persistent=$?
+set -e
+[[ "$rc_persistent" -eq 2 ]] || { echo "$out_persistent" >&2; fail "persistent hook residue expected exit 2 got $rc_persistent"; }
+grep -Fq 'CODER_STATUS=failed' <<< "$out_persistent" || fail "persistent hook residue coder failed"
+if [[ -z "$(git -C "$work_persistent_hook" status --porcelain --untracked-files=no)" ]]; then
+    fail "persistent hook residue should leave tracked porcelain after follow-up"
+fi
+grep -Fq 'persistent hook residue' "$work_persistent_hook/src/main.py" \
+    || fail "persistent hook residue should remain in working tree"
+
 work_codex_telemetry="$TMP/codex-telemetry"
 make_work_repo "$work_codex_telemetry"
 implement_tmp="$work_codex_telemetry/implement"

@@ -1,0 +1,28 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- different requirements (git add -u vs -A, different error-handling scopes) justify separate implementations
+FINDING_4: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Option A is intentionally single-pass per plan; second-pass hook re-dirty is delegated to Option B
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- committed doc (git add -A, warn-and-continue) accurately matches committed code; discrepancy is only vs the uncommitted working tree
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- exit-code=0 plus log-subject checks cover the acceptance criterion; DROPPED=true would be belt-and-suspenders only
+FINDING_10: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=weak UNCERTAIN=true -- rebump_staged_only_fixup does not appear in the committed diff; finding appears to reference the uncommitted working tree
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- hook-residue case is the documented scenario; partial-agent-commit is additional coverage beyond plan scope
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- fix the underlying submodule handling (FINDING_16) before writing its test
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- two different test scenarios each asserting a rebump occurred is normal, not problematic duplication
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- dirty tracked files at the rebase drop site are legitimate work products on a branch that undergoes PR review; theoretical risk in an authenticated pipeline
+FINDING_15: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=good UNCERTAIN=true
+OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- CI shard rebalancing is an operational concern, not a concrete bug to file
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- run-log commits on branches are expected larch behavior
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- item describes correct behavior (subject does not match drop targets); no problem to file
+OOS_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- contextual observation for FINDING_7, not a standalone problem
+OOS_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes uncommitted working-tree state; not a problem to file as a GitHub issue
+OOS_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- elif coupling is real but FINDING_1 already covers it; separate issue would be a duplicate
+OOS_8: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_9: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- clarifying analysis for FINDING_18, not a standalone issue worth filing

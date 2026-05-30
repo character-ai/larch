@@ -2498,6 +2498,264 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+root=$(make_repo rebump_dirty_tracked_fixup)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-dirty.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+cp "$REPO_ROOT/scripts/drop-bump-commit.sh" "$root/scripts/drop-bump-commit.sh"
+cp "$REPO_ROOT/scripts/commit-changelog.sh" "$root/scripts/commit-changelog.sh"
+cp "$REPO_ROOT/scripts/git-commit.sh" "$root/scripts/git-commit.sh"
+chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/commit-changelog.sh" "$root/scripts/git-commit.sh"
+mkdir -p "$root/.claude-plugin"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.2"}
+JSON
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add .claude-plugin/plugin.json CHANGELOG.md
+git -C "$root" commit -q -m "Prepare version fixtures"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.3"}
+JSON
+git -C "$root" add .claude-plugin/plugin.json
+git -C "$root" commit -q -m "Bump version to 1.2.3"
+printf 'dirty tracked residue\n' >> "$root/sentinel-fix.txt"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+printf '# reasoning\n' > "$reasoning_file"
+echo "CURRENT_VERSION=1.2.3"
+echo "NEW_VERSION=1.2.4"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+new_version=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --new-version) new_version=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '{"version":"%s"}\n' "$new_version" > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to $new_version"
+echo "APPLIED=true"
+echo "COMMIT_SHA=$(git rev-parse HEAD)"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
+         "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-dirty" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-dirty"
+set -e
+assert_rc "$tmp/rc-rebump-dirty" 0 "run_rebase_rebump commits dirty tracked tree before drop-bump (no stall)"
+rebump_dirty_subjects=$(git -C "$root" log --format=%s)
+if [[ "$rebump_dirty_subjects"$'\n' == *$'chore: pre-rebase working-tree fixup (#3209)'$'\n'* ]] &&
+   [[ "$rebump_dirty_subjects"$'\n' == *$'Bump version to 1.2.4'$'\n'* ]]; then
+    ok "run_rebase_rebump dirty tree: fixup commit plus re-bump"
+else
+    fail "run_rebase_rebump dirty tree should record fixup and re-bump commits"
+    git -C "$root" log --oneline --max-count=8 | sed 's/^/    log: /' || true
+fi
+if [[ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ]]; then
+    ok "run_rebase_rebump dirty tree: tracked tree clean after rebump"
+else
+    fail "run_rebase_rebump dirty tree should leave tracked tree clean"
+    git -C "$root" status --porcelain | sed 's/^/    status: /' || true
+fi
+plugin_version=$(jq -r '.version' "$root/.claude-plugin/plugin.json")
+if [[ "$plugin_version" == "1.2.4" ]]; then
+    ok "run_rebase_rebump dirty tree: HEAD plugin.json is 1.2.4"
+else
+    fail "run_rebase_rebump dirty tree should leave plugin.json at 1.2.4"
+fi
+if git -C "$root" log --format=%s -n 8 | grep -qxF 'Bump version to 1.2.3'; then
+    fail "run_rebase_rebump dirty tree should drop stale Bump version to 1.2.3"
+else
+    ok "run_rebase_rebump dirty tree: stale 1.2.3 bump absent from recent log"
+fi
+fixup_sha=$(git -C "$root" log --format=%H --grep='chore: pre-rebase working-tree fixup (#3209)' -n 1)
+if [[ -n "$fixup_sha" ]] && git -C "$root" show "$fixup_sha":sentinel-fix.txt | grep -Fq 'dirty tracked residue'; then
+    ok "run_rebase_rebump dirty tree: fixup commit contains dirty tracked residue"
+else
+    fail "run_rebase_rebump dirty tree fixup should commit sentinel-fix.txt residue"
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo rebump_dirty_tracked_fixup_idempotent_hook)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-dirty-hook.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+cp "$REPO_ROOT/scripts/drop-bump-commit.sh" "$root/scripts/drop-bump-commit.sh"
+cp "$REPO_ROOT/scripts/commit-changelog.sh" "$root/scripts/commit-changelog.sh"
+cp "$REPO_ROOT/scripts/git-commit.sh" "$root/scripts/git-commit.sh"
+chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/commit-changelog.sh" "$root/scripts/git-commit.sh"
+mkdir -p "$root/.git/hooks"
+cat > "$root/.git/hooks/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+stamp="${GIT_DIR:-.git}/hooks/.pre-commit-rebump-once"
+if [[ -f "$stamp" ]]; then
+  exit 0
+fi
+printf 'hook rebump residue\n' >> sentinel-fix.txt
+: > "$stamp"
+exit 0
+HOOK
+chmod +x "$root/.git/hooks/pre-commit"
+mkdir -p "$root/.claude-plugin"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.2"}
+JSON
+cat > "$root/CHANGELOG.md" <<'CHANGELOG'
+# Changelog
+
+## [1.2.2] - 2025-12-31
+
+### Fixed
+
+- Previous release.
+CHANGELOG
+git -C "$root" add .claude-plugin/plugin.json CHANGELOG.md
+git -C "$root" commit -q -m "Prepare version fixtures"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.3"}
+JSON
+git -C "$root" add .claude-plugin/plugin.json
+git -C "$root" commit -q -m "Bump version to 1.2.3"
+printf 'dirty tracked residue\n' >> "$root/sentinel-fix.txt"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+printf '# reasoning\n' > "$reasoning_file"
+echo "CURRENT_VERSION=1.2.3"
+echo "NEW_VERSION=1.2.4"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+new_version=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --new-version) new_version=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '{"version":"%s"}\n' "$new_version" > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to $new_version"
+echo "APPLIED=true"
+echo "COMMIT_SHA=$(git rev-parse HEAD)"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
+         "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-dirty-hook" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-dirty-hook"
+set -e
+assert_rc "$tmp/rc-rebump-dirty-hook" 0 "run_rebase_rebump idempotent hook: exits 0 with pre-commit fixup"
+if [[ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ]]; then
+    ok "run_rebase_rebump idempotent hook: tracked tree clean after rebump"
+else
+    fail "run_rebase_rebump idempotent hook should leave tracked tree clean"
+    git -C "$root" status --porcelain | sed 's/^/    status: /' || true
+fi
+fixup_hook_sha=$(git -C "$root" log --format=%H --grep='chore: pre-rebase working-tree fixup (#3209)' -n 1)
+if [[ -n "$fixup_hook_sha" ]] && \
+   git -C "$root" show "$fixup_hook_sha":sentinel-fix.txt | grep -Fq 'dirty tracked residue' && \
+   git -C "$root" show "$fixup_hook_sha":sentinel-fix.txt | grep -Fq 'hook rebump residue'; then
+    ok "run_rebase_rebump idempotent hook: fixup commit includes hook and dirty residue"
+else
+    fail "run_rebase_rebump idempotent hook fixup should commit hook-augmented sentinel-fix.txt"
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo rebump_fixup_commit_fail_stalls)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-fixup-fail.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+cp "$REPO_ROOT/scripts/drop-bump-commit.sh" "$root/scripts/drop-bump-commit.sh"
+cp "$REPO_ROOT/scripts/commit-changelog.sh" "$root/scripts/commit-changelog.sh"
+chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/commit-changelog.sh"
+cat > "$root/scripts/git-commit.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+msg=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m) msg="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ "$msg" == *'pre-rebase working-tree fixup'* ]]; then
+  exit 1
+fi
+git commit -q -m "$msg"
+STUB
+chmod +x "$root/scripts/git-commit.sh"
+mkdir -p "$root/.claude-plugin"
+cat > "$root/.claude-plugin/plugin.json" <<'JSON'
+{"version":"1.2.2"}
+JSON
+git -C "$root" add .claude-plugin/plugin.json
+git -C "$root" commit -q -m "Prepare version fixtures"
+printf 'dirty tracked residue\n' >> "$root/sentinel-fix.txt"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "CURRENT_VERSION=1.2.2"
+echo "NEW_VERSION=1.2.4"
+echo "BUMP_TYPE=PATCH"
+STUB
+cat > "$root/.claude/skills/bump-version/scripts/apply-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+new_version=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --new-version) new_version=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf '{"version":"%s"}\n' "$new_version" > .claude-plugin/plugin.json
+git add .claude-plugin/plugin.json
+git commit -q -m "Bump version to $new_version"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
+         "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-fixup-fail" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-fixup-fail"
+set -e
+assert_rc "$tmp/rc-rebump-fixup-fail" 4 "run_rebase_rebump stalls when pre-rebase fixup commit fails with dirty tree"
+rm -rf "$sentinel_dir"
+
 root=$(make_repo rebump_same_version_legacy_replaces)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-same.XXXXXX)

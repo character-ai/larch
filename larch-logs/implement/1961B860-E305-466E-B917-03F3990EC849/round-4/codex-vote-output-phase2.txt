@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Accepted #3209 scope; Option A backstops partial-commit residue at rebase.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplication is real but extracting a helper before a third call site adds needless abstraction.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Repeated fixture setup is a maintainability nit, not a behavioral defect worth blocking.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Broad pre-rebase fixup is the deliberate Option A tradeoff documented in plan and ship-pr.md.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Missing path logging is optional audit hygiene under trusted local hooks.
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Latent edge-case coverage gap; core happy and fail paths are already tested for #3209.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Substring subject checks are loose but paired with version and tree-clean assertions in the same case.
+OOS_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- Possible CI runtime growth is speculative until harness timing regresses.
+OOS_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Interaction is edge-case documentation, not a concrete defect in this PR.
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
