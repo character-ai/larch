@@ -11,6 +11,12 @@ unset LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
+
+fail() {
+    echo "FAIL: $1" >&2
+    exit 1
+}
+
 grep -F -- "--stderr-sink \"\$codex_wrapper_log\"" "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh" \
     || fail "review-and-fix.sh codex coder must forward --stderr-sink \"\$codex_wrapper_log\""
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-and-fix.XXXXXX")
@@ -44,11 +50,6 @@ if [[ -n "$SECTION" ]]; then
 fi
 section_runs() {
     [[ -z "$SECTION" || "$SECTION" == "$1" ]]
-}
-
-fail() {
-    echo "FAIL: $1" >&2
-    exit 1
 }
 
 pass() {

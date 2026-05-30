@@ -29,7 +29,7 @@
 # see scripts/run-external-agent.md for the full retry-substitution rationale.
 #
 # Usage:
-#   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD...
+#   run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] [--stderr-sink PATH] -- CMD...
 #
 # Options:
 #   --tool            Tool name (e.g., "codex", "cursor") — used as-is for log

@@ -6,16 +6,16 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 SOURCE_SCRIPTS="$REPO_ROOT/scripts"
 
+fail() {
+    echo "FAIL: $1" >&2
+    exit 1
+}
+
 grep -F -- "--stderr-sink \"\$codex_wrapper_log\"" "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
     || fail "lint-fix-loop.sh run_codex must forward --stderr-sink \"\$codex_wrapper_log\""
 
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-lint-fix-loop.XXXXXX")"
 trap 'rm -rf "$TMPROOT"' EXIT
-
-fail() {
-    echo "FAIL: $1" >&2
-    exit 1
-}
 
 assert_contains() {
     local haystack="$1" needle="$2" label="$3"
