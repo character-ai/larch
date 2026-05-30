@@ -97,6 +97,10 @@ bash_line_task_output_poll_token() {
                 seg="${rest%%&&*}"
                 rest="${rest#*&&}"
                 ;;
+            *'||'*)
+                seg="${rest%%||*}"
+                rest="${rest#*||}"
+                ;;
             *)
                 seg="$rest"
                 rest=""

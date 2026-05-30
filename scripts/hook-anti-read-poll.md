@@ -22,11 +22,13 @@ Per-project state under `${TMPDIR:-/tmp}/larch-read-poll/` (mode `700`; entries 
 - `state-taskout-<session_hash>-<cwd_hash>-<task_id>.tsv` — task output: `count\tfirst_ts`
 
 Task-output counters are scoped by hook `session_id` (hashed; falls back to
-`conversation_id`, then `nosession` when both are absent), `cwd`, and the normalized
-`tasks/<id>.output` task id so
-distinct background tasks and Claude sessions do not share one counter. State files
+`conversation_id`, then a shared `nosession` bucket when both are absent), `cwd`, and
+the normalized `tasks/<id>.output` task id so distinct background tasks do not share one
+counter. Sessions with distinct `session_id`/`conversation_id` hashes do not share
+counts within the **600 s** TTL. When metadata is missing, all callers collapse to
+`nosession` and can share counters across sessions (cross-session bleed). State files
 expire logically after **600 s** without a matching poll (window reset, not file
-deletion). A new session within that TTL does not inherit another session's counts.
+deletion).
 
 ## Parameters
 

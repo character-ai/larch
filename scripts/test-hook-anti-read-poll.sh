@@ -221,6 +221,32 @@ assert_silent "$out_ec1" 'echo+cat same line call 1 silent'
 out_ec2=$(run_bash_hook 1 "$echo_cat_cmd" "/proj-echo-cat-line")
 assert_reminder "$out_ec2" 'echo+cat same line call 2 fires reminder'
 
+echo "=== echo || cat task-output poll fires ==="
+echo_or_cat_cmd="echo 'waiting' || cat $TASK_OUT"
+out_eoc1=$(run_bash_hook 0 "$echo_or_cat_cmd" "/proj-echo-or-cat")
+assert_silent "$out_eoc1" 'echo||cat task-output call 1 silent'
+out_eoc2=$(run_bash_hook 1 "$echo_or_cat_cmd" "/proj-echo-or-cat")
+assert_reminder "$out_eoc2" 'echo||cat task-output call 2 fires reminder'
+
+echo "=== Bash tail task-output poll fires ==="
+out_tail1=$(run_bash_hook 0 "tail -5 $TASK_OUT" "/proj-bash-tail")
+assert_silent "$out_tail1" 'tail task-output call 1 silent'
+out_tail2=$(run_bash_hook 1 "tail -5 $TASK_OUT" "/proj-bash-tail")
+assert_reminder "$out_tail2" 'tail task-output call 2 fires reminder'
+
+echo "=== Bash sed -n task-output poll fires ==="
+out_sedn1=$(run_bash_hook 0 "sed -n '1,5p' $TASK_OUT" "/proj-bash-sed-n")
+assert_silent "$out_sedn1" 'sed -n task-output call 1 silent'
+out_sedn2=$(run_bash_hook 1 "sed -n '1,5p' $TASK_OUT" "/proj-bash-sed-n")
+assert_reminder "$out_sedn2" 'sed -n task-output call 2 fires reminder'
+
+echo "=== Bash task-output poll with || echo suffix fires ==="
+or_echo_cmd="cat $TASK_OUT || echo '(no output yet)'"
+out_oe1=$(run_bash_hook 0 "$or_echo_cmd" "/proj-bash-or-echo")
+assert_silent "$out_oe1" '||echo suffix task-output call 1 silent'
+out_oe2=$(run_bash_hook 1 "$or_echo_cmd" "/proj-bash-or-echo")
+assert_reminder "$out_oe2" '||echo suffix task-output call 2 fires reminder'
+
 echo "=== multiline Bash with two task ids uses matching line token ==="
 two_id_ml_cmd=$'cat /tmp/proj/tasks/taskA.output\ncat /tmp/proj/tasks/taskB.output'
 out_2id1=$(run_bash_hook 0 "$two_id_ml_cmd" "/proj-two-id-multiline")
