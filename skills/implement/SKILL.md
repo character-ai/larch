@@ -990,7 +990,7 @@ export CLAUDE_PLUGIN_ROOT
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --tmpdir "$IMPLEMENT_TMPDIR" --site step5-review-fixes
 ```
 
-Then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE..HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `git add -A` stages the working-tree edits; `commit-review-fixes.sh` commits them:
+Then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `git add -A` stages the working-tree edits; `commit-review-fixes.sh` commits them:
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
