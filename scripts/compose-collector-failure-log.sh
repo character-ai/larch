@@ -8,6 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 
 REVIEWER_FILE=""
 STRUCTURED_RECORD=""
@@ -33,6 +35,16 @@ done
 [[ -n "$OUTPUT" ]] || { larch_err "--output is required"; exit 2; }
 [[ -d "$(dirname "$OUTPUT")" ]] || { larch_err "--output parent directory missing: $(dirname "$OUTPUT")"; exit 2; }
 
+_redacted_launch_stderr_body() {
+    local path="$1" rendered
+    rendered=$(render_failed_agent_stderr_tail "$path" 2>/dev/null || true)
+    if [[ -n "$rendered" ]]; then
+        printf '%s' "$rendered"
+        return 0
+    fi
+    printf '(launcher stderr redaction unavailable or empty: %s)' "$path"
+}
+
 dump_section() {
     local header="$1" path="$2"
     printf '## %s\n\n' "$header"
@@ -42,6 +54,9 @@ dump_section() {
         printf '(file missing: %s)\n\n' "$path"
     elif [[ ! -s "$path" ]]; then
         printf '(empty: %s)\n\n' "$path"
+    elif [[ "$path" == *.launch-stderr ]]; then
+        _redacted_launch_stderr_body "$path"
+        printf '\n\n'
     else
         cat "$path"
         printf '\n'

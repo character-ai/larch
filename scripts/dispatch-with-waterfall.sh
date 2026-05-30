@@ -558,6 +558,15 @@ for idx in "${phase3_failed[@]+"${phase3_failed[@]}"}"; do
     esac
 done
 
+if [[ ${#phase3_failed[@]} -gt 0 ]]; then
+    _wf_tail_replay_paths=()
+    for idx in "${phase3_failed[@]}"; do
+        _wf_tail_replay_paths+=("${final_outputs[$idx]}")
+    done
+    LARCH_QUIET_DISABLE=1 "$SCRIPT_DIR/collect-agent-results.sh" --timeout "$TIMEOUT" \
+        "${_wf_tail_replay_paths[@]}" >/dev/null || true
+fi
+
 warn=""
 threshold="${LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD:-3}"
 case "$threshold" in ''|*[!0-9]*) threshold=3 ;; esac

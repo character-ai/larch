@@ -73,7 +73,7 @@ bash_line_is_read_verb_only() {
     [ -n "$line" ] || return 1
     bash_segment_is_echo_only "$line" && return 1
     bash_has_read_verb "$line" || return 1
-    extract_task_output_token "$line" && return 1
+    extract_task_output_token "$line" >/dev/null && return 1
     return 0
 }
 
@@ -85,7 +85,7 @@ bash_segment_is_echo_only() {
     local seg="$1"
     seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
     case "$seg" in
-        echo*|printf*) return 0 ;;
+        echo|echo\ *|printf|printf\ *) return 0 ;;
     esac
     return 1
 }
@@ -96,16 +96,25 @@ bash_segment_task_output_poll_token() {
     [ -n "$seg" ] || return 1
     bash_segment_is_echo_only "$seg" && return 1
     bash_has_read_verb "$seg" || return 1
-    token=$(extract_task_output_token "$seg") || return 1
-    printf '%s' "$token"
+    extract_task_output_token "$seg"
 }
 
 # Segment split is a deliberate heuristic: metacharacters inside quoted strings may
 # produce extra segments (false negatives) or combine read verbs with paths (false
 # positives). Read-verb detection strips quoted spans; task-output tokens are
 # extracted only from unquoted command text.
+bash_line_is_echo_with_embedded_semicolon() {
+    local line="$1"
+    case "$line" in
+        echo\ \'*\;*\') return 0 ;;
+        echo\ \"*\"\;*\") return 0 ;;
+    esac
+    return 1
+}
+
 bash_line_task_output_poll_token() {
     local line="$1" seg rest token stripped_line
+    bash_line_is_echo_with_embedded_semicolon "$line" && return 1
     stripped_line=$(bash_strip_quoted_for_read_verb "$line")
     rest="$line"
     while [ -n "$rest" ]; do
@@ -128,9 +137,14 @@ bash_line_task_output_poll_token() {
                 ;;
         esac
         token=$(bash_segment_task_output_poll_token "$seg") || continue
-        case "$stripped_line" in
+        case "$line" in
             *"$token"*) ;;
-            *) continue ;;
+            *)
+                case "$stripped_line" in
+                    *"$token"*) ;;
+                    *) continue ;;
+                esac
+                ;;
         esac
         printf '%s' "$token"
         return 0
@@ -151,15 +165,9 @@ extract_bash_task_output_poll_token() {
         line="${lines[$i]}"
         if bash_line_is_read_verb_only "$line" && [ $((i + 1)) -lt "${#lines[@]}" ]; then
             merged="$line ${lines[$((i + 1))]}"
-            token=$(bash_line_task_output_poll_token "$merged") && {
-                printf '%s' "$token"
-                return 0
-            }
+            bash_line_task_output_poll_token "$merged" && return 0
         fi
-        token=$(bash_line_task_output_poll_token "$line") && {
-            printf '%s' "$token"
-            return 0
-        }
+        bash_line_task_output_poll_token "$line" && return 0
         i=$((i + 1))
     done
     return 1
@@ -168,6 +176,11 @@ extract_bash_task_output_poll_token() {
 # Canonical state key: rightmost tasks/<id>.output tail (absolute vs relative ignored).
 extract_task_output_token() {
     local text="$1" stripped token
+    token=$(printf '%s' "$text" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
+    if [ -n "$token" ]; then
+        printf '%s' "$token"
+        return 0
+    fi
     stripped=$(bash_strip_quoted_for_read_verb "$text")
     token=$(printf '%s' "$stripped" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
     if [ -n "$token" ]; then

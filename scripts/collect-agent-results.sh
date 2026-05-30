@@ -1436,7 +1436,12 @@ _emit_collector_stderr_tail_file() {
     [[ -s "$tail_file" ]] || return 1
     larch_err '--- failed agent stderr tail ---'
     while IFS= read -r _tail_line || [[ -n "$_tail_line" ]]; do
-        larch_err "$_tail_line"
+        [[ -n "$_tail_line" ]] || continue
+        if declare -f sanitize_diagnostic_line &>/dev/null; then
+            larch_err "$(printf '%s' "$_tail_line" | sanitize_diagnostic_line)"
+        else
+            larch_err "$_tail_line"
+        fi
     done <"$tail_file"
     larch_err '--- end failed agent stderr tail ---'
 }
@@ -1470,6 +1475,7 @@ _resolve_collector_stderr_tail_file() {
     fi
     while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
         [[ -n "$_candidate" ]] || continue
+        [[ "$_candidate" == "$reviewer_file" ]] || continue
         if [[ -s "${_candidate}.stderr-tail" ]]; then
             printf '%s' "${_candidate}.stderr-tail"
             return 0

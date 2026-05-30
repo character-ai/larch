@@ -297,9 +297,11 @@ fi
 if [ "$EXIT_CODE" -ne 0 ]; then
     echo "❌ ${TOOL_NAME} agent: FAILED (exit code ${EXIT_CODE}, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
     DIAG_DETAIL=""
+    _stderr_src=""
+    _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" || true)
     if [ "$OUTPUT_SIZE" -gt 0 ]; then
         _redacted_out_tail=$(render_failed_agent_stderr_tail "$OUTPUT_FILE" 2>/dev/null || true)
-        if [ -n "$_redacted_out_tail" ]; then
+        if [ -n "$_redacted_out_tail" ] && { [[ -z "$_stderr_src" ]] || [[ "$_stderr_src" != "$OUTPUT_FILE" ]]; }; then
             echo "--- ${TOOL_NAME} output (last lines, redacted) ---" >&2
             printf '%s\n' "$_redacted_out_tail" >&2
             echo "--- end ---" >&2
@@ -308,8 +310,6 @@ if [ "$EXIT_CODE" -ne 0 ]; then
     fi
     # Write diagnostic file for callers
     echo "Failed with exit code ${EXIT_CODE} after ${SECONDS}s. Output size: ${OUTPUT_SIZE} bytes.${DIAG_DETAIL}" >> "${OUTPUT_FILE}.diag"
-    _stderr_src=""
-    _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" || true)
     if [[ -n "$_stderr_src" ]]; then
         write_failed_agent_stderr_tail "$_stderr_src" "$OUTPUT_FILE" || true
         emit_failed_agent_stderr_tail_raw "$OUTPUT_FILE" || true

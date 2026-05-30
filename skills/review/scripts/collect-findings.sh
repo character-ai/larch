@@ -69,6 +69,83 @@ append_review_failure() {
         --redact >/dev/null 2>&1 || true
 }
 
+_write_failed_stderr_tail_block() {
+    local tail_file="$1" out_fd="$2"
+    local _line _sanitized
+    [[ -s "$tail_file" ]] || return 0
+    printf '%s\n' '--- failed agent stderr tail ---' >&"${out_fd}"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        [[ -n "$_line" ]] || continue
+        _sanitized=$(printf '%s' "$_line" | sanitize_diagnostic_line)
+        printf '%s\n' "$_sanitized" >&"${out_fd}"
+    done <"$tail_file"
+    printf '%s\n' '--- end failed agent stderr tail ---' >&"${out_fd}"
+}
+
+replay_collector_failed_stderr_tails() {
+    local results_file="$1" _collector_stderr_fd="$2" collector_stderr="$3"
+    local _block="" _line _key _value _status _reviewer _tail _replay_tmp
+    [[ -f "$results_file" ]] || return 0
+    _replay_tmp=$(mktemp "${REVIEW_TMPDIR}/collect-agent-results-replay.XXXXXX")
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        if [[ -z "$_line" ]]; then
+            if [[ -n "$_block" ]]; then
+                _status=""
+                _reviewer=""
+                while IFS= read -r _line || [[ -n "$_line" ]]; do
+                    _key="${_line%%=*}"
+                    _value="${_line#*=}"
+                    case "$_key" in
+                        STATUS) _status="$_value" ;;
+                        REVIEWER_FILE) _reviewer="$_value" ;;
+                    esac
+                done <<< "$_block"
+                case "$_status" in
+                    OK|cap_hit|'') ;;
+                    *)
+                        _tail="${_reviewer}.stderr-tail"
+                        _write_failed_stderr_tail_block "$_tail" 1 >>"$_replay_tmp" 2>/dev/null || true
+                        ;;
+                esac
+            fi
+            _block=""
+            continue
+        fi
+        if [[ -n "$_block" ]]; then
+            _block="${_block}"$'\n'"${_line}"
+        else
+            _block="$_line"
+        fi
+    done <"$results_file"
+    if [[ -n "$_block" ]]; then
+        _status=""
+        _reviewer=""
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            _key="${_line%%=*}"
+            _value="${_line#*=}"
+            case "$_key" in
+                STATUS) _status="$_value" ;;
+                REVIEWER_FILE) _reviewer="$_value" ;;
+            esac
+        done <<< "$_block"
+        case "$_status" in
+            OK|cap_hit|'') ;;
+            *)
+                _tail="${_reviewer}.stderr-tail"
+                _write_failed_stderr_tail_block "$_tail" 1 >>"$_replay_tmp" 2>/dev/null || true
+                ;;
+        esac
+    fi
+    if [[ -s "$_replay_tmp" ]]; then
+        cat "$_replay_tmp" >>"$collector_stderr"
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            printf '%s\n' "$_line" >&"${_collector_stderr_fd}"
+        done <"$_replay_tmp"
+    fi
+    rm -f "$_replay_tmp"
+    unset _line _key _value _status _reviewer _tail _block _sanitized
+}
+
 file_has_no_findings_sentinel() {
     local file="$1"
     [[ -s "$file" ]] || return 1
@@ -204,11 +281,29 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     # Pin: collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode
     args=(--timeout "$TIMEOUT" --substantive-validation --validation-mode)
     collector_log="$REVIEW_TMPDIR/collect-agent-results.log"
+    collector_stderr="$REVIEW_TMPDIR/collect-agent-results.stderr"
+    _collector_stderr_fd=2
+    if [[ "${LARCH_QUIET_PID:-}" == "$$" ]]; then
+        _collector_stderr_fd=4
+    fi
     set +e
-    LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}" \
-        > "$collector_results_file" 2> >(tee -a "$collector_log" >&2)
+    # Subshell clears inherited quiet-session exports so collector stderr is not routed to FD 4 only.
+    (
+        unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
+        LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}"
+    ) > "$collector_results_file" 2>"$collector_stderr"
     collector_rc=$?
     set -e
+    if [[ ! -s "$collector_stderr" && "$collector_rc" -eq 0 ]]; then
+        replay_collector_failed_stderr_tails "$collector_results_file" "$_collector_stderr_fd" "$collector_stderr"
+    fi
+    if [[ -s "$collector_stderr" ]]; then
+        cat "$collector_stderr" >> "$collector_log"
+        while IFS= read -r _collector_err_line || [[ -n "$_collector_err_line" ]]; do
+            printf '%s\n' "$_collector_err_line" >&${_collector_stderr_fd}
+        done <"$collector_stderr"
+    fi
+    unset _collector_err_line
     cat "$collector_results_file" >> "$collector_log"
     if [[ "$collector_rc" -ne 0 ]]; then
         append_review_failure "review Step 3a" "collect-agent-results.sh" "$collector_rc" "$collector_log"

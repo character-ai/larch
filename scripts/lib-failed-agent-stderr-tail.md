@@ -17,7 +17,7 @@ Sourced-only library for redacted, bounded stderr tails on failed codex/cursor/c
 
 ## Signature
 
-- **`failed_agent_stderr_signature`** — heuristic fingerprint (digits, hex, tmp/session paths, output basenames normalized). Not semantic; used for collector dedup only.
+- **`failed_agent_stderr_signature`** — heuristic fingerprint (digit runs → `#`, hex `0x…` → `0x#`, tmp/session paths, output basenames normalized). Not semantic; used for collector dedup only.
 
 ## Callers
 

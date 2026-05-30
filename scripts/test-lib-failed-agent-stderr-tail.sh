@@ -118,13 +118,13 @@ if [[ "$sig_ab_a" != "$sig_c" ]]; then ok "signature distinct root causes"; else
 tail_http_a="$TMPROOT/sig-http-a.stderr-tail"
 tail_http_b="$TMPROOT/sig-http-b.stderr-tail"
 printf 'HTTP 401 unauthorized\n' >"$tail_http_a"
-printf 'HTTP 403 forbidden\n' >"$tail_http_b"
+printf 'HTTP 403 unauthorized\n' >"$tail_http_b"
 sig_http_a=$(failed_agent_stderr_signature "$tail_http_a")
 sig_http_b=$(failed_agent_stderr_signature "$tail_http_b")
-if [[ "$sig_http_a" != "$sig_http_b" ]]; then
-    ok "signature preserves distinct HTTP status codes"
+if [[ "$sig_http_a" == "$sig_http_b" ]]; then
+    ok "signature collapses HTTP status digit runs"
 else
-    fail "signature preserves distinct HTTP status codes"
+    fail "signature collapses HTTP status digit runs"
 fi
 
 # --- pipefail option restored after render ---

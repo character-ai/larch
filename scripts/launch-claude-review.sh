@@ -205,10 +205,8 @@ if [[ "$rc" -ne 0 ]]; then
         _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || true
     fi
 elif [[ -s "$SUBPROCESS_STDERR" ]]; then
-    _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || while IFS= read -r _line || [[ -n "$_line" ]]; do
-        larch_err "$_line"
-    done < "$SUBPROCESS_STDERR"
-    unset _line
+    _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || \
+        larch_err 'WARN subprocess stderr redaction unavailable'
 fi
 
 if [[ ! -f "${OUTPUT}.done" ]]; then

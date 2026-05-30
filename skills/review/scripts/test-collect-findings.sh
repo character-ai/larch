@@ -94,9 +94,9 @@ if ! grep -Fq 'LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results
     echo "FAIL: collect-findings.sh must run collector with LARCH_QUIET_DISABLE=1 for stderr-tail tee" >&2
     exit 1
 fi
-# shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$collector_log" in source
-if ! grep -Fq 'tee -a "$collector_log" >&2' "$SCRIPT"; then
-    echo "FAIL: collect-findings.sh must tee collector stderr to FD 2 for §3.8 visibility" >&2
+# shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$collector_stderr" in source
+if ! grep -Fq 'collect-agent-results.stderr' "$SCRIPT"; then
+    echo "FAIL: collect-findings.sh must capture collector stderr for §3.8 replay to FD 2/4" >&2
     exit 1
 fi
 # Failed external slots: collector stderr tails on FD 2 when collector_rc=0 (mirrors collect-findings tee path).
@@ -120,6 +120,26 @@ if grep -Fq 'failed agent stderr tail' "$TMP/ext-fail-collector.stderr" \
 else
     echo "FAIL: collector should emit stderr tails to FD 2 under LARCH_QUIET_DISABLE=1" >&2
     cat "$TMP/ext-fail-collector.stderr" >&2
+    exit 1
+fi
+# E2E: collect-findings wrapper surfaces §3.8 tails on captured stderr when collector_rc=0.
+set +e
+cf_out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 LARCH_QUIET_DISABLE=1 "$SCRIPT" \
+    --external-output-files "$ext_fail_a" --mode diff --timeout 5 \
+    --findings-file "$TMP/findings-cf-fail.md" --oos-file "$TMP/oos-cf-fail.md" 2>"$TMP/cf-fail-wrapper.stderr")
+cf_wrapper_rc=$?
+set -e
+assert_stdout_cap "$cf_out"
+[[ "$cf_wrapper_rc" -eq 0 ]] || { echo "FAIL: collect-findings E2E exit $cf_wrapper_rc" >&2; exit 1; }
+if grep -Fq 'failed agent stderr tail' "$TMP/cf-fail-wrapper.stderr" \
+    && grep -Fq 'external stderr tail alpha' "$TMP/cf-fail-wrapper.stderr"; then
+    :
+else
+    echo "FAIL: collect-findings.sh must tee §3.8 stderr tails to wrapper stderr when collector_rc=0" >&2
+    echo "wrapper stderr:" >&2
+    cat "$TMP/cf-fail-wrapper.stderr" >&2
+    echo "captured collector stderr:" >&2
+    cat "$TMP/collect-agent-results.stderr" 2>/dev/null >&2
     exit 1
 fi
 # Normal inline TSV is collected silently — no stderr noise and no execution-issues tsv-fallback rows.
