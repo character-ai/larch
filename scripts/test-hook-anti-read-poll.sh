@@ -21,10 +21,41 @@ mk_payload() {
         '{tool_name:"Read",tool_input:{file_path:$p,offset:$off},cwd:$cwd}'
 }
 
+mk_bash_payload() {
+    local command="$1" cwd="${2:-/tmp/test-proj}"
+    jq -cn --arg cmd "$command" --arg cwd "$cwd" \
+        '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd}'
+}
+
 run_hook() {
     local now="$1" path="$2" offset="${3:-0}" cwd="${4:-/tmp/test-proj}"
     mk_payload "$path" "$offset" "$cwd" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
 }
+
+run_bash_hook() {
+    local now="$1" command="$2" cwd="${3:-/tmp/test-proj}"
+    mk_bash_payload "$command" "$cwd" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
+}
+
+assert_reminder() {
+    local out="$1" label="$2"
+    if printf '%s' "$out" | grep -q 'additionalContext'; then
+        pass "$label"
+    else
+        fail "$label (expected reminder, got: $out)"
+    fi
+}
+
+assert_silent() {
+    local out="$1" label="$2"
+    if [ -z "$out" ]; then
+        pass "$label"
+    else
+        fail "$label (expected silent, got: $out)"
+    fi
+}
+
+TASK_OUT='/tmp/proj/tasks/testtask123.output'
 
 export TMPDIR="$TMP"
 
@@ -83,9 +114,61 @@ if [ -z "$out_p2" ]; then pass 'new path call 2 silent'; else fail "new path cal
 out_p3=$(run_hook 2 "/tmp/different.md" 0 "/proj2")
 if [ -z "$out_p3" ]; then pass 'switched path call 1 silent'; else fail "switched path call 1 should be silent, got: $out_p3"; fi
 
-echo "=== non-Read tool is ignored ==="
-out_bash=$(jq -cn '{tool_name:"Bash",tool_input:{command:"ls"},cwd:"/proj"}' | "$HOOK")
-if [ -z "$out_bash" ]; then pass 'Bash tool ignored'; else fail "Bash tool should be ignored, got: $out_bash"; fi
+echo "=== non-poll Bash is ignored ==="
+out_bash=$(run_bash_hook 0 "ls" "/proj-nonpoll")
+assert_silent "$out_bash" 'non-poll Bash (ls) silent'
+
+echo "=== Bash task-output poll fires (#3195) ==="
+out_bt1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-bash-poll")
+assert_silent "$out_bt1" 'Bash task-output call 1 silent'
+out_bt2=$(run_bash_hook 1 "cat $TASK_OUT" "/proj-bash-poll")
+assert_reminder "$out_bt2" 'Bash task-output call 2 fires reminder'
+
+echo "=== multiline Bash task-output poll fires ==="
+multiline_cmd=$'export FOO=bar\nVAR=1\ncat '"$TASK_OUT"
+out_bm1=$(run_bash_hook 0 "$multiline_cmd" "/proj-bash-multiline")
+assert_silent "$out_bm1" 'multiline Bash task-output call 1 silent'
+out_bm2=$(run_bash_hook 1 "$multiline_cmd" "/proj-bash-multiline")
+assert_reminder "$out_bm2" 'multiline Bash task-output call 2 fires reminder'
+
+echo "=== Bash task-output poll with transcript suffixes ==="
+suffix_cmd="cat $TASK_OUT 2>/dev/null | head -5"
+out_bs1=$(run_bash_hook 0 "$suffix_cmd" "/proj-bash-suffix")
+assert_silent "$out_bs1" 'suffix Bash task-output call 1 silent'
+out_bs2=$(run_bash_hook 1 "$suffix_cmd" "/proj-bash-suffix")
+assert_reminder "$out_bs2" 'suffix Bash task-output call 2 fires reminder'
+
+echo "=== wrapper-variant Bash polls share one counter ==="
+out_bw1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-bash-wrapper")
+assert_silent "$out_bw1" 'wrapper Bash call 1 silent'
+out_bw2=$(run_bash_hook 2 "sleep 1 && cat $TASK_OUT 2>/dev/null" "/proj-bash-wrapper")
+assert_reminder "$out_bw2" 'wrapper Bash call 2 (variant command) fires reminder'
+
+echo "=== slow Read task-output polling fires ==="
+out_sr1=$(run_hook 0 "$TASK_OUT" 0 "/proj-slow-read")
+assert_silent "$out_sr1" 'slow Read task-output call 1 silent'
+out_sr2=$(run_hook 40 "$TASK_OUT" 0 "/proj-slow-read")
+assert_reminder "$out_sr2" 'slow Read task-output call 2 (>30s) fires reminder'
+
+echo "=== offset-ignore for task-output Read ==="
+out_of1=$(run_hook 0 "$TASK_OUT" 0 "/proj-task-offset")
+assert_silent "$out_of1" 'task-output Read offset call 1 silent'
+out_of2=$(run_hook 1 "$TASK_OUT" 50 "/proj-task-offset")
+assert_reminder "$out_of2" 'task-output Read offset call 2 fires reminder'
+
+echo "=== false-positive guard: cat notes.txt ==="
+out_fp1=$(run_bash_hook 0 "cat notes.txt" "/proj-fp")
+assert_silent "$out_fp1" 'cat notes.txt call 1 silent'
+out_fp2=$(run_bash_hook 1 "cat notes.txt" "/proj-fp")
+assert_silent "$out_fp2" 'cat notes.txt call 2 silent'
+
+echo "=== generic Read regression (3 within 30s, 2 do not) ==="
+out_gr1=$(run_hook 0 "/tmp/generic-regression.md" 0 "/proj-generic-reg")
+assert_silent "$out_gr1" 'generic Read call 1 silent'
+out_gr2=$(run_hook 1 "/tmp/generic-regression.md" 0 "/proj-generic-reg")
+assert_silent "$out_gr2" 'generic Read call 2 silent'
+out_gr3=$(run_hook 2 "/tmp/generic-regression.md" 0 "/proj-generic-reg")
+assert_reminder "$out_gr3" 'generic Read call 3 fires reminder'
 
 echo "=== expired window resets before recounting ==="
 out_w1=$(run_hook 0 "/tmp/window.md" 0 "/proj-window")
