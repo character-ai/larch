@@ -319,7 +319,9 @@ elif [ "$OUTPUT_SIZE" -eq 0 ]; then
     echo "This typically means ${TOOL_NAME} exited without producing output." >&2
     # Write diagnostic file for callers
     echo "Process exited successfully (code 0) after ${SECONDS}s but produced no output. This typically means the tool started but did not generate a response." >> "${OUTPUT_FILE}.diag"
+    rm -f "${OUTPUT_FILE}.stderr-tail" 2>/dev/null || true
 else
     echo "✓ ${TOOL_NAME} agent: completed (exit code 0, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
+    rm -f "${OUTPUT_FILE}.stderr-tail" 2>/dev/null || true
 fi
 exit "$EXIT_CODE"
