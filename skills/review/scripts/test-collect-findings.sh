@@ -94,6 +94,7 @@ if ! grep -Fq 'LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results
     echo "FAIL: collect-findings.sh must run collector with LARCH_QUIET_DISABLE=1 for stderr-tail tee" >&2
     exit 1
 fi
+# shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$collector_log" in source
 if ! grep -Fq 'tee -a "$collector_log" >&2' "$SCRIPT"; then
     echo "FAIL: collect-findings.sh must tee collector stderr to FD 2 for §3.8 visibility" >&2
     exit 1
