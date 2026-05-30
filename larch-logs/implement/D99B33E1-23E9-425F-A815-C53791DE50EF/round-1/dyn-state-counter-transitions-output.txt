@@ -1,0 +1,23 @@
+Reviewing branch changes with focus on `handle_task_output_poll` state-machine correctness.
+Checking pre-change hook behavior and whether task-output path has a third-poll silent test gap.
+### In-Scope Findings
+
+- **correctness** `scripts/hook-anti-read-poll.sh:67-82,84-122` — `extract_task_output_token` prefers an absolute path when present (`/…/tasks/<id>.output`) but falls back to the relative tail (`tasks/<id>.output`). That string is stored verbatim in `state-taskout-*.tsv` and compared with `[ "$token" = "$last_token" ]`, so two polls of the same task that differ only in absolute vs relative spelling (e.g. first `cat /tmp/proj/tasks/foo.output`, later `cat tasks/foo.output`, or `Read` with a full path vs `Bash` with a relative fragment) land on **different state keys** and never reach `count -eq 2`. The sibling doc at `scripts/hook-anti-read-poll.md:14-15` says counting uses a normalized `tasks/<id>.output` token, which the implementation does not enforce. **Suggested fix:** Always normalize the state key to the captured `tasks/<id>.output` tail (regex capture group or strip through the last `/tasks/`), use that for read/write/compare in `handle_task_output_poll`, and add a harness case that alternates absolute and relative forms and expects the second poll to fire.
+
+### Out-of-Scope Observations
+
+**`handle_task_output_poll` age recalculation (`scripts/hook-anti-read-poll.sh:116-118`)** — Traced all three branches:
+
+| Branch | `count` after update | `age` before post-write block |
+|--------|----------------------|-------------------------------|
+| New token (`else` at 107–111) | 1 | 0 |
+| Same token, window expired (100–104) | 1 | 0 (forced) |
+| Same token, window valid (105–106) | `count + 1` (≥ 2 on 2nd poll) | `now - first_ts` (set at 99, not cleared) |
+
+The post-write block `if [ "$age" -eq 0 ] && [ "$count" -gt 1 ]` only runs in the window-valid increment path when `now == first_ts` (same-second polls). It then sets `age=$(( now - first_ts ))`, which is still 0. It does not change whether `count -eq 2 && age -le 600` holds. After window-expired or new-token paths, `count` is 1, so the guard is false. **Conclusion:** redundant, not a behavioral bug.
+
+**Exact-equal threshold / one-shot reminders** — Both handlers fire only when `count` equals the threshold exactly (`TASK_OUTPUT_THRESHOLD=2` at `scripts/hook-anti-read-poll.sh:119`, `POLL_THRESHOLD=3` at `scripts/hook-anti-read-poll.sh:156`). Polls 3, 4, … within the same window increment `count` but stay silent. That matches pre-change `main` behavior and is **explicitly tested** for generic reads (`scripts/test-hook-anti-read-poll.sh:93-104`, section “warning fires only on threshold crossing”). `scripts/hook-anti-read-poll.md:41` describes “on threshold crossing,” not repeat warnings. For task-output paths there is no parallel “3rd poll stays silent” test, but the semantics are the same as generic and align with the plan’s “threshold 2” warn-only design. Within a 600s window from `first_ts`, only the 2nd poll warns once; after `age > 600`, the counter resets and a later pair can warn again (`scripts/hook-anti-read-poll.sh:100-104`).
+
+**Branch vs `handle_generic_read_poll`** — Generic always recomputes `age=$(( now - first_ts ))` after the state write (`scripts/hook-anti-read-poll.sh:155`); task-output relies on the pre-write `age` from the same-token branch plus the redundant post-write fix. Asymmetric style, not a functional gap for the covered harness cases (including slow Read at `scripts/test-hook-anti-read-poll.sh:147-151` where `age=40` is carried through branch 3 correctly).
+
+**Commits on branch:** `2dccee2fa` (feature), plus larch-logs chores — core change is in `2dccee2fa`.
