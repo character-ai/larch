@@ -59,7 +59,7 @@ select_failed_agent_stderr_source() {
 
 render_failed_agent_stderr_tail() {
     local source_file="$1"
-    local lines cap redact rc spool
+    local lines cap redact spool
 
     lines=$(failed_agent_stderr_tail_lines)
     if [[ "$lines" == "0" ]]; then
@@ -73,8 +73,7 @@ render_failed_agent_stderr_tail() {
 
     spool=$(mktemp "${TMPDIR:-/tmp}/larch-stderr-tail-spool.XXXXXX") || return 1
     set +o pipefail 2>/dev/null || true
-    tail -n "$lines" "$source_file" | "$redact" >"$spool" 2>/dev/null
-    rc=$?
+    tail -n "$lines" "$source_file" | "$redact" >"$spool" 2>/dev/null || true
     set -o pipefail 2>/dev/null || true
     if [[ ! -s "$spool" ]]; then
         rm -f "$spool"

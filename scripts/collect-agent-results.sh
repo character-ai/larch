@@ -1484,7 +1484,7 @@ for _dedup_result in "${RESULTS[@]}"; do
     _dedup_tab=$'\t'
     if command grep -Fq "${_dedup_sig}${_dedup_tab}" "$_failed_stderr_sig_map" 2>/dev/null; then
         _dedup_first=$(command grep -F "${_dedup_sig}${_dedup_tab}" "$_failed_stderr_sig_map" | head -n 1)
-        _dedup_first_base="${_dedup_first#*${_dedup_tab}}"
+        _dedup_first_base="${_dedup_first#*"${_dedup_tab}"}"
         larch_err "↩ ${_dedup_tool:-unknown} ${_dedup_base}: identical failure to ${_dedup_first_base} (root-cause sig ${_dedup_sig}); stderr tail suppressed"
         [[ "$_dedup_tail_file" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_dedup_tail_file"
         continue
