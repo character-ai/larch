@@ -1,0 +1,12 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-requirements-output-phase3.txt|TOOL=cursor|STATUS=FAILED|EXIT_CODE=2|FAILURE_REASON=Process failed with exit code 2
+
+## Reviewer output (<TMPDIR>/cursor-plan-requirements-output-phase3.txt)
+
+(file missing: <TMPDIR>/cursor-plan-requirements-output-phase3.txt)
+
+## Reviewer stderr (<TMPDIR>/cursor-plan-requirements-output-phase3.txt.diag)
+
+(file missing: <TMPDIR>/cursor-plan-requirements-output-phase3.txt.diag)
+

@@ -1,0 +1,101 @@
+Incorporating the accepted findings requires checking how `test-cleanup` is wired in the Makefile and what `SECURITY.md` currently says about cleanup.
+## Plan
+
+# Implementation Plan — #3212 /cleanup top-level-mtime age-delete
+
+## Summary
+Replace the O(entries × descendants) depth-5 activity scan in `cleanup.sh` with three flat passes that delete larch session temp entries by their own (top-level) mtime via `find -mtime`. This removes the per-file `stat` fork storm and the 19 repeated `/tmp` glob expansions that made a trivial `/cleanup` run for ~23 minutes. Preserve the four-key stdout contract, retention parsing, the `LARCH_TEST_TMP_ROOT` hook, symlink-safety, and the age-independent dangling-symlink reap. Wire `make test-cleanup` into the Makefile and `test-harnesses-12` so acceptance gates and `make lint` actually run the harness. Update `SECURITY.md` trust-boundary prose for the new enumeration and retention semantics. Update the skill prose, sibling contracts, regression harness, and docs that carry depth-5 wording.
+
+This is a SIMPLE-tier change: surgical, no opportunistic refactors.
+
+## Files to modify/create
+
+### UPDATED: `skills/cleanup/scripts/cleanup.sh`
+Core rewrite — three flat passes.
+- DELETE `stat_mtime()`, `newest_activity_mtime()`, and `should_remove_by_age()`.
+- DELETE the `NOW=$(date +%s)` block, the epoch numeric check, and `CUTOFF=$((NOW - RETENTION_DAYS * 86400))` (replaced by `find -mtime`). The `larch_err "...refusing cleanup."` clock-fatal path goes with it.
+- KEEP `parse_retention_days()` and `RETENTION_DAYS=$(parse_retention_days)`.
+- KEEP the informational `SESSION_COUNT` via `pgrep -x claude | wc -l` plus its `emit_kv`.
+- Pass 1 (cache): replace the cache loop body with a `find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" -print0` feeding a `while IFS= read -r -d $'\0' entry` loop that runs `rm -rf "$entry"` then `(( CACHE_REMOVED++ )) || true`. Keep `2>/dev/null` on `find` and the trailing `|| true` on the loop.
+- Pass 2 (/tmp): KEEP the `TMP_PATTERNS` array verbatim. Build an OR clause array `_find_name_args=( -name "$p1" -o -name "$p2" ... )` from `TMP_PATTERNS`, then run one `find "$TMP_ROOT" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \) -print0` into the same delete-and-count loop (`TMP_REMOVED`). One `find` replaces the 19 per-pattern globs; `! -type l` covers both files and dirs and never deletes through a symlink.
+- Pass 3 (symlink reap): KEEP the existing dangling `current-design-env-*.sh` reap unchanged (age-independent; `-type l` + `! -e` guard).
+- KEEP the four `emit_kv` lines and the `larch_err` summary block unchanged.
+- KEEP `set -euo pipefail`, the `lib-quiet.sh` source + `larch_quiet_init`, `LARCH_TEST_TMP_ROOT`, and bash 3.2 idioms (`while read -r -d $'\0'`; `TMP_PATTERNS` stays non-empty so `"${_find_name_args[@]}"` never expands empty under `set -u`).
+- Update the header-comment block only if a line references the removed scan; otherwise leave it.
+
+### UPDATED: `skills/cleanup/scripts/cleanup.md`
+- Reword the age invariant: removed when the entry's own (top-level) mtime is older than the retention cutoff via `find -mtime`.
+- DELETE the "Clock failures are fatal" invariant (no `date +%s` call remains).
+- DELETE the "Activity scan: `newest_activity_mtime` ..." invariant and the "Activity-scan failures fail closed per entry" invariant.
+- Reword the existence-guard invariant to reflect `find -print0` enumeration; the symlink reap keeps its `-type l` + `! -e` guards.
+- Update Edit-in-sync wording from "depth-5 activity scanning" to "top-level mtime age checks"; add `SECURITY.md` (cleanup retention / enumeration trust boundary) to the sync list alongside `SKILL.md`, `docs/configuration-and-permissions.md`, and `test-cleanup.sh`.
+- KEEP the four-key Outputs block and the bash 3.2 invariant.
+
+### UPDATED: `skills/cleanup/SKILL.md`
+- In the intro paragraph, change "its newest activity (entry mtime or any descendant within depth 5) is older than the cutoff" to "its top-level mtime is older than the cutoff". Keep the thin-wrapper framing, symlink-skip note, reap note, and always-runnable note. Frontmatter unchanged.
+
+### UPDATED: `skills/cleanup/scripts/test-cleanup.sh`
+- DROP cases whose tested path is removed: `stale-with-fresh-depth1-child`, `stale-with-fresh-depth2-grandchild`, `stale-with-fresh-depth4-manifest`, `stale-with-fresh-depth5-round` (the keep-if-deep-fresh behavior is gone), `date-failure-errors` (no clock call), and `find-failure-skips-deletion` (no per-entry descendant scan / "failed to scan session activity" warning).
+- DROP the now-orphaned helpers `write_stub_date_failure` and `write_stub_find_failure` (only those two dropped cases used them).
+- KEEP: `write_stub_pgrep`, `multiple-claude-no-abort`, `stale-dir-removed`, `fresh-dir-kept`, `stale-dir-with-keepalive-removed`, `symlinked-session-dir-skipped`, `invalid-retention-fallback`, `custom-retention-one-day`, `dangling-symlink-reaped`, `live-symlink-kept`, `stale-tmp-dir-removed`, `stale-tmp-file-removed`.
+- ADD `stale-toplevel-with-fresh-deep-child-removed`: create `parent/child.txt` at `FRESH_TS`, then `touch -t STALE_TS parent` LAST so the dir's own mtime is stale despite a fresh child; assert the dir is removed and `CACHE_REMOVED=1` (locks in the deliberate top-level-mtime behavior — the inverse of the dropped depth cases).
+- ADD `nonlarch-tmp-untouched`: a stale non-larch entry in `tmp-root` (e.g. `unrelated-junk`) is NOT removed; assert `TMP_REMOVED=0` and the entry still exists (scoped-patterns-only).
+- ADD `large-tmp-scales`: create ~2000 non-matching `tmp-root` entries plus one stale `claude-implement-*` dir; `SECONDS=0`, run cleanup, assert exit 0, the matching dir removed (`TMP_REMOVED=1`), non-matching untouched, and `SECONDS -lt 60` as a coarse hang-regression guard (documented as a guard, not a benchmark).
+
+### UPDATED: `skills/cleanup/scripts/test-cleanup.md`
+- Sync the case list to `test-cleanup.sh`: drop the depth1/depth2/depth4/depth5 and date/find-failure descriptions; reword `stale-dir-removed` from "newest activity" to "top-level mtime"; add the three new case descriptions; update Edit-in-sync from "depth-5 activity scan boundary" to "top-level mtime age pruning".
+
+### UPDATED: `Makefile`
+- ADD `test-cleanup` recipe immediately after `test-cleanup-tmpdir` (peer pattern): `bash scripts/harness-timer.sh $@ bash skills/cleanup/scripts/test-cleanup.sh`.
+- APPEND `test-cleanup` to the `test-harnesses-12` prerequisite list (alphabetically between `test-check-clean-tree` and `test-cleanup-tmpdir`).
+- `.PHONY` already lists `test-cleanup`; no duplicate entry needed. `agent-lint.toml` already whitelists `skills/cleanup/scripts/test-cleanup.sh` and `test-cleanup.md` as Makefile-only harness paths — no change required there.
+
+### UPDATED: `SECURITY.md`
+- Reword the **`/cleanup` session-tmpdir retention** paragraph (~line 234): replace depth-5 "newest activity" and per-entry activity-scan fail-closed skip with top-level mtime via `find -mtime +N` on cache and `/tmp` passes; document that `/tmp` enumeration uses `! -type l` (never delete through a symlink) instead of the old `-L` glob guard wording; DROP the `date +%s` fatal-exit bullet; note cleanup exits 0 even when age-pass `find` enumeration errors are swallowed (`2>/dev/null` / loop `|| true`) — deletions may no-op with counts 0 rather than aborting; KEEP bullets on informational-only `SESSION_COUNT`, retention fallback, dangling `current-design-env-*.sh` reap, and permanent unredacted deletion of session-scoped private state.
+
+### UPDATED: `docs/skills.md`
+- Replace "Activity is measured through depth 5 under each entry." with "Age is measured by each entry's top-level mtime."
+
+### UPDATED: `docs/linting.md`
+- In the `make test-cleanup` row (~line 284), replace "depth-5 activity scans" with "top-level mtime age pruning"; keep the row's statement that the harness is a `make lint` prerequisite via `test-harnesses-12` (now accurate once the Makefile wires `test-cleanup` into that shard).
+
+### UPDATED: `docs/configuration-and-permissions.md`
+- In the `LARCH_CLEANUP_RETENTION_DAYS` entry, replace "newest activity (entry mtime or any descendant within depth 5)" with "the entry's top-level mtime".
+
+## Approach
+- `find -mtime +N` reads the entry's OWN mtime and `+N` means strictly older than N×24h — semantically equal to the old `newest < NOW - N*86400` test but without scanning descendants. Decision #2 accepts the one behavior change: a dir touched only deep-down keeps its old top-level mtime and is GC'd at the window — harmless because no larch run lives anywhere near 7 days.
+- One combined `/tmp` `find` with an `-name` OR clause replaces the 19 separate glob expansions, fixing the second aggravator on a 16k-entry `/tmp`.
+- Top-level entry counts are small, so the per-entry delete loop has no fork storm; the storm came only from the removed depth-5 `stat`-per-descendant scan.
+- Makefile wiring closes the gap between documented `make test-cleanup` acceptance and CI: `.PHONY` already named the target but no recipe existed and `test-harnesses-12` only ran `test-cleanup-tmpdir`.
+
+## Edge cases
+- `/tmp` symlinks matching a pattern: now skipped by `! -type l` (old code could `rm -f` a symlink-to-file). This strengthens "never delete through a symlink".
+- `/tmp` plain files (`larch4-review.diff`, `commit-msg-*-review.txt`, ...): still deleted by age — `! -type l` matches regular files and `rm -rf` removes them; `stale-tmp-file-removed` still passes.
+- Empty match set: the `while read` loop runs zero times; counts stay 0.
+- `TMP_PATTERNS` is always non-empty, so `\( "${_find_name_args[@]}" \)` never expands to nothing (bash 3.2 `set -u` array-expansion safety).
+- `(( CACHE_REMOVED++ )) || true` is retained: the first post-increment returns the pre-value 0 (exit status 1) and would trip `set -e` without the guard.
+- Missing `CACHE_DIR` / `TMP_ROOT`: guarded by `[[ -d ... ]]`; `find`'s `2>/dev/null` and the loop `|| true` swallow transient races.
+
+## Failure modes
+- `find` rejects the `-mtime` / `! -type l` / `\(...\)` `-name` grouping on this platform → all deletions silently no-op (counts 0). Earliest signal: `stale-dir-removed` / `stale-tmp-dir-removed` start asserting 0. Mitigation: the existing cache `find -mindepth 1 -maxdepth 1` already runs on macOS BSD find; probe the new predicate locally per the verify-external-tool-invocations rule; the harness removal/keep cases catch a broken predicate.
+- Over-deletion if `! -type l` is dropped or `-mtime` is AND-ed with only the first `-name` (mis-parented group) → unintended `/tmp` entries match. Earliest signal: `nonlarch-tmp-untouched` and `symlinked-session-dir-skipped` fail. Mitigation: keep the explicit `\( ... \)` group and `! -type l`.
+- A genuinely deep-active but top-level-stale session dir is deleted earlier than an operator expects mid-debug. Signal: operator surprise. Mitigation: accepted by decision #2 (7-day window); documented in `SKILL.md` / `cleanup.md` / `SECURITY.md`.
+- `make test-cleanup` invoked before Makefile wiring → "No rule to make target". Mitigation: this PR adds the recipe and `test-harnesses-12` prerequisite.
+
+## Testing strategy
+- `make test-cleanup` (new recipe + updated harness) is the gate; confirm `make test-harnesses-12` and `make lint` pull it in.
+- `bash scripts/relevant-checks.sh` (lint-bash32, shellcheck, script-md-siblings, markdownlint, drift-prone-prose) must pass.
+- Manual: run `/cleanup` once on the real machine; confirm sub-second completion and all four keys.
+
+## Acceptance criteria (from issue)
+- Sub-second completion even with a 16k-entry `/tmp`.
+- Deletes only larch entries with top-level mtime older than the window; never through a symlink; never non-larch `/tmp`.
+- Reaps dangling `current-design-env-*.sh` regardless of age; never a live one.
+- Emits all four keys; exit 0.
+- `SKILL.md` stays a thin wrapper.
+- `SECURITY.md` cleanup paragraph matches post-PR behavior (top-level mtime, no clock-fatal path, updated symlink/enumeration semantics).
+- `make test-cleanup` (updated) runs via Makefile + `test-harnesses-12`; `bash scripts/relevant-checks.sh` clean.
+
+diff_added: 148
+diff_deleted: 218
+diff_lines: 366

@@ -1,0 +1,13 @@
+Reviewing the plan and codebase for stdout-contract consistency.
+Checking whether the plan's proposed `cleanup.md` edits leave the Outputs block inconsistent with remaining invariants:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	important	security	SECURITY.md:234	Plan updates three consumer docs for depth-5/retention wording but not SECURITY.md	Post-PR SECURITY.md still documents depth-5 newest-activity eligibility, per-entry find fail-closed skips, and fatal date+0s refusal while cleanup.sh and cleanup.md use top-level find -mtime with no clock gate	Add a one-paragraph SECURITY.md edit: top-level mtime eligibility, drop clock-fatal and depth-5 scan bullets, keep SESSION_COUNT informational-only wording
+
+1. **[OUT_OF_SCOPE] `SECURITY.md` retention paragraph not in plan file list** (`SECURITY.md:234`) — **security / correctness.** The plan updates `docs/skills.md`, `docs/linting.md`, and `docs/configuration-and-permissions.md` for top-level-mtime retention but does not list `SECURITY.md`, which still documents depth-5 newest-activity, per-entry `find` fail-closed skips, and `date +%s` fatal refusal. After the rewrite, that paragraph will contradict `cleanup.md` and misstate deletion bounds for auditors. **Suggested revision:** add a minimal `SECURITY.md:234` edit (top-level mtime; no clock gate; `SESSION_COUNT` stays informational only).
+
+**Stdout contract review (no in-scope findings):**
+
+- **`skills/cleanup/SKILL.md:13-14,26-30`** — `SESSION_COUNT` is already informational-only in NEVER #1; Step 2 only requires exit 0 and presence of all four keys, not a count threshold. No conflict with keeping the four `emit_kv` lines unchanged.
+- **`skills/cleanup/scripts/cleanup.md:18-22`** — Plan keeps the four-key Outputs block; removing clock/activity invariants does not change key names or semantics (`SESSION_COUNT` informational; the three `*_REMOVED` counters).
+- **`skills/cleanup/scripts/test-cleanup.md:27`** — Four-key stdout contract text remains accurate after harness case churn.
+- **Callers** — Only `skills/cleanup/scripts/test-cleanup.sh` parses the stdout contract via `kv_get`; no other `.sh` references `SESSION_COUNT`/`CACHE_REMOVED`/etc. Orchestration is via `SKILL.md` relay prose, covered by the plan’s skill update.

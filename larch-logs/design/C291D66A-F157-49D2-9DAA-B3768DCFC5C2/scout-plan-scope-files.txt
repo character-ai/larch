@@ -1,0 +1,10 @@
+skills/cleanup/scripts/cleanup.sh
+skills/cleanup/scripts/cleanup.md
+skills/cleanup/SKILL.md
+skills/cleanup/scripts/test-cleanup.sh
+skills/cleanup/scripts/test-cleanup.md
+Makefile
+SECURITY.md
+docs/skills.md
+docs/linting.md
+docs/configuration-and-permissions.md
