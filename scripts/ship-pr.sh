@@ -2859,7 +2859,8 @@ run_rebase_rebump() {
         rc=$?
         if [ "$rc" -ne 0 ]; then
             record_failure rebase "git add -u (pre-rebase fixup)" "$rc" "$fail_file" Warnings
-        elif ! git diff --cached --quiet 2>/dev/null; then
+        fi
+        if ! git diff --cached --quiet 2>/dev/null; then
             fail_file=$(failure_capture_path rebase)
             "$SCRIPT_DIR/git-commit.sh" -m "chore: pre-rebase working-tree fixup (#3209)" > "$fail_file" 2>&1
             rc=$?

@@ -459,7 +459,7 @@ apply_findings_with_coder() {
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
         if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
-            if git add -A 2>>"$round_dir/coder-commit.log" && \
+            if git add -u 2>>"$round_dir/coder-commit.log" && \
                 "$PLUGIN_ROOT/scripts/git-commit.sh" \
                     -m "Address code review feedback (round $round_num) — follow-up" \
                     >>"$round_dir/coder-commit.log" 2>&1; then
@@ -469,6 +469,15 @@ apply_findings_with_coder() {
             fi
             if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
                 larch_err "⚠ review-and-fix: round $round_num left tracked changes uncommitted after follow-up"
+                {
+                    printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
+                    printf 'CODER_STATUS=failed\n'
+                    printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+                    printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
+                    printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
+                    printf 'SUBMODULE_REVERT_COUNT=0\n'
+                } > "$result_file"
+                return 2
             fi
         fi
     fi
