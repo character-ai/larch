@@ -3102,23 +3102,34 @@ run_rebase_rebump() {
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
-    # 0b. Commit tracked leftovers before drop-bump so Guard 1 cannot stall on
-    # a dirty tree (issue #3209). Best-effort: failure falls through to
-    # drop-bump-commit.sh, which still refuses when the tree stays dirty.
-    if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+    # 0b. Commit tracked larch-logs/ leftovers before drop-bump so Guard 1 cannot
+    # stall on a dirty tree (issue #3209). Scoped to larch-logs/ only; best-effort
+    # failure falls through to drop-bump-commit.sh, which still refuses when dirty.
+    ship_pr_pre_rebase_larch_logs_fixup() {
+        local msg="$1"
         fail_file=$(failure_capture_path rebase)
-        git add -u > "$fail_file" 2>&1
+        git add -u -- larch-logs/ > "$fail_file" 2>&1
         rc=$?
         if [ "$rc" -ne 0 ]; then
-            record_failure rebase "git add -u (pre-rebase fixup)" "$rc" "$fail_file" Warnings
+            record_failure rebase "git add -u -- larch-logs/ (pre-rebase fixup)" "$rc" "$fail_file" Warnings
+            return 1
         fi
-        if ! git diff --cached --quiet 2>/dev/null; then
-            fail_file=$(failure_capture_path rebase)
-            "$SCRIPT_DIR/git-commit.sh" -m "chore: pre-rebase working-tree fixup (#3209)" > "$fail_file" 2>&1
-            rc=$?
-            if [ "$rc" -ne 0 ]; then
-                record_failure rebase "git-commit.sh (pre-rebase fixup)" "$rc" "$fail_file" Warnings
-            fi
+        if git diff --cached --quiet -- larch-logs/ 2>/dev/null; then
+            return 0
+        fi
+        fail_file=$(failure_capture_path rebase)
+        "$SCRIPT_DIR/git-commit.sh" -m "$msg" > "$fail_file" 2>&1
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            record_failure rebase "git-commit.sh (pre-rebase fixup)" "$rc" "$fail_file" Warnings
+            return 1
+        fi
+        return 0
+    }
+    if [[ -n "$(git status --porcelain --untracked-files=no -- larch-logs/ 2>/dev/null)" ]]; then
+        ship_pr_pre_rebase_larch_logs_fixup "chore: pre-rebase working-tree fixup (#3209)" || true
+        if [[ -n "$(git status --porcelain --untracked-files=no -- larch-logs/ 2>/dev/null)" ]]; then
+            ship_pr_pre_rebase_larch_logs_fixup "chore: pre-rebase working-tree fixup (#3209) — follow-up" || true
         fi
     fi
 

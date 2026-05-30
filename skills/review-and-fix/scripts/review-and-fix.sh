@@ -325,6 +325,50 @@ post_dispatch_submodule_revert() {
     printf '%s\n' "$revert_count"
 }
 
+collect_round_stage_paths() {
+    local round_dir="$1" paths_file="$round_dir/coder-stage-paths.txt"
+    {
+        git diff --name-only 2>/dev/null || true
+        git diff --name-only --cached 2>/dev/null || true
+        git status --porcelain --untracked-files=no 2>/dev/null | awk '{print $2}'
+    } | awk 'NF && !seen[$0]++' > "$paths_file"
+}
+
+stage_round_dirty_paths() {
+    local round_dir="$1" log="$2" path
+    local paths_file="$round_dir/coder-stage-paths.txt"
+    collect_round_stage_paths "$round_dir"
+    if [[ ! -s "$paths_file" ]]; then
+        return 1
+    fi
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        git add -- "$path" 2>>"$log" || return 1
+    done < "$paths_file"
+}
+
+round_tracked_dirty_outside_manifest() {
+    local manifest="$1" path
+    while IFS= read -r path; do
+        [[ -n "$path" ]] || continue
+        grep -Fxq "$path" "$manifest" 2>/dev/null && continue
+        return 0
+    done < <(git status --porcelain --untracked-files=no 2>/dev/null | awk '{print $2}')
+    return 1
+}
+
+write_coder_failed_result() {
+    local result_file="$1" tool_file="$2" tool_log="$3" scrubbed_count="$4" scrub_count="$5"
+    {
+        printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
+        printf 'CODER_STATUS=failed\n'
+        printf 'CODER_LOG_FILE=%s\n' "$tool_log"
+        printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
+        printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
+        printf 'SUBMODULE_REVERT_COUNT=0\n'
+    } > "$result_file"
+}
+
 apply_findings_with_coder() {
     local input_file="$1" round_dir="$2" result_file="$3" round_num="${4:-}"
     local in_scope_count scrub_out scrub_rc scrub_ok scrub_count scrubbed_file scrubbed_count submodules_list prompt_file prompt_body tool_file tool_log revert_count commit_sha=""
@@ -435,48 +479,34 @@ apply_findings_with_coder() {
     # next review round can evaluate the fixes as committed code. When called
     # from findings mode (no round_num), the parent caller owns the commit.
     if [[ "$round_num" =~ ^[0-9]+$ ]] && (( round_num > 0 )); then
-        if ! git add -A 2>>"$round_dir/coder-commit.log"; then
-            {
-                printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
-                printf 'CODER_STATUS=failed\n'
-                printf 'CODER_LOG_FILE=%s\n' "$tool_log"
-                printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
-                printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
-                printf 'SUBMODULE_REVERT_COUNT=0\n'
-            } > "$result_file"
+        local stage_manifest="$round_dir/coder-stage-paths.txt"
+        if ! stage_round_dirty_paths "$round_dir" "$round_dir/coder-commit.log"; then
+            write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
+            return 2
+        fi
+        if round_tracked_dirty_outside_manifest "$stage_manifest"; then
+            larch_err "⚠ review-and-fix: round $round_num dirty paths outside coder delta; refusing to commit"
+            write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
             return 2
         fi
         if ! "$PLUGIN_ROOT/scripts/git-commit.sh" -m "Address code review feedback (round $round_num)" >>"$round_dir/coder-commit.log" 2>&1; then
-            {
-                printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
-                printf 'CODER_STATUS=failed\n'
-                printf 'CODER_LOG_FILE=%s\n' "$tool_log"
-                printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
-                printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
-                printf 'SUBMODULE_REVERT_COUNT=0\n'
-            } > "$result_file"
+            write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
             return 2
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
         if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
-            if git add -A 2>>"$round_dir/coder-commit.log" && \
+            if stage_round_dirty_paths "$round_dir" "$round_dir/coder-commit.log" && \
                 "$PLUGIN_ROOT/scripts/git-commit.sh" \
                     -m "Address code review feedback (round $round_num) — follow-up" \
                     >>"$round_dir/coder-commit.log" 2>&1; then
                 commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
             else
-                larch_err "⚠ review-and-fix: round $round_num follow-up commit failed; leaving residue for the ship-pr Option A backstop"
+                write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
+                return 2
             fi
             if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
                 larch_err "⚠ review-and-fix: round $round_num left tracked changes uncommitted after follow-up"
-                {
-                    printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
-                    printf 'CODER_STATUS=failed\n'
-                    printf 'CODER_LOG_FILE=%s\n' "$tool_log"
-                    printf 'CODER_INPUT_COUNT=%s\n' "$scrubbed_count"
-                    printf 'SUBMODULE_SCRUB_COUNT=%s\n' "$scrub_count"
-                    printf 'SUBMODULE_REVERT_COUNT=0\n'
-                } > "$result_file"
+                write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
                 return 2
             fi
         fi

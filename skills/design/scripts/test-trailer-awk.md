@@ -14,6 +14,8 @@ Invoked by `test-trailer-helpers.sh` before its final PASS line. No standalone M
 
 `has_key` exits **1** when a key is absent, octal-rejected, or above a block boundary. Under `set -euo pipefail`, never invoke those probes bare: wrap each in `set +e`, capture `$?`, assert the exit code, then `set -e` (same pattern as `test-trailer-helpers.sh` and `test-gate-b-dedup-plan.sh`).
 
+**Two-fixture split for block boundaries:** `block-boundary` asserts `has_key diff_added` **rc=0** (trailer in the final contiguous metadata block). `boundary-orphan-only` and `blank-before-diff-lines` assert **rc=1** (trailer separated from `diff_lines:` by a non-trailer line or blank line). Do not expect exit 1 from `block-boundary` alone.
+
 ## `parse` line 1 (`block_len`)
 
 Line 1 of `parse` output is the physical metadata-block line count from the upward scan (`metadata_trailer_lines = block_len` in `check-plan-size.sh`), **not** the count of distinct present keys. Duplicate strict-trailer lines (e.g. two `diff_added:` before `diff_lines:`) inflate `block_len` independently of last-match-wins on lines 2–4.

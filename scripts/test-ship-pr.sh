@@ -2527,7 +2527,11 @@ cat > "$root/.claude-plugin/plugin.json" <<'JSON'
 JSON
 git -C "$root" add .claude-plugin/plugin.json
 git -C "$root" commit -q -m "Bump version to 1.2.3"
-printf 'dirty tracked residue\n' >> "$root/sentinel-fix.txt"
+mkdir -p "$root/larch-logs/implement/rebump-dirty-run"
+printf 'dirty tracked residue\n' > "$root/larch-logs/implement/rebump-dirty-run/sentinel-fix.txt"
+git -C "$root" add larch-logs/
+git -C "$root" commit -q -m "Track larch-logs sentinel"
+printf 'dirty tracked residue\n' >> "$root/larch-logs/implement/rebump-dirty-run/sentinel-fix.txt"
 cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -2563,7 +2567,7 @@ set +e
     > "$tmp/stdout-rebump-dirty" 2>&1)
 printf '%s' "$?" > "$tmp/rc-rebump-dirty"
 set -e
-assert_rc "$tmp/rc-rebump-dirty" 0 "run_rebase_rebump commits dirty tracked tree before drop-bump (no stall)"
+assert_rc "$tmp/rc-rebump-dirty" 0 "run_rebase_rebump commits dirty larch-logs/ tree before drop-bump (no stall)"
 rebump_dirty_subjects=$(git -C "$root" log --format=%s)
 if [[ "$rebump_dirty_subjects"$'\n' == *$'chore: pre-rebase working-tree fixup (#3209)'$'\n'* ]] &&
    [[ "$rebump_dirty_subjects"$'\n' == *$'Bump version to 1.2.4'$'\n'* ]]; then
@@ -2590,10 +2594,11 @@ else
     ok "run_rebase_rebump dirty tree: stale 1.2.3 bump absent from recent log"
 fi
 fixup_sha=$(git -C "$root" log --format=%H --grep='chore: pre-rebase working-tree fixup (#3209)' -n 1)
-if [[ -n "$fixup_sha" ]] && git -C "$root" show "$fixup_sha":sentinel-fix.txt | grep -Fq 'dirty tracked residue'; then
-    ok "run_rebase_rebump dirty tree: fixup commit contains dirty tracked residue"
+if [[ -n "$fixup_sha" ]] && \
+   git -C "$root" show "$fixup_sha":larch-logs/implement/rebump-dirty-run/sentinel-fix.txt | grep -Fq 'dirty tracked residue'; then
+    ok "run_rebase_rebump dirty tree: fixup commit contains dirty larch-logs residue"
 else
-    fail "run_rebase_rebump dirty tree fixup should commit sentinel-fix.txt residue"
+    fail "run_rebase_rebump dirty tree fixup should commit larch-logs sentinel-fix.txt residue"
 fi
 rm -rf "$sentinel_dir"
 
@@ -2614,7 +2619,7 @@ stamp="${GIT_DIR:-.git}/hooks/.pre-commit-rebump-once"
 if [[ -f "$stamp" ]]; then
   exit 0
 fi
-printf 'hook rebump residue\n' >> sentinel-fix.txt
+printf 'hook rebump residue\n' >> larch-logs/implement/rebump-dirty-hook-run/sentinel-fix.txt
 : > "$stamp"
 exit 0
 HOOK
@@ -2639,7 +2644,11 @@ cat > "$root/.claude-plugin/plugin.json" <<'JSON'
 JSON
 git -C "$root" add .claude-plugin/plugin.json
 git -C "$root" commit -q -m "Bump version to 1.2.3"
-printf 'dirty tracked residue\n' >> "$root/sentinel-fix.txt"
+mkdir -p "$root/larch-logs/implement/rebump-dirty-hook-run"
+printf 'dirty tracked residue\n' > "$root/larch-logs/implement/rebump-dirty-hook-run/sentinel-fix.txt"
+git -C "$root" add larch-logs/
+git -C "$root" commit -q -m "Track larch-logs sentinel"
+printf 'dirty tracked residue\n' >> "$root/larch-logs/implement/rebump-dirty-hook-run/sentinel-fix.txt"
 cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -2684,11 +2693,11 @@ else
 fi
 fixup_hook_sha=$(git -C "$root" log --format=%H --grep='chore: pre-rebase working-tree fixup (#3209)' -n 1)
 if [[ -n "$fixup_hook_sha" ]] && \
-   git -C "$root" show "$fixup_hook_sha":sentinel-fix.txt | grep -Fq 'dirty tracked residue' && \
-   git -C "$root" show "$fixup_hook_sha":sentinel-fix.txt | grep -Fq 'hook rebump residue'; then
+   git -C "$root" show "$fixup_hook_sha":larch-logs/implement/rebump-dirty-hook-run/sentinel-fix.txt | grep -Fq 'dirty tracked residue' && \
+   git -C "$root" show "$fixup_hook_sha":larch-logs/implement/rebump-dirty-hook-run/sentinel-fix.txt | grep -Fq 'hook rebump residue'; then
     ok "run_rebase_rebump idempotent hook: fixup commit includes hook and dirty residue"
 else
-    fail "run_rebase_rebump idempotent hook fixup should commit hook-augmented sentinel-fix.txt"
+    fail "run_rebase_rebump idempotent hook fixup should commit hook-augmented larch-logs sentinel-fix.txt"
 fi
 rm -rf "$sentinel_dir"
 
@@ -2722,7 +2731,11 @@ cat > "$root/.claude-plugin/plugin.json" <<'JSON'
 JSON
 git -C "$root" add .claude-plugin/plugin.json
 git -C "$root" commit -q -m "Prepare version fixtures"
-printf 'dirty tracked residue\n' >> "$root/sentinel-fix.txt"
+mkdir -p "$root/larch-logs/implement/rebump-fixup-fail-run"
+printf 'dirty tracked residue\n' > "$root/larch-logs/implement/rebump-fixup-fail-run/sentinel-fix.txt"
+git -C "$root" add larch-logs/
+git -C "$root" commit -q -m "Track larch-logs sentinel"
+printf 'dirty tracked residue\n' >> "$root/larch-logs/implement/rebump-fixup-fail-run/sentinel-fix.txt"
 cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -2753,7 +2766,7 @@ set +e
     > "$tmp/stdout-rebump-fixup-fail" 2>&1)
 printf '%s' "$?" > "$tmp/rc-rebump-fixup-fail"
 set -e
-assert_rc "$tmp/rc-rebump-fixup-fail" 4 "run_rebase_rebump stalls when pre-rebase fixup commit fails with dirty tree"
+assert_rc "$tmp/rc-rebump-fixup-fail" 4 "run_rebase_rebump stalls when pre-rebase larch-logs fixup commit fails with dirty tree"
 rm -rf "$sentinel_dir"
 
 root=$(make_repo rebump_same_version_legacy_replaces)

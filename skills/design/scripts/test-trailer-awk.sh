@@ -110,6 +110,25 @@ EOF
 )
 assert_parse "$f" $'1\n5\n-\nfalse'
 
+# Blank line above diff_lines: terminates scan (orphan trailer above boundary).
+f=$(write_fixture blank-before-diff-lines <<'EOF'
+body
+diff_added: 99
+
+diff_lines: 10
+EOF
+)
+assert_parse "$f" $'0\n-\n-\nfalse'
+
+f=$(write_fixture octal-then-valid <<'EOF'
+body
+diff_added: 08
+diff_added: 5
+diff_lines: 10
+EOF
+)
+assert_parse "$f" $'1\n5\n-\nfalse'
+
 f=$(write_fixture mech-true <<'EOF'
 body
 diff_added: 1
@@ -149,11 +168,18 @@ assert_parse "$f" $'2\n2\n-\nfalse'
 # --- keys ---
 assert_keys "$TMPROOT/all-three-present" $'diff_added\ndiff_deleted\nmechanical_churn'
 assert_keys "$TMPROOT/none-present" ''
+assert_keys "$TMPROOT/octal-rejected" ''
+assert_keys "$TMPROOT/octal-then-valid" 'diff_added'
+assert_keys "$TMPROOT/blank-before-diff-lines" ''
 assert_keys "$TMPROOT/mech-true" $'diff_added\nmechanical_churn'
 assert_keys "$TMPROOT/mech-false" $'diff_added\nmechanical_churn'
 assert_keys "$TMPROOT/retain-010" $'diff_added\ndiff_deleted'
 
 # --- values ---
+assert_values "$TMPROOT/none-present" ''
+assert_values "$TMPROOT/octal-rejected" ''
+assert_values "$TMPROOT/octal-then-valid" 'diff_added=5'
+assert_values "$TMPROOT/blank-before-diff-lines" ''
 assert_values "$TMPROOT/all-three-present" $'diff_added=100\ndiff_deleted=50\nmechanical_churn=true'
 assert_values "$TMPROOT/duplicate-diff-added" $'diff_added=2'
 assert_values "$TMPROOT/mech-true" $'diff_added=1\nmechanical_churn=true'
@@ -173,7 +199,10 @@ assert_has_key "$TMPROOT/retain-010" diff_deleted 0
 assert_has_key "$TMPROOT/none-present" diff_added 1
 assert_has_key "$TMPROOT/octal-rejected" diff_added 1
 assert_has_key "$TMPROOT/octal-rejected" diff_deleted 1
+# block-boundary: in-block diff_added (rc=0). boundary-orphan-only / blank-before-diff-lines: rc=1.
 assert_has_key "$TMPROOT/block-boundary" diff_added 0
+assert_has_key "$TMPROOT/blank-before-diff-lines" diff_added 1
+assert_has_key "$TMPROOT/octal-then-valid" diff_added 0
 
 f=$(write_fixture boundary-orphan-only <<'EOF'
 body

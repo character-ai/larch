@@ -6,10 +6,10 @@
 
 **Invariants**:
 - Always runnable: `pgrep -x claude` count is emitted for operator visibility only; the script never aborts because multiple Claude processes are running.
-- Age-based retention: removes entries under `${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions/` and matching `/tmp` larch patterns when the entry's own (top-level) mtime is older than the retention cutoff via `find -mtime` (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Invalid env values warn on stderr and fall back to 7.
+- Age-based retention: removes entries under `${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions/` and matching `/tmp` larch patterns when the entry's own (top-level) mtime is older than the retention cutoff via `find -mtime` (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Invalid env values warn on stderr and fall back to 7. Cache session dirs with a descendant touched within the retention window are skipped even when the top-level mtime is stale.
 - Top-level enumeration: cache and `/tmp` passes use `find -mindepth 1 -maxdepth 1 ! -type l -mtime +N` (never delete through a symlink).
 - Reaps broken `current-design-env-*.sh` symlinks in the sessions parent (`-type l` and `! -e`).
-- Age-pass `find` enumeration errors are swallowed (`2>/dev/null` on `find`, `|| true` on the read loop); cleanup exits 0 and deletions may no-op with counts 0 rather than aborting.
+- Age-pass `find` failures emit an `larch_err` warning; cleanup still exits 0 and skips deletions for that pass rather than aborting mid-run.
 - Uses bash 3.2-compatible `while IFS= read -r -d $'\0'` — not `mapfile`.
 
 **Outputs** (stdout, KEY=value):
