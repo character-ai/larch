@@ -63,7 +63,7 @@ marketplace_sparse_cone_matches() {
 
 warn_marketplace_remove_failure() {
     larch_err "Warning: failed to remove larch-local marketplace before sparse add."
-    larch_err "If the add also fails, delete the clone manually: $MARKETPLACE_CLONE"
+    larch_err "Attempting automatic cleanup of the marketplace clone before sparse add."
 }
 
 remove_larch_marketplace() {
@@ -78,6 +78,14 @@ add_sparse_larch_marketplace() {
     claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS 2>&1
 }
 
+prepare_sparse_marketplace_add() {
+    remove_larch_marketplace || true
+    if [ -d "$MARKETPLACE_CLONE" ]; then
+        larch_err "Removing existing larch marketplace clone before sparse add: $MARKETPLACE_CLONE"
+        rm -rf -- "$MARKETPLACE_CLONE"
+    fi
+}
+
 refresh_larch_marketplace() {
     # A sparse clone is valid only when both the legacy-heavy larch-logs/ dir is
     # absent and git's sparse cone exactly matches LARCH_SPARSE_DIRS. The cone
@@ -86,12 +94,12 @@ refresh_larch_marketplace() {
         larch_err "Refreshing larch marketplace in place (sparse clone present)..."
         if ! claude plugin marketplace update larch-local 2>&1; then
             larch_err "marketplace update failed; falling back to sparse re-add..."
-            remove_larch_marketplace || true
+            prepare_sparse_marketplace_add
             add_sparse_larch_marketplace
         fi
     else
         larch_err "Adding larch marketplace (sparse checkout; excludes larch-logs)..."
-        remove_larch_marketplace || true
+        prepare_sparse_marketplace_add
         add_sparse_larch_marketplace
     fi
 }
@@ -308,10 +316,6 @@ if ! is_safe_version "${CURRENT_INSTALLED_VERSION:-}"; then
 fi
 if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
     ACTUAL_VERSION="${CURRENT_INSTALLED_VERSION:-$INSTALLED_VERSION}"
-    if ! marketplace_sparse_cone_matches; then
-        larch_err "Installed version is current; repairing larch marketplace sparse checkout..."
-        refresh_larch_marketplace
-    fi
     write_install_stamp "$ACTUAL_VERSION"
     prune_cached_versions "$ACTUAL_VERSION"
     larch_err ""

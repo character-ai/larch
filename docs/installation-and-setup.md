@@ -33,13 +33,13 @@ To upgrade larch to the latest stable version, run the `/upgrade-larch` skill in
 /upgrade-larch
 ```
 
-After `/upgrade-larch` finishes, restart Claude Code only if it actually installed a new version. If it reports that you are already on the latest stable release, no restart is needed; install-stamp refresh and cache prune may still have run. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
+After `/upgrade-larch` finishes, restart Claude Code only if it actually installed a new version. If it reports that you are already on the latest stable release, no restart is needed; install-stamp refresh and cache prune may still have run. A legacy full active install is slimmed on the next real upgrade path; reinstall once if you need that disk reduction immediately. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
 
 `/upgrade-larch` is idempotent only when `gh` is installed and can resolve the latest stable release: if the currently installed version already matches that stable release, it skips reinstall but still refreshes the install stamp and prunes old cache directories. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
 
 When `/upgrade-larch` verifies a stable install (or runs on the already-latest path), it writes `.larch-installed-at` on the stable version directory and keeps the eight most-recently-installed cached versions (install-stamp order; legacy unstamped directories fall back to directory mtime at ranking time only). The verified or already-latest stable target directory is always retained when present. There are no session pins or mtime-touch helpers. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted.
 
-`/upgrade-larch` installs via the same sparse checkout shown above. The sparse checkout excludes the committed `larch-logs/` run logs and the dev-only `mermaid-lint/` toolchain, so the install carries no run logs and triggers no `npm install`. A valid sparse checkout refreshes in place with `claude plugin marketplace update`; legacy full clones, missing clones, and stale sparse cones are repaired with a one-time `remove` + sparse re-add. The already-latest path also repairs a legacy or stale marketplace clone before exiting.
+`/upgrade-larch` installs via the same sparse checkout shown above. The sparse checkout excludes the committed `larch-logs/` run logs and the dev-only `mermaid-lint/` toolchain, so the install carries no run logs and triggers no `npm install`. A valid sparse checkout refreshes in place with `claude plugin marketplace update`; legacy full clones, missing clones, and stale sparse cones are repaired with a one-time `remove` + sparse re-add on the upgrade path. The already-latest path does not mutate the marketplace or reinstall the active plugin.
 
 ## Install ast-grep
 1. Install the CLI (shell)
