@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- grep without -- will abort on macOS/BSD; the contains() helper at line 25 already uses this exact fix pattern
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- parse-mode testing omits duplicate-key fixture that would pin block_len as physical-line-count rather than distinct-key-count

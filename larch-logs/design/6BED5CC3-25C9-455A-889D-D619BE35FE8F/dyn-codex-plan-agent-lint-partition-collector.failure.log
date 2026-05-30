@@ -1,0 +1,13 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-agent-lint-partition-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-agent-lint-partition-output.txt)
+
+{"no_issues_found": true}
+
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-agent-lint-partition-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-dyn-agent-lint-partition-output.txt.diag)
+

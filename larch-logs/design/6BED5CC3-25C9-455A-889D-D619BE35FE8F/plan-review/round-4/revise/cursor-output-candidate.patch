@@ -1,0 +1,50 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -32,6 +32,9 @@
+ ### NEW: `skills/design/scripts/test-trailer-validate.md`
+ Sibling stub: thin CLI adapter for `validate_optional_trailers_preserved`; driven by `test-trailer-helpers.sh`; points to `lib-plan-optional-trailers.md`.
+ 
++### UPDATED: `agent-lint.toml`
++Append `skills/design/scripts/test-trailer-dedup.md`, `skills/design/scripts/test-trailer-has-any.md`, and `skills/design/scripts/test-trailer-validate.md` to the harness-sibling exclusion list in the `skills/design/scripts/test-*.md` block (~1371+), with a brief comment that they are stub-only thin-adapter siblings driven only via `test-trailer-helpers.sh` and not cited from SKILL.md. Do **not** add exclusions for `skills/design/scripts/lib-plan-optional-trailers.md`, `skills/design/scripts/test-trailer-helpers.md`, or `skills/design/scripts/test-trailer-awk.md` once the Plan helper contracts bullet cites them (`Sibling:` / harness contract).
++
+ ### UPDATED: `skills/design/scripts/test-trailer-helpers.sh`
+ Add one block (before the final `echo "PASS"`) that invokes the new harness and fails closed: run `"$SCRIPT_DIR/test-trailer-awk.sh"`; on non-zero exit call `fail "test-trailer-awk.sh failed"`. This reuses the existing Makefile target `test-trailer-helpers` and shard `test-harnesses-12`, so no new Makefile target or shard entry is needed (mirrors how the existing thin adapters are invoked).
+ 
+@@ -39,7 +42,7 @@
+ Extend the existing (3175) grep block only — do not add a parallel Check N / `contains()` block or duplicate `$SKILL_MD` pins (397–402 already enforce Gate A/B `--snapshot-trailers` / `--dedup` hooks on `$SKILL_MD`). **Do not replace or relocate the preservation greps** at 404–405 (`diff_added` on `$APPROVAL_MD`), 409 (`mechanical_churn` on `$DISCUSSION_MD`), or 412–415 (`diff_deleted` on `$APPROVAL_MD` / `$DISCUSSION_MD` / `$FLAGS_MD`). Replace **only** the weak `grep -Fq 'snapshot'` lines at **403** and **407**; for `$APPROVAL_MD`, add separate `grep -Fq -- '--snapshot-trailers'` and `grep -Fq -- '--dedup'` lines (each with its own `(3175)` failure label naming the path and missing anchor) — the `--` pattern terminator is required because BSD/macOS `grep` treats a leading-`--` pattern as an option; for `$DISCUSSION_MD`, remove the line-407 `snapshot` grep and add the same two literal hook greps with the same `--` terminator — **keep** lines 409–410 and 414–415 unchanged. (`contains()` at lines 23–25 is an acceptable alternative to raw `grep` for these pins.) Reuse the existing `$DISCUSSION_MD` binding at line 12.
+ 
+ ### UPDATED: `skills/design/SKILL.md`
+-In the "Plan helper contracts" list, update the optional-trailer unit-harness line so the `test-trailer-helpers.sh` "wraps" enumeration also lists `test-trailer-awk.sh` (keeps docs from drifting per the drift-prone-prose rule). No behavioral or step-logic change.
++In the "Plan helper contracts" list, on the `check-plan-size.sh` bullet (~1413): add `Sibling: lib-plan-optional-trailers.md` on the shared optional-trailer helpers segment (pairs the `.sh`/`.awk` lib with its backfilled contract, same pattern as `check-plan-size.md`). On the optional-trailer unit-harness segment: add `Sibling: test-trailer-helpers.md`; extend the `test-trailer-helpers.sh` wraps enumeration to include `test-trailer-awk.sh`; add harness contract `test-trailer-awk.md` (mirror `test-gate-b-dedup-plan.sh` / `test-gate-b-dedup-plan.md` on ~1414). No behavioral or step-logic change.
+ 
+ ## Approach
+ 
+@@ -47,6 +50,7 @@
+ - Wire the new harness into the existing combined harness (`test-trailer-helpers.sh`) rather than adding a standalone Makefile target. This matches the established pattern (the thin adapters are invoked, not targeted) and keeps Makefile/shard wiring untouched.
+ - Keep the awk and `.sh` byte-stable. This change is tests + docs + tightened structural pins only.
+ - Backfill `.md` siblings for the whole trailer set so the `script-md-siblings` convention holds for this area. The awk is documented inside `lib-plan-optional-trailers.md` (parse-plan-commands precedent), so no separate `.awk.md` is created.
++- Wire `agent-lint` S030 alongside backfill: cite `lib-plan-optional-trailers.md`, `test-trailer-helpers.md`, and harness contract `test-trailer-awk.md` from SKILL.md Plan helper contracts; register stub-only adapter `.md` siblings (`test-trailer-dedup.md`, `test-trailer-has-any.md`, `test-trailer-validate.md`) in the `agent-lint.toml` harness-sibling exclusion block (~1371+).
+ - Use plain inline code (backticks) for command examples in any docs; avoid fenced executable blocks that the plan-command validator would parse.
+ 
+ ## Edge cases
+@@ -61,6 +65,7 @@
+ 
+ ## Failure modes
+ 
++- **agent-lint S030 / orphaned skill `.md` files**: six new `skills/design/scripts/*.md` files without SKILL.md citations or harness-sibling exclusions can fail `make lint` / `agent-lint --pedantic` while integration harnesses still pass. Earliest signal: S030 reports orphan skill files under `skills/design/scripts/`. Mitigation: add `Sibling: lib-plan-optional-trailers.md`, `Sibling: test-trailer-helpers.md`, and harness contract `test-trailer-awk.md` on the Plan helper contracts bullet; append stub-only `test-trailer-dedup.md`, `test-trailer-has-any.md`, and `test-trailer-validate.md` to the `agent-lint.toml` exclusion block (~1371+).
+ - **Shard-coverage drift**: if a repo structural test requires every `test-*.sh` to map to a Makefile target/shard, an invoke-only `test-trailer-awk.sh` could trip it. Earliest signal: `make test-harness-shards-coverage` (or the equivalent check) fails. Mitigation: the existing thin adapters are already invoke-only and pass, so follow that precedent; if the check is stricter than expected, register `test-trailer-awk` as its own target + shard entry instead.
+ - **Awk dialect / Bash 3.2 portability**: macOS `awk` (BWK) vs gawk differences, or a Bash 4-only construct, could make the harness pass locally but fail in CI (or vice versa). Earliest signal: harness output differs across `awk` implementations. Mitigation: use only POSIX awk features the unit-under-test already relies on, and run `make lint-bash32` plus the harness locally.
+ - **BSD grep option swallowing on (3175) pins**: `grep -Fq '--snapshot-trailers'` without a `--` pattern terminator fails on BSD/macOS with `unrecognized option` before the structural test runs. Earliest signal: `make test-design-structure` aborts locally on macOS while passing in Linux CI (or vice versa if pins differ). Mitigation: use `grep -Fq -- '--snapshot-trailers'` / `grep -Fq -- '--dedup'` or `contains()` for each new literal hook pin.
+@@ -76,9 +81,10 @@
+   - `has_key`: exit 0 when present (including `mechanical_churn` true/false and `010` keys); for exit-1 cases (absent key, `08`/`09` rejected, block-boundary), wrap each probe in `set +e` … capture `$?` … `set -e` and assert `rc` explicitly — never invoke expected-failure probes bare under `set -e`.
+ - **`make test-trailer-helpers`** runs the existing scenarios plus the new harness (via the added invocation) and must print PASS.
+ - **`make test-design-structure`** must pass with the tightened (3175) `grep -Fq -- '--snapshot-trailers'` / `grep -Fq -- '--dedup'` literals added for `$APPROVAL_MD` and `$DISCUSSION_MD` while preservation greps at 404–405, 409–410, and 412–415 remain.
++- **`make lint` / `agent-lint`** — no S030 orphans for the new trailer `.md` set (SKILL.md Sibling/harness-contract pins plus stub-only exclusions in `agent-lint.toml`).
+ - **`bash scripts/relevant-checks.sh`** (or `make lint`) clean, including `make lint-bash32`, markdownlint (sibling `.md` files), and shellcheck on the new/edited shell.
+ 
+-diff_added: 362
++diff_added: 367
+ diff_deleted: 12
+ mechanical_churn: false
+-diff_lines: 374
++diff_lines: 379

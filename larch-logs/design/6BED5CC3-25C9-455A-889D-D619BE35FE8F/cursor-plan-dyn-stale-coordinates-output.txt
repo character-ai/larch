@@ -1,0 +1,36 @@
+Reading the plan and verifying cited coordinates against the repository.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:397-402	Plan says lines 397-402 pin Gate A/B --snapshot-trailers/--dedup on $SKILL_MD; 397-398 grep $APPROVAL_MD for gate-b-dedup-plan.sh only (no literal hooks)	Implementer may skip needed $APPROVAL_MD literal pins or misread which lines are already frozen	Revise plan coordinates: 399-402 for $SKILL_MD hooks; 397-398 are separate $APPROVAL_MD mechanical-hook pins; Context line 8 should match
+2	in_scope	nit	correctness	scripts/test-design-structure.sh:412-417	Plan cites 412-415 as diff_deleted preservation on $APPROVAL_MD, $DISCUSSION_MD, and $FLAGS_MD; $FLAGS_MD diff_deleted grep is 416-417 ($FLAGS_MD= at 411)	Minor edit slip when locating preservation greps to leave untouched	Use 412-415 for approval/discussion diff_deleted; 416-417 (and 411 assignment) for $FLAGS_MD
+3	out_of_scope	latent	architecture	<TMPDIR>/plan.txt:14-17	Round 1 chose comprehensive awk harness plus six new .md siblings for a gap that is only missing direct awk invocation	Large test/doc surface for a SIMPLE minimum-change lane; harder review and ongoing sync cost	[OUT_OF_SCOPE] Consider a slimmer harness (core four modes + one fixture each) and defer stub .md backfill unless agent-lint fails
+
+1. **[correctness]** `scripts/test-design-structure.sh:397-402` — The plan (Context § and UPDATED `test-design-structure.sh`) states that **397–402** already enforce Gate A/B `--snapshot-trailers` / `--dedup` on **`$SKILL_MD`**. At HEAD, **397–398** are `$APPROVAL_MD` greps for `gate-b-dedup-plan.sh` only; literal `--snapshot-trailers` / `--dedup` on **`$SKILL_MD`** are **399–402** only:
+
+```397:402:scripts/test-design-structure.sh
+grep -Fq 'gate-b-dedup-plan.sh' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing mechanical gate-b-dedup-plan.sh post-apply hook"
+grep -Fq "gate-b-dedup-plan.sh\" --design-tmpdir \"\$DESIGN_TMPDIR\" --snapshot-trailers" "$SKILL_MD" \
+  || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --snapshot-trailers hook"
+grep -Fq 'gate-b-dedup-plan.sh --dedup' "$SKILL_MD" \
+  || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --dedup hook"
+```
+
+**Suggested revision:** Reword plan coordinates so implementers tighten **403/407** `snapshot` greps on `$APPROVAL_MD` / `$DISCUSSION_MD` without conflating them with **399–402** `$SKILL_MD` pins or **397–398** `$APPROVAL_MD` presence checks.
+
+2. **[correctness]** `scripts/test-design-structure.sh:412-417` — The plan repeatedly lists **412–415** as the preservation block for `diff_deleted` on **`$APPROVAL_MD` / `$DISCUSSION_MD` / `$FLAGS_MD`**. **`$FLAGS_MD`** is assigned at **411**; its `diff_deleted` grep is **416–417**:
+
+```411:417:scripts/test-design-structure.sh
+FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
+grep -Fq 'diff_deleted' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing diff_deleted preservation language"
+grep -Fq 'diff_deleted' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing diff_deleted preservation language"
+grep -Fq 'diff_deleted' "$FLAGS_MD" \
+  || fail "(3175) flags.md missing diff_deleted preservation language"
+```
+
+**Suggested revision:** Cite **412–415** for approval/discussion only and **416–417** for `$FLAGS_MD` (leave **411** assignment untouched).
+
+3. **[OUT_OF_SCOPE] [architecture]** Plan file — Comprehensive awk harness + six new `.md` files exceeds the minimum fix for “no test invokes awk directly.” **Suggested revision (tracking only):** Narrow harness/fixture set unless pedantic lint forces full sibling backfill.
+
+**Verified coordinates (no issue):** Weak `snapshot` greps at **403** and **407**; preservation greps at **404–405** (`diff_added` on `$APPROVAL_MD`), **409** (`mechanical_churn` on `$DISCUSSION_MD`); `$DISCUSSION_MD` at **line 12**; `contains()` at **23–25**; Plan helper contracts bullet at **~1413** (`check-plan-size.sh`); gate-b harness mirror anchor **~1414**; `agent-lint.toml` harness-sibling block **~1371+** (comment + `skills/design/scripts/test-*.md` entries **1371–1393**, append target before **1394**). Post-change hook literals exist in `approval-gates.md` and `discussion-rounds.md`. Invoke-only thin adapters match `test-trailer-helpers` Makefile wiring (no standalone `test-trailer-*` targets).
