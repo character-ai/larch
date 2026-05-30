@@ -1,0 +1,37 @@
+Verifying target files for proposed grep pins and checking related plan references.
+Rechecking the exact line mapping around 403–410:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:403-406	Plan labels 404-405 as diff_added preservation greps	Line 404 is the snapshot fail line paired with 403; diff_added is 405-406. An implementer may skip or mis-edit 405-406 while “preserving” the wrong lines.	Rewrite anchors to: replace 403-404 (snapshot grep+fail); leave 405-406 (diff_added grep+fail) untouched.
+2	in_scope	important	correctness	scripts/test-design-structure.sh:407-408	Plan cites only line 407 for DISCUSSION_MD snapshot removal	Line 408 is the paired fail line. Removing only 407 leaves a dangling fail or breaks the check pair.	Say remove/replace 407-408 (snapshot grep+fail), then insert new --snapshot-trailers/--dedup pairs.
+3	in_scope	important	correctness	scripts/test-design-structure.sh:412-417	Plan puts FLAGS_MD diff_deleted inside 412-415	412-413 are APPROVAL_MD diff_deleted; 414-415 DISCUSSION_MD; FLAGS_MD diff_deleted is 416-417. “Leave 412-415” omits FLAGS preservation.	Rewrite to leave 412-413, 414-415, and 416-417 unchanged; do not fold FLAGS into 412-415.
+4	in_scope	important	correctness	plan.txt:38-39	Internal keep-list mismatch: line 38 vs line 39	Line 39 says keep 409-410 and 414-415 only; line 38 also requires 405-406 and 412-413. Following line 39 alone risks editing preservation greps.	Unify to one list: preserve 405-406, 409-410, 412-413, 414-415, 416-417; replace only 403-404 and 407-408.
+5	in_scope	nit	correctness	plan.txt:7,38	397-402 described as $SKILL_MD Gate A/B pins	397-398 grep gate-b-dedup-plan.sh on $APPROVAL_MD; only 399-402 are $SKILL_MD --snapshot-trailers/--dedup. Mislabeling the range invites duplicate or misplaced SKILL_MD pins.	Say 399-402 for SKILL_MD trailer hooks; 397-398 are separate APPROVAL_MD gate-b-dedup pins (do not duplicate).
+
+**1. [correctness]** `scripts/test-design-structure.sh:403-406` — The plan calls 404–405 the `diff_added` preservation greps to leave untouched. In the file, **404** is `|| fail` for the line-403 `snapshot` grep; **`diff_added` is at 405–406**. Stale anchors could cause the implementer to treat 404 as preservation prose or to edit the wrong lines.
+
+**Suggested revision:** Replace **403–404** (weak `snapshot` grep + fail); leave **405–406** (`diff_added` grep + fail) unchanged.
+
+**2. [correctness]** `scripts/test-design-structure.sh:407-408` — The plan says remove only the line-407 `snapshot` grep on `$DISCUSSION_MD`. **408** is the paired fail line. Removing 407 alone leaves a dangling `|| fail` or an incomplete check.
+
+**Suggested revision:** Remove/replace **407–408** as a pair, then add the two literal `--snapshot-trailers` / `--dedup` greps (with `--` terminator or `contains()`).
+
+**3. [correctness]** `scripts/test-design-structure.sh:412-417` — The plan groups `diff_deleted` on `$APPROVAL_MD` / `$DISCUSSION_MD` / `$FLAGS_MD` under **412–415**. Actual mapping: **412–413** APPROVAL_MD, **414–415** DISCUSSION_MD, **416–417** FLAGS_MD. “Leave 412–415 unchanged” does not cover FLAGS.
+
+**Suggested revision:** Explicitly preserve **412–413**, **414–415**, and **416–417**.
+
+**4. [correctness]** `plan.txt:38-39` — Line 38 says do not touch preservation at 404–405, 409, and 412–415; line 39 says keep only **409–410** and **414–415**. That omits **405–406** (`diff_added`) and **412–413** (APPROVAL `diff_deleted`).
+
+**Suggested revision:** One canonical preserve list aligned with the file (see findings 1–3).
+
+**5. [nit/correctness]** `plan.txt:7,38` — Context and the UPDATED section describe **397–402** as enforcing Gate A/B `--snapshot-trailers` / `--dedup` on `$SKILL_MD`. **397–398** are `gate-b-dedup-plan.sh` on `$APPROVAL_MD`; only **399–402** are SKILL_MD trailer hooks.
+
+**Suggested revision:** Cite **399–402** for SKILL_MD; note **397–398** as separate APPROVAL_MD pins not to duplicate.
+
+---
+
+**Verified OK (no finding):**
+- **403** / **407** correctly identify the weak `grep -Fq 'snapshot'` lines to replace/remove.
+- **409–410** correctly target `mechanical_churn` on `$DISCUSSION_MD` (grep + fail).
+- **`contains()` at 23–25** exists with signature `contains file needle label` using `grep -Fq --` (lines 23–26 in file; plan’s 23–25 reference is acceptable).
+- **`$DISCUSSION_MD` at line 12** exists as stated.
+- Target docs already contain literal `--snapshot-trailers` and `--dedup` strings for the proposed pins to pass after edit.

@@ -1,0 +1,18 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-innovation-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-innovation-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	integration	skills/design/scripts/check-plan-size.md:18-36	Planned lib-plan-optional-trailers.md primary doc duplicates optional-trailer grammar already owned in check-plan-size.md without an edit-in-sync rule between them	Two primaries drift (octal guard, block scan stop, last-match-wins) while awk stays byte-stable; harness passes but contributors get conflicting contracts	Keep lib-plan-optional-trailers.md focused on .sh/.awk modes, trailer_nr, block_len, and callers; link check-plan-size.md for gating/threshold prose; add lib-plan-optional-trailers.md to the check-plan-size.md:73 edit-in-sync list
+2	out_of_scope	nit	architecture	plan.txt:12-50	Six new .md files plus (3175) grep tightening dominate diff_added:362 relative to the stated material gap (direct awk harness)	Tests/docs PR carries large convention backfill and pin churn unrelated to awk regressions the harness targets	Minimum-change path: ship test-trailer-awk.sh + test-trailer-awk.md, helpers wiring, and SKILL.md wrap line; defer thin-adapter .md stubs and drop test-design-structure.sh pin edits unless filing a separate docs/convention issue
+
+1. **[integration/latent]** `skills/design/scripts/check-plan-size.md:18-36` — The plan’s full primary `lib-plan-optional-trailers.md` will re-document optional-trailer grammar that `check-plan-size.md` already owns, with no cross-doc edit-in-sync rule. That invites drift while the awk unit stays frozen. Prefer a narrow lib doc (modes, `trailer_nr`, `block_len`, callers) and point threshold semantics at `check-plan-size.md`; add the new `.md` to the roster at `check-plan-size.md:73`.
+
+2. **[OUT_OF_SCOPE/nit]** `plan.txt:12-50` — Six new markdown siblings and `(3175)` grep edits account for most of the planned ~374-line diff though the material gap is direct awk coverage. A smaller PR could ship only `test-trailer-awk.sh`, its sibling, `test-trailer-helpers.sh` wiring, and the SKILL.md wrap line; defer adapter stubs and structural pin churn to a follow-up if you want to honor SIMPLE minimum-change strictly.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+

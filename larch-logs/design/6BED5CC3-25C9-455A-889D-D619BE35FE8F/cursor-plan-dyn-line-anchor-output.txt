@@ -1,0 +1,15 @@
+Reading the plan and cross-checking cited line numbers in the test script.
+
+
+Verifying target files for hook literals and checking related harness patterns cited in the plan.
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:403-406	Plan labels 404-405 as diff_added preservation greps to leave untouched; line 404 is the || fail continuation for the weak snapshot grep at 403-404, and diff_added preservation is at 405-406	Implementer following "leave 404-405 unchanged" may remove only line 403 and leave an orphaned || fail on 404, or skip removing the snapshot fail while adding new hook greps — breaking the (3175) block syntax or leaving stale snapshot substring guard	Revise plan anchors: replace the full snapshot pair at 403-404 (not line 403 alone); preserve diff_added at 405-406 only
+2	in_scope	important	correctness	scripts/test-design-structure.sh:407-410	Plan cites only line 407 for the DISCUSSION_MD weak snapshot grep to remove; line 408 is the paired || fail continuation; plan also says keep 409-410 unchanged while 408 is part of the snapshot check	Implementer may delete only line 407 and leave orphaned fail on 408, or mis-order new greps relative to mechanical_churn at 409-410	Revise plan: remove/replace the full snapshot pair at 407-408; then insert --snapshot-trailers and --dedup greps before mechanical_churn at 409-410
+3	in_scope	nit	correctness	scripts/test-design-structure.sh:412-417	Plan groups FLAGS.md diff_deleted pin inside 412-415, but FLAGS_MD grep is at 416-417	Implementer restricting edits to 412-415 might omit explicit leave-untouched guidance for 416-417 and accidentally edit the FLAGS pin during block surgery	Revise plan: cite diff_deleted preservation as 412-415 (APPROVAL_MD/DISCUSSION_MD) and 416-417 (FLAGS_MD) separately
+4	in_scope	latent	correctness	scripts/test-design-structure.sh:397-402	Plan describes 397-402 as enforcing SKILL_MD --snapshot-trailers/--dedup pins; lines 397-398 are APPROVAL_MD gate-b-dedup-plan.sh hook pins (SKILL_MD pins are 399-402)	Implementer told not to duplicate 397-402 may misread 397-398 as SKILL_MD duplicates or edit the wrong file when extending the block	Revise plan: split anchor text — 397-398 APPROVAL_MD gate-b-dedup-plan.sh; 399-402 SKILL_MD --snapshot-trailers/--dedup
+
+**Verified (no mismatch):** `contains()` exists at `scripts/test-design-structure.sh:23-25` with signature `local file="$1" needle="$2" label="$3"` and uses `grep -Fq -- "$needle" "$file" || fail "$label"` — valid BSD-safe alternative for the new hook pins.
+
+**Verified (anchors match intent):** Lines 399-402 are `$SKILL_MD` `--snapshot-trailers` / `--dedup` greps; 405-406 are `$APPROVAL_MD` `diff_added` preservation; 409-410 are `$DISCUSSION_MD` `mechanical_churn` preservation; 412-415 are `$APPROVAL_MD` / `$DISCUSSION_MD` `diff_deleted` preservation. Target docs already contain literal `--snapshot-trailers` and `--dedup` strings the proposed greps would pin.
