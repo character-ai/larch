@@ -1,0 +1,10 @@
+AGENTS.md
+skills/shared/orchestrator-never.md
+scripts/test-design-structure.sh
+scripts/test-design-structure.md
+scripts/test-implement-anti-polling-rule.sh
+scripts/test-implement-anti-polling-rule.md
+hooks/hooks.json
+scripts/hook-anti-read-poll.sh
+scripts/test-hook-anti-read-poll.sh
+scripts/hook-anti-read-poll.md

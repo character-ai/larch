@@ -1,0 +1,29 @@
+Reviewing the plan against the #3119/#3120 deletion surface and the cited repository files.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	hooks/hooks.json:36-44	Plan adds Bash poll-read handling in hook-anti-read-poll.sh but does not register a Bash PostToolUse matcher	The #3175 incident shape was Bash cat of tasks/*.output; hooks.json invokes the hook only on Read (matcher Read at hooks/hooks.json:37), so the new Bash branch never runs in production while test-hook-anti-read-poll.sh pipes Bash payloads directly and stays green	Add an UPDATED hooks/hooks.json step: duplicate the PostToolUse entry with matcher Bash pointing at the same hook script, and note the sibling-doc matcher line in hook-anti-read-poll.md
+
+**1. [correctness]** `hooks/hooks.json:36-44`: The plan’s primary #3175 fix is a new `Bash` branch in `scripts/hook-anti-read-poll.sh` (plan lines 80–81), but the shipped registration still wires the hook only to `Read`:
+
+```36:44:hooks/hooks.json
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-anti-read-poll.sh",
+            "timeout": 5
+          }
+        ]
+      }
+```
+
+Offline harnesses invoke the script directly, so new Bash cases can pass while production never sees `tool_name == "Bash"`. **Suggested revision:** add a `### UPDATED: hooks/hooks.json` step with a parallel `PostToolUse` block (`matcher: "Bash"`, same command/timeout) and update the matcher note in `hook-anti-read-poll.md`.
+
+**Migration-compat verification (no additional in-scope findings):**
+
+- **Prose token scan:** Verbatim additions in `AGENTS.md`, `skills/shared/orchestrator-never.md`, and both harness grep literals contain none of `breadcrumb-monitor.sh`, `LARCH_*`, `BASH_AUTHORING.md` §4, `Family B`, or `lint-foreground-markers`. A #3119 breadcrumb-token sweep cannot match them.
+- **`hook-anti-read-poll.sh` outside #3119/#3120 edit set:** Confirmed — neither issue’s file list includes this hook or its harness; proposed hook changes use `<task-notification>` / task-output path matching only, no breadcrumb machinery.
+- **`AGENTS.md` placement:** Proposed insert sits between the ScheduleWakeup bullet (`AGENTS.md:61`) and the session-env bullet (`AGENTS.md:62`), outside the #3119 deletion targets (`AGENTS.md:57-58`). Anchor-based placement survives #3119’s L57–58 trim.
+- **`orchestrator-never.md` placement:** Append-after-rule-#2 (`:7-8`) is correct; file has no Family-B content today and #3119 explicitly audits this file as no-op.
+- **Apostrophe / quoting:** Plan already uses apostrophe-free pin text (`do not poll the task output file once per turn`) matching the AGENTS bullet — prior single-quote breakage is addressed. EXONERATE.
+- **Same-file overlap with #3119** on `AGENTS.md` and `scripts/test-design-structure.sh` is adjacent-region, additive, and machinery-independent — ordinary merge, not structurally conflict-prone. EXONERATE.

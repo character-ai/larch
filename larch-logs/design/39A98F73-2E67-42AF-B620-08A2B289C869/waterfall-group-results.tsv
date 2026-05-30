@@ -1,0 +1,7 @@
+plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
+plan-edge	cursor-plan-edge	cursor	<TMPDIR>/cursor-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-arch	codex-plan-arch	cursor	<TMPDIR>/codex-primary-plan-arch-output.txt	reused	cursor-plan-arch
+plan-edge	codex-plan-edge	cursor	<TMPDIR>/codex-primary-plan-edge-output.txt	reused	cursor-plan-edge
+plan-innovation	codex-plan-innovation	cursor	<TMPDIR>/codex-primary-plan-innovation-output.txt	reused	cursor-plan-innovation
+plan-dyn-hook-gate-composition	dyn-codex-plan-hook-gate-composition	cursor	<TMPDIR>/codex-primary-plan-dyn-hook-gate-composition-output-phase2.txt	ok

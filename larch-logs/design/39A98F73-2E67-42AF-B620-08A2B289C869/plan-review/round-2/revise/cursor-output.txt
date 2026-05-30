@@ -1,0 +1,81 @@
+Reviewing the hook script and plan sections to integrate the accepted findings into a precise unified diff.
+--- a/plan.txt
++++ b/plan.txt
+@@ -58,7 +58,7 @@
+ 
+ ### UPDATED: `scripts/hook-anti-read-poll.sh`
+ 
+-Harden the existing PostToolUse warn-only hook to fire on the #3175 shape, which it misses today (the incident polled via a **Bash** `cat` of the task `.output` file, but the hook only inspects `Read`, and its 30s same-path+offset window resets between slow LLM turns). Keep the fail-open invariant: never block, `exit 0` on any parse failure, and the "`set -e` intentionally omitted" comment stays.
++Harden the existing PostToolUse warn-only hook to fire on the #3175 shape, which it misses today (the incident polled via a **Bash** `cat` of the task `.output` file, but the hook only inspects `Read` via a Read-only `tool_name` gate at line 14, and its 30s same-path+offset window resets between slow LLM turns). Keep the fail-open invariant: never block, `exit 0` on any parse failure, and the "`set -e` intentionally omitted" comment stays.
+ 
+ Changes:
+ 
+-1. **Task-output path classifier.** Add a shell function returning success when a path matches the harness task-output convention: regex `(^|/)tasks/[A-Za-z0-9._-]+\.output$`.
+-2. **`Bash` branch (primary #3175 fix).** When `tool_name == "Bash"`, read `.tool_input.command` as a single string — do not treat argv[0] as the only read signal. Treat the invocation as one poll-read of a task-output path when **both** hold anywhere in the command body (newlines, pipelines, `&&`/`;` chains included): (a) a read-verb token (word-boundary match for `cat`, `tail`, `head`, `less`, `more`, or `sed` with `-n`); (b) a substring matching the task-output classifier `(^|/)tasks/[A-Za-z0-9._-]+\.output`. Incident #3175 often used multiline Bash with leading assignments and an embedded `cat …/tasks/<id>.output`, not `cat` as the first token; full-string matching closes that gap. Ordinary `cat notes.txt` still must not count (no `tasks/…\.output` match).
+-3. **Task-output counting mode (defeats slow per-turn polling).** For a poll-read of a task-output path (from the `Read` branch or the new `Bash` branch): key state by path only (ignore `offset`); use a longer window `TASK_OUTPUT_WINDOW_SECS=600`; fire at a threshold of 2 repeats. Track in a separate state file (e.g. `state-taskout-<cwd_hash>.tsv`) so the generic counter is undisturbed.
+-4. **Preserve generic `Read` behavior** for non-task-output paths (same path+offset, 30s window, threshold 3) so existing `test-hook-anti-read-poll.sh` cases keep passing.
+-5. **Reminder message** keeps pointing at the Bash `<task-notification>`.
++0. **Replace Read-only `tool_name` gate (required for Bash PostToolUse).** Remove today's `[ "$tool_name" = "Read" ] || exit 0` (line 14) — with `hooks.json` widened to `Read|Bash`, leaving this gate in place discards every Bash event before the new branch runs, so the #3175 fix is dead in production. Immediately after parsing `tool_name`, exit 0 unless it is `Read` or `Bash`. Branch with `case "$tool_name" in Read) … ;; Bash) … ;; *) exit 0 ;; esac` (or equivalent) before classifier logic. Do not read `file_path` until the `Read` branch; do not read `.tool_input.command` until the `Bash` branch.
++1. **Task-output path classifiers (split Read vs Bash).** Add shell helpers with distinct anchoring:
++   - **Read `file_path`:** end-anchored `(^|/)tasks/[A-Za-z0-9._-]+\.output$` on the path alone.
++   - **Bash `command`:** suffix-tolerant match for `tasks/[A-Za-z0-9._-]+\.output` in the command body — **not** end-anchored on the entire command string. After `.output`, allow optional trailing whitespace and incident-shaped suffixes (`2>`, `2>/dev/null`, `|`, `;`, `&&`, `||`, etc.) before end-of-match or the next shell token. Real #3175 transcripts appended `2>/dev/null`, `| head -5`, and `|| echo` after the path; applying `$` to the full `tool_input.command` would miss them while bare-path harness cases still pass.
++2. **`Bash` branch (primary #3175 fix).** When `tool_name == "Bash"`, read `.tool_input.command` as a single string — do not treat argv[0] as the only read signal. Treat the invocation as one poll-read of a task-output path when **both** hold anywhere in the command body (newlines, pipelines, `&&`/`;` chains included): (a) a read-verb token (word-boundary match for `cat`, `tail`, `head`, `less`, `more`, or `sed` with `-n`); (b) a substring matching the **Bash** suffix-tolerant task-output pattern from item 1. Incident #3175 often used multiline Bash with leading assignments and an embedded `cat …/tasks/<id>.output`, not `cat` as the first token; full-string matching closes that gap. Ordinary `cat notes.txt` still must not count (no `tasks/…\.output` match).
++3. **Task-output counting mode (defeats slow per-turn polling).** For a poll-read of a task-output path (from the `Read` branch or the new `Bash` branch): key state by path only (ignore `offset`); use a longer window `TASK_OUTPUT_WINDOW_SECS=600`; fire at a threshold of 2 repeats. Track in a separate state file (e.g. `state-taskout-<cwd_hash>.tsv`) so the generic counter is undisturbed.
++4. **Preserve generic `Read` behavior** for non-task-output paths (same path+offset, 30s window, threshold 3) so existing `test-hook-anti-read-poll.sh` cases keep passing.
++5. **Reminder message** keeps pointing at the Bash `<task-notification>`.
+ 
+ Keep Bash 3.2-safe (no associative arrays, no `mapfile`, no `${var^^}`).
+ 
+@@ -70,6 +70,7 @@
+ - **Bash task-output poll fires**: 2 `Bash` `cat …/tasks/<id>.output` calls → reminder emitted (primary #3175 fix).
+ - **Multiline Bash task-output poll fires**: 2 `Bash` invocations whose `command` is a multiline body with leading `export`/`VAR=…` lines and an embedded `cat …/tasks/<id>.output` (not `cat` as the first token) → reminder emitted (incident-shaped #3175).
++- **Bash task-output poll with transcript suffixes fires**: 2 `Bash` invocations whose `command` includes `cat …/tasks/<id>.output` followed by incident-shaped suffixes (`2>/dev/null`, `| head -5`) → reminder emitted (FINDING_1: end-anchored full-command matching would miss these).
+ - **Slow Read polling fires**: 2 `Read`s of a `…/tasks/<id>.output` path spaced > 30s apart → reminder emitted (window-reset gap closed).
+ - **Offset-ignore for task-output**: `Read` of a task-output path with growing offsets → still counts.
+ - **False-positive guard**: `Bash` `cat notes.txt` (non-task-output) → no reminder.
+@@ -77,7 +78,7 @@
+ 
+ ### UPDATED: `scripts/hook-anti-read-poll.md`
+ 
+-Document the new behavior (task-output classifier, Bash read-command detection against the **full** `tool_input.command` string including multiline/compound bodies, path-keyed long-window counting, preserved generic `Read` behavior, fail-open invariant unchanged) and the new `Read|Bash` registration. (`script-md-siblings` rule.)
++Document the new behavior: `Read|Bash` registration; replacement of the Read-only `tool_name` gate with `Read`/`Bash` branching; split task-output classifiers (end-anchored `file_path` for `Read`, suffix-tolerant `tasks/<id>.output` match in the **full** `tool_input.command` string for `Bash`, including multiline/compound bodies and transcript suffixes after `.output`); path-keyed long-window counting; preserved generic `Read` behavior; fail-open invariant unchanged. (`script-md-siblings` rule.)
+ 
+ ### Approach
+ 
+ - Defense in depth: the prose layer (`AGENTS.md` + `orchestrator-never.md`) tells the orchestrator the rule; the hook catches it mechanically when it doesn't. The original incident happened despite a vaguer prose rule, so prose alone is a soft mitigation — the hook hardening is the actual root-cause fix.
+-- The hook fix targets the real #3175 shape first (a **Bash** read of the task `.output` file — today's `Read`-only hook never saw it, and `hooks.json` must register Bash for the branch to run), matching read verb + `tasks/<id>.output` anywhere in the full command string so multiline/compound incident transcripts are in scope, plus a longer task-output window so slow per-turn polling is no longer reset away.
++- The hook fix targets the real #3175 shape first (a **Bash** read of the task `.output` file — today's Read-only `tool_name` gate and `Read`-only `hooks.json` matcher never saw it; both must change), matching read verb + suffix-tolerant `tasks/<id>.output` anywhere in the full command string so multiline/compound and suffix-appended incident transcripts are in scope, plus a longer task-output window so slow per-turn polling is no longer reset away.
+ - Behavioral rule is duplicated by design. `AGENTS.md` extends the existing polling bullet (operator quick-reference); `orchestrator-never.md` rule #3 is the canonical Why/How. NEVER #9 in `skills/implement/SKILL.md` already points to `orchestrator-never.md`, so the discipline reaches `/implement` without editing that file.
+ - Dual harness by delivery path: `test-design-structure.sh` pins `orchestrator-never.md` rule #3; `test-implement-anti-polling-rule.sh` pins the `AGENTS.md` substring so the `/implement` path can't silently lose the ban while the other harness stays green.
+ - No interaction with #3120: every edit is machinery-independent and touches no breadcrumb code (which is already removed). #3120 has no cleanup obligation here.
+@@ -86,7 +87,8 @@
+ 
+ - **Token drift (prose pins)**: the `orchestrator-never.md` rule sentence and its `test-design-structure.sh` `grep -Fq` literal must stay byte-identical; the `AGENTS.md` bullet must contain the apostrophe-free `poll the task output file once per turn` substring its `test-implement-anti-polling-rule.sh` `check` pins.
+ - **Hook false positives**: the classifier matches only `…/tasks/<id>.output`; a benign `cat report.output` outside a `tasks/` dir must not count (harness asserts this).
+-- **Hook false negatives**: exotic read forms (process substitution, `awk`, redirection without a read verb) may still evade the Bash matcher — acceptable for a warn-only nudge; multiline/compound `cat …/tasks/<id>.output` bodies are in scope via full-string matching. Prose rule and `Read`-branch coverage remain.
++- **Hook false negatives**: exotic read forms (process substitution, `awk`, redirection without a read verb) may still evade the Bash matcher — acceptable for a warn-only nudge; multiline/compound `cat …/tasks/<id>.output` bodies and common post-path suffixes (`2>/dev/null`, `| head`) are in scope via full-string, suffix-tolerant matching. Prose rule and `Read`-branch coverage remain.
++- **Read-only gate regression**: widening `hooks.json` without removing line 14's `[ "$tool_name" = "Read" ] || exit 0` leaves Bash PostToolUse a no-op — harness must exercise `tool_name: Bash` payloads end-to-end, not only `Read`.
+ - **Markdownlint MD038**: inline code spans in the additions (`run_in_background`, `<task-notification>`, `sleep`) have no inner boundary whitespace.
+ - **Preserve pinned literals**: leave the `AGENTS.md` polling + ScheduleWakeup bullets and `orchestrator-never.md` rules #1/#2 untouched.
+ 
+ ### Failure modes
+ 
++- **Read-only `tool_name` gate left after `hooks.json` widened**. Signal: `hooks.json` shows `Read|Bash` but every Bash PostToolUse exits at line 14; suffix/multiline harness cases never reach production. Mitigation: explicit removal of the single-tool guard; `case` on `Read`|`Bash` before branch logic (FINDING_2).
++- **End-anchored classifier on full Bash command**. Signal: bare `cat …/tasks/<id>.output` harness passes but incident commands with `2>/dev/null` or `| head` after the path do not fire. Mitigation: suffix-tolerant Bash pattern; end-anchor `$` only on `Read` `file_path` (FINDING_1).
+ - **Hook registered for Bash but script regresses generic `Read`**. Signal: existing `test-hook-anti-read-poll.sh` cases fail. Mitigation: task-output mode uses a separate state file; generic path+offset+30s logic untouched; regression case asserts it.
+ - **Hook blocks or errors a tool**. Signal: a tool call fails due to the hook. Mitigation: PostToolUse + `exit 0` on every path + `set -e` omitted — it can only warn.
+ - **`hooks.json` widened but matcher syntax wrong**. Signal: Claude Code rejects the hook config / hook never fires. Mitigation: use the existing pipe-union style; `make lint` (jsonlint) validates the file.
+@@ -104,7 +106,7 @@
+ - `test-hook-anti-read-poll.sh` passes with the new Bash-poll, slow-Read, offset-ignore, false-positive, and generic-regression cases.
+ - `test-design-structure.sh` passes with the rule-#3 pin.
+ - `test-implement-anti-polling-rule.sh` passes with the new apostrophe-free AGENTS.md literal pin (existing #1011 pins unchanged).
+ - `test-anti-improvised-wakeup.sh` still passes (ScheduleWakeup tokens preserved).
+ - `relevant-checks.sh` runs shellcheck + jsonlint + markdownlint on the edited files and re-runs the mapped harnesses.
+ 
+ ### Diff size estimate
+ 
+-Ten files. Prose + pins are additive (~10 lines); `hooks.json` is a one-token matcher change; the hook gains a classifier + full-string Bash branch + task-output counting mode (~45 lines); the harness gains six cases including multiline Bash (~60 lines); sibling docs (~7 lines). No deletions of existing behavior.
++Ten files. Prose + pins are additive (~10 lines); `hooks.json` is a one-token matcher change; the hook replaces the Read-only gate, adds split Read/Bash classifiers (suffix-tolerant for Bash) + full-string Bash branch + task-output counting mode (~55 lines); the harness gains seven cases including multiline Bash and suffix-appended commands (~72 lines); sibling docs (~9 lines). No deletions of existing behavior.
+ 
+-diff_lines: 115
++diff_lines: 132

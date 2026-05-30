@@ -1,0 +1,3 @@
+Reading the plan and comparing grep literals in the test scripts against the proposed AGENTS.md and orchestrator-never.md text.
+Checking AGENTS.md conventions and whether proposed placement conflicts with existing pins.
+{"no_issues_found": true}

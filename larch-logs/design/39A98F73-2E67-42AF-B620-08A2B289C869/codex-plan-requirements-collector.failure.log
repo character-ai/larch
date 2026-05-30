@@ -1,0 +1,15 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-requirements-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-requirements-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	hooks/hooks.json:36-45; plan.txt:72-88	Primary #3175 Bash-path hook hardening is not wired in shipped hooks.json	PostToolUse only registers hook-anti-read-poll.sh under matcher Read, so production never invokes the hook on Bash cat/tail/head of tasks/*.output; offline test-hook-anti-read-poll.sh pipes JSON directly and will pass while the incident shape stays unwarned in real sessions	Add ### UPDATED hooks/hooks.json with a second PostToolUse entry (matcher Bash, same command/timeout as Read); update hook-anti-read-poll.md registration line; extend testing strategy to note hooks.json is part of the delivery surface
+
+1. **correctness** — `hooks/hooks.json:36-45` (plan `### UPDATED: scripts/hook-anti-read-poll.sh` only): The plan’s mechanical layer centers on a **Bash** branch for `cat`/`tail`/… of `…/tasks/<id>.output` (#3175), but shipped registration still invokes `hook-anti-read-poll.sh` only on **Read** PostToolUse. Bash poll-reads never reach the hook at runtime; `test-hook-anti-read-poll.sh` exercises the script in isolation and will not catch the gap. **Suggested revision:** Add `hooks/hooks.json` to the file list with a parallel `matcher: "Bash"` PostToolUse entry (same command as Read), document it in `hook-anti-read-poll.md`, and treat hooks.json as part of the validation surface in the testing strategy.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-requirements-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-requirements-output.txt.diag)
+

@@ -1,0 +1,27 @@
+Reviewing the plan and cross-checking CI pin literals against the repository.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	hooks/hooks.json:36-44; <TMPDIR>/plan.txt:72-87	Plan extends hook-anti-read-poll.sh for Bash task-output reads but does not widen the shipped PostToolUse matcher	The #3175 failure mode is Bash cat of a tasks/*.output file. hooks/hooks.json registers hook-anti-read-poll.sh only under matcher Read (line 37). Offline tests invoke the script directly with tool_name Bash and will pass, but production never runs the hook on Bash, so the primary mechanical fix is inert at runtime.	Add a plan step to update hooks/hooks.json PostToolUse matcher to Read|Bash (or an equivalent dual entry), update scripts/hook-anti-read-poll.md matcher prose in the same change, and optionally add a structural assertion that hooks.json wires Bash to this hook.
+
+1. **[correctness]** `hooks/hooks.json:36-44` — The plan’s primary #3175 fix is a `Bash` branch in `hook-anti-read-poll.sh` (`plan.txt:80-81`), but the shipped hook stays registered only for `Read`:
+
+```36:44:hooks/hooks.json
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-anti-read-poll.sh",
+            "timeout": 5
+          }
+        ]
+      }
+```
+
+`scripts/test-hook-anti-read-poll.sh` calls the script directly, so new Bash cases can pass while production never invokes the hook on `Bash`. **Suggested revision:** add an explicit `### UPDATED: hooks/hooks.json` step widening the matcher to `Read|Bash` (per `docs/dev-hook-audit.md` `Edit|Write` pattern) and sync `scripts/hook-anti-read-poll.md` matcher documentation.
+
+**Pin-integrity cross-checks (no additional findings):**
+
+- **orchestrator-never rule #3 vs `test-design-structure.sh` grep:** The proposed `grep -Fq` literal `NEVER poll a background task by reading its output file once per turn` matches the NEVER clause inside the verbatim rule #3 block (`plan.txt:38` / `48-49`); same substring-pin pattern as existing Check 17 rule #2 (`scripts/test-design-structure.sh:323-324`). Plan line 43’s “opening sentence” wording omits the `3. **` prefix but the verbatim blocks are aligned.
+- **AGENTS.md bullet vs `test-implement-anti-polling-rule.sh` check:** `do not poll the task output file once per turn` is identical in `plan.txt:28` and `65`; apostrophe-free in the pinned substring (meta at `plan.txt:23` is satisfied).
+- **`test-anti-improvised-wakeup.sh` vs new AGENTS bullet:** `PROJECT_TOKEN` is `NEVER improvise ScheduleWakeup outside skill-script direction` (`scripts/test-anti-improvised-wakeup.sh:27`); the new bullet does not contain that string; rule #3 only mentions `ScheduleWakeup` in passing, not the pinned token. Placement after the ScheduleWakeup bullet (`plan.txt:23`, `AGENTS.md:61`) preserves the existing pin target.
+- **Sibling `.md` instructions:** `test-implement-anti-polling-rule.md` and `hook-anti-read-poll.md` updates are sufficiently specific; `test-design-structure.md` is one-sentence scope-only but adequate for `script-md-siblings` minimum-change sync.

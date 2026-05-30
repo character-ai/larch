@@ -1,0 +1,21 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-scope-compat-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-scope-compat-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-anti-polling-rule.sh:58-60	Verbatim fourth check uses single quotes around a literal containing ASCII apostrophe in task's	Bash parses 'do not poll the task' as one quoted word; the remainder is a syntax error so the script fails at source or the assertion never runs; FINDING_2 pin is a false guard	Use double quotes for the third check argument (mirror Check 17 in test-design-structure.sh:323) or another apostrophe-safe quoting form while keeping byte identity with AGENTS.md
+
+**1. [correctness]** `scripts/test-implement-anti-polling-rule.sh` (proposed lines 58–60): The planned `check` call uses `'do not poll the task's output file once per turn'`. The apostrophe in `task's` terminates the single-quoted string early (same pattern already avoided in `test-design-structure.sh:323`, which uses double quotes for `sub-skill's`). **Suggested revision:** use `"do not poll the task's output file once per turn"` for the literal argument.
+
+**Scope-compat checks (no additional in-scope findings):**
+
+- **Breadcrumb-token scan:** All verbatim prose/harness insertions (AGENTS bullet, `orchestrator-never.md` rule #3, both grep pins) contain none of: `breadcrumb-monitor.sh`, `LARCH_DONE_SENTINEL`, `LARCH_BREADCRUMB`, `LARCH_STATUS_FILE`, `LARCH_PAIRED_PID_FILE`, `LARCH_BREADCRUMBS_SURFACED_FILE`, `BASH_AUTHORING.md` §4, or `Family B`.
+- **#3119 file overlap:** `AGENTS.md` is in Stage 4 scope (breadcrumb trims at `AGENTS.md:57-58`); `orchestrator-never.md` has no breadcrumb machinery today; `test-design-structure.sh` / `test-implement-anti-polling-rule.sh` are audited in the Stage 3/4 rip-out but the proposed hunks are additive pins away from breadcrumb harness blocks. Insertion is after `AGENTS.md:61` (ScheduleWakeup), not inside `57-58` deletion targets — line-adjacency conflict with #3119 is unlikely; same-file merge is ordinary, not structurally conflict-prone.
+- **Anchors verified:** ScheduleWakeup bullet at `AGENTS.md:61`; `orchestrator-never.md` ends at rule 2 (`:7-8`) for append-as-#3; `test-design-structure.sh:323-324` sub-skill `grep` pair with insertion before `:325`; `test-implement-anti-polling-rule.sh:46-48` three existing `check` calls with insertion after the `sleep` check.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-scope-compat-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-dyn-scope-compat-output.txt.diag)
+
