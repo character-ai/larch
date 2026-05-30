@@ -1,0 +1,6 @@
+scripts/ship-pr.sh
+skills/review-and-fix/scripts/review-and-fix.sh
+scripts/test-ship-pr.sh
+skills/review-and-fix/scripts/test-review-and-fix.sh
+scripts/ship-pr.md
+skills/review-and-fix/scripts/review-and-fix.md

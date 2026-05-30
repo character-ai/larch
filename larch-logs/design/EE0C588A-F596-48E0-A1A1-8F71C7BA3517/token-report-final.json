@@ -1,0 +1,94 @@
+{
+  "vendors": [
+    "claude",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 5111,
+          "cache_read": 12944726,
+          "cache_create": 981571,
+          "cache_create_5m": 981571,
+          "cache_create_1h": 0,
+          "output": 115455,
+          "total": 14046863
+        },
+        "skills": [
+          {
+            "skill": "inferred:design Step 0 — session setup",
+            "totals": {
+              "input": 695,
+              "cache_read": 6854337,
+              "cache_create": 615752,
+              "cache_create_5m": 615752,
+              "cache_create_1h": 0,
+              "output": 48302,
+              "total": 7519086
+            }
+          },
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 4416,
+              "cache_read": 6090389,
+              "cache_create": 365819,
+              "cache_create_5m": 365819,
+              "cache_create_1h": 0,
+              "output": 67153,
+              "total": 6527777
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 5111,
+      "cache_read": 12944726,
+      "cache_create": 981571,
+      "cache_create_5m": 981571,
+      "cache_create_1h": 0,
+      "output": 115455,
+      "total": 14046863
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 579656,
+          "output": 79711,
+          "total": 5347661
+        }
+      }
+    ],
+    "totals": {
+      "input": 579656,
+      "output": 79711,
+      "total": 5347661
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 5111,
+    "cache_read": 12944726,
+    "cache_create_5m": 981571,
+    "cache_create_1h": 0,
+    "output": 115455,
+    "total": 14046863
+  },
+  "BUCKETS_codex": {
+    "input": 0,
+    "cached_input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_cursor": {
+    "input": 579656,
+    "cache_read": 4688294,
+    "output": 79711,
+    "total": 5347661
+  }
+}
