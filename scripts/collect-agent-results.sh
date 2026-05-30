@@ -1475,7 +1475,6 @@ _resolve_collector_stderr_tail_file() {
     fi
     while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
         [[ -n "$_candidate" ]] || continue
-        [[ "$_candidate" == "$reviewer_file" ]] || continue
         if [[ -s "${_candidate}.stderr-tail" ]]; then
             printf '%s' "${_candidate}.stderr-tail"
             return 0
