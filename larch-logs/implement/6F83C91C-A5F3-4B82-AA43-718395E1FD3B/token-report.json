@@ -242,6 +242,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
+          "input": 3,
+          "cache_read": 353017,
+          "cache_create": 2043,
+          "cache_create_5m": 2043,
+          "cache_create_1h": 0,
+          "output": 2009,
+          "total": 357072
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 3,
+              "cache_read": 353017,
+              "cache_create": 2043,
+              "cache_create_5m": 2043,
+              "cache_create_1h": 0,
+              "output": 2009,
+              "total": 357072
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
           "input": 0,
           "cache_read": 0,
           "cache_create": 0,
@@ -254,13 +280,13 @@
       }
     ],
     "totals": {
-      "input": 20,
-      "cache_read": 1795433,
-      "cache_create": 231930,
-      "cache_create_5m": 231930,
+      "input": 23,
+      "cache_read": 2148450,
+      "cache_create": 233973,
+      "cache_create_5m": 233973,
       "cache_create_1h": 0,
-      "output": 7555,
-      "total": 2034938
+      "output": 9564,
+      "total": 2392010
     }
   },
   "codex": {
@@ -355,6 +381,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -465,6 +499,14 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -474,12 +516,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 20,
-    "cache_read": 1795433,
-    "cache_create_5m": 231930,
+    "input": 23,
+    "cache_read": 2148450,
+    "cache_create_5m": 233973,
     "cache_create_1h": 0,
-    "output": 7555,
-    "total": 2034938
+    "output": 9564,
+    "total": 2392010
   },
   "BUCKETS_codex": {
     "input": 183151,
