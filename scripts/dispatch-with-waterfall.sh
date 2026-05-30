@@ -266,7 +266,7 @@ launch_slot() {
             rc=$?
             [[ -f "${output}.done" ]] || printf '%s\n' "$rc" > "${output}.done"
             exit "$rc"
-        ) >/dev/null 2>&1 &
+        ) >/dev/null 2>"${output}.launch-stderr" &
     else
         (
             set +e
@@ -281,7 +281,7 @@ launch_slot() {
             rc=$?
             [[ -f "${output}.done" ]] || printf '%s\n' "$rc" > "${output}.done"
             exit "$rc"
-        ) >/dev/null 2>&1 &
+        ) >/dev/null 2>"${output}.launch-stderr" &
     fi
     pids+=("$!")
     phase_indices+=("$idx")
@@ -557,6 +557,15 @@ for idx in "${phase3_failed[@]+"${phase3_failed[@]}"}"; do
         *) static_dispatch_ok=false ;;
     esac
 done
+
+if [[ ${#phase3_failed[@]} -gt 0 ]]; then
+    _wf_tail_replay_paths=()
+    for idx in "${phase3_failed[@]}"; do
+        _wf_tail_replay_paths+=("${final_outputs[$idx]}")
+    done
+    LARCH_QUIET_DISABLE=1 "$SCRIPT_DIR/collect-agent-results.sh" --timeout "$TIMEOUT" \
+        "${_wf_tail_replay_paths[@]}" >/dev/null || true
+fi
 
 warn=""
 threshold="${LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD:-3}"

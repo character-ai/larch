@@ -64,3 +64,7 @@ When `--structured-reviewer-validation` is passed, the collector adds a Section 
 **Callers wired**: `skills/design/references/plan-review.md` Step 3 collect call for all archetype slots (Cursor and Codex: `cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, and their cross-tool fallback variants) passes the dispatcher-written `<slots-file>.output-files` manifest via `--paths-file` (see that doc’s “Collecting External Reviewer Results” fenced call) instead of positional output paths. Generic reviewer slots in `skills/review/SKILL.md` and `skills/research/references/validation-phase.md` are NOT wired and continue with `--substantive-validation --validation-mode` only.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
+## Failed-agent stderr tails (section 3.8)
+
+After retries and NS handling settle, the collector emits redacted stderr tails to FD 2 only (stdout `KEY=value` RESULTS contract unchanged). Duplicate same-root-cause failures within one batch collapse to one suppression line. Tail resolution prefers `*-retry.txt.stderr-tail`, then `${REVIEWER_FILE}.stderr-tail`, then on-demand render from `${REVIEWER_FILE}.launch-stderr`. Successful transient/NS retries remove stale `${ORIG_OUTPUT}.stderr-tail`. See `scripts/lib-failed-agent-stderr-tail.md`.

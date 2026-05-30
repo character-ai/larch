@@ -186,6 +186,8 @@ out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_FAIL=true "$REPO_ROOT/scripts/dispatch-
     --timeout 5)
 assert_line "DISPATCH_OK=false" "$out"
 assert_line "FALLBACK_COUNT=1" "$out"
+[[ -f "$TMPROOT/hardfail-slot-phase3.txt.launch-stderr" ]] \
+    || { echo "FAIL: phase-3 launcher stderr sidecar missing" >&2; exit 1; }
 
 # Test: WARN threshold — fallback count exceeds LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD.
 # With threshold=1 and 2 slots both falling through to Claude, WARN must be emitted.

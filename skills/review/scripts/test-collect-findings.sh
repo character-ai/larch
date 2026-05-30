@@ -88,6 +88,96 @@ grep -Fq 'OOS_COUNT=1' <<< "$out"
 grep -Fq 'correctness: scripts/foo.sh:42' "$TMP/findings-inline-tsv.md"
 grep -Fq 'code-quality: scripts/bar.sh:10' "$TMP/findings-inline-tsv.md"
 grep -Fq '[OUT_OF_SCOPE] code-quality: scripts/bar.sh:10' "$TMP/oos-inline-tsv.md"
+# collect-findings pins LARCH_QUIET_DISABLE=1 on the collector so §3.8 larch_err lines reach the tee.
+# shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$PLUGIN_ROOT" in source
+if ! grep -Fq 'LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results.sh"' "$SCRIPT"; then
+    echo "FAIL: collect-findings.sh must run collector with LARCH_QUIET_DISABLE=1 for stderr-tail tee" >&2
+    exit 1
+fi
+# shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$collector_stderr" in source
+if ! grep -Fq 'collect-agent-results.stderr' "$SCRIPT"; then
+    echo "FAIL: collect-findings.sh must capture collector stderr for §3.8 replay to FD 2/4" >&2
+    exit 1
+fi
+# Failed external slots: collector stderr tails on FD 2 when collector_rc=0 (mirrors collect-findings tee path).
+COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"
+ext_fail_a="$TMP/codex-generalist-fail-a.txt"
+ext_fail_b="$TMP/cursor-specialist-fail-b.txt"
+: > "$ext_fail_a"
+: > "$ext_fail_b"
+printf '1\n' > "${ext_fail_a}.done"
+printf '1\n' > "${ext_fail_b}.done"
+printf 'non-transient failure\n' > "${ext_fail_a}.diag"
+printf 'non-transient failure\n' > "${ext_fail_b}.diag"
+printf 'external stderr tail alpha\n' > "${ext_fail_a}.stderr-tail"
+printf 'external stderr tail beta\n' > "${ext_fail_b}.stderr-tail"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
+    LARCH_QUIET_DISABLE=1 "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode \
+    "$ext_fail_a" "$ext_fail_b" >"$TMP/ext-fail.stdout" 2>"$TMP/ext-fail-collector.stderr"
+if grep -Fq 'failed agent stderr tail' "$TMP/ext-fail-collector.stderr" \
+    && grep -Fq 'external stderr tail alpha' "$TMP/ext-fail-collector.stderr"; then
+    :
+else
+    echo "FAIL: collector should emit stderr tails to FD 2 under LARCH_QUIET_DISABLE=1" >&2
+    cat "$TMP/ext-fail-collector.stderr" >&2
+    exit 1
+fi
+# E2E: collect-findings wrapper surfaces §3.8 tails on captured stderr when collector_rc=0.
+set +e
+cf_out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 LARCH_QUIET_DISABLE=1 "$SCRIPT" \
+    --external-output-files "$ext_fail_a" --mode diff --timeout 5 \
+    --findings-file "$TMP/findings-cf-fail.md" --oos-file "$TMP/oos-cf-fail.md" 2>"$TMP/cf-fail-wrapper.stderr")
+cf_wrapper_rc=$?
+set -e
+assert_stdout_cap "$cf_out"
+[[ "$cf_wrapper_rc" -eq 0 ]] || { echo "FAIL: collect-findings E2E exit $cf_wrapper_rc" >&2; exit 1; }
+if grep -Fq 'failed agent stderr tail' "$TMP/cf-fail-wrapper.stderr" \
+    && grep -Fq 'external stderr tail alpha' "$TMP/cf-fail-wrapper.stderr"; then
+    :
+else
+    echo "FAIL: collect-findings.sh must tee §3.8 stderr tails to wrapper stderr when collector_rc=0" >&2
+    echo "wrapper stderr:" >&2
+    cat "$TMP/cf-fail-wrapper.stderr" >&2
+    echo "captured collector stderr:" >&2
+    cat "$TMP/collect-agent-results.stderr" 2>/dev/null >&2
+    exit 1
+fi
+# Replay fallback: empty collector stderr capture + pre-planted sidecars still reach wrapper FD 2.
+replay_a="$TMP/replay-fail-a.txt"
+replay_b="$TMP/replay-fail-b.txt"
+: > "$replay_a"
+: > "$replay_b"
+printf '1\n' > "${replay_a}.done"
+printf '1\n' > "${replay_b}.done"
+printf 'non-transient failure\n' > "${replay_a}.diag"
+printf 'non-transient failure\n' > "${replay_b}.diag"
+printf 'replay stderr tail alpha\n' > "${replay_a}.stderr-tail"
+printf 'replay stderr tail beta\n' > "${replay_b}.stderr-tail"
+: > "$TMP/replay-collector.stderr"
+LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0 RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
+    LARCH_QUIET_DISABLE=1 "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode \
+    "$replay_a" "$replay_b" >"$TMP/replay-collector.stdout" 2>"$TMP/replay-collector.stderr"
+if grep -Fq 'failed agent stderr tail' "$TMP/replay-collector.stderr"; then
+    echo "FAIL: collector should not emit tails when LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0" >&2
+    cat "$TMP/replay-collector.stderr" >&2
+    exit 1
+fi
+set +e
+cf_replay_out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 LARCH_QUIET_DISABLE=1 "$SCRIPT" \
+    --external-output-files "$replay_a" --mode diff --timeout 5 \
+    --findings-file "$TMP/findings-cf-replay.md" --oos-file "$TMP/oos-cf-replay.md" 2>"$TMP/cf-replay-wrapper.stderr")
+cf_replay_rc=$?
+set -e
+assert_stdout_cap "$cf_replay_out"
+[[ "$cf_replay_rc" -eq 0 ]] || { echo "FAIL: collect-findings replay E2E exit $cf_replay_rc" >&2; exit 1; }
+if grep -Fq 'failed agent stderr tail' "$TMP/cf-replay-wrapper.stderr" \
+    && grep -Fq 'replay stderr tail alpha' "$TMP/cf-replay-wrapper.stderr"; then
+    :
+else
+    echo "FAIL: collect-findings replay must surface planted stderr tails when collector stderr is empty" >&2
+    cat "$TMP/cf-replay-wrapper.stderr" >&2
+    exit 1
+fi
 # Normal inline TSV is collected silently — no stderr noise and no execution-issues tsv-fallback rows.
 if [[ -s "$TMP/inline-tsv.stderr" ]]; then
     echo "FAIL: expected empty stderr for silent inline-TSV collection" >&2
@@ -332,6 +422,7 @@ grep -Fq '[OUT_OF_SCOPE] **Latent**' "$TMP/findings-sev-oos.md" \
 collector_harness=$(mktemp -d "${TMPDIR:-/tmp}/tcf-collector-harness.XXXXXX")
 mkdir -p "$collector_harness/scripts" "$collector_harness/skills/review/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$collector_harness/scripts/"
+cp "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh" "$collector_harness/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$collector_harness/scripts/"
 chmod +x "$collector_harness/scripts/"*.sh
 cp "$REPO_ROOT/skills/review/scripts/collect-findings.sh" "$collector_harness/skills/review/scripts/"
@@ -371,6 +462,7 @@ fi
 wait_harness=$(mktemp -d "${TMPDIR:-/tmp}/tcf-wait-harness.XXXXXX")
 mkdir -p "$wait_harness/scripts" "$wait_harness/skills/review/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$wait_harness/scripts/"
+cp "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh" "$wait_harness/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$wait_harness/scripts/"
 chmod +x "$wait_harness/scripts/"*.sh
 cp "$REPO_ROOT/skills/review/scripts/collect-findings.sh" "$wait_harness/skills/review/scripts/"

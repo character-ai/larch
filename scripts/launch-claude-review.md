@@ -16,4 +16,8 @@ The launcher accepts the same review context flags as `launch-review.sh` (`--mod
 
 `launch-claude-subprocess.sh`'s stderr is captured to a temp file and each line is re-emitted via this script's `larch_err`, so subprocess validation failures (`invalid --prompt-file`, `--prompt-file outside allowed roots`, `context file exceeds 1 MB`, etc.) propagate to the caller's stderr. Without this, the subprocess's own `larch_quiet_init` clobbers its inherited FD 4 with its own log file and the validation message is lost in a nested invocation (#2292).
 
+**Timeout clamp:** when `--timeout` exceeds **1800**, this launcher clamps to **1800** and warns once (`launch-claude-subprocess.sh` rejects larger values with exit 2 before work starts).
+
+**Failed-agent stderr tail:** agent failures write `${output}.stderr-tail` in `launch-claude-subprocess.sh` before `${output}.done`. When the subprocess exits non-zero and no sidecar exists yet, this launcher writes the tail from the captured subprocess stderr file (additive to the full stderr re-emit above).
+
 Regression harness: `scripts/test-launch-claude-review.sh`.

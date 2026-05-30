@@ -63,6 +63,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-validate-meta-path.sh
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 
 usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD..." >&2; }
 
@@ -138,7 +140,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 # Clear stale output, sentinels, metadata, and diagnostic files
-rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.done" "${OUTPUT_FILE}.inner.done" "${OUTPUT_FILE}.meta" "${OUTPUT_FILE}.diag"
+rm -f "$OUTPUT_FILE" "${OUTPUT_FILE}.done" "${OUTPUT_FILE}.inner.done" "${OUTPUT_FILE}.meta" "${OUTPUT_FILE}.diag" "${OUTPUT_FILE}.stderr-tail"
 
 # Write sentinel file on ANY exit — the reliable completion signal for callers.
 # Callers poll for <output-file>.done instead of waiting for runtime notifications.
@@ -261,6 +263,12 @@ while kill -0 "$PID" 2>/dev/null; do
         echo "❌ ${TOOL_NAME} agent: TIMED OUT (exit code 124, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
         # Write diagnostic file for callers
         echo "Timed out after ${SECONDS}s (limit: ${TIMEOUT_SECONDS}s). Process was killed after exceeding the timeout. Output size: ${OUTPUT_SIZE} bytes." >> "${OUTPUT_FILE}.diag"
+        _stderr_src=""
+        _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" || true)
+        if [[ -n "$_stderr_src" ]]; then
+            write_failed_agent_stderr_tail "$_stderr_src" "$OUTPUT_FILE" || true
+            emit_failed_agent_stderr_tail_raw "$OUTPUT_FILE" || true
+        fi
         EXIT_CODE=124
         exit "$EXIT_CODE"
     fi
@@ -289,20 +297,31 @@ fi
 if [ "$EXIT_CODE" -ne 0 ]; then
     echo "❌ ${TOOL_NAME} agent: FAILED (exit code ${EXIT_CODE}, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
     DIAG_DETAIL=""
+    _stderr_src=""
+    _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" || true)
     if [ "$OUTPUT_SIZE" -gt 0 ]; then
-        echo "--- ${TOOL_NAME} output (last 5 lines) ---" >&2
-        tail -5 "$OUTPUT_FILE" >&2
-        echo "--- end ---" >&2
+        _redacted_out_tail=$(render_failed_agent_stderr_tail "$OUTPUT_FILE" 2>/dev/null || true)
+        if [ -n "$_redacted_out_tail" ] && { [[ -z "$_stderr_src" ]] || [[ "$_stderr_src" != "$OUTPUT_FILE" ]]; }; then
+            echo "--- ${TOOL_NAME} output (last lines, redacted) ---" >&2
+            printf '%s\n' "$_redacted_out_tail" >&2
+            echo "--- end ---" >&2
+        fi
         DIAG_DETAIL=" Last output: $(tail -1 "$OUTPUT_FILE" | head -c 200 | tr '|' ' ')"
     fi
     # Write diagnostic file for callers
     echo "Failed with exit code ${EXIT_CODE} after ${SECONDS}s. Output size: ${OUTPUT_SIZE} bytes.${DIAG_DETAIL}" >> "${OUTPUT_FILE}.diag"
+    if [[ -n "$_stderr_src" ]]; then
+        write_failed_agent_stderr_tail "$_stderr_src" "$OUTPUT_FILE" || true
+        emit_failed_agent_stderr_tail_raw "$OUTPUT_FILE" || true
+    fi
 elif [ "$OUTPUT_SIZE" -eq 0 ]; then
     echo "⚠ ${TOOL_NAME} agent: completed but OUTPUT IS EMPTY (exit code 0, ${SECONDS}s elapsed)" >&2
     echo "This typically means ${TOOL_NAME} exited without producing output." >&2
     # Write diagnostic file for callers
     echo "Process exited successfully (code 0) after ${SECONDS}s but produced no output. This typically means the tool started but did not generate a response." >> "${OUTPUT_FILE}.diag"
+    rm -f "${OUTPUT_FILE}.stderr-tail" 2>/dev/null || true
 else
     echo "✓ ${TOOL_NAME} agent: completed (exit code 0, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
+    rm -f "${OUTPUT_FILE}.stderr-tail" 2>/dev/null || true
 fi
 exit "$EXIT_CODE"

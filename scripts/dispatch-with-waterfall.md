@@ -17,6 +17,8 @@ participates in the normal per-slot waterfall. When at least one row has a
 group, the dispatcher writes `<dirname-of-resolved-slots-file>/waterfall-group-results.tsv`
 as grouped slots settle.
 
+Per-slot launcher stderr is captured to `${output}.launch-stderr` (stdout remains `/dev/null`) so launcher-level validation failures are recoverable and surfaced by `collect-agent-results.sh` via the failed-agent stderr tail path (#3202).
+
 Phases:
 
 1. Launch each slot on its assigned external tool when `--<tool>-present true`.

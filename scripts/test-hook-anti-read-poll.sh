@@ -41,6 +41,11 @@ run_bash_hook() {
     mk_bash_payload "$command" "$cwd" "$session_id" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
 }
 
+run_bash_hook_disc() {
+    local now="$1" command="$2" cwd="${3:-/tmp/test-proj}" disc="${4:?discriminator required}"
+    mk_bash_payload "$command" "$cwd" "" | HOOK_ANTI_READ_POLL_NOW="$now" HOOK_ANTI_READ_POLL_DISCRIMINATOR="$disc" "$HOOK"
+}
+
 assert_reminder() {
     local out="$1" label="$2"
     if printf '%s' "$out" | grep -q 'additionalContext'; then
@@ -262,6 +267,19 @@ assert_silent "$out_s2" 'session beta call 1 silent'
 out_s3=$(run_bash_hook 2 "cat $TASK_OUT" "/proj-session-iso" "session-alpha")
 assert_reminder "$out_s3" 'session alpha call 2 fires reminder'
 
+echo "=== semicolon inside quoted echo does not count as poll ==="
+semi_echo_cmd="echo 'waiting; cat $TASK_OUT'"
+out_se1=$(run_bash_hook 0 "$semi_echo_cmd" "/proj-semi-echo-fp")
+assert_silent "$out_se1" 'semicolon-in-echo call 1 silent'
+out_se2=$(run_bash_hook 1 "$semi_echo_cmd" "/proj-semi-echo-fp")
+assert_silent "$out_se2" 'semicolon-in-echo call 2 silent'
+
+echo "=== Bash sed --quiet task-output poll fires ==="
+out_sedq1=$(run_bash_hook 0 "sed --quiet '1,5p' $TASK_OUT" "/proj-bash-sed-quiet")
+assert_silent "$out_sedq1" 'sed --quiet task-output call 1 silent'
+out_sedq2=$(run_bash_hook 1 "sed --quiet '1,5p' $TASK_OUT" "/proj-bash-sed-quiet")
+assert_reminder "$out_sedq2" 'sed --quiet task-output call 2 fires reminder'
+
 echo "=== echo mentioning task path does not count ==="
 out_en1=$(run_bash_hook 0 "echo cat $TASK_OUT" "/proj-echo-fp")
 assert_silent "$out_en1" 'echo task path call 1 silent'
@@ -353,6 +371,50 @@ if [ "$tab_count" -eq 3 ]; then
 else
     fail "state TSV should keep 4 fields, got line: $stored_line"
 fi
+
+echo "=== jq literal cat does not false-positive ==="
+jq_cmd="jq 'select(.kind == \"cat\")' \"$TASK_OUT\""
+out_jq1=$(run_bash_hook 0 "$jq_cmd" "/proj-jq-cat-fp")
+assert_silent "$out_jq1" 'jq cat literal call 1 silent'
+out_jq2=$(run_bash_hook 1 "$jq_cmd" "/proj-jq-cat-fp")
+assert_silent "$out_jq2" 'jq cat literal call 2 silent'
+
+echo "=== semicolon inside double quotes does not split segments ==="
+semi_cmd="echo \"a; b\"; cat $TASK_OUT"
+out_semi1=$(run_bash_hook 0 "$semi_cmd" "/proj-semi-quote")
+assert_silent "$out_semi1" 'quoted semicolon call 1 silent'
+out_semi2=$(run_bash_hook 1 "$semi_cmd" "/proj-semi-quote")
+assert_reminder "$out_semi2" 'quoted semicolon call 2 fires reminder'
+
+echo "=== multiline read verb without backslash continuation ==="
+nl_cmd=$'cat\n'"$TASK_OUT"
+out_nl1=$(run_bash_hook 0 "$nl_cmd" "/proj-nl-read")
+assert_silent "$out_nl1" 'newline-separated cat call 1 silent'
+out_nl2=$(run_bash_hook 1 "$nl_cmd" "/proj-nl-read")
+assert_reminder "$out_nl2" 'newline-separated cat call 2 fires reminder'
+
+echo "=== nosession discriminators do not share task-output state ==="
+TASK_OUT_A='/tmp/proj-a/tasks/taskdisca.output'
+TASK_OUT_B='/tmp/proj-b/tasks/taskdiscb.output'
+run_bash_hook_disc 0 "cat $TASK_OUT_A" "/proj-a" alpha >/dev/null
+out_alpha2=$(run_bash_hook_disc 1 "cat $TASK_OUT_A" "/proj-a" alpha)
+assert_reminder "$out_alpha2" 'nosession discriminator alpha call 2 fires reminder'
+out_beta1=$(run_bash_hook_disc 0 "cat $TASK_OUT_B" "/proj-b" beta)
+assert_silent "$out_beta1" 'nosession discriminator beta independent after alpha threshold'
+session_alpha=$(printf '%s' "nosession-alpha" | cksum | awk '{print $1}')
+state_alpha="$TMP/larch-read-poll/state-taskout-${session_alpha}-$(printf '%s' "/proj-a" | cksum | awk '{print $1}')-taskdisca.tsv"
+if [ -f "$state_alpha" ]; then
+    pass 'nosession discriminator alpha state file exists'
+else
+    fail "expected discriminator-alpha state file: $state_alpha"
+fi
+
+echo "=== bash single-quote escape does not false-positive read verb in quoted path ==="
+sq_cmd="sed -n '1,5p' '/tmp/my'\''file/notes.txt'"
+out_sq1=$(run_bash_hook 0 "$sq_cmd" "/proj-sq-escape")
+assert_silent "$out_sq1" 'bash sq-escape call 1 silent'
+out_sq2=$(run_bash_hook 1 "$sq_cmd" "/proj-sq-escape")
+assert_silent "$out_sq2" 'bash sq-escape call 2 silent'
 
 echo "=== state file is private ==="
 state_file="$TMP/larch-read-poll/state-$(printf '%s' "/proj-window" | cksum | awk '{print $1}').tsv"

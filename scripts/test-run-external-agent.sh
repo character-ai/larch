@@ -365,6 +365,95 @@ else
 fi
 assert_grep "timeout-events diag" "limit: 1s" "${TIMEOUT_OUT}.diag"
 
+# 19a. LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0 disables sidecar and chat fence.
+DISABLE_TAIL_OUT="$TMPDIR/disable-tail.txt"
+export LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0
+run_subject "disable-tail" "$DISABLE_TAIL_OUT" --capture-stdout -- bash -c 'printf "nope\n" >&2; exit 1'
+unset LARCH_FAILED_AGENT_STDERR_TAIL_LINES
+assert_equals "disable-tail exit" "1" "$RUN_CODE"
+if [[ -e "${DISABLE_TAIL_OUT}.stderr-tail" ]]; then
+    fail "disable-tail should not write .stderr-tail"
+else
+    pass
+fi
+if grep -Fq 'failed agent stderr tail' "$RUN_STDERR"; then
+    fail "disable-tail should not fence stderr to FD 2"
+else
+    pass
+fi
+
+# 19b. Success removes a stale .stderr-tail from a prior failure.
+STALE_TAIL_OUT="$TMPDIR/stale-tail.txt"
+printf 'stale content\n' >"${STALE_TAIL_OUT}.stderr-tail"
+run_subject "stale-tail-success" "$STALE_TAIL_OUT" --capture-stdout -- bash -c 'printf ok'
+assert_equals "stale-tail-success exit" "0" "$RUN_CODE"
+if [[ -e "${STALE_TAIL_OUT}.stderr-tail" ]]; then
+    fail "stale-tail-success should remove stale .stderr-tail"
+else
+    pass
+fi
+
+# 19e. Default review mode prefers .sidecar over .diag for stderr-tail source.
+SIDECAR_PREF_OUT="$TMPDIR/sidecar-pref.txt"
+printf 'sidecar stderr line\n' >"${SIDECAR_PREF_OUT}.sidecar"
+printf 'diag stderr line\n' >"${SIDECAR_PREF_OUT}.diag"
+run_subject "sidecar-pref-fail" "$SIDECAR_PREF_OUT" -- bash -c 'exit 1'
+assert_equals "sidecar-pref-fail exit" "1" "$RUN_CODE"
+if [[ -s "${SIDECAR_PREF_OUT}.stderr-tail" ]] && grep -Fq 'sidecar stderr line' "${SIDECAR_PREF_OUT}.stderr-tail"; then
+    pass
+else
+    fail "sidecar-pref-fail missing sidecar-sourced .stderr-tail"
+fi
+if grep -Fq 'diag stderr line' "${SIDECAR_PREF_OUT}.stderr-tail" 2>/dev/null; then
+    fail "sidecar-pref-fail should not prefer .diag over .sidecar"
+else
+    pass
+fi
+assert_grep "sidecar-pref-fail stderr fence" "sidecar stderr line" "$RUN_STDERR"
+
+# 19c. TIMED_OUT writes .stderr-tail from merged stderr source.
+TIMEOUT_TAIL_OUT="$TMPDIR/timeout-tail.txt"
+set +e
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 LARCH_FAILED_AGENT_STDERR_TAIL_LINES=5 \
+    "$WRAPPER" --tool codex --output "$TIMEOUT_TAIL_OUT" --timeout 1 --capture-stdout -- \
+    bash -c 'printf "timeout stderr\n" >&2; sleep 2' >"$TMPDIR/timeout-tail.stdout" 2>"$TMPDIR/timeout-tail.stderr"
+RUN_CODE=$?
+set -e
+assert_equals "timeout-tail exit" "124" "$RUN_CODE"
+if [[ -s "${TIMEOUT_TAIL_OUT}.stderr-tail" ]] && grep -Fq 'timeout stderr' "${TIMEOUT_TAIL_OUT}.stderr-tail"; then
+    pass
+else
+    fail "timeout-tail missing .stderr-tail content"
+fi
+
+# 19d. stdout-only mode prefers .diag over empty output for stderr source.
+STDOUT_ONLY_OUT="$TMPDIR/stdout-only-tail.txt"
+run_subject "stdout-only-tail" "$STDOUT_ONLY_OUT" --capture-stdout-only -- bash -c 'printf "wrapper diag line\n" >&2; exit 1'
+assert_equals "stdout-only-tail exit" "1" "$RUN_CODE"
+if [[ -s "${STDOUT_ONLY_OUT}.stderr-tail" ]] && grep -Fq 'wrapper diag line' "${STDOUT_ONLY_OUT}.stderr-tail"; then
+    pass
+else
+    fail "stdout-only-tail should capture .diag into .stderr-tail"
+fi
+
+# 19. Failed runs write .stderr-tail and emit fenced stderr to FD 2.
+FAIL_TAIL_OUT="$TMPDIR/fail-tail.txt"
+run_subject "fail-tail-merged" "$FAIL_TAIL_OUT" --capture-stdout -- bash -c 'printf "merged stderr\n" >&2; exit 1'
+assert_equals "fail-tail-merged exit" "1" "$RUN_CODE"
+if [[ -s "${FAIL_TAIL_OUT}.stderr-tail" ]]; then
+    pass
+else
+    fail "fail-tail-merged missing .stderr-tail"
+fi
+assert_grep "fail-tail-merged stderr fence" "failed agent stderr tail" "$RUN_STDERR"
+
+# Plan traceability: collector shares lib stderr-tail fence helper with this wrapper.
+if grep -Fq '_emit_collector_stderr_tail_file' "$REPO_ROOT/scripts/collect-agent-results.sh"; then
+    pass
+else
+    fail "collect-agent-results.sh must use shared stderr-tail fence helper"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-run-external-agent.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 usage() {
@@ -61,6 +63,10 @@ done
 
 [[ -n "$OUTPUT" ]] || { larch_err "launch-claude-review.sh: --output is required"; exit 2; }
 case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "launch-claude-review.sh: --timeout must be a positive integer"; exit 2 ;; esac
+if (( TIMEOUT > 1800 )); then
+    larch_err "launch-claude-review.sh: --timeout ${TIMEOUT}s exceeds subprocess cap; clamping to 1800"
+    TIMEOUT=1800
+fi
 
 src_count=0
 [[ -n "$AGENT_FILE" ]] && src_count=$((src_count + 1))
@@ -151,6 +157,7 @@ for explicit_context_file in "${EXPLICIT_CONTEXT_FILES[@]+"${EXPLICIT_CONTEXT_FI
 done
 unset explicit_context_file
 
+rm -f "${OUTPUT}.stderr-tail"
 SUBPROCESS_STDERR=$(mktemp "$(dirname "$OUTPUT")/claude-subprocess-stderr.XXXXXX")
 set +e
 "$SCRIPT_DIR/launch-claude-subprocess.sh" \
@@ -170,11 +177,40 @@ set -e
 # allowed roots, context file exceeds N bytes, etc.) reach the caller's
 # stderr — used by dispatch-code-voters.sh to surface the specific failing
 # check in execution-issues.md Warnings.
-if [[ -s "$SUBPROCESS_STDERR" ]]; then
-    while IFS= read -r _line; do
+_larch_emit_redacted_subprocess_stderr() {
+    local src="$1" redact redact_tmpdir pipeline
+    [[ -s "$src" ]] || return 1
+    redact="$SCRIPT_DIR/redact-secrets.sh"
+    redact_tmpdir="$SCRIPT_DIR/redact-tmpdir-paths.sh"
+    [[ -x "$redact" ]] || return 1
+    if [[ -x "$redact_tmpdir" ]]; then
+        pipeline="$redact_tmpdir | $redact"
+    else
+        pipeline="$redact"
+    fi
+    # shellcheck disable=SC2090
+    eval "cat \"\$src\" | $pipeline" 2>/dev/null | while IFS= read -r _line || [[ -n "$_line" ]]; do
         larch_err "$_line"
-    done < "$SUBPROCESS_STDERR"
+    done
     unset _line
+    return 0
+}
+
+if [[ "$rc" -ne 0 ]]; then
+    if [[ ! -s "${OUTPUT}.stderr-tail" ]] && [[ -s "$SUBPROCESS_STDERR" ]]; then
+        write_failed_agent_stderr_tail "$SUBPROCESS_STDERR" "$OUTPUT" || true
+    fi
+    if [[ -s "${OUTPUT}.stderr-tail" ]]; then
+        emit_failed_agent_stderr_tail_larch_err "$OUTPUT" || true
+    elif [[ -s "$SUBPROCESS_STDERR" ]]; then
+        _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || true
+    fi
+else
+    rm -f "${OUTPUT}.stderr-tail"
+fi
+if [[ "$rc" -eq 0 ]] && [[ -s "$SUBPROCESS_STDERR" ]]; then
+    _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || \
+        larch_err 'WARN subprocess stderr redaction unavailable'
 fi
 
 if [[ ! -f "${OUTPUT}.done" ]]; then

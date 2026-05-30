@@ -304,4 +304,55 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
         || { echo "FAIL: unreadable --context-files missing expected stderr" >&2; exit 1; }
 fi
 
+# Timeout clamp: panel callers may pass 1860; subprocess cap is 1800.
+clamp_out="$TMPROOT/clamp-out.txt"
+clamp_err="$TMPROOT/clamp.stderr"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$clamp_out" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --timeout 1860 >"$TMPROOT/clamp.stdout" 2>"$clamp_err"
+[[ "$(cat "$clamp_out")" == "claude review ok" ]] \
+    || { echo "FAIL: timeout 1860 should clamp to 1800 and succeed" >&2; exit 1; }
+grep -Fq 'clamping to 1800' "$clamp_err" \
+    || { echo "FAIL: missing timeout clamp warning" >&2; exit 1; }
+
+unchanged_out="$TMPROOT/unchanged-out.txt"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$unchanged_out" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --timeout 1200 >/dev/null
+[[ "$(cat "$unchanged_out")" == "claude review ok" ]] \
+    || { echo "FAIL: timeout 1200 should pass through unchanged" >&2; exit 1; }
+
+# Failed subprocess: redacted stderr-tail sidecar; no raw secret replay on FD 2.
+FAIL_STUB_BIN="$TMPROOT/bin-fail"
+mkdir -p "$FAIL_STUB_BIN"
+cat > "$FAIL_STUB_BIN/claude" <<'FAIL_STUB'
+#!/usr/bin/env bash
+printf 'agent failure sk-ant-api03-abcdefghijklmnopqrstuvwxyz\n' >&2
+exit 1
+FAIL_STUB
+chmod +x "$FAIL_STUB_BIN/claude"
+fail_out="$TMPROOT/fail-stderr-tail-out.txt"
+set +e
+PATH="$FAIL_STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$fail_out" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --timeout 5 >/dev/null 2>"$TMPROOT/fail-stderr-tail.stderr"
+fail_rc=$?
+set -e
+[[ "$fail_rc" -eq 1 ]] \
+    || { echo "FAIL: failing stub should exit 1 (got $fail_rc)" >&2; exit 1; }
+[[ -s "${fail_out}.stderr-tail" ]] \
+    || { echo "FAIL: failing stub missing .stderr-tail sidecar" >&2; exit 1; }
+grep -Fq 'failed agent stderr tail' "$TMPROOT/fail-stderr-tail.stderr" \
+    || { echo "FAIL: failing stub missing redacted stderr-tail fence on FD 2" >&2; exit 1; }
+grep -Fq 'sk-ant-api03' "$TMPROOT/fail-stderr-tail.stderr" \
+    && { echo "FAIL: raw secret leaked on launch-claude-review stderr" >&2; exit 1; }
+grep -Fq '<REDACTED-TOKEN>' "${fail_out}.stderr-tail" \
+    || { echo "FAIL: .stderr-tail sidecar not redacted" >&2; exit 1; }
+
 echo "PASS: test-launch-claude-review.sh"

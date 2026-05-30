@@ -1,0 +1,10 @@
+Reviewing the branch diff and tracing FD 2 vs stdout paths in the collector and stderr-tail library.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **`scripts/launch-claude-review.sh:198-203`** — After `larch_quiet_init` (line 11), `emit_failed_agent_stderr_tail_raw` uses plain `printf … >&2`, which lands in the quiet log (FD 1/2 after redirect), not on preserved FD 4. That is a visibility quirk, not a leak into the collector stdout contract; the panel path still gets tails via `${OUTPUT}.stderr-tail` and `collect-agent-results.sh` §3.8 (`larch_err`).
+- **`skills/review/scripts/collect-findings.sh:297-304`** — FINDING_3 is addressed by capturing collector stderr to a file and replaying to FD 2/4 when non-empty, plus `replay_collector_failed_stderr_tails` when stderr is empty; the harness comment still says “tee” but the implementation uses file capture + replay, not a live `tee`.
+- **Branch commits** (since `main`): `b46e8b0cc` Surface failed agent stderr tails (#3202), plus review/fix rounds and run-log chores (`0719cc8eb`, `1c1611f2b`, `2fc05d968`, etc.).
+
+**Trace summary (stdout/FD 2 isolation):** Under `larch_quiet_init`, contract output uses `emit` → FD 3 (`scripts/lib-quiet.sh:158-178`, `scripts/collect-agent-results.sh:1560-1582`). §3.8 uses only `larch_err` in `_emit_collector_stderr_tail_file` and the dedup loop (`scripts/collect-agent-results.sh:1434-1538`), which routes to FD 2 + mirrored FD 4, not FD 3 (`scripts/lib-quiet.sh:147-149`, `127-140`). `render_failed_agent_stderr_tail` stdout is either redirected to a temp file (`scripts/collect-agent-results.sh:1487`) or captured in `$(…)` (`scripts/lib-failed-agent-stderr-tail.sh:125`); it is never passed to `emit`. `_resolve_collector_stderr_tail_file` path returns use `printf` only inside command substitution (`scripts/collect-agent-results.sh:1520`), so they do not hit the collector’s contract stdout. Harness cases explicitly assert stdout stays free of tail bodies (`scripts/test-collect-agent-results.sh:677-681`, `715-719`, `815-818`).

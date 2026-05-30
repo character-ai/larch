@@ -18,6 +18,21 @@ case "$tool_name" in
     *) exit 0 ;;
 esac
 
+_bash_sanitized_command=""
+if [ "$tool_name" = "Bash" ]; then
+    _bash_command_body=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
+    [ -n "$_bash_command_body" ] || exit 0
+    _bash_sanitized_command=${_bash_command_body//$'\t'/ }
+    case "$(printf '%s' "$_bash_sanitized_command" | tr '[:upper:]' '[:lower:]')" in
+        *tasks/*) ;;
+        *) exit 0 ;;
+    esac
+    case "$(printf '%s' "$_bash_sanitized_command" | tr '[:upper:]' '[:lower:]')" in
+        *.output*) ;;
+        *) exit 0 ;;
+    esac
+fi
+
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
 cwd_hash=$(printf '%s' "${cwd:-/}" | cksum 2>/dev/null | awk '{print $1}') || cwd_hash="0"
 
@@ -25,7 +40,14 @@ session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || se
 if [ -z "$session_id" ]; then
     session_id=$(printf '%s' "$INPUT" | jq -r '.conversation_id // ""' 2>/dev/null) || session_id=""
 fi
-session_hash=$(printf '%s' "${session_id:-nosession}" | cksum 2>/dev/null | awk '{print $1}') || session_hash="0"
+if [ -n "$session_id" ]; then
+    session_key="$session_id"
+elif [ -n "${HOOK_ANTI_READ_POLL_DISCRIMINATOR:-}" ]; then
+    session_key="nosession-${HOOK_ANTI_READ_POLL_DISCRIMINATOR}"
+else
+    session_key="nosession"
+fi
+session_hash=$(printf '%s' "$session_key" | cksum 2>/dev/null | awk '{print $1}') || session_hash="0"
 
 if [ -n "${HOOK_ANTI_READ_POLL_NOW:-}" ]; then
     now=$HOOK_ANTI_READ_POLL_NOW
@@ -50,15 +72,32 @@ is_read_task_output_path() {
     printf '%s' "$1" | grep -Eq '(^|/)tasks/[A-Za-z0-9._-]+\.output$'
 }
 
+bash_strip_quoted_for_read_verb() {
+    local cmd="$1" normalized
+    normalized=$(printf '%s' "$cmd" | sed "s/'\\\\''//g")
+    printf '%s' "$normalized" | sed -E "s/'[^']*'//g; s/\"([^\"]|\\\\.)*\"//g"
+}
+
 bash_has_read_verb() {
     local cmd="$1"
+    cmd=$(bash_strip_quoted_for_read_verb "$cmd")
     if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(cat|tail|head|less|more)([^[:alnum:]_]|$)'; then
         return 0
     fi
-    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)[^|;&]*(\-n\b|--quiet)'; then
+    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)[^|;&]*(-[[:space:]]*n([^[:alnum:]_]|$)|--quiet)'; then
         return 0
     fi
     return 1
+}
+
+bash_line_is_read_verb_only() {
+    local line="$1"
+    line=$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+    [ -n "$line" ] || return 1
+    bash_segment_is_echo_only "$line" && return 1
+    bash_has_read_verb "$line" || return 1
+    extract_task_output_token "$line" >/dev/null && return 1
+    return 0
 }
 
 bash_normalize_cmd() {
@@ -69,7 +108,7 @@ bash_segment_is_echo_only() {
     local seg="$1"
     seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
     case "$seg" in
-        echo*|printf*) return 0 ;;
+        echo|echo\ *|printf|printf\ *) return 0 ;;
     esac
     return 1
 }
@@ -80,12 +119,26 @@ bash_segment_task_output_poll_token() {
     [ -n "$seg" ] || return 1
     bash_segment_is_echo_only "$seg" && return 1
     bash_has_read_verb "$seg" || return 1
-    token=$(extract_task_output_token "$seg") || return 1
-    printf '%s' "$token"
+    extract_task_output_token "$seg"
+}
+
+# Segment split is a deliberate heuristic: metacharacters inside quoted strings may
+# produce extra segments (false negatives) or combine read verbs with paths (false
+# positives). Read-verb detection strips quoted spans; task-output tokens are
+# extracted only from unquoted command text.
+bash_line_is_echo_with_embedded_semicolon() {
+    local line="$1"
+    case "$line" in
+        echo\ \'*\;*\') return 0 ;;
+        echo\ \"*\"\;*\") return 0 ;;
+    esac
+    return 1
 }
 
 bash_line_task_output_poll_token() {
-    local line="$1" seg rest token
+    local line="$1" seg rest token stripped_line
+    bash_line_is_echo_with_embedded_semicolon "$line" && return 1
+    stripped_line=$(bash_strip_quoted_for_read_verb "$line")
     rest="$line"
     while [ -n "$rest" ]; do
         case "$rest" in
@@ -106,31 +159,53 @@ bash_line_task_output_poll_token() {
                 rest=""
                 ;;
         esac
-        token=$(bash_segment_task_output_poll_token "$seg") && {
-            printf '%s' "$token"
-            return 0
-        }
+        token=$(bash_segment_task_output_poll_token "$seg") || continue
+        case "$line" in
+            *"$token"*) ;;
+            *)
+                case "$stripped_line" in
+                    *"$token"*) ;;
+                    *) continue ;;
+                esac
+                ;;
+        esac
+        printf '%s' "$token"
+        return 0
     done
     return 1
 }
 
 extract_bash_task_output_poll_token() {
     local cmd="$1" normalized line token
+    local i merged
+    lines=()
     normalized=$(bash_normalize_cmd "$cmd")
     while IFS= read -r line || [ -n "$line" ]; do
-        token=$(bash_line_task_output_poll_token "$line") && {
-            printf '%s' "$token"
-            return 0
-        }
+        lines+=("$line")
     done < <(printf '%s\n' "$normalized")
+    i=0
+    while [ "$i" -lt "${#lines[@]}" ]; do
+        line="${lines[$i]}"
+        if bash_line_is_read_verb_only "$line" && [ $((i + 1)) -lt "${#lines[@]}" ]; then
+            merged="$line ${lines[$((i + 1))]}"
+            bash_line_task_output_poll_token "$merged" && return 0
+        fi
+        bash_line_task_output_poll_token "$line" && return 0
+        i=$((i + 1))
+    done
     return 1
 }
 
 # Canonical state key: rightmost tasks/<id>.output tail (absolute vs relative ignored).
 extract_task_output_token() {
-    local text="$1"
-    local token
+    local text="$1" stripped token
     token=$(printf '%s' "$text" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
+    if [ -n "$token" ]; then
+        printf '%s' "$token"
+        return 0
+    fi
+    stripped=$(bash_strip_quoted_for_read_verb "$text")
+    token=$(printf '%s' "$stripped" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
     if [ -n "$token" ]; then
         printf '%s' "$token"
         return 0
@@ -139,7 +214,10 @@ extract_task_output_token() {
 }
 
 task_id_from_token() {
-    printf '%s' "$1" | sed -n 's|^tasks/\(.*\)\.output$|\1|p'
+    local token="$1" id
+    id=$(printf '%s' "$token" | sed -n 's|^tasks/\([A-Za-z0-9._-]*\)\.output$|\1|p')
+    [ -n "$id" ] || return 1
+    printf '%s' "$id"
 }
 
 handle_task_output_poll() {
@@ -173,7 +251,13 @@ handle_task_output_poll() {
         age=0
     fi
 
-    printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    _state_tmp=$(mktemp "${state_dir}/taskout-state.XXXXXX" 2>/dev/null) || _state_tmp=""
+    if [ -n "$_state_tmp" ]; then
+        printf '%s\t%s\n' "$count" "$first_ts" > "$_state_tmp" 2>/dev/null || true
+        mv -f "$_state_tmp" "$taskout_file" 2>/dev/null || printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    else
+        printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    fi
     chmod 600 "$taskout_file" 2>/dev/null || true
 
     if [ "$age" -eq 0 ] && [ "$count" -gt 1 ]; then
@@ -212,7 +296,13 @@ handle_generic_read_poll() {
         first_ts=$now
     fi
 
-    printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+    _state_tmp=$(mktemp "${state_dir}/read-poll-state.XXXXXX" 2>/dev/null) || _state_tmp=""
+    if [ -n "$_state_tmp" ]; then
+        printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$_state_tmp" 2>/dev/null || true
+        mv -f "$_state_tmp" "$state_file" 2>/dev/null || printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+    else
+        printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+    fi
     chmod 600 "$state_file" 2>/dev/null || true
 
     age=$(( now - first_ts ))
@@ -239,11 +329,7 @@ case "$tool_name" in
         handle_generic_read_poll "$sanitized_path" "$offset"
         ;;
     Bash)
-        command_body=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
-        [ -n "$command_body" ] || exit 0
-        sanitized_command=${command_body//$'\t'/ }
-
-        token=$(extract_bash_task_output_poll_token "$sanitized_command") || exit 0
+        token=$(extract_bash_task_output_poll_token "$_bash_sanitized_command") || exit 0
         handle_task_output_poll "$token"
         ;;
 esac

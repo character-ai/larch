@@ -65,12 +65,13 @@ There is no backward compatibility with the old `CMD=` metadata line. A collecto
 
 ## Invariants
 
-- Always remove stale `<output>`, `<output>.done`, `<output>.inner.done`, `<output>.meta`, and `<output>.diag` before launch.
+- Always remove stale `<output>`, `<output>.done`, `<output>.inner.done`, `<output>.meta`, `<output>.diag`, and `<output>.stderr-tail` before launch.
 - Always write `<output>.done` via the exit trap in default mode, or `<output>.inner.done` when `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done`.
 - The trap writes the value of `EXIT_CODE`, which defaults to `99` ("wrapper crashed before capturing real exit code"). Failure paths between trap installation and child launch (e.g. `CMD_JSON` serialization) must assign `EXIT_CODE` to the real exit value before calling `exit`, so the sentinel matches the process exit status; the `99` default is reserved for unhandled crashes.
 - If the wrapper exits while the child PID is still alive (for example, because a wrapping launcher signaled the wrapper), the trap kills and reaps the child before writing the sentinel. This keeps launcher-owned public sentinel publication from racing a still-running tool process.
 - Keep `set -euo pipefail`; child exit codes are captured via guarded `wait`.
 - Diagnostic text is appended to `<output>.diag` so stdout-only capture can retain child stderr.
+- On non-zero exit or timeout, the wrapper writes a redacted, bounded stderr tail to `<output>.stderr-tail` (see `scripts/lib-failed-agent-stderr-tail.md`) and emits a fenced block to FD 2. Source order is mode-aware: default review prefers `<output>.sidecar`, then `<output>`, then `<output>.diag`; `--capture-stdout` prefers merged `<output>` before `.diag`; `--capture-stdout-only` prefers `.diag` before `<output>`. Verdict lines and `.diag` content are unchanged (additive contract).
 - `jq` is a hard prerequisite for this wrapper, in addition to the repo-wide `jq` dependency used by other larch scripts.
 
 ## Poll interval (`RUN_EXTERNAL_AGENT_POLL_INTERVAL`)

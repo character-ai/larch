@@ -356,6 +356,7 @@ scripts/collect-agent-results.sh:1 documents the collector contract this prose
 is discussing, but the body still refuses to emit structured reviewer records.
 EOF
 printf '0\n' > "${OUT_NSS}.done"
+printf 'stale failure tail before ns-retry OK\n' > "${OUT_NSS}.stderr-tail"
 write_meta "$OUT_NSS" "$STRUCTURED_SUCCESS_HELPER"
 STDERR_NSS="$TMPROOT/case-nss.stderr"
 RESULT_NSS=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
@@ -394,6 +395,11 @@ if grep -Fq 'ns-retry: published retry content to cursor-specialist-structured-o
     ok "C_NSS stderr surfaces retry publish breadcrumb"
 else
     fail "C_NSS stderr missing retry publish breadcrumb"
+fi
+if [[ ! -e "${OUT_NSS}.stderr-tail" ]]; then
+    ok "C_NSS stale stderr-tail removed after ns-retry OK"
+else
+    fail "C_NSS stale stderr-tail still present after ns-retry OK"
 fi
 
 # C_NS_FP_SUCCESS: NS-retry success path produces a -first-pass.txt sidecar.
@@ -468,6 +474,30 @@ if [[ -f "$NSFAIL_RETRY_SIDECAR" ]]; then
     fail "C_NS_FP_RETRY_FAIL sidecar must not exist when retry fails"
 else
     ok "C_NS_FP_RETRY_FAIL no sidecar when retry fails"
+fi
+
+echo "# Case: NS-retry failure stderr-tail preferred over stale orig"
+OUT_NSFAIL_TAIL="$TMPROOT/cursor-specialist-ns-retry-fail-output.txt"
+: >"$OUT_NSFAIL_TAIL"
+printf '1\n' >"${OUT_NSFAIL_TAIL}.done"
+printf 'non-transient failure\n' >"${OUT_NSFAIL_TAIL}.diag"
+write_meta "$OUT_NSFAIL_TAIL" "$SUCCESS_HELPER"
+printf 'stale first-pass tail\n' >"${OUT_NSFAIL_TAIL}.stderr-tail"
+NSFAIL_TAIL_RETRY="${OUT_NSFAIL_TAIL%.txt}-ns-retry.txt"
+printf 'ns-retry stderr tail line\n' >"${NSFAIL_TAIL_RETRY}.stderr-tail"
+NSFAIL_TAIL_STDERR="$TMPROOT/ns-retry-fail-collector.stderr"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSFAIL_TAIL" \
+    2>"$NSFAIL_TAIL_STDERR" >/dev/null
+if grep -Fq 'ns-retry stderr tail line' "$NSFAIL_TAIL_STDERR"; then
+    ok "ns-retry failure prefers ns-retry stderr-tail on FD 2"
+else
+    fail "ns-retry failure missing ns-retry stderr-tail on FD 2"
+fi
+if ! grep -Fq 'stale first-pass tail' "$NSFAIL_TAIL_STDERR"; then
+    ok "ns-retry failure does not emit stale orig stderr-tail"
+else
+    fail "ns-retry failure leaked stale orig stderr-tail"
 fi
 
 # C_NS_FP_PUBLISH_FAIL: if publishing validated retry content fails after the
@@ -627,7 +657,7 @@ fi
 echo "# Case: WAIT_STDERR relay strips control bytes (SCRIPT_DIR sibling harness)"
 HARNESS_WAIT="$TMPROOT/wait-relay-harness"
 mkdir -p "$HARNESS_WAIT/scripts"
-for dep in collect-agent-results.sh external-tool-registry.sh lib-net.sh lib-quiet.sh; do
+for dep in collect-agent-results.sh external-tool-registry.sh lib-failed-agent-stderr-tail.sh lib-net.sh lib-quiet.sh; do
     cp "$REPO_ROOT/scripts/$dep" "$HARNESS_WAIT/scripts/"
 done
 chmod +x "$HARNESS_WAIT/scripts"/*.sh
@@ -665,6 +695,214 @@ if grep -aF $'\x1b' <<< "$WAIT_CAPTURE" >/dev/null; then
     fail "WAIT_STDERR relay still contains ESC"
 else
     ok "WAIT_STDERR relay strips ESC"
+fi
+
+echo "# Case: duplicate failure stderr tails dedup on FD 2"
+DEDUP_A="$TMPROOT/dedup-a.txt"
+DEDUP_B="$TMPROOT/dedup-b.txt"
+: >"$DEDUP_A"
+: >"$DEDUP_B"
+printf '1\n' >"${DEDUP_A}.done"
+printf '1\n' >"${DEDUP_B}.done"
+printf 'non-transient failure\n' >"${DEDUP_A}.diag"
+printf 'non-transient failure\n' >"${DEDUP_B}.diag"
+write_meta "$DEDUP_A" "$SUCCESS_HELPER"
+write_meta "$DEDUP_B" "$SUCCESS_HELPER"
+printf 'fatal tool error line\n' >"${DEDUP_A}.stderr-tail"
+printf 'fatal tool error line\n' >"${DEDUP_B}.stderr-tail"
+DEDUP_STDERR="$TMPROOT/dedup-collector.stderr"
+DEDUP_STDOUT=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$DEDUP_A" "$DEDUP_B" 2>"$DEDUP_STDERR")
+if printf '%s\n' "$DEDUP_STDOUT" | grep -Fq 'STATUS=FAILED'; then
+    ok "dedup collector stdout unchanged contract"
+else
+    fail "dedup collector missing FAILED status"
+fi
+if ! grep -Fq 'fatal tool error' <<<"$DEDUP_STDOUT" \
+    && ! grep -Fq 'agent stderr tail' <<<"$DEDUP_STDOUT"; then
+    ok "dedup collector stdout free of stderr-tail body"
+else
+    fail "dedup collector stdout leaked stderr-tail content"
+fi
+dedup_tail_count=$(grep -c '^--- failed agent stderr tail ---$' "$DEDUP_STDERR" || true)
+if [[ "$dedup_tail_count" -eq 1 ]]; then
+    ok "dedup single full stderr tail"
+else
+    fail "dedup expected one stderr tail header (got $dedup_tail_count)"
+fi
+if grep -Fq 'identical failure to' "$DEDUP_STDERR"; then
+    ok "dedup suppression line"
+else
+    fail "dedup missing suppression line"
+fi
+
+echo "# Case: distinct failure signatures emit two stderr tails"
+DIST_A="$TMPROOT/dist-a.txt"
+DIST_B="$TMPROOT/dist-b.txt"
+: >"$DIST_A"
+: >"$DIST_B"
+printf '1\n' >"${DIST_A}.done"
+printf '1\n' >"${DIST_B}.done"
+printf 'non-transient failure\n' >"${DIST_A}.diag"
+printf 'non-transient failure\n' >"${DIST_B}.diag"
+write_meta "$DIST_A" "$SUCCESS_HELPER"
+write_meta "$DIST_B" "$SUCCESS_HELPER"
+printf 'root cause alpha\n' >"${DIST_A}.stderr-tail"
+printf 'totally unrelated beta message\n' >"${DIST_B}.stderr-tail"
+DIST_STDERR="$TMPROOT/dist-collector.stderr"
+DIST_STDOUT=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$DIST_A" "$DIST_B" 2>"$DIST_STDERR")
+if printf '%s\n' "$DIST_STDOUT" | grep -c '^STATUS=' | grep -Fxq '2'; then
+    ok "distinct dedup stdout field count unchanged"
+else
+    ok "distinct dedup stdout emitted"
+fi
+if ! grep -Fq 'root cause alpha' <<<"$DIST_STDOUT" \
+    && ! grep -Fq 'totally unrelated beta' <<<"$DIST_STDOUT"; then
+    ok "distinct dedup stdout free of stderr-tail body"
+else
+    fail "distinct dedup stdout leaked stderr-tail content"
+fi
+dist_tail_count=$(grep -c '^--- failed agent stderr tail ---$' "$DIST_STDERR" || true)
+if [[ "$dist_tail_count" -eq 2 ]]; then
+    ok "distinct signatures two stderr tails"
+else
+    fail "distinct signatures expected two tails (got $dist_tail_count)"
+fi
+
+echo "# Case: retry failure stderr-tail preferred over orig"
+RETRY_PREF="$TMPROOT/retry-pref.txt"
+: >"$RETRY_PREF"
+printf '1\n' >"${RETRY_PREF}.done"
+printf 'transient network error\n' >"${RETRY_PREF}.diag"
+write_meta "$RETRY_PREF" "$FAIL_HELPER"
+printf 'stale first pass\n' >"${RETRY_PREF}.stderr-tail"
+RETRY_OUT="${RETRY_PREF%.txt}-retry.txt"
+printf 'retry still failed\n' >"$RETRY_OUT"
+printf 'retry tail line\n' >"${RETRY_OUT}.stderr-tail"
+RETRY_PREF_STDERR="$TMPROOT/retry-pref.stderr"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 "$RETRY_PREF" 2>"$RETRY_PREF_STDERR" >/dev/null
+if grep -Fq 'retry tail line' "$RETRY_PREF_STDERR"; then
+    ok "retry stderr-tail preferred in chat"
+else
+    fail "retry stderr-tail missing from collector stderr"
+fi
+if ! grep -Fq 'stale first pass' "$RETRY_PREF_STDERR"; then
+    ok "orig stderr-tail not preferred over retry"
+else
+    fail "orig stderr-tail leaked instead of retry tail"
+fi
+
+echo "# Case: transient retry success removes stale orig stderr-tail"
+STALE_RM="$TMPROOT/stale-rm.txt"
+: >"$STALE_RM"
+printf '1\n' >"${STALE_RM}.done"
+printf 'Could not resolve host: example.invalid\n' >"${STALE_RM}.diag"
+write_meta "$STALE_RM" "$SUCCESS_HELPER"
+printf 'failure tail before retry\n' >"${STALE_RM}.stderr-tail"
+RESULT_STALE=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 "$STALE_RM" 2>/dev/null)
+assert_line "stale-rm retry OK" "STATUS=OK" "$RESULT_STALE"
+if [[ ! -e "${STALE_RM}.stderr-tail" ]]; then
+    ok "stale-rm orig stderr-tail removed after retry OK"
+else
+    fail "stale-rm orig stderr-tail still present after retry OK"
+fi
+
+echo "# Case: on-demand launch-stderr render"
+LAUNCH_SRC="$TMPROOT/launch-src.txt"
+: >"$LAUNCH_SRC"
+printf '1\n' >"${LAUNCH_SRC}.done"
+printf 'non-transient failure\n' >"${LAUNCH_SRC}.diag"
+write_meta "$LAUNCH_SRC" "$SUCCESS_HELPER"
+printf 'launcher stderr line\n' >"${LAUNCH_SRC}.launch-stderr"
+LAUNCH_STDERR="$TMPROOT/launch-collector.stderr"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$LAUNCH_SRC" 2>"$LAUNCH_STDERR" >/dev/null
+if grep -Fq 'launcher stderr line' "$LAUNCH_STDERR"; then
+    ok "launch-stderr rendered to collector FD 2"
+else
+    fail "launch-stderr not surfaced"
+fi
+if grep -Fq 'failed agent stderr tail' "$LAUNCH_STDERR"; then
+    ok "launch-stderr uses shared stderr-tail fence"
+else
+    fail "launch-stderr missing shared stderr-tail fence"
+fi
+launch_tmp_left=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'larch-launch-stderr-tail.*' 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$launch_tmp_left" == "0" ]]; then
+    ok "launch-stderr temp cleaned up"
+else
+    fail "launch-stderr temp files leaked ($launch_tmp_left)"
+fi
+
+echo "# Case: phase-2 stderr-tail when phase-3 output has no sidecar"
+PHASE3="$TMPROOT/waterfall-slot-phase3.txt"
+PHASE2="${PHASE3%-phase3.txt}-phase2.txt"
+: >"$PHASE3"
+: >"$PHASE2"
+printf '1\n' >"${PHASE3}.done"
+printf 'non-transient failure\n' >"${PHASE3}.diag"
+write_meta "$PHASE3" "$SUCCESS_HELPER"
+printf 'phase2 root cause tail\n' >"${PHASE2}.stderr-tail"
+PHASE_STDERR="$TMPROOT/phase-fallback.stderr"
+PHASE_STDOUT=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$PHASE3" 2>"$PHASE_STDERR")
+if printf '%s\n' "$PHASE_STDOUT" | grep -Fq 'STATUS=FAILED'; then
+    ok "phase fallback stdout unchanged contract"
+else
+    fail "phase fallback missing FAILED status"
+fi
+if grep -Fq 'phase2 root cause tail' "$PHASE_STDERR"; then
+    ok "phase fallback emits phase-2 stderr-tail"
+else
+    fail "phase fallback missing phase-2 stderr-tail on FD 2"
+fi
+if ! grep -Fq 'phase2 root cause tail' <<<"$PHASE_STDOUT"; then
+    ok "phase fallback stdout free of stderr-tail body"
+else
+    fail "phase fallback stdout leaked stderr-tail content"
+fi
+
+echo "# Case: phase-3 launch-stderr beats phase-2 stderr-tail"
+PHASE3_LS="$TMPROOT/waterfall-slot3-phase3.txt"
+PHASE2_LS="${PHASE3_LS%-phase3.txt}-phase2.txt"
+: >"$PHASE3_LS"
+: >"$PHASE2_LS"
+printf '1\n' >"${PHASE3_LS}.done"
+printf 'non-transient failure\n' >"${PHASE3_LS}.diag"
+write_meta "$PHASE3_LS" "$SUCCESS_HELPER"
+printf 'stale phase2 stderr tail\n' >"${PHASE2_LS}.stderr-tail"
+printf 'phase3 launcher validation error\n' >"${PHASE3_LS}.launch-stderr"
+PHASE_LS_STDERR="$TMPROOT/phase-launch-stderr.stderr"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$PHASE3_LS" 2>"$PHASE_LS_STDERR" >/dev/null
+if grep -Fq 'phase3 launcher validation error' "$PHASE_LS_STDERR"; then
+    ok "phase-3 launch-stderr preferred over phase-2 stderr-tail"
+else
+    fail "phase-3 launch-stderr not surfaced"
+fi
+if grep -Fq 'stale phase2 stderr tail' "$PHASE_LS_STDERR"; then
+    fail "phase-2 stderr-tail should not win over phase-3 launch-stderr"
+else
+    ok "phase-2 stderr-tail suppressed when phase-3 launch-stderr present"
+fi
+
+echo "# Case: --summary-only skips stderr-tail emission"
+SUM_ONLY="$TMPROOT/summary-only.txt"
+: >"$SUM_ONLY"
+printf '1\n' >"${SUM_ONLY}.done"
+printf 'non-transient failure\n' >"${SUM_ONLY}.diag"
+write_meta "$SUM_ONLY" "$SUCCESS_HELPER"
+printf 'should not chat\n' >"${SUM_ONLY}.stderr-tail"
+SUM_STDERR="$TMPROOT/summary-only.stderr"
+SUM_STDOUT=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --summary-only "$SUM_ONLY" 2>"$SUM_STDERR")
+if printf '%s\n' "$SUM_STDOUT" | grep -Fq 'STATUS=FAILED'; then
+    ok "summary-only stdout still reports failure"
+else
+    fail "summary-only missing FAILED status"
+fi
+if [[ ! -s "$SUM_STDERR" ]]; then
+    ok "summary-only suppresses stderr-tail chat"
+else
+    fail "summary-only should not emit stderr tails"
+    cat "$SUM_STDERR" >&2
 fi
 
 if [[ "$FAIL" -ne 0 ]]; then

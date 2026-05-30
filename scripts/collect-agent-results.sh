@@ -101,6 +101,8 @@ source "$SCRIPT_DIR/lib-net.sh" || { echo "collect-agent-results.sh: failed to s
 [[ "${LARCH_LIB_NET_LOADED:-}" == "1" ]] || { echo "collect-agent-results.sh: lib-net.sh sourced but sentinel missing" >&2; exit 1; }
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh" || { echo "collect-agent-results.sh: failed to source lib-quiet.sh" >&2; exit 1; }
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh" || { echo "collect-agent-results.sh: failed to source lib-failed-agent-stderr-tail.sh" >&2; exit 1; }
 
 normalize_exit_code_or_99() {
     local raw="$1"
@@ -1152,6 +1154,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                     else
                         RESULTS[IDX]="REVIEWER_FILE=$RETRY_OUTPUT|TOOL=$TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
                     fi
+                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${RETRY_OUTPUT}.stderr-tail"
                 else
                     # Retry also failed.
                     if [[ "$RETRY_EXIT" == "124" ]]; then
@@ -1389,8 +1392,10 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 fi
                                 if _classify_sentinel_status "$ORIG_OUTPUT"; then
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (structured ns-retry)"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 else
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 fi
                             fi
                         else
@@ -1403,8 +1408,10 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 fi
                                 if _classify_sentinel_status "$ORIG_OUTPUT"; then
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (substantive ns-retry)"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 else
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail" "${NS_RETRY_OUTPUT}.stderr-tail"
                                 fi
                             fi
                         fi
@@ -1414,6 +1421,81 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
         fi
         rm -f "${NS_RETRY_PROMPTS[@]+"${NS_RETRY_PROMPTS[@]}"}"
     fi
+fi
+
+# --- 3.8 Emit failed-agent stderr tails (FD 2 only; stdout KV contract unchanged) ---
+# Skipped under --summary-only (dispatch-with-waterfall phase collects) so transient
+# phase-1 failures do not emit tails before a later phase succeeds.
+if [[ "$SUMMARY_ONLY" != "true" ]]; then
+_failed_stderr_sig_map=$(mktemp "${TMPDIR:-/tmp}/larch-collector-stderr-sig.XXXXXX") || exit 1
+_cleanup_collector_dedup_tail_file() {
+    [[ "${_dedup_tail_file:-}" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_dedup_tail_file"
+}
+_emit_collector_stderr_tail_file() {
+    local tail_file="$1" rendered
+    [[ -s "$tail_file" ]] || return 1
+    rendered=$(render_failed_agent_stderr_tail "$tail_file" 2>/dev/null || true)
+    [[ -n "$rendered" ]] || return 1
+    larch_err '--- failed agent stderr tail ---'
+    while IFS= read -r _tail_line || [[ -n "$_tail_line" ]]; do
+        [[ -n "$_tail_line" ]] || continue
+        if declare -f sanitize_diagnostic_line &>/dev/null; then
+            larch_err "$(printf '%s' "$_tail_line" | sanitize_diagnostic_line)"
+        else
+            larch_err "$_tail_line"
+        fi
+    done < <(printf '%s' "$rendered")
+    larch_err '--- end failed agent stderr tail ---'
+}
+_resolve_collector_stderr_tail_file() {
+    resolve_collector_stderr_tail_file "$1"
+}
+for _dedup_result in "${RESULTS[@]}"; do
+    _dedup_status=""
+    _dedup_tool=""
+    _dedup_reviewer=""
+    _dedup_rest="$_dedup_result"
+    while [[ -n "$_dedup_rest" ]]; do
+        if [[ "$_dedup_rest" == *"|"* ]]; then
+            _dedup_field="${_dedup_rest%%|*}"
+            _dedup_rest="${_dedup_rest#*|}"
+        else
+            _dedup_field="$_dedup_rest"
+            _dedup_rest=""
+        fi
+        case "$_dedup_field" in
+            STATUS=*) _dedup_status="${_dedup_field#STATUS=}" ;;
+            TOOL=*) _dedup_tool="${_dedup_field#TOOL=}" ;;
+            REVIEWER_FILE=*) _dedup_reviewer="${_dedup_field#REVIEWER_FILE=}" ;;
+        esac
+    done
+    case "$_dedup_status" in
+        OK|cap_hit|'') continue ;;
+    esac
+    [[ -n "$_dedup_reviewer" ]] || continue
+    _dedup_tail_file=""
+    _dedup_tail_file=$(_resolve_collector_stderr_tail_file "$_dedup_reviewer" || true)
+    [[ -n "$_dedup_tail_file" && -s "$_dedup_tail_file" ]] || continue
+    _dedup_sig=$(failed_agent_stderr_signature "$_dedup_tail_file" || true)
+    if [[ -z "$_dedup_sig" ]]; then
+        _emit_collector_stderr_tail_file "$_dedup_tail_file" || true
+        _cleanup_collector_dedup_tail_file
+        continue
+    fi
+    _dedup_base=$(basename "$_dedup_reviewer")
+    _dedup_tab=$'\t'
+    if command grep -Fq "${_dedup_sig}${_dedup_tab}" "$_failed_stderr_sig_map" 2>/dev/null; then
+        _dedup_first=$(command grep -F "${_dedup_sig}${_dedup_tab}" "$_failed_stderr_sig_map" | head -n 1)
+        _dedup_first_base="${_dedup_first#*"${_dedup_tab}"}"
+        larch_err "↩ ${_dedup_tool:-unknown} ${_dedup_base}: identical failure to ${_dedup_first_base} (root-cause sig ${_dedup_sig}); stderr tail suppressed"
+        _cleanup_collector_dedup_tail_file
+        continue
+    fi
+    printf '%s\t%s\n' "$_dedup_sig" "$_dedup_base" >>"$_failed_stderr_sig_map"
+    _emit_collector_stderr_tail_file "$_dedup_tail_file" || true
+    _cleanup_collector_dedup_tail_file
+done
+rm -f "$_failed_stderr_sig_map"
 fi
 
 # --- 4. Emit structured results ---
