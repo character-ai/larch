@@ -17,6 +17,7 @@ Covered cases:
 - **dangling-symlink-reaped**: broken `current-design-env-test.sh` symlink in the sessions parent (`-L` and `! -e`) is removed; `SYMLINKS_REMOVED=1`
 - **live-symlink-kept**: `current-design-env-*.sh` symlink pointing at an existing file is retained; `SYMLINKS_REMOVED=0`
 - **stale-tmp-dir-removed**: stale `claude-implement-*` directory under `LARCH_TEST_TMP_ROOT` is deleted; `TMP_REMOVED=1`
+- **stale-tmp-toplevel-with-fresh-deep-child-kept**: stale `/tmp` pattern dir mtime but a fresh nested file; directory retained; `TMP_REMOVED=0`
 - **stale-tmp-file-removed**: stale loose file matching a `/tmp` pattern (e.g. `larch4-review.diff`) under `LARCH_TEST_TMP_ROOT` is deleted; `TMP_REMOVED=1`
 - **nonlarch-tmp-untouched**: stale non-larch entry under `LARCH_TEST_TMP_ROOT` is not removed; `TMP_REMOVED=0`
 - **large-tmp-scales**: ~2000 non-matching entries plus one stale `claude-implement-*` dir; completes in under 60 seconds, matching dir removed, non-matching untouched

@@ -174,6 +174,8 @@ assert_keys "$TMPROOT/blank-before-diff-lines" ''
 assert_keys "$TMPROOT/mech-true" $'diff_added\nmechanical_churn'
 assert_keys "$TMPROOT/mech-false" $'diff_added\nmechanical_churn'
 assert_keys "$TMPROOT/retain-010" $'diff_added\ndiff_deleted'
+assert_keys "$TMPROOT/duplicate-diff-added" 'diff_added'
+assert_keys "$TMPROOT/block-boundary" 'diff_added'
 
 # --- values ---
 assert_values "$TMPROOT/none-present" ''
@@ -197,6 +199,8 @@ assert_has_key "$TMPROOT/retain-010" diff_deleted 0
 
 # --- has_key (absent / rejected) ---
 assert_has_key "$TMPROOT/none-present" diff_added 1
+assert_has_key "$TMPROOT/none-present" diff_deleted 1
+assert_has_key "$TMPROOT/none-present" mechanical_churn 1
 assert_has_key "$TMPROOT/octal-rejected" diff_added 1
 assert_has_key "$TMPROOT/octal-rejected" diff_deleted 1
 # block-boundary: in-block diff_added (rc=0). boundary-orphan-only / blank-before-diff-lines: rc=1.
