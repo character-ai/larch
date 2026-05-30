@@ -33,8 +33,8 @@ while [ $# -gt 0 ]; do
 done
 
 resolve_mmdc() {
-    if [ -x "$REPO_ROOT/node_modules/.bin/mmdc" ]; then
-        printf '%s\n' "$REPO_ROOT/node_modules/.bin/mmdc"
+    if [ -x "$REPO_ROOT/mermaid-lint/node_modules/.bin/mmdc" ]; then
+        printf '%s\n' "$REPO_ROOT/mermaid-lint/node_modules/.bin/mmdc"
         return 0
     fi
     if command -v mmdc >/dev/null 2>&1; then
@@ -133,7 +133,7 @@ fi
 }
 
 MMDC="$(resolve_mmdc)" || {
-    larch_err "ERROR: missing Mermaid CLI (install @mermaid-js/mermaid-cli or run npm install)"
+    larch_err "ERROR: missing Mermaid CLI (install @mermaid-js/mermaid-cli or run: cd mermaid-lint && npm ci)"
     exit 2
 }
 

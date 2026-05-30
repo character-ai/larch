@@ -39,6 +39,8 @@ After `/upgrade-larch` finishes, restart Claude Code only if it actually install
 
 When `/upgrade-larch` verifies a stable install (or runs on the already-latest path), it writes `.larch-installed-at` on the stable version directory and keeps the eight most-recently-installed cached versions (install-stamp order; legacy unstamped directories fall back to directory mtime at ranking time only). The verified or already-latest stable target directory is always retained when present. There are no session pins or mtime-touch helpers. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted.
 
+`/upgrade-larch` now installs via a sparse checkout that excludes the committed `larch-logs/` run logs and the dev-only `mermaid-lint/` toolchain (so the install carries no run logs and triggers no `npm install`), and refreshes the marketplace in place with `claude plugin marketplace update` instead of removing and re-cloning it. The first upgrade after this change performs a one-time `remove` + sparse re-add; every later upgrade uses the fast in-place update.
+
 ## Install ast-grep
 1. Install the CLI (shell)
 `brew install ast-grep`
@@ -98,13 +100,13 @@ installation is required:
 
 ```bash
 cd larch
-npm install              # creates node_modules/ (gitignored) + binds the lockfile
+(cd mermaid-lint && npm ci)   # creates mermaid-lint/node_modules/ (gitignored) + binds the lockfile
 ```
 
-This installs `@mermaid-js/mermaid-cli` (pinned in `package.json` /
-`package-lock.json`) plus its Puppeteer/Chromium dependency under
-`node_modules/.bin/mmdc`. The hook resolves `mmdc` from
-`node_modules/.bin/` first, then falls back to a globally-installed
+This installs `@mermaid-js/mermaid-cli` (pinned in `mermaid-lint/package.json` /
+`mermaid-lint/package-lock.json`) plus its Puppeteer/Chromium dependency under
+`mermaid-lint/node_modules/.bin/mmdc`. The hook resolves `mmdc` from
+`mermaid-lint/node_modules/.bin/` first, then falls back to a globally-installed
 `mmdc` on `PATH`.
 
 If you are intentionally working on a machine without a Node toolchain

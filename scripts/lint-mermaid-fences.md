@@ -23,9 +23,9 @@ artifact archives, not authoring-quality docs.
 
 ## Mermaid CLI Resolution
 
-The script prefers `./node_modules/.bin/mmdc` resolved from the repo root, then falls back to `command -v mmdc`. If neither exists, it exits 2 with a missing-toolchain error so CI can distinguish setup failure from parse failure.
+The script prefers `./mermaid-lint/node_modules/.bin/mmdc` resolved from the repo root, then falls back to `command -v mmdc`. If neither exists, it exits 2 with a missing-toolchain error so CI can distinguish setup failure from parse failure.
 
-This repo pins `@mermaid-js/mermaid-cli` in `package.json`. Version 11.12.0 documents `mmdc` as the package bin and depends on Mermaid 11.x. The script probes `mmdc --help` for `--parseOnly`; when supported, it uses parse-only mode. Otherwise it renders to a temp `.svg` file because `mmdc` rejects extension-less outputs.
+This repo pins `@mermaid-js/mermaid-cli` in `mermaid-lint/package.json`. Version 11.12.0 documents `mmdc` as the package bin and depends on Mermaid 11.x. The script probes `mmdc --help` for `--parseOnly`; when supported, it uses parse-only mode. Otherwise it renders to a temp `.svg` file because `mmdc` rejects extension-less outputs.
 
 ## Chromium sandbox workaround
 
@@ -52,4 +52,4 @@ This prevents large fenced documentation examples inside quadruple-backtick docu
 
 ## Edit-in-sync
 
-Update `.pre-commit-config.yaml`, `.github/workflows/ci.yaml`, `package.json`, and `scripts/test-mermaid-fragments.sh` when changing this contract.
+Update `.pre-commit-config.yaml`, `.github/workflows/ci.yaml`, `mermaid-lint/package.json`, and `scripts/test-mermaid-fragments.sh` when changing this contract.

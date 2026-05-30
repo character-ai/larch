@@ -9,10 +9,21 @@ larch_quiet_init
 # Restore original stdout so progress and the installed version line reach the operator.
 [ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
 
+# Top-level repo directories shipped to consumers via the plugin install:
+# every top-level tracked directory EXCEPT larch-logs/ (committed run logs,
+# ~317 MB, never read from the install at runtime) and mermaid-lint/ (dev-only
+# Mermaid lint toolchain — excluded so the installed plugin has no package.json
+# and the installer runs no npm install). Passed to
+# `claude plugin marketplace add --sparse` (git sparse-checkout, cone mode);
+# cone mode always keeps top-level files, so root markdown imports ship anyway.
+# MAINTENANCE: if a new top-level directory is added to the repo and must ship,
+# add it here; larch-logs/ and mermaid-lint/ must NOT be added.
+LARCH_SPARSE_DIRS=".claude .claude-plugin .gemini .github agents docs hooks scripts skills tests"
+
 recover() {
     larch_err ""
     larch_err "Recovery: run these commands manually to reinstall:"
-    larch_err "  claude plugin marketplace add character-ai/larch"
+    larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
     larch_err "  claude plugin install larch@larch-local"
 }
 trap recover ERR
@@ -259,11 +270,27 @@ fi
 larch_err "Uninstalling larch plugin..."
 claude plugin uninstall larch@larch-local 2>&1 || true
 
-larch_err "Removing larch-local marketplace..."
-claude plugin marketplace remove larch-local 2>&1 || true
-
-larch_err "Re-adding larch marketplace from GitHub..."
-claude plugin marketplace add character-ai/larch 2>&1
+# Marketplace refresh. A SPARSE clone (cone excludes larch-logs/) is detected by
+# the ABSENCE of its larch-logs/ subdir. When a sparse clone already exists,
+# refresh it in place with `marketplace update` (a git pull — seconds) instead
+# of the old remove + full re-clone. A legacy FULL clone (larch-logs/ present)
+# or a missing clone triggers a one-time remove + sparse re-add to establish the
+# cone; every subsequent run then takes the cheap update path.
+MARKETPLACE_CLONE="$HOME/.claude/plugins/marketplaces/larch-local"
+if [ -d "$MARKETPLACE_CLONE/.git" ] && [ ! -d "$MARKETPLACE_CLONE/larch-logs" ]; then
+    larch_err "Refreshing larch marketplace in place (sparse clone present)..."
+    if ! claude plugin marketplace update larch-local 2>&1; then
+        larch_err "marketplace update failed; falling back to sparse re-add..."
+        claude plugin marketplace remove larch-local 2>&1 || true
+        # shellcheck disable=SC2086  # intentional word-splitting into --sparse args
+        claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS 2>&1
+    fi
+else
+    larch_err "Adding larch marketplace (sparse checkout; excludes larch-logs)..."
+    claude plugin marketplace remove larch-local 2>&1 || true
+    # shellcheck disable=SC2086  # intentional word-splitting into --sparse args
+    claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS 2>&1
+fi
 
 larch_err "Installing larch plugin..."
 claude plugin install larch@larch-local 2>&1
@@ -281,7 +308,7 @@ if [ -n "$LATEST_STABLE" ]; then
         larch_err "Warning: expected version ${LATEST_STABLE} but found installed version ${ACTUAL_VERSION:-unknown}."
         larch_err "A pre-release or unexpected version may have been installed."
         larch_err "Re-run /upgrade-larch or install manually:"
-        larch_err "  claude plugin marketplace add character-ai/larch"
+        larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
         larch_err "  claude plugin install larch@larch-local"
     fi
 fi
