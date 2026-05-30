@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:82-85 / scripts/collect-agent-results.sh:852-1418	Dedup-emit pass anchored at ~852 before retries/NS settle	Inserting dedup after the section-2 loop (~852) runs before section 3 empty-output retry and sections 3.5–3.7 NS retries; emits tails for slots later upgraded to OK and uses non-final STATUS	Move dedup immediately before section 4 (`# --- 4. Emit structured results ---`, ~1419); iterate `RESULTS[]`, parse `REVIEWER_FILE` per entry, and gate on final `STATUS`
+
+1. **correctness** — `plan.txt:82-85` / `scripts/collect-agent-results.sh:852-1418`: The plan requires dedup after retries are final (line 82) but pins insertion to “after line ~852”, which is the end of the first validation loop and **before** section 3 retry (starts ~854) and sections 3.5–3.7. Cases like `test-collect-agent-results.sh` C_T1/C_T4 (transient failure → retry → `STATUS=OK`) would still get a failure stderr tail on FD 2. **Revision:** insert dedup only after section 3.7 completes, immediately before stdout emission (~1419).
+
+2. **correctness** — `plan.txt:84-85`: The dedup pass refers to `${OUTPUT}.stderr-tail`, but `OUTPUT` is only the section-2 loop variable; after retries, `RESULTS` may point at `*-retry.txt` paths. A post-loop dedup that reuses bare `OUTPUT` would read the wrong sidecar (typically the last slot). **Revision:** name the path from each entry’s `REVIEWER_FILE=` field when opening `.stderr-tail`.
+
+**FD-2 routing (no finding):** `emit_failed_agent_stderr_tail_raw` is specified as plain `printf >&2` in a non-quiet script; collector dedup uses `larch_err`, which routes to original stderr (FD 4 under quiet init, not contract FD 3). None of these paths use `emit`/`emit_kv`.
+
+**Fence + `larch_err` (exonerated):** `larch_err` does not add timestamps or script prefixes; line-by-line calls preserve fence lines. Per-line streaming redaction may re-run on already-redacted tail content; plan treats that as idempotent.
+
+**Stdout harness (exonerated):** The “stdout RESULTS … byte-unchanged” check is specified in the proposed `scripts/test-collect-agent-results.sh` extension (plan testing strategy ~165-167), not in `test-lib-failed-agent-stderr-tail.sh` (unit scope only). Failure modes ~151 is satisfied by that extension; it does not yet spell `cmp`/golden-file mechanics, but “byte-unchanged” is enough for implementers.
+
+**Claude double surface (exonerated):** `launch-claude-review.sh` ~173-178 full stderr re-emit stays; plan ~104-105 and ~169 explicitly keep it additive alongside `${OUTPUT}.stderr-tail` and collector dedup. Operators may see full stderr at launch time plus a bounded tail in the collector log—accepted by the plan.
+
+**Codex/cursor double surface (exonerated):** Foreground `run-external-agent.sh` raw tail emit vs collector `larch_err` resurface is intentional per plan approach ~126-128 (#3119 background case); not equivalent to the claude launcher duplicate.

@@ -1,0 +1,28 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-source-selection-mapping-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-source-selection-mapping-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/run-external-agent.sh:250-265,289-299	Proposed stderr source order `.sidecar` → `.diag` → `OUTPUT_FILE` is mode-blind; FAILED/TIMED_OUT always append a non-empty wrapper line to `${OUTPUT_FILE}.diag` before selection	`--capture-stdout` merges agent stderr into `OUTPUT_FILE` (`run-external-agent.sh:229-232`, `run-external-agent.md:23-24`) but `.diag` is still populated on every non-zero/timeout exit (`:263`, `:299`), so the second candidate wins and tails show wrapper text instead of merged agent stderr — contradicts the plan’s `--capture-stdout` merged-mode claim (`plan.txt:77-78`)	Branch on in-scope `CAPTURE_STDOUT` / `CAPTURE_STDOUT_ONLY`: e.g. merged → prefer non-empty `OUTPUT_FILE` before `.diag`; stdout-only → `.diag` before `OUTPUT`; default review → keep `.sidecar` first
+1	in_scope	important	risk-integration	skills/review/scripts/collect-findings.sh:206-221	Collector dedup is planned via `larch_err` in `collect-agent-results.sh`, but `/review` captures all collector stderr into `collect-agent-results.log` and only replays that log when the collector exits non-zero	Review launches discard launcher stderr (`scripts/dispatch-with-waterfall.sh:269,284` `2>&1` to `/dev/null`), so `emit_failed_agent_stderr_tail_raw` never reaches chat; on `collector_rc=0` the dedup pass’s `larch_err` tails stay in the log file and never surface — the main `/review` batch path misses issue #3202 chat delivery	Minimum fix: after a successful collector run, scan failed slots for `.stderr-tail` and emit (or replay dedup lines from the log) via `larch_err`; or stop redirecting collector stderr to only a file on the review path
+
+## Findings
+
+1. **[correctness]** `scripts/run-external-agent.sh:250-265,289-299` — The plan’s uniform `.sidecar` → `.diag` → `OUTPUT_FILE` pick does not match where stderr actually lives per capture mode. Default codex/cursor review (stderr in `${OUTPUT}.sidecar` via `launch-review.sh:542`, `966`) is fine when the sidecar is non-empty. `--capture-stdout-only` puts agent stderr in `.diag` (`run-external-agent.sh:207-216`) and also works when the sidecar is empty. `--capture-stdout` merges stderr into `OUTPUT_FILE` (`229-232`), but both FAILED and TIMED_OUT always append wrapper text to `.diag` first (`263`, `299`), so `.diag` is almost always non-empty and blocks the merged file — the plan’s merged-mode coverage claim is wrong for voters, dialectic judges, and other direct `--capture-stdout` callers.
+
+2. **[risk-integration]** `skills/review/scripts/collect-findings.sh:206-221` — The collector dedup pass is the right batch choke point, but `/review` wires it so FD 2 does not reach the operator on success: `collect-agent-results.sh` stderr goes to `collect-agent-results.log`, and lines are replayed with `larch_err` only when `collector_rc -ne 0`. Review slot launches are backgrounded with stderr discarded (`dispatch-with-waterfall.sh:269,284`), so `run-external-agent.sh` raw `>&2` tails are lost before collection. The plan does not update `collect-findings.sh`, so the proposed change may not deliver stderr tails to chat on the primary `/review` path even when `.stderr-tail` sidecars are written correctly.
+
+## Claude lane (no finding)
+
+Claude reviewer/voter runs use `launch-claude-review.sh` → `launch-claude-subprocess.sh`, not `run-external-agent.sh` (`launch-claude-subprocess.sh:198-215` writes `${OUTPUT_CANON}.stderr`). The plan’s separate pre-`.done` write from that file (`plan.txt:111-116,146-147`) matches the bypass; run-external-agent source order is irrelevant for that lane.
+
+## TIMED_OUT vs FAILED (exonerated)
+
+Both paths in `run-external-agent.sh` only append wrapper diagnostics to `.diag`; neither writes `.sidecar` (launchers own the sidecar). TIMED_OUT can leave `.sidecar` empty or unflushed after `kill` while `.diag` still gets a timeout line — same selection runs on both branches, so behavior is consistent but often degrades to wrapper-only text; the plan’s “empty/missing source” edge case partially covers this without claiming file parity.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-source-selection-mapping-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-dyn-source-selection-mapping-output.txt.diag)
+

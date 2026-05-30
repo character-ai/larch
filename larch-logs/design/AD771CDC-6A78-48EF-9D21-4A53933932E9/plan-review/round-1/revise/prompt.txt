@@ -1,0 +1,268 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Implementation Plan — Surface failed agent stderr tail to chat (#3202)
+
+Goal: on every non-zero codex/cursor/claude subprocess exit, surface the last N (default 30)
+redacted stderr lines to chat, bounded to 5 KB, so reviewer-failure root causes survive
+publish-exclusion and tmpdir cleanup. Within one collector batch, suppress duplicate
+same-root-cause failures down to one line each. Additive only: the existing verdict line,
+`.diag`, and the `collect-agent-results.sh` single-line `FAILURE_REASON` contract are unchanged.
+
+SIMPLE tier: smallest change that covers all lanes via the shared choke points
+(`run-external-agent.sh` + `collect-agent-results.sh`) plus the claude launcher that bypasses
+the runner. No bespoke per-`launch-*-*.sh` edits.
+
+## Files to modify/create
+
+### NEW: `scripts/lib-failed-agent-stderr-tail.sh`
+Sourced-only library (no shebang; `set` left to caller) holding the shared, dependency-free
+primitives. Renders to stdout / writes files only — it performs NO raw `>&2` itself, so it is
+safe to source from both quiet-init callers (`collect-agent-results.sh`, `launch-claude-review.sh`)
+and non-quiet `run-external-agent.sh` without tripping `lint-no-raw-stderr-after-quiet-init`.
+Functions:
+- `failed_agent_stderr_tail_lines()` — echo the resolved tail-line count from
+  `LARCH_FAILED_AGENT_STDERR_TAIL_LINES` (default `30`; non-numeric → `30`; `0` is valid and
+  means disabled).
+- `failed_agent_stderr_byte_cap()` — echo the byte ceiling (fixed `5120`; internal constant,
+  not user-tunable in this change).
+- `render_failed_agent_stderr_tail <source_file>` — if disabled (`0`) or `source_file` is
+  missing/empty, print nothing and return non-zero. Else `tail -n <N> "$source_file"` piped
+  through `scripts/redact-secrets.sh` then truncated to the byte cap (`head -c 5120`), printed
+  to STDOUT. Resolve `redact-secrets.sh` via the lib's own `SCRIPT_DIR`.
+- `write_failed_agent_stderr_tail <source_file> <output_file>` — capture
+  `render_failed_agent_stderr_tail` and, when non-empty, write it atomically to
+  `${output_file}.stderr-tail` (mktemp + mv). No-op (and no file) when disabled/empty.
+- `failed_agent_stderr_signature <tail_file>` — emit a best-effort root-cause fingerprint:
+  normalize volatile tokens via `sed -E` (digit runs `[0-9]+`→`#`, `0x[0-9a-fA-F]+`→`0x#`,
+  absolute tmpdir/session paths under `/tmp`, `/var/folders`, and `~/.cache/larch/sessions`
+  →`<path>`, the literal output basename →`<out>`), then `cksum | awk '{print $1}'`. Documented
+  explicitly as a heuristic (volatile-token normalization), NOT semantic understanding.
+- `emit_failed_agent_stderr_tail_raw <output_file>` — for non-quiet callers: if
+  `${output_file}.stderr-tail` exists and is non-empty, print a bounded fenced block to FD 2 via
+  plain `printf >&2` (header `--- <basename> stderr tail (last N lines, redacted) ---`, body,
+  `--- end stderr tail ---`). Used only by `run-external-agent.sh`.
+Bash 3.2-safe throughout (no associative arrays, no `mapfile`, no `${var^^}`).
+
+### NEW: `scripts/lib-failed-agent-stderr-tail.md`
+Sibling contract per `.claude/rules/script-md-siblings.md`: purpose, the env var
+(`LARCH_FAILED_AGENT_STDERR_TAIL_LINES`, default 30, 0=disabled) and 5 KB cap, the `.stderr-tail`
+sidecar artifact, the signature heuristic (and its explicit non-semantic limitation), the
+callers (`run-external-agent.sh`, `collect-agent-results.sh`, `launch-claude-review.sh`), the
+"no raw `>&2` in the lib" invariant, the harness path, and Makefile wiring.
+
+### NEW: `scripts/test-lib-failed-agent-stderr-tail.sh`
+Offline harness (stub `redact-secrets` not needed — call the real one). Asserts: default 30
+lines; env override; `0` disables (no file, empty render); 5 KB byte cap enforced on a single
+huge line; redaction applied (feed a fake `sk-ant-...` token → `<REDACTED-TOKEN>` in output);
+`.stderr-tail` written atomically; signature stability (two byte-different-but-same-root-cause
+inputs → equal signature; genuinely different cause → different signature); empty/missing source
+→ no output, non-zero return; Bash 3.2 invariants (reuse the `test-collect-agent-bash32.sh`
+grep-style forbidden-construct scan or add an inline check).
+
+### NEW: `scripts/test-lib-failed-agent-stderr-tail.md`
+Harness sibling stub pointing at `lib-failed-agent-stderr-tail.md` as the primary contract.
+
+### UPDATED: `scripts/run-external-agent.sh`
+- Source `lib-failed-agent-stderr-tail.sh` next to the existing `lib-validate-meta-path.sh`
+  source (line ~65).
+- In the FAILED branch (non-zero exit, line ~289-299) and the TIMED_OUT branch (line ~250-265),
+  after the existing verdict/`.diag` write: pick the stderr source = first of
+  [`${OUTPUT_FILE}.sidecar`, `${OUTPUT_FILE}.diag`, `${OUTPUT_FILE}`] that exists and is
+  non-empty (covers default codex/cursor sidecar mode, `--capture-stdout-only` `.diag` mode, and
+  `--capture-stdout` merged mode). Call `write_failed_agent_stderr_tail <source> "$OUTPUT_FILE"`
+  then `emit_failed_agent_stderr_tail_raw "$OUTPUT_FILE"` (raw `>&2` is allowed here — this
+  script has no quiet-init). Foreground lanes (CI, lint-fix-loop, implement) thus see the tail
+  directly; background review lanes get it re-surfaced by the collector from the sidecar.
+- Guard with the disabled (`0`) short-circuit inside the lib so success/disabled paths stay quiet.
+
+### UPDATED: `scripts/run-external-agent.md`
+Document the new failure-only behavior, the source-selection order, the `.stderr-tail` sidecar,
+and the env var / cap. Note the additive contract (verdict + `.diag` unchanged).
+
+### UPDATED: `scripts/collect-agent-results.sh`
+- Source `lib-failed-agent-stderr-tail.sh` after the existing `lib-quiet.sh` source (line ~103).
+- Add a final dedup-emit pass AFTER the retry loop settles and `RESULTS[]` holds final statuses
+  (after line ~852 region, once all statuses including retries are final). For each result whose
+  `STATUS` is not `OK`/`cap_hit`: compute `failed_agent_stderr_signature` from that slot's
+  `${OUTPUT}.stderr-tail` (skip slots with no sidecar). Track seen signatures in a Bash 3.2-safe
+  newline-delimited temp file (`signature<TAB>first-basename`), probed with `command grep -F`
+  (per `BASH_AUTHORING.md` wrapped-grep trap). First occurrence → emit the full fenced tail block
+  via `larch_err` (line-by-line, quiet-safe, reaches FD 2 → chat). Subsequent same-signature
+  slots → emit ONE `larch_err` line: `↩ <tool> <basename>: identical failure to <first-basename>
+  (root-cause sig <hash>); stderr tail suppressed`. The stdout `KEY=value|...` RESULTS plane is
+  untouched — dedup output is FD 2 only.
+- No change to `build_failure_reason`, the pipe sanitizer, retry logic, or the stdout contract.
+
+### UPDATED: `scripts/collect-agent-results.md`
+Document the dedup-emit pass, the FD-2-only surface, the signature heuristic reference, and the
+explicit "stdout KV contract unchanged" note.
+
+### UPDATED: `scripts/launch-claude-review.sh`
+- Source `lib-failed-agent-stderr-tail.sh` after the existing `lib-quiet.sh` source (line ~8).
+- After `rc=$?` (line ~163), when `rc != 0`, call
+  `write_failed_agent_stderr_tail "$SUBPROCESS_STDERR" "$OUTPUT"` so the collector surfaces a
+  bounded, redacted, deduped tail for claude slots too (claude reviewer/voter outputs are
+  collected by `collect-agent-results.sh` via the `.done` sentinel). Keep the existing
+  full-stderr `larch_err` re-emit (lines ~173-178) unchanged — it is relied on by
+  `dispatch-code-voters.sh` for validation-failure surfacing; the new sidecar is additive.
+
+### UPDATED: `scripts/launch-claude-review.md`
+Document the failure-only `.stderr-tail` write and that the existing full re-emit is preserved.
+
+### UPDATED: `docs/configuration-and-permissions.md`
+Add `LARCH_FAILED_AGENT_STDERR_TAIL_LINES` to the Environment Variables section: default `30`,
+`0` disables surfacing, paired with a fixed 5 KB byte ceiling; failure-only; redacted via
+`redact-secrets.sh`; surfaced to chat on FD 2; duplicate same-root-cause failures within a
+collector batch collapse to one line.
+
+### UPDATED: `Makefile`
+Register `test-lib-failed-agent-stderr-tail` target (mirroring `test-collect-agent-results`)
+and add it to one `test-harnesses-N` shard and the `.PHONY` line.
+
+## Approach
+- One shared lib owns tail+redact+cap+signature so the three call sites stay tiny and the logic
+  has a single isolated harness.
+- Capture happens where the exit is observed (`run-external-agent.sh` for codex/cursor,
+  `launch-claude-review.sh` for claude); the redacted tail is persisted to `${OUTPUT}.stderr-tail`
+  for cross-process handoff.
+- Surface to chat happens on FD 2: directly from `run-external-agent.sh` for foreground lanes, and
+  re-surfaced by `collect-agent-results.sh` (which runs foreground and whose stderr reaches chat)
+  for background review/panel lanes — the #3119 case.
+- Dedup lives only in the collector because that is the single point that sees a whole batch of
+  slots at once; it is the exact surface where the flood occurred.
+- The `.stderr-tail` sidecar is intentionally NOT added to `design-log-publish.sh`'s exclusion
+  glob: letting the redacted, bounded, failure-only tail publish into `larch-logs/` is bonus
+  post-hoc recoverability aligned with the issue's intent, and keeps the change inside the
+  user-approved 3-script centralization.
+
+## Edge cases
+- Disabled (`LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0`) → no sidecar, no emission, fully quiet.
+- Empty/missing stderr source → no sidecar, no emission (foreground 0-byte case stays quiet).
+- Success (exit 0), including exit-0-but-empty-output → no tail (failure-only).
+- Single pathological multi-KB line → byte cap truncates to 5 KB after redaction.
+- Non-numeric env value → falls back to 30 (no crash under `set -u`/`set -e`).
+- Pipe/`KEY=value`-looking lines inside stderr → harmless: tail is FD 2 only, never the stdout KV
+  plane, so the orchestrator parser cannot ingest it.
+- Redaction idempotency → publishing already-redacted `.stderr-tail` re-runs redact at publish as
+  a no-op.
+- Bash 3.2: collector dedup uses a temp-file map + `command grep -F`, not associative arrays.
+
+## Failure modes
+1. Parser corruption if the tail leaked into stdout. Earliest signal: collector consumers misread
+   `STATUS`/`FAILURE_REASON`. Mitigation: tail is strictly FD 2 (`larch_err` / raw `>&2`); add a
+   harness assertion that stdout RESULTS lines are unchanged when a `.stderr-tail` exists.
+2. Secret leak to chat/committed log if redaction is skipped. Earliest signal: a token appears in
+   a `.stderr-tail` test fixture. Mitigation: redaction is inside `render_*` (single path); harness
+   feeds a fake token and asserts redaction.
+3. Over-suppression: a genuinely different failure hashed to the same signature and got collapsed.
+   Earliest signal: a real distinct cause shown as "identical". Mitigation: conservative
+   normalization (only clearly-volatile tokens); the first full tail always prints; harness pins
+   distinct-cause → distinct-signature.
+
+## Testing strategy
+- New `scripts/test-lib-failed-agent-stderr-tail.sh`: unit coverage for line count, env override,
+  `0`-disable, byte cap, redaction, atomic sidecar write, and signature stability/divergence.
+- Extend `scripts/test-run-external-agent.sh`: failed stub run writes `.stderr-tail` and emits the
+  fenced block to stderr; success run writes nothing; `0`-disable writes nothing.
+- Extend `scripts/test-collect-agent-results.sh`: two failed slots with same-root-cause sidecars →
+  first full tail + one suppression line on FD 2; distinct causes → two full tails; stdout RESULTS
+  KV contract byte-unchanged.
+- Extend `scripts/test-launch-claude-review.sh`: non-zero rc writes `${OUTPUT}.stderr-tail`; rc 0
+  writes none; existing full re-emit still present.
+- Run `bash scripts/relevant-checks.sh` (covers shellcheck, bash32, raw-stderr, bare-grep, md
+  siblings) plus the new and extended harness targets.
+
+## Diff size estimate
+diff_added: 540
+diff_deleted: 60
+diff_lines: 600
+
+</plan>
+
+<findings>
+### FINDING_1: Dedup-emit runs before retries and NS/substantive passes settle
+- **Reviewer(s)**: Cursor-Arch, unknown-slot, Cursor-Pragmatic, Cursor-dyn-fd-routing-integrity
+- **Severity**: important
+- **Concern**: The planned dedup-emit pass is anchored near ~852 (end of the first classification loop), which runs before section 3 empty-output retry (~854+), sections 3.5–3.7 (NS/substantive rewrites), and final `RESULTS[]` updates. Dedup/tails can reflect pre-retry state, miss retry-final failures, or emit FD-2 tails for slots later upgraded to OK.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Place the dedup-emit pass immediately before section 4 (current ~1419), after section 3.7 completes; drop the ~852 anchor and cite the post-3.7 / pre-4 boundary explicitly
+  - From unknown-slot: Move dedup-emit to immediately before section 4 (~line 1417) after sections 3-3.7
+  - From unknown-slot: Insert the dedup-emit block immediately before `# --- 4. Emit structured results ---` (~1419), iterating final `RESULTS[]` entries only
+  - From unknown-slot: Anchor dedup immediately before §4 emit (current scripts/collect-agent-results.sh:1418-1419), after every RESULTS[] mutation
+  - From Cursor-Pragmatic: Insert the dedup pass immediately before `# --- 4. Emit structured results ---` (~1419), after §3.7; drop the ~852 anchor from the plan
+  - From Cursor-dyn-fd-routing-integrity: Move dedup immediately before section 4 (`# --- 4. Emit structured results ---`, ~1419); iterate `RESULTS[]`, parse `REVIEWER_FILE` per entry, and gate on final `STATUS`
+
+
+### FINDING_2: Dedup reads `${REVIEWER_FILE}.stderr-tail` while retry failures write `*-retry.txt.stderr-tail`
+- **Reviewer(s)**: Cursor-Arch, unknown-slot, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: On empty-output/transient retry failure, `REVIEWER_FILE` stays at `ORIG_OUTPUT` while `run-external-agent.sh` / `build_failure_reason` use `${ORIG_OUTPUT%.txt}-retry.txt`. Dedup/signatures read `${REVIEWER_FILE}.stderr-tail`, so chat can show a stale first-attempt tail, miss the retry tail entirely, or misalign tail content with `FAILURE_REASON` for the retry attempt.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Resolve tail path in the dedup pass: prefer `${REVIEWER_FILE%.txt}-retry.txt.stderr-tail` when present for failed slots, else `${REVIEWER_FILE}.stderr-tail`; extend `test-collect-agent-results.sh` with a retry-failure case
+  - From unknown-slot: After retry completes, copy or re-render `${RETRY_OUTPUT}.stderr-tail` onto `${ORIG_OUTPUT}.stderr-tail` when retry fails, or teach the dedup pass to resolve the retry output path from `RESULTS`/`FAILURE_REASON`
+  - From Cursor-Pragmatic: In dedup (and tests), resolve tail from `REVIEWER_FILE` with fallback to `${REVIEWER_FILE%.txt}-retry.txt.stderr-tail` when present, or copy retry tail onto the canonical output path in the retry-failure branch
+
+
+### FINDING_3: Stale `${OUTPUT}.stderr-tail` survives pre-launch sidecar cleanup
+- **Reviewer(s)**: unknown-slot, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Pre-launch `rm -f` in `run-external-agent.sh` clears `.done`/`.meta`/`.diag` but not `.stderr-tail`. A later success or unrelated failure with empty/missing stderr can leave an old redacted tail that the collector treats as current and re-emits in dedup.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add `"${OUTPUT_FILE}.stderr-tail"` to the stale cleanup list (and mirror in harness assertions)
+  - From Cursor-Pragmatic: Add `${OUTPUT_FILE}.stderr-tail` to the stale-artifact cleanup (and unlink in `write_failed_agent_stderr_tail` when render is empty/disabled)
+
+
+### FINDING_4: Stderr source list does not cover lint-fix-loop / implement launcher paths
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: `write_failed_agent_stderr_tail` assumes `${OUTPUT}.sidecar` / `.diag` / output paths that exist for review/collector batches. Lint-fix-loop Codex redirects stderr to `codex.wrapper.log`; implement launchers use caller `--sidecar-log`, not `${TRANSCRIPT}.sidecar`, so the helper often sees only generic `.diag` and chat surfacing may not match the plan’s foreground-lane claim for those lanes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Narrow the plan goal to review/collector batches (where `${OUTPUT}.sidecar` exists) or add a minimal explicit stderr-source hook at the choke point; do not claim lint-fix-loop/implement chat surfacing without launcher-path changes
+
+
+### FINDING_5: Claude subprocess `.done` can unblock collector before `.stderr-tail` exists
+- **Reviewer(s)**: Cursor-dyn-sidecar-lifecycle
+- **Severity**: important
+- **Concern**: Claude slots write `.done` before the parent finishes post-rc work including `.stderr-tail`. `wait-for-reviewers` can unblock on subprocess `.done` while `launch-claude-review` still runs tail work, so collector dedup may skip a missing sidecar for real failures.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-sidecar-lifecycle: Write .stderr-tail in launch-claude-subprocess.sh immediately before .done (source ${OUTPUT}.stderr), or defer .done until the parent finishes the tail write
+
+
+</findings>
+
+<feature>
+Surface failed codex/cursor/claude subprocess stderr (last 50 lines) to chat…
+
+Surface failed codex/cursor/claude subprocess stderr (last 50 lines) to chat so reviewer-failure causes get flushed and become recoverable
+
+## Problem
+
+When an external agent subprocess (codex, cursor, or claude) fails, larch preserves only the collector's terminal verdict — e.g. `Failed with exit code 1 after 20s. Output size: 0 bytes.` (`scripts/run-external-agent.sh:289-299`) — but never the tool's actual stderr, which is the only thing that explains WHY it failed. The diagnostic is unrecoverable post-hoc because:
+
+- codex stderr goes to `${OUTPUT}.sidecar` and its `--json` event stream to `${OUTPUT}.events.jsonl` (`scripts/launch-review.sh:502-510`), but `scripts/design-log-publish.sh` `design_artifact_excluded()` (~L259) strips `*.sidecar`, `*.events.jsonl`, `*.diag`, and `larch-quiet-*.log` from the committed run-log bundle;
+- the session tmpdir holding those files is removed by cleanup on success;
+- the one quiet log that does survive is frequently 0 bytes.
+
+Concrete incident: `/design --simple 3119` (run `7C31FA9E-D00E-41E9-B338-D8E4D44A6FEE`) had 12/16 plan-review slots fail (codex `exit 1`; phase-3 codex+cursor `exit 2`), and the root cause could NOT be determined from the committed run log — the stderr was excluded at publish and the tmpdir was cleaned. larch's own classifier (`lib-external-launcher-common.sh::external_is_transient_infra_failure`) only treats codex exit 5/7 and cursor exit 4/8 as transient, so these exit-1/exit-2 failures were not even classified.
+
+## Proposed change
+
+On any FAILED (non-zero exit) subprocess invocation of codex / cursor / claude, emit the **last 50 lines** of that agent's stderr to chat (so the orchestrator flushes it into the transcript), in addition to the existing one-line verdict.
+
+- Redact through `scripts/redact-secrets.sh` before surfacing — stderr can carry tokens/secrets.
+- Start at **50 lines**; make it tunable via an env var (e.g. `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`) and revisit up or down after observing real output sizes. Guard total size.
+- Sources to wire: `scripts/run-external-agent.sh` (observes the non-zero exit), `scripts/launch-review.sh` (codex/cursor `.sidecar`), `scripts/launch-claude-review.sh`, and the implement/CI launchers (`launch-codex-*.sh` / `launch-cursor-*.sh` / `launch-claude-*.sh`). The tail must flow into the orchestrator-facing failure record (the same surface that already prints the verdict line), not just into a file that gets excluded.
+- Failure-only: preserve quiet-by-default behavior on success.
+
+## Why "to chat / flushed"
+
+A file-only capture is today's behavior and it gets excluded at publish and cleaned with the tmpdir. Surfacing the tail to chat guarantees the operator (and post-hoc transcript readers) can see why an agent failed even when the artifacts are gone.
+
+</feature>

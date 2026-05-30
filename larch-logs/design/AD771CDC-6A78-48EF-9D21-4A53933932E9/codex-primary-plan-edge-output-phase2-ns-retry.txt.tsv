@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/collect-agent-results.sh:852-1419	Dedup pass anchored before retry/validation	Dedup runs on first-pass RESULTS only; retries and NOT_SUBSTANTIVE/NS updates never get correct dedup or tails	Move dedup-emit to immediately before section 4 (~line 1417) after sections 3-3.7
