@@ -55,45 +55,6 @@ EOF
     chmod +x "$path"
 }
 
-write_stub_date_failure() {
-    local path="$1"
-    cat > "$path" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-
-if [[ "${1:-}" == "+%s" ]]; then
-    exit 1
-fi
-exec /bin/date "$@"
-EOF
-    chmod +x "$path"
-}
-
-write_stub_find_failure() {
-    local path="$1"
-    local fail_target="$2"
-    cat > "$path" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-
-fail_target="${fail_target}"
-target=""
-for arg in "\$@"; do
-    if [[ "\$arg" != -* ]]; then
-        target="\$arg"
-        break
-    fi
-done
-
-if [[ "\$target" == "\$fail_target" ]]; then
-    exit 1
-fi
-
-exec /usr/bin/find "\$@"
-EOF
-    chmod +x "$path"
-}
-
 run_cleanup() {
     local work="$1"
     local home="$work/home"
@@ -190,63 +151,17 @@ run_cleanup "$work"
 [[ -L "$CASE_SESSIONS/claude-implement-evil" ]] || fail "symlinked-session-dir-skipped should leave symlink entry"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "symlinked-session-dir-skipped CACHE_REMOVED"
 
-# --- stale-with-fresh-depth1-child --------------------------------------------
-work="$TMP/stale-with-fresh-depth1-child"
+# --- stale-toplevel-with-fresh-deep-child-removed -----------------------------
+work="$TMP/stale-toplevel-with-fresh-deep-child-removed"
 mkdir -p "$work/xdg-cache/larch/sessions/stale-parent"
+printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-parent/child.txt"
+touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-parent/child.txt"
 touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-parent"
-printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-parent/recent.txt"
-touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-parent/recent.txt"
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-with-fresh-depth1-child exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/stale-parent" ]] || fail "stale-with-fresh-depth1-child should keep dir with fresh depth-1 child"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-with-fresh-depth1-child CACHE_REMOVED"
-
-# --- stale-with-fresh-depth2-grandchild ---------------------------------------
-work="$TMP/stale-with-fresh-depth2-grandchild"
-mkdir -p "$work/xdg-cache/larch/sessions/stale-root/sub"
-touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-root" \
-    "$work/xdg-cache/larch/sessions/stale-root/sub"
-printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-root/sub/grandchild.txt"
-touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-root/sub/grandchild.txt"
-unset LARCH_CLEANUP_RETENTION_DAYS
-run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-with-fresh-depth2-grandchild exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/stale-root" ]] || fail "stale-with-fresh-depth2-grandchild should keep dir with fresh depth-2 grandchild"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-with-fresh-depth2-grandchild CACHE_REMOVED"
-
-# --- stale-with-fresh-depth4-manifest -----------------------------------------
-work="$TMP/stale-with-fresh-depth4-manifest"
-run_id='RUN-DEPTH4'
-mkdir -p "$work/xdg-cache/larch/sessions/implement-run/larch-logs/implement/$run_id"
-touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/implement-run" \
-    "$work/xdg-cache/larch/sessions/implement-run/larch-logs" \
-    "$work/xdg-cache/larch/sessions/implement-run/larch-logs/implement" \
-    "$work/xdg-cache/larch/sessions/implement-run/larch-logs/implement/$run_id"
-printf '{}\n' > "$work/xdg-cache/larch/sessions/implement-run/larch-logs/implement/$run_id/manifest.json"
-touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/implement-run/larch-logs/implement/$run_id/manifest.json"
-unset LARCH_CLEANUP_RETENTION_DAYS
-run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-with-fresh-depth4-manifest exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/implement-run" ]] || fail "stale-with-fresh-depth4-manifest should keep dir with fresh depth-4 manifest"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-with-fresh-depth4-manifest CACHE_REMOVED"
-
-# --- stale-with-fresh-depth5-round --------------------------------------------
-work="$TMP/stale-with-fresh-depth5-round"
-run_id='RUN-DEPTH5'
-mkdir -p "$work/xdg-cache/larch/sessions/implement-round/larch-logs/implement/$run_id/round-1"
-touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/implement-round" \
-    "$work/xdg-cache/larch/sessions/implement-round/larch-logs" \
-    "$work/xdg-cache/larch/sessions/implement-round/larch-logs/implement" \
-    "$work/xdg-cache/larch/sessions/implement-round/larch-logs/implement/$run_id" \
-    "$work/xdg-cache/larch/sessions/implement-round/larch-logs/implement/$run_id/round-1"
-printf '# findings\n' > "$work/xdg-cache/larch/sessions/implement-round/larch-logs/implement/$run_id/round-1/findings.md"
-touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/implement-round/larch-logs/implement/$run_id/round-1/findings.md"
-unset LARCH_CLEANUP_RETENTION_DAYS
-run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-with-fresh-depth5-round exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/implement-round" ]] || fail "stale-with-fresh-depth5-round should keep dir with fresh depth-5 round artifact"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-with-fresh-depth5-round CACHE_REMOVED"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-toplevel-with-fresh-deep-child-removed exit $CASE_RC"
+[[ ! -d "$CASE_SESSIONS/stale-parent" ]] || fail "stale-toplevel-with-fresh-deep-child-removed should delete dir with stale top-level mtime"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "stale-toplevel-with-fresh-deep-child-removed CACHE_REMOVED"
 
 # --- invalid-retention-fallback -----------------------------------------------
 work="$TMP/invalid-retention-fallback"
@@ -315,30 +230,35 @@ run_cleanup "$work"
 [[ ! -f "$work/tmp-root/larch4-review.diff" ]] || fail "stale-tmp-file-removed should delete stale /tmp fixture file"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "1" "stale-tmp-file-removed TMP_REMOVED"
 
-# --- date-failure-errors ------------------------------------------------------
-work="$TMP/date-failure-errors"
-mkdir -p "$work/bin"
-write_stub_date_failure "$work/bin/date"
-PATH_PREFIX="$work/bin:"
+# --- nonlarch-tmp-untouched ---------------------------------------------------
+work="$TMP/nonlarch-tmp-untouched"
+mkdir -p "$work/tmp-root/unrelated-junk"
+touch -t "$STALE_TS" -- "$work/tmp-root/unrelated-junk"
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
-[[ "$CASE_RC" -ne 0 ]] || fail "date-failure-errors should exit non-zero"
-assert_contains "$CASE_OUTPUT" "Error: failed to determine the current epoch time; refusing cleanup." "date-failure-errors stderr"
-unset PATH_PREFIX
+[[ "$CASE_RC" -eq 0 ]] || fail "nonlarch-tmp-untouched exit $CASE_RC"
+[[ -d "$work/tmp-root/unrelated-junk" ]] || fail "nonlarch-tmp-untouched should keep non-larch entry"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "nonlarch-tmp-untouched TMP_REMOVED"
 
-# --- find-failure-skips-deletion ----------------------------------------------
-work="$TMP/find-failure-skips-deletion"
-mkdir -p "$work/xdg-cache/larch/sessions/fail-find"
-touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/fail-find"
-mkdir -p "$work/bin"
-write_stub_find_failure "$work/bin/find" "$work/xdg-cache/larch/sessions/fail-find"
-PATH_PREFIX="$work/bin:"
+# --- large-tmp-scales ---------------------------------------------------------
+work="$TMP/large-tmp-scales"
+mkdir -p "$work/tmp-root"
+i=0
+while [ "$i" -lt 2000 ]; do
+    mkdir -p "$work/tmp-root/noise-$i"
+    touch -t "$STALE_TS" -- "$work/tmp-root/noise-$i"
+    i=$((i + 1))
+done
+mkdir -p "$work/tmp-root/claude-implement-scale-target"
+touch -t "$STALE_TS" -- "$work/tmp-root/claude-implement-scale-target"
+SECONDS=0
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "find-failure-skips-deletion exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/fail-find" ]] || fail "find-failure-skips-deletion should keep dir when find fails"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion CACHE_REMOVED"
-assert_contains "$CASE_OUTPUT" "Warning: failed to scan session activity for '$work/xdg-cache/larch/sessions/fail-find'; skipping deletion." "find-failure-skips-deletion warning"
-unset PATH_PREFIX
+elapsed=$SECONDS
+[[ "$CASE_RC" -eq 0 ]] || fail "large-tmp-scales exit $CASE_RC"
+[[ ! -d "$work/tmp-root/claude-implement-scale-target" ]] || fail "large-tmp-scales should delete stale matching dir"
+[[ -d "$work/tmp-root/noise-0" ]] || fail "large-tmp-scales should keep non-matching entries"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "1" "large-tmp-scales TMP_REMOVED"
+[ "$elapsed" -lt 60 ] || fail "large-tmp-scales took ${elapsed}s (expected < 60)"
 
 printf 'PASS: test-cleanup.sh\n'

@@ -1,0 +1,27 @@
+Reading the ballot and verification context.
+
+
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicated loops are real but a shared helper adds more surface than the small duplication warrants
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate path constants are a minor DRY nit, not a functional defect
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- cache find `! -type l` without `-type d` can age-delete top-level regular files the old dirs-only path kept
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- checking one noise dir is enough to prove pattern scoping for this harness
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- test-cleanup.md Edit-in-sync omits SECURITY.md that cleanup.md now requires
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- 2000-entry fixture cost is real but optional tuning, not worth a standalone issue
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same cache-pass file-vs-directory behavior change as FINDING_3
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_5: SECURITY.md missing from test-cleanup.md sync list
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- swallowed age-pass find errors are intentional and documented in cleanup.md and SECURITY.md
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly chose ~2000 entries and SECONDS<60 as a coarse hang guard, not acceptance-scale timing
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cache loose-file deletion is implied by `! -type l` contract and tmp file case already exercises file age-delete
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- skipping /tmp pattern symlinks is intentional symlink hardening per plan, not a regression
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same as FINDING_4: single noise-0 check suffices for pattern-filter regression
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- exit-0 on swallowed find is documented operator contract, not an undisclosed security bug
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cache top-level file deletion is the same minor parity note as FINDING_3, already surfaced
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- top-level-only GC with deep activity is accepted decision #2 and already documented in SECURITY.md
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- LARCH_TEST_TMP_ROOT override is pre-existing test-only harness plumbing, not introduced here
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- broad /tmp pattern matching is pre-existing; nonlarch-tmp-untouched covers the new find path
+FINDING_19: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational-only SESSION_COUNT without a deletion gate is long-standing documented behavior, not a new issue
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- swallowed find with exit 0 is an explicit documented tradeoff for flat passes, not an oversight
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deep-only activity no longer protecting dirs is the deliberate top-level-mtime design, documented in plan and SECURITY.md
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- find-failure-skips-deletion targeted removed per-entry scan; new fail-open semantics are documented without requiring the old harness
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- 60s wall-clock guard is an intentional coarse anti-hang bound per plan, not a flaky-precision requirement
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale /tmp pattern symlinks skipped by `! -type l` is intentional symlink hardening per plan edge cases
