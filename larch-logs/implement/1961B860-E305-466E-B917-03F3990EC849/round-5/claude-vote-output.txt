@@ -1,0 +1,24 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly chose single-pass best-effort for Option A; adding a loop exceeds plan scope
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- only two call sites; plan says no new abstractions; three-call threshold not met
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Option A is intentionally single-pass best-effort per plan; hook-re-dirty is out of scope for Option A testing
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- test asserts exit 2 and CODER_STATUS=failed; a regression to warn-and-continue would be caught
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- skip-worktree unstagable-tracked edge case is too rare to justify additional complexity
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- committed ship-pr.md and ship-pr.sh are both single-pass; two-pass exists only in uncommitted working-tree edits outside the diff
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- asymmetry is intentional; plan says do not loop to avoid non-idempotent hook spinloops
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- committing dirty tracked files before drop-bump is the explicit purpose of Option A per plan
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- follow-up uses git add -u limiting to tracked files; hook re-touching submodule paths is an extreme edge case
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan's edge cases section notes staged-only is handled by git diff --cached --quiet guard; specific test is low priority
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- test code duplication at two sites; plan does not require refactoring test fixtures
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- test correctly validates fixup-failure stall; combined stale-bump scenario is a separate concern
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the committed test only asserts rc==4; there are no fragile grep assertions to fix
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- test has exit 2 and CODER_STATUS=failed; primary regression signal is present
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- process concern; CI enforces relevant-checks as part of acceptance criteria
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- speculative without duration data; monitor-if-regresses is not actionable as a filing
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- concern is about uncommitted working-tree edits not present in the diff; HEAD is fail-closed
+OOS_5: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- uncommitted two-pass loop is not in HEAD/diff; nothing concrete to file until it lands
+OOS_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational closure with no problem described; nothing to file as a GitHub issue

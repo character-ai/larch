@@ -1,0 +1,14 @@
+# Rejected Findings
+
+6:FINDING_11_OUTCOME=rejected
+13:FINDING_14_OUTCOME=rejected
+16:FINDING_15_OUTCOME=rejected
+19:FINDING_16_OUTCOME=rejected
+24:FINDING_3_OUTCOME=rejected
+29:FINDING_5_OUTCOME=rejected
+32:FINDING_6_OUTCOME=rejected
+35:FINDING_7_OUTCOME=rejected
+44:OOS_2_OUTCOME=rejected
+47:OOS_3_OUTCOME=rejected
+50:OOS_4_OUTCOME=rejected
+53:OOS_5_OUTCOME=rejected

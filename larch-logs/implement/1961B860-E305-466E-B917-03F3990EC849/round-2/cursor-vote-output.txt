@@ -1,0 +1,28 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- only material if a second fixup pass lands without depth bump
+FINDING_3: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- committed tip has a single fixup block, not duplicated two-pass logic
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- one fixup commit rarely pushes changelog past depth 20
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- rebump_dirty_tracked_fixup does not grep ship-pr stdout for DROPPED=true on branch tip
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- rebump_staged_only_fixup fixture is not present in the branch
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan and hook test cover Option B; partial-agent commit is a narrower follow-up
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- follow-up reuses primary submodule scrub; dedicated test is optional hardening
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- dirty-tree test uses one combined subject assertion, not duplicate blocks
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- intentional Option A tradeoff; allowlist would add disproportionate complexity
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- submodule revert runs before primary commit; follow-up re-scrub is optional
+FINDING_17: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- valid process gap if acceptance fixes remain uncommitted on the reviewed tip
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- CI shard hygiene, not a product defect worth its own issue
+OOS_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch hygiene noise, not a durable code defect
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- observation that guards already exclude fixup subject; nothing to file
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing primary git add -A path, out of #3209 scope
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- implement workflow status, not a standalone GitHub issue
+OOS_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- committed elif skips fixup commit when git add -u fails but index is staged
+OOS_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing pattern, not introduced by #3209
+OOS_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- clarifies failure mode; not an actionable issue on its own

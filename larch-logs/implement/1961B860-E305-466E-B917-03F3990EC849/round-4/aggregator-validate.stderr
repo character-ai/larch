@@ -1,0 +1,5 @@
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Assert fixup SHA is ancestor of HEAD and appears before re-bump in git log order')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Monitor harness timing; split rebump cases to a dedicated section if needed  ###')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Document interaction; no change required for this PR.  ### OOS_3: [OUT_OF_SCOPE]')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Consider running the same fixup block on resume if drop-bump will run later (sep')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_14 not traceable to scoped input (first 80 chars: 'Update the contract line to describe final tracked-tree state after round-mode c')
