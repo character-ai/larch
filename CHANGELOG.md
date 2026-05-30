@@ -50,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Add direct awk unit harness for optional plan trailers (last-match-wins, block_len, octal guard)
+- Backfill lib and harness contracts cited from SKILL.md Plan helper contracts
+- Tighten (3175) Gate A/B doc pins to full --snapshot-trailers and --dedup anchors
+
+## [47.0.8] - 2026-05-30
+
+### Changed
+
 - Surface redacted failed-agent stderr tails to chat on FD 2 with a shared library and mode-aware capture at launcher/collector choke points (#3202).
 - Dedup duplicate same-root-cause failures within one collector batch while preserving the stdout KEY=value RESULTS contract.
 - Clamp Claude review timeouts above 1800s and capture waterfall launcher stderr to per-slot sidecars so panel failures stay visible.
