@@ -35,8 +35,7 @@ write_subject() {
     cp "$REPO_ROOT/scripts/oos-disposition-shared.inc.bash" "$root/scripts/oos-disposition-shared.inc.bash"
     cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
     cp "$REPO_ROOT/scripts/ci-failed-jobs.sh" "$root/scripts/ci-failed-jobs.sh"
-    cp "$REPO_ROOT/scripts/ci-behind-count.sh" "$root/scripts/ci-behind-count.sh"
-    chmod +x "$root/scripts/redact-secrets.sh" "$root/scripts/ci-failed-jobs.sh" "$root/scripts/ci-behind-count.sh"
+    chmod +x "$root/scripts/redact-secrets.sh" "$root/scripts/ci-failed-jobs.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-disposition-gate.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$root/skills/implement/scripts/oos-non-security-block-count.awk"
     chmod +x "$root/scripts/ship-pr.sh" "$root/scripts/auto-resolve-changelog.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
@@ -370,7 +369,6 @@ PR_TITLE=Title
 RESUME_PHASE=
 CALLER_KIND=
 REBASE_COUNT=0
-CI_FIX_REBASE_PENDING=false
 FIX_ATTEMPTS=0
 ITERATION=0
 TRANSIENT_RETRIES=0
@@ -4058,93 +4056,6 @@ assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=12-head-changed" "vendor_v
 rm -rf "$call_dir"
 
 # Vendor verification sweep regression retries through the full ship-pr vendor path without pushing.
-root=$(make_repo vendor_verify_sweep_regression)
-tmp=$(make_tmpdir)
-call_dir=$(mktemp -d "$tmp/vendor-verify-sweep.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-STUB
-cat > "$root/scripts/gh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == run && "${2:-}" == view ]]; then printf '%s\n' 'lint'; exit 0; fi
-exit 1
-STUB
-cat > "$root/scripts/env" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-if [ ! -f "$call_dir/vendor-fixed" ]; then
-  printf 'mock lint failure\n'
-  exit 1
-fi
-count_file="$call_dir/verified-count"
-count=\$(cat "\$count_file" 2>/dev/null || echo 0)
-printf '%s\n' "\$((count + 1))" > "\$count_file"
-total_file="$call_dir/verified-total-count"
-total=\$(cat "\$total_file" 2>/dev/null || echo 0)
-printf '%s\n' "\$((total + 1))" > "\$total_file"
-if [ \$((count % 2)) -eq 0 ]; then
-  shift
-  exec "\$@"
-fi
-rm -f "$call_dir/vendor-fixed"
-printf 'mock sweep regression\n'
-exit 1
-STUB
-cat > "$root/scripts/make" <<'STUB'
-#!/usr/bin/env bash
-exit 0
-STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' launcher >> "$call_dir/order.txt"
-rm -f "$call_dir/verified-count"
-printf 'fixed\n' > "$call_dir/vendor-fixed"
-printf 'vendor change\n' >> README.md
-printf 'LAUNCHER_EXIT=0\n'
-STUB
-cat > "$root/scripts/git-push.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'push\n' >> "$call_dir/push-calls.txt"
-STUB
-cat > "$root/scripts/ci-behind-count.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "BEHIND_COUNT=0"
-STUB
-cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "FAILED_JOBS_COUNT=0"
-STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/make" \
-    "$root/scripts/launch-cursor-ci.sh" "$root/scripts/git-push.sh" "$root/scripts/ci-behind-count.sh" \
-    "$root/scripts/ci-failed-jobs.sh"
-write_state "$tmp/ship-pr-state.sh" ci-initial
-awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
-     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-  STUB_LINT_FIX_STATUS=main-agent-required \
-  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
-printf '%s' "$?" >"$tmp/rc"
-set -e
-assert_rc "$tmp/rc" 4 "vendor_verify_sweep_regression exits 4"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "vendor_verify_sweep_regression stalls after retries"
-if [ ! -f "$call_dir/push-calls.txt" ] \
-    && [ "$(grep -c '^launcher$' "$call_dir/order.txt" 2>/dev/null || echo 0)" = "3" ] \
-    && [ "$(cat "$call_dir/verified-total-count" 2>/dev/null || echo 0)" = "6" ]; then
-    ok "vendor_verify_sweep_regression retries vendor verification without pushing"
-else
-    fail "vendor_verify_sweep_regression should retry without pushing"
-    sed 's/^/    state: /' "$tmp/ship-pr-state.sh"
-    sed 's/^/    order: /' "$call_dir/order.txt" 2>/dev/null || true
-    sed 's/^/    out: /' "$tmp/out"
-fi
-rm -rf "$call_dir"
 
 # Empty TSVs retain the historical relevant-checks-only vendor gate with a warning breadcrumb.
 root=$(make_repo vendor_verify_empty_tsv)
@@ -4502,79 +4413,6 @@ assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-head-changed" "per-job 
 rm -rf "$call_dir"
 
 # Verification regressions after a local replay consume the outer retry budget without dropping into vendor recovery.
-root=$(make_repo ci_per_job_verify_regression)
-tmp=$(make_tmpdir)
-call_dir=$(mktemp -d "$tmp/per-job-verify-regression.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-count_file="$call_dir/ci-wait-count"
-count=\$(cat "\$count_file" 2>/dev/null || echo 0)
-printf '%s\n' "\$((count + 1))" > "\$count_file"
-if [ "\$count" -eq 0 ]; then
-  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-else
-  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
-fi
-STUB
-cat > "$root/scripts/gh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-if [[ "${1:-}" == run && "${2:-}" == view ]]; then
-  printf '%s\n' 'lint'
-  exit 0
-fi
-exit 1
-STUB
-cat > "$root/scripts/env" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-count_file="$call_dir/lint-count"
-count=\$(cat "\$count_file" 2>/dev/null || echo 0)
-printf '%s\n' "\$((count + 1))" > "\$count_file"
-printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
-# Alternate per outer attempt: Phase A iter 1 fails (triggers lint-fix dispatch),
-# Phase A iter 2 succeeds (the "fix" applied), Phase B fails (verification regression).
-if [ "\$((count % 3))" -eq 1 ]; then
-  exit 0
-fi
-printf 'mock lint failure\n'
-exit 1
-STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' cursor >> "$call_dir/launcher-calls.txt"
-printf 'LAUNCHER_EXIT=0\n'
-STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/launch-cursor-ci.sh"
-write_state "$tmp/ship-pr-state.sh" ci-initial
-awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
-     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-  SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" \
-  STUB_LINT_FIX_STATUS=applied \
-  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
-printf '%s' "$?" >"$tmp/rc"
-set -e
-assert_rc "$tmp/rc" 4 "per-job verification regression exhausts the outer retry budget"
-lint_fix_calls=$(grep -c '^ship-pr-ci-per-job$' "$call_dir/lint-fix-sites.txt" 2>/dev/null || echo 0)
-if [ "$lint_fix_calls" = "3" ]; then
-    ok "per-job verification regression retries exactly once per outer attempt"
-else
-    fail "per-job verification regression should consume exactly 3 outer attempts"
-    sed 's/^/    lint-fix: /' "$call_dir/lint-fix-sites.txt" 2>/dev/null || true
-fi
-if [ ! -f "$call_dir/launcher-calls.txt" ]; then
-    ok "per-job verification regression skips vendor fallback"
-else
-    fail "per-job verification regression should skip vendor fallback"
-    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
-fi
-rm -rf "$call_dir"
 
 # Per-job push failures retry the outer attempt without falling through to a same-attempt vendor launcher.
 root=$(make_repo ci_per_job_push_failure)
@@ -5285,28 +5123,6 @@ else
     sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
 fi
 rm -rf "$call_dir"
-
-# --- #3210: rebase + rebump before CI-fix push ---
-
-
-
-# ci_fix_rebase_pending retry: behind=0 still re-runs post-rebase verify before force-push.
-
-# Vendor rotation on _fix_attempt=1: first tier must be codex.
-
-# Fork CI-fix rebase uses upstream base remote/ref in defer-push rebase-push argv.
-
-# cursor wrapper_rc=2 then codex other must not bail first-fixer-non-health; claude stays eligible.
-
-# No second defer-rebase when a later ci-wait poll reports BEHIND_COUNT=0.
-
-# Post-rebase verify failure rotates vendor tier instead of pending short-circuit.
-
-# Post-rebase verify rc=2 from deferred rebase routes to exit_stall 10-head-changed.
-
-# Post-rebase verify rc=4 retries the outer evaluate_failure attempt (second vendor call).
-
-# Deferred rebase advances HEAD so vendor noop refresh does not false-trigger first-fixer bail.
 
 # end section: fix-loop
 fi
