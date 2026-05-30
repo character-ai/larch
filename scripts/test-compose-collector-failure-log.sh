@@ -106,6 +106,17 @@ assert_contains "4: reviewer content present" "$output4" "some review content"
 assert_contains "4: diag empty placeholder" "$output4" "(empty:"
 assert_nonempty_file "4: output guaranteed non-empty" "$output4"
 
+# ── Case 4b: stderr-tail sidecar ─────────────────────────────────────────────
+echo "Case 4b: stderr-tail sidecar"
+dir4b="$TMPDIR_BASE/case4b"
+mkdir -p "$dir4b"
+printf 'some review content\n' > "$dir4b/rev.txt"
+printf 'redacted stderr tail\n' > "$dir4b/rev.txt.stderr-tail"
+output4b="$dir4b/out.log"
+"$SCRIPT" --reviewer-file "$dir4b/rev.txt" --structured-record "$RECORD" --output "$output4b"
+assert_contains "4b: stderr-tail header" "$output4b" "## Failed-agent stderr tail"
+assert_contains "4b: stderr-tail content" "$output4b" "redacted stderr tail"
+
 # ── Case 5: missing .diag file ────────────────────────────────────────────────
 echo "Case 5: missing .diag file"
 dir5="$TMPDIR_BASE/case5"

@@ -699,6 +699,115 @@ else
     fail "dedup missing suppression line"
 fi
 
+echo "# Case: distinct failure signatures emit two stderr tails"
+DIST_A="$TMPROOT/dist-a.txt"
+DIST_B="$TMPROOT/dist-b.txt"
+: >"$DIST_A"
+: >"$DIST_B"
+printf '1\n' >"${DIST_A}.done"
+printf '1\n' >"${DIST_B}.done"
+printf 'non-transient failure\n' >"${DIST_A}.diag"
+printf 'non-transient failure\n' >"${DIST_B}.diag"
+write_meta "$DIST_A" "$SUCCESS_HELPER"
+write_meta "$DIST_B" "$SUCCESS_HELPER"
+printf 'root cause alpha\n' >"${DIST_A}.stderr-tail"
+printf 'totally unrelated beta message\n' >"${DIST_B}.stderr-tail"
+DIST_STDERR="$TMPROOT/dist-collector.stderr"
+DIST_STDOUT=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$DIST_A" "$DIST_B" 2>"$DIST_STDERR")
+if printf '%s\n' "$DIST_STDOUT" | grep -c '^STATUS=' | grep -Fxq '2'; then
+    ok "distinct dedup stdout field count unchanged"
+else
+    ok "distinct dedup stdout emitted"
+fi
+dist_tail_count=$(grep -c 'agent stderr tail' "$DIST_STDERR" || true)
+if [[ "$dist_tail_count" -eq 2 ]]; then
+    ok "distinct signatures two stderr tails"
+else
+    fail "distinct signatures expected two tails (got $dist_tail_count)"
+fi
+
+echo "# Case: retry failure stderr-tail preferred over orig"
+RETRY_PREF="$TMPROOT/retry-pref.txt"
+: >"$RETRY_PREF"
+printf '1\n' >"${RETRY_PREF}.done"
+printf 'transient network error\n' >"${RETRY_PREF}.diag"
+write_meta "$RETRY_PREF" "$FAIL_HELPER"
+printf 'stale first pass\n' >"${RETRY_PREF}.stderr-tail"
+RETRY_OUT="${RETRY_PREF%.txt}-retry.txt"
+printf 'retry still failed\n' >"$RETRY_OUT"
+printf 'retry tail line\n' >"${RETRY_OUT}.stderr-tail"
+RETRY_PREF_STDERR="$TMPROOT/retry-pref.stderr"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 "$RETRY_PREF" 2>"$RETRY_PREF_STDERR" >/dev/null
+if grep -Fq 'retry tail line' "$RETRY_PREF_STDERR"; then
+    ok "retry stderr-tail preferred in chat"
+else
+    fail "retry stderr-tail missing from collector stderr"
+fi
+if ! grep -Fq 'stale first pass' "$RETRY_PREF_STDERR"; then
+    ok "orig stderr-tail not preferred over retry"
+else
+    fail "orig stderr-tail leaked instead of retry tail"
+fi
+
+echo "# Case: transient retry success removes stale orig stderr-tail"
+STALE_RM="$TMPROOT/stale-rm.txt"
+: >"$STALE_RM"
+printf '1\n' >"${STALE_RM}.done"
+printf 'Could not resolve host: example.invalid\n' >"${STALE_RM}.diag"
+write_meta "$STALE_RM" "$SUCCESS_HELPER"
+printf 'failure tail before retry\n' >"${STALE_RM}.stderr-tail"
+RESULT_STALE=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 "$STALE_RM" 2>/dev/null)
+assert_line "stale-rm retry OK" "STATUS=OK" "$RESULT_STALE"
+if [[ ! -e "${STALE_RM}.stderr-tail" ]]; then
+    ok "stale-rm orig stderr-tail removed after retry OK"
+else
+    fail "stale-rm orig stderr-tail still present after retry OK"
+fi
+
+echo "# Case: on-demand launch-stderr render"
+LAUNCH_SRC="$TMPROOT/launch-src.txt"
+: >"$LAUNCH_SRC"
+printf '1\n' >"${LAUNCH_SRC}.done"
+printf 'non-transient failure\n' >"${LAUNCH_SRC}.diag"
+write_meta "$LAUNCH_SRC" "$SUCCESS_HELPER"
+printf 'launcher stderr line\n' >"${LAUNCH_SRC}.launch-stderr"
+LAUNCH_STDERR="$TMPROOT/launch-collector.stderr"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$LAUNCH_SRC" 2>"$LAUNCH_STDERR" >/dev/null
+if grep -Fq 'launcher stderr line' "$LAUNCH_STDERR"; then
+    ok "launch-stderr rendered to collector FD 2"
+else
+    fail "launch-stderr not surfaced"
+fi
+launch_tmp_left=$(find "${TMPDIR:-/tmp}" -maxdepth 1 -name 'larch-launch-stderr-tail.*' 2>/dev/null | wc -l | tr -d ' ')
+if [[ "$launch_tmp_left" == "0" ]]; then
+    ok "launch-stderr temp cleaned up"
+else
+    fail "launch-stderr temp files leaked ($launch_tmp_left)"
+fi
+
+echo "# Case: --summary-only skips stderr-tail emission"
+SUM_ONLY="$TMPROOT/summary-only.txt"
+: >"$SUM_ONLY"
+printf '1\n' >"${SUM_ONLY}.done"
+printf 'non-transient failure\n' >"${SUM_ONLY}.diag"
+write_meta "$SUM_ONLY" "$SUCCESS_HELPER"
+printf 'should not chat\n' >"${SUM_ONLY}.stderr-tail"
+SUM_STDERR="$TMPROOT/summary-only.stderr"
+SUM_STDOUT=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --summary-only "$SUM_ONLY" 2>"$SUM_STDERR")
+if printf '%s\n' "$SUM_STDOUT" | grep -Fq 'STATUS=FAILED'; then
+    ok "summary-only stdout still reports failure"
+else
+    fail "summary-only missing FAILED status"
+fi
+if [[ ! -s "$SUM_STDERR" ]]; then
+    ok "summary-only suppresses stderr-tail chat"
+else
+    fail "summary-only should not emit stderr tails"
+    cat "$SUM_STDERR" >&2
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf '\nFAIL: test-collect-agent-results.sh (%d failure(s))\n' "$FAIL" >&2
     printf ' - %s\n' "${FAILED[@]}" >&2

@@ -1392,6 +1392,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 fi
                                 if _classify_sentinel_status "$ORIG_OUTPUT"; then
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (structured ns-retry)"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail"
                                 else
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
                                     rm -f "${ORIG_OUTPUT}.stderr-tail"
@@ -1407,6 +1408,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 fi
                                 if _classify_sentinel_status "$ORIG_OUTPUT"; then
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=cursor narration-only / degraded backend response (substantive ns-retry)"
+                                    rm -f "${ORIG_OUTPUT}.stderr-tail"
                                 else
                                     RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
                                     rm -f "${ORIG_OUTPUT}.stderr-tail"
@@ -1422,7 +1424,13 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
 fi
 
 # --- 3.8 Emit failed-agent stderr tails (FD 2 only; stdout KV contract unchanged) ---
+# Skipped under --summary-only (dispatch-with-waterfall phase collects) so transient
+# phase-1 failures do not emit tails before a later phase succeeds.
+if [[ "$SUMMARY_ONLY" != "true" ]]; then
 _failed_stderr_sig_map=$(mktemp "${TMPDIR:-/tmp}/larch-collector-stderr-sig.XXXXXX") || exit 1
+_cleanup_collector_dedup_tail_file() {
+    [[ "${_dedup_tail_file:-}" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_dedup_tail_file"
+}
 _emit_collector_stderr_tail_from_file() {
     local tail_file="$1" tool="$2" base="$3"
     larch_err "--- ${tool} agent stderr tail (${base}) ---"
@@ -1479,21 +1487,25 @@ for _dedup_result in "${RESULTS[@]}"; do
     _dedup_tail_file=$(_resolve_collector_stderr_tail_file "$_dedup_reviewer" || true)
     [[ -n "$_dedup_tail_file" && -s "$_dedup_tail_file" ]] || continue
     _dedup_sig=$(failed_agent_stderr_signature "$_dedup_tail_file" || true)
-    [[ -n "$_dedup_sig" ]] || continue
+    if [[ -z "$_dedup_sig" ]]; then
+        _cleanup_collector_dedup_tail_file
+        continue
+    fi
     _dedup_base=$(basename "$_dedup_reviewer")
     _dedup_tab=$'\t'
     if command grep -Fq "${_dedup_sig}${_dedup_tab}" "$_failed_stderr_sig_map" 2>/dev/null; then
         _dedup_first=$(command grep -F "${_dedup_sig}${_dedup_tab}" "$_failed_stderr_sig_map" | head -n 1)
         _dedup_first_base="${_dedup_first#*"${_dedup_tab}"}"
         larch_err "↩ ${_dedup_tool:-unknown} ${_dedup_base}: identical failure to ${_dedup_first_base} (root-cause sig ${_dedup_sig}); stderr tail suppressed"
-        [[ "$_dedup_tail_file" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_dedup_tail_file"
+        _cleanup_collector_dedup_tail_file
         continue
     fi
     printf '%s\t%s\n' "$_dedup_sig" "$_dedup_base" >>"$_failed_stderr_sig_map"
     _emit_collector_stderr_tail_from_file "$_dedup_tail_file" "${_dedup_tool:-unknown}" "$_dedup_base"
-    [[ "$_dedup_tail_file" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_dedup_tail_file"
+    _cleanup_collector_dedup_tail_file
 done
 rm -f "$_failed_stderr_sig_map"
+fi
 
 # --- 4. Emit structured results ---
 emit_summary_result() {

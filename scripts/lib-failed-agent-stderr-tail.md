@@ -9,7 +9,7 @@ Sourced-only library for redacted, bounded stderr tails on failed codex/cursor/c
 ## Limits
 
 - Fixed **5120** byte ceiling after redaction (`failed_agent_stderr_byte_cap`).
-- **`render_failed_agent_stderr_tail`** spools `tail | redact-secrets.sh` to a temp file, then `head -c` from the spool (pipefail-safe; FINDING_1).
+- **`render_failed_agent_stderr_tail`** spools `tail | redact-tmpdir-paths.sh | redact-secrets.sh` to a temp file, then `head -c` from the spool (pipefail-safe).
 
 ## Sidecar
 

@@ -354,6 +354,27 @@ else
     fail "state TSV should keep 4 fields, got line: $stored_line"
 fi
 
+echo "=== jq literal cat does not false-positive ==="
+jq_cmd="jq 'select(.kind == \"cat\")' \"$TASK_OUT\""
+out_jq1=$(run_bash_hook 0 "$jq_cmd" "/proj-jq-cat-fp")
+assert_silent "$out_jq1" 'jq cat literal call 1 silent'
+out_jq2=$(run_bash_hook 1 "$jq_cmd" "/proj-jq-cat-fp")
+assert_silent "$out_jq2" 'jq cat literal call 2 silent'
+
+echo "=== semicolon inside double quotes does not split segments ==="
+semi_cmd="echo \"a; b\"; cat $TASK_OUT"
+out_semi1=$(run_bash_hook 0 "$semi_cmd" "/proj-semi-quote")
+assert_silent "$out_semi1" 'quoted semicolon call 1 silent'
+out_semi2=$(run_bash_hook 1 "$semi_cmd" "/proj-semi-quote")
+assert_reminder "$out_semi2" 'quoted semicolon call 2 fires reminder'
+
+echo "=== multiline read verb without backslash continuation ==="
+nl_cmd=$'cat\n'"$TASK_OUT"
+out_nl1=$(run_bash_hook 0 "$nl_cmd" "/proj-nl-read")
+assert_silent "$out_nl1" 'newline-separated cat call 1 silent'
+out_nl2=$(run_bash_hook 1 "$nl_cmd" "/proj-nl-read")
+assert_reminder "$out_nl2" 'newline-separated cat call 2 fires reminder'
+
 echo "=== state file is private ==="
 state_file="$TMP/larch-read-poll/state-$(printf '%s' "/proj-window" | cksum | awk '{print $1}').tsv"
 # Avoid parsing `stat` output: GNU `-f` is not BSD `-f`, and BSD `%a` is atime (not mode).

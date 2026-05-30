@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Surface redacted failed-agent stderr tails on collector and run-external-agent failure paths (`LARCH_FAILED_AGENT_STDERR_TAIL_LINES`, 5 KiB cap, dedup); disable with `0`
 - Ban per-turn task-output polling in AGENTS.md and orchestrator-never.md rule #3, with CI pins on both delivery paths
 - Harden hook-anti-read-poll.sh for Read|Bash task-output polling with suffix-tolerant Bash matching and a 600s token-keyed window
 - Extend test-hook-anti-read-poll.sh with Bash, slow-Read, offset-ignore, false-positive, and generic-regression cases

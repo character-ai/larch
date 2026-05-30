@@ -80,6 +80,20 @@ else
     fail "redaction applied"
 fi
 
+path_src="$TMPROOT/path.txt"
+printf 'error under /Users/alice/myproject/scripts/foo.sh\n' >"$path_src"
+out=$(render_failed_agent_stderr_tail "$path_src")
+if printf '%s' "$out" | grep -Fq '<OPERATOR_REPO_PATH>'; then
+    ok "tmpdir path redaction applied"
+else
+    fail "tmpdir path redaction applied"
+fi
+if printf '%s' "$out" | grep -Fq '/Users/alice'; then
+    fail "raw home path leaked in tail"
+else
+    ok "raw home path not in tail"
+fi
+
 # --- atomic write + stale removal ---
 out_base="$TMPROOT/atomic"
 write_failed_agent_stderr_tail "$secret_src" "$out_base"
@@ -100,6 +114,28 @@ sig_ab_b=$(failed_agent_stderr_signature "$tail_b")
 sig_c=$(failed_agent_stderr_signature "$TMPROOT/sig-c.stderr-tail")
 if [[ "$sig_ab_a" == "$sig_ab_b" ]]; then ok "signature stable same root cause"; else fail "signature stable same root cause"; fi
 if [[ "$sig_ab_a" != "$sig_c" ]]; then ok "signature distinct root causes"; else fail "signature distinct root causes"; fi
+
+# --- HOME metacharacters in session-path normalization ---
+old_home="${HOME:-}"
+export HOME="/tmp/user.name#branch"
+home_tail="$TMPROOT/home-meta.stderr-tail"
+printf 'failed in %s/claude-implement-ABC/plan.txt\n' "$HOME/.cache/larch/sessions" >"$home_tail"
+home_sig=$(failed_agent_stderr_signature "$home_tail")
+if [[ -n "$home_sig" ]]; then
+    ok "signature with dotted HOME"
+else
+    fail "signature with dotted HOME"
+fi
+export HOME="/tmp/user#repo"
+home_tail2="$TMPROOT/home-hash.stderr-tail"
+printf 'failed in %s/design-XYZ/output.txt\n' "$HOME/.cache/larch/sessions" >"$home_tail2"
+home_sig2=$(failed_agent_stderr_signature "$home_tail2")
+if [[ -n "$home_sig2" ]]; then
+    ok "signature with hash in HOME"
+else
+    fail "signature with hash in HOME"
+fi
+if [[ -n "$old_home" ]]; then export HOME="$old_home"; else unset HOME; fi
 
 # --- empty / missing source ---
 set +e

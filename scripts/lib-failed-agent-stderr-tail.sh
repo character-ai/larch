@@ -68,12 +68,13 @@ render_failed_agent_stderr_tail() {
     [[ -n "$source_file" && -s "$source_file" ]] || return 1
 
     cap=$(failed_agent_stderr_byte_cap)
+    redact_tmpdir="$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/redact-tmpdir-paths.sh"
     redact="$_LARCH_FAILED_AGENT_STDERR_TAIL_SCRIPT_DIR/redact-secrets.sh"
-    [[ -x "$redact" ]] || return 1
+    [[ -x "$redact_tmpdir" && -x "$redact" ]] || return 1
 
     spool=$(mktemp "${TMPDIR:-/tmp}/larch-stderr-tail-spool.XXXXXX") || return 1
     set +o pipefail 2>/dev/null || true
-    tail -n "$lines" "$source_file" | "$redact" >"$spool" 2>/dev/null || true
+    tail -n "$lines" "$source_file" | "$redact_tmpdir" | "$redact" >"$spool" 2>/dev/null || true
     set -o pipefail 2>/dev/null || true
     if [[ ! -s "$spool" ]]; then
         rm -f "$spool"
@@ -102,9 +103,13 @@ write_failed_agent_stderr_tail() {
     return 1
 }
 
+_escape_sed_ere_literal() {
+    printf '%s' "$1" | sed 's/[][\\^.$*+?(){}|]/\\&/g'
+}
+
 failed_agent_stderr_signature() {
     local tail_file="$1"
-    local norm home_cache
+    local norm home_cache home_ere
 
     [[ -s "$tail_file" ]] || return 1
     home_cache="${HOME:-}/.cache/larch/sessions"
@@ -117,7 +122,10 @@ failed_agent_stderr_signature() {
             <"$tail_file"
     )
     if [[ -n "$home_cache" ]]; then
-        norm=$(printf '%s' "$norm" | sed -E "s#${home_cache//\//\\/}[^[:space:]]*#<path>#g")
+        home_ere=$(_escape_sed_ere_literal "$home_cache")
+        set +o pipefail 2>/dev/null || true
+        norm=$(printf '%s' "$norm" | sed -E "s|${home_ere}[^[:space:]]*|<path>|g" 2>/dev/null) || true
+        set -o pipefail 2>/dev/null || true
     fi
     norm=$(printf '%s' "$norm" | sed -E 's/[^[:space:]]+\.(txt|stderr-tail|sidecar|diag|done)( |$)/<out>\2/g')
     cksum <<<"$norm" | awk '{print $1}'

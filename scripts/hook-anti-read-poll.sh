@@ -50,8 +50,14 @@ is_read_task_output_path() {
     printf '%s' "$1" | grep -Eq '(^|/)tasks/[A-Za-z0-9._-]+\.output$'
 }
 
+bash_strip_quoted_for_read_verb() {
+    local cmd="$1"
+    printf '%s' "$cmd" | sed -E "s/'[^']*'//g; s/\"([^\"]|\\\\.)*\"//g"
+}
+
 bash_has_read_verb() {
     local cmd="$1"
+    cmd=$(bash_strip_quoted_for_read_verb "$cmd")
     if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(cat|tail|head|less|more)([^[:alnum:]_]|$)'; then
         return 0
     fi
@@ -59,6 +65,16 @@ bash_has_read_verb() {
         return 0
     fi
     return 1
+}
+
+bash_line_is_read_verb_only() {
+    local line="$1"
+    line=$(printf '%s' "$line" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+    [ -n "$line" ] || return 1
+    bash_segment_is_echo_only "$line" && return 1
+    bash_has_read_verb "$line" || return 1
+    extract_task_output_token "$line" && return 1
+    return 0
 }
 
 bash_normalize_cmd() {
@@ -84,6 +100,9 @@ bash_segment_task_output_poll_token() {
     printf '%s' "$token"
 }
 
+# Segment split is a deliberate heuristic: metacharacters inside quoted strings may
+# produce extra segments (false negatives) or combine read verbs with paths (false
+# positives). Read-verb detection strips quoted spans to avoid jq/grep literals.
 bash_line_task_output_poll_token() {
     local line="$1" seg rest token
     rest="$line"
@@ -116,13 +135,28 @@ bash_line_task_output_poll_token() {
 
 extract_bash_task_output_poll_token() {
     local cmd="$1" normalized line token
+    local i merged
+    lines=()
     normalized=$(bash_normalize_cmd "$cmd")
     while IFS= read -r line || [ -n "$line" ]; do
+        lines+=("$line")
+    done < <(printf '%s\n' "$normalized")
+    i=0
+    while [ "$i" -lt "${#lines[@]}" ]; do
+        line="${lines[$i]}"
+        if bash_line_is_read_verb_only "$line" && [ $((i + 1)) -lt "${#lines[@]}" ]; then
+            merged="$line ${lines[$((i + 1))]}"
+            token=$(bash_line_task_output_poll_token "$merged") && {
+                printf '%s' "$token"
+                return 0
+            }
+        fi
         token=$(bash_line_task_output_poll_token "$line") && {
             printf '%s' "$token"
             return 0
         }
-    done < <(printf '%s\n' "$normalized")
+        i=$((i + 1))
+    done
     return 1
 }
 
