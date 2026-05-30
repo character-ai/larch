@@ -38,12 +38,15 @@ Reads from stdin (Claude Code hook event JSON). Relevant fields:
 - `Read`: `tool_input.file_path` (end-anchored `tasks/<id>.output` classifier);
   `tool_input.offset` (ignored for task-output paths).
 - `Bash`: `tool_input.command` (normalized for backslash-newline continuations; each
-  logical line split on `;` and `&&`; per-segment read verb + `tasks/<id>.output` on
-  the unstripped segment text so quoted paths count; segments that are only
+  logical line split on `;`, `&&`, and `||` outside single/double/backtick quotes;
+  per-segment read verb + `tasks/<id>.output` on the unstripped segment text so
+  quoted paths count; segments that are only
   `echo`/`printf` ignored; multiline bodies and transcript suffixes after `.output`
   such as `2>/dev/null` or `| head` supported when the read verb and path share a
-  segment). Cross-line shell variable indirection (`VAR=…/tasks/id.output` then
-  `cat "$VAR"`) is not expanded and remains an accepted gap.
+  segment). Same-line `VAR=tasks/<id>.output` assignments expand into simple
+  `"$VAR"` / `$VAR` read targets; `read`, `awk`, and `python` paths are not tracked.
+  Multiple qualifying segments on one line each advance the per-task counter.
+  Cross-line shell variable indirection remains an accepted gap.
 - `cwd` — project working directory (used to scope state files).
 
 ## Output

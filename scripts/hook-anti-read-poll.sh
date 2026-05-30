@@ -100,6 +100,19 @@ bash_line_is_read_verb_only() {
     return 0
 }
 
+bash_expand_simple_var_refs() {
+    local line="$1" scan="$1" var val ref
+    while [[ "$scan" =~ (^|[[:space:];&|]+)([A-Za-z_][A-Za-z0-9_]*)=(tasks/[A-Za-z0-9._-]+\.output) ]]; do
+        var="${BASH_REMATCH[2]}"
+        val="${BASH_REMATCH[3]}"
+        ref="\$$var"
+        line=${line//"$ref"/$val}
+        line=${line//$ref/$val}
+        scan="${scan/${BASH_REMATCH[0]}/ }"
+    done
+    printf '%s' "$line"
+}
+
 bash_normalize_cmd() {
     printf '%s' "$1" | sed -e ':a' -e '/\\[[:space:]]*$/N' -e 's/\\[[:space:]]*\n[[:space:]]*/ /' -e 'ta'
 }
@@ -135,51 +148,110 @@ bash_line_is_echo_with_embedded_semicolon() {
     return 1
 }
 
-bash_line_task_output_poll_token() {
-    local line="$1" seg rest token stripped_line
-    bash_line_is_echo_with_embedded_semicolon "$line" && return 1
+bash_line_task_output_poll_tokens() {
+    local line="$1" seg rest token ch in_s in_d in_b stripped_line
+    bash_line_is_echo_with_embedded_semicolon "$line" && return 0
     stripped_line=$(bash_strip_quoted_for_read_verb "$line")
     rest="$line"
+    seg=""
+    in_s=0
+    in_d=0
+    in_b=0
     while [ -n "$rest" ]; do
-        case "$rest" in
-            *';'*)
-                seg="${rest%%;*}"
-                rest="${rest#*;}"
+        ch=${rest:0:1}
+        if [ "$in_s" -eq 0 ] && [ "$in_d" -eq 0 ] && [ "$in_b" -eq 0 ]; then
+            case "$rest" in
+                ';'*)
+                    token=$(bash_segment_task_output_poll_token "$seg") || true
+                    if [ -n "${token:-}" ]; then
+                        case "$line" in
+                            *"$token"*) printf '%s\n' "$token" ;;
+                            *)
+                                case "$stripped_line" in
+                                    *"$token"*) printf '%s\n' "$token" ;;
+                                esac
+                                ;;
+                        esac
+                    fi
+                    rest=${rest#;}
+                    seg=""
+                    continue
+                    ;;
+                '&&'*)
+                    token=$(bash_segment_task_output_poll_token "$seg") || true
+                    if [ -n "${token:-}" ]; then
+                        case "$line" in
+                            *"$token"*) printf '%s\n' "$token" ;;
+                            *)
+                                case "$stripped_line" in
+                                    *"$token"*) printf '%s\n' "$token" ;;
+                                esac
+                                ;;
+                        esac
+                    fi
+                    rest=${rest#&&}
+                    seg=""
+                    continue
+                    ;;
+                '||'*)
+                    token=$(bash_segment_task_output_poll_token "$seg") || true
+                    if [ -n "${token:-}" ]; then
+                        case "$line" in
+                            *"$token"*) printf '%s\n' "$token" ;;
+                            *)
+                                case "$stripped_line" in
+                                    *"$token"*) printf '%s\n' "$token" ;;
+                                esac
+                                ;;
+                        esac
+                    fi
+                    rest=${rest#||}
+                    seg=""
+                    continue
+                    ;;
+            esac
+        fi
+        case "$ch" in
+            "'")
+                if [ "$in_d" -eq 0 ] && [ "$in_b" -eq 0 ]; then
+                    in_s=$((1 - in_s))
+                fi
                 ;;
-            *'&&'*)
-                seg="${rest%%&&*}"
-                rest="${rest#*&&}"
+            '"')
+                if [ "$in_s" -eq 0 ] && [ "$in_b" -eq 0 ]; then
+                    in_d=$((1 - in_d))
+                fi
                 ;;
-            *'||'*)
-                seg="${rest%%||*}"
-                rest="${rest#*||}"
-                ;;
-            *)
-                seg="$rest"
-                rest=""
+            '`')
+                if [ "$in_s" -eq 0 ] && [ "$in_d" -eq 0 ]; then
+                    in_b=$((1 - in_b))
+                fi
                 ;;
         esac
-        token=$(bash_segment_task_output_poll_token "$seg") || continue
-        case "$line" in
-            *"$token"*) ;;
-            *)
-                case "$stripped_line" in
-                    *"$token"*) ;;
-                    *) continue ;;
-                esac
-                ;;
-        esac
-        printf '%s' "$token"
-        return 0
+        seg="${seg}${ch}"
+        rest=${rest#?}
     done
-    return 1
+    token=$(bash_segment_task_output_poll_token "$seg") || return 0
+    case "$line" in
+        *"$token"*) printf '%s\n' "$token" ;;
+        *)
+            case "$stripped_line" in
+                *"$token"*) printf '%s\n' "$token" ;;
+            esac
+            ;;
+    esac
 }
 
-extract_bash_task_output_poll_token() {
+bash_line_task_output_poll_token() {
+    bash_line_task_output_poll_tokens "$1" | head -1
+}
+
+extract_bash_task_output_poll_tokens() {
     local cmd="$1" normalized line token
     local i merged
     lines=()
     normalized=$(bash_normalize_cmd "$cmd")
+    normalized=$(bash_expand_simple_var_refs "$normalized")
     while IFS= read -r line || [ -n "$line" ]; do
         lines+=("$line")
     done < <(printf '%s\n' "$normalized")
@@ -188,12 +260,23 @@ extract_bash_task_output_poll_token() {
         line="${lines[$i]}"
         if bash_line_is_read_verb_only "$line" && [ $((i + 1)) -lt "${#lines[@]}" ]; then
             merged="$line ${lines[$((i + 1))]}"
-            bash_line_task_output_poll_token "$merged" && return 0
+            while IFS= read -r token || [ -n "$token" ]; do
+                [ -n "$token" ] || continue
+                printf '%s\n' "$token"
+            done < <(bash_line_task_output_poll_tokens "$merged")
+            i=$((i + 2))
+            continue
         fi
-        bash_line_task_output_poll_token "$line" && return 0
+        while IFS= read -r token || [ -n "$token" ]; do
+            [ -n "$token" ] || continue
+            printf '%s\n' "$token"
+        done < <(bash_line_task_output_poll_tokens "$line")
         i=$((i + 1))
     done
-    return 1
+}
+
+extract_bash_task_output_poll_token() {
+    extract_bash_task_output_poll_tokens "$1" | head -1
 }
 
 # Canonical state key: rightmost tasks/<id>.output tail (absolute vs relative ignored).
@@ -329,8 +412,13 @@ case "$tool_name" in
         handle_generic_read_poll "$sanitized_path" "$offset"
         ;;
     Bash)
-        token=$(extract_bash_task_output_poll_token "$_bash_sanitized_command") || exit 0
-        handle_task_output_poll "$token"
+        found=false
+        while IFS= read -r token || [ -n "$token" ]; do
+            [ -n "$token" ] || continue
+            found=true
+            handle_task_output_poll "$token"
+        done < <(extract_bash_task_output_poll_tokens "$_bash_sanitized_command")
+        [ "$found" = true ] || exit 0
         ;;
 esac
 

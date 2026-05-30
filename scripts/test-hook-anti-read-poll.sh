@@ -299,6 +299,20 @@ assert_silent "$out_sed1" 'sed edit plus grep -rn call 1 silent'
 out_sed2=$(run_bash_hook 1 "sed -i.bak 's/a/b/' notes.txt; grep -rn pattern ." "/proj-sed-fp")
 assert_silent "$out_sed2" 'sed edit plus grep -rn call 2 silent'
 
+echo "=== semicolon inside single quotes does not split segments ==="
+quoted_semi_cmd="echo 'a;b'; cat $TASK_OUT"
+out_qs1=$(run_bash_hook 0 "$quoted_semi_cmd" "/proj-quoted-semi")
+assert_silent "$out_qs1" 'quoted-semicolon call 1 silent'
+out_qs2=$(run_bash_hook 1 "$quoted_semi_cmd" "/proj-quoted-semi")
+assert_reminder "$out_qs2" 'quoted-semicolon call 2 fires reminder'
+
+echo "=== same-line VAR assignment expands for cat ==="
+var_assign_cmd="TASK=tasks/testtask123.output; cat \"\$TASK\""
+out_va1=$(run_bash_hook 0 "$var_assign_cmd" "/proj-var-assign")
+assert_silent "$out_va1" 'var-assign call 1 silent'
+out_va2=$(run_bash_hook 1 "$var_assign_cmd" "/proj-var-assign")
+assert_reminder "$out_va2" 'var-assign call 2 fires reminder'
+
 echo "=== two task ids tracked independently ==="
 TASK_A='/tmp/proj/tasks/taskA.output'
 TASK_B='/tmp/proj/tasks/taskB.output'
@@ -308,6 +322,13 @@ out_ab2=$(run_bash_hook 1 "cat $TASK_B" "/proj-two-tasks")
 assert_silent "$out_ab2" 'two tasks B call 1 silent'
 out_ab3=$(run_bash_hook 2 "cat $TASK_A" "/proj-two-tasks")
 assert_reminder "$out_ab3" 'two tasks A call 2 fires reminder'
+
+echo "=== two cat segments on one line both count ==="
+two_cat_cmd="cat $TASK_A; cat $TASK_B"
+out_tc1=$(run_bash_hook 0 "$two_cat_cmd" "/proj-two-cat-line")
+assert_silent "$out_tc1" 'two-cat-line call 1 silent'
+out_tc2=$(run_bash_hook 1 "cat $TASK_B" "/proj-two-cat-line")
+assert_reminder "$out_tc2" 'two-cat-line call 2 fires reminder for task B after dual-segment read'
 
 echo "=== generic Read regression (3 within 30s, 2 do not) ==="
 out_gr1=$(run_hook 0 "/tmp/generic-regression.md" 0 "/proj-generic-reg")
