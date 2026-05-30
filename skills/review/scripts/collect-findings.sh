@@ -7,8 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
-# shellcheck source=../../../scripts/lib-failed-agent-stderr-tail.sh
-source "$SCRIPT_DIR/../../../scripts/lib-failed-agent-stderr-tail.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$PLUGIN_ROOT/scripts/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 usage() { larch_err "Usage: collect-findings.sh --mode diff|description --findings-file FILE --oos-file FILE [--external-output-files FILE...] [--claude-output-files FILE...] [--timeout SECONDS]"; }
