@@ -46,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `skills/report-tokens/scripts/test-report-tokens-recompute.sh`, `skills/report-tokens/scripts/test-rate-assertions.sh`, `skills/report-tokens/scripts/test-rate-assertions.md`, and the `skills/report-tokens/scripts/fixtures/recompute-run/` fixture directory. The harnesses wrote fixture run directories into the live `larch-logs/implement/` and `larch-logs/design/` working-tree paths, which risked cross-talk with real run logs. They are deleted rather than migrated to `${TMPDIR}` per project preference: `run-analysis.sh` is intentionally not test-covered. Makefile recipes (`test-rate-assertions`, `test-report-tokens-recompute`) and their `test-harnesses-13` / `test-harnesses-20` shard prerequisites are removed; the matching `agent-lint.toml` exclude entry and `docs/linting.md` row are dropped; the dangling rate-harness sentence in `skills/report-tokens/SKILL.md` is trimmed. Closes #3121.
 
+## [47.0.11] - 2026-05-30
+
+### Changed
+
+- Install larch via sparse marketplace checkout that omits larch-logs and mermaid-lint, eliminating run-log bulk and install-time npm
+- Refresh the marketplace in place on steady-state upgrades instead of remove-and-reclone
+- Relocate the Mermaid dev toolchain to mermaid-lint/ and repoint CI, Makefile, and docs
+- Remove /upgrade-larch offline harnesses intentionally; no replacement tests added
+
 ## [47.0.9] - 2026-05-30
 
 ### Changed
@@ -323,7 +332,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Warn when cache cap trim cannot evict pinned or failed versions
 - Remove dead list_cached_versions helper from upgrade-larch.sh
-- Add all-pinned cap-overflow regression in test-upgrade-larch-prune.sh
+- Add all-pinned cap-overflow regression in the cached-version prune harness
 
 ## [45.2.2] - 2026-05-27
 
@@ -4459,7 +4468,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `/upgrade-larch` skill — automates upgrading the larch plugin to the latest version by removing and re-adding the marketplace, then reinstalling. Includes failure recovery guidance and a local-dev warning.
+- `/upgrade-larch` skill — automates upgrading the larch plugin to the latest version by refreshing the marketplace, then reinstalling. Includes failure recovery guidance and a local-dev warning.
 
 ### Changed
 

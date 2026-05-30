@@ -1,0 +1,17 @@
+Reviewing the branch diff and `ensure_mmdc()` / lazy mmdc initialization in the mermaid lint script.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+Reviewed `ensure_mmdc()` in `scripts/lint-mermaid-fences.sh` (lines 181–209, call site 228–241) against the branch diff and `scripts/lint-mermaid-fences.md`.
+
+- **Initialization and reuse:** `MMDC`, `supports_parse_only`, and `MMDC_RENDER_ARGS` are cleared at script scope (181–183). `ensure_mmdc()` short-circuits on `[ -n "$MMDC" ]` (186–187), so `resolve_mmdc`, puppeteer-arg setup, and the `mmdc --help` / `--parseOnly` probe run once per process on the first fence only.
+- **No early dereference:** `$MMDC`, `$supports_parse_only`, and `"${MMDC_RENDER_ARGS[@]}"` appear only inside the fence loop after `ensure_mmdc` (228–240). Extraction (`extract_fences`) runs before any CLI use.
+- **Failure modes:** Missing toolchain still exits 2 from inside `ensure_mmdc` (189–191), only when `count > 0` triggers the loop.
+- **Semantic change:** Markdown with zero top-level ` ```mermaid ` fences never enters the loop (`count=0`), so the script exits 0 without calling `ensure_mmdc`. That matches the deferred-resolution paragraph in `scripts/lint-mermaid-fences.md` (lines 24–26). `scripts/test-mermaid-fragments.sh` (257–267) already accepts both `lint_rc=0` and `lint_rc=2` for the nested-fence fixture.
+
+### Out-of-Scope Observations
+
+- **correctness** `docs/installation-and-setup.md:291-296` — Part 3e repointed npm paths but still says contributors editing any `.md` file hit a hook that “hard-fails (exit 2) when the Mermaid CLI is not installed.” With lazy init, fence-less staged Markdown exits 0 without resolving `mmdc`. **Suggested fix:** Qualify that exit 2 applies when staged files contain at least one top-level `mermaid` fence, and point readers to `scripts/lint-mermaid-fences.md` for the deferred-resolution rule.
+
+- **code-quality** `scripts/lint-mermaid-fences.md:45-51` — The exit-codes table still describes code 0 only as “All extracted fences parsed,” while the Resolution section (line 26) documents the no-fence / no-probe path. **Suggested fix:** Add a code-0 row note or footnote that an empty fence set across all inputs exits 0 without toolchain resolution.

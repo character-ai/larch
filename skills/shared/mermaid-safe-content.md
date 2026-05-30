@@ -34,7 +34,7 @@ only, after Step 9a validation.
 
 ## Node Toolchain Maintenance
 
-This repo uses `@mermaid-js/mermaid-cli` for CI parsing. Keep the version pinned exactly in `package.json`; bump yearly or on critical CVE. Run `npm audit` opportunistically during bumps. There is no scheduled audit gate.
+This repo uses `@mermaid-js/mermaid-cli` for CI parsing. Keep the version pinned exactly in `mermaid-lint/package.json`; bump yearly or on critical CVE. Run `(cd mermaid-lint && npm audit)` opportunistically during bumps. There is no scheduled audit gate.
 
 ## Update Triggers
 

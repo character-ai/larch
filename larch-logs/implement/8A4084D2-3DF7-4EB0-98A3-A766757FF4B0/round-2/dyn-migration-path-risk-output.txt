@@ -1,0 +1,16 @@
+Reviewing the branch diff and upgrade-larch migration logic against the scout focus areas.
+### In-Scope Findings
+
+- **risk-integration** `skills/upgrade-larch/scripts/upgrade-larch.sh:81-96` — In `refresh_larch_marketplace`, both the update-failure fallback (`remove_larch_marketplace || true` then `add_sparse_larch_marketplace`) and the legacy/stale-cone branch use the same pattern: a failed `claude plugin marketplace remove` is ignored, but the script still calls `marketplace add` without removing `$MARKETPLACE_CLONE`. When the clone directory and `.git` remain (the case `warn_marketplace_remove_failure` at `skills/upgrade-larch/scripts/upgrade-larch.sh:64-67` targets), `marketplace add` commonly fails with an already-exists error. That trips `set -e` and the `ERR` trap (`skills/upgrade-larch/scripts/upgrade-larch.sh:32`), so `recover()` at `skills/upgrade-larch/scripts/upgrade-larch.sh:24-31` does document `rm -rf`, but only after a hard failure. On the full upgrade path (`skills/upgrade-larch/scripts/upgrade-larch.sh:328-337`), `claude plugin uninstall` has already run, so this failure mode leaves the operator with no installed plugin and a wedged marketplace tree until they run recovery manually. **Suggested fix:** Mirror `recover()` inside the automated re-add paths: if `remove_larch_marketplace` fails (or before any sparse re-add), `rm -rf -- "$MARKETPLACE_CLONE"` when `[ -d "$MARKETPLACE_CLONE" ]`, then call `add_sparse_larch_marketplace`; optionally log that automatic cleanup ran. Keep the existing warning/recovery banner as a backstop for add/network failures.
+
+### Out-of-Scope Observations
+
+- **Already-latest + marketplace repair (`skills/upgrade-larch/scripts/upgrade-larch.sh:309-319`)** — When `CURRENT_INSTALLED_VERSION` equals `LATEST_STABLE` and `marketplace_sparse_cone_matches` is false, the script repairs via `refresh_larch_marketplace` but does **not** uninstall the plugin; on success it still runs `write_install_stamp` and `prune_cached_versions` and exits 0. That matches the contract in `skills/upgrade-larch/scripts/upgrade-larch.md:12` and does not leave the user without an installed plugin.
+
+- **Stale-cone detection / sorting (`skills/upgrade-larch/scripts/upgrade-larch.sh:48-62`)** — Comparing sorted `git sparse-checkout list` output to sorted `normalize_sparse_dirs` is order-robust and correctly treats a future `LARCH_SPARSE_DIRS` expansion as drift (re-add). Cone-mode `git sparse-checkout list` emits bare directory names (verified against git behavior), so the string equality check is not inherently format-broken.
+
+- **Recovery contract vs. warnings (`skills/upgrade-larch/scripts/upgrade-larch.md:22`)** — The contract documents manual `rm -rf` when remove+add fails; `recover()` and the verification-failure banner at `skills/upgrade-larch/scripts/upgrade-larch.sh:352-355` include the same steps. The gap is automation, not missing operator guidance.
+
+- **Test removal (Part 4)** — Intentional per plan; no in-scope defect from harness deletion alone for this focus area.
+
+**Commits reviewed:** `383b6be05` (core change), `9adf39b6a` (round-1: `refresh_larch_marketplace`, cone matching, recovery `rm -rf`), plus log flush / lint-fix commits.

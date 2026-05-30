@@ -97,15 +97,15 @@ jobs:
           cache: npm
           # Track the lockfile so a lockfile-only bump invalidates the
           # npm cache (closes #1426 follow-up FINDING_1).
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: mermaid-lint/package-lock.json
       - uses: actions/cache@v5
         id: node-modules-cache
         with:
-          path: node_modules
+          path: mermaid-lint/node_modules
           # Key on both package.json and package-lock.json so a
           # dependency-manifest change that doesn't update the lockfile
           # still invalidates this cache (closes #1576).
-          key: node-modules-${{ runner.os }}-${{ hashFiles('package.json', 'package-lock.json') }}
+          key: node-modules-${{ runner.os }}-${{ hashFiles('mermaid-lint/package.json', 'mermaid-lint/package-lock.json') }}
       - uses: actions/cache@v5
         id: puppeteer-cache
         with:
@@ -114,7 +114,7 @@ jobs:
           # Chromium cache invalidates whenever resolved Puppeteer
           # changes — even via lockfile-only bumps (closes #1426
           # follow-up FINDING_1).
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('mermaid-lint/package-lock.json') }}
       - name: Install Mermaid CLI
         # `npm ci` installs exactly from the committed lockfile and
         # fails if the lockfile is out of sync with package.json. This
@@ -132,7 +132,7 @@ jobs:
         # a node_modules hit with a puppeteer miss would leave Chromium
         # absent and break the mermaid lint step (closes #1576).
         if: steps.node-modules-cache.outputs.cache-hit != 'true' || steps.puppeteer-cache.outputs.cache-hit != 'true'
-        run: npm ci
+        run: cd mermaid-lint && npm ci
       - name: Lint Mermaid fences (changed only)
         run: scripts/lint-mermaid-fences.sh --changed-only
       - name: Pipe SIGPIPE safety lint

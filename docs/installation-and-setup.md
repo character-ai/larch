@@ -8,7 +8,7 @@ Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/p
 
 #### Install
 ```bash
-claude plugin marketplace add character-ai/larch
+claude plugin marketplace add character-ai/larch --sparse .claude .claude-plugin .gemini .github agents docs hooks scripts skills tests
 claude plugin install larch@larch-local
 ```
 The first command registers larch's marketplace manifest (`.claude-plugin/marketplace.json`). The second command installs the `larch` plugin into your Claude Code user scope. Once installed, all larch skills (e.g., /implement) become available in every Claude Code session.  Note that both commands make changes to your `~/.claude/settings.json`.
@@ -33,11 +33,13 @@ To upgrade larch to the latest stable version, run the `/upgrade-larch` skill in
 /upgrade-larch
 ```
 
-After `/upgrade-larch` finishes, restart Claude Code only if it actually installed a new version. If it reports that you are already on the latest stable release, no restart is needed; install-stamp refresh and cache prune may still have run. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
+After `/upgrade-larch` finishes, restart Claude Code only if it actually installed a new version. If it reports that you are already on the latest stable release, no restart is needed; install-stamp refresh and cache prune may still have run. A legacy full active install is slimmed on the next real upgrade path; reinstall once if you need that disk reduction immediately. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
 
 `/upgrade-larch` is idempotent only when `gh` is installed and can resolve the latest stable release: if the currently installed version already matches that stable release, it skips reinstall but still refreshes the install stamp and prunes old cache directories. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
 
 When `/upgrade-larch` verifies a stable install (or runs on the already-latest path), it writes `.larch-installed-at` on the stable version directory and keeps the eight most-recently-installed cached versions (install-stamp order; legacy unstamped directories fall back to directory mtime at ranking time only). The verified or already-latest stable target directory is always retained when present. There are no session pins or mtime-touch helpers. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted.
+
+`/upgrade-larch` installs via the same sparse checkout shown above. The sparse checkout excludes the committed `larch-logs/` run logs and the dev-only `mermaid-lint/` toolchain, so the install carries no run logs and triggers no `npm install`. A valid sparse checkout refreshes in place with `claude plugin marketplace update`; legacy full clones, missing clones, and stale sparse cones are repaired with a one-time `remove` + sparse re-add on the upgrade path. The already-latest path does not mutate the marketplace or reinstall the active plugin.
 
 ## Install ast-grep
 1. Install the CLI (shell)
@@ -87,24 +89,25 @@ Continuing with the cached version.**
 
 This warning fires once per `session-setup.sh` invocation from a larch dev clone when preflight is enabled. Typical entrypoints include `/implement`; `/review` skips preflight and does not emit the warning in its default flow. After reinstalling or refreshing the plugin cache, restart Claude Code to pick up the new version.
 
-### Mermaid CLI (required for the `lint-mermaid-fences` pre-commit hook)
+### Mermaid CLI (required when Markdown changes contain Mermaid fences)
 
 Contributors editing any `.md` file in this repo trigger the
-`lint-mermaid-fences` pre-commit hook, which runs `mmdc` against every
-` ```mermaid ` fence in the staged Markdown to catch unsafe content
-before it lands in tracking-issue summaries or PR bodies. The hook hard-fails
-(exit 2) when the Mermaid CLI is not installed, so a one-time
-installation is required:
+`lint-mermaid-fences` pre-commit hook. When staged Markdown contains
+` ```mermaid ` fences, the hook runs `mmdc` against them to catch unsafe
+content before it lands in tracking-issue summaries or PR bodies. Markdown
+changes without Mermaid fences do not require the Mermaid CLI. If fences are
+present and the CLI is not installed, the hook hard-fails (exit 2), so install
+the local toolchain first:
 
 ```bash
 cd larch
-npm install              # creates node_modules/ (gitignored) + binds the lockfile
+(cd mermaid-lint && npm ci)   # creates mermaid-lint/node_modules/ (gitignored) + binds the lockfile
 ```
 
-This installs `@mermaid-js/mermaid-cli` (pinned in `package.json` /
-`package-lock.json`) plus its Puppeteer/Chromium dependency under
-`node_modules/.bin/mmdc`. The hook resolves `mmdc` from
-`node_modules/.bin/` first, then falls back to a globally-installed
+This installs `@mermaid-js/mermaid-cli` (pinned in `mermaid-lint/package.json` /
+`mermaid-lint/package-lock.json`) plus its Puppeteer/Chromium dependency under
+`mermaid-lint/node_modules/.bin/mmdc`. The hook resolves `mmdc` from
+`mermaid-lint/node_modules/.bin/` first, then falls back to a globally-installed
 `mmdc` on `PATH`.
 
 If you are intentionally working on a machine without a Node toolchain

@@ -118,7 +118,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><a href="docs/skills.md#upgrade-larch"><code>/upgrade-larch</code></a></td>
       <td><em>(none)</em></td>
     </tr>
-    <tr><td colspan="2">Upgrade the larch plugin to the latest version by removing and re-adding the marketplace, then reinstalling the plugin.</td></tr>
+    <tr><td colspan="2">Upgrade the larch plugin to the latest version by refreshing the sparse marketplace checkout in place when possible, repairing legacy clones when needed, then reinstalling the plugin.</td></tr>
   </tbody>
 </table>
 
