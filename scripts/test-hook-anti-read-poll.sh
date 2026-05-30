@@ -148,7 +148,7 @@ out_bm2=$(run_bash_hook 1 "$multiline_cmd" "/proj-bash-multiline")
 assert_reminder "$out_bm2" 'multiline Bash task-output call 2 fires reminder'
 
 echo "=== Bash task-output poll with transcript suffixes ==="
-suffix_cmd="cat $TASK_OUT 2>/dev/null | head -5"
+suffix_cmd="cat $TASK_OUT 2>/dev/null"' | head -5'
 out_bs1=$(run_bash_hook 0 "$suffix_cmd" "/proj-bash-suffix")
 assert_silent "$out_bs1" 'suffix Bash task-output call 1 silent'
 out_bs2=$(run_bash_hook 1 "$suffix_cmd" "/proj-bash-suffix")
