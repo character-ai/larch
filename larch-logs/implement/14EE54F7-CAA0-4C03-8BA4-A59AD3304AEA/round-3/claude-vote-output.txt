@@ -1,0 +1,34 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- fail-open is the explicit plan-mandated design and matches the pre-existing ci-status.sh `|| echo "0"` behavior; accepted tradeoff
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- return-2 paths call exit_stall (process exit); exit-3 from _verify_failed_jobs_locally is also a direct process exit; the diverged-branch plain-push scenario cannot occur through these code paths
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- empty TSV means no known locally-replayable failed jobs; lint still runs via run_checks_with_lint_fix_loop; mandatory stall on empty TSV adds brittleness without clear benefit
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- _verify_failed_jobs_locally is called directly in both contexts, not in a subshell; exit propagation is identical
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- BEHIND_COUNT=<n> format is stable; awk vs kv_value is a style difference with no drift risk in practice
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- single-callsite inline block; extracting adds indirection without benefit
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- already landed on branch; splitting now would cost more than it saves; PR description is the appropriate venue
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- docs/run-logs.md is not cited in the plan acceptance criteria; all plan-listed doc targets (workflow-lifecycle.md and touched .md siblings) are updated
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- no _ci_fix_rebase_pending_set symbol exists in the committed diff; all mutation uses direct CI_FIX_REBASE_PENDING= assignment
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- values come from controlled skill logic not user input; git handles argument safety; existing charset validation is adequate for the actual threat surface
+FINDING_22: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- narrow verb coverage is intentional for a best-effort heuristic; common polling patterns are covered
+FINDING_24: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- alternating single-task reads across turns are still correctly counted per-task; multi-task-per-command is an unusual pattern
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- the merge note confirms no _ci_fix_rebase_pending_set symbol exists in the committed tree; reviewers examined uncommitted working-tree state
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- force-pushing to origin is correct for fork workflows because the feature branch lives on the fork remote (origin), not upstream; only the rebase base is upstream/main
+OOS_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

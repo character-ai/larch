@@ -1,0 +1,34 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- unfixable path uses exit 3 in-function, not a post-rebase-only subshell return-1 divergence
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- defer-push rebases increment REBASE_COUNT but cap is high and may be acceptable
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- awk vs kv_value parity is a low-risk maintainability note
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- extract-helper refactor is optional, not a functional defect
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- bundled-scope review burden, not a runtime bug
+FINDING_15: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- could not verify plan acceptance still requires a run-logs update on this branch
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- committed tree has no _ci_fix_rebase_pending_set symbol, only direct CI_FIX_REBASE_PENDING assignment
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- test-ci-behind-count already covers fail-open on bad ref/rev-list, not fetch-only
+FINDING_19: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ci_fix_vendor_rotation_start_attempt already exercises _fix_attempt=1 codex-first rotation
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ci-behind-count already rejects unsafe base-remote/base-ref characters
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- undefined helper appears only in uncommitted WIP, not the committed tree under review
+OOS_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- deliberate fail-open tradeoff already documented for ci-behind-count
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- nosession shared-counter limitation is minor and documented
+OOS_6: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- pre-stage vendor verify_rc=4 retry without pending flag is adjacent pre-existing behavior
+OOS_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- no ship-pr harness asserts re-verify on CI_FIX_REBASE_PENDING retry when behind=0
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- conservative short-circuit warnings are intentional hook posture
+OOS_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- start_attempt timing matches intended rotation, no bug to file
+OOS_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

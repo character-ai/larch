@@ -1,0 +1,27 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_4: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak -- PR scope is a process concern, not a code defect; the bundled changes are correct and consistent
+FINDING_6: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate -- plan explicitly mandates fail-open with BEHIND_COUNT=0; implementation faithfully follows the plan's stated design decision
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=true
+FINDING_14: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_15: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak -- re-rebasing on pending_retry when main advanced during backoff is correct behavior; the suggested fix would prevent legitimate rebases
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak -- run_rebase_rebump either succeeds (did_rebase=true is correct) or calls exit_stall which exits the process, so the flag value is never observed after a failed rebase
+FINDING_19: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
