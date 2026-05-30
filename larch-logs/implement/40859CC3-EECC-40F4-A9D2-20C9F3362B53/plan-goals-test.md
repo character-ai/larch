@@ -1,0 +1,377 @@
+## Goal
+Implement issue #3120: [IMPLEMENTING] Breadcrumbs Deprecation Stage 5: Post-rip hardening carry-overs\n\n.
+
+## Implementation Plan
+## Plan
+
+SIMPLE-tier. Scope verified against latest main (924345fba) on 2026-05-29: only
+the 3 genuinely-remaining items below. The other 3 originally-scoped surfaces
+(render-cache symlink harness in `test-design-log-publish.sh`, `SECURITY.md`
+render-cache text, `test-mermaid-fragments.sh` embedded-`=` regression) are
+already implemented and are OUT of scope. `larch-log.sh` and `step-7a.sh` are
+out of scope (different staging model; relay removed). See
+`discussion-round1.md` and `audit-findings.md`.
+
+Three items:
+- A. Close the parent-directory (ancestor) symlink TOCTOU in `design-log-publish.sh`.
+- B. Broad audit + route high-risk `larch_err` external-content relays through
+     `sanitize_diagnostic_line`.
+- C. Sanitize the `ship-pr.sh` fallback relay (a HIGH site within item B).
+
+## Files to modify/create
+
+### UPDATED: `scripts/design-log-publish.sh`
+Item A. Add a small fail-closed helper and call it at each subtree staging loop.
+
+- Add helper near `design_publish_stage_file`:
+  `design_publish_ancestor_within_root() { local _root="$1" _file="$2" _parent; _parent=$(cd "$(dirname "$_file")" 2>/dev/null && pwd -P) || return 1; case "$_parent" in "$_root"|"$_root"/*) return 0 ;; *) return 1 ;; esac; }`
+  Rationale: re-resolves each file's parent physical path at stage time, so a
+  directory swapped for a symlink AFTER the `find -type l` scan and BEFORE
+  `design_publish_stage_file`'s `cp` is caught (the existing per-file `[ -L "$f" ]`
+  checks only the leaf, not ancestors).
+- plan-review loop (after the existing `[[ -L "$f" ]]` check, ~line 415-419): add
+  `if ! design_publish_ancestor_within_root "$pr_root" "$f"; then larch_err "design-log-publish: plan-review ancestor became a symlink before staging: $f"; emit_publish_result false; exit 0; fi`.
+  **Ordering note:** the plan-review allowlist (`rel` regex + artifact basename
+  checks, ~lines 392-414) runs before the leaf `-L` recheck and this ancestor
+  guard; harness paths must pass allowlist first or the case never reaches the
+  guard.
+- render-cache loop (after `[[ -L "$f" ]]`, ~line 473-477): same guard with
+  `"$rc_root"` and a `render-cache ...` message.
+- `.completed` loop (after `[[ -L "$f" ]]`, ~line 527-531): same guard with
+  `"$completed_root"` and a `.completed ...` message.
+- Top-level loop (`find -maxdepth 1 -type f`) needs no guard — no intermediate dirs.
+- Keep the existing leaf `[ -L ]` checks and `find -type l` scans unchanged; the
+  ancestor guard is additive defense, not a replacement.
+
+### UPDATED: `scripts/design-log-publish.md`
+Document the ancestor-rescan guard: what `design_publish_ancestor_within_root`
+does, that it fires per-file in all three subtree loops, and that it closes the
+parent-directory TOCTOU that the leaf recheck left open.
+
+### UPDATED: `SECURITY.md`
+Item A doc. Update the design-log-publish paragraph (~line 207). Replace the
+caveat "Parent-directory replacement races between enumeration and stage are not
+fully closed in either subtree; the per-file recheck closes the leaf slot only."
+with language stating that a per-file ancestor re-resolution now fails closed
+when any ancestor directory is swapped for a symlink before staging, closing the
+parent-directory race for the plan-review, render-cache, and `.completed`
+subtrees. Do not touch the already-correct render-cache policy sentences.
+
+### UPDATED: `scripts/test-design-log-publish.sh`
+Item A coverage. **Do not** reuse the leaf-file `make_find_symlink_race_stub`
+pattern for ancestor coverage — that stub swaps the enumerated *file* at `-type f`
+time (existing blocks ~963–976 and ~1038–1057) and exercises only the existing
+`[[ -L "$f" ]]` guard, not `design_publish_ancestor_within_root`.
+
+- Add sibling helper `make_find_ancestor_race_stub()` near
+  `make_find_symlink_race_stub` (~line 142): for `"$1" ==
+  "${ANCESTOR_RACE_FIND_ROOT:-}" && "$2" == "-type" && "$3" == "f"`, run
+  `rm -rf "${ANCESTOR_RACE_PARENT:?}"`, `ln -s "${ANCESTOR_RACE_TARGET:?}"
+  "${ANCESTOR_RACE_PARENT:?}"`, `printf '%s\n' "${ANCESTOR_RACE_PATH:?}"`,
+  then `exit 0` (mirror `make_find_symlink_race_stub` ~147-151 — do not fall
+  through to `exec` the real `find` after the swap, which would re-enumerate a
+  mutated tree); otherwise `exec` the real `find` (including `-type l` scans
+  while the tree is still all real directories).
+- Harness env vars (document in `.md`): `ANCESTOR_RACE_FIND_ROOT` (physical
+  subtree root, e.g. `pwd -P` of render-cache or plan-review), `ANCESTOR_RACE_PATH`
+  (regular file path returned by `-type f`), `ANCESTOR_RACE_PARENT` (intermediate
+  directory under root whose parent is re-resolved by the guard — e.g.
+  `.../render-cache/sub` or physical `.../plan-review/round-1`),
+  `ANCESTOR_RACE_TARGET` (directory outside the resolved root).
+- **stderr capture (ancestor cases only):** capture publish with merged
+  `2>&1` (do **not** use `2>/dev/null` on ancestor blocks — neighboring leaf-race
+  cases may keep `2>/dev/null` because they only assert `PUBLISH_OK=false` on
+  stdout). Each ancestor case must assert **both** `PUBLISH_OK=false` **and** the
+  matching `... ancestor became a symlink before staging` substring in that merged
+  capture (ancestor `larch_err` lines go to stderr).
+- **render-cache ancestor-directory race** (new block ~after line 1057): layout
+  `render-cache/sub/file.txt` with `sub` a normal directory before publish; export
+  stub env; capture with `2>&1`; assert merged output contains
+  `PUBLISH_OK=false` **and**
+  `design-log-publish: render-cache ancestor became a symlink before staging`.
+- **plan-review ancestor-directory race** (parallel): layout
+  `plan-review/round-1/findings-classification.tsv` only — an allowlisted file
+  directly under `round-1` (`rel` = `round-1/findings-classification.tsv`; matches
+  `^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$` and `design_round_artifact_included`).
+  **Do not** use `plan-review/round-1/sub/...`; extra path segments fail
+  `unexpected path under plan-review` (~line 411) before the ancestor guard runs.
+  Set `ANCESTOR_RACE_PARENT` to the physical `round-1` directory (same swap-at-
+  `-type f` pattern as render-cache `sub/`, but the swapped parent is `round-1`
+  itself). Capture with `2>&1`; assert merged output contains `PUBLISH_OK=false`
+  **and**
+  `design-log-publish: plan-review ancestor became a symlink before staging`.
+  Existing leaf-race cases stay unchanged.
+
+### UPDATED: `scripts/test-design-log-publish.md`
+List ancestor-directory-race cases separately from leaf symlink-race cases: stub
+swaps `ANCESTOR_RACE_PARENT` at `-type f` while `-type l` stayed clean; each case
+must capture publish output with `2>&1` (stderr not discarded) and assert the
+matching ancestor `larch_err` substring (not `PUBLISH_OK=false` alone). Document
+plan-review layout: allowlisted `round-1/findings-classification.tsv` with
+`ANCESTOR_RACE_PARENT` = physical `round-1` (no disallowed `round-1/sub/` segment).
+
+### UPDATED: `scripts/ship-pr.sh`
+Item C (a HIGH item-B site). In `append_tool_failure_local`'s fallback relay
+(~lines 894-901), wrap each relayed line with `sanitize_diagnostic_line` on top
+of the existing `redact-secrets.sh` pass. For all three `larch_err "$line"`
+loops (the redact-secrets-piped one, its `||` fallback, and the
+no-redactor-available branch), change `larch_err "$line"` to
+`larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"`. Per-line form
+preserves LF boundaries (the `lib-quiet.sh:81-88` contract forbids piping a
+multi-line stream through `sanitize_diagnostic_line`, which strips `\n`).
+`ship-pr.sh` already sources `lib-quiet.sh`.
+
+### UPDATED: `scripts/ship-pr.md`
+Note that the fallback failure-log relay now strips C0 control bytes per line
+(redact-secrets then sanitize_diagnostic_line).
+
+### UPDATED: `scripts/test-ship-pr.sh`
+Item C coverage — **must exercise `append_tool_failure_local`'s fallback relay,
+not the `--redact` success path.** Default `make_repo` keeps
+`append-tool-failure.sh` executable and `IMPLEMENT_TMPDIR` set, so a case that
+only supplies a control-byte `output_file` hits `append-tool-failure.sh --redact`
+and never reaches the three `larch_err "$line"` loops being changed.
+- **Force fallback:** satisfy `[ -z "$log_tmpdir" ] || [ ! -x
+  "$SCRIPT_DIR/append-tool-failure.sh" ]` (~line 889). Prefer chmod `-x` on the
+  stub `append-tool-failure.sh` under the harness repo root (or omit it from the
+  stub helper set) while leaving `IMPLEMENT_TMPDIR` populated; alternatively
+  clear/unset the state-file `IMPLEMENT_TMPDIR` so `read_state` yields empty
+  `log_tmpdir`.
+- **Fixture:** write the `--output-file` capture with `printf '%b\n'` embedding
+  BEL/ESC (mirror `scripts/test-ci-failed-jobs.sh` T8 ~178: `HTTP
+  500\x07Bad Gateway\x1b[31mred\x1b[0m`).
+- **Capture contract:** merged `2>&1` (fallback relays use `larch_err` on
+  stderr; stdout-only `out=$(...)` can false-green). Assert printable prefix
+  (`HTTP 500`, `Bad Gateway`) preserved in the merged capture **and** `grep -aF
+  $'\x07'` / `grep -aF $'\x1b'` absent (same BEL/ESC strip assertions as T8
+  ~185-194).
+
+### UPDATED: `scripts/lib-quiet.md`
+Item B audit record. Add a short "passthrough audit (2026-05-29)" subsection
+listing the HIGH sites routed (`ship-pr.sh`, `collect-findings.sh`), the MEDIUM
+sites routed for defense-in-depth (`collect-agent-results.sh`, `review-core.sh`),
+and the LOW sites reviewed and intentionally NOT routed (`eval-research.sh` git
+stderr [dev/eval harness], `validate-citations.sh` `__VC_DRY_RUN` test seam,
+`generate-topology-docs.sh` awk stderr over committed TSV, ~40 static
+`print_usage` heredoc relays). State the rule: external/captured content relayed
+into `larch_err`/`larch_errf` must be per-line `sanitize_diagnostic_line`d.
+
+### UPDATED: `skills/review/scripts/collect-findings.sh`
+Item B HIGH. Wrap the relayed `larch_err "$line"` calls in the `$collector_log`
+relay (~lines 217-220) and the `$wait_log` relay (~lines 241-243) with
+`larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"`, on top of the
+existing `redact-secrets.sh` pass. Sources `lib-quiet.sh` already.
+
+### UPDATED: `skills/review/scripts/collect-findings.md`
+Note the per-line control-byte sanitization on the collector/wait stderr relays.
+
+### UPDATED: `skills/review/scripts/test-collect-findings.sh`
+Item B coverage. Add case(s) for the `$collector_log` relay (~217-220) and/or
+`$wait_log` relay (~241-243) when the subprocess exits non-zero. **Do not**
+rely on PATH-only stubs or in-repo edits of the real scripts:
+`collect-findings.sh` hardcodes `"$PLUGIN_ROOT/scripts/collect-agent-results.sh"`
+and `"$PLUGIN_ROOT/scripts/wait-for-reviewers.sh"` (~208, ~232) with no env
+override (unlike `review-core.sh`'s `REVIEW_CORE_AGGREGATE_FINDINGS_SH`).
+- **Harness root (required):** build a minimal `CLAUDE_PLUGIN_ROOT` tree under
+  `$TMP` (mirror `scripts/test-ship-pr.sh` `make_repo` + per-invocation
+  `CLAUDE_PLUGIN_ROOT="$root"`): copy or symlink the real `scripts/lib-quiet.sh`
+  and `scripts/redact-secrets.sh`; place stub `scripts/collect-agent-results.sh`
+  and/or `scripts/wait-for-reviewers.sh` that exit non-zero and write BEL/ESC
+  fixture bytes into the log path `collect-findings` will relay
+  (`$REVIEW_TMPDIR/collect-agent-results.log` and/or
+  `$REVIEW_TMPDIR/wait-for-claude-reviewers.log` — production sets
+  `wait_log="$REVIEW_TMPDIR/wait-for-claude-reviewers.log"` at ~230; **do not**
+  seed `wait.log`; that basename is never read by the relay).
+  Export `CLAUDE_PLUGIN_ROOT="$harness_root"` (and `REVIEW_TMPDIR`) when invoking
+  `collect-findings.sh` so the changed relay loops run against the stubs.
+- **Trigger paths:** collector case — stub exits non-zero after writing
+  `printf '%b\n'` control-byte stderr into `$collector_log`; wait case — stub
+  exits non-zero after writing control bytes into
+  `$REVIEW_TMPDIR/wait-for-claude-reviewers.log` (the combined-output path
+  production reads for relay at ~232-243).
+- **Fixture:** seed relay input with `printf '%b\n'` BEL/ESC content (same T8
+  pattern as above).
+- **Capture contract (required):** merged `2>&1` capture only (`out=$(... 2>&1)`
+  or equivalent) — `LARCH_QUIET_DISABLE=1` does **not** substitute: with quiet
+  disabled, `larch_err` still writes only to stderr (`lib-quiet.sh` diagnostic
+  path), so stdout-only `out=$(...)` can false-green. Assert captured output
+  preserves printable text (`HTTP 500`, `Bad Gateway`) **and** lacks `\x07`/`\x1b`
+  (mirror `scripts/test-ci-failed-jobs.sh:178-194`; do **not** assert relay
+  correctness from stdout alone).
+
+### UPDATED: `skills/review/scripts/test-collect-findings.md`
+Document failure-relay cases: minimal `CLAUDE_PLUGIN_ROOT` harness with stub
+`collect-agent-results.sh` / `wait-for-reviewers.sh` (not PATH-only); merged
+`2>&1` capture required; BEL/ESC-absence assertions on the relay path. Wait-relay
+fixture must target `$REVIEW_TMPDIR/wait-for-claude-reviewers.log` (matches
+production `wait_log=` at `collect-findings.sh:230`), not `wait.log`.
+
+### UPDATED: `scripts/collect-agent-results.sh`
+Item B MEDIUM. Wrap the `$WAIT_STDERR` relay `larch_err "$line"` (~line 311) with
+`sanitize_diagnostic_line` per line. Sources `lib-quiet.sh` already.
+
+### UPDATED: `scripts/collect-agent-results.md`
+Note the WAIT_STDERR relay is now control-byte sanitized.
+
+### UPDATED: `scripts/test-collect-agent-results.sh`
+Item B coverage. **Do not** stub `wait-for-reviewers.sh` on PATH — production
+invokes `"$SCRIPT_DIR/wait-for-reviewers.sh"` (~308) and relays from the
+`mktemp` `$WAIT_STDERR` file (~311), so PATH-only or in-repo shadow stubs never
+exercise the changed relay.
+- **Harness root (required):** mirror the `collect-findings` contract: build a
+  minimal tree under `$TMP` where the real `scripts/collect-agent-results.sh`
+  (copy or symlink) and a stub `scripts/wait-for-reviewers.sh` share the same
+  `SCRIPT_DIR`; copy or symlink real `scripts/lib-quiet.sh` and
+  `scripts/redact-secrets.sh` as siblings. Invoke the harness copy of
+  `collect-agent-results.sh` from that tree (not the repo-root script against a
+  PATH stub).
+- **Stub behavior:** `wait-for-reviewers.sh` exits non-zero; BEL/ESC fixture
+  bytes go to stderr (captured into `$WAIT_STDERR` by production ~308).
+- **Fixture:** T8-style `printf '%b\n'` BEL/ESC content on the wait stub's
+  stderr (`HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m`).
+- **Capture contract (required):** merged `2>&1` only (`out=$(... 2>&1)` or
+  equivalent — not `LARCH_QUIET_DISABLE=1` alone); assert printable text
+  preserved (`HTTP 500`, `Bad Gateway`) and `\x07`/`\x1b` absent in capture —
+  same pattern as `test-ci-failed-jobs.sh:178-194` (stdout-only `out=$(...)`
+  false-greens relay sanitization).
+
+### UPDATED: `scripts/test-collect-agent-results.md`
+Document the WAIT_STDERR relay case: minimal `SCRIPT_DIR` harness (real collector +
+stub `wait-for-reviewers.sh` sibling, not PATH-only); merged `2>&1` capture
+required; BEL/ESC-absence assertions on the relay path.
+
+### UPDATED: `skills/review/scripts/review-core.sh`
+Item B MEDIUM. Wrap the `$aggregate_stderr` relay `larch_err "$line"`
+(~lines 531-534) with `sanitize_diagnostic_line` per line. Sources
+`lib-quiet.sh` already.
+
+### UPDATED: `skills/review/scripts/review-core.md`
+Note the aggregate stderr relay is now control-byte sanitized.
+
+### UPDATED: `skills/review/scripts/test-review-core.sh`
+Item B coverage. Stub `aggregate-findings.sh` (or pre-seed
+`$REVIEW_TMPDIR/review-core-aggregate.stderr`) with T8-style BEL/ESC content and
+exercise the `$aggregate_stderr` relay path. **Capture contract:** merged `2>&1`
+only; assert printable text preserved and `\x07`/`\x1b` absent — not
+stdout-only grep (`LARCH_QUIET_DISABLE=1` alone is insufficient).
+
+## Approach
+- Item A uses a per-file ancestor re-resolution (`cd "$(dirname "$f")" && pwd -P`
+  + containment `case`) rather than a second `find -type l` rescan: the
+  re-resolution closes the window right up to the `cp`, whereas a bare rescan
+  still leaves a gap before each individual stage. It catches the security-
+  relevant case (an ancestor symlink that escapes the resolved physical root) and
+  fails closed (`cd` failure → reject). The existing leaf `[ -L ]` checks and
+  `find -type l` tree scans stay; the guard is additive.
+- Harness: `make_find_ancestor_race_stub` swaps the *parent* directory at the
+  `-type f` enumeration pass (after a clean `-type l` scan). Ancestor cases
+  capture merged `2>&1` and require the ancestor-specific `larch_err` substring so
+  a broken/missing guard cannot pass on stdout-only `PUBLISH_OK=false` (leaf-race
+  stubs legitimately use `2>/dev/null` because they do not assert stderr text).
+- Plan-review ancestor layout must satisfy the round artifact allowlist before the
+  guard: one allowlisted basename directly under `round-N` (e.g.
+  `findings-classification.tsv`), with `ANCESTOR_RACE_PARENT` = physical
+  `round-1` — not a nested `round-1/sub/` tree that dies at
+  `unexpected path under plan-review`.
+- Items B/C use the canonical per-line wrap from the original #3063 plan,
+  layered on top of (never replacing) `redact-secrets.sh`. No new `lib-quiet.sh`
+  API is introduced (smallest change; the documented per-line contract already
+  exists). HIGH sites (ship-pr, collect-findings) forward genuinely external
+  (CI/vendor/external-reviewer) content; MEDIUM sites (collect-agent-results,
+  review-core) forward internal-script stderr captured in the reviewer/CI path
+  and are routed for defense-in-depth per the operator's broad-sweep choice.
+- Item C harness: force `append_tool_failure_local` fallback (non-executable
+  helper or empty `log_tmpdir`); merged `2>&1` + BEL/ESC-absence assertions —
+  default `make_repo` alone exercises the `--redact` path, not the changed loops.
+- Item B relay harnesses: `collect-findings` failure cases need a minimal
+  `CLAUDE_PLUGIN_ROOT` tree (stub `collect-agent-results.sh` /
+  `wait-for-reviewers.sh` under `scripts/`, plus real `lib-quiet.sh` /
+  `redact-secrets.sh` siblings) because production paths are
+  `"$PLUGIN_ROOT/scripts/..."` with no env override; wait-relay fixtures must
+  seed `$REVIEW_TMPDIR/wait-for-claude-reviewers.log` (production `wait_log=`
+  at ~230), not `wait.log`. `collect-agent-results` WAIT_STDERR relay needs a
+  minimal `SCRIPT_DIR` tree (real collector copy + stub `wait-for-reviewers.sh`
+  sibling) because production invokes `"$SCRIPT_DIR/wait-for-reviewers.sh"` (~308)
+  — PATH-only stubs are insufficient for either script. Every new control-byte
+  case uses merged `2>&1` only (`larch_err` relays stay on stderr).
+
+## Edge cases
+- File directly under a subtree root: `dirname` is the root itself; the `case`
+  matches `"$_root"` exactly (no trailing slash) — handled.
+- Ancestor symlink pointing back inside the root: resolves under root, passes —
+  benign (stays in-tree); the `find -type l` scan already rejects pre-existing
+  symlinks, so this is only the post-scan race backstop for escapes.
+- Ancestor harness with outside symlink present before publish: fails at
+  `find -type l` — ancestor cases must parent-swap only after a clean scan.
+- Plan-review file under `round-1/sub/`: rejected by allowlist before ancestor
+  guard — ancestor harness must use allowlisted `round-1/<basename>` only.
+- Empty / blank `$line` in relays: `printf '%s' "$line" | sanitize_diagnostic_line`
+  yields empty; `larch_err ""` emits a blank line, preserving the original
+  blank-line behavior.
+- Roots with glob metacharacters: session tmpdir `pwd -P` paths do not contain
+  them; matches the existing `case "$f" in "$rc_root"/*)` assumption.
+- Wait-relay harness basename mismatch: seeding `wait.log` while production reads
+  `wait-for-claude-reviewers.log` (~230) vacuously passes BEL/ESC grep — mitigated
+  by using the production basename everywhere in plan, stub, and fixture docs.
+
+## Failure modes
+- Over-strict ancestor guard rejecting a legitimate publish (e.g. symlink-to-
+  inside): low risk; signal is `PUBLISH_OK=false` with the new ancestor message.
+  Mitigation: containment check passes symlink-to-inside; only escapes fail.
+- False-green ancestor harness: leaf-race stub, `PUBLISH_OK=false`-only assert, or
+  `2>/dev/null` discarding ancestor `larch_err` on stderr — mitigated by
+  parent-swap stub + merged `2>&1` capture + ancestor message substring requirement.
+- False-green plan-review ancestor harness: disallowed `round-1/sub/` path hits
+  allowlist before guard — mitigated by `findings-classification.tsv` directly
+  under `round-1` with `ANCESTOR_RACE_PARENT` = physical `round-1`.
+- `sanitize_diagnostic_line` stripping wanted bytes: it removes only C0 controls
+  + DEL; LF survives because wrapping is per-line. Earliest signal: a
+  test-*-sh relay assertion diff. Mitigation: per-line form, covered by harnesses.
+- False-green relay tests: stdout-only capture while `larch_err` relays on stderr
+  (ship-pr fallback, collect-findings collector/wait relays) — mitigated by
+  merged `2>&1` (not `LARCH_QUIET_DISABLE=1` alone) plus BEL/ESC-absence grep.
+- False-green collect-findings wait relay: fixture seeded to `wait.log` instead of
+  production `wait-for-claude-reviewers.log` — mitigated by matching production
+  basename at `collect-findings.sh:230` in stub output path and harness docs.
+- False-green collect-agent-results WAIT_STDERR relay: PATH-only
+  `wait-for-reviewers.sh` stub while production uses `"$SCRIPT_DIR/wait-for-reviewers.sh"`
+  (~308) — mitigated by `SCRIPT_DIR` sibling harness (real collector + stub wait
+  script in the same `scripts/` directory).
+- Missed relay site: the broad sweep (audit-findings.md) enumerated all
+  `larch_err`/`larch_errf` relays; LOW sites are documented, not silently
+  skipped.
+
+## Testing strategy
+- `bash scripts/test-design-log-publish.sh` — existing symlink cases unchanged; new
+  ancestor-race case(s) capture with `2>&1` and assert `PUBLISH_OK=false` plus
+  ancestor-specific `larch_err` substring (`... ancestor became a symlink before
+  staging`); plan-review case uses allowlisted `round-1/findings-classification.tsv`.
+- `bash scripts/test-ship-pr.sh`, `bash skills/review/scripts/test-collect-findings.sh`,
+  `bash scripts/test-collect-agent-results.sh`, `bash skills/review/scripts/test-review-core.sh`
+  — control-byte-stripping relay assertions on the **actual relay paths** (ship-pr
+  fallback via non-executable helper/empty tmpdir; collect-findings
+  collector/wait failure relays via `CLAUDE_PLUGIN_ROOT` stub tree with
+  `wait-for-claude-reviewers.log` fixture basename; collect-agent-results
+  WAIT_STDERR relay via `SCRIPT_DIR` sibling harness) with merged `2>&1` only and
+  T8-style BEL/ESC-absence checks.
+- `bash scripts/test-lib-quiet.sh` — unchanged (no `lib-quiet.sh` code change;
+  only `lib-quiet.md` audit text).
+- `bash scripts/relevant-checks.sh` (or `make lint`) — bash32 portability,
+  script-md-sibling presence, bare-grep-probe, renderer-substitution-safety.
+
+## Acceptance
+
+- [ ] `scripts/design-log-publish.sh` adds `design_publish_ancestor_within_root` and calls it (after the leaf `[ -L ]` check) in the plan-review, render-cache, and `.completed` staging loops, failing closed when an ancestor directory is swapped for a symlink after the `find -type l` scan. Existing leaf checks and tree scans are unchanged.
+- [ ] `scripts/test-design-log-publish.sh` adds ancestor-directory-race case(s) (new `make_find_ancestor_race_stub` parent-swap at `-type f`; plan-review case uses an allowlisted `round-1/findings-classification.tsv`) captured with merged `2>&1`, asserting `PUBLISH_OK=false` **and** the `... ancestor became a symlink before staging` substring. Existing leaf-race cases stay green.
+- [ ] `SECURITY.md` design-log-publish paragraph no longer claims parent-directory races are "not fully closed"; it documents the ancestor re-resolution fail-closed for all three subtrees. Render-cache policy sentences are otherwise unchanged.
+- [ ] `scripts/ship-pr.sh`, `skills/review/scripts/collect-findings.sh` (collector + wait relays), `scripts/collect-agent-results.sh` (WAIT_STDERR), and `skills/review/scripts/review-core.sh` (aggregate stderr) wrap each relayed `larch_err "$line"` with `sanitize_diagnostic_line` per line, layered on top of (never replacing) `redact-secrets.sh`. No new `lib-quiet.sh` API.
+- [ ] New harness cases for each routed relay exercise the **actual** relay path (ship-pr fallback via non-executable helper/empty tmpdir; collect-findings via a minimal `CLAUDE_PLUGIN_ROOT` stub tree seeding `wait-for-claude-reviewers.log`, not `wait.log`; collect-agent-results via a `SCRIPT_DIR` sibling tree), capture merged `2>&1`, and assert printable text preserved with `\x07`/`\x1b` absent.
+- [ ] `scripts/lib-quiet.md` records the passthrough audit (HIGH/MEDIUM routed, LOW documented-not-routed). Every touched `.sh` has its sibling `.md` updated.
+- [ ] `bash scripts/relevant-checks.sh` (or `make lint`) passes: bash32 portability, script-md-sibling presence, bare-grep-probe, renderer-substitution-safety. All listed harnesses pass.
+
+diff_added: 358
+diff_deleted: 34
+diff_lines: 392
+
+## Test plan
+(no test plan section in plan-file)
