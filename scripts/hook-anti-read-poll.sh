@@ -271,6 +271,7 @@ extract_bash_task_output_poll_tokens() {
     done
 }
 
+# shellcheck disable=SC2329  # invoked indirectly via callers that may pass the function by name
 extract_bash_task_output_poll_token() {
     extract_bash_task_output_poll_tokens "$1" | head -1
 }
