@@ -1,0 +1,331 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Plan: ship-pr.sh — rebase + rebump + lint inside the CI-fix path before pushing
+
+Re-sequence the `/implement` CI-fix path so a fix is pushed already-rebased,
+re-bumped, and lint-clean in one shot. Reuse existing helpers only; no new
+rebase / rebump / behind-count / lint-fix / push implementations (issue #3210
+hard constraint). Decisions from Round 1: guard-only (no ci-decide rework),
+rotate the vendor start tier per attempt, cover both fix-push paths via one
+shared helper.
+
+## Files to modify/create
+
+### NEW: `scripts/ci-behind-count.sh`
+Extract the behind-count computation that currently lives inline at
+`ci-status.sh:177` (`git rev-list "HEAD..$BASE_TARGET" --count`) into a small,
+reusable script so both `ci-status.sh` and `ship-pr.sh` call one source (no
+duplicated `git rev-list HEAD..<base> --count`).
+- Args: `--base-remote` (default `origin`), `--base-ref` (default `main`),
+  `--no-fetch` (skip the `git fetch`; caller already fetched).
+- Behavior: optional `git fetch "$BASE_REMOTE" "$BASE_REF" --quiet`, then
+  `BEHIND_COUNT=$(git rev-list "HEAD..${BASE_REMOTE}/${BASE_REF}" --count)`.
+- Output (FD-3/stdout KV via `lib-quiet.sh`): `BEHIND_COUNT=<n>`. Same input
+  validation regex on `--base-remote`/`--base-ref` as `ci-status.sh:64`.
+- Exit 0 on success; non-zero on argv error. On a failed `git rev-list`, emit
+  `BEHIND_COUNT=0` (fail-open: never block a push on a count error) and a
+  Warnings-class diagnostic on stderr.
+
+### NEW: `scripts/ci-behind-count.md`
+Sibling contract per `.claude/rules/script-md-siblings.md`: purpose, callers
+(`ci-status.sh`, `ship-pr.sh`), the fail-open invariant, fork base semantics,
+Makefile/harness wiring.
+
+### UPDATED: `scripts/ci-status.sh`
+Replace the inline `git rev-list` at line 177 with a call to
+`ci-behind-count.sh --base-remote "$BASE_REMOTE" --base-ref "$BASE_REF"
+--no-fetch` (ci-status.sh already fetched at line 80); parse `BEHIND_COUNT`.
+The git-based merge detection at lines 184-190 is unchanged. This is the
+"extract one helper, call from both sites" half of the no-duplication mandate.
+
+### UPDATED: `scripts/ci-status.md`
+Note the extracted behind-count source.
+
+### UPDATED: `scripts/ship-pr.sh`
+1. **Deferred-push flag through the rebase reuse.** Add an optional
+   `defer_push` parameter to `run_rebase_rebump` (def 2797) and thread it into
+   `_run_rebase_rebump_from_step3` (def 2676). When `defer_push=true`,
+   `_run_rebase_rebump_from_step3` performs sync-local-main + classify/apply
+   bump + commit-changelog + refresh-run-logs as today but **skips** the final
+   `git-force-push.sh` (2784) and returns, leaving the caller to push after
+   re-verification. `REBASE_COUNT` / `ITERATION` still increment (a rebase +
+   rebump did occur). Default (no arg) is byte-identical to today, so the
+   `ci-decide.sh` `ACTION=rebase` callers (3120, 3126, 3153, 3157) are
+   unchanged. Also thread `defer_push` into the resume-after-phase14 branch
+   (2805-2810) for completeness.
+2. **Behind-check + conditional rebase + re-verify in the shared push site.**
+   In `_stage_and_push_ci_fixes` (def 1758), add an optional 4th parameter
+   `failed_jobs_tsv`. After the existing stage + `git-commit.sh "Fix CI failure"`
+   (1806-1814) and before `git-push.sh` (1823), insert:
+   - Resolve base: `FORKED_TARGET=true` → `upstream`/`main`, else
+     `origin`/`main` (mirrors `ci_common_args` 1644-1651 and the fork rebase
+     path 3142-3151).
+   - `BEHIND=$(ci-behind-count.sh ...)`; if `BEHIND > 0`:
+     - `run_rebase_rebump "$phase" defer-push` (rebase + conflict-handling +
+       rebump, no push). Mark a run-scoped state key
+       `CI_FIX_REBASE_PENDING=true`.
+     - Re-verify on the rebased+rebumped tree: `_verify_failed_jobs_locally
+       "$phase" "$failed_jobs_tsv"` (reuse; honors its exit 3 ci-local-unfixable
+       and head-changed semantics) then `run_checks_with_lint_fix_loop "$phase"
+       "$checks_site"`. Stage + commit any lint delta with the existing
+       `collect_ci_stage_paths` block.
+   - Push: `git-force-push.sh` when a rebase happened this call **or**
+     `CI_FIX_REBASE_PENDING=true` (force-with-lease); otherwise `git-push.sh`
+     (plain). Clear `CI_FIX_REBASE_PENDING` after a successful push.
+3. **Vendor start-tier rotation.** Add an optional `start_attempt` parameter to
+   `run_ci_fix_vendor` (def 1831). Build the waterfall from a rotated tier list:
+   `tiers=(cursor codex claude)`; `offset=$(( start_attempt % 3 ))`;
+   `rotated=("${tiers[@]:offset}" "${tiers[@]:0:offset}")`; iterate `rotated`
+   instead of the literal `for tier in cursor codex claude` (1868). Keep every
+   tier eligible (Round 1 Decision 2). Re-key the first-fixer-non-health
+   shortcut (1907-1915) on "first iteration of this waterfall" rather than the
+   literal `cursor`, so the heuristic still applies to whichever tier leads the
+   rotated order (consciously-updated semantic per the acceptance criteria).
+4. **Thread the attempt index + failed-jobs TSV from the loop.** In
+   `run_evaluate_failure`, pass `"$_fix_attempt"` to both `run_ci_fix_vendor`
+   call sites (2320, 2341) and pass `"$ci_failed_tsv"` as the new 4th arg to
+   the per-job-path `_stage_and_push_ci_fixes` call (2289) so its post-rebase
+   re-verify has the failed-jobs TSV. The vendor path already forwards the TSV
+   into `_stage_and_push_ci_fixes` via `run_ci_fix_vendor` (1931 → add the
+   4th arg there).
+
+### UPDATED: `scripts/ship-pr.md`
+Document the new CI-fix push sequence (behind-check → conditional rebase
+(deferred push) → re-verify → force-with-lease/plain push), the `defer_push`
+parameter, the `start_attempt` rotation, and the `CI_FIX_REBASE_PENDING` state
+key.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+Extend the `--section fix-loop` cases (see Testing strategy).
+
+### NEW: `scripts/test-ci-behind-count.sh`
+Offline harness for the new helper (git fixture repo; behind/ahead/equal;
+`--no-fetch`; fork base; fail-open on bad ref).
+
+### NEW: `scripts/test-ci-behind-count.md`
+Harness sibling stub naming its primary.
+
+### UPDATED: `Makefile`
+Register `test-ci-behind-count` (`.PHONY`, a target invoking
+`harness-timer.sh ... test-ci-behind-count.sh`, and assignment to a
+`test-harnesses-N` shard so `test-harness-shards-coverage` stays green).
+
+### UPDATED: `docs/workflow-lifecycle.md`
+Document that the CI-fix path now rebases + rebumps + re-lints before pushing,
+and that `ci-decide.sh` `ACTION=rebase` remains the next-poll fallback (no
+double-rebase because the post-fix path leaves the branch up to date).
+
+## Approach
+
+The fix-push order becomes: **commit fix → check behind → (if behind) rebase +
+rebump with push deferred → re-verify failed jobs + lint on the rebased tree →
+push (force-with-lease if rebased, else plain).** This matches the issue's
+required order (rebase → rebump → lint → push) while reusing `run_rebase_rebump`
+wholesale; the only change to the rebase machinery is a `defer_push` flag that
+suppresses its terminal force-push so the caller can re-verify first.
+
+Guard-only reconciliation (Round 1 Decision 1): `ci-decide.sh` / `run_ci_phase`
+routing is untouched. After the post-fix path rebases, the next `ci-wait` poll
+computes `BEHIND_COUNT=0`, so `ci-decide.sh` returns `wait`/`evaluate_failure`
+rather than `rebase` — the deferred-rebase path is a natural no-op fallback, not
+a double rebase.
+
+Both fix-push paths are covered because the logic lives in the shared
+`_stage_and_push_ci_fixes` (Round 1 Decision 3); the vendor path and the per-job
+local-fix path both call it.
+
+## Edge cases
+
+- **Not behind:** behind-check returns 0 → no rebase, plain `git-push.sh`
+  (today's behavior, unchanged).
+- **Fork target:** base resolves to `upstream/main`; rebase uses the existing
+  fork handling already present in `run_rebase_rebump` and the `ACTION=rebase`
+  fork branch.
+- **Rebase conflict:** reuses `run_rebase_rebump`'s vendor conflict-resolution
+  (launch-*-ci.sh `--role resolve-conflict`, Phase 1-4) and its `exit_stall`
+  behavior — no new conflict path.
+- **Lint delta after rebase:** committed with the existing
+  `collect_ci_stage_paths` staging block before the force-push.
+- **Claude tier unavailable / Codex down (current degraded run):** the rotated
+  waterfall keeps the same per-tier availability guards (1869) and waterfall
+  fallbacks; rotation only changes the starting index.
+- **`HAS_BUMP=false` repos:** `_run_rebase_rebump_from_step3` already skips the
+  rebump when `HAS_BUMP=false`; deferred-push mode preserves that.
+
+## Failure modes
+
+1. **Re-verify fails after a deferred rebase (unpushed local rebase).** The
+   branch is rebased+rebumped locally but not pushed; `_verify_failed_jobs_locally`
+   may `exit 3` or return 2/4. Mitigation: `CI_FIX_REBASE_PENDING=true` persists
+   so the eventual retry push uses `git-force-push.sh` (avoids a
+   non-fast-forward rejection from a plain push against the diverged remote).
+   Map post-rebase re-verify `rc=2` to `exit_stall` (head moved) and `rc=4` to a
+   `_stage_and_push_ci_fixes` failure return so the outer `_max_fix` loop
+   retries; do not push an unverified tree. Earliest signal: a plain-push
+   non-fast-forward error in CI logs. Simplest mitigation: the pending-flag →
+   force-with-lease selection above.
+2. **Double-rebase regression with `ci-decide.sh`.** If the post-fix rebase and
+   the next-poll `ACTION=rebase` both fire, churn returns. Signal: `REBASE_COUNT`
+   climbing without CI converging. Mitigation: the post-fix path leaves the
+   branch up to date, so the next poll sees `BEHIND_COUNT=0`; covered by a
+   regression test asserting no second rebase when already current.
+3. **`REBASE_COUNT` undercount on the bail-before-push path.** A rebase that
+   bails before `_run_rebase_rebump_from_step3`'s counter bump is not counted,
+   weakening the max-rebases storm guard. Signal: more than `_max_rebases`
+   effective rebases. Mitigation: increment the counter when the deferred rebase
+   completes, independent of the deferred push.
+
+## Testing strategy
+
+- `scripts/test-ci-behind-count.sh` (new): fixture git repo; assert
+  `BEHIND_COUNT` for behind/ahead/equal, `--no-fetch`, fork base, and fail-open
+  on an invalid ref.
+- `scripts/test-ship-pr.sh --section fix-loop` (extend): (a) behind>0 →
+  `run_rebase_rebump` invoked with deferred push, re-verify runs, push uses
+  force-with-lease; (b) behind=0 → no rebase, plain push; (c) re-verify failure
+  after rebase → no push, `CI_FIX_REBASE_PENDING` set, retry push uses
+  force-with-lease; (d) vendor start-tier rotation across `_fix_attempt`
+  (assert the rotated order and first-fixer-non-health keyed on first
+  iteration); (e) no second rebase when already current (double-rebase guard).
+  Use the existing stubbed-binary / state-file harness pattern.
+- `scripts/test-ci-status.sh`: confirm `BEHIND_COUNT` parsing still works after
+  delegating to `ci-behind-count.sh`.
+- Run `bash scripts/relevant-checks.sh` (lint/shellcheck/bash32) on all touched
+  scripts; `make test-harness-shards-coverage` after Makefile edit.
+
+## Diff size estimate
+
+diff_added: 600
+diff_deleted: 110
+diff_lines: 700
+
+</plan>
+
+<findings>
+### FINDING_1: BEHIND count not parsed from quiet contract output
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The plan assigns the raw output of `ci-behind-count.sh` to `BEHIND`, but the helper emits `BEHIND_COUNT=<n>` on the quiet FD-3 contract line. Using that string directly makes `[[ BEHIND > 0 ]]` / `-gt` comparisons wrong or always false, so the deferred rebase block never runs when it should.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Parse like other helpers: _out=$("$SCRIPT_DIR/ci-behind-count.sh" ...) then BEHIND=$(kv_value BEHIND_COUNT "$_out") with a numeric default of 0
+
+
+### FINDING_2: CI_FIX_REBASE_PENDING set before post-rebase re-verify
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: The plan sets `CI_FIX_REBASE_PENDING` immediately after deferred rebase, before post-rebase re-verify. `_verify_failed_jobs_locally` can end with exit 3 on `ci-local-unfixable` (not a return code). After a deferred rebase the flag can already be true while the process exits 3 with a rebased unpushed tree; a later `_stage_and_push` can force-with-lease via the pending flag without a successful post-rebase verify/lint gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Set CI_FIX_REBASE_PENDING only when post-rebase _verify_failed_jobs_locally / run_checks_with_lint_fix_loop fail with return codes (e.g. 4 / 1), not unconditionally after run_rebase_rebump; rely on rebase happened this call for the success-path force push; clear the flag on exit 3 or do not set it until a failed return path
+
+
+### FINDING_3: Fork behind-check vs rebase base mismatch
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The behind-check uses `upstream/main` for forks, but deferred rebase calls `run_rebase_rebump`, which always rebases onto `origin/main`. Fork `FORKED_TARGET` CI-fix runs can see `BEHIND>0` vs `upstream/main` yet `run_rebase_rebump` / `rebase-push.sh` default to `origin/main` (fork `ACTION=rebase` is a separate upstream-only path). Wrong base or false `behind=0` risks skipped/wrong rebase and plain-push NF failures.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Thread --base-remote/--base-ref from read_state FORKED_TARGET through run_rebase_rebump into every rebase-push.sh call (and fix Edge cases: drop the claim that run_rebase_rebump already has fork handling)
+
+
+### FINDING_4: False first-fixer-non-health bail after deferred rebase
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Deferred rebase runs after `LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD` is recorded, but `run_ci_fix_vendor` still compares `baseline_head` to that pre-rebase snapshot. Vendor exit 0 with no new fix commit while `BEHIND>0`: deferred rebase rewrites `HEAD` but `baseline_head == pre_refresh_head`, triggering a false `first-fixer-non-health` bail (issue #3134 class).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: After a deferred rebase (and post-rebase re-verify), refresh `LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD` from current `HEAD`, or skip the no-commit bail when `CI_FIX_REBASE_PENDING` / a rebase occurred in this `_stage_and_push_ci_fixes` call
+
+
+### FINDING_5: Post-rebase verify return codes not propagated to callers
+- **Reviewer(s)**: Cursor-Pragmatic, unknown-slot
+- **Severity**: important
+- **Concern**: Post-rebase `_verify_failed_jobs_locally` inside `_stage_and_push_ci_fixes` lacks an explicit return-code contract wired through callers. The per-job path only treats boolean success; `_stage_and_push_ci_fixes` today returns 0/1 and `run_ci_fix_vendor` / `run_evaluate_failure` treat any failure as rc=1. Post-rebase verify returning 2 (head-changed) or 4 (retry) would not trigger `exit_stall` or `per_job_verification_retry`, diverging from existing pre-push verify handling and breaking the acceptance criterion that fixes are re-verified on the rebased tree before pushing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In `_stage_and_push_ci_fixes`, propagate verify `rc` (`2`/`4`/`3`); in `run_evaluate_failure` at the per-job `_stage_and_push_ci_fixes` call, mirror the existing `case` on `per_job_rc` / `vendor_rc`
+  - From unknown-slot: In `### UPDATED: scripts/ship-pr.sh` item 2, spell out a `case` on post-rebase `verify_rc` (skip push on non-zero; rc=2→`exit_stall`; rc=4→return 4); change `_stage_and_push_ci_fixes` to return 2/4; propagate through `run_ci_fix_vendor` and the per-job `_stage_and_push_ci_fixes` branch like the existing pre-push verify at 1923-1937
+
+
+### FINDING_6: Stale stage-path snapshot after deferred rebase
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan reuses pre-rebase `collect_ci_stage_paths` snapshot files after deferred rebase and a second `run_checks_with_lint_fix_loop`. `vendor_tracked` / post-success path lists reflect the pre-rebase tree; post-rebase lint deltas can be unstaged or wrong paths staged before force-push.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: After post-rebase re-verify, re-capture dirty-path files (same helpers as the top of `_stage_and_push_ci_fixes`) and pass those into `collect_ci_stage_paths` for the lint-only commit
+
+---
+
+**Merge notes**: Input FINDING_5 and FINDING_7 describe the same behavioral risk (post-rebase verify rc=2/4 not wired through `_stage_and_push_ci_fixes` and callers) and were merged into FINDING_5 above. The other six input findings address distinct failure modes or code paths and remain separate.
+
+
+</findings>
+
+<feature>
+ship-pr.sh: rebase + rebump + lint inside CI-fix path before pushing the fix
+
+## Problem / current behavior
+
+In the `/implement` post-review state machine (`scripts/ship-pr.sh`), the CI-fix path pushes a fix against a potentially stale base and defers any rebase-onto-main to a *later* loop iteration:
+
+- `run_ci_fix_vendor` (`scripts/ship-pr.sh:1831`) dispatches a vendor fixer via the cursor→codex→claude waterfall (`1868-1916`).
+- After the fixer returns, `_verify_failed_jobs_locally` (`1923`; def `2021`) re-runs the actual failed CI jobs locally as `make` targets (`_per_job_argv`, `1958-1994`) with a bounded local fix loop. (This local-verify behavior was added in #2757.)
+- On success, `_stage_and_push_ci_fixes` (`1758`) does `git add` → commit `"Fix CI failure"` → `git-push.sh` — a plain, non-rebasing, non-force push (`scripts/git-push.sh:2`).
+- Rebase-onto-main is only handled on the **next** `ci-wait.sh` iteration: `ci-status.sh` computes `BEHIND_COUNT` (`scripts/ci-status.sh:177`), `ci-decide.sh` routes `ACTION=rebase` when behind (`scripts/ci-decide.sh:132-151`), and `run_ci_phase` then calls `run_rebase_rebump` (`scripts/ship-pr.sh:3153`), which rebases + rebumps + force-pushes (internalized in #1933).
+
+Consequence: the local "tests pass" verdict is produced against the **pre-rebase** tree. If main advanced while the fixer was running, the fix is pushed against a stale base, triggering a separate rebase + force-push + full CI cycle on the next poll — extra CI churn, extra force-push races, and a local-green verdict that did not reflect the base the branch actually merges into.
+
+## Desired behavior
+
+Inside the post-fix path, right after verifying the fixer actually resolved the failure locally and **before** the fix push:
+
+1. If the fixer did NOT actually fix the failure, re-spawn a fixer — preferably a *different* vendor than the one that just failed (rotate within/across the cursor→codex→claude waterfall) before bailing.
+2. Check whether main has advanced (behind-count) and rebase onto latest main if needed (fork path rebases onto `upstream/main`).
+3. If a rebase took place, re-bump the version.
+4. Run lint locally and auto-fix lint issues, now on the rebased tree.
+5. Then push — force-with-lease when a rebase occurred, plain push otherwise.
+
+## Hard constraint: NO code duplication
+
+This must be implemented by **reusing the existing helpers**, not by copying their logic into a new post-fix code path. A reviewer should reject any copy-paste of rebase, rebump, lint-fix, behind-count, or push logic. Specifically:
+
+- **Rebase + version re-bump + changelog** → reuse `run_rebase_rebump` (`scripts/ship-pr.sh:3153` and its definition) and the scripts it already calls (`rebase-push.sh`, `git-force-push.sh`, `drop-bump-commit.sh`, `commit-changelog.sh`). Do **not** introduce a second rebase/rebump implementation.
+- **Behind-count detection** → reuse the existing `BEHIND_COUNT` source (`ci-status.sh:177`) and/or the `ci-decide.sh` decision matrix rather than open-coding a new `git rev-list HEAD..<base> --count`.
+- **Local lint + auto-fix** → reuse `run_checks_with_lint_fix_loop` / `lint-fix-loop.sh`, already used by `_stage_and_push_ci_fixes` and `_verify_failed_jobs_locally`.
+- **Vendor fixer dispatch + rotation** → reuse the `run_ci_fix_vendor` waterfall and its `_max_fix` retry loop; **extend** it for vendor rotation rather than adding a parallel dispatcher.
+- **Push** → reuse `git-push.sh` (plain) and `git-force-push.sh` (post-rebase); do not inline `git push` calls.
+- **Rebase conflicts** → reuse the same vendor conflict-resolution handling as `run_rebase_rebump` (`launch-*-ci.sh --role resolve-conflict`, Phase 1-4).
+
+The deliverable is a **re-sequencing / composition** of existing functions. If two call sites would run the same steps, extract one helper and call it from both — never duplicate.
+
+## Motivation
+
+Push an already-integrated, lint-clean commit in one shot; reduce redundant CI runs and force-push churn; make the local "tests pass" verification reflect the real merge base.
+
+## Acceptance criteria (draft)
+
+- Post-fix path performs a behind-count check and conditional rebase-onto-main **before** the fix push, using the existing behind-count source.
+- Rebase reuses `run_rebase_rebump` (rebump + changelog) rather than a parallel code path; force-with-lease used after a rebase, plain push otherwise.
+- After a rebase, the failed jobs and lint are re-verified on the rebased tree before pushing (reusing `_verify_failed_jobs_locally` / `run_checks_with_lint_fix_loop`).
+- Fixer re-spawn on an unfixed failure prefers a vendor different from the one that just failed; existing `_max_fix` / waterfall / exit-3 `ci-local-unfixable` / `first-fixer-non-health` semantics are preserved or consciously updated.
+- No double-rebase regression with the existing `ci-decide.sh` `ACTION=rebase` path on the following iteration (reconcile primary vs fallback rebase site).
+- **No duplicated rebase / rebump / lint-fix / behind-count / push logic** — shared steps are factored into single helpers and called from both sites.
+- Regression harness updated (`scripts/test-ship-pr.sh` and the rebase/rebump fix-loop harnesses).
+- Docs updated as needed (`docs/workflow-lifecycle.md`, run-logs contract).
+
+## Open questions / design considerations
+
+- "Different fixer" semantics: the waterfall already tries cursor→codex→claude in order; define precisely what rotation means on the `_max_fix` retry (start at a different tier, or exclude the just-failed tier).
+- Reconcile with the deferred-rebase path in `ci-decide.sh` / `run_ci_phase` so the two rebase sites don't conflict or double-rebase — ideally the post-fix path becomes the primary site and the `ci-wait` path remains a fallback.
+- Honor the single-runner invariant and force-push safety throughout.
+
+## Related / prior art
+
+- #2757 (DONE) — local-verify-before-push (`_verify_failed_jobs_locally`); this issue is the natural follow-on (also rebase+rebump+lint before push).
+- #1933 (DONE) — internalized `ACTION=rebase` (vendor waterfall + re-bump) into `run_rebase_rebump`; the helper to reuse here.
+- #3132 (OPEN) — "Rework ship-pr.sh into a modular Python script." Same file; if that rewrite lands, this change should be implemented in/ported to the new structure. Flagged as a merge-conflict-risk neighbor rather than a hard blocker.
+
+</feature>

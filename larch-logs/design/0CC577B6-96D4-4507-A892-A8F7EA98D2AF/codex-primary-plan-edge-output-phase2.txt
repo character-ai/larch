@@ -1,0 +1,20 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:62-71	CI_FIX_REBASE_PENDING is set immediately after deferred rebase, before post-rebase re-verify	_verify_failed_jobs_locally ends with exit 3 on ci-local-unfixable (scripts/ship-pr.sh:2125), not a return code. After a deferred rebase the flag can already be true while the process exits 3 with a rebased unpushed tree. A later _stage_and_push can force-with-lease via the pending flag without a successful post-rebase verify/lint gate	Set CI_FIX_REBASE_PENDING only when post-rebase _verify_failed_jobs_locally / run_checks_with_lint_fix_loop fail with return codes (e.g. 4 / 1), not unconditionally after run_rebase_rebump; rely on rebase happened this call for the success-path force push; clear the flag on exit 3 or do not set it until a failed return path
+2	in_scope	important	correctness	plan.txt:58-63,139-141	Fork behind-base vs rebase target mismatch for deferred CI-fix rebase	Behind is resolved to upstream/main (mirroring ci_common_args), but run_rebase_rebump still rebases via rebase-push.sh default origin/main (scripts/ship-pr.sh:2891-2892). ci-decide fork ACTION=rebase uses a separate upstream rebase-push path and does not call run_rebase_rebump (scripts/ship-pr.sh:3142-3151). FORKED_TARGET=true with BEHIND>0 can skip needed upstream integration or rebase onto the wrong base	When FORKED_TARGET=true and BEHIND>0, add the existing upstream rebase-push.sh --base-remote upstream --base-ref main --no-push (and --keep-on-conflict if needed) step before defer run_rebase_rebump, or thread the same base-remote/ref into that path without a new rebase implementation; update the fork edge-case text accordingly
+
+**1. `CI_FIX_REBASE_PENDING` timing vs `exit 3`**
+
+The plan orders: deferred `run_rebase_rebump` → set `CI_FIX_REBASE_PENDING=true` → `_verify_failed_jobs_locally` → push.
+
+`_verify_failed_jobs_locally` does not return on unfixable jobs; it calls `exit 3`:
+
+```2124:2125:scripts/ship-pr.sh
+        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        exit 3
+```
+
+Failure mode #1 covers return codes 2/4 and “do not push,” but not `exit 3` after the pending flag is already set. That conflicts with the test intent in (c) (pending flag after re-verify **failure** via return, not process exit).
+
+**2. Fork base mismatch**
+
+The plan aligns behind-count with `upstream/main` for forks but reuses `run_rebase_rebump`, whose rebase step targets `origin/main` by default. The fork `ACTION=rebase` branch already uses a distinct upstream `rebase-push.sh` path and does not enter `run_rebase_rebump` for the poll-driven rebase. The edge-case note that fork handling is “already present in `run_rebase_rebump`” does not match the current code for `_stage_and_push_ci_fixes`-style reuse without an explicit upstream pre-rebase (or equivalent base threading).
