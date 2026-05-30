@@ -40,4 +40,6 @@ snapshot_optional_trailer_keys "$d/plan.txt" "$d/.gate-b-optional-trailer-keys"
 "$SCRIPT_DIR/test-trailer-dedup.sh" "$d" | grep -q 'dedup=ok' \
     || fail "test-trailer-dedup should succeed when trailers preserved"
 
+"$SCRIPT_DIR/test-trailer-awk.sh" || fail "test-trailer-awk.sh failed"
+
 echo "PASS: test-trailer-helpers.sh"
