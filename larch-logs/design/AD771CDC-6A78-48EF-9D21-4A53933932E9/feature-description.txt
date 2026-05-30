@@ -1,0 +1,26 @@
+Surface failed codex/cursor/claude subprocess stderr (last 50 lines) to chat…
+
+Surface failed codex/cursor/claude subprocess stderr (last 50 lines) to chat so reviewer-failure causes get flushed and become recoverable
+
+## Problem
+
+When an external agent subprocess (codex, cursor, or claude) fails, larch preserves only the collector's terminal verdict — e.g. `Failed with exit code 1 after 20s. Output size: 0 bytes.` (`scripts/run-external-agent.sh:289-299`) — but never the tool's actual stderr, which is the only thing that explains WHY it failed. The diagnostic is unrecoverable post-hoc because:
+
+- codex stderr goes to `${OUTPUT}.sidecar` and its `--json` event stream to `${OUTPUT}.events.jsonl` (`scripts/launch-review.sh:502-510`), but `scripts/design-log-publish.sh` `design_artifact_excluded()` (~L259) strips `*.sidecar`, `*.events.jsonl`, `*.diag`, and `larch-quiet-*.log` from the committed run-log bundle;
+- the session tmpdir holding those files is removed by cleanup on success;
+- the one quiet log that does survive is frequently 0 bytes.
+
+Concrete incident: `/design --simple 3119` (run `7C31FA9E-D00E-41E9-B338-D8E4D44A6FEE`) had 12/16 plan-review slots fail (codex `exit 1`; phase-3 codex+cursor `exit 2`), and the root cause could NOT be determined from the committed run log — the stderr was excluded at publish and the tmpdir was cleaned. larch's own classifier (`lib-external-launcher-common.sh::external_is_transient_infra_failure`) only treats codex exit 5/7 and cursor exit 4/8 as transient, so these exit-1/exit-2 failures were not even classified.
+
+## Proposed change
+
+On any FAILED (non-zero exit) subprocess invocation of codex / cursor / claude, emit the **last 50 lines** of that agent's stderr to chat (so the orchestrator flushes it into the transcript), in addition to the existing one-line verdict.
+
+- Redact through `scripts/redact-secrets.sh` before surfacing — stderr can carry tokens/secrets.
+- Start at **50 lines**; make it tunable via an env var (e.g. `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`) and revisit up or down after observing real output sizes. Guard total size.
+- Sources to wire: `scripts/run-external-agent.sh` (observes the non-zero exit), `scripts/launch-review.sh` (codex/cursor `.sidecar`), `scripts/launch-claude-review.sh`, and the implement/CI launchers (`launch-codex-*.sh` / `launch-cursor-*.sh` / `launch-claude-*.sh`). The tail must flow into the orchestrator-facing failure record (the same surface that already prints the verdict line), not just into a file that gets excluded.
+- Failure-only: preserve quiet-by-default behavior on success.
+
+## Why "to chat / flushed"
+
+A file-only capture is today's behavior and it gets excluded at publish and cleaned with the tmpdir. Surfacing the tail to chat guarantees the operator (and post-hoc transcript readers) can see why an agent failed even when the artifacts are gone.

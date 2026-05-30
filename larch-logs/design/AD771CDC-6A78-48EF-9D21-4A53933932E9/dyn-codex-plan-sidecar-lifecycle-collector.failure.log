@@ -1,0 +1,29 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-sidecar-lifecycle-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-sidecar-lifecycle-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/launch-claude-subprocess.sh:222 scripts/launch-claude-review.sh:180-182	Claude slot writes .done before parent can write .stderr-tail	wait-for-reviewers unblocks on subprocess .done while launch-claude-review still runs post-rc work; collector dedup can skip a missing sidecar for real failures	Write .stderr-tail in launch-claude-subprocess.sh immediately before .done (source ${OUTPUT}.stderr), or defer .done until the parent finishes the tail write
+2	in_scope	important	correctness	scripts/launch-claude-review.sh:154-163 plan:launch-claude-review	Planned tail source is wrapper stderr not CLI stderr	Plan calls write_failed_agent_stderr_tail on SUBPROCESS_STDERR (launch-claude-subprocess.sh redirect); agent failures live in ${OUTPUT}.stderr from subprocess	Use first non-empty of ${OUTPUT}.stderr then SUBPROCESS_STDERR (mirror run-external-agent source order)
+3	in_scope	important	correctness	scripts/collect-agent-results.sh:852 scripts/collect-agent-results.sh:1417-1419	Plan line anchor places dedup before retry/validation	Dedup after ~852 runs before section 3 retries and 3.5/NS paths; stderr-tail and STATUS are not final	Insert dedup immediately before section 4 emit (~1417), after all retry and validation blocks
+4	in_scope	important	correctness	scripts/run-external-agent.sh:141 plan:run-external-agent	Startup cleanup omits stale .stderr-tail	Second failure with empty stderr leaves prior .stderr-tail; dedup can emit wrong tail for a new failure	Add ${OUTPUT_FILE}.stderr-tail to the line 141 rm -f list
+5	in_scope	important	correctness	scripts/collect-agent-results.sh:1164-1165 plan:collect-agent-results	Dedup path not aligned with retry artifact layout	Retry also failed keeps REVIEWER_FILE=ORIG_OUTPUT but run-external-agent writes ${ORIG}-retry.stderr-tail; dedup on REVIEWER_FILE misses the tail	Resolve tail path from retry output when ${ORIG%.txt}-retry.stderr-tail exists (same path build_failure_reason uses for retry .diag)
+
+1. **correctness** — `scripts/launch-claude-subprocess.sh:222`, `scripts/launch-claude-review.sh:180-182`: `launch-claude-subprocess.sh` writes `${OUTPUT_CANON}.done` before the parent returns. `collect-agent-results.sh` waits only on `.done` sentinels (`scripts/collect-agent-results.sh:291-308`), so the dedup pass can run while `launch-claude-review.sh` has not yet written `.stderr-tail`. **Revision:** write the sidecar in `launch-claude-subprocess.sh` before line 222, or do not publish `.done` until the parent finishes the tail write.
+
+2. **correctness** — `scripts/launch-claude-review.sh:154-163` (plan § launch-claude-review): The plan sources `SUBPROCESS_STDERR` (wrapper redirect). CLI stderr is `${OUTPUT}.stderr` (`scripts/launch-claude-subprocess.sh:215`). **Revision:** prefer `${OUTPUT}.stderr`, then wrapper capture.
+
+3. **correctness** — `scripts/collect-agent-results.sh:852` vs `1417-1419` (plan § collect-agent-results): Anchor “after line ~852” is the end of the first results loop, before retries (`854+`) and substantive/NS work (`1175+`). **Revision:** place dedup immediately before section 4 (`# --- 4. Emit structured results ---`).
+
+4. **correctness** — `scripts/run-external-agent.sh:141` (plan § run-external-agent): Stale-clear lists `.diag` but not `.stderr-tail`. Empty stderr on a later failure leaves an old sidecar. **Revision:** add `${OUTPUT_FILE}.stderr-tail` to the startup `rm -f` list.
+
+5. **correctness** — `scripts/collect-agent-results.sh:1164-1165` (plan § collect-agent-results): Retry failure keeps `REVIEWER_FILE=$ORIG_OUTPUT` while `run-external-agent.sh` writes `${ORIG}-retry.stderr-tail`. **Revision:** resolve tail from the retry output path when present.
+
+**Exonerated (plan-consistent):** `run-external-agent.sh` writes failure artifacts before `exit`, then the EXIT trap writes `.done` (`149-155`, `289-308`) — no race for codex/cursor. `design-log-publish.sh:259` excludes `*.sidecar`, `*.done`, `*.diag`, etc.; `*.stderr-tail` is not matched, so the publish claim holds. Atomic `mktemp`+`mv` in the proposed lib is fine if stale files are cleared at runner start (finding 4).
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-sidecar-lifecycle-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-dyn-sidecar-lifecycle-output.txt.diag)
+

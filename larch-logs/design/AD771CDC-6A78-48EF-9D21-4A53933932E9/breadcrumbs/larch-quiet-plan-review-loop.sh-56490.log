@@ -1,0 +1,3 @@
+launch-claude-subprocess.sh: --timeout must be <= 1800
+launch-claude-subprocess.sh: --timeout must be <= 1800
+launch-claude-subprocess.sh: --timeout must be <= 1800

@@ -1,0 +1,8 @@
+Reviewing the plan against the feature description; reading the plan and exploring cited paths.
+Plan content doesn't match the pasted readability-style description. Checking the session directory and issue context.
+Validating plan integration points against the codebase and feature description.
+Checking whether the plan documents the 50→30 default change and verifying collector integration for plan-review.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:4-5,28-29,131	Feature description requires last 50 stderr lines; plan defaults to 30 with no documented rationale	Incident-sized stderr (31–50 lines) is truncated before redaction/cap; operators following the issue text expect 50 unless they override env	Align `failed_agent_stderr_tail_lines()` / docs default with 50 from description.txt, or state in plan and `docs/configuration-and-permissions.md` why SIMPLE tier lowers the issue default
+
+1. **correctness** — `plan.txt:4-5,28-29,131`: The staged feature description (`description.txt`) requires emitting the **last 50 lines** of failed-agent stderr and says to start at 50 with `LARCH_FAILED_AGENT_STDERR_TAIL_LINES` for later tuning. The plan fixes the default at **30** everywhere (lib, docs, harness) and never records the reduction from the issue. With only the 5 KB byte cap, lines 31–50 can still be dropped on multi-line failures, which works against the stated acceptance criterion and the #3119 motivation. **Suggested revision:** default to `50` per the issue, or explicitly document and justify the 30-line SIMPLE-tier deviation in the plan and env-var docs so implementers do not ship a silent requirements drift.
