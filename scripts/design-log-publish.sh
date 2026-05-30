@@ -263,6 +263,15 @@ design_artifact_excluded() {
     return 1
 }
 
+design_publish_ancestor_within_root() {
+    local _root="$1" _file="$2" _parent
+    _parent=$(cd "$(dirname "$_file")" 2>/dev/null && pwd -P) || return 1
+    case "$_parent" in
+        "$_root"|"$_root"/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 design_publish_stage_file() {
     local src="$1"
     local dest="$2"
@@ -417,6 +426,11 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" || -L "$DESIGN_TMPDIR/plan-review" ]]; the
             emit_publish_result false
             exit 0
         fi
+        if ! design_publish_ancestor_within_root "$pr_root" "$f"; then
+            larch_err "design-log-publish: plan-review ancestor became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
         mkdir -p "$RUN_DEST/plan-review/$(dirname "$rel")"
         design_publish_stage_file "$f" "$RUN_DEST/plan-review/$rel" || {
             larch_err "design-log-publish: staging failed for $f"
@@ -475,6 +489,11 @@ if [[ -e "$DESIGN_TMPDIR/render-cache" || -L "$DESIGN_TMPDIR/render-cache" ]]; t
             emit_publish_result false
             exit 0
         fi
+        if ! design_publish_ancestor_within_root "$rc_root" "$f"; then
+            larch_err "design-log-publish: render-cache ancestor became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
         design_publish_stage_file "$f" "$RUN_DEST/render-cache/$rel" || {
             larch_err "design-log-publish: staging failed for $f"
             emit_publish_result false
@@ -526,6 +545,11 @@ if [[ "$REASON" == "pause" && ( -e "$DESIGN_TMPDIR/.completed" || -L "$DESIGN_TM
         fi
         if [[ -L "$f" ]]; then
             larch_err "design-log-publish: .completed file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
+        if ! design_publish_ancestor_within_root "$completed_root" "$f"; then
+            larch_err "design-log-publish: .completed ancestor became a symlink before staging: $f"
             emit_publish_result false
             exit 0
         fi

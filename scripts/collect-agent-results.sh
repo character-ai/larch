@@ -308,7 +308,7 @@ trap 'rm -f -- "$WAIT_STDERR"' EXIT
 WAIT_OUTPUT=$("$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$TIMEOUT" "${SENTINELS[@]}" 2>"$WAIT_STDERR")
 WAIT_RC=$?
 if [[ "$WAIT_RC" -ne 0 ]]; then
-    while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$WAIT_STDERR"
+    while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$WAIT_STDERR"
     larch_errf 'collect-agent-results.sh: wait-for-reviewers.sh exited %s\n' "$WAIT_RC"
     exit 1
 fi

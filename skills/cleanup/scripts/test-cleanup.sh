@@ -151,17 +151,17 @@ run_cleanup "$work"
 [[ -L "$CASE_SESSIONS/claude-implement-evil" ]] || fail "symlinked-session-dir-skipped should leave symlink entry"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "symlinked-session-dir-skipped CACHE_REMOVED"
 
-# --- stale-toplevel-with-fresh-deep-child-removed -----------------------------
-work="$TMP/stale-toplevel-with-fresh-deep-child-removed"
+# --- stale-toplevel-with-fresh-deep-child-kept --------------------------------
+work="$TMP/stale-toplevel-with-fresh-deep-child-kept"
 mkdir -p "$work/xdg-cache/larch/sessions/stale-parent"
 printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-parent/child.txt"
 touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-parent/child.txt"
 touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-parent"
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-toplevel-with-fresh-deep-child-removed exit $CASE_RC"
-[[ ! -d "$CASE_SESSIONS/stale-parent" ]] || fail "stale-toplevel-with-fresh-deep-child-removed should delete dir with stale top-level mtime"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "stale-toplevel-with-fresh-deep-child-removed CACHE_REMOVED"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-toplevel-with-fresh-deep-child-kept exit $CASE_RC"
+[[ -d "$CASE_SESSIONS/stale-parent" ]] || fail "stale-toplevel-with-fresh-deep-child-kept must retain dir when a descendant is fresh"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-toplevel-with-fresh-deep-child-kept CACHE_REMOVED"
 
 # --- invalid-retention-fallback -----------------------------------------------
 work="$TMP/invalid-retention-fallback"

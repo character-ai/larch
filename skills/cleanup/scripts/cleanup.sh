@@ -15,6 +15,19 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
+should_remove_by_age() {
+    local entry="$1"
+    local recent=""
+
+    [[ -d "$entry" && ! -L "$entry" ]] || return 1
+    if ! recent=$(find "$entry" -maxdepth 5 -mtime -"$RETENTION_DAYS" -print -quit 2>/dev/null); then
+        larch_err "Warning: failed to scan session activity for '$entry'; skipping deletion."
+        return 1
+    fi
+    [[ -n "$recent" ]] && return 1
+    return 0
+}
+
 parse_retention_days() {
     local raw="${LARCH_CLEANUP_RETENTION_DAYS:-7}"
     if [[ "$raw" =~ ^[1-9][0-9]*$ ]]; then
@@ -38,9 +51,11 @@ CACHE_REMOVED=0
 
 if [[ -d "$CACHE_DIR" ]]; then
     while IFS= read -r -d $'\0' entry; do
-        rm -rf "$entry"
-        (( CACHE_REMOVED++ )) || true
-    done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" -print0 2>/dev/null) || true
+        if should_remove_by_age "$entry"; then
+            rm -rf "$entry"
+            (( CACHE_REMOVED++ )) || true
+        fi
+    done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -print0 2>/dev/null) || true
 fi
 
 emit_kv CACHE_REMOVED "$CACHE_REMOVED"
@@ -80,8 +95,15 @@ done
 
 if [[ -d "$TMP_ROOT" ]]; then
     while IFS= read -r -d $'\0' entry; do
-        rm -rf "$entry"
-        (( TMP_REMOVED++ )) || true
+        if [[ -d "$entry" && ! -L "$entry" ]]; then
+            if should_remove_by_age "$entry"; then
+                rm -rf "$entry"
+                (( TMP_REMOVED++ )) || true
+            fi
+        elif [[ -f "$entry" ]]; then
+            rm -f "$entry"
+            (( TMP_REMOVED++ )) || true
+        fi
     done < <(find "$TMP_ROOT" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \) -print0 2>/dev/null) || true
 fi
 

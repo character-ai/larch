@@ -698,4 +698,30 @@ last=$(tail -n1 "$ord/invoke-order.log")
     exit 1
 }
 
+cat > "$TMP/aggregate-control-bytes-stub.sh" <<'AGG_CTRL_STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' >&2
+printf 'AGGREGATED=true\nINPUT_COUNT=1\nMERGED_COUNT=1\nREASON=ok\n'
+exit 0
+AGG_CTRL_STUB
+chmod +x "$TMP/aggregate-control-bytes-stub.sh"
+agg_relay_dir="$TMP/aggregate-relay-sanitize"
+mkdir -p "$agg_relay_dir"
+set +e
+agg_out=$(TEST_FINDINGS=1 REVIEW_CORE_AGGREGATE_FINDINGS_SH="$TMP/aggregate-control-bytes-stub.sh" run_core "$agg_relay_dir" diff 2>&1)
+agg_rc=$?
+set -e
+[[ "$agg_rc" -eq 0 ]] || { echo "FAIL: aggregate relay sanitize expected exit 0 got $agg_rc" >&2; printf '%s\n' "$agg_out" >&2; exit 1; }
+grep -Fq 'HTTP 500' <<< "$agg_out" || { echo "FAIL: aggregate stderr relay missing HTTP 500" >&2; exit 1; }
+grep -Fq 'Bad Gateway' <<< "$agg_out" || { echo "FAIL: aggregate stderr relay missing Bad Gateway" >&2; exit 1; }
+if grep -aF $'\x07' <<< "$agg_out" >/dev/null; then
+    echo "FAIL: aggregate stderr relay still contains BEL" >&2
+    exit 1
+fi
+if grep -aF $'\x1b' <<< "$agg_out" >/dev/null; then
+    echo "FAIL: aggregate stderr relay still contains ESC" >&2
+    exit 1
+fi
+
 echo "All assertions passed."

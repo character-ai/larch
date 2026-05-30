@@ -33,5 +33,6 @@ It copies the state-machine script into disposable git repositories with stubbed
 - argv-init cold start writes the seven per-key state fields plus `BAIL_FAILURE_DETAIL_LOG`, `NO_LOGS_COMMIT`, and `IMPLEMENT_TMPDIR` when no state file exists (`BRANCH_NAME` matches the disposable-repo checkout so bump-branch-guard stays green; `ISSUE_NUMBER` carries an `=` to exercise `cut -d= -f2-` extraction)
 - argv-init resume leaves `RUN_ID` unchanged when `--run-id` disagrees with on-disk state (avoids bump-branch-guard mismatch while still proving argv is ignored)
 - argv-init `--force-init-state true` rewrites state from argv (`RUN_ID`); CR/LF in any per-key argv value is rejected with exit `2` and a flag-specific stderr message
+- `append_tool_failure_local` fallback relay when `append-tool-failure.sh` is not executable: forces the in-process path via `chmod -x`, feeds a fixture log with BEL/ESC bytes, captures merged `2>&1`, and asserts printable text survives while BEL and ESC are stripped
 
 Wired as `make test-ship-pr`.

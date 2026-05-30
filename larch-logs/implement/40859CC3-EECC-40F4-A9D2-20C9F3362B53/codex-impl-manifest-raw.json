@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "scripts/design-log-publish.sh", "lines_added": 24, "lines_removed": 0},
+    {"path": "scripts/design-log-publish.md", "lines_added": 9, "lines_removed": 8},
+    {"path": "SECURITY.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "scripts/test-design-log-publish.sh", "lines_added": 63, "lines_removed": 0},
+    {"path": "scripts/test-design-log-publish.md", "lines_added": 9, "lines_removed": 0},
+    {"path": "scripts/ship-pr.sh", "lines_added": 3, "lines_removed": 3},
+    {"path": "scripts/ship-pr.md", "lines_added": 4, "lines_removed": 0},
+    {"path": "scripts/test-ship-pr.sh", "lines_added": 30, "lines_removed": 0},
+    {"path": "scripts/lib-quiet.md", "lines_added": 18, "lines_removed": 0},
+    {"path": "skills/review/scripts/collect-findings.sh", "lines_added": 6, "lines_removed": 6},
+    {"path": "skills/review/scripts/collect-findings.md", "lines_added": 4, "lines_removed": 0},
+    {"path": "skills/review/scripts/test-collect-findings.sh", "lines_added": 83, "lines_removed": 0},
+    {"path": "skills/review/scripts/test-collect-findings.md", "lines_added": 7, "lines_removed": 0},
+    {"path": "scripts/collect-agent-results.sh", "lines_added": 1, "lines_removed": 1},
+    {"path": "scripts/collect-agent-results.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "scripts/test-collect-agent-results.sh", "lines_added": 43, "lines_removed": 0},
+    {"path": "scripts/test-collect-agent-results.md", "lines_added": 5, "lines_removed": 0},
+    {"path": "skills/review/scripts/review-core.sh", "lines_added": 1, "lines_removed": 1},
+    {"path": "skills/review/scripts/review-core.md", "lines_added": 1, "lines_removed": 0},
+    {"path": "skills/review/scripts/test-review-core.sh", "lines_added": 26, "lines_removed": 0},
+    {"path": "skills/review/scripts/test-review-core.md", "lines_added": 1, "lines_removed": 0}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-design-log-publish.sh",
+    "scripts/test-ship-pr.sh",
+    "skills/review/scripts/test-collect-findings.sh",
+    "scripts/test-collect-agent-results.sh",
+    "skills/review/scripts/test-review-core.sh"
+  ],
+  "summary_bullets": [
+    "Close design-log-publish parent-directory symlink TOCTOU with per-file ancestor re-resolution and harness coverage",
+    "Route high-risk larch_err relays through sanitize_diagnostic_line and document the passthrough audit in lib-quiet.md"
+  ],
+  "commit_message": "Harden design-log publish and diagnostic relays after breadcrumb removal\n\nAdd ancestor-directory fail-closed guards in design-log-publish for plan-review, render-cache, and .completed staging. Sanitize external-content larch_err relays in ship-pr, collect-findings, collect-agent-results, and review-core, with merged 2>&1 harness coverage on each actual relay path.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": ""
+}

@@ -1,0 +1,19 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Mixed commits are real but splitting the branch is operational overhead, not a code defect in this diff.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Harness duplication is real; a shared helper is optional and low payoff for two cases.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Four sites repeat the T8 BEL/ESC pattern by design; centralizing is optional polish.
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Future relays could miss sanitize, but lib-quiet.md audit and inline wraps address the stated plan scope.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Plan acceptance requires updating test-ship-pr.md; the new fallback case is undocumented there.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- .completed ancestor guard is implemented; plan required only render-cache and plan-review harnesses.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Fallback/no-redactor relay branches lack dedicated cases; primary-path coverage exists and gap risk is low.
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Fallback case at lines 6094+ runs after all section fi blocks, so every sharded invocation pays the cost.
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Residual check-to-cp window is inherent; plan explicitly treats per-file ancestor re-resolution as sufficient closure.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- In-tree symlink swap after allowlist is a narrow edge case; fix cost outweighs benefit here.
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- cleanup.sh uses top-level -mtime only; active runs writing under old top-level dirs can lose whole session trees.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- tr -d [:cntrl:] intentionally drops TAB; document if needed, not a relay bug.
+OOS_13: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false -- Pre-rebase git add -u commits all tracked dirty paths, not an allowlisted set (#3209).
+OOS_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Same mixed-commit review-surface concern as FINDING_1; worth noting but not a distinct code defect to file.
+OOS_15: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- #3212 top-level mtime retention can delete trees with recent deep-file activity; worth tracking outside Stage 5.
+OOS_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- review-and-fix follow-up uses git add -A and can stage untracked secrets-adjacent files.
+OOS_17: EXONERATE CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false -- find errors are swallowed but SECURITY.md already documents that fail-open enumeration tradeoff.
+OOS_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- SECURITY.md:211-214 still cites removed breadcrumbs helper for publication redaction.
+OOS_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan-complete omission by design, not a fidelity gap warranting an issue.
