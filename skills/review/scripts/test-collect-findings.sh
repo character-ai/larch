@@ -422,6 +422,7 @@ grep -Fq '[OUT_OF_SCOPE] **Latent**' "$TMP/findings-sev-oos.md" \
 collector_harness=$(mktemp -d "${TMPDIR:-/tmp}/tcf-collector-harness.XXXXXX")
 mkdir -p "$collector_harness/scripts" "$collector_harness/skills/review/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$collector_harness/scripts/"
+cp "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh" "$collector_harness/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$collector_harness/scripts/"
 chmod +x "$collector_harness/scripts/"*.sh
 cp "$REPO_ROOT/skills/review/scripts/collect-findings.sh" "$collector_harness/skills/review/scripts/"
@@ -461,6 +462,7 @@ fi
 wait_harness=$(mktemp -d "${TMPDIR:-/tmp}/tcf-wait-harness.XXXXXX")
 mkdir -p "$wait_harness/scripts" "$wait_harness/skills/review/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$wait_harness/scripts/"
+cp "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh" "$wait_harness/scripts/"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$wait_harness/scripts/"
 chmod +x "$wait_harness/scripts/"*.sh
 cp "$REPO_ROOT/skills/review/scripts/collect-findings.sh" "$wait_harness/skills/review/scripts/"

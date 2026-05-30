@@ -4,7 +4,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+if [[ ! -f "$PLUGIN_ROOT/scripts/lib-failed-agent-stderr-tail.sh" ]]; then
+    PLUGIN_ROOT="$REPO_ROOT"
+fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
@@ -286,7 +290,7 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     if [[ -s "$collector_stderr" ]]; then
         cat "$collector_stderr" >> "$collector_log"
         while IFS= read -r _collector_err_line || [[ -n "$_collector_err_line" ]]; do
-            printf '%s\n' "$_collector_err_line" >&${_collector_stderr_fd}
+            printf '%s\n' "$(printf '%s' "$_collector_err_line" | sanitize_diagnostic_line)" >&${_collector_stderr_fd}
         done <"$collector_stderr"
     fi
     unset _collector_err_line
