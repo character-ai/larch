@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- two small loops match plan’s no-refactor scope; shared helper not worth the churn
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated path literals are low-risk; consolidating buys little
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- top-level non-dir deletes are rare; plan already documents flat mtime semantics
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- TMP_REMOVED=1 plus target removal already catch the main failure mode
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- cleanup.md Edit-in-sync lists SECURITY.md but test-cleanup.md does not
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- 2000-entry fixture is an intentional plan hang-regression tradeoff, not a defect
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same latent cache-file semantics as FINDING_3; already covered by intentional top-level find pass
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of FINDING_5; SECURITY.md missing from test-cleanup.md Edit-in-sync
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- swallowed find errors are explicit, documented fail-open behavior in this PR
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan accepts 60s coarse guard; 16k/sub-second perf is out of harness scope
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cache loose-file edge is latent; stale-tmp-file-removed already covers file deletion intent
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- /tmp symlink skip is documented plan hardening; cache symlink case already tested
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same nit as FINDING_4; extra noise assertions add little signal
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- fail-open enumeration is documented in SECURITY.md/cleanup.md, not an undisclosed regression
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate cache-file concern; acceptable under top-level-mtime design
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deep-only GC risk is accepted decision #2 and already stated in SECURITY.md
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- LARCH_TEST_TMP_ROOT test hook is pre-existing harness-only surface
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- broad /tmp patterns pre-date this change; nonlarch-tmp-untouched covers new find scope
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational SESSION_COUNT without a gate is documented, intentional behavior
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- important-sounding but intentional fail-open; already documented, non-zero exit conflicts with plan
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- top-level-only age is the deliberate #3212 behavior change, documented in SECURITY.md
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- find-failure harness removal matches new swallowed-enumeration contract per plan
+FINDING_23: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- 60s ceiling may flake on slow CI but plan chose it as coarse guard
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- skipping stale /tmp symlinks is explicit plan symlink hardening, not a regression bug
