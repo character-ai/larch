@@ -1,0 +1,27 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cone mode emits bare directory names (OOS_9 counter-evidence); fallback to remove+sparse re-add handles any mismatch gracefully so correctness is preserved even if the fast-update path never fires
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- by-design per plan "Breaking changes" section; plan accepts that always-current users defer slim until next actual version bump
+FINDING_3: NO CORRECTNESS=false SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan step 2 explicitly authorizes marketplace repair on the already-latest path for legacy-cone users; the claim it fires "on every run" is wrong because after one successful repair the cone matches and subsequent runs skip repair
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly closed this as comment-only maintenance with no drift guard; adding automation would reopen a closed decision
+FINDING_6: NO CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- plan Part 4 explicitly requires test removal; finding itself acknowledges plan-accepted
+FINDING_7: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- doc accurately states valid sparse clone is left alone; repair only fires when cone check fails (invalid or missing clone)
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- install command correctly gains --sparse; plan only authorized the Upgrade paragraph but the Install section change is correct and consistent with the rest of the diff
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- minor developer migration friction; global mmdc fallback in resolve_mmdc still works; docs updated; hook skippable with SKIP=lint-mermaid-fences
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_2: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- lazy ensure_mmdc refactor was plan-required (deferred resolution until a fence is found); not gratuitous scope expansion
+OOS_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing intentional design; shard 9 skips mmdc when absent and global fallback handles real-install users
+OOS_4: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- pre-existing permission architecture not introduced by this PR; too architectural for a targeted follow-up bug issue
+OOS_5: YES CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_7: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- prune cap behavior unchanged; test removal is plan-intentional; not worth reopening
+OOS_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- cosmetic historical changelog rewording; no functional impact; too minor for a GitHub issue
+OOS_9: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- counter-evidence; cone mode emits bare names; FINDING_1 risk is unlikely in practice
+OOS_10: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- bash evaluates function body at call time so ERR trap expansion is correct; concern is invalid
+OOS_11: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- counter-evidence; repair-without-reinstall is documented and intentional
+OOS_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- first-hop migration is self-healing on the second run; expected behavior, not a filing-worthy defect
+OOS_13: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan-intentional test removal; no defect
+OOS_14: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- counter-evidence; recovery banner already documents manual rm -rf steps
+OOS_15: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- counter-evidence; mermaid paths are consistent throughout the diff
+OOS_16: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing; legacy root node_modules not reached by updated resolution order

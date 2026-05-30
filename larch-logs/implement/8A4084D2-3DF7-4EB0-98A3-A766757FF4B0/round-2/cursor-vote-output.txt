@@ -1,0 +1,27 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- sorted cone compare likely works on current git; worst case falls back to remove+re-add, not breakage
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- already-latest repairs marketplace only; legacy fat PLUGIN_ROOT cache dirs remain until a version bump reinstall
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan requires no marketplace mutation on already-latest; code calls refresh_larch_marketplace when cone mismatches
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- remove_larch_marketplace failures are swallowed with || true before sparse re-add, risking wedged clone after uninstall
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- drift risk is real but plan explicitly forbids tests/drift guards and accepts comment-only maintenance
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- harness removal is plan-intentional Part 4 with explicit manual verification expectation
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- step 2 and installation-and-setup already document already-latest marketplace repair for legacy/stale cones
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- idempotency bullet cites prune at step 8 but prune is step 7 in the numbered Behavior list
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Install --sparse exceeds Part 5 wording but aligns install docs with the actual sparse add command
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- mmdc resolution is intentionally mermaid-lint-only; dev migration is documented elsewhere
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- mermaid-safe-content.md still says bare npm audit though root package.json was removed
+OOS_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- recover-without-exit is pre-existing guidance-only ERR handling, not introduced by this branch
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- refactor scope preference, not a concrete defect worth an issue
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing harness tolerance, explicitly outside this PR's change set
+OOS_4: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- broad Bash allowlist predates this work; follow-up hardening is separate from sparse upgrade
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- missing prune harness is the accepted Part 4 tradeoff, not a new regression to file
+OOS_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- mid-upgrade ERR leaving plugin uninstalled is pre-existing and covered by recover() guidance
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- eight-version prune retention is longstanding policy, not a defect introduced here
+OOS_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- historical changelog wording cleanup has no runtime impact worth tracking
+OOS_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- counter-evidence disputing cone-match risk, not an actionable problem report
+OOS_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ERR abort before the success line is correct failure ordering, not a bug
+OOS_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- already-latest marketplace repair is documented intentional behavior, not a filing-worthy defect
+OOS_12: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- two-hop migration is a known legacy transition class, not newly introduced by cone helpers alone
+OOS_13: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Part 4 test deletion is plan-required, not a standalone issue
+OOS_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- manual rm -rf recovery is already documented; gap is optional automation only
+OOS_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- counter-evidence of consistency across lint/CI/docs, not a problem to file
+OOS_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- stale local root node_modules is inert after repointing and not introduced by this diff
