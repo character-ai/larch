@@ -89,6 +89,7 @@ grep -Fq 'correctness: scripts/foo.sh:42' "$TMP/findings-inline-tsv.md"
 grep -Fq 'code-quality: scripts/bar.sh:10' "$TMP/findings-inline-tsv.md"
 grep -Fq '[OUT_OF_SCOPE] code-quality: scripts/bar.sh:10' "$TMP/oos-inline-tsv.md"
 # collect-findings pins LARCH_QUIET_DISABLE=1 on the collector so §3.8 larch_err lines reach the tee.
+# shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$PLUGIN_ROOT" in source
 if ! grep -Fq 'LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results.sh"' "$SCRIPT"; then
     echo "FAIL: collect-findings.sh must run collector with LARCH_QUIET_DISABLE=1 for stderr-tail tee" >&2
     exit 1
