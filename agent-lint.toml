@@ -1546,6 +1546,12 @@ exclude = [
   # scripts/test-ci-status.md.
   "scripts/test-ci-status.sh",
   "scripts/test-ci-status.md",
+  # scripts/test-ci-behind-count.sh is the offline regression harness for
+  # scripts/ci-behind-count.sh (shared behind-count helper for ci-status and
+  # ship-pr CI-fix push). Referenced only from Makefile (test-ci-behind-count
+  # target) and the sibling contract scripts/test-ci-behind-count.md.
+  "scripts/test-ci-behind-count.sh",
+  "scripts/test-ci-behind-count.md",
   # scripts/test-refresh-run-logs.sh is the Makefile-only behavioral regression
   # harness for scripts/refresh-run-logs.sh. Referenced from Makefile
   # (test-refresh-run-logs target) and scripts/test-refresh-run-logs.md

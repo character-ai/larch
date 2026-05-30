@@ -174,7 +174,11 @@ else
 fi
 
 # --- Check behind count ---
-BEHIND_COUNT=$(git rev-list "HEAD..$BASE_TARGET" --count 2>/dev/null || echo "0")
+_behind_out=$("$SCRIPT_DIR/ci-behind-count.sh" --base-remote "$BASE_REMOTE" --base-ref "$BASE_REF" --no-fetch 2>/dev/null || echo "")
+BEHIND_COUNT=$(printf '%s\n' "$_behind_out" | awk -F= '/^BEHIND_COUNT=/ { print substr($0, index($0,"=")+1); exit }')
+case "$BEHIND_COUNT" in
+    ''|*[!0-9]*) BEHIND_COUNT="0" ;;
+esac
 
 # --- Git-based merge detection (catches race where git refs update before GitHub API) ---
 # If main advanced, check if this PR's squash-merge commit landed.
