@@ -1,0 +1,12 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-log-publish.sh:142-156	Proposed make_find_ancestor_race_stub omits exit 0 after the -type f swap branch	After printf of ANCESTOR_RACE_PATH the wrapper can fall through to exec real find (leaf stub at 151 uses exit 0), re-enumerating a mutated tree and yielding wrong file lists or a false-green publish	Specify the stub heredoc must mirror make_find_symlink_race_stub: exit 0 immediately after printf on the ANCESTOR_RACE_* branch before the exec fallback
+
+1. **correctness** — `scripts/test-design-log-publish.sh:142-156` — The plan’s `make_find_ancestor_race_stub()` description swaps the parent and `printf`s `ANCESTOR_RACE_PATH` but does not require `exit 0` before `exec` of the real `find`. The existing `make_find_symlink_race_stub()` at line 151 does exit after its swap. Without the same guard, the wrapper can fall through and run a real `find -type f` on a tree already mutated by `rm -rf` / `ln -s`, breaking the intended race window and risking a false-green ancestor harness.
+
+**Verified anchors (no finding):**
+- `make_find_symlink_race_stub` at `scripts/test-design-log-publish.sh:142`.
+- Leaf-race blocks ~`958-976` (plan-review) and ~`1038-1057` (render-cache).
+- `append_tool_failure_local` fallback relays at `scripts/ship-pr.sh:889-901` (condition `889`, three `larch_err` read loops `896-899`).
+- T8 BEL/ESC fixture and grep assertions at `scripts/test-ci-failed-jobs.sh:178-194`.
+- Plan-review allowlist (`rel` regex + `design_round_*_included`) at `scripts/design-log-publish.sh:391-414` runs before leaf `[ -L "$f" ]` at `415-419`; proposed ancestor guard after `419` preserves the plan’s ordering claim. `unexpected path under plan-review` is at line `411`. `findings-classification.tsv` is allowlisted in `scripts/lib-design-round-artifacts.sh:17`.
+- Item B relay line refs: `skills/review/scripts/collect-findings.sh:217-220` and `241-243`; `scripts/collect-agent-results.sh:311`; `skills/review/scripts/review-core.sh:532-534`. `sanitize_diagnostic_line` contract at `scripts/lib-quiet.sh:81-88`. All listed scripts already source `lib-quiet.sh`.

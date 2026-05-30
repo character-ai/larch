@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:177	skills/review/scripts/collect-findings.sh:230	Wrong wait log basename in plan (`$REVIEW_TMPDIR/wait.log`) vs production `wait-for-claude-reviewers.log`	Stub/fixture bytes written to `wait.log` never get relayed; BEL/ESC grep passes vacuously or case never hits the wait relay Use `$REVIEW_TMPDIR/wait-for-claude-reviewers.log` everywhere (match `wait_log=` at collect-findings.sh:230)

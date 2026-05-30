@@ -1,0 +1,96 @@
+## VERIFIED SCOPE — checked against latest main (924345fba) on 2026-05-29
+
+Issue #3120 (Breadcrumbs Deprecation Stage 5) was specced before Stages 1–4
+(#3116–#3119) landed. A pre-design verification against latest main found that
+3 of the 6 originally-scoped surfaces are ALREADY IMPLEMENTED. The operator
+confirmed the refined scope: plan ONLY the genuinely-remaining items below.
+
+Breadcrumb rip is complete: breadcrumb-monitor.sh, lib-redact-streaming.sh,
+lint-foreground-markers.sh, emit_breadcrumb (lib-quiet.sh), and BASH_AUTHORING.md
+§4 are all removed. The only surviving LARCH_BREADCRUMB* refs are the committed
+forensics bridge in larch-log.sh/.md (intentionally preserved). Blocker
+"Piece 4" (#3119) is DONE. #3063 Cluster 1 (breadcrumb-pipeline items) is moot.
+
+### Already implemented — OUT OF SCOPE (do NOT re-plan these):
+- `scripts/test-design-log-publish.sh` render-cache symlink harness — DONE
+  (root / dangling-root / leaf / intermediate / race symlink rejection,
+  lines ~978–1057).
+- `SECURITY.md` render-cache hardening language — DONE (line ~207 documents the
+  render-cache policy). EXCEPTION: its "Parent-directory replacement races … are
+  not fully closed" caveat must be UPDATED by item A below if the race is closed.
+- `scripts/test-mermaid-fragments.sh` + `.md` embedded-`=` regression — DONE
+  (lines ~241–246, "warnings-token aggregation preserves embedded equals").
+
+### Genuinely remaining — IN SCOPE:
+
+**A. `scripts/design-log-publish.sh` parent-directory (ancestor) symlink TOCTOU rescan.**
+Current state: symlink rejection, `find -type l` tree scan, path-escape `case`,
+and per-file *leaf* `-L` recheck are all present for the plan-review, render-cache,
+and `.completed` subtrees. Remaining gap (documented at `SECURITY.md:~207` as a
+known limitation): a parent directory under the resolved physical root can be
+swapped for a symlink AFTER the `find -type l` scan and BEFORE staging; the
+per-file `-L "$f"` recheck catches only the leaf, not an ancestor. Close this with
+an ancestor rescan at/just-before staging for all three subtrees. Then update the
+`SECURITY.md` caveat and add an ancestor-race harness case to
+`scripts/test-design-log-publish.sh`.
+
+**B. `scripts/lib-quiet.sh` `sanitize_diagnostic_line` passthrough audit.**
+`sanitize_diagnostic_line` exists (`lib-quiet.sh:86`) but is opt-in; `larch_err`
+does not auto-sanitize (by design). Audit external-content passthrough call sites
+that forward into `larch_err` / `larch_errf` and route high-risk ones through
+`sanitize_diagnostic_line`. Record the audit outcome in `scripts/lib-quiet.md`.
+
+**C. `scripts/ship-pr.sh` fallback-relay control-byte sanitization.**
+`append_tool_failure_local`'s fallback relay (`ship-pr.sh:~894–901`) pipes the
+captured failure log through `redact-secrets.sh` but NOT
+`sanitize_diagnostic_line`, so C0 control bytes from CI/vendor stderr can still
+reach operator-visible stderr. Add per-line control-byte sanitization on top of
+the existing secret redaction, and add `scripts/test-ship-pr.sh` coverage.
+
+---
+
+## Original issue #3120 (title + body, as filed)
+
+Breadcrumbs Deprecation Stage 5: Post-rip hardening carry-overs
+
+
+Partition piece 5 of 5 split from #3111.
+
+**Scope**: #3063 follow-ons on surviving surfaces: `scripts/design-log-publish.sh` render-cache and plan-review symlink rescans plus `scripts/test-design-log-publish.sh`; `SECURITY.md` render-cache hardening language; `scripts/lib-quiet.sh` / `scripts/lib-quiet.md` `sanitize_diagnostic_line` audit; `scripts/ship-pr.sh` fallback-relay sanitization plus `scripts/test-ship-pr.sh`; `scripts/test-mermaid-fragments.sh` and `.md` embedded-`=` regression.
+
+**Dependencies (from panel)**: blocked-by Piece 4
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this issue after partition lands.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+Rip out the background-script breadcrumb propagation feature
+
+## Motivation
+
+The breadcrumb propagation feature (introduced via #2749 on 2026-05-24, rolled out through #2790 and a long tail of follow-ups) attempts to surface live progress from backgrounded helper scripts (`ship-pr.sh`, `ci-wait.sh`, `collect-agent-results.sh`, `review-and-fix.sh`, `dispatch-plan-voters.sh`, etc.) to the orchestrator's chat output. It pairs each backgrounded writer with a foreground `breadcrumb-monitor.sh` consumer in the same Bash message, with a fail-closed FD-3 stream, `lib-redact-streaming.sh` per-line redaction, sentinel inheritance (`LARCH_DONE_SENTINEL` / `LARCH_STATUS_FILE` / `LARCH_BREADCRUMBS_SURFACED_FILE`), `LARCH_PAIRED_PID_FILE` ownership accounting, and a `monitor_rc` two-branch propagation protocol.
+
+After ~3 days in tree, the cost clearly outweighs the value:
+
+- **Doesn't work reliably.** Streaming output is sporadic in real runs; the user-visible signal is not delivered consistently. See sibling triage issue #2919 ("Investigate apparently failure of the background / breadcrumb communication scheme") which this issue subsumes.
+- **High bug density.** Three URGENT/BUG severity follow-ups (#2826, #2848, #2996) and ~17 closed OOS sub-issues since the feature landed (#2806, #2807, #2808, #2809, #2833, #2889, #2946, #2947, #2948, #2965, #3005, #3011, #3025, #3032, plus the in-flight #3063). Each fix narrows the failure window but does not eliminate the class — the architecture is fighting both Bash semantics and the Claude harness's turn boundary.
+- **Disproportionate complexity tax on other work.** Every Family-B invocation must memorize a ~20-line same-fence shape (background launch + `breadcrumb-monitor.sh` foreground call + PID capture + `monitor_rc=0` / `|| monitor_rc=$?` + post-monitor `wait`, with a literal `# Background pair required: see BASH_AUTHORING.md §4` per-anchor comment and a `**⚠ Background required**` banner in the prose above the fence). `scripts/lint-foreground-markers.sh` (1,037 LOC) and its harness (1,721 LOC) enforce the contract. New helpers picking up "Family-B-grade" semantics inherit the entire stack.
+- **The goal is nice-to-have, not paramount.** In-chat live progress is pleasant but the operator can always ask for a status mid-run, and a once-every-N-minutes "tail the quiet log" Monitor task is a strictly simpler fallback (none of the FD-3, sentinel, or paired-PID accounting).
+
+## Scope
+
+**Remove** the live-streaming breadcrumb propagation feature in its entirety. Specifically: `scripts/breadcrumb-monitor.sh` + its harness, `scripts/lib-redact-streaming.sh`, the Family-B portion of `scripts/lint-foreground-markers.sh`, the `emit_breadcrumb` / `emit_breadcrumb_stderr` helpers in `scripts/lib-quiet.sh`, the paired-PID + sentinel-inheritance machinery, all `LARCH_BREADCRUMB_*` / `LARCH_DONE_SENTINEL` / `LARCH_STATUS_FILE` / `LARCH_PAIRED_PID_FILE` / `LARCH_BREADCRUMBS_SURFACED_FILE` env-var plumbing, the `env -u` child-sanitization barrier, and BASH_AUTHORING.md §4 in full.
+
+**Preserve**:
+
+- **Committed `larch-logs/<run-id>/breadcrumbs/` directory** for post-hoc forensics. Re-source from each script's quiet log instead of the FD-3 stream — no monitor required.
+- **Orthogonal hardening currently bundled into #3063**: design-log-publish symlink/TOCTOU narrowing (Cluster 2) and `sanitize_diagnostic_line` adoption in `ship-pr.sh:872-875` fallback relay (Cluster 3). Lift these into their own small issues before #3063 is abandoned.
+- **Redaction toolchain**: `scripts/redact-secrets.sh` and `scripts/redact-tmpdir-paths.sh` stay — they are used by `larch-log.sh commit`. The `--streaming` mode of `redact-secrets.sh` may have no remaining consumer after breadcrumbs go and can be removed; verify during partition.
+- **Polling-loop ban**: the residual "don't spawn a polling loop to watch another `run_in_background` job" rule in AGENTS.md and NEVER #9 stays — that's general orchestrator discipline independent of the bre
