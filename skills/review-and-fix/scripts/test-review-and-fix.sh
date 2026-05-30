@@ -430,6 +430,11 @@ rc_persistent=$?
 set -e
 [[ "$rc_persistent" -eq 2 ]] || { echo "$out_persistent" >&2; fail "persistent hook residue expected exit 2 got $rc_persistent"; }
 grep -Fq 'CODER_STATUS=failed' <<< "$out_persistent" || fail "persistent hook residue coder failed"
+if [[ -z "$(git -C "$work_persistent_hook" status --porcelain --untracked-files=no)" ]]; then
+    fail "persistent hook residue should leave tracked porcelain after follow-up"
+fi
+grep -Fq 'persistent hook residue' "$work_persistent_hook/src/main.py" \
+    || fail "persistent hook residue should remain in working tree"
 
 work_codex_telemetry="$TMP/codex-telemetry"
 make_work_repo "$work_codex_telemetry"

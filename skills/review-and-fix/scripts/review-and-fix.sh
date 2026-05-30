@@ -459,7 +459,7 @@ apply_findings_with_coder() {
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
         if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
-            if git add -u 2>>"$round_dir/coder-commit.log" && \
+            if git add -A 2>>"$round_dir/coder-commit.log" && \
                 "$PLUGIN_ROOT/scripts/git-commit.sh" \
                     -m "Address code review feedback (round $round_num) — follow-up" \
                     >>"$round_dir/coder-commit.log" 2>&1; then
