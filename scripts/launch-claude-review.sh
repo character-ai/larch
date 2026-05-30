@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 usage() {
@@ -61,6 +63,10 @@ done
 
 [[ -n "$OUTPUT" ]] || { larch_err "launch-claude-review.sh: --output is required"; exit 2; }
 case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "launch-claude-review.sh: --timeout must be a positive integer"; exit 2 ;; esac
+if (( TIMEOUT > 1800 )); then
+    larch_err "launch-claude-review.sh: --timeout ${TIMEOUT}s exceeds subprocess cap; clamping to 1800"
+    TIMEOUT=1800
+fi
 
 src_count=0
 [[ -n "$AGENT_FILE" ]] && src_count=$((src_count + 1))
@@ -175,6 +181,10 @@ if [[ -s "$SUBPROCESS_STDERR" ]]; then
         larch_err "$_line"
     done < "$SUBPROCESS_STDERR"
     unset _line
+fi
+
+if [[ "$rc" -ne 0 ]] && [[ ! -s "${OUTPUT}.stderr-tail" ]]; then
+    write_failed_agent_stderr_tail "$SUBPROCESS_STDERR" "$OUTPUT" || true
 fi
 
 if [[ ! -f "${OUTPUT}.done" ]]; then

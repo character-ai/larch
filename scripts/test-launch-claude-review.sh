@@ -304,4 +304,26 @@ if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
         || { echo "FAIL: unreadable --context-files missing expected stderr" >&2; exit 1; }
 fi
 
+# Timeout clamp: panel callers may pass 1860; subprocess cap is 1800.
+clamp_out="$TMPROOT/clamp-out.txt"
+clamp_err="$TMPROOT/clamp.stderr"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$clamp_out" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --timeout 1860 >"$TMPROOT/clamp.stdout" 2>"$clamp_err"
+[[ "$(cat "$clamp_out")" == "claude review ok" ]] \
+    || { echo "FAIL: timeout 1860 should clamp to 1800 and succeed" >&2; exit 1; }
+grep -Fq 'clamping to 1800' "$clamp_err" \
+    || { echo "FAIL: missing timeout clamp warning" >&2; exit 1; }
+
+unchanged_out="$TMPROOT/unchanged-out.txt"
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$unchanged_out" \
+    --prompt-file "$prompt" \
+    --mode description \
+    --timeout 1200 >/dev/null
+[[ "$(cat "$unchanged_out")" == "claude review ok" ]] \
+    || { echo "FAIL: timeout 1200 should pass through unchanged" >&2; exit 1; }
+
 echo "PASS: test-launch-claude-review.sh"

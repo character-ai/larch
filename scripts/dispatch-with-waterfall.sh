@@ -266,7 +266,7 @@ launch_slot() {
             rc=$?
             [[ -f "${output}.done" ]] || printf '%s\n' "$rc" > "${output}.done"
             exit "$rc"
-        ) >/dev/null 2>&1 &
+        ) >/dev/null 2>"${output}.launch-stderr" &
     else
         (
             set +e
@@ -281,7 +281,7 @@ launch_slot() {
             rc=$?
             [[ -f "${output}.done" ]] || printf '%s\n' "$rc" > "${output}.done"
             exit "$rc"
-        ) >/dev/null 2>&1 &
+        ) >/dev/null 2>"${output}.launch-stderr" &
     fi
     pids+=("$!")
     phase_indices+=("$idx")

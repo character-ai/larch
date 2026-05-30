@@ -667,6 +667,38 @@ else
     ok "WAIT_STDERR relay strips ESC"
 fi
 
+echo "# Case: duplicate failure stderr tails dedup on FD 2"
+DEDUP_A="$TMPROOT/dedup-a.txt"
+DEDUP_B="$TMPROOT/dedup-b.txt"
+: >"$DEDUP_A"
+: >"$DEDUP_B"
+printf '1\n' >"${DEDUP_A}.done"
+printf '1\n' >"${DEDUP_B}.done"
+printf 'non-transient failure\n' >"${DEDUP_A}.diag"
+printf 'non-transient failure\n' >"${DEDUP_B}.diag"
+write_meta "$DEDUP_A" "$SUCCESS_HELPER"
+write_meta "$DEDUP_B" "$SUCCESS_HELPER"
+printf 'fatal tool error line 100\n' >"${DEDUP_A}.stderr-tail"
+printf 'fatal tool error line 200\n' >"${DEDUP_B}.stderr-tail"
+DEDUP_STDERR="$TMPROOT/dedup-collector.stderr"
+DEDUP_STDOUT=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$DEDUP_A" "$DEDUP_B" 2>"$DEDUP_STDERR")
+if printf '%s\n' "$DEDUP_STDOUT" | grep -Fq 'STATUS=FAILED'; then
+    ok "dedup collector stdout unchanged contract"
+else
+    fail "dedup collector missing FAILED status"
+fi
+dedup_tail_count=$(grep -c 'agent stderr tail' "$DEDUP_STDERR" || true)
+if [[ "$dedup_tail_count" -eq 1 ]]; then
+    ok "dedup single full stderr tail"
+else
+    fail "dedup expected one stderr tail header (got $dedup_tail_count)"
+fi
+if grep -Fq 'identical failure to' "$DEDUP_STDERR"; then
+    ok "dedup suppression line"
+else
+    fail "dedup missing suppression line"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf '\nFAIL: test-collect-agent-results.sh (%d failure(s))\n' "$FAIL" >&2
     printf ' - %s\n' "${FAILED[@]}" >&2

@@ -209,6 +209,19 @@ Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accep
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
 
+### `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`
+
+On non-zero codex/cursor/claude subprocess exits in review/collector batches (and foreground `run-external-agent.sh` runs), larch surfaces the last **N** redacted stderr lines to chat on FD 2, capped at **5120** bytes after redaction.
+
+- **Default:** `30` (design chose 30 over issue #3202's filed 50).
+- **`0`:** disables tail capture and chat surfacing.
+- **Non-numeric:** falls back to `30`.
+- **Failure-only:** success / exit 0 stays quiet.
+- **Collector dedup:** within one `collect-agent-results.sh` batch, duplicate same-root-cause failures collapse to one suppression line; the first occurrence prints the full tail.
+- **Claude panel fallback:** `launch-claude-review.sh` clamps `--timeout` greater than **1800** to **1800** with a warning (subprocess cap in `launch-claude-subprocess.sh`).
+
+See `scripts/lib-failed-agent-stderr-tail.md`.
+
 ### `LARCH_TOKEN_RATE_PER_M`
 
 Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`## Token Spend` section). When set to a positive number, the report renders an additional `$` cost column for each per-phase row and the run total. When unset (default) or set to a non-numeric value, the `$` column is omitted entirely.

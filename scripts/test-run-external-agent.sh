@@ -365,6 +365,17 @@ else
 fi
 assert_grep "timeout-events diag" "limit: 1s" "${TIMEOUT_OUT}.diag"
 
+# 19. Failed runs write .stderr-tail and emit fenced stderr to FD 2.
+FAIL_TAIL_OUT="$TMPDIR/fail-tail.txt"
+run_subject "fail-tail-merged" "$FAIL_TAIL_OUT" --capture-stdout -- bash -c 'printf "merged stderr\n" >&2; exit 1'
+assert_equals "fail-tail-merged exit" "1" "$RUN_CODE"
+if [[ -s "${FAIL_TAIL_OUT}.stderr-tail" ]]; then
+    pass
+else
+    fail "fail-tail-merged missing .stderr-tail"
+fi
+assert_grep "fail-tail-merged stderr fence" "failed agent stderr tail" "$RUN_STDERR"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-run-external-agent.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

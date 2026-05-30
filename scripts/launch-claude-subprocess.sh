@@ -7,6 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 usage() {
@@ -218,6 +220,9 @@ mv "${OUTPUT_TMP}.stderr" "${OUTPUT_CANON}.stderr" 2>/dev/null || true
 if [[ ! -s "$OUTPUT_CANON" && "$exit_code" -eq 0 ]]; then
     exit_code=99
     status="ERROR"
+fi
+if [[ "$exit_code" -ne 0 ]] && [[ -s "${OUTPUT_CANON}.stderr" ]]; then
+    write_failed_agent_stderr_tail "${OUTPUT_CANON}.stderr" "$OUTPUT_CANON" || true
 fi
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 printf 'STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n' > "${OUTPUT_CANON}.dirty-tree"

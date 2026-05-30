@@ -205,7 +205,7 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
     args=(--timeout "$TIMEOUT" --substantive-validation --validation-mode)
     collector_log="$REVIEW_TMPDIR/collect-agent-results.log"
     set +e
-    "$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}" > "$collector_results_file" 2>"$collector_log"
+    "$PLUGIN_ROOT/scripts/collect-agent-results.sh" "${args[@]}" "${EXTERNAL_OUTPUT_FILES[@]}" > "$collector_results_file" 2> >(tee -a "$collector_log" >&2)
     collector_rc=$?
     set -e
     cat "$collector_results_file" >> "$collector_log"
