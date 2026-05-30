@@ -21,6 +21,9 @@ esac
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
 cwd_hash=$(printf '%s' "${cwd:-/}" | cksum 2>/dev/null | awk '{print $1}') || cwd_hash="0"
 
+session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || session_id=""
+session_hash=$(printf '%s' "${session_id:-nosession}" | cksum 2>/dev/null | awk '{print $1}') || session_hash="0"
+
 if [ -n "${HOOK_ANTI_READ_POLL_NOW:-}" ]; then
     now=$HOOK_ANTI_READ_POLL_NOW
     case "$now" in ''|*[!0-9]*) exit 0 ;; esac
@@ -44,9 +47,8 @@ is_read_task_output_path() {
     printf '%s' "$1" | grep -Eq '(^|/)tasks/[A-Za-z0-9._-]+\.output$'
 }
 
-# Bash command: suffix-tolerant tasks/<id>.output anywhere in body
-bash_has_task_output() {
-    printf '%s' "$1" | grep -Eq 'tasks/[A-Za-z0-9._-]+\.output'
+bash_strip_quoted() {
+    printf '%s' "$1" | sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g"
 }
 
 bash_has_read_verb() {
@@ -54,48 +56,64 @@ bash_has_read_verb() {
     if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(cat|tail|head|less|more)([^[:alnum:]_]|$)'; then
         return 0
     fi
-    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)'; then
-        printf '%s' "$cmd" | grep -q '\-n' && return 0
+    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)[^|;&]*(\-n\b|--quiet)'; then
+        return 0
     fi
     return 1
+}
+
+bash_line_is_task_output_poll() {
+    local line="$1"
+    case "$line" in
+        echo*|printf*) return 1 ;;
+    esac
+    local token
+    token=$(extract_task_output_token "$line") || return 1
+    bash_has_read_verb "$line"
 }
 
 bash_is_task_output_poll() {
-    bash_has_read_verb "$1" && bash_has_task_output "$1"
+    local cmd="$1" stripped line
+    stripped=$(bash_strip_quoted "$cmd")
+    while IFS= read -r line || [ -n "$line" ]; do
+        bash_line_is_task_output_poll "$line" && return 0
+    done < <(printf '%s\n' "$stripped")
+    return 1
 }
 
-# Prefer absolute path token; else tasks/<id>.output tail.
+# Canonical state key: rightmost tasks/<id>.output tail (absolute vs relative ignored).
 extract_task_output_token() {
     local text="$1"
     local token
-    token=$(printf '%s' "$text" | grep -oE '/[^[:space:]"'"'"';|&()]*tasks/[A-Za-z0-9._-]+\.output' | head -1)
-    if [ -n "$token" ]; then
-        printf '%s' "$token"
-        return 0
-    fi
-    token=$(printf '%s' "$text" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | head -1)
+    token=$(printf '%s' "$text" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
     if [ -n "$token" ]; then
         printf '%s' "$token"
         return 0
     fi
     return 1
+}
+
+task_id_from_token() {
+    printf '%s' "$1" | sed -n 's|^tasks/\(.*\)\.output$|\1|p'
 }
 
 handle_task_output_poll() {
     local token="$1"
+    local task_id
+    task_id=$(task_id_from_token "$token") || return 0
     local TASK_OUTPUT_THRESHOLD=2
     local TASK_OUTPUT_WINDOW_SECS=600
-    local taskout_file="$state_dir/state-taskout-${cwd_hash}.tsv"
+    local taskout_file="$state_dir/state-taskout-${session_hash}-${cwd_hash}-${task_id}.tsv"
 
-    local last_token="" count=0 first_ts=0
+    local count=0 first_ts=0
     if [ -f "$taskout_file" ]; then
-        IFS=$'\t' read -r last_token count first_ts < "$taskout_file" 2>/dev/null || true
+        IFS=$'\t' read -r count first_ts < "$taskout_file" 2>/dev/null || true
         case "$count" in ''|*[!0-9]*) count=0 ;; esac
         case "$first_ts" in ''|*[!0-9]*) first_ts=0 ;; esac
     fi
 
     local age=0
-    if [ "$token" = "$last_token" ]; then
+    if [ "$count" -gt 0 ]; then
         age=$(( now - first_ts ))
         if [ "$age" -lt 0 ] || [ "$age" -gt "$TASK_OUTPUT_WINDOW_SECS" ]; then
             count=1
@@ -110,7 +128,7 @@ handle_task_output_poll() {
         age=0
     fi
 
-    printf '%s\t%s\t%s\n' "$token" "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
     chmod 600 "$taskout_file" 2>/dev/null || true
 
     if [ "$age" -eq 0 ] && [ "$count" -gt 1 ]; then

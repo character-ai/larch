@@ -4,7 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 HOOK="$SCRIPT_DIR/hook-anti-read-poll.sh"
+HOOKS_JSON="$REPO_ROOT/hooks/hooks.json"
 
 [ -x "$HOOK" ] || { echo "FAIL: $HOOK not executable" >&2; exit 1; }
 
@@ -16,25 +18,27 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-hook-anti-read-poll.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 mk_payload() {
-    local path="$1" offset="${2:-0}" cwd="${3:-/tmp/test-proj}"
-    jq -cn --arg p "$path" --argjson off "$offset" --arg cwd "$cwd" \
-        '{tool_name:"Read",tool_input:{file_path:$p,offset:$off},cwd:$cwd}'
+    local path="$1" offset="${2:-0}" cwd="${3:-/tmp/test-proj}" session_id="${4:-}"
+    jq -cn --arg p "$path" --argjson off "$offset" --arg cwd "$cwd" --arg sid "$session_id" \
+        '{tool_name:"Read",tool_input:{file_path:$p,offset:$off},cwd:$cwd}
+         + (if ($sid|length) > 0 then {session_id:$sid} else {} end)'
 }
 
 mk_bash_payload() {
-    local command="$1" cwd="${2:-/tmp/test-proj}"
-    jq -cn --arg cmd "$command" --arg cwd "$cwd" \
-        '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd}'
+    local command="$1" cwd="${2:-/tmp/test-proj}" session_id="${3:-}"
+    jq -cn --arg cmd "$command" --arg cwd "$cwd" --arg sid "$session_id" \
+        '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd}
+         + (if ($sid|length) > 0 then {session_id:$sid} else {} end)'
 }
 
 run_hook() {
-    local now="$1" path="$2" offset="${3:-0}" cwd="${4:-/tmp/test-proj}"
-    mk_payload "$path" "$offset" "$cwd" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
+    local now="$1" path="$2" offset="${3:-0}" cwd="${4:-/tmp/test-proj}" session_id="${5:-}"
+    mk_payload "$path" "$offset" "$cwd" "$session_id" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
 }
 
 run_bash_hook() {
-    local now="$1" command="$2" cwd="${3:-/tmp/test-proj}"
-    mk_bash_payload "$command" "$cwd" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
+    local now="$1" command="$2" cwd="${3:-/tmp/test-proj}" session_id="${4:-}"
+    mk_bash_payload "$command" "$cwd" "$session_id" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
 }
 
 assert_reminder() {
@@ -58,6 +62,14 @@ assert_silent() {
 TASK_OUT='/tmp/proj/tasks/testtask123.output'
 
 export TMPDIR="$TMP"
+
+echo "=== hooks.json pins Read|Bash matcher ==="
+if grep -q 'hook-anti-read-poll.sh' "$HOOKS_JSON" \
+    && grep -q '"matcher": "Read|Bash"' "$HOOKS_JSON"; then
+    pass 'hooks.json registers hook-anti-read-poll.sh under Read|Bash'
+else
+    fail "hooks.json must register hook-anti-read-poll.sh with matcher Read|Bash"
+fi
 
 echo "=== first two calls do not fire ==="
 out1=$(run_hook 0 "/tmp/file.md" 0 "/proj")
@@ -161,6 +173,64 @@ out_fp1=$(run_bash_hook 0 "cat notes.txt" "/proj-fp")
 assert_silent "$out_fp1" 'cat notes.txt call 1 silent'
 out_fp2=$(run_bash_hook 1 "cat notes.txt" "/proj-fp")
 assert_silent "$out_fp2" 'cat notes.txt call 2 silent'
+
+echo "=== Read then Bash share task-output counter ==="
+REL_TASK_OUT='tasks/crossread123.output'
+ABS_TASK_OUT="/tmp/proj/$REL_TASK_OUT"
+out_rb1=$(run_hook 0 "$ABS_TASK_OUT" 0 "/proj-read-bash-share")
+assert_silent "$out_rb1" 'Read then Bash call 1 silent'
+out_rb2=$(run_bash_hook 1 "cat $REL_TASK_OUT" "/proj-read-bash-share")
+assert_reminder "$out_rb2" 'Read then Bash call 2 fires reminder'
+
+echo "=== absolute then relative Bash paths share counter ==="
+out_mx1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-mixed-path")
+assert_silent "$out_mx1" 'mixed path Bash call 1 silent'
+out_mx2=$(run_bash_hook 1 "cat tasks/testtask123.output" "/proj-mixed-path")
+assert_reminder "$out_mx2" 'mixed path Bash call 2 fires reminder'
+
+echo "=== relative Read prefix normalizes to tasks tail ==="
+REL_PREFIX_OUT='foo/bar/tasks/prefixnorm.output'
+out_pn1=$(run_hook 0 "$REL_PREFIX_OUT" 0 "/proj-prefix-norm")
+assert_silent "$out_pn1" 'prefix Read call 1 silent'
+out_pn2=$(run_bash_hook 1 "cat /tmp/proj/foo/bar/tasks/prefixnorm.output" "/proj-prefix-norm")
+assert_reminder "$out_pn2" 'prefix Read then absolute Bash call 2 fires reminder'
+
+echo "=== task-output window expires after 600s ==="
+out_te1=$(run_hook 0 "$TASK_OUT" 0 "/proj-task-expiry")
+assert_silent "$out_te1" 'task-output expiry call 1 silent'
+out_te2=$(run_hook 601 "$TASK_OUT" 0 "/proj-task-expiry")
+assert_silent "$out_te2" 'task-output expiry call 2 after 600s silent'
+out_te3=$(run_hook 602 "$TASK_OUT" 0 "/proj-task-expiry")
+assert_reminder "$out_te3" 'task-output expiry call 3 fires reminder'
+
+echo "=== echo mentioning task path does not count ==="
+out_en1=$(run_bash_hook 0 "echo cat $TASK_OUT" "/proj-echo-fp")
+assert_silent "$out_en1" 'echo task path call 1 silent'
+out_en2=$(run_bash_hook 1 "echo cat $TASK_OUT" "/proj-echo-fp")
+assert_silent "$out_en2" 'echo task path call 2 silent'
+
+echo "=== assignment line then unrelated cat is ignored ==="
+assign_cmd=$'OUT=tasks/decoy123.output\ncat notes.txt'
+out_as1=$(run_bash_hook 0 "$assign_cmd" "/proj-assign-fp")
+assert_silent "$out_as1" 'assignment decoy call 1 silent'
+out_as2=$(run_bash_hook 1 "$assign_cmd" "/proj-assign-fp")
+assert_silent "$out_as2" 'assignment decoy call 2 silent'
+
+echo "=== grep -rn with sed does not false-positive ==="
+out_sed1=$(run_bash_hook 0 "sed -i.bak 's/a/b/' notes.txt; grep -rn pattern ." "/proj-sed-fp")
+assert_silent "$out_sed1" 'sed edit plus grep -rn call 1 silent'
+out_sed2=$(run_bash_hook 1 "sed -i.bak 's/a/b/' notes.txt; grep -rn pattern ." "/proj-sed-fp")
+assert_silent "$out_sed2" 'sed edit plus grep -rn call 2 silent'
+
+echo "=== two task ids tracked independently ==="
+TASK_A='/tmp/proj/tasks/taskA.output'
+TASK_B='/tmp/proj/tasks/taskB.output'
+out_ab1=$(run_bash_hook 0 "cat $TASK_A" "/proj-two-tasks")
+assert_silent "$out_ab1" 'two tasks A call 1 silent'
+out_ab2=$(run_bash_hook 1 "cat $TASK_B" "/proj-two-tasks")
+assert_silent "$out_ab2" 'two tasks B call 1 silent'
+out_ab3=$(run_bash_hook 2 "cat $TASK_A" "/proj-two-tasks")
+assert_reminder "$out_ab3" 'two tasks A call 2 fires reminder'
 
 echo "=== generic Read regression (3 within 30s, 2 do not) ==="
 out_gr1=$(run_hook 0 "/tmp/generic-regression.md" 0 "/proj-generic-reg")

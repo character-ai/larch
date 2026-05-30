@@ -16,13 +16,16 @@ paths count as distinct reads. Task-output paths key state by the normalized
 
 ## State
 
-Per-project state under `${TMPDIR:-/tmp}/larch-read-poll/`:
+Per-project state under `${TMPDIR:-/tmp}/larch-read-poll/` (mode `700`; entries `600`):
 
 - `state-<cwd_hash>.tsv` — generic Read: `last_path\tlast_offset\tcount\tfirst_ts`
-- `state-taskout-<cwd_hash>.tsv` — task output: `last_token\tcount\tfirst_ts`
+- `state-taskout-<session_hash>-<cwd_hash>-<task_id>.tsv` — task output: `count\tfirst_ts`
 
-The CWD hash is derived from the hook event's `cwd` field so multiple projects do not
-share state.
+Task-output counters are scoped by hook `session_id` (hashed; falls back to
+`nosession` when absent), `cwd`, and the normalized `tasks/<id>.output` task id so
+distinct background tasks and Claude sessions do not share one counter. State files
+expire logically after **600 s** without a matching poll (window reset, not file
+deletion). A new session within that TTL does not inherit another session's counts.
 
 ## Parameters
 
@@ -31,9 +34,10 @@ Reads from stdin (Claude Code hook event JSON). Relevant fields:
 - `tool_name` — must be `"Read"` or `"Bash"` or the hook exits 0 silently.
 - `Read`: `tool_input.file_path` (end-anchored `tasks/<id>.output` classifier);
   `tool_input.offset` (ignored for task-output paths).
-- `Bash`: `tool_input.command` (full string; read-verb + suffix-tolerant
-  `tasks/<id>.output` match anywhere in the body, including multiline/compound
-  commands and transcript suffixes after `.output` such as `2>/dev/null` or `| head`).
+- `Bash`: `tool_input.command` (per-line read verb + `tasks/<id>.output` on the same
+  line after stripping quoted strings; `echo`/`printf` lines ignored; multiline
+  compound commands and transcript suffixes after `.output` such as `2>/dev/null` or
+  `| head` supported when the read verb and path share a line).
 - `cwd` — project working directory (used to scope state files).
 
 ## Output
