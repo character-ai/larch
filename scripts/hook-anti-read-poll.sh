@@ -271,7 +271,7 @@ extract_bash_task_output_poll_tokens() {
     done
 }
 
-# shellcheck disable=SC2329  # invoked indirectly via callers that may pass the function by name
+# shellcheck disable=SC2329,SC2317  # wrapper invoked indirectly; body reachability follows from SC2329
 extract_bash_task_output_poll_token() {
     extract_bash_task_output_poll_tokens "$1" | head -1
 }
