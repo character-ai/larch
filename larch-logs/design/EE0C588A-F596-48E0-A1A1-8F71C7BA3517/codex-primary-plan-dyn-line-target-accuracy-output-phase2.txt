@@ -1,0 +1,15 @@
+Verifying plan line citations against the repository. Reading the plan and cited code regions.
+Checking `run_rebase_rebump` boundaries and whether the plan's insertion guidance could be misread.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:460-464	Option B anchor "before the success result block at 464" sits after the round branch `fi` at 461	Implementer may insert the follow-up between 461-463, outside `(( round_num > 0 ))`, so findings mode gets an extra commit or `commit_sha`/`CODER_COMMIT_SHA` diverge from Decision 5	Pin insertion to 460-461: immediately after `commit_sha=$(git rev-parse HEAD ...)`, before the `fi` that closes the `round_num > 0` branch
+
+1. **correctness** — `skills/review-and-fix/scripts/review-and-fix.sh:460-464` — Option B cites insertion after `commit_sha` (~460) and before the success envelope (~464), but the `round_num > 0` branch ends at line 461 (`fi`); lines 462-463 are shared path and 464+ is the success block outside the branch. **Suggested revision:** State the anchor as `review-and-fix.sh:460-461` (after `commit_sha` assignment, before that `fi`).
+
+**Verified anchors (no issue):**
+- `scripts/drop-bump-commit.sh:85-94` — Guard 1 uses `git status --porcelain --untracked-files=no` and `DROPPED=false` exit.
+- `scripts/ship-pr.sh:1806-1813` — CI-fix `git diff --cached` + `git-commit.sh` pattern matches the plan’s mirror target.
+- `scripts/ship-pr.sh:2842-2858` — pre-flush `refresh-run-logs.sh` then `drop-bump-commit.sh`; Option A slot between 2851 and 2858 is correct.
+- `scripts/ship-pr.sh:2865-2875` — `DROPPED=false` stall / `drop_bump_no_matching_commit` block matches; plan’s “do not touch” boundary is right.
+- `skills/review-and-fix/scripts/review-and-fix.sh:437-460` — scope guard is `[[ "$round_num" =~ ^[0-9]+$ ]] && (( round_num > 0 ))` with branch variable `round_num`; `commit_sha` at 460 and success block at 464-472 as described.
+- `scripts/test-ship-pr.sh:2385-2402` and `2411-2495` — `ci-initial` / `run_rebase_rebump` fixtures exist at those ranges.
+- `skills/review-and-fix/scripts/test-review-and-fix.sh:263-353` — `make_work_repo` / `run_orchestrator_case` round-mode harness at cited lines.
