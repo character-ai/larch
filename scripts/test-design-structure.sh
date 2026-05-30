@@ -338,6 +338,8 @@ grep -Fq '5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(17) anti-halt reminder missing intra-Step-5 sub-step enumeration"
 grep -Fq "NEVER treat a sub-skill's terminal output as the parent skill's terminal output" "$ORCHESTRATOR_NEVER_MD" \
   || fail "(17) orchestrator-never.md missing sub-skill vs parent-skill terminal-output NEVER literal"
+grep -Fq 'NEVER poll a background task by reading its output file once per turn' "$ORCHESTRATOR_NEVER_MD" \
+  || fail "(17) orchestrator-never.md missing per-turn-polling NEVER literal"
 step5_between=$(sed -n "$((step5b_line + 1)),$((step5c_line - 1))p" "$SKILL_MD")
 # Pin `/larch:issue` to the continuation-banner line (not merely anywhere in the 5b→5c window).
 grep -Fq $'> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool' <<<"$step5_between" \

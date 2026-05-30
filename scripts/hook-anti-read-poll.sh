@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# hook-anti-read-poll.sh — PostToolUse hook: warn on repeated identical Read calls.
+# hook-anti-read-poll.sh — PostToolUse hook: warn on repeated identical Read calls
+# and on per-turn polling of background task .output files (Read or Bash).
 #
-# Emits a system-reminder on the third consecutive Read of the same path+offset
-# within a 30-second window. Different offsets count as distinct reads.
+# Generic Read: third consecutive read of the same path+offset within 30s.
+# Task output: second read of the same tasks/<id>.output token within 600s
+# (Read or Bash; offset ignored for task-output paths).
 # set -e intentionally omitted: hooks must never block tool use.
 
 set -uo pipefail
@@ -11,26 +13,19 @@ INPUT=$(cat 2>/dev/null) || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
 tool_name=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || exit 0
-[ "$tool_name" = "Read" ] || exit 0
-
-file_path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || exit 0
-[ -n "$file_path" ] || exit 0
-sanitized_path=${file_path//$'\t'/ }
-sanitized_path=${sanitized_path//$'\n'/ }
-
-offset=$(printf '%s' "$INPUT" | jq -r '.tool_input.offset // 0' 2>/dev/null) || offset=0
-case "$offset" in ''|*[!0-9]*) offset=0 ;; esac
+case "$tool_name" in
+    Read|Bash) ;;
+    *) exit 0 ;;
+esac
 
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
 cwd_hash=$(printf '%s' "${cwd:-/}" | cksum 2>/dev/null | awk '{print $1}') || cwd_hash="0"
 
-POLL_THRESHOLD=3
-WINDOW_SECS=30
-
-state_dir="${TMPDIR:-/tmp}/larch-read-poll"
-mkdir -p "$state_dir" 2>/dev/null || exit 0
-chmod 700 "$state_dir" 2>/dev/null || true
-state_file="$state_dir/state-${cwd_hash}.tsv"
+session_id=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || session_id=""
+if [ -z "$session_id" ]; then
+    session_id=$(printf '%s' "$INPUT" | jq -r '.conversation_id // ""' 2>/dev/null) || session_id=""
+fi
+session_hash=$(printf '%s' "${session_id:-nosession}" | cksum 2>/dev/null | awk '{print $1}') || session_hash="0"
 
 if [ -n "${HOOK_ANTI_READ_POLL_NOW:-}" ]; then
     now=$HOOK_ANTI_READ_POLL_NOW
@@ -39,35 +34,218 @@ else
     now=$(date +%s 2>/dev/null) || exit 0
 fi
 
-last_path="" last_offset="0" count=0 first_ts=0
-if [ -f "$state_file" ]; then
-    IFS=$'\t' read -r last_path last_offset count first_ts < "$state_file" 2>/dev/null || true
-    case "$count" in ''|*[!0-9]*) count=0 ;; esac
-    case "$first_ts" in ''|*[!0-9]*) first_ts=0 ;; esac
-fi
+state_dir="${TMPDIR:-/tmp}/larch-read-poll"
+mkdir -p "$state_dir" 2>/dev/null || exit 0
+chmod 700 "$state_dir" 2>/dev/null || true
 
-if [ "$sanitized_path" = "$last_path" ] && [ "$offset" = "$last_offset" ]; then
-    age=$(( now - first_ts ))
-    if [ "$age" -lt 0 ] || [ "$age" -gt "$WINDOW_SECS" ]; then
-        count=1
-        first_ts=$now
-    else
-        count=$((count + 1))
-    fi
-else
-    count=1
-    first_ts=$now
-fi
-
-printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
-chmod 600 "$state_file" 2>/dev/null || true
-
-age=$(( now - first_ts ))
-if [ "$count" -eq "$POLL_THRESHOLD" ] && [ "$age" -le "$WINDOW_SECS" ]; then
-    msg="[system-reminder] Read-poll detected: the same path+offset has been read $count times consecutively within ${age}s. If waiting for a file to appear, use the Bash background-job completion notification instead of polling with repeated Read calls."
+emit_reminder() {
+    local msg="$1"
     jq -cn --arg ctx "$msg" \
         '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}' \
         2>/dev/null || true
-fi
+}
+
+# Read file_path: end-anchored tasks/<id>.output
+is_read_task_output_path() {
+    printf '%s' "$1" | grep -Eq '(^|/)tasks/[A-Za-z0-9._-]+\.output$'
+}
+
+bash_has_read_verb() {
+    local cmd="$1"
+    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(cat|tail|head|less|more)([^[:alnum:]_]|$)'; then
+        return 0
+    fi
+    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)[^|;&]*(\-n\b|--quiet)'; then
+        return 0
+    fi
+    return 1
+}
+
+bash_normalize_cmd() {
+    printf '%s' "$1" | sed -e ':a' -e '/\\[[:space:]]*$/N' -e 's/\\[[:space:]]*\n[[:space:]]*/ /' -e 'ta'
+}
+
+bash_segment_is_echo_only() {
+    local seg="$1"
+    seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+    case "$seg" in
+        echo*|printf*) return 0 ;;
+    esac
+    return 1
+}
+
+bash_segment_task_output_poll_token() {
+    local seg="$1" token
+    seg=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+    [ -n "$seg" ] || return 1
+    bash_segment_is_echo_only "$seg" && return 1
+    bash_has_read_verb "$seg" || return 1
+    token=$(extract_task_output_token "$seg") || return 1
+    printf '%s' "$token"
+}
+
+bash_line_task_output_poll_token() {
+    local line="$1" seg rest token
+    rest="$line"
+    while [ -n "$rest" ]; do
+        case "$rest" in
+            *';'*)
+                seg="${rest%%;*}"
+                rest="${rest#*;}"
+                ;;
+            *'&&'*)
+                seg="${rest%%&&*}"
+                rest="${rest#*&&}"
+                ;;
+            *'||'*)
+                seg="${rest%%||*}"
+                rest="${rest#*||}"
+                ;;
+            *)
+                seg="$rest"
+                rest=""
+                ;;
+        esac
+        token=$(bash_segment_task_output_poll_token "$seg") && {
+            printf '%s' "$token"
+            return 0
+        }
+    done
+    return 1
+}
+
+extract_bash_task_output_poll_token() {
+    local cmd="$1" normalized line token
+    normalized=$(bash_normalize_cmd "$cmd")
+    while IFS= read -r line || [ -n "$line" ]; do
+        token=$(bash_line_task_output_poll_token "$line") && {
+            printf '%s' "$token"
+            return 0
+        }
+    done < <(printf '%s\n' "$normalized")
+    return 1
+}
+
+# Canonical state key: rightmost tasks/<id>.output tail (absolute vs relative ignored).
+extract_task_output_token() {
+    local text="$1"
+    local token
+    token=$(printf '%s' "$text" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
+    if [ -n "$token" ]; then
+        printf '%s' "$token"
+        return 0
+    fi
+    return 1
+}
+
+task_id_from_token() {
+    printf '%s' "$1" | sed -n 's|^tasks/\(.*\)\.output$|\1|p'
+}
+
+handle_task_output_poll() {
+    local token="$1"
+    local task_id
+    task_id=$(task_id_from_token "$token") || return 0
+    local TASK_OUTPUT_THRESHOLD=2
+    local TASK_OUTPUT_WINDOW_SECS=600
+    local taskout_file="$state_dir/state-taskout-${session_hash}-${cwd_hash}-${task_id}.tsv"
+
+    local count=0 first_ts=0
+    if [ -f "$taskout_file" ]; then
+        IFS=$'\t' read -r count first_ts < "$taskout_file" 2>/dev/null || true
+        case "$count" in ''|*[!0-9]*) count=0 ;; esac
+        case "$first_ts" in ''|*[!0-9]*) first_ts=0 ;; esac
+    fi
+
+    local age=0
+    if [ "$count" -gt 0 ]; then
+        age=$(( now - first_ts ))
+        if [ "$age" -lt 0 ] || [ "$age" -gt "$TASK_OUTPUT_WINDOW_SECS" ]; then
+            count=1
+            first_ts=$now
+            age=0
+        else
+            count=$((count + 1))
+        fi
+    else
+        count=1
+        first_ts=$now
+        age=0
+    fi
+
+    printf '%s\t%s\n' "$count" "$first_ts" > "$taskout_file" 2>/dev/null || true
+    chmod 600 "$taskout_file" 2>/dev/null || true
+
+    if [ "$age" -eq 0 ] && [ "$count" -gt 1 ]; then
+        age=$(( now - first_ts ))
+    fi
+    if [ "$count" -eq "$TASK_OUTPUT_THRESHOLD" ] && [ "$age" -le "$TASK_OUTPUT_WINDOW_SECS" ]; then
+        emit_reminder "[system-reminder] Task-output poll detected: the same background task output has been read $count times within ${age}s. If waiting for a background job, use the Bash <task-notification> for one-shot completion instead of re-reading the task output file each turn."
+    fi
+}
+
+handle_generic_read_poll() {
+    local sanitized_path="$1"
+    local offset="$2"
+    local POLL_THRESHOLD=3
+    local WINDOW_SECS=30
+    local state_file="$state_dir/state-${cwd_hash}.tsv"
+
+    local last_path="" last_offset="0" count=0 first_ts=0
+    if [ -f "$state_file" ]; then
+        IFS=$'\t' read -r last_path last_offset count first_ts < "$state_file" 2>/dev/null || true
+        case "$count" in ''|*[!0-9]*) count=0 ;; esac
+        case "$first_ts" in ''|*[!0-9]*) first_ts=0 ;; esac
+    fi
+
+    local age=0
+    if [ "$sanitized_path" = "$last_path" ] && [ "$offset" = "$last_offset" ]; then
+        age=$(( now - first_ts ))
+        if [ "$age" -lt 0 ] || [ "$age" -gt "$WINDOW_SECS" ]; then
+            count=1
+            first_ts=$now
+        else
+            count=$((count + 1))
+        fi
+    else
+        count=1
+        first_ts=$now
+    fi
+
+    printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+    chmod 600 "$state_file" 2>/dev/null || true
+
+    age=$(( now - first_ts ))
+    if [ "$count" -eq "$POLL_THRESHOLD" ] && [ "$age" -le "$WINDOW_SECS" ]; then
+        emit_reminder "[system-reminder] Read-poll detected: the same path+offset has been read $count times consecutively within ${age}s. If waiting for a file to appear, use the Bash background-job completion notification instead of polling with repeated Read calls."
+    fi
+}
+
+case "$tool_name" in
+    Read)
+        file_path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || exit 0
+        [ -n "$file_path" ] || exit 0
+        sanitized_path=${file_path//$'\t'/ }
+        sanitized_path=${sanitized_path//$'\n'/ }
+
+        if is_read_task_output_path "$sanitized_path"; then
+            token=$(extract_task_output_token "$sanitized_path") || exit 0
+            handle_task_output_poll "$token"
+            exit 0
+        fi
+
+        offset=$(printf '%s' "$INPUT" | jq -r '.tool_input.offset // 0' 2>/dev/null) || offset=0
+        case "$offset" in ''|*[!0-9]*) offset=0 ;; esac
+        handle_generic_read_poll "$sanitized_path" "$offset"
+        ;;
+    Bash)
+        command_body=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
+        [ -n "$command_body" ] || exit 0
+        sanitized_command=${command_body//$'\t'/ }
+
+        token=$(extract_bash_task_output_poll_token "$sanitized_command") || exit 0
+        handle_task_output_poll "$token"
+        ;;
+esac
 
 exit 0

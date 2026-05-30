@@ -14,6 +14,7 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 ## Invariants asserted
 
 - `AGENTS.md` carries the extended phrasing `Don't spawn a Monitor or a Bash` and explicitly mentions the `for`/`while`/`until` + `sleep` form.
+- The harness also pins the AGENTS.md per-turn output-file read ban (`poll the task output file once per turn`) on the `/implement` delivery path (issue #3195).
 - `skills/implement/SKILL.md` Step 5 references `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`.
 
 ## Wiring

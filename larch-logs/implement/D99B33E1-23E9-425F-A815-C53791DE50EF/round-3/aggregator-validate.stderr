@@ -1,0 +1,3 @@
+warning: unexpected line in Suggested revisions sub-list before first 'From:' bullet in FINDING_2 ('- (none — source provided only generic “Address the concern above.”)')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Restrict echo-only skip to segments with no read verb/path (or split on `||` bef')
+warning: fix text for slot 'dyn-bash-parsing-accuracy-output.txt' in FINDING_23 not traceable to scoped input (first 80 chars: 'tighten the pattern to require `cat` as a standalone token (e.g. `\\<cat\\>` with ')

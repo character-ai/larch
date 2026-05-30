@@ -46,6 +46,9 @@ check "$AGENTS_MD" \
 check "$AGENTS_MD" \
     "AGENTS.md cites the for/while/until + sleep pattern" \
     '`for`/`while`/`until` + `sleep`'
+check "$AGENTS_MD" \
+    "AGENTS.md bans per-turn output-file polling while a run_in_background task runs" \
+    'poll the task output file once per turn'
 
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \

@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Real duplication but shared-helper refactor is optional for a warn-only hook.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Prefilter is a micro-optimization on every Bash PostToolUse, not a correctness gap.
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Quote-blind splitting is a known best-effort limit for this warn-only classifier.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Stale state files under /tmp are low impact versus logical 600s window reset.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Repetitive harness is maintainability preference, not a functional defect.
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Pre-existing generic Read RMW/offset edge cases are real and worth a separate hardening issue.
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- echo* segment skip treats echo || cat …/tasks/id.output as echo-only and never classifies the cat poll.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Plan explicitly fires once at threshold 2; later reads without repeat reminders are intentional.
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- grep can emit tasks/foo.output from tasks/foo.output.bak paths; worth tightening if backup reads occur.
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Hook supports tail/head/sed but harness only exercises cat for Bash task-output polls.
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Plan calls out || echo suffixes but harness lacks a regression case for that shape.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- additionalContext-only asserts are weak but acceptable for a warn-only hook smoke test.
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SECURITY.md should note new in-memory Bash classification branch per AGENTS.md policy.
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Pre-existing generic Read state still stores full sanitized_path in /tmp TSV.
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- First-match segment token is a rare compound-command edge case for a warn-only hook.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Missing session_id/conversation_id collapses all callers into one nosession counter bucket per cwd+task.
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- hook-anti-read-poll.md overclaims session isolation while nosession sharing contradicts it.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Unlocked TSV RMW is acceptable best-effort semantics for a fail-open warn-only hook.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Stub sibling .md drift is housekeeping, not a runtime or test-contract defect.
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Intentional larch-logs commits per project convention, not a defect to file.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Without || splitting, guard-shaped commands can false-positive; acceptable for warn-only hook.
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- && RHS counted without short-circuit model yields warn-only false positives, not missed polls.
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Read-verb regex requires a non-identifier boundary after cat, so cat_output does not match.

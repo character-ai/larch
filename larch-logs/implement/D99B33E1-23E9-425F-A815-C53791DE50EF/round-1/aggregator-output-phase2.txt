@@ -1,0 +1,172 @@
+Normalizing reviewer inputs into a merged finding list. Checking the hook script briefly so titles and line references align with the code.
+Structured aggregator output (plain text for `aggregator-output.txt`):
+
+### FINDING_1: Task-output state keys split absolute vs relative paths
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, dyn-bash-regex-classifiers-output.txt, dyn-state-counter-transitions-output.txt
+- **Severity**: important
+- **Concern**: `extract_task_output_token` stores and compares path tokens verbatim (preferring an absolute `/…/tasks/<id>.output` when present, else the relative `tasks/<id>.output` tail). Read and Bash polls of the same background task that differ only in absolute vs relative spelling—or Read with a repo-relative prefix vs Bash with a cwd-relative tail—land on different state keys, so the 600s / threshold-2 counter may never reach the turn-2 reminder despite per-turn polling. The absolute-path `grep -oE` can also truncate prefixes (e.g. `foo/bar/tasks/id.output` → `/bar/tasks/id.output`), widening key splits. This conflicts with documented normalization in `scripts/hook-anti-read-poll.md`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Always canonicalize the state key to the tasks/<id>.output tail; add a harness case alternating Read+Bash paths for one id.
+  - From cursor-specialist-correctness-output.txt: Normalize state key to canonical tasks/<id>.output tail for all branches
+  - From cursor-specialist-testing-output.txt: Normalize to tasks/<id>.output tail only or add mixed-path harness case
+  - From cursor-specialist-edge-cases-output.txt: Canonicalize all task-output keys to tasks/<id>.output (or cwd-absolutized path) before counting; add Read+Bash harness case.
+  - From dyn-bash-regex-classifiers-output.txt: Prefer the longest (or rightmost) `tasks/<id>.output` match, include the full prefix back to the previous path separator without stopping at the first `/`, or normalize only to the stable `tasks/<id>.output` tail for *all* branches (Read and Bash) when the plan allows that weaker key.
+  - From dyn-state-counter-transitions-output.txt: Always normalize the state key to the captured `tasks/<id>.output` tail (regex capture group or strip through the last `/tasks/`), use that for read/write/compare in `handle_task_output_poll`, and add a harness case that alternates absolute and relative forms and expects the second poll to fire.
+
+### FINDING_2: hooks.json Read|Bash matcher not CI-pinned with hook script
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: `hooks/hooks.json` registration for `hook-anti-read-poll.sh` is not pinned in CI alongside the script. A matcher revert to Read-only while the Bash branch remains would leave the #3175 mitigation dead in production while `test-hook-anti-read-poll.sh` stays green.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add harness grep that hooks.json entry for hook-anti-read-poll.sh uses matcher Read|Bash
+
+### FINDING_3: Missing harness for shared Read↔Bash counter on same task output
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: No cross-tool test ensures Read-then-Bash (or mixed-path) polls share one normalized token state; regression splitting Read/Bash counters would not be caught.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add Read then Bash cat on same TASK_OUT and cwd; second call should fire reminder
+
+### FINDING_4: Single last_token slot cannot track two task outputs concurrently
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: One `last_token` per cwd in task-output state cannot track two background task output files at once. Alternating reads of `tasks/A.output` and `tasks/B.output` each turn can keep both counters at 1.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Use per-id state lines or document single-background-task assumption
+
+### FINDING_5: Bash classifier false positives from whole-command substring matching
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: `bash_has_read_verb` / `bash_is_task_output_poll` classify using read verbs and `tasks/…\.output` substrings anywhere in the full command string (including inside `echo`, logs, or quoted text), not at compound-command boundaries or on the actual read operand. Benign commands that merely mention `cat` and a task path can increment the counter and emit spurious reminders (warn-only; security reviewers treat this as correctness/UX, not elevation).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Tighten verb matching to compound-command boundaries or ignore quoted segments
+  - From cursor-specialist-testing-output.txt: Warn-only; acceptable per plan exotic-form scope
+  - From cursor-specialist-edge-cases-output.txt: Strip quoted strings before classification or require read verb and path on the same shell segment; add negative harness case.
+  - From cursor-specialist-security-output.txt: **False positives (e.g. `echo 'cat tasks/foo.output'`)** are correctness/UX, not a security elevation; the hook cannot block tools.
+
+### FINDING_6: `sed -n` detection matches any `-n` substring in the command
+- **Reviewer(s)**: dyn-bash-regex-classifiers-output.txt
+- **Severity**: latent
+- **Concern**: `bash_has_read_verb` treats any literal `-n` anywhere in the command as “`sed -n` read mode” without anchoring to `sed` or word boundaries. Flags such as `find … -name`, `sort -n`, and `grep -rn` can satisfy the `sed` branch when `sed` appears elsewhere for non-read work, misclassifying non-polling Bash as a task-output poll.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-bash-regex-classifiers-output.txt: Require `-n` only in the `sed` argument context, e.g. match `sed` then a bounded flag cluster like `sed` + `(-n|--quiet|-e …)` via a single ERE, or run a second pattern such as `(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)[^|;&]*(\-n\b|--quiet)` instead of a global `grep -q '\-n'`.
+
+### FINDING_7: Read verb and task path not tied in Bash classification
+- **Reviewer(s)**: dyn-bash-regex-classifiers-output.txt
+- **Severity**: latent
+- **Concern**: `bash_is_task_output_poll` ANDs `bash_has_read_verb` with `bash_has_task_output`, but the path check only requires `tasks/<id>.output` anywhere in the multiline command. Assignments or comments mentioning the task path on one line with an unrelated `cat` on another can still match both predicates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-bash-regex-classifiers-output.txt: Tie path detection to the read verb (e.g. extract the operand after the matched `cat`/`tail`/… token, or require `tasks/…\.output` within a bounded window after the read verb), or require the normalized token from `extract_task_output_token` to appear in the same “command segment” as the read verb before counting.
+
+### FINDING_8: Reminder fires only once at count equals 2
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: After the turn-2 warning, further polls within the 600s window are silent. An orchestrator that ignores the first reminder may poll dozens more times with no additional hook output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Optional: fire on count ge 2 with rate limit if stronger deterrence is needed
+  - From cursor-specialist-edge-cases-output.txt: Re-fire every Nth read or escalate message while keeping PostToolUse warn-only.
+
+### FINDING_9: Task-output poll state persists across sessions (600s TTL)
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: Task-output state in `${TMPDIR}/larch-read-poll/` lives for 600s with no session/run scope. A finished `/implement` can leave `count=2` for a task id; a new Claude session within 10 minutes that legitimately reads that output twice may get a false task-output poll reminder.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Key state with session/run id from hook JSON if available or canonicalize to tasks/<id>.output only; document TTL; optionally clear on SessionStart.
+
+### FINDING_10: Task-output state TSV updates without locking
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Concurrent PostToolUse events can race read-modify-write on the task-output TSV, losing increments or duplicating reminders.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Wrap RMW in flock or atomic mv from a temp file.
+
+### FINDING_11: Bash `tasks/…\.output.bak` suffix false match
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: Substring-based Bash task-output regex can treat `cat tasks/foo.output.bak` as a task-output poll.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Tighten pattern after .output for Bash branch.
+
+### FINDING_12: No harness for task-output 600s window expiry
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: Unlike generic Read 30s expiry coverage, there is no test that polls spaced >600s apart reset the task-output counter silently until two reads fall within the window.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add task-output expiry harness case or document blind spot in hook-anti-read-poll.md
+
+### FINDING_13: Bash poll harness asserts only additionalContext presence
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: New Bash poll cases only check that `additionalContext` is non-empty, not the reminder message text; a wrong reminder string on the Bash path could still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Assert Task-output poll detected or task-notification in Bash poll cases
+
+### FINDING_14: Variable-only Bash polls invisible to literal-path matchers
+- **Reviewer(s)**: dyn-bash-regex-classifiers-output.txt
+- **Severity**: latent
+- **Concern**: When the orchestrator uses `cat "$VAR"` / `cat ${TASK_OUT}` and the literal `tasks/…\.output` never appears in `tool_input.command`, both `bash_has_task_output` and `extract_task_output_token` miss the pattern; the harness does not cover variable-only command text.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-bash-regex-classifiers-output.txt: Document as an accepted blind spot, or add a softer heuristic (e.g. warn on repeated Bash `cat`/`tail` of any `*.output` under a `tasks/` parent directory when `jq` exposes expanded paths elsewhere)—only if product wants broader coverage than literal-string matching.
+
+### OOS_1: [OUT_OF_SCOPE] Non-verb / extended-tool polling bypasses Bash branch
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, dyn-bash-regex-classifiers-output.txt
+- **Severity**: latent
+- **Concern**: Polling via `grep`, `awk`, `python`, process substitution, or `sed` without `-n` on task output still bypasses the hook; plan-accepted warn-only scope for this PR.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Accept for warn-only scope or extend verb/path detection later
+  - From cursor-specialist-edge-cases-output.txt: Accept for this PR or extend matchers in a follow-up.
+  - From dyn-bash-regex-classifiers-output.txt: Polling via `awk`, `python -c`, process substitution, or `sed` without `-n` is still invisible to `bash_has_read_verb`; the plan explicitly treats that as acceptable for a warn-only hook.
+
+### OOS_2: [OUT_OF_SCOPE] PostToolUse perf cost on every Bash invocation
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: Hook runs on every Bash PostToolUse with early exit for non-matches; extra `jq`/`grep` work per call. Bounded, fail-open, acceptable for this mitigation tier unless perf becomes an issue.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Acceptable tradeoff unless perf becomes an issue
+  - From cursor-specialist-security-output.txt: Every Bash PostToolUse now runs several `grep`s over the full command (5s hook timeout). That increases hook work but remains bounded, fail-open, and non-blocking — acceptable for this mitigation tier.
+
+### OOS_3: [OUT_OF_SCOPE] relevant-checks.sh does not map hook / AGENTS.md edits
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: Local `relevant-checks.sh` may not run `test-hook-anti-read-poll.sh` for hook or `AGENTS.md` edits until full `make lint` (pre-existing).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Pre-existing; optional mapping for hook-anti-read-poll and AGENTS.md paths
+
+### OOS_4: [OUT_OF_SCOPE] State file writes without symlink-safe open
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: State files are written with `printf … > "$taskout_file"` / `> "$state_file"` without verifying the target is a regular file (no `O_NOFOLLOW` / non-symlink check). Same-UID symlink planting under `${TMPDIR}/larch-read-poll/` could redirect writes; pattern predates #3195.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: (if hardening is ever desired) open state files with a symlink-safe write helper, matching patterns used elsewhere in the repo (e.g. stall-recovery’s non-symlink path checks in `SECURITY.md:56`).
+
+### OOS_5: [OUT_OF_SCOPE] Harness omits mode-600 check for state-taskout files
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Harness checks mode 600 only on generic state file, not `state-taskout-*`; task-output state file permission regressions might go unnoticed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Add find -perm 600 assertion for state-taskout files in harness.
+
+### OOS_6: [OUT_OF_SCOPE] Intentional Read end-anchor vs Bash substring asymmetry
+- **Reviewer(s)**: dyn-bash-regex-classifiers-output.txt
+- **Severity**: nit
+- **Concern**: `is_read_task_output_path` is end-anchored on `file_path` while `bash_has_task_output` is intentionally substring-based for suffix-appended incident commands; no wrapped-grep violation in this script context.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (No slot provided a concrete fix beyond plan acceptance.)
+
+### OOS_7: [OUT_OF_SCOPE] Out-of-feature-scope commits in branch history
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Commits `3c762ac1d` (design run log flush) and `e70ac8e6b` (implement run log flush) are out of feature scope; feature work is in `2dccee2fa`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (No concrete fix direction beyond scope hygiene.)
+
+---
+
+**Subsumed / not emitted as findings**
+
+- **Security attestations** (FINDING_15–19): positive trust-boundary, injection, command-handling, state-permission, and DoS notes — no actionable defect; omitted from `### FINDING_N:` list.
+- **Plan-fidelity traceability** (FINDING_31–32): requirement matrix marked met; not a defect finding.
+- **Duplicate OOS quoted-echo note** (FINDING_14 input): merged into FINDING_5.
+- **Generic “Address the concern above”** bullets: replaced by verbatim fixes from Concern text where present.
+
+**Merge summary**: 39 raw inputs → **14 in-scope findings** + **7 OOS blocks**; security positives and plan “met” rows dropped. Highest-severity cluster is **FINDING_1** (normalization) and **FINDING_2** (CI pin), both **important**.

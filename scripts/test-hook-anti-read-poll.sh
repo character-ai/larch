@@ -4,7 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 HOOK="$SCRIPT_DIR/hook-anti-read-poll.sh"
+HOOKS_JSON="$REPO_ROOT/hooks/hooks.json"
 
 [ -x "$HOOK" ] || { echo "FAIL: $HOOK not executable" >&2; exit 1; }
 
@@ -16,17 +18,62 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-hook-anti-read-poll.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 
 mk_payload() {
-    local path="$1" offset="${2:-0}" cwd="${3:-/tmp/test-proj}"
-    jq -cn --arg p "$path" --argjson off "$offset" --arg cwd "$cwd" \
-        '{tool_name:"Read",tool_input:{file_path:$p,offset:$off},cwd:$cwd}'
+    local path="$1" offset="${2:-0}" cwd="${3:-/tmp/test-proj}" session_id="${4:-}"
+    jq -cn --arg p "$path" --argjson off "$offset" --arg cwd "$cwd" --arg sid "$session_id" \
+        '{tool_name:"Read",tool_input:{file_path:$p,offset:$off},cwd:$cwd}
+         + (if ($sid|length) > 0 then {session_id:$sid} else {} end)'
+}
+
+mk_bash_payload() {
+    local command="$1" cwd="${2:-/tmp/test-proj}" session_id="${3:-}"
+    jq -cn --arg cmd "$command" --arg cwd "$cwd" --arg sid "$session_id" \
+        '{tool_name:"Bash",tool_input:{command:$cmd},cwd:$cwd}
+         + (if ($sid|length) > 0 then {session_id:$sid} else {} end)'
 }
 
 run_hook() {
-    local now="$1" path="$2" offset="${3:-0}" cwd="${4:-/tmp/test-proj}"
-    mk_payload "$path" "$offset" "$cwd" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
+    local now="$1" path="$2" offset="${3:-0}" cwd="${4:-/tmp/test-proj}" session_id="${5:-}"
+    mk_payload "$path" "$offset" "$cwd" "$session_id" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
 }
 
+run_bash_hook() {
+    local now="$1" command="$2" cwd="${3:-/tmp/test-proj}" session_id="${4:-}"
+    mk_bash_payload "$command" "$cwd" "$session_id" | HOOK_ANTI_READ_POLL_NOW="$now" "$HOOK"
+}
+
+assert_reminder() {
+    local out="$1" label="$2"
+    if printf '%s' "$out" | grep -q 'additionalContext'; then
+        pass "$label"
+    else
+        fail "$label (expected reminder, got: $out)"
+    fi
+}
+
+assert_silent() {
+    local out="$1" label="$2"
+    if [ -z "$out" ]; then
+        pass "$label"
+    else
+        fail "$label (expected silent, got: $out)"
+    fi
+}
+
+TASK_OUT='/tmp/proj/tasks/testtask123.output'
+
 export TMPDIR="$TMP"
+
+echo "=== hooks.json pins Read|Bash matcher on anti-read-poll hook ==="
+if jq -e --arg cmd 'hook-anti-read-poll.sh' '
+    .hooks.PostToolUse[]?
+    | select(.matcher == "Read|Bash")
+    | .hooks[]?
+    | select(.command | test($cmd))
+' "$HOOKS_JSON" >/dev/null 2>&1; then
+    pass 'hooks.json co-locates hook-anti-read-poll.sh with matcher Read|Bash'
+else
+    fail "hooks.json must register hook-anti-read-poll.sh under matcher Read|Bash in one PostToolUse block"
+fi
 
 echo "=== first two calls do not fire ==="
 out1=$(run_hook 0 "/tmp/file.md" 0 "/proj")
@@ -83,9 +130,174 @@ if [ -z "$out_p2" ]; then pass 'new path call 2 silent'; else fail "new path cal
 out_p3=$(run_hook 2 "/tmp/different.md" 0 "/proj2")
 if [ -z "$out_p3" ]; then pass 'switched path call 1 silent'; else fail "switched path call 1 should be silent, got: $out_p3"; fi
 
-echo "=== non-Read tool is ignored ==="
-out_bash=$(jq -cn '{tool_name:"Bash",tool_input:{command:"ls"},cwd:"/proj"}' | "$HOOK")
-if [ -z "$out_bash" ]; then pass 'Bash tool ignored'; else fail "Bash tool should be ignored, got: $out_bash"; fi
+echo "=== non-poll Bash is ignored ==="
+out_bash=$(run_bash_hook 0 "ls" "/proj-nonpoll")
+assert_silent "$out_bash" 'non-poll Bash (ls) silent'
+
+echo "=== Bash task-output poll fires (#3195) ==="
+out_bt1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-bash-poll")
+assert_silent "$out_bt1" 'Bash task-output call 1 silent'
+out_bt2=$(run_bash_hook 1 "cat $TASK_OUT" "/proj-bash-poll")
+assert_reminder "$out_bt2" 'Bash task-output call 2 fires reminder'
+
+echo "=== multiline Bash task-output poll fires ==="
+multiline_cmd=$'export FOO=bar\nVAR=1\ncat '"$TASK_OUT"
+out_bm1=$(run_bash_hook 0 "$multiline_cmd" "/proj-bash-multiline")
+assert_silent "$out_bm1" 'multiline Bash task-output call 1 silent'
+out_bm2=$(run_bash_hook 1 "$multiline_cmd" "/proj-bash-multiline")
+assert_reminder "$out_bm2" 'multiline Bash task-output call 2 fires reminder'
+
+echo "=== Bash task-output poll with transcript suffixes ==="
+suffix_cmd="cat $TASK_OUT 2>/dev/null"' | head -5'
+out_bs1=$(run_bash_hook 0 "$suffix_cmd" "/proj-bash-suffix")
+assert_silent "$out_bs1" 'suffix Bash task-output call 1 silent'
+out_bs2=$(run_bash_hook 1 "$suffix_cmd" "/proj-bash-suffix")
+assert_reminder "$out_bs2" 'suffix Bash task-output call 2 fires reminder'
+
+echo "=== wrapper-variant Bash polls share one counter ==="
+out_bw1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-bash-wrapper")
+assert_silent "$out_bw1" 'wrapper Bash call 1 silent'
+out_bw2=$(run_bash_hook 2 "sleep 1 && cat $TASK_OUT 2>/dev/null" "/proj-bash-wrapper")
+assert_reminder "$out_bw2" 'wrapper Bash call 2 (variant command) fires reminder'
+
+echo "=== slow Read task-output polling fires ==="
+out_sr1=$(run_hook 0 "$TASK_OUT" 0 "/proj-slow-read")
+assert_silent "$out_sr1" 'slow Read task-output call 1 silent'
+out_sr2=$(run_hook 40 "$TASK_OUT" 0 "/proj-slow-read")
+assert_reminder "$out_sr2" 'slow Read task-output call 2 (>30s) fires reminder'
+
+echo "=== offset-ignore for task-output Read ==="
+out_of1=$(run_hook 0 "$TASK_OUT" 0 "/proj-task-offset")
+assert_silent "$out_of1" 'task-output Read offset call 1 silent'
+out_of2=$(run_hook 1 "$TASK_OUT" 50 "/proj-task-offset")
+assert_reminder "$out_of2" 'task-output Read offset call 2 fires reminder'
+
+echo "=== false-positive guard: cat notes.txt ==="
+out_fp1=$(run_bash_hook 0 "cat notes.txt" "/proj-fp")
+assert_silent "$out_fp1" 'cat notes.txt call 1 silent'
+out_fp2=$(run_bash_hook 1 "cat notes.txt" "/proj-fp")
+assert_silent "$out_fp2" 'cat notes.txt call 2 silent'
+
+echo "=== Read then Bash share task-output counter ==="
+REL_TASK_OUT='tasks/crossread123.output'
+ABS_TASK_OUT="/tmp/proj/$REL_TASK_OUT"
+out_rb1=$(run_hook 0 "$ABS_TASK_OUT" 0 "/proj-read-bash-share")
+assert_silent "$out_rb1" 'Read then Bash call 1 silent'
+out_rb2=$(run_bash_hook 1 "cat $REL_TASK_OUT" "/proj-read-bash-share")
+assert_reminder "$out_rb2" 'Read then Bash call 2 fires reminder'
+
+echo "=== absolute then relative Bash paths share counter ==="
+out_mx1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-mixed-path")
+assert_silent "$out_mx1" 'mixed path Bash call 1 silent'
+out_mx2=$(run_bash_hook 1 "cat tasks/testtask123.output" "/proj-mixed-path")
+assert_reminder "$out_mx2" 'mixed path Bash call 2 fires reminder'
+
+echo "=== relative Read prefix normalizes to tasks tail ==="
+REL_PREFIX_OUT='foo/bar/tasks/prefixnorm.output'
+out_pn1=$(run_hook 0 "$REL_PREFIX_OUT" 0 "/proj-prefix-norm")
+assert_silent "$out_pn1" 'prefix Read call 1 silent'
+out_pn2=$(run_bash_hook 1 "cat /tmp/proj/foo/bar/tasks/prefixnorm.output" "/proj-prefix-norm")
+assert_reminder "$out_pn2" 'prefix Read then absolute Bash call 2 fires reminder'
+
+echo "=== task-output window expires after 600s ==="
+out_te1=$(run_hook 0 "$TASK_OUT" 0 "/proj-task-expiry")
+assert_silent "$out_te1" 'task-output expiry call 1 silent'
+out_te2=$(run_hook 601 "$TASK_OUT" 0 "/proj-task-expiry")
+assert_silent "$out_te2" 'task-output expiry call 2 after 600s silent'
+out_te3=$(run_hook 602 "$TASK_OUT" 0 "/proj-task-expiry")
+assert_reminder "$out_te3" 'task-output expiry call 3 fires reminder'
+
+echo "=== quoted Bash task-output path polls fire ==="
+quoted_cmd="cat '/tmp/proj/tasks/testtask123.output'"
+out_q1=$(run_bash_hook 0 "$quoted_cmd" "/proj-quoted-path")
+assert_silent "$out_q1" 'quoted Bash task-output call 1 silent'
+out_q2=$(run_bash_hook 1 "$quoted_cmd" "/proj-quoted-path")
+assert_reminder "$out_q2" 'quoted Bash task-output call 2 fires reminder'
+
+echo "=== echo then cat on same line counts ==="
+echo_cat_cmd="echo '=== status ==='; cat $TASK_OUT"
+out_ec1=$(run_bash_hook 0 "$echo_cat_cmd" "/proj-echo-cat-line")
+assert_silent "$out_ec1" 'echo+cat same line call 1 silent'
+out_ec2=$(run_bash_hook 1 "$echo_cat_cmd" "/proj-echo-cat-line")
+assert_reminder "$out_ec2" 'echo+cat same line call 2 fires reminder'
+
+echo "=== echo || cat task-output poll fires ==="
+echo_or_cat_cmd="echo 'waiting' || cat $TASK_OUT"
+out_eoc1=$(run_bash_hook 0 "$echo_or_cat_cmd" "/proj-echo-or-cat")
+assert_silent "$out_eoc1" 'echo||cat task-output call 1 silent'
+out_eoc2=$(run_bash_hook 1 "$echo_or_cat_cmd" "/proj-echo-or-cat")
+assert_reminder "$out_eoc2" 'echo||cat task-output call 2 fires reminder'
+
+echo "=== Bash tail task-output poll fires ==="
+out_tail1=$(run_bash_hook 0 "tail -5 $TASK_OUT" "/proj-bash-tail")
+assert_silent "$out_tail1" 'tail task-output call 1 silent'
+out_tail2=$(run_bash_hook 1 "tail -5 $TASK_OUT" "/proj-bash-tail")
+assert_reminder "$out_tail2" 'tail task-output call 2 fires reminder'
+
+echo "=== Bash sed -n task-output poll fires ==="
+out_sedn1=$(run_bash_hook 0 "sed -n '1,5p' $TASK_OUT" "/proj-bash-sed-n")
+assert_silent "$out_sedn1" 'sed -n task-output call 1 silent'
+out_sedn2=$(run_bash_hook 1 "sed -n '1,5p' $TASK_OUT" "/proj-bash-sed-n")
+assert_reminder "$out_sedn2" 'sed -n task-output call 2 fires reminder'
+
+echo "=== Bash task-output poll with || echo suffix fires ==="
+or_echo_cmd="cat $TASK_OUT || echo '(no output yet)'"
+out_oe1=$(run_bash_hook 0 "$or_echo_cmd" "/proj-bash-or-echo")
+assert_silent "$out_oe1" '||echo suffix task-output call 1 silent'
+out_oe2=$(run_bash_hook 1 "$or_echo_cmd" "/proj-bash-or-echo")
+assert_reminder "$out_oe2" '||echo suffix task-output call 2 fires reminder'
+
+echo "=== multiline Bash with two task ids uses matching line token ==="
+two_id_ml_cmd=$'cat /tmp/proj/tasks/taskA.output\ncat /tmp/proj/tasks/taskB.output'
+out_2id1=$(run_bash_hook 0 "$two_id_ml_cmd" "/proj-two-id-multiline")
+assert_silent "$out_2id1" 'two-id multiline call 1 silent'
+out_2id2=$(run_bash_hook 1 "$two_id_ml_cmd" "/proj-two-id-multiline")
+assert_reminder "$out_2id2" 'two-id multiline call 2 fires reminder for task A'
+
+echo "=== distinct session_id buckets do not share counters ==="
+out_s1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-session-iso" "session-alpha")
+assert_silent "$out_s1" 'session alpha call 1 silent'
+out_s2=$(run_bash_hook 1 "cat $TASK_OUT" "/proj-session-iso" "session-beta")
+assert_silent "$out_s2" 'session beta call 1 silent'
+out_s3=$(run_bash_hook 2 "cat $TASK_OUT" "/proj-session-iso" "session-alpha")
+assert_reminder "$out_s3" 'session alpha call 2 fires reminder'
+
+echo "=== echo mentioning task path does not count ==="
+out_en1=$(run_bash_hook 0 "echo cat $TASK_OUT" "/proj-echo-fp")
+assert_silent "$out_en1" 'echo task path call 1 silent'
+out_en2=$(run_bash_hook 1 "echo cat $TASK_OUT" "/proj-echo-fp")
+assert_silent "$out_en2" 'echo task path call 2 silent'
+
+echo "=== assignment line then unrelated cat is ignored ==="
+assign_cmd=$'OUT=tasks/decoy123.output\ncat notes.txt'
+out_as1=$(run_bash_hook 0 "$assign_cmd" "/proj-assign-fp")
+assert_silent "$out_as1" 'assignment decoy call 1 silent'
+out_as2=$(run_bash_hook 1 "$assign_cmd" "/proj-assign-fp")
+assert_silent "$out_as2" 'assignment decoy call 2 silent'
+
+echo "=== grep -rn with sed does not false-positive ==="
+out_sed1=$(run_bash_hook 0 "sed -i.bak 's/a/b/' notes.txt; grep -rn pattern ." "/proj-sed-fp")
+assert_silent "$out_sed1" 'sed edit plus grep -rn call 1 silent'
+out_sed2=$(run_bash_hook 1 "sed -i.bak 's/a/b/' notes.txt; grep -rn pattern ." "/proj-sed-fp")
+assert_silent "$out_sed2" 'sed edit plus grep -rn call 2 silent'
+
+echo "=== two task ids tracked independently ==="
+TASK_A='/tmp/proj/tasks/taskA.output'
+TASK_B='/tmp/proj/tasks/taskB.output'
+out_ab1=$(run_bash_hook 0 "cat $TASK_A" "/proj-two-tasks")
+assert_silent "$out_ab1" 'two tasks A call 1 silent'
+out_ab2=$(run_bash_hook 1 "cat $TASK_B" "/proj-two-tasks")
+assert_silent "$out_ab2" 'two tasks B call 1 silent'
+out_ab3=$(run_bash_hook 2 "cat $TASK_A" "/proj-two-tasks")
+assert_reminder "$out_ab3" 'two tasks A call 2 fires reminder'
+
+echo "=== generic Read regression (3 within 30s, 2 do not) ==="
+out_gr1=$(run_hook 0 "/tmp/generic-regression.md" 0 "/proj-generic-reg")
+assert_silent "$out_gr1" 'generic Read call 1 silent'
+out_gr2=$(run_hook 1 "/tmp/generic-regression.md" 0 "/proj-generic-reg")
+assert_silent "$out_gr2" 'generic Read call 2 silent'
+out_gr3=$(run_hook 2 "/tmp/generic-regression.md" 0 "/proj-generic-reg")
+assert_reminder "$out_gr3" 'generic Read call 3 fires reminder'
 
 echo "=== expired window resets before recounting ==="
 out_w1=$(run_hook 0 "/tmp/window.md" 0 "/proj-window")

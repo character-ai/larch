@@ -1,0 +1,22 @@
+Reviewing the branch diff and hook state-file architecture.
+Checking round-2 review changes and whether `nosession` / race cases are documented or tested.
+Checking whether hook events typically include `session_id` and how round-2 addressed session scoping.
+### In-Scope Findings
+
+- **architecture** `scripts/hook-anti-read-poll.sh:24-28,147` — Task-output state is keyed by `session_hash`, but when both `session_id` and `conversation_id` are absent the hook hashes the constant string `nosession`, so every hook event without session metadata shares one `state-taskout-<nosession-hash>-<cwd_hash>-<task_id>.tsv` per repo/task. A later Claude session (or harness run) in the same `cwd` can inherit an in-window count from an unrelated prior session and fire on its first poll, or stay above threshold=2 and never emit the second-read reminder. **Suggested fix:** Prefer a per-process discriminator when IDs are missing (e.g. `PPID`, a hook-provided `transcript_id` if available, or a random bucket created once per hook parent) instead of a global `nosession` literal; document the fallback; add a harness case that two payloads with no `session_id`/`conversation_id` do not share counters unless that coupling is intentional.
+
+- **architecture** `scripts/hook-anti-read-poll.md:27-29` — The sibling doc claims distinct Claude sessions do not share task-output counts within the 600s TTL, but that is only true when `session_id` or `conversation_id` is present. The `nosession` path contradicts the stated contract and can mislead operators debugging false positives/negatives. **Suggested fix:** Narrow the sentence to “sessions with distinct `session_id`/`conversation_id` hashes” and explicitly document that missing metadata collapses to a shared `nosession` bucket (with the cross-session bleed behavior above).
+
+- **architecture** `scripts/hook-anti-read-poll.sh:149-172` — Task-output counting uses a non-atomic read–increment–write on a single TSV line with no locking. Concurrent PostToolUse invocations for the same task (two tools finishing in the same turn, or overlapping hook workers) can both read the same `count` and both write `count+1`, losing one increment so threshold=2 is delayed until a third poll. This is the same pattern as the generic `state-<cwd_hash>.tsv` path, but the new task-output family is the primary #3175 mitigation and uses a lower threshold (2). **Suggested fix:** For a warn-only hook, document the best-effort semantics; if stronger guarantees are needed, use an atomic update (`flock` around read/write, or append-only event log) without changing the fail-open exit behavior.
+
+### Out-of-Scope Observations
+
+- **600s expiry is enforced on read**, not only on write: `handle_task_output_poll` recomputes `age` from stored `first_ts` and resets when `age > TASK_OUTPUT_WINDOW_SECS` before incrementing (`scripts/hook-anti-read-poll.sh:157-165`); the harness case “task-output window expires after 600s” exercises this. Sessions with distinct `session_hash` values use separate files, so a prior session’s count does not carry over when IDs differ.
+
+- **`cksum` → numeric hash for `cwd`/`session` scoping** matches the pre-existing generic-state design; collision risk is acceptable for temp-file names in this warn-only hook, not a security boundary.
+
+- **`task_id` in filenames** is constrained to `[A-Za-z0-9._-]+` via the classifier/`task_id_from_token` path, so path-separator injection is not in scope; Claude task IDs are short enough that typical `NAME_MAX` limits are unlikely to bite.
+
+- **Generic `state-<cwd_hash>.tsv` remains unscoped by session** (pre-existing); only the new task-output counter family adds session hashing.
+
+- **No in-scope finding** on end-to-end `cksum` collision resistance or maximum task-id length under normal Claude ID sizes beyond the notes above.

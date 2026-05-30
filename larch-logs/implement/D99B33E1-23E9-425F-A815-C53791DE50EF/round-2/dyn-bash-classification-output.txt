@@ -1,0 +1,18 @@
+Reviewing the branch diff and the bash classification pipeline in the hook script.
+Checking how task output paths are formed and whether quoted-path cases are covered in tests.
+Checking multiline token-key alignment and whether incident transcripts use quoted paths.
+### In-Scope Findings
+
+- **correctness** `scripts/hook-anti-read-poll.sh:50-82,201-203` — `bash_strip_quoted` removes entire single- and double-quoted spans before `bash_line_is_task_output_poll` runs, so a poll shaped like `cat '/tmp/.../tasks/<id>.output'` or `cat "$TASK_OUT"` (with the task path only inside quotes) is classified on a stripped line that no longer contains `tasks/<id>.output`; `bash_has_read_verb` may still see `cat`, but `extract_task_output_token` fails and the line is not treated as a poll, so the hook stays silent even on repeated reads. Round 1 added this strip to suppress `echo`-line false positives, but it directly trades away quoted-path coverage; the harness has no quoted-path case. **Suggested fix:** Run token/verb matching on the unstripped line (or only strip quote spans that do not contain `tasks/…\.output`), or have `bash_is_task_output_poll` return the matched token from the same line and pass that into `handle_task_output_poll` instead of re-deriving from stripped text; add a harness case for `cat '/tmp/proj/tasks/testtask123.output'`.
+
+- **correctness** `scripts/hook-anti-read-poll.sh:75-82,201-203` — Detection and counting use different token sources: `bash_is_task_output_poll` returns on the first stripped line where a read verb and `tasks/<id>.output` co-occur, but the Bash branch then calls `extract_task_output_token` on the full `sanitized_command` and takes `tail -1`. In a multiline compound such as `cat …/tasks/AAA.output` on line 1 and `tail …/tasks/BBB.output` on line 2, the hook can treat line 1 as a poll yet increment state for `tasks/BBB.output`, so reminders may fire on the wrong task id or miss the task actually being polled. **Suggested fix:** Have `bash_is_task_output_poll` (or `bash_line_is_task_output_poll`) emit the token from the matching line and pass only that token to `handle_task_output_poll`; add a harness with two different task ids in one multiline command.
+
+### Out-of-Scope Observations
+
+- The `extract_task_output_token` / `bash_line_is_task_output_poll` return chain (`token=$(extract_task_output_token "$line") || return 1` then `bash_has_read_verb "$line"`) is correct: a missing token short-circuits before verb checks, and the function exit status follows `bash_has_read_verb`.
+
+- The `sed -n` branch (`[^|;&]*` before `\-n\b|--quiet`) is reasonable for per-line matching: it avoids treating a `sed` on a later pipeline segment as a read-verb on the same line, and the harness’s `sed -i.bak …; grep -rn` decoy stays silent.
+
+- Task IDs in real transcripts (e.g. `bb5kk5k2i`, `bbu3njyql`) match `[A-Za-z0-9._-]+`; limiting the classifier to that set is consistent with the plan and observed paths, not a regression for the #3175 shape.
+
+- #3175-style incident Bash bodies in `larch-logs` overwhelmingly use unquoted absolute `cat`/`tail` paths on the same line as the read verb; those shapes are covered by the new tests. Quoted-path and variable-only-path reads remain documented warn-only gaps (`scripts/hook-anti-read-poll.md` lines 37–40; plan “Hook false negatives”).

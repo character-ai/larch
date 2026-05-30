@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated counter paths are real but a shared helper is optional refactor for a warn-only hook
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Bash always normalizes before classify; prefilter is a minor perf win not worth blocking
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- unquoted `;`/`&&` splitting can fracture edge cases; plan accepts best-effort Bash parsing
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale state-taskout files accumulate but logical 600s reset limits functional impact
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- harness repetition is maintainability-only for an offline warn-only hook
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- pre-existing generic Read quirks; valid follow-up but out of #3195 scope
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- `echo*` prefix on an unsplit `||` segment skips trailing `cat …/tasks/id.output` classification
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- single reminder at count==2 matches the plan’s threshold-2 acceptance criteria
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- `.output.bak` prefix match is plausible but unlikely in practice
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- hook matches tail/head/sed but harness only exercises cat
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan calls out `|| echo` suffix shapes; harness lacks that regression case
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- generic Read tests pin prose; task-output cases only check JSON presence
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SECURITY.md omits new in-memory Bash classification; doc gap worth a short note
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- generic Read TSV path storage predates this branch; separate hardening issue
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- first matching segment on one line is a known compound-command limitation
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- shared `nosession` bucket is documented fallback when IDs absent
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- doc claims session isolation within TTL but `nosession` contradicts that
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- non-atomic TSV RMW is real but acceptable for warn-only best-effort counting
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- test sibling stub drift is housekeeping, not a functional defect
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional larch-logs commits are project convention, not a review defect
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `||` guard false positives are possible but acceptable for a warn-only classifier
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dead RHS after `false &&` may false-positive; best-effort static parsing
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- `bash_has_read_verb` requires a non-`_` boundary after `cat`, so `cat_output` does not match
