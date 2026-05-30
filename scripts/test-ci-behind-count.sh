@@ -102,6 +102,33 @@ rc=$(run_behind "$T4" "$out" "$err" --base-remote upstream --base-ref main --no-
 assert_rc "upstream base exits 0" "$rc" 0
 assert_kv "upstream behind count" "$(cat "$out")" BEHIND_COUNT 1
 
+# Fail-open on fetch failure (network blip).
+T6="$TMPROOT/fetchfail"
+mkdir -p "$T6/bin" "$T6/repo"
+REAL_GIT=$(command -v git)
+init_repo "$T6/repo"
+git -C "$T6/repo" remote add origin "$T6/repo/.git" 2>/dev/null || true
+git -C "$T6/repo" checkout -q feature
+cat > "$T6/bin/git" <<STUB
+#!/usr/bin/env bash
+case "\$1" in
+  fetch) echo "fatal: unable to access remote" >&2; exit 128 ;;
+esac
+exec "$REAL_GIT" "\$@"
+STUB
+chmod +x "$T6/bin/git"
+out="$T6/out"; err="$T6/err"
+rc=0
+( cd "$T6/repo" && LARCH_QUIET_DISABLE=1 PATH="$T6/bin:$PATH" \
+    "$SUBJECT" --base-remote origin --base-ref main ) >"$out" 2>"$err" || rc=$?
+assert_rc "fetch failure exits 0" "$rc" 0
+assert_kv "fetch failure fail-open count" "$(cat "$out")" BEHIND_COUNT 0
+if grep -Fq 'fetch' "$err"; then
+    ok "fetch failure emits diagnostic"
+else
+    fail "fetch failure should emit stderr diagnostic"
+fi
+
 # Fail-open on bad ref.
 T5="$TMPROOT/badref"
 mkdir -p "$T5"

@@ -370,6 +370,7 @@ PR_TITLE=Title
 RESUME_PHASE=
 CALLER_KIND=
 REBASE_COUNT=0
+CI_FIX_REBASE_PENDING=false
 FIX_ATTEMPTS=0
 ITERATION=0
 TRANSIENT_RETRIES=0
@@ -5888,6 +5889,592 @@ else
     fail "ci_fix_waterfall_cursor_validation_codex_other should not classify codex as first-fixer-non-health"
     sed 's/^/    out: /' "$tmp/out" 2>/dev/null || true
 fi
+
+# kv_value parses BEHIND_COUNT when contract output has leading noise lines.
+root=$(make_repo ci_fix_kv_value_noisy_behind_count)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-behind-count.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "STATUS=ok"
+echo "NOTE=contract preamble"
+echo "BEHIND_COUNT=1"
+STUB
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3210kv\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "FAILED_JOBS_COUNT=1"
+echo -e "lint\t\tfixable" > "${IMPLEMENT_TMPDIR}/ci-failed-jobs-ci-initial.tsv"
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "LINT_FIX_STATUS=clean"
+STUB
+cat > "$root/scripts/env" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "SKIP=agnix,lint-mermaid-fences,shellcheck" ]; then shift; fi
+exec "$@"
+STUB
+cat > "$root/scripts/make" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh rebase-push.sh commit-changelog.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$call_dir/rebase-push-args.txt"
+exit 0
+STUB
+cat > "$root/scripts/git-push.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/git-force-push.sh" <<STUB
+#!/usr/bin/env bash
+printf 'force\n' >> "$call_dir/push-kind.txt"
+exit 0
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'vendor fix\n' >> README.md
+git add README.md && git commit -q -m "Fix CI failure"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+chmod +x "$root/scripts/ci-behind-count.sh" "$root/scripts/ci-wait.sh" "$root/scripts/ci-failed-jobs.sh" \
+    "$root/scripts/run-relevant-checks-captured.sh" "$root/scripts/lint-fix-loop.sh" \
+    "$root/scripts/env" "$root/scripts/make" "$root/scripts/drop-bump-commit.sh" \
+    "$root/scripts/git-sync-local-main.sh" "$root/scripts/rebase-push.sh" \
+    "$root/scripts/commit-changelog.sh" "$root/scripts/git-push.sh" "$root/scripts/git-force-push.sh" \
+    "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3210kv"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "ci_fix_kv_value_noisy_behind_count exits 0"
+if [ -f "$call_dir/rebase-push-args.txt" ] && grep -qxF force "$call_dir/push-kind.txt" 2>/dev/null; then
+    ok "ci_fix_kv_value_noisy_behind_count: noisy BEHIND_COUNT triggers defer-rebase path"
+else
+    fail "ci_fix_kv_value_noisy_behind_count: expected rebase then force-push"
+fi
+rm -rf "$call_dir"
+
+# No second defer-rebase when a later ci-wait poll reports BEHIND_COUNT=0.
+root=$(make_repo ci_fix_no_double_rebase_after_postfix)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 1 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3210nd\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/ci-behind-count.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "BEHIND_COUNT=1"
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "FAILED_JOBS_COUNT=1"
+echo -e "lint\t\tfixable" > "${IMPLEMENT_TMPDIR}/ci-failed-jobs-ci-initial.tsv"
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "LINT_FIX_STATUS=clean"
+STUB
+cat > "$root/scripts/env" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "SKIP=agnix,lint-mermaid-fences,shellcheck" ]; then shift; fi
+exec "$@"
+STUB
+cat > "$root/scripts/make" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh commit-changelog.sh merge-pr.sh git-push.sh git-force-push.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+printf 'rebase\n' >> "$call_dir/rebase-push-count.txt"
+exit 0
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'vendor fix\n' >> README.md
+git add README.md && git commit -q -m "Fix CI failure"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+cat > "$root/scripts/merge-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "MERGE_RESULT=merged"
+echo "ERROR="
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/ci-behind-count.sh" "$root/scripts/ci-failed-jobs.sh" \
+    "$root/scripts/run-relevant-checks-captured.sh" "$root/scripts/lint-fix-loop.sh" \
+    "$root/scripts/env" "$root/scripts/make" "$root/scripts/drop-bump-commit.sh" \
+    "$root/scripts/git-sync-local-main.sh" "$root/scripts/rebase-push.sh" \
+    "$root/scripts/commit-changelog.sh" "$root/scripts/merge-pr.sh" \
+    "$root/scripts/git-push.sh" "$root/scripts/git-force-push.sh" \
+    "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3210nd"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "ci_fix_no_double_rebase_after_postfix exits 0"
+rebase_calls=$(wc -l <"$call_dir/rebase-push-count.txt" 2>/dev/null | tr -d ' ')
+if [ "${rebase_calls:-0}" = "1" ]; then
+    ok "ci_fix_no_double_rebase_after_postfix: merge poll does not defer-rebase again"
+else
+    fail "ci_fix_no_double_rebase_after_postfix: expected exactly one defer-rebase call, got ${rebase_calls:-0}"
+fi
+rm -rf "$call_dir"
+
+# Post-rebase verify failure rotates vendor tier instead of pending short-circuit.
+root=$(make_repo ci_fix_post_rebase_verify_vendor_rotation)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -le 1 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3210v\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/ci-behind-count.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "BEHIND_COUNT=1"
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "FAILED_JOBS_COUNT=1"
+echo -e "lint\t\tfixable" > "${IMPLEMENT_TMPDIR}/ci-failed-jobs-ci-initial.tsv"
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "LINT_FIX_STATUS=clean"
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = "SKIP=agnix,lint-mermaid-fences,shellcheck" ]; then shift; fi
+if [ -f "$call_dir/post-rebase-fail.flag" ]; then
+  printf 'post-rebase-fail\n' >&2
+  exit 1
+fi
+exec "\$@"
+STUB
+cat > "$root/scripts/make" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh rebase-push.sh commit-changelog.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+touch "$call_dir/rebased.flag"
+exit 0
+STUB
+cat > "$root/scripts/git-push.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/git-force-push.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  printf 'cursor\n' >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-order.txt"
+fi
+printf 'vendor fix\n' >> README.md
+git add README.md && git commit -q -m "Fix CI failure"
+touch "$call_dir/post-rebase-fail.flag"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  printf 'codex\n' >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-order.txt"
+fi
+rm -f "$call_dir/post-rebase-fail.flag"
+printf 'vendor fix 2\n' >> README.md
+git add README.md && git commit -q -m "Fix CI failure"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/ci-behind-count.sh" "$root/scripts/ci-failed-jobs.sh" \
+    "$root/scripts/run-relevant-checks-captured.sh" "$root/scripts/lint-fix-loop.sh" \
+    "$root/scripts/env" "$root/scripts/make" "$root/scripts/drop-bump-commit.sh" \
+    "$root/scripts/git-sync-local-main.sh" "$root/scripts/rebase-push.sh" \
+    "$root/scripts/commit-changelog.sh" "$root/scripts/git-push.sh" "$root/scripts/git-force-push.sh" \
+    "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3210v"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "ci_fix_post_rebase_verify_vendor_rotation exits 0"
+if [ -f "$call_dir/launcher-order.txt" ] && grep -qxF codex "$call_dir/launcher-order.txt"; then
+    ok "ci_fix_post_rebase_verify_vendor_rotation: codex tier runs after post-rebase verify failure"
+else
+    fail "ci_fix_post_rebase_verify_vendor_rotation: expected codex after post-rebase verify failure"
+    sed 's/^/    launch: /' "$call_dir/launcher-order.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Post-rebase verify rc=2 from deferred rebase routes to exit_stall 10-head-changed.
+root=$(make_repo ci_fix_post_rebase_verify_rc2_stall)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3210rc2\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+cat > "$root/scripts/ci-behind-count.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "BEHIND_COUNT=1"
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "FAILED_JOBS_COUNT=1"
+echo -e "lint\t\tfixable" > "${IMPLEMENT_TMPDIR}/ci-failed-jobs-ci-initial.tsv"
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then printf '%s\n' 'lint'; exit 0; fi
+exit 1
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'mock lint failure\n'
+exit 1
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/lint-fix-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  echo "LINT_FIX_STATUS=main-agent-required"
+else
+  echo "LINT_FIX_STATUS=failed"
+  echo "FAILURE_REASON=head-changed-after-dispatch"
+fi
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh rebase-push.sh commit-changelog.sh git-push.sh git-force-push.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+#!/usr/bin/env bash
+printf 'vendor change\n' >> README.md
+git add README.md && git commit -q -m "Fix CI failure"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/ci-behind-count.sh" "$root/scripts/ci-failed-jobs.sh" \
+    "$root/scripts/gh" "$root/scripts/env" "$root/scripts/lint-fix-loop.sh" \
+    "$root/scripts/drop-bump-commit.sh" "$root/scripts/git-sync-local-main.sh" \
+    "$root/scripts/rebase-push.sh" "$root/scripts/commit-changelog.sh" \
+    "$root/scripts/git-push.sh" "$root/scripts/git-force-push.sh" "$root/scripts/launch-cursor-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3210rc2"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "ci_fix_post_rebase_verify_rc2_stall exits 4"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-head-changed" "ci_fix_post_rebase_verify_rc2_stall records 10-head-changed"
+rm -rf "$call_dir"
+
+# Post-rebase verify rc=4 retries the outer evaluate_failure attempt (second vendor call).
+root=$(make_repo ci_fix_post_rebase_verify_rc4_retry)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -le 1 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3210rc4\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/ci-behind-count.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "BEHIND_COUNT=1"
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "FAILED_JOBS_COUNT=1"
+echo -e "lint\t\tfixable" > "${IMPLEMENT_TMPDIR}/ci-failed-jobs-ci-initial.tsv"
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then printf '%s\n' 'lint'; exit 0; fi
+exit 1
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'mock lint failure\n'
+exit 1
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "LINT_FIX_STATUS=clean"
+STUB
+cat > "$root/scripts/make" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/make-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ -f "$call_dir/post-rebase.flag" ] && [ "\$count" -ge 1 ]; then exit 1; fi
+exit 0
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh commit-changelog.sh git-push.sh git-force-push.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+touch "$call_dir/post-rebase.flag"
+exit 0
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  printf 'cursor\n' >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-order.txt"
+fi
+printf 'vendor change\n' >> README.md
+git add README.md && git commit -q -m "Fix CI failure"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  printf 'codex\n' >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-order.txt"
+fi
+printf 'vendor change 2\n' >> README.md
+git add README.md && git commit -q -m "Fix CI failure"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/ci-behind-count.sh" "$root/scripts/ci-failed-jobs.sh" \
+    "$root/scripts/gh" "$root/scripts/env" "$root/scripts/lint-fix-loop.sh" "$root/scripts/make" \
+    "$root/scripts/drop-bump-commit.sh" "$root/scripts/git-sync-local-main.sh" \
+    "$root/scripts/rebase-push.sh" "$root/scripts/commit-changelog.sh" \
+    "$root/scripts/git-push.sh" "$root/scripts/git-force-push.sh" \
+    "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3210rc4"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "ci_fix_post_rebase_verify_rc4_retry exits 0"
+if [ -f "$call_dir/launcher-order.txt" ] && [ "$(wc -l <"$call_dir/launcher-order.txt" | tr -d ' ')" -ge 2 ]; then
+    ok "ci_fix_post_rebase_verify_rc4_retry: rc=4 triggers a second vendor attempt"
+else
+    fail "ci_fix_post_rebase_verify_rc4_retry: expected second vendor launch after post-rebase verify rc=4"
+    sed 's/^/    launch: /' "$call_dir/launcher-order.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Deferred rebase advances HEAD so vendor noop refresh does not false-trigger first-fixer bail.
+root=$(make_repo ci_fix_deferred_rebase_head_refresh_3134)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run3210h\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/ci-behind-count.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "BEHIND_COUNT=1"
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "FAILED_JOBS_COUNT=1"
+echo -e "lint\t\tfixable" > "${IMPLEMENT_TMPDIR}/ci-failed-jobs-ci-initial.tsv"
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "LINT_FIX_STATUS=clean"
+STUB
+cat > "$root/scripts/env" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "SKIP=agnix,lint-mermaid-fences,shellcheck" ]; then shift; fi
+exec "$@"
+STUB
+cat > "$root/scripts/make" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh commit-changelog.sh refresh-run-logs.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'noop\n' >> README.md
+git add README.md
+git commit -q -m "rebase noop advance"
+exit 0
+STUB
+cat > "$root/scripts/git-push.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/git-force-push.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/ci-behind-count.sh" "$root/scripts/ci-failed-jobs.sh" \
+    "$root/scripts/run-relevant-checks-captured.sh" "$root/scripts/lint-fix-loop.sh" \
+    "$root/scripts/env" "$root/scripts/make" "$root/scripts/drop-bump-commit.sh" \
+    "$root/scripts/git-sync-local-main.sh" "$root/scripts/rebase-push.sh" \
+    "$root/scripts/commit-changelog.sh" "$root/scripts/refresh-run-logs.sh" \
+    "$root/scripts/git-push.sh" "$root/scripts/git-force-push.sh" \
+    "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3210h"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "ci_fix_deferred_rebase_head_refresh_3134 exits 0"
+if ! grep -Fq 'first-fixer-non-health' "$tmp/ship-pr-state.sh"; then
+    ok "ci_fix_deferred_rebase_head_refresh_3134: deferred rebase HEAD advance avoids first-fixer bail"
+else
+    fail "ci_fix_deferred_rebase_head_refresh_3134: should not bail first-fixer after rebase noop advance"
+fi
+rm -rf "$call_dir"
 
 # end section: fix-loop
 fi

@@ -59,6 +59,26 @@ ALL_LINT_FIX_DELTA_PATHS_FILE=""
 LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=""
 CI_FIX_REBASE_PENDING=false
 
+_ci_fix_pending_hydrate() {
+    if ! state_has_key CI_FIX_REBASE_PENDING; then
+        state_set CI_FIX_REBASE_PENDING false
+    fi
+    case "$(read_state CI_FIX_REBASE_PENDING)" in
+        true) CI_FIX_REBASE_PENDING=true ;;
+        *) CI_FIX_REBASE_PENDING=false ;;
+    esac
+}
+
+_ci_fix_pending_set() {
+    CI_FIX_REBASE_PENDING=true
+    state_set CI_FIX_REBASE_PENDING true
+}
+
+_ci_fix_pending_clear() {
+    CI_FIX_REBASE_PENDING=false
+    state_set CI_FIX_REBASE_PENDING false
+}
+
 capture_dirty_paths() {
     {
         git diff --name-only HEAD 2>/dev/null || true
@@ -488,6 +508,7 @@ write_initial_state() {
         printf 'RESUME_PHASE=\n'
         printf 'CALLER_KIND=\n'
         printf 'REBASE_COUNT=0\n'
+        printf 'CI_FIX_REBASE_PENDING=false\n'
         printf 'FIX_ATTEMPTS=0\n'
         printf 'ITERATION=0\n'
         printf 'TRANSIENT_RETRIES=0\n'
@@ -1770,6 +1791,44 @@ _resolve_effective_failed_jobs_tsv() {
     return 1
 }
 
+_commit_ci_fix_stage_paths() {
+    local phase=$1 fail_label=$2
+    local vendor_tracked=$3 vendor_untracked=$4 tracked=$5 untracked=$6 delta_paths_file=${7:-}
+    local fail_file rc stage_paths=() stage_path
+
+    if [[ ! -s "$tracked" && ! -s "$untracked" ]] \
+        && [[ -z "$vendor_tracked" || ! -s "$vendor_tracked" ]] \
+        && [[ -z "$vendor_untracked" || ! -s "$vendor_untracked" ]] \
+        && [[ -z "$delta_paths_file" || ! -f "$delta_paths_file" || ! -s "$delta_paths_file" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
+        [[ -n "$stage_path" ]] || continue
+        stage_paths+=("$stage_path")
+    done < <(collect_ci_stage_paths "$vendor_tracked" "$vendor_untracked" "$tracked" "$untracked" "${delta_paths_file:-}")
+    if [[ "${#stage_paths[@]}" -eq 0 ]]; then
+        return 0
+    fi
+    fail_file=$(failure_capture_path "$phase")
+    git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        record_failure "$phase" "$fail_label" "$rc" "$fail_file" "CI Issues"
+        return 1
+    fi
+    if ! git diff --cached --quiet 2>/dev/null; then
+        fail_file=$(failure_capture_path "$phase")
+        "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            record_failure "$phase" "${fail_label}git-commit.sh" "$rc" "$fail_file" "CI Issues"
+            return 1
+        fi
+    fi
+    return 0
+}
+
 _run_post_rebase_verify_gates() {
     local phase=$1 checks_site=$2 failed_jobs_tsv=$3
     local tracked_dirty_paths_file=$4 untracked_dirty_paths_file=$5
@@ -1777,9 +1836,24 @@ _run_post_rebase_verify_gates() {
 
     effective_tsv=$(_resolve_effective_failed_jobs_tsv "$phase" "$failed_jobs_tsv") || effective_tsv=""
     if [ -z "$effective_tsv" ] || ! grep -q '[^[:space:]]' "$effective_tsv" 2>/dev/null; then
-        larch_err "⚠ ship-pr: post-rebase verify requires failed-jobs TSV; stalling"
-        CI_FIX_REBASE_PENDING=true
-        return 2
+        larch_err "⚠ ship-pr: no failed-jobs TSV; post-rebase verify uses relevant-checks only"
+        verify_rc=0
+        if [ -n "$checks_site" ]; then
+            if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
+                verify_rc=1
+            fi
+        fi
+        case "$verify_rc" in
+            0)
+                delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
+                _commit_ci_fix_stage_paths "$phase" "git add -- post-rebase lint delta" \
+                    "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" \
+                    "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file" \
+                    || return 1
+                return 0
+                ;;
+            *) return 1 ;;
+        esac
     fi
 
     verify_rc=0
@@ -1793,42 +1867,15 @@ _run_post_rebase_verify_gates() {
     case "$verify_rc" in
         0)
             delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
-            if [[ -s "$tracked_dirty_paths_file" || -s "$untracked_dirty_paths_file" ]] \
-                || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
-                stage_paths=()
-                while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
-                    [[ -n "$stage_path" ]] || continue
-                    stage_paths+=("$stage_path")
-                done < <(collect_ci_stage_paths "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "" "" "$delta_paths_file")
-                if [[ "${#stage_paths[@]}" -gt 0 ]]; then
-                    fail_file=$(failure_capture_path "$phase")
-                    git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
-                    rc=$?
-                    if [ "$rc" -ne 0 ]; then
-                        record_failure "$phase" "git add -- post-rebase lint delta" "$rc" "$fail_file" "CI Issues"
-                        CI_FIX_REBASE_PENDING=true
-                        return 1
-                    fi
-                    if ! git diff --cached --quiet 2>/dev/null; then
-                        fail_file=$(failure_capture_path "$phase")
-                        "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
-                        rc=$?
-                        if [ "$rc" -ne 0 ]; then
-                            record_failure "$phase" "git-commit.sh post-rebase" "$rc" "$fail_file" "CI Issues"
-                            CI_FIX_REBASE_PENDING=true
-                            return 1
-                        fi
-                    fi
-                fi
-            fi
+            _commit_ci_fix_stage_paths "$phase" "git add -- post-rebase lint delta" \
+                "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" \
+                "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file" \
+                || return 1
             return 0
             ;;
-        2) CI_FIX_REBASE_PENDING=true; return 2 ;;
-        4) CI_FIX_REBASE_PENDING=true; return 4 ;;
-        *)
-            CI_FIX_REBASE_PENDING=true
-            return 1
-            ;;
+        2) return 2 ;;
+        4) return 4 ;;
+        *) return 1 ;;
     esac
 }
 
@@ -1836,7 +1883,7 @@ _stage_and_push_ci_fixes() {
     local phase=$1 token_record_input=${2:-} checks_site=${3:-} failed_jobs_tsv=${4:-}
     local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
     local tracked_dirty_paths_file untracked_dirty_paths_file delta_paths_file
-    local base_remote base_ref behind_out behind did_rebase verify_rc pending_retry
+    local base_remote base_ref behind_out behind did_rebase verify_rc pending_retry verify_passed=false
 
     LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=""
     pending_retry=false
@@ -1866,37 +1913,11 @@ _stage_and_push_ci_fixes() {
 
         capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
         capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
-        if [[ -s "$tracked_dirty_paths_file" || -s "$untracked_dirty_paths_file" ]]; then
-            fail_file=$(failure_capture_path "$phase")
-            delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
-            rc=0
-            if [[ -s "$vendor_tracked_dirty_paths_file" || -s "$vendor_untracked_dirty_paths_file" || -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
-                local stage_paths=() stage_path
-                while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
-                    [[ -n "$stage_path" ]] || continue
-                    stage_paths+=("$stage_path")
-                done < <(collect_ci_stage_paths "$vendor_tracked_dirty_paths_file" "$vendor_untracked_dirty_paths_file" "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
-                if [[ "${#stage_paths[@]}" -gt 0 ]]; then
-                    git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
-                else
-                    : > "$fail_file"
-                fi
-            fi
-            rc=$?
-            if [ "$rc" -ne 0 ]; then
-                record_failure "$phase" "git add -- <tracked+allowlisted-untracked>" "$rc" "$fail_file" "CI Issues"
-                return 1
-            fi
-            if ! git diff --cached --quiet 2>/dev/null; then
-                fail_file=$(failure_capture_path "$phase")
-                "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
-                rc=$?
-                if [ "$rc" -ne 0 ]; then
-                    record_failure "$phase" "git-commit.sh" "$rc" "$fail_file" "CI Issues"
-                    return 1
-                fi
-            fi
-        fi
+        delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
+        _commit_ci_fix_stage_paths "$phase" "git add -- <tracked+allowlisted-untracked>" \
+            "$vendor_tracked_dirty_paths_file" "$vendor_untracked_dirty_paths_file" \
+            "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file" \
+            || return 1
     else
         capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
         capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
@@ -1911,18 +1932,26 @@ _stage_and_push_ci_fixes() {
         base_ref=main
     fi
     did_rebase=false
-    fail_file=$(failure_capture_path "$phase")
-    behind_out=$("$SCRIPT_DIR/ci-behind-count.sh" --base-remote "$base_remote" --base-ref "$base_ref" 2>"$fail_file")
-    behind=$(kv_value BEHIND_COUNT "$behind_out")
-    case "$behind" in
-        ''|*[!0-9]*) behind=0 ;;
-    esac
-    if [ "$behind" -gt 0 ]; then
-        did_rebase=true
-        run_rebase_rebump "$phase" defer-push "$base_remote" "$base_ref"
-        LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
-        capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
-        capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
+    if [ "$pending_retry" != true ]; then
+        fail_file=$(failure_capture_path "$phase")
+        behind_out=$("$SCRIPT_DIR/ci-behind-count.sh" --base-remote "$base_remote" --base-ref "$base_ref" 2>"$fail_file")
+        behind=$(kv_value BEHIND_COUNT "$behind_out")
+        case "$behind" in
+            ''|*[!0-9]*) behind=0 ;;
+        esac
+        if [ "$behind" -gt 0 ]; then
+            local effective_tsv_for_rebase
+            effective_tsv_for_rebase=$(_resolve_effective_failed_jobs_tsv "$phase" "$failed_jobs_tsv") || effective_tsv_for_rebase=""
+            if [ -z "$effective_tsv_for_rebase" ] || ! grep -q '[^[:space:]]' "$effective_tsv_for_rebase" 2>/dev/null; then
+                larch_err "⚠ ship-pr: behind main but failed-jobs unknown; skipping defer-rebase"
+            else
+                did_rebase=true
+                run_rebase_rebump "$phase" defer-push "$base_remote" "$base_ref"
+                LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+                capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
+                capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
+            fi
+        fi
     fi
 
     if [ "$did_rebase" = true ] || [ "$pending_retry" = true ]; then
@@ -1930,7 +1959,7 @@ _stage_and_push_ci_fixes() {
             "$tracked_dirty_paths_file" "$untracked_dirty_paths_file"
         verify_rc=$?
         case "$verify_rc" in
-            0) ;;
+            0) verify_passed=true ;;
             2|4) return "$verify_rc" ;;
             *) return 1 ;;
         esac
@@ -1949,15 +1978,17 @@ _stage_and_push_ci_fixes() {
     fi
     rc=$?
     if [ "$rc" -ne 0 ]; then
-        if [ "$did_rebase" = true ] || [ "$CI_FIX_REBASE_PENDING" = true ]; then
-            CI_FIX_REBASE_PENDING=true
+        if [ "$verify_passed" = true ]; then
+            _ci_fix_pending_set
+            record_failure "$phase" "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
+        elif [ "$did_rebase" = true ] || [ "$CI_FIX_REBASE_PENDING" = true ]; then
             record_failure "$phase" "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
         else
             record_failure "$phase" "git-push.sh" "$rc" "$fail_file" "CI Issues"
         fi
         return 1
     fi
-    CI_FIX_REBASE_PENDING=false
+    _ci_fix_pending_clear
 }
 
 run_ci_fix_vendor() {
@@ -2989,7 +3020,10 @@ _run_rebase_rebump_from_step3() {
     fi
 
     if [ "$defer_push" = true ]; then
-        state_set_many ITERATION "$(( $(read_state ITERATION) + 1 ))" TRANSIENT_RETRIES 0
+        state_set_many \
+            REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
+            ITERATION "$(( $(read_state ITERATION) + 1 ))" \
+            TRANSIENT_RETRIES 0
     else
         state_set_many \
             REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
@@ -3581,6 +3615,7 @@ main() {
     fi
     [ -r "$STATE_FILE" ] || die_usage "--state-file must be readable"
     validate_state_syntax
+    _ci_fix_pending_hydrate
 
     for key in \
         PHASE BRANCH_NAME ISSUE_NUMBER RUN_ID REPO REPO_UNAVAILABLE FORKED_TARGET \
@@ -3595,7 +3630,7 @@ main() {
         require_key "$key"
     done
 
-    for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
+    for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING CI_FIX_REBASE_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
         is_bool "$(read_state "$key")" || die_usage "state-file key $key must be true or false"
     done
 
