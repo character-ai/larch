@@ -63,12 +63,16 @@ TASK_OUT='/tmp/proj/tasks/testtask123.output'
 
 export TMPDIR="$TMP"
 
-echo "=== hooks.json pins Read|Bash matcher ==="
-if grep -q 'hook-anti-read-poll.sh' "$HOOKS_JSON" \
-    && grep -q '"matcher": "Read|Bash"' "$HOOKS_JSON"; then
-    pass 'hooks.json registers hook-anti-read-poll.sh under Read|Bash'
+echo "=== hooks.json pins Read|Bash matcher on anti-read-poll hook ==="
+if jq -e --arg cmd 'hook-anti-read-poll.sh' '
+    .hooks.PostToolUse[]?
+    | select(.matcher == "Read|Bash")
+    | .hooks[]?
+    | select(.command | test($cmd))
+' "$HOOKS_JSON" >/dev/null 2>&1; then
+    pass 'hooks.json co-locates hook-anti-read-poll.sh with matcher Read|Bash'
 else
-    fail "hooks.json must register hook-anti-read-poll.sh with matcher Read|Bash"
+    fail "hooks.json must register hook-anti-read-poll.sh under matcher Read|Bash in one PostToolUse block"
 fi
 
 echo "=== first two calls do not fire ==="
@@ -202,6 +206,35 @@ out_te2=$(run_hook 601 "$TASK_OUT" 0 "/proj-task-expiry")
 assert_silent "$out_te2" 'task-output expiry call 2 after 600s silent'
 out_te3=$(run_hook 602 "$TASK_OUT" 0 "/proj-task-expiry")
 assert_reminder "$out_te3" 'task-output expiry call 3 fires reminder'
+
+echo "=== quoted Bash task-output path polls fire ==="
+quoted_cmd="cat '/tmp/proj/tasks/testtask123.output'"
+out_q1=$(run_bash_hook 0 "$quoted_cmd" "/proj-quoted-path")
+assert_silent "$out_q1" 'quoted Bash task-output call 1 silent'
+out_q2=$(run_bash_hook 1 "$quoted_cmd" "/proj-quoted-path")
+assert_reminder "$out_q2" 'quoted Bash task-output call 2 fires reminder'
+
+echo "=== echo then cat on same line counts ==="
+echo_cat_cmd="echo '=== status ==='; cat $TASK_OUT"
+out_ec1=$(run_bash_hook 0 "$echo_cat_cmd" "/proj-echo-cat-line")
+assert_silent "$out_ec1" 'echo+cat same line call 1 silent'
+out_ec2=$(run_bash_hook 1 "$echo_cat_cmd" "/proj-echo-cat-line")
+assert_reminder "$out_ec2" 'echo+cat same line call 2 fires reminder'
+
+echo "=== multiline Bash with two task ids uses matching line token ==="
+two_id_ml_cmd=$'cat /tmp/proj/tasks/taskA.output\ncat /tmp/proj/tasks/taskB.output'
+out_2id1=$(run_bash_hook 0 "$two_id_ml_cmd" "/proj-two-id-multiline")
+assert_silent "$out_2id1" 'two-id multiline call 1 silent'
+out_2id2=$(run_bash_hook 1 "$two_id_ml_cmd" "/proj-two-id-multiline")
+assert_reminder "$out_2id2" 'two-id multiline call 2 fires reminder for task A'
+
+echo "=== distinct session_id buckets do not share counters ==="
+out_s1=$(run_bash_hook 0 "cat $TASK_OUT" "/proj-session-iso" "session-alpha")
+assert_silent "$out_s1" 'session alpha call 1 silent'
+out_s2=$(run_bash_hook 1 "cat $TASK_OUT" "/proj-session-iso" "session-beta")
+assert_silent "$out_s2" 'session beta call 1 silent'
+out_s3=$(run_bash_hook 2 "cat $TASK_OUT" "/proj-session-iso" "session-alpha")
+assert_reminder "$out_s3" 'session alpha call 2 fires reminder'
 
 echo "=== echo mentioning task path does not count ==="
 out_en1=$(run_bash_hook 0 "echo cat $TASK_OUT" "/proj-echo-fp")

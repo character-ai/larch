@@ -22,7 +22,8 @@ Per-project state under `${TMPDIR:-/tmp}/larch-read-poll/` (mode `700`; entries 
 - `state-taskout-<session_hash>-<cwd_hash>-<task_id>.tsv` — task output: `count\tfirst_ts`
 
 Task-output counters are scoped by hook `session_id` (hashed; falls back to
-`nosession` when absent), `cwd`, and the normalized `tasks/<id>.output` task id so
+`conversation_id`, then `nosession` when both are absent), `cwd`, and the normalized
+`tasks/<id>.output` task id so
 distinct background tasks and Claude sessions do not share one counter. State files
 expire logically after **600 s** without a matching poll (window reset, not file
 deletion). A new session within that TTL does not inherit another session's counts.
@@ -34,10 +35,13 @@ Reads from stdin (Claude Code hook event JSON). Relevant fields:
 - `tool_name` — must be `"Read"` or `"Bash"` or the hook exits 0 silently.
 - `Read`: `tool_input.file_path` (end-anchored `tasks/<id>.output` classifier);
   `tool_input.offset` (ignored for task-output paths).
-- `Bash`: `tool_input.command` (per-line read verb + `tasks/<id>.output` on the same
-  line after stripping quoted strings; `echo`/`printf` lines ignored; multiline
-  compound commands and transcript suffixes after `.output` such as `2>/dev/null` or
-  `| head` supported when the read verb and path share a line).
+- `Bash`: `tool_input.command` (normalized for backslash-newline continuations; each
+  logical line split on `;` and `&&`; per-segment read verb + `tasks/<id>.output` on
+  the unstripped segment text so quoted paths count; segments that are only
+  `echo`/`printf` ignored; multiline bodies and transcript suffixes after `.output`
+  such as `2>/dev/null` or `| head` supported when the read verb and path share a
+  segment). Cross-line shell variable indirection (`VAR=…/tasks/id.output` then
+  `cat "$VAR"`) is not expanded and remains an accepted gap.
 - `cwd` — project working directory (used to scope state files).
 
 ## Output
