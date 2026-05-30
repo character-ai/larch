@@ -402,12 +402,16 @@ grep -Fq "gate-b-dedup-plan.sh\" --design-tmpdir \"\$DESIGN_TMPDIR\" --snapshot-
   || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --snapshot-trailers hook"
 grep -Fq 'gate-b-dedup-plan.sh --dedup' "$SKILL_MD" \
   || fail "(3175) SKILL.md Gate A/B optional-trailer guard missing --dedup hook"
-grep -Fq 'snapshot' "$APPROVAL_MD" \
-  || fail "(3175) approval-gates.md missing optional trailer snapshot language"
+grep -Fq -- '--snapshot-trailers' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing --snapshot-trailers hook"
+grep -Fq -- '--dedup' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing --dedup hook"
 grep -Fq 'diff_added' "$APPROVAL_MD" \
   || fail "(3175) approval-gates.md missing diff_added preservation language"
-grep -Fq 'snapshot' "$DISCUSSION_MD" \
-  || fail "(3175) discussion-rounds.md missing optional trailer snapshot language"
+grep -Fq -- '--snapshot-trailers' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing --snapshot-trailers hook"
+grep -Fq -- '--dedup' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing --dedup hook"
 grep -Fq 'mechanical_churn' "$DISCUSSION_MD" \
   || fail "(3175) discussion-rounds.md missing mechanical_churn preservation language"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"

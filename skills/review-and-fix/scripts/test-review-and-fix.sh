@@ -148,6 +148,13 @@ case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
     printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
     exit 0
     ;;
+  untracked-only:codex)
+    printf 'untracked only\n' > brand-new.txt
+    printf 'APPLIED: FINDING_1\n' > "$last_message"
+    printf 'APPLIED: FINDING_1\n' > "$output"
+    printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
+    exit 0
+    ;;
   *)
     [[ "$tool" == "codex" ]] && printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
     printf 'failed\n' > "$output"
@@ -435,6 +442,60 @@ if [[ -z "$(git -C "$work_persistent_hook" status --porcelain --untracked-files=
 fi
 grep -Fq 'persistent hook residue' "$work_persistent_hook/src/main.py" \
     || fail "persistent hook residue should remain in working tree"
+
+work_untracked_only="$TMP/untracked-only-dirty"
+make_work_repo "$work_untracked_only"
+implement_untracked_only="$work_untracked_only/implement"
+mkdir -p "$implement_untracked_only"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_untracked_only/session-env.sh"
+set +e
+out_untracked_only=$(TEST_AGENT_BEHAVIOR=untracked-only run_review_and_fix "$work_untracked_only" \
+    --implement-tmpdir "$implement_untracked_only" --mode diff --round-num 1 \
+    --session-env-path "$implement_untracked_only/session-env.sh" --run-id untracked-only-run)
+rc_untracked_only=$?
+set -e
+[[ "$rc_untracked_only" -eq 2 ]] || { echo "$out_untracked_only" >&2; fail "untracked-only-dirty expected exit 2 got $rc_untracked_only"; }
+grep -Fq 'CODER_STATUS=failed' <<< "$out_untracked_only" || fail "untracked-only-dirty coder failed"
+
+work_manifest_outside="$TMP/manifest-outside-guard"
+make_work_repo "$work_manifest_outside"
+printf 'outside manifest\n' >> "$work_manifest_outside/other.txt"
+git -C "$work_manifest_outside" add other.txt
+git -C "$work_manifest_outside" commit -qm 'add other.txt'
+printf 'outside manifest\n' >> "$work_manifest_outside/other.txt"
+manifest_outside_file="$work_manifest_outside/implement/round-1/coder-stage-paths.txt"
+mkdir -p "$(dirname "$manifest_outside_file")"
+printf 'src/main.py\n' > "$manifest_outside_file"
+eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+(
+    cd "$work_manifest_outside"
+    if round_tracked_dirty_outside_manifest "implement/round-1/coder-stage-paths.txt"; then
+        exit 0
+    fi
+    exit 1
+) || fail "manifest-outside-guard should detect dirty tracked path outside manifest"
+
+work_manifest_outside_orchestrator="$TMP/manifest-outside-orchestrator"
+make_work_repo "$work_manifest_outside_orchestrator"
+printf 'outside manifest\n' >> "$work_manifest_outside_orchestrator/other.txt"
+git -C "$work_manifest_outside_orchestrator" add other.txt
+git -C "$work_manifest_outside_orchestrator" commit -qm 'add other.txt'
+printf 'outside manifest\n' >> "$work_manifest_outside_orchestrator/other.txt"
+implement_manifest_outside="$work_manifest_outside_orchestrator/implement"
+mkdir -p "$implement_manifest_outside"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_manifest_outside/session-env.sh"
+manifest_outside_initial_head=$(git -C "$work_manifest_outside_orchestrator" rev-parse HEAD)
+set +e
+out_manifest_outside=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_manifest_outside_orchestrator" \
+    --implement-tmpdir "$implement_manifest_outside" --mode diff --round-num 1 \
+    --session-env-path "$implement_manifest_outside/session-env.sh" --run-id manifest-outside-run)
+rc_manifest_outside=$?
+set -e
+[[ "$rc_manifest_outside" -eq 2 ]] || { echo "$out_manifest_outside" >&2; fail "manifest-outside-orchestrator expected exit 2 got $rc_manifest_outside"; }
+grep -Fq 'CODER_STATUS=failed' <<< "$out_manifest_outside" || fail "manifest-outside-orchestrator coder failed"
+[[ "$(git -C "$work_manifest_outside_orchestrator" rev-parse HEAD)" == "$manifest_outside_initial_head" ]] \
+    || fail "manifest-outside-orchestrator should not create round commit"
 
 work_codex_telemetry="$TMP/codex-telemetry"
 make_work_repo "$work_codex_telemetry"

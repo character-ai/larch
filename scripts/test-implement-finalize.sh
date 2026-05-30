@@ -534,6 +534,7 @@ assert_contains "RENAME_BRANCH=A" "$OUT" "teardown: branch A tail"
 assert_contains "RENAME_STATUS=ok" "$OUT" "teardown: branch A ok"
 assert_contains "STASH_REF=" "$OUT" "teardown: clean stalled run emits empty stash ref"
 assert_contains "SENTINEL_WRITTEN=true" "$OUT" "teardown: clean stalled run writes sentinel"
+assert_contains "skipping tmpdir cleanup" "$OUT" "teardown: stalled run skips cleanup-tmpdir"
 assert_file_contains "STALL_STEP=12d" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: clean sentinel records stall step"
 assert_file_contains "STASH_REF=" "$SANDBOX/repo/.git/larch-stalled-run.txt" "teardown: clean sentinel records empty stash"
 

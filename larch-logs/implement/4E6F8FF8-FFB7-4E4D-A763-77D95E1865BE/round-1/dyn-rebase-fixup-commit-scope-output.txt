@@ -1,0 +1,16 @@
+Reviewing the branch diff and commits for correctness issues.
+### In-Scope Findings
+
+- **correctness** `skills/cleanup/scripts/cleanup.sh:39-43` — Retention now uses top-level `find -mtime` only (issue #3212), replacing the prior depth-5 “newest activity” scan. A session directory whose root mtime is older than the cutoff is removed even when a descendant was modified recently; on many filesystems, in-place writes to existing files under an old directory do not refresh the directory mtime. That can delete cache/tmp session trees that are still in active use, which the old logic avoided. The new harness case `stale-toplevel-with-fresh-deep-child-removed` encodes this behavior as intended, but it is a real semantic regression for long-lived sessions. **Suggested fix:** If nested activity must still protect live sessions, combine top-level `find` enumeration (for performance) with a bounded newest-descendant mtime check before `rm -rf`, or touch the session directory on keepalive/heartbeat so top-level mtime tracks liveness.
+
+- **correctness** `scripts/ship-pr.sh:2856-2870` — Step 0b runs `git add -u` on every tracked dirty path when porcelain is non-empty, then commits with `chore: pre-rebase working-tree fixup (#3209)` if the index is non-empty. That commit is outside `drop-bump-commit.sh`’s bump-subject regex and is not dropped; tests at `scripts/test-ship-pr.sh:656-660` expect it to survive rebase and land in branch history. Any unintended tracked WIP (partial coder output, hook residue outside review-and-fix’s follow-up path, or manual edits) is therefore permanently recorded on the PR branch, not merely unstaged. `fail_file` is reassigned before both `git add -u` and `git-commit.sh`, and failures are recorded as Warnings without aborting until `drop-bump-commit.sh` Guard 1 still sees dirt. **Suggested fix:** Narrow staging to an allowlist (e.g. `larch-logs/`, known hook targets) or require a clean tracked tree except explicitly documented paths; alternatively gate the fixup on residue class (hook vs. other) before `git add -u`.
+
+### Out-of-Scope Observations
+
+- **#3204 (awk harness / Gate A/B pins):** `test-trailer-awk.sh` assertions align with `lib-plan-optional-trailers.awk` (last-match-wins, `block_len`, octal `08`/`09` rejection, `010` retention, block boundary, `set +e`/`set -e` on `has_key`). `scripts/test-design-structure.sh` correctly tightens only the weak `(3175)` `--snapshot-trailers` / `--dedup` pins with BSD-safe `grep -Fq --`. No production behavior change to the `.awk`/`.sh` libraries.
+
+- **ship-pr scout checks:** `drop-bump-commit.sh` only drops `Bump version to X.Y.Z` commits; the fixup commit persisting after rebase is deliberate, not a drop-bump bug. `record_failure` / `failure_capture_path` usage for step 0b is wired correctly.
+
+- **review-and-fix (#3209):** Round-mode follow-up commit is fail-closed (`return 2` when tracked porcelain remains after follow-up); otherwise residue is left for the ship-pr backstop by design.
+
+- **Coverage gap (not a production defect):** `test-trailer-awk.sh` does not assert `keys`/`values` on octal-rejected or block-boundary fixtures (covered via `parse`/`has_key` only).

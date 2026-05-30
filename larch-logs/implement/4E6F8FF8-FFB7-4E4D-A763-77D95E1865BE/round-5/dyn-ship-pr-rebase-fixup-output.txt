@@ -1,0 +1,20 @@
+Reviewing the branch diff and scout-notes focus areas (`ship-pr.sh`, rebase fixup integration).
+Branch commits (since `main`): `d33cdfb70` (#3204 awk trailer harness + Gate A/B pins), `c45f52e55` (#3209 ship-pr rebase fixup, merged via #3223), plus review rounds and run-log flushes.
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Scout prompts for `scripts/ship-pr.sh` `ship_pr_pre_rebase_larch_logs_fixup` / `drop-bump-commit.sh` integration were checked against current `run_rebase_rebump` (roughly `scripts/ship-pr.sh:2853-2892`):
+
+- **`fail_file` reassignment in the nested fixup** — The inner function assigns `fail_file=$(failure_capture_path rebase)` without `local`, so it updates `run_rebase_rebump`’s `local fail_file`. That does not misroute `drop-bump-commit.sh`: `failure_capture_path` (`scripts/ship-pr.sh:863-866`) allocates a new monotonic `ship-pr-fail-rebase-N.log` on every call, and step 1 explicitly resets `fail_file` again immediately before the dropper (`scripts/ship-pr.sh:2889-2890`). Fixup diagnostics land in earlier numbered logs via `record_failure`; drop stderr/stdout go to a fresh capture file. No overwrite of the drop failure log.
+
+- **Fixup subject vs drop-bump guards** — Guard 2 in `scripts/drop-bump-commit.sh:106` only matches `^Bump version to …`. The fixup subject `chore: pre-rebase working-tree fixup (#3209)` cannot be mistaken for a bump commit. Guard 4 only applies after a bump-shaped subject is found; it is irrelevant for the fixup commit.
+
+- **`|| true` fall-through vs Guard 1** — Best-effort fixup (`scripts/ship-pr.sh:2878-2880`) matches the documented contract in `scripts/ship-pr.md`. If fixup fails or leaves tracked dirt (including outside `larch-logs/`), `drop-bump-commit.sh` Guard 1 (`scripts/drop-bump-commit.sh:90-93`) still returns `DROPPED=false` and `run_rebase_rebump` stalls on non–“no match” paths (`scripts/ship-pr.sh:2896-2903`). `scripts/test-ship-pr.sh` covers happy path, pre-commit hook follow-up, and fixup-commit-failure stall (exit 4).
+
+- **#3204 trailer harness integration** — `test-trailer-awk.sh` is wired through `test-trailer-helpers.sh:43`; `lib-plan-optional-trailers.awk`/`.sh` are unchanged in the diff; structural pins in `scripts/test-design-structure.sh:405-414` use BSD-safe `grep -Fq --`. No cross-surface integration defect spotted for the design-script changes.
+
+- **Minor latent pattern (pre-existing shape)** — Fixup uses bare `git-commit.sh -m …` after `git add -u -- larch-logs/`, so any *already-staged* non–`larch-logs/` paths would ride into the fixup commit (same pattern as CI-fix at `scripts/ship-pr.sh:1806-1808`). Unlikely in the intended rebump entry state but worth scoping with `git-commit.sh --only -- larch-logs/` if hardening is desired later.

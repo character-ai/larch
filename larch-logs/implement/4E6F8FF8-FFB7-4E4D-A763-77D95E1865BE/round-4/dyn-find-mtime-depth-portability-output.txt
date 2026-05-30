@@ -1,0 +1,20 @@
+Reviewing the branch diff and commit history against the plan and scout focus.
+### In-Scope Findings
+
+- **correctness** `skills/cleanup/scripts/cleanup.sh:33-48,59-76` — Retention now uses paired `find -mtime +N` (age-pass) and `find -mtime -N` (fresh descendant) day buckets instead of the removed `date +%s` / `stat_mtime` second cutoff. On both BSD and GNU `find`, files whose mtime falls in the exact *n*-day bucket can match neither `+N` nor `-N`, so a stale top-level session candidate can pass the `+N` gate while a descendant whose only activity is at the retention floor fails `-N` and the tree is deleted. The old path kept anything with `newest >= NOW - N*86400`. **Suggested fix:** Add a `test-cleanup.sh` case that seeds a stale top-level mtime and a child at the retention boundary (not only `20000101` / `20990101` extremes), or combine `find` with a `stat`-based second check for the descendant probe; document the coarser semantics if intentional.
+
+- **correctness** `skills/cleanup/scripts/cleanup.sh:36` — `entry_has_fresh_descendant` runs an unbounded `find "$entry" -mindepth 1 ! -type l -mtime "-${RETENTION_DAYS}"` with no `-maxdepth`. When no descendant matches, `find` must walk the full session tree before returning; on large `larch-logs/implement/…` trees this reintroduces the hang/latency class #3212 addressed at the top level, while `test-cleanup.sh` only stress-tests flat `/tmp` breadth (`large-tmp-scales`), not deep cache interiors. **Suggested fix:** Use a documented depth cap for the freshness probe (e.g. implement run-log depth + margin) or another bounded activity signal; add a harness with nested depth representative of production session layout and a time budget.
+
+- **correctness** `skills/cleanup/scripts/cleanup.sh:36-38` — Freshness detection depends on `find … | grep -q .` and `PIPESTATUS[0]` for `find` errors. If `grep` fails independently while `find` exits 0 with no matches, the function returns 1 (no fresh descendant) and the entry can be deleted; if `grep` fails while `find` printed a path, a fresh tree could be deleted. **Suggested fix:** Drop the `grep` pipe: use `find … -print -quit` exit status alone (`find` exits 0 when a match is found on BSD/GNU), or capture output to a variable and branch on `find`’s exit code without piping through `grep`.
+
+### Out-of-Scope Observations
+
+- **#3204 (awk harness + Gate A/B pins):** The branch matches the plan: `lib-plan-optional-trailers.awk` / `.sh` are byte-stable vs `main`; `test-trailer-awk.sh` covers the four awk modes and the listed edge cases (including `set +e`/`set -e` for expected `has_key` failures, `block_len` vs last-match-wins, octal `08`/`09`, and `test-design-structure.sh` `(3175)` pins now use `grep -Fq -- '--snapshot-trailers'` / `'--dedup'` on `approval-gates.md` and `discussion-rounds.md` only where specified.
+
+- **`skills/cleanup/scripts/test-cleanup.md:14`:** Still describes “bounded descendant activity” while `entry_has_fresh_descendant` is unbounded — doc drift, not a runtime bug by itself.
+
+- **`skills/review-and-fix/scripts/review-and-fix.sh`:** Round-mode manifest-only staging and fail-closed `untracked-only` behavior are documented in `review-and-fix.md` and covered by new harness cases (`untracked-only`, hook-residue follow-up); intentional, not a regression.
+
+- **Other branch commits:** `ship-pr.sh` pre-rebase `larch-logs/` fixup (#3209) and version/changelog bumps are scoped and tested in `test-ship-pr.sh`; no additional correctness issues identified in that slice from the diff review.
+
+**Commits (since merge-base with `main`):** `9adc5533b`, `00e93c876`, `3ccb5434a`, `34616d633`, `d33cdfb70`, `a8183aa1c`, `c45f52e55`.

@@ -36,6 +36,31 @@ kv_get() {
     printf '%s\n' "${line#*=}"
 }
 
+write_stub_find_failure() {
+    local path="$1"
+    local fail_target="$2"
+    cat > "$path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail_target="${fail_target}"
+target=""
+for arg in "\$@"; do
+    if [[ "\$arg" != -* ]]; then
+        target="\$arg"
+        break
+    fi
+done
+
+if [[ "\$target" == "\$fail_target" ]]; then
+    exit 1
+fi
+
+exec /usr/bin/find "\$@"
+EOF
+    chmod +x "$path"
+}
+
 write_stub_pgrep() {
     local path="$1" count="$2"
     cat > "$path" <<EOF
@@ -239,6 +264,44 @@ run_cleanup "$work"
 [[ "$CASE_RC" -eq 0 ]] || fail "nonlarch-tmp-untouched exit $CASE_RC"
 [[ -d "$work/tmp-root/unrelated-junk" ]] || fail "nonlarch-tmp-untouched should keep non-larch entry"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "nonlarch-tmp-untouched TMP_REMOVED"
+
+# --- find-failure-skips-deletion ----------------------------------------------
+work="$TMP/find-failure-skips-deletion"
+mkdir -p "$work/xdg-cache/larch/sessions/fail-find"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/fail-find"
+mkdir -p "$work/bin"
+write_stub_find_failure "$work/bin/find" "$work/xdg-cache/larch/sessions/fail-find"
+PATH_PREFIX="$work/bin:"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "find-failure-skips-deletion exit $CASE_RC"
+[[ -d "$CASE_SESSIONS/fail-find" ]] || fail "find-failure-skips-deletion should keep dir when find fails"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion CACHE_REMOVED"
+assert_contains "$CASE_OUTPUT" "Warning: failed to scan session activity for '${work}/xdg-cache/larch/sessions/fail-find'; skipping deletion." "find-failure-skips-deletion warning"
+unset PATH_PREFIX
+
+
+# --- deep-session-freshness-probe-bounded -------------------------------------
+work="$TMP/deep-session-freshness-probe-bounded"
+mkdir -p "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f" \
+    "$work/xdg-cache/larch/sessions/stale-within-probe/a/b/c"
+printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f/deep.txt"
+touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f/deep.txt"
+find "$work/xdg-cache/larch/sessions/stale-beyond-probe" -mindepth 0 -maxdepth 5 ! -path "$work/xdg-cache/larch/sessions/stale-beyond-probe/a/b/c/d/e/f/deep.txt" \
+    -exec touch -t "$STALE_TS" -- {} +
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-beyond-probe"
+printf 'fresh\n' > "$work/xdg-cache/larch/sessions/stale-within-probe/a/b/c/shallow.txt"
+touch -t "$FRESH_TS" -- "$work/xdg-cache/larch/sessions/stale-within-probe/a/b/c/shallow.txt"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-within-probe"
+SECONDS=0
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+elapsed=$SECONDS
+[[ "$CASE_RC" -eq 0 ]] || fail "deep-session-freshness-probe-bounded exit $CASE_RC"
+[[ ! -d "$CASE_SESSIONS/stale-beyond-probe" ]] || fail "deep-session-freshness-probe-bounded should remove stale dir when fresh activity is beyond maxdepth"
+[[ -d "$CASE_SESSIONS/stale-within-probe" ]] || fail "deep-session-freshness-probe-bounded should retain dir when fresh activity is within maxdepth"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "1" "deep-session-freshness-probe-bounded CACHE_REMOVED"
+[ "$elapsed" -lt 10 ] || fail "deep-session-freshness-probe-bounded took ${elapsed}s (expected < 10)"
 
 # --- large-tmp-scales ---------------------------------------------------------
 work="$TMP/large-tmp-scales"

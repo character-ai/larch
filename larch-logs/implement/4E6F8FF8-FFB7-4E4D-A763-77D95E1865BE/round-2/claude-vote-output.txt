@@ -1,0 +1,25 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- explicitly "no action needed" in the finding itself; not worth filing
+FINDING_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+OOS_8: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- tradeoff documented in SECURITY.md; substantively covered by FINDING_14
+OOS_9: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- tests are correct; concern is naming clarity only, no bug risk
+OOS_11: NO CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- cannot verify working-tree state from diff; FINDING_2 covers the in-scope gap
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+OOS_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- no current exploit; hardcoded-only usage makes validation over-engineering for a test harness
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=important QUALITY=excellent UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+OOS_22: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- additional anchoring would introduce fragility into the structural test
+OOS_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- process/PR hygiene concern, not a code quality issue worth filing
+FINDING_24: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=good UNCERTAIN=false -- the porcelain re-check after the else branch provides adequate fail-closed behavior for all realistic scenarios
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- Guard 1 in drop-bump-commit.sh is the documented and explicit backstop for this scenario
