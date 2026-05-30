@@ -624,6 +624,49 @@ else
     printf '%s\n' "$ZERO_ERR" >&2
 fi
 
+echo "# Case: WAIT_STDERR relay strips control bytes (SCRIPT_DIR sibling harness)"
+HARNESS_WAIT="$TMPROOT/wait-relay-harness"
+mkdir -p "$HARNESS_WAIT/scripts"
+for dep in collect-agent-results.sh external-tool-registry.sh lib-net.sh lib-quiet.sh; do
+    cp "$REPO_ROOT/scripts/$dep" "$HARNESS_WAIT/scripts/"
+done
+chmod +x "$HARNESS_WAIT/scripts"/*.sh
+cat > "$HARNESS_WAIT/scripts/wait-for-reviewers.sh" <<'WAIT_RELAY_STUB'
+#!/usr/bin/env bash
+printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' >&2
+exit 1
+WAIT_RELAY_STUB
+chmod +x "$HARNESS_WAIT/scripts/wait-for-reviewers.sh"
+OUT_WAIT="$TMPROOT/wait-relay-out.txt"
+printf 'NO_ISSUES_FOUND\n' > "$OUT_WAIT"
+printf '1\n' > "${OUT_WAIT}.done"
+set +e
+WAIT_CAPTURE=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$HARNESS_WAIT/scripts/collect-agent-results.sh" --timeout 5 "$OUT_WAIT" 2>&1)
+WAIT_RC=$?
+set -e
+if [[ "$WAIT_RC" -eq 1 ]]; then
+    ok "WAIT_STDERR relay wait failure exits 1"
+else
+    fail "WAIT_STDERR relay expected exit 1 (rc=$WAIT_RC)"
+fi
+if grep -Fq 'HTTP 500' <<< "$WAIT_CAPTURE" && grep -Fq 'Bad Gateway' <<< "$WAIT_CAPTURE"; then
+    ok "WAIT_STDERR relay preserves printable text"
+else
+    fail "WAIT_STDERR relay missing printable text"
+    printf '%s\n' "$WAIT_CAPTURE" >&2
+fi
+if grep -aF $'\x07' <<< "$WAIT_CAPTURE" >/dev/null; then
+    fail "WAIT_STDERR relay still contains BEL"
+else
+    ok "WAIT_STDERR relay strips BEL"
+fi
+if grep -aF $'\x1b' <<< "$WAIT_CAPTURE" >/dev/null; then
+    fail "WAIT_STDERR relay still contains ESC"
+else
+    ok "WAIT_STDERR relay strips ESC"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf '\nFAIL: test-collect-agent-results.sh (%d failure(s))\n' "$FAIL" >&2
     printf ' - %s\n' "${FAILED[@]}" >&2

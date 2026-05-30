@@ -6091,6 +6091,36 @@ fi
 # end section: phase14
 fi
 
+echo "=== append_tool_failure_local fallback relay sanitizes control bytes ==="
+root=$(make_repo ship_pr_fallback_relay)
+imp=$(make_tmpdir)
+write_state "$imp/ship-pr-state.sh" checks
+chmod -x "$root/scripts/append-tool-failure.sh"
+fixture="$imp/tool-failure-capture.log"
+printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' > "$fixture"
+set +e
+fallback_out=$(
+    bash -c 'source "$1/scripts/ship-pr.sh"; STATE_FILE="$2"; IMPLEMENT_TMPDIR="$3"; append_tool_failure_local --site test --tool stub --exit-code 1 --output-file "$4"' \
+        bash "$root" "$imp/ship-pr-state.sh" "$imp" "$fixture" 2>&1
+)
+set -e
+if grep -Fq 'HTTP 500' <<< "$fallback_out" && grep -Fq 'Bad Gateway' <<< "$fallback_out"; then
+    ok "append_tool_failure_local fallback preserves printable text"
+else
+    fail "append_tool_failure_local fallback missing printable text"
+    printf '%s\n' "$fallback_out" >&2
+fi
+if grep -aF $'\x07' <<< "$fallback_out" >/dev/null; then
+    fail "append_tool_failure_local fallback still contains BEL"
+else
+    ok "append_tool_failure_local fallback strips BEL"
+fi
+if grep -aF $'\x1b' <<< "$fallback_out" >/dev/null; then
+    fail "append_tool_failure_local fallback still contains ESC"
+else
+    ok "append_tool_failure_local fallback strips ESC"
+fi
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1

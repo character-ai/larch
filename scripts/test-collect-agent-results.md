@@ -37,3 +37,8 @@ Additional cases exercise `--paths-file`: stdout parity with positional args, mu
 The harness unsets inherited session tempdir variables and points
 `LARCH_EXECUTION_ISSUES_LOG` at its tempdir so failures cannot append to a
 parent `/implement` run's log.
+
+**WAIT_STDERR relay sanitize case**: builds a minimal `SCRIPT_DIR` tree (real
+`collect-agent-results.sh` copy plus stub sibling `wait-for-reviewers.sh`, not
+PATH-only), captures merged `2>&1`, and asserts printable text preserved with
+BEL/ESC absent on the relay path.

@@ -530,7 +530,7 @@ aggregate_rc=$?
 set -e
 if [[ -s "$aggregate_stderr" ]]; then
     while IFS= read -r line || [[ -n "$line" ]]; do
-        larch_err "$line"
+        larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"
     done < "$aggregate_stderr"
 fi
 if [[ "$aggregate_rc" -ne 0 ]]; then

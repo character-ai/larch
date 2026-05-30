@@ -328,4 +328,87 @@ grep -Fq '[OUT_OF_SCOPE] Latent' "$TMP/findings-sev-oos.md" && {
 grep -Fq '[OUT_OF_SCOPE] **Latent**' "$TMP/findings-sev-oos.md" \
     || { echo "FAIL: severity-first OOS bullet title should be left intact" >&2; cat "$TMP/findings-sev-oos.md" >&2; exit 1; }
 
+# Collector failure relay strips control bytes (minimal CLAUDE_PLUGIN_ROOT harness).
+collector_harness=$(mktemp -d "${TMPDIR:-/tmp}/tcf-collector-harness.XXXXXX")
+mkdir -p "$collector_harness/scripts" "$collector_harness/skills/review/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$collector_harness/scripts/"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$collector_harness/scripts/"
+chmod +x "$collector_harness/scripts/"*.sh
+cp "$REPO_ROOT/skills/review/scripts/collect-findings.sh" "$collector_harness/skills/review/scripts/"
+cat > "$collector_harness/scripts/collect-agent-results.sh" <<'COLLECTOR_RELAY_STUB'
+#!/usr/bin/env bash
+printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' >&2
+exit 1
+COLLECTOR_RELAY_STUB
+chmod +x "$collector_harness/scripts/collect-agent-results.sh"
+external_relay="$TMP/external-relay.txt"
+printf 'x\n' > "$external_relay"
+collector_review="$TMP/collector-relay-review"
+mkdir -p "$collector_review"
+set +e
+out_collector=$(CLAUDE_PLUGIN_ROOT="$collector_harness" REVIEW_TMPDIR="$collector_review" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
+    bash "$collector_harness/skills/review/scripts/collect-findings.sh" \
+    --mode description --timeout 1 \
+    --external-output-files "$external_relay" \
+    --findings-file "$collector_review/findings.md" \
+    --oos-file "$collector_review/oos.md" 2>&1)
+collector_rc=$?
+set -e
+[[ "$collector_rc" -ne 0 ]] || { echo "FAIL: collector relay expected non-zero exit" >&2; exit 1; }
+grep -Fq 'HTTP 500' <<< "$out_collector" || { echo "FAIL: collector relay missing HTTP 500" >&2; printf '%s\n' "$out_collector" >&2; exit 1; }
+grep -Fq 'Bad Gateway' <<< "$out_collector" || { echo "FAIL: collector relay missing Bad Gateway" >&2; exit 1; }
+if grep -aF $'\x07' <<< "$out_collector" >/dev/null; then
+    echo "FAIL: collector relay still contains BEL" >&2
+    exit 1
+fi
+if grep -aF $'\x1b' <<< "$out_collector" >/dev/null; then
+    echo "FAIL: collector relay still contains ESC" >&2
+    exit 1
+fi
+
+# Wait failure relay strips control bytes (wait-for-claude-reviewers.log path).
+wait_harness=$(mktemp -d "${TMPDIR:-/tmp}/tcf-wait-harness.XXXXXX")
+mkdir -p "$wait_harness/scripts" "$wait_harness/skills/review/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$wait_harness/scripts/"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$wait_harness/scripts/"
+chmod +x "$wait_harness/scripts/"*.sh
+cp "$REPO_ROOT/skills/review/scripts/collect-findings.sh" "$wait_harness/skills/review/scripts/"
+cat > "$wait_harness/scripts/wait-for-reviewers.sh" <<'WAIT_RELAY_STUB'
+#!/usr/bin/env bash
+printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' >&2
+exit 1
+WAIT_RELAY_STUB
+chmod +x "$wait_harness/scripts/wait-for-reviewers.sh"
+claude_wait="$TMP/claude-wait-relay.txt"
+cat > "$claude_wait" <<'EOF'
+### In-Scope Findings
+- relay case finding.
+EOF
+printf '0\n' > "${claude_wait}.done"
+printf 'STATUS=clean\n' > "${claude_wait}.dirty-tree"
+wait_review="$TMP/wait-relay-review"
+mkdir -p "$wait_review"
+set +e
+out_wait=$(CLAUDE_PLUGIN_ROOT="$wait_harness" REVIEW_TMPDIR="$wait_review" \
+    WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
+    bash "$wait_harness/skills/review/scripts/collect-findings.sh" \
+    --mode description --timeout 1 \
+    --claude-output-files "$claude_wait" \
+    --findings-file "$wait_review/findings.md" \
+    --oos-file "$wait_review/oos.md" 2>&1)
+wait_rc=$?
+set -e
+[[ "$wait_rc" -ne 0 ]] || { echo "FAIL: wait relay expected non-zero exit" >&2; exit 1; }
+grep -Fq 'HTTP 500' <<< "$out_wait" || { echo "FAIL: wait relay missing HTTP 500" >&2; printf '%s\n' "$out_wait" >&2; exit 1; }
+grep -Fq 'Bad Gateway' <<< "$out_wait" || { echo "FAIL: wait relay missing Bad Gateway" >&2; exit 1; }
+if grep -aF $'\x07' <<< "$out_wait" >/dev/null; then
+    echo "FAIL: wait relay still contains BEL" >&2
+    exit 1
+fi
+if grep -aF $'\x1b' <<< "$out_wait" >/dev/null; then
+    echo "FAIL: wait relay still contains ESC" >&2
+    exit 1
+fi
+
 echo "All assertions passed."

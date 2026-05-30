@@ -143,10 +143,12 @@ it is fail-closed:
 - Each enumerated file must pass the under-root prefix guard against the
   resolved physical root, matching the `render-cache/` guard.
 - A per-file `[[ -L "$f" ]]` recheck immediately before staging closes the
-  find-to-stage race window at the leaf-component slot. Parent-directory
-  replacement races, where a parent dir is swapped for a symlink between
-  enumeration and stage, are not closed; this matches the residual race surface
-  in `render-cache/`.
+  find-to-stage race window at the leaf-component slot.
+- `design_publish_ancestor_within_root` re-resolves each file's parent physical
+  path immediately before staging and fails closed when any ancestor directory
+  was swapped for a symlink after the `find -type l` scan (closes the
+  parent-directory TOCTOU the leaf recheck left open). The guard runs in all
+  three subtree staging loops (`plan-review/`, `render-cache/`, `.completed/`).
 - Top-level round files must match `^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$` and pass
   `design_round_artifact_included(basename)` from `scripts/lib-design-round-artifacts.sh`.
 - Files under `^round-[1-9][0-9]*/revise/[A-Za-z0-9._+-]+$` must pass
@@ -179,10 +181,9 @@ guard, it is fail-closed against symlinks:
 - Each enumerated file must pass the under-root prefix guard against the
   resolved physical root.
 - A per-file `[[ -L "$f" ]]` recheck immediately before staging closes the
-  find-to-stage race window at the leaf-component slot. Parent-directory
-  replacement races, where a parent dir is swapped for a symlink between
-  enumeration and stage, are not closed; this is the same residual race surface
-  as `plan-review/`.
+  find-to-stage race window at the leaf-component slot.
+- `design_publish_ancestor_within_root` runs per file before staging (same
+  parent-directory TOCTOU backstop as `plan-review/` above).
 - No filename allowlist is enforced because render-cache content schema is open.
   The suffix deny-list inside `design_publish_stage_file` (`*.sidecar`,
   `*.events.jsonl`, etc.) is preserved unchanged.

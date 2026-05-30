@@ -14,5 +14,6 @@ The harness stubs the one-round helper scripts through `REVIEW_CORE_*_SH` enviro
 - summary artifact and parent tmpdir copies when `SESSION_ENV_PATH` is set
 - dirty-tree recovery summaries for clean, dirty, and unknown sidecars
 - a set-but-empty `LARCH_DYNAMIC_ARCHETYPES_MAX` is ignored for the pre-parse default (cap `0`), so the round completes instead of failing validation
+- aggregate stderr relay sanitization via `REVIEW_CORE_AGGREGATE_FINDINGS_SH` stub emitting T8-style control bytes on stderr (merged `2>&1` capture; BEL/ESC absent)
 
 Run with `bash skills/review/scripts/test-review-core.sh` or `make test-review-core`.

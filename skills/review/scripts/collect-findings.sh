@@ -214,10 +214,10 @@ if [[ "$EXTERNAL_COUNT" -gt 0 ]]; then
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
         if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$collector_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
-                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$collector_log"
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$collector_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done || \
+                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$collector_log"
         else
-            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$collector_log"
+            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$collector_log"
         fi
         exit "$collector_rc"
     fi
@@ -237,10 +237,10 @@ if [[ "$CLAUDE_COUNT" -gt 0 ]]; then
         # Redact stderr replay; the unredacted file is already captured in
         # the verbatim execution-issues entry via --redact above.
         if [[ -x "$PLUGIN_ROOT/scripts/redact-secrets.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
-                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_log"
+            "$PLUGIN_ROOT/scripts/redact-secrets.sh" < "$wait_log" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done || \
+                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$wait_log"
         else
-            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$wait_log"
+            while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"; done < "$wait_log"
         fi
         exit "$wait_rc"
     fi

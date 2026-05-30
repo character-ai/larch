@@ -155,6 +155,22 @@ EOF
     chmod +x "$d/find"
 }
 
+make_find_ancestor_race_stub() {
+    local d="$1" real_find="$2"
+    mkdir -p "$d"
+    cat >"$d/find" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "\${ANCESTOR_RACE_FIND_ROOT:-}" && "\${2:-}" == "-type" && "\${3:-}" == "f" ]]; then
+    rm -rf "\${ANCESTOR_RACE_PARENT:?}"
+    ln -s "\${ANCESTOR_RACE_TARGET:?}" "\${ANCESTOR_RACE_PARENT:?}"
+    printf '%s\n' "\${ANCESTOR_RACE_PATH:?}"
+    exit 0
+fi
+exec "$real_find" "\$@"
+EOF
+    chmod +x "$d/find"
+}
+
 setup_clone_with_origin_head() {
     local root="$1"
     local bare="$root/upstream.git"
@@ -1055,5 +1071,52 @@ out_rcrace=$(
 )
 unset RACE_FIND_ROOT RACE_FIND_PATH RACE_FIND_TARGET
 [[ "$out_rcrace" == *"PUBLISH_OK=false"* ]] || fail "render-cache symlink race should fail publish: $out_rcrace"
+
+echo "=== render-cache ancestor-directory race rejection ==="
+TMPRCANCESTOR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-rc-ancestor.XXXXXX")
+clone_rcancestor=$(setup_clone_with_origin_head "$TMPRCANCESTOR")
+stub_rcancestor="$TMPRCANCESTOR/stub"
+make_gh_stub "$stub_rcancestor"
+REAL_FIND=$(command -v find)
+make_find_ancestor_race_stub "$TMPRCANCESTOR/findstub" "$REAL_FIND"
+export PATH="$TMPRCANCESTOR/findstub:$stub_rcancestor:$PATH"
+mkdir -p "$TMPRCANCESTOR/design/render-cache/sub"
+printf 'body\n' >"$TMPRCANCESTOR/design/plan.txt"
+printf 'ok\n' >"$TMPRCANCESTOR/design/render-cache/sub/file.txt"
+ANCESTOR_RACE_FIND_ROOT="$(cd "$TMPRCANCESTOR/design/render-cache" && pwd -P)"
+export ANCESTOR_RACE_FIND_ROOT
+export ANCESTOR_RACE_PATH="$ANCESTOR_RACE_FIND_ROOT/sub/file.txt"
+export ANCESTOR_RACE_PARENT="$ANCESTOR_RACE_FIND_ROOT/sub"
+export ANCESTOR_RACE_TARGET="$TMPRCANCESTOR/outside"
+mkdir -p "$ANCESTOR_RACE_TARGET"
+out_rcancestor=$(
+    (cd "$clone_rcancestor" && bash "$PUBLISH" --design-tmpdir "$TMPRCANCESTOR/design" --run-id "RUNRCANCESTOR1" --issue 4 --repo owner/repo) 2>&1 || true
+)
+unset ANCESTOR_RACE_FIND_ROOT ANCESTOR_RACE_PATH ANCESTOR_RACE_PARENT ANCESTOR_RACE_TARGET
+[[ "$out_rcancestor" == *"PUBLISH_OK=false"* ]] || fail "render-cache ancestor race should fail publish: $out_rcancestor"
+[[ "$out_rcancestor" == *"design-log-publish: render-cache ancestor became a symlink before staging"* ]] || fail "render-cache ancestor race missing larch_err: $out_rcancestor"
+
+echo "=== plan-review ancestor-directory race rejection ==="
+TMPPRANCESTOR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-ancestor.XXXXXX")
+clone_prancestor=$(setup_clone_with_origin_head "$TMPPRANCESTOR")
+stub_prancestor="$TMPPRANCESTOR/stub"
+make_gh_stub "$stub_prancestor"
+make_find_ancestor_race_stub "$TMPPRANCESTOR/findstub" "$REAL_FIND"
+export PATH="$TMPPRANCESTOR/findstub:$stub_prancestor:$PATH"
+mkdir -p "$TMPPRANCESTOR/design/plan-review/round-1"
+printf 'body\n' >"$TMPPRANCESTOR/design/plan.txt"
+printf 'ok\n' >"$TMPPRANCESTOR/design/plan-review/round-1/findings-classification.tsv"
+ANCESTOR_RACE_FIND_ROOT="$(cd "$TMPPRANCESTOR/design/plan-review" && pwd -P)"
+export ANCESTOR_RACE_FIND_ROOT
+export ANCESTOR_RACE_PATH="$ANCESTOR_RACE_FIND_ROOT/round-1/findings-classification.tsv"
+export ANCESTOR_RACE_PARENT="$ANCESTOR_RACE_FIND_ROOT/round-1"
+export ANCESTOR_RACE_TARGET="$TMPPRANCESTOR/outside-pr"
+mkdir -p "$ANCESTOR_RACE_TARGET"
+out_prancestor=$(
+    (cd "$clone_prancestor" && bash "$PUBLISH" --design-tmpdir "$TMPPRANCESTOR/design" --run-id "RUNPRANCESTOR1" --issue 4 --repo owner/repo) 2>&1 || true
+)
+unset ANCESTOR_RACE_FIND_ROOT ANCESTOR_RACE_PATH ANCESTOR_RACE_PARENT ANCESTOR_RACE_TARGET
+[[ "$out_prancestor" == *"PUBLISH_OK=false"* ]] || fail "plan-review ancestor race should fail publish: $out_prancestor"
+[[ "$out_prancestor" == *"design-log-publish: plan-review ancestor became a symlink before staging"* ]] || fail "plan-review ancestor race missing larch_err: $out_prancestor"
 
 echo "All design-log-publish harness assertions passed."
