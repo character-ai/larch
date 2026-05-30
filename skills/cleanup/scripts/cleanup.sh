@@ -15,43 +15,6 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-stat_mtime() {
-    local file="$1"
-    local mt
-
-    if mt=$(stat -c '%Y' -- "$file" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
-        printf '%s\n' "$mt"
-        return 0
-    fi
-    if mt=$(stat -f '%m' -- "$file" 2>/dev/null) && [[ "$mt" =~ ^[0-9]+$ ]]; then
-        printf '%s\n' "$mt"
-        return 0
-    fi
-    printf '0\n'
-    return 0
-}
-
-newest_activity_mtime() {
-    local entry="$1"
-    local newest path mt
-    local paths
-
-    newest=$(stat_mtime "$entry")
-    if ! paths=$(find "$entry" -mindepth 1 -maxdepth 5 -print 2>/dev/null); then
-        larch_err "Warning: failed to scan session activity for '$entry'; skipping deletion."
-        return 1
-    fi
-
-    while IFS= read -r path; do
-        [ -n "$path" ] || continue
-        mt=$(stat_mtime "$path")
-        if [ "$mt" -gt "$newest" ]; then
-            newest="$mt"
-        fi
-    done <<< "$paths"
-    printf '%s\n' "$newest"
-}
-
 parse_retention_days() {
     local raw="${LARCH_CLEANUP_RETENTION_DAYS:-7}"
     if [[ "$raw" =~ ^[1-9][0-9]*$ ]]; then
@@ -63,26 +26,11 @@ parse_retention_days() {
 }
 
 RETENTION_DAYS=$(parse_retention_days)
-NOW=$(date +%s 2>/dev/null || true)
-if ! [[ "$NOW" =~ ^[0-9]+$ ]]; then
-    larch_err "Error: failed to determine the current epoch time; refusing cleanup."
-    exit 1
-fi
-CUTOFF=$((NOW - RETENTION_DAYS * 86400))
 
 # --- Session count (informational only) ---------------------------------------
 SESSION_COUNT=0
 SESSION_COUNT=$(pgrep -x claude 2>/dev/null | wc -l | tr -d ' ') || SESSION_COUNT=0
 emit_kv SESSION_COUNT "$SESSION_COUNT"
-
-should_remove_by_age() {
-    local entry="$1"
-    local newest
-
-    [[ -d "$entry" && ! -L "$entry" ]] || return 1
-    newest=$(newest_activity_mtime "$entry") || return 1
-    [ "$newest" -lt "$CUTOFF" ]
-}
 
 # --- Clean ~/.cache/larch/sessions/ -------------------------------------------
 CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions"
@@ -90,11 +38,9 @@ CACHE_REMOVED=0
 
 if [[ -d "$CACHE_DIR" ]]; then
     while IFS= read -r -d $'\0' entry; do
-        if should_remove_by_age "$entry"; then
-            rm -rf "$entry"
-            (( CACHE_REMOVED++ )) || true
-        fi
-    done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 -print0 2>/dev/null) || true
+        rm -rf "$entry"
+        (( CACHE_REMOVED++ )) || true
+    done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" -print0 2>/dev/null) || true
 fi
 
 emit_kv CACHE_REMOVED "$CACHE_REMOVED"
@@ -124,22 +70,20 @@ TMP_PATTERNS=(
     "issue-*-design-comment.md"
 )
 
-for pattern in "${TMP_PATTERNS[@]}"; do
-    for entry in "$TMP_ROOT"/${pattern}; do
-        [[ -e "$entry" || -L "$entry" ]] || continue
-        if [[ -d "$entry" && ! -L "$entry" ]]; then
-            if should_remove_by_age "$entry"; then
-                rm -rf "$entry"
-                (( TMP_REMOVED++ )) || true
-            fi
-        elif [[ -f "$entry" ]]; then
-            if [ "$(stat_mtime "$entry")" -lt "$CUTOFF" ]; then
-                rm -f "$entry"
-                (( TMP_REMOVED++ )) || true
-            fi
-        fi
-    done
+_find_name_args=()
+for _pattern in "${TMP_PATTERNS[@]}"; do
+    if [ "${#_find_name_args[@]}" -gt 0 ]; then
+        _find_name_args+=( -o )
+    fi
+    _find_name_args+=( -name "$_pattern" )
 done
+
+if [[ -d "$TMP_ROOT" ]]; then
+    while IFS= read -r -d $'\0' entry; do
+        rm -rf "$entry"
+        (( TMP_REMOVED++ )) || true
+    done < <(find "$TMP_ROOT" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \) -print0 2>/dev/null) || true
+fi
 
 emit_kv TMP_REMOVED "$TMP_REMOVED"
 
