@@ -323,7 +323,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Warn when cache cap trim cannot evict pinned or failed versions
 - Remove dead list_cached_versions helper from upgrade-larch.sh
-- Add all-pinned cap-overflow regression in test-upgrade-larch-prune.sh
+- Add all-pinned cap-overflow regression in the cached-version prune harness
 
 ## [45.2.2] - 2026-05-27
 
@@ -4459,7 +4459,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `/upgrade-larch` skill — automates upgrading the larch plugin to the latest version by removing and re-adding the marketplace, then reinstalling. Includes failure recovery guidance and a local-dev warning.
+- `/upgrade-larch` skill — automates upgrading the larch plugin to the latest version by refreshing the marketplace, then reinstalling. Includes failure recovery guidance and a local-dev warning.
 
 ### Changed
 

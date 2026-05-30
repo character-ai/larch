@@ -19,10 +19,13 @@ larch_quiet_init
 # MAINTENANCE: if a new top-level directory is added to the repo and must ship,
 # add it here; larch-logs/ and mermaid-lint/ must NOT be added.
 LARCH_SPARSE_DIRS=".claude .claude-plugin .gemini .github agents docs hooks scripts skills tests"
+MARKETPLACE_CLONE="$HOME/.claude/plugins/marketplaces/larch-local"
 
 recover() {
     larch_err ""
     larch_err "Recovery: run these commands manually to reinstall:"
+    larch_err "  claude plugin marketplace remove larch-local"
+    larch_err "  rm -rf '$MARKETPLACE_CLONE'"
     larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
     larch_err "  claude plugin install larch@larch-local"
 }
@@ -40,6 +43,57 @@ warn_install_stamp_failure() {
 
 is_safe_version() {
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]
+}
+
+normalize_sparse_dirs() {
+    tr ' ' '\n' <<< "$LARCH_SPARSE_DIRS" | sed '/^$/d' | sort
+}
+
+marketplace_sparse_cone_matches() {
+    local configured expected
+
+    [ -d "$MARKETPLACE_CLONE/.git" ] || return 1
+    [ ! -d "$MARKETPLACE_CLONE/larch-logs" ] || return 1
+
+    configured=$(git -C "$MARKETPLACE_CLONE" sparse-checkout list 2>/dev/null | sed '/^$/d' | sort || true)
+    expected=$(normalize_sparse_dirs)
+    [ -n "$configured" ] || return 1
+    [ "$configured" = "$expected" ]
+}
+
+warn_marketplace_remove_failure() {
+    larch_err "Warning: failed to remove larch-local marketplace before sparse add."
+    larch_err "If the add also fails, delete the clone manually: $MARKETPLACE_CLONE"
+}
+
+remove_larch_marketplace() {
+    if ! claude plugin marketplace remove larch-local 2>&1; then
+        warn_marketplace_remove_failure
+        return 1
+    fi
+}
+
+add_sparse_larch_marketplace() {
+    # shellcheck disable=SC2086  # intentional word-splitting into --sparse args
+    claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS 2>&1
+}
+
+refresh_larch_marketplace() {
+    # A sparse clone is valid only when both the legacy-heavy larch-logs/ dir is
+    # absent and git's sparse cone exactly matches LARCH_SPARSE_DIRS. The cone
+    # comparison catches future include-list additions for existing installs.
+    if marketplace_sparse_cone_matches; then
+        larch_err "Refreshing larch marketplace in place (sparse clone present)..."
+        if ! claude plugin marketplace update larch-local 2>&1; then
+            larch_err "marketplace update failed; falling back to sparse re-add..."
+            remove_larch_marketplace || true
+            add_sparse_larch_marketplace
+        fi
+    else
+        larch_err "Adding larch marketplace (sparse checkout; excludes larch-logs)..."
+        remove_larch_marketplace || true
+        add_sparse_larch_marketplace
+    fi
 }
 
 get_stable_releases() {
@@ -254,6 +308,10 @@ if ! is_safe_version "${CURRENT_INSTALLED_VERSION:-}"; then
 fi
 if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
     ACTUAL_VERSION="${CURRENT_INSTALLED_VERSION:-$INSTALLED_VERSION}"
+    if ! marketplace_sparse_cone_matches; then
+        larch_err "Installed version is current; repairing larch marketplace sparse checkout..."
+        refresh_larch_marketplace
+    fi
     write_install_stamp "$ACTUAL_VERSION"
     prune_cached_versions "$ACTUAL_VERSION"
     larch_err ""
@@ -270,27 +328,10 @@ fi
 larch_err "Uninstalling larch plugin..."
 claude plugin uninstall larch@larch-local 2>&1 || true
 
-# Marketplace refresh. A SPARSE clone (cone excludes larch-logs/) is detected by
-# the ABSENCE of its larch-logs/ subdir. When a sparse clone already exists,
-# refresh it in place with `marketplace update` (a git pull — seconds) instead
-# of the old remove + full re-clone. A legacy FULL clone (larch-logs/ present)
-# or a missing clone triggers a one-time remove + sparse re-add to establish the
-# cone; every subsequent run then takes the cheap update path.
-MARKETPLACE_CLONE="$HOME/.claude/plugins/marketplaces/larch-local"
-if [ -d "$MARKETPLACE_CLONE/.git" ] && [ ! -d "$MARKETPLACE_CLONE/larch-logs" ]; then
-    larch_err "Refreshing larch marketplace in place (sparse clone present)..."
-    if ! claude plugin marketplace update larch-local 2>&1; then
-        larch_err "marketplace update failed; falling back to sparse re-add..."
-        claude plugin marketplace remove larch-local 2>&1 || true
-        # shellcheck disable=SC2086  # intentional word-splitting into --sparse args
-        claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS 2>&1
-    fi
-else
-    larch_err "Adding larch marketplace (sparse checkout; excludes larch-logs)..."
-    claude plugin marketplace remove larch-local 2>&1 || true
-    # shellcheck disable=SC2086  # intentional word-splitting into --sparse args
-    claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS 2>&1
-fi
+# Marketplace refresh. A valid sparse clone has the expected sparse cone and no
+# larch-logs/ checkout. Full legacy clones, missing clones, and sparse-cone drift
+# trigger remove + sparse re-add; valid sparse clones update in place.
+refresh_larch_marketplace
 
 larch_err "Installing larch plugin..."
 claude plugin install larch@larch-local 2>&1
@@ -308,6 +349,8 @@ if [ -n "$LATEST_STABLE" ]; then
         larch_err "Warning: expected version ${LATEST_STABLE} but found installed version ${ACTUAL_VERSION:-unknown}."
         larch_err "A pre-release or unexpected version may have been installed."
         larch_err "Re-run /upgrade-larch or install manually:"
+        larch_err "  claude plugin marketplace remove larch-local"
+        larch_err "  rm -rf '$MARKETPLACE_CLONE'"
         larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
         larch_err "  claude plugin install larch@larch-local"
     fi

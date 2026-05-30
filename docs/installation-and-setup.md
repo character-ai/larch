@@ -8,7 +8,7 @@ Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/p
 
 #### Install
 ```bash
-claude plugin marketplace add character-ai/larch
+claude plugin marketplace add character-ai/larch --sparse .claude .claude-plugin .gemini .github agents docs hooks scripts skills tests
 claude plugin install larch@larch-local
 ```
 The first command registers larch's marketplace manifest (`.claude-plugin/marketplace.json`). The second command installs the `larch` plugin into your Claude Code user scope. Once installed, all larch skills (e.g., /implement) become available in every Claude Code session.  Note that both commands make changes to your `~/.claude/settings.json`.
@@ -39,7 +39,7 @@ After `/upgrade-larch` finishes, restart Claude Code only if it actually install
 
 When `/upgrade-larch` verifies a stable install (or runs on the already-latest path), it writes `.larch-installed-at` on the stable version directory and keeps the eight most-recently-installed cached versions (install-stamp order; legacy unstamped directories fall back to directory mtime at ranking time only). The verified or already-latest stable target directory is always retained when present. There are no session pins or mtime-touch helpers. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted.
 
-`/upgrade-larch` now installs via a sparse checkout that excludes the committed `larch-logs/` run logs and the dev-only `mermaid-lint/` toolchain (so the install carries no run logs and triggers no `npm install`), and refreshes the marketplace in place with `claude plugin marketplace update` instead of removing and re-cloning it. The first upgrade after this change performs a one-time `remove` + sparse re-add; every later upgrade uses the fast in-place update.
+`/upgrade-larch` installs via the same sparse checkout shown above. The sparse checkout excludes the committed `larch-logs/` run logs and the dev-only `mermaid-lint/` toolchain, so the install carries no run logs and triggers no `npm install`. A valid sparse checkout refreshes in place with `claude plugin marketplace update`; legacy full clones, missing clones, and stale sparse cones are repaired with a one-time `remove` + sparse re-add. The already-latest path also repairs a legacy or stale marketplace clone before exiting.
 
 ## Install ast-grep
 1. Install the CLI (shell)
@@ -89,14 +89,15 @@ Continuing with the cached version.**
 
 This warning fires once per `session-setup.sh` invocation from a larch dev clone when preflight is enabled. Typical entrypoints include `/implement`; `/review` skips preflight and does not emit the warning in its default flow. After reinstalling or refreshing the plugin cache, restart Claude Code to pick up the new version.
 
-### Mermaid CLI (required for the `lint-mermaid-fences` pre-commit hook)
+### Mermaid CLI (required when Markdown changes contain Mermaid fences)
 
 Contributors editing any `.md` file in this repo trigger the
-`lint-mermaid-fences` pre-commit hook, which runs `mmdc` against every
-` ```mermaid ` fence in the staged Markdown to catch unsafe content
-before it lands in tracking-issue summaries or PR bodies. The hook hard-fails
-(exit 2) when the Mermaid CLI is not installed, so a one-time
-installation is required:
+`lint-mermaid-fences` pre-commit hook. When staged Markdown contains
+` ```mermaid ` fences, the hook runs `mmdc` against them to catch unsafe
+content before it lands in tracking-issue summaries or PR bodies. Markdown
+changes without Mermaid fences do not require the Mermaid CLI. If fences are
+present and the CLI is not installed, the hook hard-fails (exit 2), so install
+the local toolchain first:
 
 ```bash
 cd larch
