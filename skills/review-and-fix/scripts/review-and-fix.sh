@@ -326,7 +326,8 @@ post_dispatch_submodule_revert() {
 }
 
 collect_round_stage_paths() {
-    local round_dir="$1" paths_file="$round_dir/coder-stage-paths.txt"
+    local round_dir="$1"
+    local paths_file="$round_dir/coder-stage-paths.txt"
     {
         git diff --name-only 2>/dev/null || true
         git diff --name-only --cached 2>/dev/null || true
