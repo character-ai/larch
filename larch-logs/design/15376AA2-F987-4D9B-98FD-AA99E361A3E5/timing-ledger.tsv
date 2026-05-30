@@ -1,0 +1,49 @@
+v1	mark	1780164991	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1780165634	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1780165661	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1780165687	design	design Step 1d.7 — outline	-	-	-	-	-	-	-	-
+v1	mark	1780165746	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1780165746	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1780165869	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1780166038	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1780166206	implement	-	cursor	cursor-phase1-dyn-cursor-plan-variable-name-drift	1780166144	1780166206	62	cursor-plan-dyn-variable-name-drift-output.txt	0	complete
+v1	vendor	1780166206	implement	-	cursor	cursor-phase1-dyn-cursor-plan-call-site-audit	1780166144	1780166206	62	cursor-plan-dyn-call-site-audit-output.txt	0	complete
+v1	vendor	1780166228	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780166144	1780166228	84	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780166237	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780166144	1780166237	93	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780166249	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sink-lifecycle	1780166144	1780166249	105	cursor-plan-dyn-sink-lifecycle-output.txt	0	complete
+v1	vendor	1780166269	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780166144	1780166269	125	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780166275	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780166144	1780166275	131	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780166277	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780166144	1780166277	133	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780166399	implement	-	cursor	cursor-phase2-codex-plan-edge	1780166278	1780166399	121	codex-primary-plan-edge-output-phase2.txt	0	complete
+v1	vendor	1780166431	implement	-	cursor	cursor-phase2-dyn-codex-plan-variable-name-drift	1780166399	1780166430	31	codex-primary-plan-dyn-variable-name-drift-output-phase2.txt	0	complete
+v1	vendor	1780166532	implement	-	cursor	cursor-phase2-dyn-codex-plan-sink-lifecycle	1780166431	1780166532	101	codex-primary-plan-dyn-sink-lifecycle-output-phase2.txt	0	complete
+v1	vendor	1780168778	implement	-	cursor	cursor-phase1-voter-3	1780168717	1780168778	61	cursor-vote-output.txt	0	complete
+v1	vendor	1780168829	implement	-	cursor	cursor-phase2-voter-2	1780168778	1780168829	51	codex-vote-output-phase2.txt	0	complete
+v1	vendor	1780168957	implement	-	cursor	cursor-review	1780168916	1780168957	41	cursor-output.txt	0	complete
+v1	vendor	1780169351	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780169237	1780169351	114	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780169352	implement	-	cursor	cursor-phase1-dyn-cursor-plan-caller-inventory	1780169237	1780169352	115	cursor-plan-dyn-caller-inventory-output.txt	0	complete
+v1	vendor	1780169360	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780169237	1780169360	123	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780169362	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sink-predicate	1780169237	1780169362	125	cursor-plan-dyn-sink-predicate-output.txt	0	complete
+v1	vendor	1780169369	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780169237	1780169369	132	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780169379	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780169237	1780169379	142	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780169380	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780169237	1780169379	142	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780169512	implement	-	cursor	cursor-phase2-codex-plan-pragmatic	1780169380	1780169512	132	codex-primary-plan-pragmatic-output-phase2.txt	0	complete
+v1	vendor	1780169614	implement	-	cursor	cursor-phase2-codex-plan-requirements	1780169512	1780169614	102	codex-primary-plan-requirements-output-phase2.txt	0	complete
+v1	vendor	1780169735	implement	-	cursor	cursor-phase2-dyn-codex-plan-caller-inventory	1780169614	1780169735	121	codex-primary-plan-dyn-caller-inventory-output-phase2.txt	0	complete
+v1	vendor	1780169837	implement	-	cursor	cursor-phase2-dyn-codex-plan-sink-predicate	1780169736	1780169837	101	codex-primary-plan-dyn-sink-predicate-output-phase2.txt	0	complete
+v1	vendor	1780172302	implement	-	cursor	cursor-phase1-voter-3	1780172250	1780172302	52	cursor-vote-output.txt	0	complete
+v1	vendor	1780172333	implement	-	cursor	cursor-phase2-voter-2	1780172302	1780172333	31	codex-vote-output-phase2.txt	0	complete
+v1	vendor	1780172581	implement	-	cursor	cursor-review	1780172499	1780172581	82	cursor-output.txt	0	complete
+v1	vendor	1780172761	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sink-var-timing	1780172658	1780172761	103	cursor-plan-dyn-sink-var-timing-output.txt	0	complete
+v1	vendor	1780172781	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780172658	1780172781	123	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780172785	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780172658	1780172785	127	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780172796	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780172658	1780172796	138	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780172805	implement	-	cursor	cursor-phase1-dyn-cursor-plan-call-site-coverage	1780172658	1780172805	147	cursor-plan-dyn-call-site-coverage-output.txt	0	complete
+v1	vendor	1780172812	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780172658	1780172812	154	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780172814	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780172658	1780172814	156	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780172928	implement	-	cursor	cursor-phase2-dyn-codex-plan-sink-var-timing	1780172816	1780172928	112	codex-primary-plan-dyn-sink-var-timing-output-phase2.txt	0	complete
+v1	mark	1780175057	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1780175088	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1780175135	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1780175146	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1780175567	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

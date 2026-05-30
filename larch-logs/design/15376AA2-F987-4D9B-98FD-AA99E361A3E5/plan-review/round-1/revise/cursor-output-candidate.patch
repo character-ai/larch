@@ -1,0 +1,32 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -88,7 +88,9 @@
+ - Assert the codex coder wrapper invocation includes `--stderr-sink` pointing at the round-dir wrapper log.
+ 
+ ### UPDATED: `scripts/test-run-external-agent.sh`
+-- Add `--stderr-sink` accepted: a failing default-mode child whose inherited stderr lands in the passed sink writes `${output}.stderr-tail` sourced from that sink.
++- Add `--stderr-sink` accepted: invoke the wrapper **outside** `run_subject` with launcher-shaped fd2 redirect — `"$WRAPPER" --tool codex --output "$output" --timeout 5 --stderr-sink "$sink" ... 2>"$sink" -- bash -c '...'` (mirrors `launch-codex-implement.sh` ~324–338: the **caller** owns fd2, not the wrapper). Use a failing default-mode child that writes a distinct agent stderr marker to inherited fd2 (e.g. `printf 'agent-sink-marker\n' >&2; exit 1`). Assert `${output}.stderr-tail` contains the marker. Do **not** use `run_subject` alone — it always sends wrapper stderr to `RUN_STDERR`, leaves `--stderr-sink` empty/unpopulated, and the case can false-pass via `.sidecar`/`.diag` fallback without exercising the custom-sink contract.
+ - Add `--stderr-sink` rejection: an invalid path (byte outside the allowlist) exits 1 with an `ERROR:` line and no side effects, symmetric with the `--output` reject assertions.
+ 
+ ### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+@@ -99,6 +101,8 @@
+ - Empty explicit sink at selection time (agent wrote no stderr): `[[ -s ]]` is false, selection falls back to the existing order. No regression.
+ - Explicit sink equal to `${output}.sidecar`: same file; the explicit branch picks it first; identical result.
+ - Lanes without `--stderr-sink` (`STDERR_SINK=""`): 4th arg empty, default branch unchanged — byte-identical behavior.
++- Harness `run_subject` in `test-run-external-agent.sh` redirects wrapper fd2 to `RUN_STDERR`, not to `--stderr-sink`; the accept integration case must add an explicit `2>"$sink"` on the wrapper invocation (same as production launchers).
+ - The custom sink interleaves a few wrapper progress / `❌ FAILED` lines with the agent's real stderr (wrapper fd2 == sink in these lanes). `tail -n 30` still captures the agent's recent errors; no line filtering is added (keeps the change minimal).
+ 
+ ## Failure modes
+@@ -114,7 +118,7 @@
+ ## Testing strategy
+ - Lib unit tests (`test-lib-failed-agent-stderr-tail.sh`): explicit-sink priority in default mode; fallback when empty/missing; ignored in capture modes.
+-- Wrapper integration tests (`test-run-external-agent.sh`): `--stderr-sink` accept path produces a `.stderr-tail` sourced from the sink; invalid `--stderr-sink` rejected symmetric with `--output`.
++- Wrapper integration tests (`test-run-external-agent.sh`): `--stderr-sink` accept path with explicit `2>"$sink"` redirect (not `run_subject` alone) produces a `.stderr-tail` sourced from agent stderr in the sink; invalid `--stderr-sink` rejected symmetric with `--output`.
+ - Launcher forwarding assertions (`test-codex-implementer.sh`, `test-lint-fix-loop.sh`, `test-review-and-fix.sh`): each broken lane forwards `--stderr-sink`.
+ - Run `bash scripts/relevant-checks.sh` (lint + sibling `.md` checks) after the edits.
+ 
+-diff_added: 130
++diff_added: 147
+ diff_deleted: 8
+-diff_lines: 138
++diff_lines: 155

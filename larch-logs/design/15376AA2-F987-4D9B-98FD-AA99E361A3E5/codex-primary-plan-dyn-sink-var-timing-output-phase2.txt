@@ -1,0 +1,3 @@
+Reading the plan and tracing sink-variable initialization across the three launchers and `run-external-agent.sh`.
+Checking whether `validate_meta_scalar_path` is invoked with the correct argument order and whether any launcher paths set the sink after the wrapper call.
+{"no_issues_found": true}

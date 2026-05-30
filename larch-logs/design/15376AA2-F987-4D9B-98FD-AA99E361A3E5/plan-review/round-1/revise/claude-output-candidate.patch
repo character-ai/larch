@@ -1,0 +1,23 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -70,5 +70,5 @@
+ 
+ ### UPDATED: `scripts/test-run-external-agent.sh`
+-- Add `--stderr-sink` accepted: a failing default-mode child whose inherited stderr lands in the passed sink writes `${output}.stderr-tail` sourced from that sink.
++- Add `--stderr-sink` accepted: invoke the wrapper with both `--stderr-sink "$sink"` **and** `2>"$sink"` (mirroring the launcher fd2 redirect shape, e.g. `launch-codex-implement.sh:324-338`); a failing default-mode child then has real agent stderr in `$sink`; assert `${output}.stderr-tail` content comes from agent lines in `$sink`, not from `.sidecar`/`.diag` fallback. Without the `2>sink` redirect the sink is empty and the test can spuriously pass via the existing fallback order, missing the custom-sink contract.
+ - Add `--stderr-sink` rejection: an invalid path (byte outside the allowlist) exits 1 with an `ERROR:` line and no side effects, symmetric with the `--output` reject assertions.
+ 
+@@ -95,5 +95,5 @@
+ ## Testing strategy
+ - Lib unit tests (`test-lib-failed-agent-stderr-tail.sh`): explicit-sink priority in default mode; fallback when empty/missing; ignored in capture modes.
+-- Wrapper integration tests (`test-run-external-agent.sh`): `--stderr-sink` accept path produces a `.stderr-tail` sourced from the sink; invalid `--stderr-sink` rejected symmetric with `--output`.
++- Wrapper integration tests (`test-run-external-agent.sh`): `--stderr-sink` accept path — wrapper invoked with both `--stderr-sink "$sink"` and `2>"$sink"` — produces a `.stderr-tail` sourced from agent lines in the sink; invalid `--stderr-sink` rejected symmetric with `--output`.
+ - Launcher forwarding assertions (`test-codex-implementer.sh`, `test-lint-fix-loop.sh`, `test-review-and-fix.sh`): each broken lane forwards `--stderr-sink`.
+ - Run `bash scripts/relevant-checks.sh` (lint + sibling `.md` checks) after the edits.
+@@ -100,4 +100,4 @@
+ 
+-diff_added: 130
++diff_added: 132
+ diff_deleted: 8
+-diff_lines: 138
++diff_lines: 140

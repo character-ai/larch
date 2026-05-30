@@ -1,0 +1,20 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-innovation-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-innovation-output.txt)
+
+{"no_issues_found": true}
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/codex-primary-plan-innovation-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/codex-primary-plan-innovation-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/codex-primary-plan-innovation-output.txt.launch-stderr)
+
+(file missing: <TMPDIR>/codex-primary-plan-innovation-output.txt.launch-stderr)
+

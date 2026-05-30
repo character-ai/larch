@@ -1,0 +1,37 @@
+Reviewing how similar tests assert launcher flags so the plan revision matches the codebase.
+--- a/plan.txt
++++ b/plan.txt
+@@ -88,16 +88,19 @@
+   - `--capture-stdout` and `--capture-stdout-only` + explicit sink set → ignored (returns `${output}` / `${output}.diag` respectively).
+ 
+ ### UPDATED: `scripts/test-run-external-agent.sh`
+ - Add `--stderr-sink` accepted: invoke the wrapper with both `--stderr-sink "$sink"` **and** `2>"$sink"` (mirroring the launcher fd2 redirect shape, e.g. `launch-codex-implement.sh:324-338`); a failing default-mode child then has real agent stderr in `$sink`; assert `${output}.stderr-tail` content comes from agent lines in `$sink`, not from `.sidecar`/`.diag` fallback. Without the `2>sink` redirect the sink is empty and the test can spuriously pass via the existing fallback order, missing the custom-sink contract.
+ - Add `--stderr-sink` rejection: an invalid path (byte outside the allowlist) exits 1 with an `ERROR:` line and no side effects, symmetric with the `--output` reject assertions.
+ 
+ ### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+-- Assert the `run-external-agent.sh` invocation includes `--stderr-sink "$SIDECAR_LOG"` (wrapper-argv capture / stub).
++- Static source pin: `grep -Fq '--stderr-sink "$SIDECAR_LOG"' "$LAUNCHER"` (same variable the launcher already passes to `2>"$SIDECAR_LOG"`). Do **not** assert via `codex-argv.txt` or a runtime wrapper stub — `launch-codex-implement.sh` hardcodes `$SCRIPT_DIR/run-external-agent.sh` with no `RUN_EXTERNAL_AGENT_SH` override, so the harness cannot observe wrapper argv today.
+ 
+ ### UPDATED: `scripts/test-lint-fix-loop.sh`
+-- Assert the `run_codex` wrapper invocation includes `--stderr-sink` pointing at the run-dir wrapper log.
++- Static source pin: `grep -Fq '--stderr-sink "$codex_wrapper_log"' "$SOURCE_SCRIPTS/lint-fix-loop.sh"` in `run_codex`. Fixture copies inherit the pin via `make_fixture_scripts`; custom `LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH` stubs do not log wrapper argv.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+-- Assert the codex coder wrapper invocation includes `--stderr-sink` pointing at the round-dir wrapper log.
++- Static source pin: `grep -Fq '--stderr-sink "$codex_wrapper_log"' "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"` in `run_coder_dispatch`. The shared `run-external-agent-stub.sh` ignores unlisted flags and does not record `--stderr-sink` at runtime.
+ 
+ ## Edge cases
+ - Empty explicit sink at selection time (agent wrote no stderr): `[[ -s ]]` is false, selection falls back to the existing order. No regression.
+@@ -118,7 +121,7 @@
+ - Lib unit tests (`test-lib-failed-agent-stderr-tail.sh`): explicit-sink priority in default mode; fallback when empty/missing; ignored in capture modes.
+ - Wrapper integration tests (`test-run-external-agent.sh`): `--stderr-sink` accept path — wrapper invoked with both `--stderr-sink "$sink"` and `2>"$sink"` — produces a `.stderr-tail` sourced from agent lines in the sink; invalid `--stderr-sink` rejected symmetric with `--output`.
+-- Launcher forwarding assertions (`test-codex-implementer.sh`, `test-lint-fix-loop.sh`, `test-review-and-fix.sh`): each broken lane forwards `--stderr-sink`.
++- Launcher forwarding pins (`test-codex-implementer.sh`, `test-lint-fix-loop.sh`, `test-review-and-fix.sh`): static `grep -Fq` on each lane's launcher source for `--stderr-sink` and the lane's sink variable (`$SIDECAR_LOG` / `$codex_wrapper_log`) — not runtime wrapper-argv capture (implement has no `RUN_EXTERNAL_AGENT_SH` override; lint-fix/review stubs skip unknown wrapper flags).
+ - Run `bash scripts/relevant-checks.sh` (lint + sibling `.md` checks) after the edits.
+ 
+-diff_added: 132
++diff_added: 128
+ diff_deleted: 8
+-diff_lines: 140
++diff_lines: 136
+

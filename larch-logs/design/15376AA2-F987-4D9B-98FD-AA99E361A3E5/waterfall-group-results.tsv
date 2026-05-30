@@ -1,0 +1,14 @@
+plan-arch	cursor-plan-arch	cursor	<TMPDIR>/cursor-plan-arch-output.txt	ok
+plan-edge	cursor-plan-edge	cursor	<TMPDIR>/cursor-plan-edge-output.txt	ok
+plan-innovation	cursor-plan-innovation	cursor	<TMPDIR>/cursor-plan-innovation-output.txt	ok
+plan-pragmatic	cursor-plan-pragmatic	cursor	<TMPDIR>/cursor-plan-pragmatic-output.txt	ok
+plan-requirements	cursor-plan-requirements	cursor	<TMPDIR>/cursor-plan-requirements-output.txt	ok
+plan-dyn-call-site-coverage	dyn-cursor-plan-call-site-coverage	cursor	<TMPDIR>/cursor-plan-dyn-call-site-coverage-output.txt	ok
+plan-arch	codex-plan-arch	cursor	<TMPDIR>/codex-primary-plan-arch-output.txt	reused	cursor-plan-arch
+plan-edge	codex-plan-edge	cursor	<TMPDIR>/codex-primary-plan-edge-output.txt	reused	cursor-plan-edge
+plan-innovation	codex-plan-innovation	cursor	<TMPDIR>/codex-primary-plan-innovation-output.txt	reused	cursor-plan-innovation
+plan-pragmatic	codex-plan-pragmatic	cursor	<TMPDIR>/codex-primary-plan-pragmatic-output.txt	reused	cursor-plan-pragmatic
+plan-requirements	codex-plan-requirements	cursor	<TMPDIR>/codex-primary-plan-requirements-output.txt	reused	cursor-plan-requirements
+plan-dyn-call-site-coverage	dyn-codex-plan-call-site-coverage	cursor	<TMPDIR>/codex-primary-plan-dyn-call-site-coverage-output.txt	reused	dyn-cursor-plan-call-site-coverage
+plan-dyn-sink-var-timing	dyn-cursor-plan-sink-var-timing	claude	<TMPDIR>/cursor-plan-dyn-sink-var-timing-output-phase3.txt	ok
+plan-dyn-sink-var-timing	dyn-codex-plan-sink-var-timing	claude	<TMPDIR>/codex-primary-plan-dyn-sink-var-timing-output-phase3.txt	ok
