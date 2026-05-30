@@ -23,4 +23,4 @@ Covered cases:
 
 Stdout contract under test: `SESSION_COUNT`, `CACHE_REMOVED`, `TMP_REMOVED`, and `SYMLINKS_REMOVED` (`emit_kv` lines). Retention default and validation match `parse_retention_days` in `cleanup.sh` (default 7; positive integer required, otherwise warn and use 7).
 
-Edit in sync: update this harness, `cleanup.sh`, `cleanup.md`, `skills/cleanup/SKILL.md`, and `Makefile` when changing age-based session pruning, retention parsing, symlink reaping, or top-level mtime age pruning.
+Edit in sync: update this harness, `cleanup.sh`, `cleanup.md`, `skills/cleanup/SKILL.md`, `SECURITY.md`, and `Makefile` when changing age-based session pruning, retention parsing, symlink reaping, or top-level mtime age pruning.
