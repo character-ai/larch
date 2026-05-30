@@ -1,0 +1,19 @@
+Reviewing the branch diff and commit history for correctness around `--stderr-sink`.
+Checking potential correctness issues: test harness ordering, validation, and same-file read/write behavior.
+### In-Scope Findings
+
+- **correctness** `scripts/test-lint-fix-loop.sh:9-17` — The new static pin calls `fail` on line 10 before `fail()` is defined on lines 15–17. If the `grep` misses `--stderr-sink "$codex_wrapper_log"`, Bash runs an undefined `fail` command (typically `command not found` / exit 127 under `set -euo pipefail`) instead of the intended `FAIL: …` message, so the harness fails opaquely and does not reliably enforce the regression. **Suggested fix:** Move the `grep` block to after `fail()` is defined (same pattern as `skills/implement/scripts/test-codex-implementer.sh`, which uses an `if grep …; then :; else echo …; exit 1; fi` block after helpers exist).
+
+- **correctness** `skills/review-and-fix/scripts/test-review-and-fix.sh:14-51` — Same ordering bug: the new `grep … || fail` on lines 14–15 runs before `fail()` is defined on lines 49–51. A missing pin aborts with `fail: command not found` rather than a structured test failure. **Suggested fix:** Relocate the pin below the `fail()` / `pass()` definitions, or replace `|| fail` with an explicit `if ! grep …; then fail "…"; fi` after `fail` exists.
+
+### Out-of-Scope Observations
+
+- Core wiring looks consistent: `--stderr-sink` is parsed and validated in `scripts/run-external-agent.sh`, passed as the fourth argument at both failure call sites (timeout ~275 and non-zero exit ~309), and honored only in the default branch of `select_failed_agent_stderr_source` in `scripts/lib-failed-agent-stderr-tail.sh:75-82`; capture modes correctly ignore `explicit_sink`. Launchers mirror fd2 with `2>"$SIDECAR_LOG"` / `2>"$codex_wrapper_log"` and forward the matching `--stderr-sink` path.
+
+- `validate_meta_scalar_path` checks path characters only (not existence), symmetric with `--output`; that matches the plan and is appropriate for paths created at launch time.
+
+- `launch-cursor-implement.sh` still omits `--stderr-sink` but uses `--capture-stdout-only` with a different stderr contract; that asymmetry is documented and intentional.
+
+- Collector retries in `scripts/collect-agent-results.sh` do not persist or replay `--stderr-sink` in `.meta`; that predates this change and only matters if those lanes are retried through the collector.
+
+**Commits (since merge-base with `main`):** `7bf8262b4` Fix stderr-tail source order…, `4f03282db` chore(larch-logs)…, `929867c22` Apply relevant-checks fixes.
