@@ -1,0 +1,5 @@
+Unknown option: --run-id
+Usage: oos-issue-cap.sh --input-file FILE [--output FILE]
+  When --output is omitted, the helper rewrites --input-file in place
+  (via a same-directory tmp + mv for atomicity).
+  Input must be OOS-shaped: every item must begin with '### OOS_<digits>:'.
