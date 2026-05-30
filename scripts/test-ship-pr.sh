@@ -5691,7 +5691,7 @@ cat > "$root/scripts/launch-codex-ci.sh" <<STUB
 set -euo pipefail
 attempt_file="$call_dir/fix-attempt"
 attempt=\$(cat "\$attempt_file" 2>/dev/null || echo 0)
-printf 'codex\n' >> "$call_dir/attempt-${attempt}-first.txt"
+printf 'codex\n' >> "$call_dir/attempt-\${attempt}-first.txt"
 printf 'vendor fix\n' >> README.md
 git add README.md
 git commit -q -m "Fix CI failure"

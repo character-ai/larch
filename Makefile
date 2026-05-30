@@ -637,6 +637,9 @@ test-ship-pr-transient:
 test-ship-pr-rebase-phase14:
 	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr-rebase-phase14.sh
 
+test-ship-pr-3210-spot:
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr-3210-spot.sh
+
 test-ci-wait:
 	bash scripts/harness-timer.sh $@ bash scripts/test-ci-wait.sh
 

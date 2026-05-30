@@ -106,8 +106,8 @@ bash_expand_simple_var_refs() {
         var="${BASH_REMATCH[2]}"
         val="${BASH_REMATCH[3]}"
         ref="\$$var"
-        line=${line//"$ref"/$val}
-        line=${line//$ref/$val}
+        line=${line//"$ref"/$val} # lint-renderer-safe: ok ref/val from BASH_REMATCH capture
+        line=${line//$ref/$val} # lint-renderer-safe: ok ref/val from BASH_REMATCH capture
         scan="${scan/${BASH_REMATCH[0]}/ }"
     done
     printf '%s' "$line"
@@ -240,10 +240,6 @@ bash_line_task_output_poll_tokens() {
             esac
             ;;
     esac
-}
-
-bash_line_task_output_poll_token() {
-    bash_line_task_output_poll_tokens "$1" | head -1
 }
 
 extract_bash_task_output_poll_tokens() {
