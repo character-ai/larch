@@ -44,6 +44,9 @@
 #                     Redirect the tool's stdout to the output file and stderr
 #                     to <output>.diag. Use for JSON stdout protocols whose
 #                     parse would be corrupted by stderr noise.
+#   --stderr-sink PATH
+#                     Default mode only: file where wrapper+inherited child stderr
+#                     is captured (callers that redirect fd2 to a custom sink).
 #   --               End of wrapper options. Everything after is the command to execute.
 #
 # Examples:
@@ -66,18 +69,20 @@ source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
 source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 
-usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] -- CMD..." >&2; }
+usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] [--stderr-sink PATH] -- CMD..." >&2; }
 
 CAPTURE_STDOUT=false
 CAPTURE_STDOUT_ONLY=false
 TOOL_NAME=""
 OUTPUT_FILE=""
 TIMEOUT_SECONDS=""
+STDERR_SINK=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --tool) TOOL_NAME="${2:?--tool requires a value}"; shift 2 ;;
         --output) OUTPUT_FILE="${2:?--output requires a value}"; shift 2 ;;
         --timeout) TIMEOUT_SECONDS="${2:?--timeout requires a value}"; shift 2 ;;
+        --stderr-sink) STDERR_SINK="${2:?--stderr-sink requires a value}"; shift 2 ;;
         --capture-stdout) CAPTURE_STDOUT=true; shift ;;
         --capture-stdout-only) CAPTURE_STDOUT_ONLY=true; shift ;;
         --help) usage; exit 0 ;;
@@ -97,6 +102,9 @@ if [[ "$CAPTURE_STDOUT" == "true" && "$CAPTURE_STDOUT_ONLY" == "true" ]]; then
 fi
 
 validate_meta_scalar_path --output "$OUTPUT_FILE" || exit 1
+if [[ -n "$STDERR_SINK" ]]; then
+    validate_meta_scalar_path --stderr-sink "$STDERR_SINK" || exit 1
+fi
 
 case "$TIMEOUT_SECONDS" in
     ''|*[!0-9]*|0) echo "ERROR: --timeout must be a positive integer, got '$TIMEOUT_SECONDS'" >&2; exit 1 ;;
@@ -264,7 +272,7 @@ while kill -0 "$PID" 2>/dev/null; do
         # Write diagnostic file for callers
         echo "Timed out after ${SECONDS}s (limit: ${TIMEOUT_SECONDS}s). Process was killed after exceeding the timeout. Output size: ${OUTPUT_SIZE} bytes." >> "${OUTPUT_FILE}.diag"
         _stderr_src=""
-        _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" || true)
+        _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" "$STDERR_SINK" || true)
         if [[ -n "$_stderr_src" ]]; then
             write_failed_agent_stderr_tail "$_stderr_src" "$OUTPUT_FILE" || true
             emit_failed_agent_stderr_tail_raw "$OUTPUT_FILE" || true
@@ -298,7 +306,7 @@ if [ "$EXIT_CODE" -ne 0 ]; then
     echo "❌ ${TOOL_NAME} agent: FAILED (exit code ${EXIT_CODE}, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
     DIAG_DETAIL=""
     _stderr_src=""
-    _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" || true)
+    _stderr_src=$(select_failed_agent_stderr_source "$OUTPUT_FILE" "$CAPTURE_STDOUT" "$CAPTURE_STDOUT_ONLY" "$STDERR_SINK" || true)
     if [ "$OUTPUT_SIZE" -gt 0 ]; then
         _redacted_out_tail=$(render_failed_agent_stderr_tail "$OUTPUT_FILE" 2>/dev/null || true)
         if [ -n "$_redacted_out_tail" ] && { [[ -z "$_stderr_src" ]] || [[ "$_stderr_src" != "$OUTPUT_FILE" ]]; }; then

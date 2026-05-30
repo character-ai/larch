@@ -51,7 +51,8 @@ Behavior:
    `run_codex()` runs `codex exec --json --output-last-message "$run_dir/codex.log" -- ...`,
    redirects JSONL stdout to the local-only `$run_dir/codex.events.jsonl`, and
    leaves wrapper diagnostics in `$run_dir/codex.wrapper.log` without JSONL
-   bleed. Telemetry parse diagnostics land in the dedicated local-only
+   bleed; `run_codex()` forwards `--stderr-sink "$codex_wrapper_log"` so
+   `${run_dir}/codex.log.stderr-tail` reads agent stderr on failure. Telemetry parse diagnostics land in the dedicated local-only
    `$run_dir/codex.sidecar` so publishable wrapper logs stay free of
    parser spill. It parses that event stream best-effort into the sanitized
    token ledger raw bucket `codex_lint_fix`; telemetry failures never

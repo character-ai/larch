@@ -56,6 +56,7 @@ select_failed_agent_stderr_source() {
     local output_file="$1"
     local capture_stdout="${2:-false}"
     local capture_stdout_only="${3:-false}"
+    local explicit_sink="${4:-}"
     local candidate=""
 
     if [[ "$capture_stdout" == "true" ]]; then
@@ -71,7 +72,9 @@ select_failed_agent_stderr_source() {
             candidate="$output_file"
         fi
     else
-        if [[ -s "${output_file}.sidecar" ]]; then
+        if [[ -n "$explicit_sink" && -s "$explicit_sink" ]]; then
+            candidate="$explicit_sink"
+        elif [[ -s "${output_file}.sidecar" ]]; then
             candidate="${output_file}.sidecar"
         elif [[ -s "$output_file" ]]; then
             candidate="$output_file"

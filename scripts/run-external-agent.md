@@ -24,6 +24,8 @@ The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%
 
 - `--capture-stdout-only`: redirect stdout to `--output` and stderr to `<output>.diag`. This is the shape used for JSON-on-stdout protocols (for example Cursor CI via `launch-cursor-ci.sh`) so stderr noise cannot corrupt the parse.
 
+- `--stderr-sink PATH` (default mode only): optional path to the file where wrapper and inherited child stderr are captured when a launcher redirects fd2 to a custom sink (for example `$SIDECAR_LOG` or `codex.wrapper.log`). Rejected with the same `[A-Za-z0-9._/-]` allowlist as `--output` when set. Omitted lanes behave byte-identically to the pre-flag contract. Capture-mode and Cursor lanes intentionally omit this flag because child stderr already lands in `<output>` or `<output>.diag`.
+
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 
 ### Codex stdin contract
@@ -71,7 +73,7 @@ There is no backward compatibility with the old `CMD=` metadata line. A collecto
 - If the wrapper exits while the child PID is still alive (for example, because a wrapping launcher signaled the wrapper), the trap kills and reaps the child before writing the sentinel. This keeps launcher-owned public sentinel publication from racing a still-running tool process.
 - Keep `set -euo pipefail`; child exit codes are captured via guarded `wait`.
 - Diagnostic text is appended to `<output>.diag` so stdout-only capture can retain child stderr.
-- On non-zero exit or timeout, the wrapper writes a redacted, bounded stderr tail to `<output>.stderr-tail` (see `scripts/lib-failed-agent-stderr-tail.md`) and emits a fenced block to FD 2. Source order is mode-aware: default review prefers `<output>.sidecar`, then `<output>`, then `<output>.diag`; `--capture-stdout` prefers merged `<output>` before `.diag`; `--capture-stdout-only` prefers `.diag` before `<output>`. Verdict lines and `.diag` content are unchanged (additive contract).
+- On non-zero exit or timeout, the wrapper writes a redacted, bounded stderr tail to `<output>.stderr-tail` (see `scripts/lib-failed-agent-stderr-tail.md`) and emits a fenced block to FD 2. Source order is mode-aware: default mode prefers a non-empty `--stderr-sink` file first, then `<output>.sidecar`, then `<output>`, then `<output>.diag`; `--capture-stdout` prefers merged `<output>` before `.diag` and ignores `--stderr-sink`; `--capture-stdout-only` prefers `.diag` before `<output>` and ignores `--stderr-sink`. Verdict lines and `.diag` content are unchanged (additive contract).
 - `jq` is a hard prerequisite for this wrapper, in addition to the repo-wide `jq` dependency used by other larch scripts.
 
 ## Poll interval (`RUN_EXTERNAL_AGENT_POLL_INTERVAL`)

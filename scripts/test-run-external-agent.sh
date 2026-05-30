@@ -136,6 +136,21 @@ assert_rejected_output() {
     assert_no_artifacts "$label no side effects" "$output"
 }
 
+assert_rejected_stderr_sink() {
+    local label="$1"
+    local output="$2"
+    local sink="$3"
+    RUN_STDOUT="$TMPDIR/${label}.stdout"
+    RUN_STDERR="$TMPDIR/${label}.stderr"
+    set +e
+    "$WRAPPER" --tool codex --output "$output" --timeout 5 --stderr-sink "$sink" -- bash -c 'printf should-not-run' >"$RUN_STDOUT" 2>"$RUN_STDERR"
+    RUN_CODE=$?
+    set -e
+    assert_equals "$label exit" "1" "$RUN_CODE"
+    assert_grep "$label stderr" "ERROR: --stderr-sink contains bytes outside" "$RUN_STDERR"
+    assert_no_artifacts "$label no side effects" "$output"
+}
+
 assert_successful_capture() {
     local label="$1"
     local output="$2"
@@ -446,6 +461,34 @@ else
     fail "fail-tail-merged missing .stderr-tail"
 fi
 assert_grep "fail-tail-merged stderr fence" "failed agent stderr tail" "$RUN_STDERR"
+
+# 19f. Default mode with --stderr-sink prefers the custom fd2 sink for .stderr-tail.
+STDERR_SINK_OUT="$TMPDIR/stderr-sink.txt"
+STDERR_SINK_FILE="$TMPDIR/custom-sink.log"
+printf 'diag boilerplate\n' >"${STDERR_SINK_OUT}.diag"
+RUN_STDOUT="$TMPDIR/stderr-sink-accept.stdout"
+RUN_STDERR="$TMPDIR/stderr-sink-accept.stderr"
+set +e
+"$WRAPPER" --tool codex --output "$STDERR_SINK_OUT" --timeout 5 \
+    --stderr-sink "$STDERR_SINK_FILE" -- \
+    bash -c 'printf "agent stderr from sink\n" >&2; exit 1' \
+    >"$RUN_STDOUT" 2>"$STDERR_SINK_FILE"
+RUN_CODE=$?
+set -e
+assert_equals "stderr-sink-accept exit" "1" "$RUN_CODE"
+if [[ -s "${STDERR_SINK_OUT}.stderr-tail" ]] && grep -Fq 'agent stderr from sink' "${STDERR_SINK_OUT}.stderr-tail"; then
+    pass
+else
+    fail "stderr-sink-accept missing sink-sourced .stderr-tail"
+fi
+if grep -Fq 'diag boilerplate' "${STDERR_SINK_OUT}.stderr-tail" 2>/dev/null; then
+    fail "stderr-sink-accept should not prefer .diag over explicit sink"
+else
+    pass
+fi
+
+# 19g. Invalid --stderr-sink is rejected before launch (symmetric with --output).
+assert_rejected_stderr_sink "reject-stderr-sink-equals" "$TMPDIR/stderr-sink-reject.txt" "$TMPDIR/bad=stderr-sink.log"
 
 # Plan traceability: collector shares lib stderr-tail fence helper with this wrapper.
 if grep -Fq '_emit_collector_stderr_tail_file' "$REPO_ROOT/scripts/collect-agent-results.sh"; then

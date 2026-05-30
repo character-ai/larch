@@ -24,9 +24,13 @@ Sourced-only library for redacted, bounded stderr tails on failed codex/cursor/c
 - **`collector_stderr_tail_candidates`** — phase-fallback stems for `.stderr-tail` lookup.
 - **`resolve_collector_stderr_tail_file`** — retry / NS-retry / phase `.stderr-tail` preference, then `${reviewer_file}.launch-stderr` on the primary stem only (no ancestor-phase launcher stderr).
 
+## `select_failed_agent_stderr_source`
+
+Optional 4th positional argument `explicit_sink`: in default (non-capture) mode, a non-empty, non-zero-size `explicit_sink` file is preferred before `<output>.sidecar`, `<output>`, and `<output>.diag`. Empty or missing explicit sinks fall back to the legacy order. `--capture-stdout` and `--capture-stdout-only` branches ignore `explicit_sink`.
+
 ## Callers
 
-- `scripts/run-external-agent.sh` — mode-aware source via `select_failed_agent_stderr_source`; `emit_failed_agent_stderr_tail_raw` (non-quiet FD 2).
+- `scripts/run-external-agent.sh` — mode-aware source via `select_failed_agent_stderr_source` (passes `--stderr-sink` as the explicit sink); `emit_failed_agent_stderr_tail_raw` (non-quiet FD 2).
 - `scripts/collect-agent-results.sh` — batch dedup emit via `larch_err`; delegates tail resolution to `resolve_collector_stderr_tail_file`.
 - `scripts/launch-claude-subprocess.sh` — pre-`.done` tail from `${OUTPUT}.stderr`; clears stale `${OUTPUT}.stderr-tail` at entry and on success.
 - `scripts/launch-claude-review.sh` — parent fallback from subprocess stderr capture; fenced tail via `emit_failed_agent_stderr_tail_larch_err` (quiet-safe).

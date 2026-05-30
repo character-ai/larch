@@ -325,6 +325,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         --tool codex \
         --output "$TRANSCRIPT_PATH" \
         --timeout "$TIMEOUT" \
+        --stderr-sink "$SIDECAR_LOG" \
         -- \
         codex exec --full-auto -C "$PWD" \
         --add-dir "$SESSION_TMPDIR" \
