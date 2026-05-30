@@ -1,0 +1,16 @@
+Reviewing the branch diff and scout-notes focus areas.
+### In-Scope Findings
+
+- **correctness** `skills/cleanup/scripts/cleanup.sh:36-51` — In `entry_has_fresh_descendant`, the pipeline `find … | grep -q .` is followed by `local rc=$?` and then `find_rc=${PIPESTATUS[0]:-1}`. Bash resets `PIPESTATUS` on each simple command, so `PIPESTATUS[0]` after `local` is the exit status of `local` (almost always 0), not `find`. The `return 2` branch (`find_rc -ne 0`) is therefore effectively dead: a failed descendant probe is indistinguishable from “no fresh descendant” and returns 1. Callers treat only `0|2` as skip (`case "$_fresh_rc" in 0|2) continue ;; esac` at lines 72–74 and 128–130), so a `find` failure on a stale top-level session/tmp entry can still lead to `rm -rf` instead of the documented conservative skip. **Suggested fix:** Capture pipeline status before any other command, e.g. run the pipeline, then immediately `find_rc=${PIPESTATUS[0]:-1}` and `rc=${PIPESTATUS[1]:-1}` (or `_ps=("${PIPESTATUS[@]}")`), then branch on those values; only use `local` afterward.
+
+- **correctness** `skills/cleanup/scripts/test-cleanup.sh:119-275` — The branch removes the former `find-failure-skips-deletion` case (see `test-cleanup.md` diff: that bullet is gone) and adds depth/bounded-freshness cases, but nothing exercises `entry_has_fresh_descendant`’s `return 2` or proves that a per-entry `find` failure keeps the directory. With the `PIPESTATUS` ordering bug above, that gap means the regression can ship without failing CI. **Suggested fix:** Restore a focused harness case (e.g. unreadable subdirectory or a stub `find` on `PATH` for one entry) that expects the entry to remain and `CACHE_REMOVED=0`, and fix `cleanup.sh` first so `return 2` is reachable.
+
+### Out-of-Scope Observations
+
+- **#3204 (trailer awk harness):** `test-trailer-awk.sh`, tightened `(3175)` pins in `scripts/test-design-structure.sh`, `test-trailer-helpers.sh` wiring, and the new `.md` contracts align with `lib-plan-optional-trailers.awk` (including `block_len`, last-match-wins, octal `08`/`09`, and `set +e` around expected `has_key` failures). `lib-plan-optional-trailers.awk` / `.sh` are unchanged in the diff.
+
+- **`cleanup.sh` behavior change:** Removal of the epoch/`date +%s` cutoff and the `date-failure-errors` harness case is a separate behavior shift (now relies on `find -mtime`); not tied to the `PIPESTATUS` defect.
+
+- **Other branch commits** (`ship-pr.sh` #3209 pre-rebase `larch-logs/` fixup, `review-and-fix.sh` coder delta staging): no additional correctness issues identified in this pass beyond the cleanup probe bug above.
+
+**Commits on branch (since `main`):** `d33cdfb70` (#3204), `a8183aa1c` (#3212 cleanup), `c45f52e55` (#3209 ship-pr), plus review/lint follow-ups.

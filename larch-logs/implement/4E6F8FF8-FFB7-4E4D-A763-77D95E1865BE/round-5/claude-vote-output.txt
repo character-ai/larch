@@ -1,0 +1,29 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- assert_eq_lines produces the same effect as fail(); formatting difference is intentional (includes got/want), refactor adds churn without functional gain
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dead shift is harmless; prefer EXONERATE per guidelines when in doubt
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- .sh wrapper's own test-trailer-validate.sh cases would catch divergence; adding a comment alone doesn't prevent silent divergence
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pre-existing overlap acknowledged in plan; not worth a standalone issue
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- ordering preference with no correctness impact
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- diff_deleted exercised in all-three-present and retain-010; deletion-only regression would need targeted awk branch break; reviewer notes it is not required by the plan
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- scope notice only, not a problem to file
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- diff_deleted is covered in combined fixtures; isolated deletion-only regression risk is low enough that this doesn't warrant a separate issue given the plan explicitly didn't require it
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- test-trailer-awk.md lines 13-17 explicitly name blank-before-diff-lines in the two-fixture split block-boundary section
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- find-failure-skips-deletion case removed from test-cleanup.sh; tied directly to the PIPESTATUS bug in FINDING_19/20; real gap worth filing under #3212
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- organizational preference, not a correctness or regression issue
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing gap; new awk harness covers the cases directly; not worth standalone issue
+FINDING_13: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a problem
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a problem
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a problem
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a problem
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- scope notice only, same as FINDING_7
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- behavior is equivalent under set -e; adding exit 0 is pure cosmetic; OOS
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- PIPESTATUS is reset by the `local rc=$?` builtin; find_rc=${PIPESTATUS[0]} reads local's exit (0), making return 2 dead and allowing rm -rf on find-failed entries
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- find-failure-skips-deletion harness case removed; PIPESTATUS bug is untested and will ship silently
+FINDING_21: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- OOS positive confirmation, not a problem
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deliberate intentional behavior change on #3212; acknowledged posture shift
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- OOS positive statement, not a problem
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real asymmetry: age pass uses -mtime +N while freshness probe uses -mtime -N; 24h gap means a descendant at exactly N days is not protected; suggested fix (! -mtime +N) is correct
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- old code required [[ -d "$entry" ]] guard; new find ! -type l includes regular files and fifos; stale regular files under sessions/ now get rm -rf'd where they previously were not
+FINDING_26: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- OOS, no problem; rm -rf on non-directory is safe
+FINDING_27: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- OOS positive confirmation, not a problem
+FINDING_28: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- OOS scope notice only
+FINDING_29: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- deliberate change documented in #3212; not a problem to file
