@@ -393,8 +393,8 @@ grep -Fq 'CODER_STATUS=applied' <<< "$out_hook" || fail "round hook residue code
 if [[ -z "$(git -C "$work_hook_residue" status --porcelain --untracked-files=no)" ]]; then
     pass "round hook residue: tracked tree clean after follow-up"
 else
-    fail "round hook residue should leave tracked tree clean"
     git -C "$work_hook_residue" status --porcelain | sed 's/^/    status: /' || true
+    fail "round hook residue should leave tracked tree clean"
 fi
 primary_sha=$(git -C "$work_hook_residue" rev-parse HEAD~1)
 follow_sha=$(git -C "$work_hook_residue" rev-parse HEAD)
