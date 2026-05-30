@@ -429,6 +429,13 @@ else
 fi
 assert_grep "fail-tail-merged stderr fence" "failed agent stderr tail" "$RUN_STDERR"
 
+# Plan traceability: collector shares lib stderr-tail fence helper with this wrapper.
+if grep -Fq 'emit_failed_agent_stderr_tail_file_raw' "$REPO_ROOT/scripts/collect-agent-results.sh"; then
+    pass
+else
+    fail "collect-agent-results.sh must use shared stderr-tail fence helper"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-run-external-agent.sh - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2

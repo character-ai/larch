@@ -61,7 +61,7 @@ bash_has_read_verb() {
     if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(cat|tail|head|less|more)([^[:alnum:]_]|$)'; then
         return 0
     fi
-    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)[^|;&]*(\-n\b|--quiet)'; then
+    if printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])sed([^[:alnum:]_]|$)[^|;&]*(-[[:space:]]*n([^[:alnum:]_]|$)|--quiet)'; then
         return 0
     fi
     return 1
@@ -102,9 +102,11 @@ bash_segment_task_output_poll_token() {
 
 # Segment split is a deliberate heuristic: metacharacters inside quoted strings may
 # produce extra segments (false negatives) or combine read verbs with paths (false
-# positives). Read-verb detection strips quoted spans to avoid jq/grep literals.
+# positives). Read-verb detection strips quoted spans; task-output tokens are
+# extracted only from unquoted command text.
 bash_line_task_output_poll_token() {
-    local line="$1" seg rest token
+    local line="$1" seg rest token stripped_line
+    stripped_line=$(bash_strip_quoted_for_read_verb "$line")
     rest="$line"
     while [ -n "$rest" ]; do
         case "$rest" in
@@ -125,10 +127,13 @@ bash_line_task_output_poll_token() {
                 rest=""
                 ;;
         esac
-        token=$(bash_segment_task_output_poll_token "$seg") && {
-            printf '%s' "$token"
-            return 0
-        }
+        token=$(bash_segment_task_output_poll_token "$seg") || continue
+        case "$stripped_line" in
+            *"$token"*) ;;
+            *) continue ;;
+        esac
+        printf '%s' "$token"
+        return 0
     done
     return 1
 }
@@ -162,9 +167,9 @@ extract_bash_task_output_poll_token() {
 
 # Canonical state key: rightmost tasks/<id>.output tail (absolute vs relative ignored).
 extract_task_output_token() {
-    local text="$1"
-    local token
-    token=$(printf '%s' "$text" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
+    local text="$1" stripped token
+    stripped=$(bash_strip_quoted_for_read_verb "$text")
+    token=$(printf '%s' "$stripped" | grep -oE 'tasks/[A-Za-z0-9._-]+\.output' | tail -1)
     if [ -n "$token" ]; then
         printf '%s' "$token"
         return 0
@@ -173,7 +178,10 @@ extract_task_output_token() {
 }
 
 task_id_from_token() {
-    printf '%s' "$1" | sed -n 's|^tasks/\(.*\)\.output$|\1|p'
+    local token="$1" id
+    id=$(printf '%s' "$token" | sed -n 's|^tasks/\([A-Za-z0-9._-]*\)\.output$|\1|p')
+    [ -n "$id" ] || return 1
+    printf '%s' "$id"
 }
 
 handle_task_output_poll() {

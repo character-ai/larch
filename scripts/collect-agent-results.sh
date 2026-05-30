@@ -1431,33 +1431,61 @@ _failed_stderr_sig_map=$(mktemp "${TMPDIR:-/tmp}/larch-collector-stderr-sig.XXXX
 _cleanup_collector_dedup_tail_file() {
     [[ "${_dedup_tail_file:-}" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_dedup_tail_file"
 }
-_emit_collector_stderr_tail_from_file() {
-    local tail_file="$1" tool="$2" base="$3"
-    larch_err "--- ${tool} agent stderr tail (${base}) ---"
+_emit_collector_stderr_tail_file() {
+    local tail_file="$1"
+    [[ -s "$tail_file" ]] || return 1
+    larch_err '--- failed agent stderr tail ---'
     while IFS= read -r _tail_line || [[ -n "$_tail_line" ]]; do
         larch_err "$_tail_line"
     done <"$tail_file"
-    larch_err "--- end stderr tail ---"
+    larch_err '--- end failed agent stderr tail ---'
+}
+_collector_stderr_tail_candidates() {
+    local reviewer_file="$1"
+    printf '%s\n' "$reviewer_file"
+    case "$reviewer_file" in
+        *-phase3.txt)
+            printf '%s\n' "${reviewer_file%-phase3.txt}-phase2.txt"
+            printf '%s\n' "${reviewer_file%-phase3.txt}.txt"
+            ;;
+        *-phase2.txt)
+            printf '%s\n' "${reviewer_file%-phase2.txt}.txt"
+            ;;
+        *-phase1.txt)
+            printf '%s\n' "${reviewer_file%-phase1.txt}.txt"
+            ;;
+    esac
 }
 _resolve_collector_stderr_tail_file() {
-    local reviewer_file="$1" _retry_tail _launch_stderr _tmp_tail
+    local reviewer_file="$1" _retry_tail _ns_retry_tail _candidate _launch_stderr _tmp_tail
     _retry_tail="${reviewer_file%.txt}-retry.txt.stderr-tail"
     if [[ -s "$_retry_tail" ]]; then
         printf '%s' "$_retry_tail"
         return 0
     fi
-    if [[ -s "${reviewer_file}.stderr-tail" ]]; then
-        printf '%s' "${reviewer_file}.stderr-tail"
+    _ns_retry_tail="${reviewer_file%.txt}-ns-retry.txt.stderr-tail"
+    if [[ -s "$_ns_retry_tail" ]]; then
+        printf '%s' "$_ns_retry_tail"
         return 0
     fi
-    if [[ -s "${reviewer_file}.launch-stderr" ]]; then
-        _tmp_tail=$(mktemp "${TMPDIR:-/tmp}/larch-launch-stderr-tail.XXXXXX") || return 1
-        if render_failed_agent_stderr_tail "${reviewer_file}.launch-stderr" >"$_tmp_tail" 2>/dev/null && [[ -s "$_tmp_tail" ]]; then
-            printf '%s' "$_tmp_tail"
+    while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
+        [[ -n "$_candidate" ]] || continue
+        if [[ -s "${_candidate}.stderr-tail" ]]; then
+            printf '%s' "${_candidate}.stderr-tail"
             return 0
         fi
-        rm -f "$_tmp_tail"
-    fi
+    done < <(_collector_stderr_tail_candidates "$reviewer_file")
+    while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
+        [[ -n "$_candidate" ]] || continue
+        if [[ -s "${_candidate}.launch-stderr" ]]; then
+            _tmp_tail=$(mktemp "${TMPDIR:-/tmp}/larch-launch-stderr-tail.XXXXXX") || return 1
+            if render_failed_agent_stderr_tail "${_candidate}.launch-stderr" >"$_tmp_tail" 2>/dev/null && [[ -s "$_tmp_tail" ]]; then
+                printf '%s' "$_tmp_tail"
+                return 0
+            fi
+            rm -f "$_tmp_tail"
+        fi
+    done < <(_collector_stderr_tail_candidates "$reviewer_file")
     return 1
 }
 for _dedup_result in "${RESULTS[@]}"; do
@@ -1488,6 +1516,7 @@ for _dedup_result in "${RESULTS[@]}"; do
     [[ -n "$_dedup_tail_file" && -s "$_dedup_tail_file" ]] || continue
     _dedup_sig=$(failed_agent_stderr_signature "$_dedup_tail_file" || true)
     if [[ -z "$_dedup_sig" ]]; then
+        _emit_collector_stderr_tail_file "$_dedup_tail_file" || true
         _cleanup_collector_dedup_tail_file
         continue
     fi
@@ -1501,7 +1530,7 @@ for _dedup_result in "${RESULTS[@]}"; do
         continue
     fi
     printf '%s\t%s\n' "$_dedup_sig" "$_dedup_base" >>"$_failed_stderr_sig_map"
-    _emit_collector_stderr_tail_from_file "$_dedup_tail_file" "${_dedup_tool:-unknown}" "$_dedup_base"
+    _emit_collector_stderr_tail_file "$_dedup_tail_file" || true
     _cleanup_collector_dedup_tail_file
 done
 rm -f "$_failed_stderr_sig_map"

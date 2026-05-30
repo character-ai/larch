@@ -117,6 +117,17 @@ output4b="$dir4b/out.log"
 assert_contains "4b: stderr-tail header" "$output4b" "## Failed-agent stderr tail"
 assert_contains "4b: stderr-tail content" "$output4b" "redacted stderr tail"
 
+# ── Case 4c: launch-stderr sidecar ────────────────────────────────────────────
+echo "Case 4c: launch-stderr sidecar"
+dir4c="$TMPDIR_BASE/case4c"
+mkdir -p "$dir4c"
+printf 'some review content\n' > "$dir4c/rev.txt"
+printf 'launcher validation error\n' > "$dir4c/rev.txt.launch-stderr"
+output4c="$dir4c/out.log"
+"$SCRIPT" --reviewer-file "$dir4c/rev.txt" --structured-record "$RECORD" --output "$output4c"
+assert_contains "4c: launch-stderr header" "$output4c" "## Launcher stderr"
+assert_contains "4c: launch-stderr content" "$output4c" "launcher validation error"
+
 # ── Case 5: missing .diag file ────────────────────────────────────────────────
 echo "Case 5: missing .diag file"
 dir5="$TMPDIR_BASE/case5"

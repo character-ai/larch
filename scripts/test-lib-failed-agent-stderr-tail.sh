@@ -115,6 +115,31 @@ sig_c=$(failed_agent_stderr_signature "$TMPROOT/sig-c.stderr-tail")
 if [[ "$sig_ab_a" == "$sig_ab_b" ]]; then ok "signature stable same root cause"; else fail "signature stable same root cause"; fi
 if [[ "$sig_ab_a" != "$sig_c" ]]; then ok "signature distinct root causes"; else fail "signature distinct root causes"; fi
 
+tail_http_a="$TMPROOT/sig-http-a.stderr-tail"
+tail_http_b="$TMPROOT/sig-http-b.stderr-tail"
+printf 'HTTP 401 unauthorized\n' >"$tail_http_a"
+printf 'HTTP 403 forbidden\n' >"$tail_http_b"
+sig_http_a=$(failed_agent_stderr_signature "$tail_http_a")
+sig_http_b=$(failed_agent_stderr_signature "$tail_http_b")
+if [[ "$sig_http_a" != "$sig_http_b" ]]; then
+    ok "signature preserves distinct HTTP status codes"
+else
+    fail "signature preserves distinct HTTP status codes"
+fi
+
+# --- pipefail option restored after render ---
+nopipefail_after_render() {
+    set -e
+    set +o pipefail
+    render_failed_agent_stderr_tail "$huge" >/dev/null
+    case "$(set -o 2>/dev/null)" in
+        *pipefail*off*) printf 'off' ;;
+        *) printf 'on' ;;
+    esac
+}
+pipefail_state=$(nopipefail_after_render)
+assert_eq "pipefail restored off for caller" "off" "$pipefail_state"
+
 # --- HOME metacharacters in session-path normalization ---
 old_home="${HOME:-}"
 export HOME="/tmp/user.name#branch"

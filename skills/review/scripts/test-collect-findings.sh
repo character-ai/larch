@@ -94,6 +94,10 @@ if ! grep -Fq 'LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results
     echo "FAIL: collect-findings.sh must run collector with LARCH_QUIET_DISABLE=1 for stderr-tail tee" >&2
     exit 1
 fi
+if ! grep -Fq 'tee -a "$collector_log" >&2' "$SCRIPT"; then
+    echo "FAIL: collect-findings.sh must tee collector stderr to FD 2 for §3.8 visibility" >&2
+    exit 1
+fi
 # Failed external slots: collector stderr tails on FD 2 when collector_rc=0 (mirrors collect-findings tee path).
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"
 ext_fail_a="$TMP/codex-generalist-fail-a.txt"
@@ -109,7 +113,7 @@ printf 'external stderr tail beta\n' > "${ext_fail_b}.stderr-tail"
 RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
     LARCH_QUIET_DISABLE=1 "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode \
     "$ext_fail_a" "$ext_fail_b" >"$TMP/ext-fail.stdout" 2>"$TMP/ext-fail-collector.stderr"
-if grep -Fq 'agent stderr tail' "$TMP/ext-fail-collector.stderr" \
+if grep -Fq 'failed agent stderr tail' "$TMP/ext-fail-collector.stderr" \
     && grep -Fq 'external stderr tail alpha' "$TMP/ext-fail-collector.stderr"; then
     :
 else

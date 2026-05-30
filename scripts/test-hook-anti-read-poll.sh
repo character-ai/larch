@@ -262,6 +262,19 @@ assert_silent "$out_s2" 'session beta call 1 silent'
 out_s3=$(run_bash_hook 2 "cat $TASK_OUT" "/proj-session-iso" "session-alpha")
 assert_reminder "$out_s3" 'session alpha call 2 fires reminder'
 
+echo "=== semicolon inside quoted echo does not count as poll ==="
+semi_echo_cmd="echo 'waiting; cat $TASK_OUT'"
+out_se1=$(run_bash_hook 0 "$semi_echo_cmd" "/proj-semi-echo-fp")
+assert_silent "$out_se1" 'semicolon-in-echo call 1 silent'
+out_se2=$(run_bash_hook 1 "$semi_echo_cmd" "/proj-semi-echo-fp")
+assert_silent "$out_se2" 'semicolon-in-echo call 2 silent'
+
+echo "=== Bash sed --quiet task-output poll fires ==="
+out_sedq1=$(run_bash_hook 0 "sed --quiet '1,5p' $TASK_OUT" "/proj-bash-sed-quiet")
+assert_silent "$out_sedq1" 'sed --quiet task-output call 1 silent'
+out_sedq2=$(run_bash_hook 1 "sed --quiet '1,5p' $TASK_OUT" "/proj-bash-sed-quiet")
+assert_reminder "$out_sedq2" 'sed --quiet task-output call 2 fires reminder'
+
 echo "=== echo mentioning task path does not count ==="
 out_en1=$(run_bash_hook 0 "echo cat $TASK_OUT" "/proj-echo-fp")
 assert_silent "$out_en1" 'echo task path call 1 silent'

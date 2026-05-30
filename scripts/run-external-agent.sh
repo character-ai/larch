@@ -298,9 +298,12 @@ if [ "$EXIT_CODE" -ne 0 ]; then
     echo "❌ ${TOOL_NAME} agent: FAILED (exit code ${EXIT_CODE}, ${SECONDS}s elapsed, output ${OUTPUT_SIZE} bytes)" >&2
     DIAG_DETAIL=""
     if [ "$OUTPUT_SIZE" -gt 0 ]; then
-        echo "--- ${TOOL_NAME} output (last 5 lines) ---" >&2
-        tail -5 "$OUTPUT_FILE" >&2
-        echo "--- end ---" >&2
+        _redacted_out_tail=$(render_failed_agent_stderr_tail "$OUTPUT_FILE" 2>/dev/null || true)
+        if [ -n "$_redacted_out_tail" ]; then
+            echo "--- ${TOOL_NAME} output (last lines, redacted) ---" >&2
+            printf '%s\n' "$_redacted_out_tail" >&2
+            echo "--- end ---" >&2
+        fi
         DIAG_DETAIL=" Last output: $(tail -1 "$OUTPUT_FILE" | head -c 200 | tr '|' ' ')"
     fi
     # Write diagnostic file for callers

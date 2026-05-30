@@ -176,15 +176,39 @@ set -e
 # allowed roots, context file exceeds N bytes, etc.) reach the caller's
 # stderr — used by dispatch-code-voters.sh to surface the specific failing
 # check in execution-issues.md Warnings.
-if [[ -s "$SUBPROCESS_STDERR" ]]; then
-    while IFS= read -r _line; do
+_larch_emit_redacted_subprocess_stderr() {
+    local src="$1" redact redact_tmpdir pipeline
+    [[ -s "$src" ]] || return 1
+    redact="$SCRIPT_DIR/redact-secrets.sh"
+    redact_tmpdir="$SCRIPT_DIR/redact-tmpdir-paths.sh"
+    [[ -x "$redact" ]] || return 1
+    if [[ -x "$redact_tmpdir" ]]; then
+        pipeline="$redact_tmpdir | $redact"
+    else
+        pipeline="$redact"
+    fi
+    # shellcheck disable=SC2090
+    eval "cat \"\$src\" | $pipeline" 2>/dev/null | while IFS= read -r _line || [[ -n "$_line" ]]; do
+        larch_err "$_line"
+    done
+    unset _line
+    return 0
+}
+
+if [[ "$rc" -ne 0 ]]; then
+    if [[ ! -s "${OUTPUT}.stderr-tail" ]] && [[ -s "$SUBPROCESS_STDERR" ]]; then
+        write_failed_agent_stderr_tail "$SUBPROCESS_STDERR" "$OUTPUT" || true
+    fi
+    if [[ -s "${OUTPUT}.stderr-tail" ]]; then
+        emit_failed_agent_stderr_tail_raw "$OUTPUT" || true
+    elif [[ -s "$SUBPROCESS_STDERR" ]]; then
+        _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || true
+    fi
+elif [[ -s "$SUBPROCESS_STDERR" ]]; then
+    _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || while IFS= read -r _line || [[ -n "$_line" ]]; do
         larch_err "$_line"
     done < "$SUBPROCESS_STDERR"
     unset _line
-fi
-
-if [[ "$rc" -ne 0 ]] && [[ ! -s "${OUTPUT}.stderr-tail" ]]; then
-    write_failed_agent_stderr_tail "$SUBPROCESS_STDERR" "$OUTPUT" || true
 fi
 
 if [[ ! -f "${OUTPUT}.done" ]]; then

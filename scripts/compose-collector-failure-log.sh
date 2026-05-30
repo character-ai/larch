@@ -56,6 +56,7 @@ TMP=$(mktemp "$(dirname "$OUTPUT")/.compose-collector-failure-log.XXXXXX")
     if [[ -n "$REVIEWER_FILE" ]]; then
         dump_section "Reviewer stderr (${REVIEWER_FILE}.diag)" "${REVIEWER_FILE}.diag"
         dump_section "Failed-agent stderr tail (${REVIEWER_FILE}.stderr-tail)" "${REVIEWER_FILE}.stderr-tail"
+        dump_section "Launcher stderr (${REVIEWER_FILE}.launch-stderr)" "${REVIEWER_FILE}.launch-stderr"
     fi
 } > "$TMP"
 mv "$TMP" "$OUTPUT"

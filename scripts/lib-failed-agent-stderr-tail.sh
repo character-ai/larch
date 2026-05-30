@@ -73,9 +73,9 @@ render_failed_agent_stderr_tail() {
     [[ -x "$redact_tmpdir" && -x "$redact" ]] || return 1
 
     spool=$(mktemp "${TMPDIR:-/tmp}/larch-stderr-tail-spool.XXXXXX") || return 1
-    set +o pipefail 2>/dev/null || true
-    tail -n "$lines" "$source_file" | "$redact_tmpdir" | "$redact" >"$spool" 2>/dev/null || true
-    set -o pipefail 2>/dev/null || true
+    ( set +o pipefail 2>/dev/null || true
+      tail -n "$lines" "$source_file" | "$redact_tmpdir" | "$redact" >"$spool"
+    ) 2>/dev/null || true
     if [[ ! -s "$spool" ]]; then
         rm -f "$spool"
         return 1
@@ -115,7 +115,6 @@ failed_agent_stderr_signature() {
     home_cache="${HOME:-}/.cache/larch/sessions"
     norm=$(
         sed -E \
-            -e 's/[0-9]+/#/g' \
             -e 's/0x[0-9a-fA-F]+/0x#/g' \
             -e 's#/tmp[^[:space:]]*#<path>#g' \
             -e 's#/var/folders[^[:space:]]*#<path>#g' \
@@ -123,17 +122,16 @@ failed_agent_stderr_signature() {
     )
     if [[ -n "$home_cache" ]]; then
         home_ere=$(_escape_sed_ere_literal "$home_cache")
-        set +o pipefail 2>/dev/null || true
-        norm=$(printf '%s' "$norm" | sed -E "s|${home_ere}[^[:space:]]*|<path>|g" 2>/dev/null) || true
-        set -o pipefail 2>/dev/null || true
+        norm=$( ( set +o pipefail 2>/dev/null || true
+                  printf '%s' "$norm" | sed -E "s|${home_ere}[^[:space:]]*|<path>|g"
+                ) 2>/dev/null) || true
     fi
     norm=$(printf '%s' "$norm" | sed -E 's/[^[:space:]]+\.(txt|stderr-tail|sidecar|diag|done)( |$)/<out>\2/g')
     cksum <<<"$norm" | awk '{print $1}'
 }
 
-emit_failed_agent_stderr_tail_raw() {
-    local output_file="$1"
-    local tail_file="${output_file}.stderr-tail"
+emit_failed_agent_stderr_tail_file_raw() {
+    local tail_file="$1"
 
     [[ -s "$tail_file" ]] || return 1
     {
@@ -142,6 +140,12 @@ emit_failed_agent_stderr_tail_raw() {
         printf '%s\n' '--- end failed agent stderr tail ---' >&2
     }
     return 0
+}
+
+emit_failed_agent_stderr_tail_raw() {
+    local output_file="$1"
+
+    emit_failed_agent_stderr_tail_file_raw "${output_file}.stderr-tail"
 }
 
 LARCH_FAILED_AGENT_STDERR_TAIL_LOADED=1
