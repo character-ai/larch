@@ -23,7 +23,7 @@ artifact archives, not authoring-quality docs.
 
 ## Mermaid CLI Resolution
 
-The script prefers `./mermaid-lint/node_modules/.bin/mmdc` resolved from the repo root, then falls back to `command -v mmdc`. If neither exists, it exits 2 with a missing-toolchain error so CI can distinguish setup failure from parse failure.
+The script prefers `./mermaid-lint/node_modules/.bin/mmdc` resolved from the repo root, then falls back to `command -v mmdc`. Resolution is deferred until at least one top-level ` ```mermaid ` fence is found in the input file set; Markdown with no such fences exits 0 without probing the toolchain. When fences are present but neither binary exists, the script exits 2 with a missing-toolchain error so CI can distinguish setup failure from parse failure.
 
 This repo pins `@mermaid-js/mermaid-cli` in `mermaid-lint/package.json`. Version 11.12.0 documents `mmdc` as the package bin and depends on Mermaid 11.x. The script probes `mmdc --help` for `--parseOnly`; when supported, it uses parse-only mode. Otherwise it renders to a temp `.svg` file because `mmdc` rejects extension-less outputs.
 

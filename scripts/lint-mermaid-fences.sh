@@ -132,32 +132,8 @@ fi
     exit 0
 }
 
-MMDC="$(resolve_mmdc)" || {
-    larch_err "ERROR: missing Mermaid CLI (install @mermaid-js/mermaid-cli or run: cd mermaid-lint && npm ci)"
-    exit 2
-}
-
 tmpdir="$(mktemp -d -t mermaid-lint-XXXXXX)"
 trap 'rm -rf "$tmpdir"' EXIT
-
-# Pass --no-sandbox to Chromium so the SVG-render fallback works on
-# Ubuntu 23.10+ runners with restricted unprivileged user namespaces.
-# Local mmdc 11.x does not expose --parseOnly, so the lint always falls
-# back to renderMermaid which spawns Chromium via Puppeteer; without
-# --no-sandbox the runner aborts with "No usable sandbox!" before any
-# Mermaid syntax is checked. The puppeteer config is repository-pinned
-# at scripts/lint-mermaid-puppeteer.json so the workaround is auditable.
-PPTR_CONFIG="$REPO_ROOT/scripts/lint-mermaid-puppeteer.json"
-if [ -f "$PPTR_CONFIG" ]; then
-    MMDC_RENDER_ARGS=(--puppeteerConfigFile "$PPTR_CONFIG")
-else
-    MMDC_RENDER_ARGS=()
-fi
-
-supports_parse_only=false
-if "$MMDC" --help 2>&1 | grep -q -- '--parseOnly'; then
-    supports_parse_only=true
-fi
 
 extract_fences() {
     local src=$1 outdir=$2
@@ -202,6 +178,36 @@ extract_fences() {
     printf '%s\n' "$fence_count"
 }
 
+MMDC=""
+supports_parse_only=false
+MMDC_RENDER_ARGS=()
+
+ensure_mmdc() {
+    if [ -n "$MMDC" ]; then
+        return 0
+    fi
+    MMDC="$(resolve_mmdc)" || {
+        larch_err "ERROR: missing Mermaid CLI (install @mermaid-js/mermaid-cli or run: cd mermaid-lint && npm ci)"
+        exit 2
+    }
+    # Pass --no-sandbox to Chromium so the SVG-render fallback works on
+    # Ubuntu 23.10+ runners with restricted unprivileged user namespaces.
+    # Local mmdc 11.x does not expose --parseOnly, so the lint always falls
+    # back to renderMermaid which spawns Chromium via Puppeteer; without
+    # --no-sandbox the runner aborts with "No usable sandbox!" before any
+    # Mermaid syntax is checked. The puppeteer config is repository-pinned
+    # at scripts/lint-mermaid-puppeteer.json so the workaround is auditable.
+    local pptr_config="$REPO_ROOT/scripts/lint-mermaid-puppeteer.json"
+    if [ -f "$pptr_config" ]; then
+        MMDC_RENDER_ARGS=(--puppeteerConfigFile "$pptr_config")
+    else
+        MMDC_RENDER_ARGS=()
+    fi
+    if "$MMDC" --help 2>&1 | grep -q -- '--parseOnly'; then
+        supports_parse_only=true
+    fi
+}
+
 failures=0
 for path in "${files[@]}"; do
     [ -f "$path" ] || continue
@@ -219,6 +225,7 @@ for path in "${files[@]}"; do
     count="$(extract_fences "$path" "$file_tmp")"
     i=1
     while [ "$i" -le "$count" ]; do
+        ensure_mmdc
         input="$file_tmp/fence-$i.mmd"
         if [ "$supports_parse_only" = true ]; then
             if ! "$MMDC" --parseOnly -i "$input" >/dev/null; then
