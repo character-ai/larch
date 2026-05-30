@@ -861,6 +861,29 @@ else
     fail "phase fallback stdout leaked stderr-tail content"
 fi
 
+echo "# Case: phase-3 launch-stderr beats phase-2 stderr-tail"
+PHASE3_LS="$TMPROOT/waterfall-slot3-phase3.txt"
+PHASE2_LS="${PHASE3_LS%-phase3.txt}-phase2.txt"
+: >"$PHASE3_LS"
+: >"$PHASE2_LS"
+printf '1\n' >"${PHASE3_LS}.done"
+printf 'non-transient failure\n' >"${PHASE3_LS}.diag"
+write_meta "$PHASE3_LS" "$SUCCESS_HELPER"
+printf 'stale phase2 stderr tail\n' >"${PHASE2_LS}.stderr-tail"
+printf 'phase3 launcher validation error\n' >"${PHASE3_LS}.launch-stderr"
+PHASE_LS_STDERR="$TMPROOT/phase-launch-stderr.stderr"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$PHASE3_LS" 2>"$PHASE_LS_STDERR" >/dev/null
+if grep -Fq 'phase3 launcher validation error' "$PHASE_LS_STDERR"; then
+    ok "phase-3 launch-stderr preferred over phase-2 stderr-tail"
+else
+    fail "phase-3 launch-stderr not surfaced"
+fi
+if grep -Fq 'stale phase2 stderr tail' "$PHASE_LS_STDERR"; then
+    fail "phase-2 stderr-tail should not win over phase-3 launch-stderr"
+else
+    ok "phase-2 stderr-tail suppressed when phase-3 launch-stderr present"
+fi
+
 echo "# Case: --summary-only skips stderr-tail emission"
 SUM_ONLY="$TMPROOT/summary-only.txt"
 : >"$SUM_ONLY"

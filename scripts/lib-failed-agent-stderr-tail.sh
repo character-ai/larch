@@ -167,19 +167,19 @@ resolve_collector_stderr_tail_file() {
     fi
     while IFS= read -r _candidate || [[ -n "$_candidate" ]]; do
         [[ -n "$_candidate" ]] || continue
+        if [[ -s "${_candidate}.launch-stderr" ]]; then
+            _tmp_tail=$(mktemp "${TMPDIR:-/tmp}/larch-launch-stderr-tail.XXXXXX") || return 1
+            if render_failed_agent_stderr_tail "${_candidate}.launch-stderr" >"$_tmp_tail" 2>/dev/null && [[ -s "$_tmp_tail" ]]; then
+                printf '%s' "$_tmp_tail"
+                return 0
+            fi
+            rm -f "$_tmp_tail"
+        fi
         if [[ -s "${_candidate}.stderr-tail" ]]; then
             printf '%s' "${_candidate}.stderr-tail"
             return 0
         fi
     done < <(collector_stderr_tail_candidates "$reviewer_file")
-    if [[ -s "${reviewer_file}.launch-stderr" ]]; then
-        _tmp_tail=$(mktemp "${TMPDIR:-/tmp}/larch-launch-stderr-tail.XXXXXX") || return 1
-        if render_failed_agent_stderr_tail "${reviewer_file}.launch-stderr" >"$_tmp_tail" 2>/dev/null && [[ -s "$_tmp_tail" ]]; then
-            printf '%s' "$_tmp_tail"
-            return 0
-        fi
-        rm -f "$_tmp_tail"
-    fi
     return 1
 }
 

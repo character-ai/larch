@@ -200,9 +200,10 @@ if [[ "$rc" -ne 0 ]]; then
     if [[ ! -s "${OUTPUT}.stderr-tail" ]] && [[ -s "$SUBPROCESS_STDERR" ]]; then
         write_failed_agent_stderr_tail "$SUBPROCESS_STDERR" "$OUTPUT" || true
     fi
-    _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || true
     if [[ -s "${OUTPUT}.stderr-tail" ]]; then
         emit_failed_agent_stderr_tail_larch_err "$OUTPUT" || true
+    elif [[ -s "$SUBPROCESS_STDERR" ]]; then
+        _larch_emit_redacted_subprocess_stderr "$SUBPROCESS_STDERR" || true
     fi
 else
     rm -f "${OUTPUT}.stderr-tail"

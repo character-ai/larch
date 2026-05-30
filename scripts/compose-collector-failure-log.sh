@@ -54,7 +54,7 @@ dump_section() {
         printf '(file missing: %s)\n\n' "$path"
     elif [[ ! -s "$path" ]]; then
         printf '(empty: %s)\n\n' "$path"
-    elif [[ "$path" == *.launch-stderr ]]; then
+    elif [[ "$path" == *.launch-stderr || "$path" == *.stderr-tail ]]; then
         _redacted_launch_stderr_body "$path"
         printf '\n\n'
     else

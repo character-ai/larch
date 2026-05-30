@@ -51,6 +51,10 @@ printf 'prompt\n' > "$TMP/fail-prompt.md"
 PATH="$fail_bin:$PATH" "$SCRIPT" --prompt-file "$TMP/fail-prompt.md" --output-file "$fail_out" --timeout 5 >/dev/null || true
 [[ -s "${fail_out}.stderr-tail" ]] || fail "failure path missing .stderr-tail"
 [[ -f "${fail_out}.done" ]] || fail "failure path missing .done"
+fail_tail_mtime=$(stat -c %Y "${fail_out}.stderr-tail" 2>/dev/null || stat -f %m "${fail_out}.stderr-tail" 2>/dev/null || printf '')
+fail_done_mtime=$(stat -c %Y "${fail_out}.done" 2>/dev/null || stat -f %m "${fail_out}.done" 2>/dev/null || printf '')
+[[ "$fail_tail_mtime" =~ ^[0-9]+$ && "$fail_done_mtime" =~ ^[0-9]+$ && "$fail_tail_mtime" -le "$fail_done_mtime" ]] \
+    || fail "failure path .stderr-tail must exist before .done (tail=$fail_tail_mtime done=$fail_done_mtime)"
 
 read_tools_reject_session="$TMP/read-tools-reject-session"
 mkdir -p "$read_tools_reject_session/staged-context"

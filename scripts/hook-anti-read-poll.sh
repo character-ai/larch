@@ -18,6 +18,21 @@ case "$tool_name" in
     *) exit 0 ;;
 esac
 
+_bash_sanitized_command=""
+if [ "$tool_name" = "Bash" ]; then
+    _bash_command_body=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
+    [ -n "$_bash_command_body" ] || exit 0
+    _bash_sanitized_command=${_bash_command_body//$'\t'/ }
+    case "$(printf '%s' "$_bash_sanitized_command" | tr '[:upper:]' '[:lower:]')" in
+        *tasks/*) ;;
+        *) exit 0 ;;
+    esac
+    case "$(printf '%s' "$_bash_sanitized_command" | tr '[:upper:]' '[:lower:]')" in
+        *.output*) ;;
+        *) exit 0 ;;
+    esac
+fi
+
 cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
 cwd_hash=$(printf '%s' "${cwd:-/}" | cksum 2>/dev/null | awk '{print $1}') || cwd_hash="0"
 
@@ -314,11 +329,7 @@ case "$tool_name" in
         handle_generic_read_poll "$sanitized_path" "$offset"
         ;;
     Bash)
-        command_body=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
-        [ -n "$command_body" ] || exit 0
-        sanitized_command=${command_body//$'\t'/ }
-
-        token=$(extract_bash_task_output_poll_token "$sanitized_command") || exit 0
+        token=$(extract_bash_task_output_poll_token "$_bash_sanitized_command") || exit 0
         handle_task_output_poll "$token"
         ;;
 esac

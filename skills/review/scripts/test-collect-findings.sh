@@ -142,6 +142,42 @@ else
     cat "$TMP/collect-agent-results.stderr" 2>/dev/null >&2
     exit 1
 fi
+# Replay fallback: empty collector stderr capture + pre-planted sidecars still reach wrapper FD 2.
+replay_a="$TMP/replay-fail-a.txt"
+replay_b="$TMP/replay-fail-b.txt"
+: > "$replay_a"
+: > "$replay_b"
+printf '1\n' > "${replay_a}.done"
+printf '1\n' > "${replay_b}.done"
+printf 'non-transient failure\n' > "${replay_a}.diag"
+printf 'non-transient failure\n' > "${replay_b}.diag"
+printf 'replay stderr tail alpha\n' > "${replay_a}.stderr-tail"
+printf 'replay stderr tail beta\n' > "${replay_b}.stderr-tail"
+: > "$TMP/replay-collector.stderr"
+LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0 RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 \
+    LARCH_QUIET_DISABLE=1 "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode \
+    "$replay_a" "$replay_b" >"$TMP/replay-collector.stdout" 2>"$TMP/replay-collector.stderr"
+if grep -Fq 'failed agent stderr tail' "$TMP/replay-collector.stderr"; then
+    echo "FAIL: collector should not emit tails when LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0" >&2
+    cat "$TMP/replay-collector.stderr" >&2
+    exit 1
+fi
+set +e
+cf_replay_out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 LARCH_QUIET_DISABLE=1 "$SCRIPT" \
+    --external-output-files "$replay_a" --mode diff --timeout 5 \
+    --findings-file "$TMP/findings-cf-replay.md" --oos-file "$TMP/oos-cf-replay.md" 2>"$TMP/cf-replay-wrapper.stderr")
+cf_replay_rc=$?
+set -e
+assert_stdout_cap "$cf_replay_out"
+[[ "$cf_replay_rc" -eq 0 ]] || { echo "FAIL: collect-findings replay E2E exit $cf_replay_rc" >&2; exit 1; }
+if grep -Fq 'failed agent stderr tail' "$TMP/cf-replay-wrapper.stderr" \
+    && grep -Fq 'replay stderr tail alpha' "$TMP/cf-replay-wrapper.stderr"; then
+    :
+else
+    echo "FAIL: collect-findings replay must surface planted stderr tails when collector stderr is empty" >&2
+    cat "$TMP/cf-replay-wrapper.stderr" >&2
+    exit 1
+fi
 # Normal inline TSV is collected silently — no stderr noise and no execution-issues tsv-fallback rows.
 if [[ -s "$TMP/inline-tsv.stderr" ]]; then
     echo "FAIL: expected empty stderr for silent inline-TSV collection" >&2

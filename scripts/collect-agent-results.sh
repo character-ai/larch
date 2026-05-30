@@ -1432,8 +1432,10 @@ _cleanup_collector_dedup_tail_file() {
     [[ "${_dedup_tail_file:-}" == *"/larch-launch-stderr-tail."* ]] && rm -f "$_dedup_tail_file"
 }
 _emit_collector_stderr_tail_file() {
-    local tail_file="$1"
+    local tail_file="$1" rendered
     [[ -s "$tail_file" ]] || return 1
+    rendered=$(render_failed_agent_stderr_tail "$tail_file" 2>/dev/null || true)
+    [[ -n "$rendered" ]] || return 1
     larch_err '--- failed agent stderr tail ---'
     while IFS= read -r _tail_line || [[ -n "$_tail_line" ]]; do
         [[ -n "$_tail_line" ]] || continue
@@ -1442,7 +1444,7 @@ _emit_collector_stderr_tail_file() {
         else
             larch_err "$_tail_line"
         fi
-    done <"$tail_file"
+    done < <(printf '%s' "$rendered")
     larch_err '--- end failed agent stderr tail ---'
 }
 _resolve_collector_stderr_tail_file() {

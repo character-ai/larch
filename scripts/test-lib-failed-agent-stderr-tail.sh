@@ -55,6 +55,21 @@ write_failed_agent_stderr_tail "$src" "$base" || true
 assert_file_absent "zero disables sidecar" "${base}.stderr-tail"
 unset LARCH_FAILED_AGENT_STDERR_TAIL_LINES
 
+# --- non-numeric env fallback ---
+export LARCH_FAILED_AGENT_STDERR_TAIL_LINES=abc
+assert_eq "non-numeric lines fallback" "30" "$(failed_agent_stderr_tail_lines)"
+out=$(render_failed_agent_stderr_tail "$src")
+line_count=$(printf '%s' "$out" | grep -c '^line-' || true)
+assert_eq "non-numeric render still tails 30" "30" "$line_count"
+unset LARCH_FAILED_AGENT_STDERR_TAIL_LINES
+
+export LARCH_FAILED_AGENT_STDERR_TAIL_LINES=30abc
+assert_eq "suffix non-numeric lines fallback" "30" "$(failed_agent_stderr_tail_lines)"
+out=$(render_failed_agent_stderr_tail "$src")
+line_count=$(printf '%s' "$out" | grep -c '^line-' || true)
+assert_eq "suffix non-numeric render still tails 30" "30" "$line_count"
+unset LARCH_FAILED_AGENT_STDERR_TAIL_LINES
+
 # --- 5 KB byte cap ---
 huge="$TMPROOT/huge.txt"
 printf 'x%.0s' {1..20000} >"$huge"
