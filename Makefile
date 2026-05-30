@@ -11,7 +11,7 @@
 .PHONY: test-design-reentry-guard
 .PHONY: test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format
-.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs
+.PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a
 .PHONY: test-stall-recovery-report
 .PHONY: test-design-pause-resume
@@ -75,7 +75,7 @@ test-harnesses-4: test-dispatch-code-voters-edge-and-r3-claude
 
 test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-lint-readability-preamble test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-lint-awk-multibyte-regex test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths test-stall-recovery-report
 
-test-harnesses-6: test-add-blocked-by test-blocked-by-issue test-ci-status test-compose-plan-goals-test test-dispatch-panel-limits test-implement-cleanup-script test-larch-logs-manifest test-local-cleanup test-read-design-classification test-relevant-checks-byte-budget test-review-and-fix-dispatch test-review-and-fix-parsers test-sentinel-write test-subskill-anchors test-write-run-params test-step0b-router-flag-recovery test-write-design-current-env
+test-harnesses-6: test-add-blocked-by test-blocked-by-issue test-ci-behind-count test-ci-status test-compose-plan-goals-test test-dispatch-panel-limits test-implement-cleanup-script test-larch-logs-manifest test-local-cleanup test-read-design-classification test-relevant-checks-byte-budget test-review-and-fix-dispatch test-review-and-fix-parsers test-sentinel-write test-subskill-anchors test-write-run-params test-step0b-router-flag-recovery test-write-design-current-env
 
 test-harnesses-7: test-agent-model-args test-body-file-title test-ci-wait test-compose-pr-summary test-dispatch-panel-reuse test-flush-execution-issues test-implement-bootstrap test-implement-finalize test-launch-claude-review test-log-phase test-relevant-checks-helper-failure test-review-core test-session-entry-gate test-synthesis-subagent test-write-tally
 
@@ -345,6 +345,9 @@ test-ci-rerun-failed:
 
 test-ci-status:
 	bash scripts/harness-timer.sh $@ bash scripts/test-ci-status.sh
+
+test-ci-behind-count:
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-behind-count.sh
 
 test-merge-pr:
 	bash scripts/harness-timer.sh $@ bash scripts/test-merge-pr.sh
@@ -633,6 +636,7 @@ test-ship-pr-transient:
 
 test-ship-pr-rebase-phase14:
 	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr-rebase-phase14.sh
+
 
 test-ci-wait:
 	bash scripts/harness-timer.sh $@ bash scripts/test-ci-wait.sh

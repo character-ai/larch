@@ -134,9 +134,20 @@ Each tier snapshots `HEAD` plus tracked/untracked dirty paths, runs the launcher
 - `run_ci_fix_vendor` and the conflict-resolution branch of `run_rebase_rebump` resolve the design plan via `resolve_plan_file()`, which prefers `PLAN_FILE` from `$IMPLEMENT_TMPDIR/session-env.sh` when set (read without sourcing), validates the path is under `$IMPLEMENT_TMPDIR` (rejects paths outside to prevent arbitrary local-file reads), and verifies the file exists. When `PLAN_FILE` is absent or invalid, the helper falls back to `$IMPLEMENT_TMPDIR/plan.txt` when that file exists. When a valid path is resolved, `--plan-file` is forwarded to the Cursor, Codex, and Claude CI launchers so external agents preserve the design plan while fixing CI or resolving conflicts. Path violations and missing files are logged to `execution-issues.md` under `Warnings`.
 - `_stage_and_push_ci_fixes` is the shared CI-fix push path for both
   per-job-only repairs and `run_ci_fix_vendor`: it appends token records when
-  present, refreshes run logs before push, stages explicit paths via
-  `collect_ci_stage_paths`, commits `Fix CI failure` when needed, and runs
-  `git-push.sh`.
+  present, stages explicit paths via `collect_ci_stage_paths`, commits
+  `Fix CI failure` when needed, then calls `ci-behind-count.sh`. When behind,
+  it reuses `run_rebase_rebump` with `defer-push` (fork-aware base remote/ref),
+  refreshes the pre-push HEAD snapshot, re-verifies failed jobs and lint on the
+  rebased tree, stages any post-rebase lint delta, refreshes run logs, and pushes
+  via `git-force-push.sh` when a rebase occurred or `CI_FIX_REBASE_PENDING` is set
+  after a failed post-rebase verify (retry uses force-with-lease); otherwise it
+  uses plain `git-push.sh`.
+- `run_ci_fix_vendor` rotates the cursor→codex→claude waterfall start tier per
+  outer `_fix_attempt` (`start_attempt % 3`). The first-fixer-non-health shortcut
+  keys off the first tier of the rotated list, not the literal `cursor` tier.
+- `run_rebase_rebump` accepts optional `defer-push` plus `base_remote` /
+  `base_ref` arguments threaded into `rebase-push.sh` and `_run_rebase_rebump_from_step3`
+  (skips `git-force-push.sh` when deferred).
 - `run_ci_fix_vendor` stages CI fix commits via `_stage_and_push_ci_fixes` and `collect_ci_stage_paths` (explicit paths from vendor dirty snapshots plus lint-fix deltas), not `git add -u`.
 - `_verify_failed_jobs_locally` is the vendor-path pre-push gate. It consumes the same TSV format as `run_per_job_local_fix_loop`, skips an absent or empty TSV with a warning breadcrumb, collects any non-fixable TSV row into the consolidated `ci-local-unfixable:<list>` bail, replays each fixable job locally, dispatches `lint-fix-loop.sh --site ship-pr-ci-per-job` for local failures, then performs a final cross-job sweep. It exits `3` directly for consolidated bails using the same `state_set_many BAIL_REASON ... BAIL_FAILURE_DETAIL_LOG ...` contract as `run_per_job_local_fix_loop`; callers only see return `0`, `2`, or `4`.
 - State writes use `tmp.$$` plus `mv`.

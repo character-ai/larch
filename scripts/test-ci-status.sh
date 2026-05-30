@@ -5,7 +5,6 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-SCRIPT="$REPO_ROOT/scripts/ci-status.sh"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/larch-ci-status.XXXXXX")"
 trap 'rm -rf "$TMPROOT"' EXIT
 
@@ -13,6 +12,18 @@ fail() {
     echo "FAIL: $1" >&2
     exit 1
 }
+
+test_scripts="$TMPROOT/scripts"
+mkdir -p "$test_scripts"
+cp "$REPO_ROOT/scripts/ci-status.sh" "$test_scripts/"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$test_scripts/"
+cat > "$test_scripts/ci-behind-count.sh" <<'BEHIND'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${BEHIND_LOG:?}"
+echo "BEHIND_COUNT=${BEHIND_STUB:-0}"
+BEHIND
+chmod +x "$test_scripts/ci-behind-count.sh"
+SCRIPT="$test_scripts/ci-status.sh"
 
 stub_dir="$TMPROOT/bin"
 mkdir -p "$stub_dir"
@@ -50,9 +61,9 @@ chmod +x "$stub_dir/sleep"
 out=$(GH_LOG="$TMPROOT/gh1.log" GIT_LOG="$TMPROOT/git1.log" PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo)
 grep -Fxq 'CI_STATUS=pending' <<<"$out" || fail "empty checks without grace should be pending"
 
-out=$(GH_LOG="$TMPROOT/gh2.log" GIT_LOG="$TMPROOT/git2.log" PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo --base-remote upstream --base-ref main --empty-checks-grace 30)
+out=$(GH_LOG="$TMPROOT/gh2.log" GIT_LOG="$TMPROOT/git2.log" BEHIND_LOG="$TMPROOT/behind2.log" PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo --base-remote upstream --base-ref main --empty-checks-grace 30)
 grep -Fxq 'CI_STATUS=NO_CHECKS' <<<"$out" || fail "empty checks after grace should be NO_CHECKS"
 grep -Fq 'fetch upstream main --quiet' "$TMPROOT/git2.log" || fail "base remote/ref not used for fetch"
-grep -Fq 'rev-list HEAD..upstream/main --count' "$TMPROOT/git2.log" || fail "base remote/ref not used for behind count"
+grep -Fq -- '--base-remote upstream --base-ref main --no-fetch' "$TMPROOT/behind2.log" || fail "ci-behind-count.sh not delegated for behind count"
 
 echo "PASS: test-ci-status.sh"

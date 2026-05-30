@@ -54,7 +54,7 @@ flowchart TD
         VALIDATE2 --> COMMIT2[Second commit]
         COMMIT2 --> VERSION[Version bump]
         VERSION --> PR[Create PR]
-        PR --> CI_MONITOR[Monitor CI + fix failures]
+        PR --> CI_MONITOR[Monitor CI + fix failures (rebase before push)]
     end
 
     IMPL_PHASE --> MERGE_FLAG{Merge flag set}
@@ -106,6 +106,10 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 - **Version bump** — Requires a `/bump-version` skill defined in the repo. When absent, the version bump step is skipped with a warning.
 - **External reviewers (Cursor, Codex)** — When unavailable, Claude Code Reviewer subagent fallbacks replace them so the per-skill lane/voter shapes remain constant in most phases (see [agents.md](agents.md), [review-agents.md](review-agents.md), and [collaborative-sketches.md](collaborative-sketches.md)). In `/review`, all slots go through a three-phase waterfall: Phase 1 uses the primary tool (Cursor or Codex); Phase 2 tries the alternate external tool when Phase 1 fails or is absent; Phase 3 launches a Claude subprocess for any slot still unresolved. This means the panel always produces output — when both external tools are absent, all specialist slots fall through to Phase 3 Claude reviewers (see [review-agents.md](review-agents.md)). The review still lands regardless of external tool availability.
 - **Dialectic debate buckets (`/design` Step 2a.5)** — Unlike the phases above, the dialectic **debate** phase does NOT replace an unavailable tool with a Claude subagent. When the assigned external tool (Cursor for odd-indexed decisions, Codex for even) is unavailable, the bucket is **skipped entirely** and a `Disposition: bucket-skipped` resolution is written (the synthesis decision stands for that point). This carve-out applies to debate execution only — the post-debate **judge panel** uses replacement-first normally. See [External Reviewers](external-reviewers.md#dialectic-specific-behavior) and `skills/shared/dialectic-protocol.md` for details.
+
+## CI-fix push sequencing
+
+When `scripts/ship-pr.sh` commits a CI-fix locally, it checks staleness via `scripts/ci-behind-count.sh` (shared with `scripts/ci-status.sh`) before pushing. If the branch is behind `origin/main` (or `upstream/main` on forked targets), it reuses `run_rebase_rebump` with deferred push, re-verifies failed jobs and lint on the rebased tree, then pushes with `git-force-push.sh` (force-with-lease). When already current, it uses plain `git-push.sh`. The next `ci-wait` poll should see `BEHIND_COUNT=0`, so the separate `ACTION=rebase` path remains a no-op fallback rather than a second rebase.
 
 ## Pre-push Clean-Tree Invariant
 

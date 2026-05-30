@@ -57,6 +57,27 @@ USAGE
 LAST_LINT_FIX_DELTA_PATHS_FILE=""
 ALL_LINT_FIX_DELTA_PATHS_FILE=""
 LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=""
+CI_FIX_REBASE_PENDING=false
+
+_ci_fix_pending_hydrate() {
+    if ! state_has_key CI_FIX_REBASE_PENDING; then
+        state_set CI_FIX_REBASE_PENDING false
+    fi
+    case "$(read_state CI_FIX_REBASE_PENDING)" in
+        true) CI_FIX_REBASE_PENDING=true ;;
+        *) CI_FIX_REBASE_PENDING=false ;;
+    esac
+}
+
+_ci_fix_pending_set() {
+    CI_FIX_REBASE_PENDING=true
+    state_set CI_FIX_REBASE_PENDING true
+}
+
+_ci_fix_pending_clear() {
+    CI_FIX_REBASE_PENDING=false
+    state_set CI_FIX_REBASE_PENDING false
+}
 
 capture_dirty_paths() {
     {
@@ -487,6 +508,7 @@ write_initial_state() {
         printf 'RESUME_PHASE=\n'
         printf 'CALLER_KIND=\n'
         printf 'REBASE_COUNT=0\n'
+        printf 'CI_FIX_REBASE_PENDING=false\n'
         printf 'FIX_ATTEMPTS=0\n'
         printf 'ITERATION=0\n'
         printf 'TRANSIENT_RETRIES=0\n'
@@ -1755,87 +1777,229 @@ rename_done_best_effort() {
     state_set DONE_RENAME_APPLIED true
 }
 
-_stage_and_push_ci_fixes() {
-    local phase=$1 token_record_input=${2:-} checks_site=${3:-}
-    local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
-    local tracked_dirty_paths_file untracked_dirty_paths_file delta_paths_file
+_resolve_effective_failed_jobs_tsv() {
+    local phase=$1 failed_jobs_tsv=${2:-}
+    if [ -n "$failed_jobs_tsv" ] && [ -f "$failed_jobs_tsv" ] && grep -q '[^[:space:]]' "$failed_jobs_tsv"; then
+        printf '%s' "$failed_jobs_tsv"
+        return 0
+    fi
+    local persisted="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.tsv"
+    if [ -f "$persisted" ] && grep -q '[^[:space:]]' "$persisted"; then
+        printf '%s' "$persisted"
+        return 0
+    fi
+    return 1
+}
 
-    LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=""
+_commit_ci_fix_stage_paths() {
+    local phase=$1 fail_label=$2
+    local vendor_tracked=$3 vendor_untracked=$4 tracked=$5 untracked=$6 delta_paths_file=${7:-}
+    local fail_file rc stage_paths=() stage_path
 
+    if [[ ! -s "$tracked" && ! -s "$untracked" ]] \
+        && [[ -z "$vendor_tracked" || ! -s "$vendor_tracked" ]] \
+        && [[ -z "$vendor_untracked" || ! -s "$vendor_untracked" ]] \
+        && [[ -z "$delta_paths_file" || ! -f "$delta_paths_file" || ! -s "$delta_paths_file" ]]; then
+        return 0
+    fi
+
+    while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
+        [[ -n "$stage_path" ]] || continue
+        stage_paths+=("$stage_path")
+    done < <(collect_ci_stage_paths "$vendor_tracked" "$vendor_untracked" "$tracked" "$untracked" "${delta_paths_file:-}")
+    if [[ "${#stage_paths[@]}" -eq 0 ]]; then
+        return 0
+    fi
     fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/append-token-record.sh" --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
+    git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
     rc=$?
-    [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
-
-    vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
-    vendor_untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-untracked-dirty-paths.txt"
-    capture_tracked_dirty_paths > "$vendor_tracked_dirty_paths_file"
-    capture_untracked_dirty_paths > "$vendor_untracked_dirty_paths_file"
-
-    if [[ -n "$checks_site" ]]; then
-        if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
+    if [ "$rc" -ne 0 ]; then
+        record_failure "$phase" "$fail_label" "$rc" "$fail_file" "CI Issues"
+        return 1
+    fi
+    if ! git diff --cached --quiet 2>/dev/null; then
+        fail_file=$(failure_capture_path "$phase")
+        "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            record_failure "$phase" "${fail_label}git-commit.sh" "$rc" "$fail_file" "CI Issues"
             return 1
         fi
+    fi
+    return 0
+}
+
+_run_post_rebase_verify_gates() {
+    local phase=$1 checks_site=$2 failed_jobs_tsv=$3
+    local tracked_dirty_paths_file=$4 untracked_dirty_paths_file=$5
+    local verify_rc fail_file rc delta_paths_file stage_paths stage_path effective_tsv
+
+    effective_tsv=$(_resolve_effective_failed_jobs_tsv "$phase" "$failed_jobs_tsv") || effective_tsv=""
+    if [ -z "$effective_tsv" ] || ! grep -q '[^[:space:]]' "$effective_tsv" 2>/dev/null; then
+        larch_err "⚠ ship-pr: no failed-jobs TSV; post-rebase verify uses relevant-checks only"
+        verify_rc=0
+        if [ -n "$checks_site" ]; then
+            if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
+                verify_rc=1
+            fi
+        fi
+        case "$verify_rc" in
+            0)
+                delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
+                _commit_ci_fix_stage_paths "$phase" "git add -- post-rebase lint delta" \
+                    "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" \
+                    "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file" \
+                    || return 1
+                return 0
+                ;;
+            *) return 1 ;;
+        esac
+    fi
+
+    verify_rc=0
+    _verify_failed_jobs_locally "$phase" "$effective_tsv"
+    verify_rc=$?
+    if [ "$verify_rc" -eq 0 ] && [ -n "$checks_site" ]; then
+        if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
+            verify_rc=1
+        fi
+    fi
+    case "$verify_rc" in
+        0)
+            delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
+            _commit_ci_fix_stage_paths "$phase" "git add -- post-rebase lint delta" \
+                "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" \
+                "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file" \
+                || return 1
+            return 0
+            ;;
+        2) return 2 ;;
+        4) return 4 ;;
+        *) return 1 ;;
+    esac
+}
+
+_stage_and_push_ci_fixes() {
+    local phase=$1 token_record_input=${2:-} checks_site=${3:-} failed_jobs_tsv=${4:-}
+    local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
+    local tracked_dirty_paths_file untracked_dirty_paths_file delta_paths_file
+    local base_remote base_ref behind_out behind did_rebase verify_rc pending_retry verify_passed=false
+
+    LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=""
+    pending_retry=false
+    if [ "$CI_FIX_REBASE_PENDING" = true ]; then
+        pending_retry=true
     fi
 
     tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-tracked-dirty-paths.txt"
     untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-untracked-dirty-paths.txt"
-    capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
-    capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
-    if [[ -s "$tracked_dirty_paths_file" || -s "$untracked_dirty_paths_file" ]]; then
+
+    if [ "$pending_retry" != true ]; then
         fail_file=$(failure_capture_path "$phase")
-        delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
-        rc=0
-        if [[ -s "$vendor_tracked_dirty_paths_file" || -s "$vendor_untracked_dirty_paths_file" || -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
-            local stage_paths=() stage_path
-            while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
-                [[ -n "$stage_path" ]] || continue
-                stage_paths+=("$stage_path")
-            done < <(collect_ci_stage_paths "$vendor_tracked_dirty_paths_file" "$vendor_untracked_dirty_paths_file" "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
-            if [[ "${#stage_paths[@]}" -gt 0 ]]; then
-                git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
-            else
-                : > "$fail_file"
-            fi
-        fi
+        "$SCRIPT_DIR/append-token-record.sh" --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
         rc=$?
-        if [ "$rc" -ne 0 ]; then
-            record_failure "$phase" "git add -- <tracked+allowlisted-untracked>" "$rc" "$fail_file" "CI Issues"
-            return 1
-        fi
-        if ! git diff --cached --quiet 2>/dev/null; then
-            fail_file=$(failure_capture_path "$phase")
-            "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
-            rc=$?
-            if [ "$rc" -ne 0 ]; then
-                record_failure "$phase" "git-commit.sh" "$rc" "$fail_file" "CI Issues"
+        [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
+
+        vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
+        vendor_untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-untracked-dirty-paths.txt"
+        capture_tracked_dirty_paths > "$vendor_tracked_dirty_paths_file"
+        capture_untracked_dirty_paths > "$vendor_untracked_dirty_paths_file"
+
+        if [[ -n "$checks_site" ]]; then
+            if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
                 return 1
             fi
         fi
+
+        capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
+        capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
+        delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
+        _commit_ci_fix_stage_paths "$phase" "git add -- <tracked+allowlisted-untracked>" \
+            "$vendor_tracked_dirty_paths_file" "$vendor_untracked_dirty_paths_file" \
+            "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file" \
+            || return 1
+    else
+        capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
+        capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
     fi
     LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+
+    if [ "$(read_state FORKED_TARGET)" = "true" ]; then
+        base_remote=upstream
+        base_ref=main
+    else
+        base_remote=origin
+        base_ref=main
+    fi
+    did_rebase=false
+    if [ "$pending_retry" != true ]; then
+        fail_file=$(failure_capture_path "$phase")
+        behind_out=$("$SCRIPT_DIR/ci-behind-count.sh" --base-remote "$base_remote" --base-ref "$base_ref" 2>"$fail_file")
+        behind=$(kv_value BEHIND_COUNT "$behind_out")
+        case "$behind" in
+            ''|*[!0-9]*) behind=0 ;;
+        esac
+        if [ "$behind" -gt 0 ]; then
+            local effective_tsv_for_rebase
+            effective_tsv_for_rebase=$(_resolve_effective_failed_jobs_tsv "$phase" "$failed_jobs_tsv") || effective_tsv_for_rebase=""
+            if [ -z "$effective_tsv_for_rebase" ] || ! grep -q '[^[:space:]]' "$effective_tsv_for_rebase" 2>/dev/null; then
+                larch_err "⚠ ship-pr: behind main but failed-jobs unknown; skipping defer-rebase"
+            else
+                did_rebase=true
+                run_rebase_rebump "$phase" defer-push "$base_remote" "$base_ref"
+                LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+                capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
+                capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
+            fi
+        fi
+    fi
+
+    if [ "$did_rebase" = true ] || [ "$pending_retry" = true ]; then
+        _run_post_rebase_verify_gates "$phase" "$checks_site" "$failed_jobs_tsv" \
+            "$tracked_dirty_paths_file" "$untracked_dirty_paths_file"
+        verify_rc=$?
+        case "$verify_rc" in
+            0) verify_passed=true ;;
+            2|4) return "$verify_rc" ;;
+            *) return 1 ;;
+        esac
+    fi
+
     fail_file=$(failure_capture_path "$phase")
     "$SCRIPT_DIR/refresh-run-logs.sh" \
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
     fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/git-push.sh" > "$fail_file" 2>&1
+    if [ "$did_rebase" = true ] || [ "$CI_FIX_REBASE_PENDING" = true ]; then
+        "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
+    else
+        "$SCRIPT_DIR/git-push.sh" > "$fail_file" 2>&1
+    fi
     rc=$?
     if [ "$rc" -ne 0 ]; then
-        record_failure "$phase" "git-push.sh" "$rc" "$fail_file" "CI Issues"
+        if [ "$verify_passed" = true ]; then
+            _ci_fix_pending_set
+            record_failure "$phase" "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
+        elif [ "$did_rebase" = true ] || [ "$CI_FIX_REBASE_PENDING" = true ]; then
+            record_failure "$phase" "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
+        else
+            record_failure "$phase" "git-push.sh" "$rc" "$fail_file" "CI Issues"
+        fi
         return 1
     fi
+    _ci_fix_pending_clear
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1} failed_jobs_tsv=${5:-}
-    local rc fail_file tool_label plan_file checks_site delta_paths_file verify_rc
+    local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1} failed_jobs_tsv=${5:-} start_attempt=${6:-0}
+    local rc fail_file tool_label plan_file checks_site delta_paths_file verify_rc stage_rc
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     local gh_logs_capture_redacted _failure_log_args=()
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
     local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
     local detail_log pre_refresh_head
+    local tiers=(cursor codex claude) tier tier_idx offset waterfall_iter=0 first_tier
 
     larch_err "⚠ ship-pr: CI failed; dispatching fix"
 
@@ -1865,11 +2029,15 @@ run_ci_fix_vendor() {
     wrapper_rc=1
     launcher_exit=1
 
-    for tier in cursor codex claude; do
+    offset=$(( start_attempt % 3 ))
+    first_tier=${tiers[$offset]}
+    for tier_idx in 0 1 2; do
+        tier=${tiers[$(((tier_idx + offset) % 3))]}
         if [ "$tier" = "claude" ] && [ ! -x "$SCRIPT_DIR/launch-claude-ci.sh" ]; then
             fail_file=$(failure_capture_path "$phase")
             printf 'launch-claude-ci.sh unavailable (missing or not executable)\n' > "$fail_file"
             record_failure "$phase" "launch-claude-ci.sh unavailable" 1 "$fail_file" Warnings
+            waterfall_iter=$(( waterfall_iter + 1 ))
             continue
         fi
         case "$tier" in
@@ -1895,6 +2063,7 @@ run_ci_fix_vendor() {
         if [ "$wrapper_rc" -eq 2 ]; then
             record_failure "$phase" "$(basename "$launcher") fix (validation)" "$wrapper_rc" "$fail_file" "CI Issues"
             _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
+            waterfall_iter=$(( waterfall_iter + 1 ))
             continue
         fi
         if [ "$wrapper_rc" -eq 0 ] && [ "${launcher_exit:-0}" -eq 0 ]; then
@@ -1904,15 +2073,16 @@ run_ci_fix_vendor() {
         fi
         record_failure "$phase" "$(basename "$launcher") fix (wrapper_rc=$wrapper_rc, launcher_exit=${launcher_exit:-0})" "${launcher_exit:-$wrapper_rc}" "$fail_file" "CI Issues"
         _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
-        if [ "$tier" = "cursor" ] && [ "$wrapper_rc" -eq 0 ]; then
+        if [ "$waterfall_iter" -eq 0 ] && [ "$wrapper_rc" -eq 0 ] && [ "$tier" = "$first_tier" ]; then
             local _lf_class
             _lf_class=$(ship_pr_read_launcher_failure_class "$fail_file")
             if [ "$_lf_class" = "other" ]; then
-                larch_err "⚠ ship-pr: first fixer (cursor) failed non-health; skipping waterfall"
+                larch_err "⚠ ship-pr: first fixer failed non-health; skipping waterfall"
                 state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$fail_file"
                 return 1
             fi
         fi
+        waterfall_iter=$(( waterfall_iter + 1 ))
     done
 
     if [ -z "$winning_tier" ] || [ "$wrapper_rc" -ne 0 ] || [ "${launcher_exit:-0}" -ne 0 ]; then
@@ -1928,27 +2098,33 @@ run_ci_fix_vendor() {
         4) return 4 ;;
         *) return 1 ;;
     esac
-    if _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"; then
-        pre_refresh_head=${LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD:-}
-        if [[ "$baseline_head" =~ ^[0-9a-f]{40}$ ]] \
-            && [[ "$pre_refresh_head" =~ ^[0-9a-f]{40}$ ]] \
-            && [ "$baseline_head" = "$pre_refresh_head" ]; then
-            detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
-            {
-                printf 'vendor=%s\n' "$winning_tier"
-                printf 'launcher_exit=0\n'
-                printf 'baseline_head=%s\n' "$baseline_head"
-                printf 'pre_refresh_head=%s\n' "$pre_refresh_head"
-                printf 'reason=vendor exited 0 and CI-fix staging/push left HEAD unchanged; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
-            } > "$detail_log"
-            larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
-            state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
-            record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
-            return 1
-        fi
-        return 0
-    fi
-    return 1
+    _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site" "$failed_jobs_tsv"
+    stage_rc=$?
+    case "$stage_rc" in
+        0)
+            pre_refresh_head=${LAST_STAGE_AND_PUSH_PRE_REFRESH_HEAD:-}
+            if [[ "$baseline_head" =~ ^[0-9a-f]{40}$ ]] \
+                && [[ "$pre_refresh_head" =~ ^[0-9a-f]{40}$ ]] \
+                && [ "$baseline_head" = "$pre_refresh_head" ]; then
+                detail_log="$IMPLEMENT_TMPDIR/ci-fix-no-commit-${phase}-$$.log"
+                {
+                    printf 'vendor=%s\n' "$winning_tier"
+                    printf 'launcher_exit=0\n'
+                    printf 'baseline_head=%s\n' "$baseline_head"
+                    printf 'pre_refresh_head=%s\n' "$pre_refresh_head"
+                    printf 'reason=vendor exited 0 and CI-fix staging/push left HEAD unchanged; classifying as first-fixer-non-health to route to autonomous main-agent CI-fix\n'
+                } > "$detail_log"
+                larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
+                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+                record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
+                return 1
+            fi
+            return 0
+            ;;
+        2) return 2 ;;
+        4) return 4 ;;
+        *) return 1 ;;
+    esac
 }
 
 _PJA_ARGV=()
@@ -2251,7 +2427,7 @@ run_evaluate_failure() {
     # a 3-tier inner waterfall: Cursor → Codex → Claude = up to 9 launcher calls
     # per phase, down from 15 today); the persisted FIX_ATTEMPTS counter still
     # tracks successful fix pushes across the wider phase for reporting/state purposes.
-    local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc ci_failed_out ci_failed_rc ci_failed_count ci_failed_capture ci_failed_tsv checks_site per_job_rc per_job_verification_retry vendor_rc
+    local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc ci_failed_out ci_failed_rc ci_failed_count ci_failed_capture ci_failed_tsv checks_site per_job_rc per_job_verification_retry vendor_rc stage_rc
     _fix_attempt=0
     while [ "$_fix_attempt" -lt "$_max_fix" ]; do
         vendor_rc=
@@ -2269,6 +2445,35 @@ run_evaluate_failure() {
         [ "$gh_logs_rc" -eq 0 ] || [ "$gh_logs_rc" -eq 3 ] || record_failure "$phase" "gh-run-logs.sh" "$gh_logs_rc" "$fail_file" "CI Issues"
         gh_logs_capture="$fail_file"
         fail_file=""
+        ci_failed_tsv="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.tsv"
+        checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
+        if [ "$CI_FIX_REBASE_PENDING" = true ]; then
+            _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
+            stage_rc=$?
+            case "$stage_rc" in
+                0)
+                    state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                    return 0
+                    ;;
+                2)
+                    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-head-changed || echo 12-head-changed)"
+                    ;;
+                4)
+                    per_job_verification_retry=true
+                    ;;
+            esac
+            _fix_attempt=$(( _fix_attempt + 1 ))
+            if [ "$_fix_attempt" -lt "$_max_fix" ]; then
+                local _base _jitter _sleep
+                _base=$(( 2 * 2 ** (_fix_attempt - 1) ))
+                _jitter=$(( RANDOM % (_base / 2 + 1) ))
+                _sleep=$(( _base + _jitter - _base / 4 ))
+                [ "$_sleep" -lt 1 ] && _sleep=1
+                sleep "$_sleep"
+                continue
+            fi
+            break
+        fi
         if [ "$gh_logs_rc" -eq 3 ]; then
             printf 'ship-pr %s: CI still in progress (gh-run-logs rc=3); deferring vendor dispatch this attempt.\n' "$phase"
         elif [ "$gh_logs_rc" -eq 0 ]; then
@@ -2286,10 +2491,20 @@ run_evaluate_failure() {
                     run_per_job_local_fix_loop "$phase" "$ci_failed_tsv"
                     per_job_rc=$?
                     if [ "$per_job_rc" -eq 0 ]; then
-                        if _stage_and_push_ci_fixes "$phase" "" "$checks_site"; then
-                            state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
-                            return 0
-                        fi
+                        _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
+                        per_job_rc=$?
+                        case "$per_job_rc" in
+                            0)
+                                state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                                return 0
+                                ;;
+                            2)
+                                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-head-changed || echo 12-head-changed)"
+                                ;;
+                            4)
+                                per_job_verification_retry=true
+                                ;;
+                        esac
                         _fix_attempt=$(( _fix_attempt + 1 ))
                         if [ "$_fix_attempt" -lt "$_max_fix" ]; then
                             local _base _jitter _sleep
@@ -2315,9 +2530,22 @@ run_evaluate_failure() {
                 record_failure "$phase" "ci-failed-jobs.sh" "$ci_failed_rc" "$ci_failed_capture" Warnings
             fi
             if [[ "$per_job_verification_retry" == true ]]; then
-                :
+                _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
+                stage_rc=$?
+                case "$stage_rc" in
+                    0)
+                        state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                        return 0
+                        ;;
+                    2)
+                        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-head-changed || echo 12-head-changed)"
+                        ;;
+                    4)
+                        per_job_verification_retry=true
+                        ;;
+                esac
             else
-                if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc" "$ci_failed_tsv"; then
+                if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc" "$ci_failed_tsv" "$_fix_attempt"; then
                     vendor_rc=0
                 else
                     vendor_rc=$?
@@ -2338,7 +2566,7 @@ run_evaluate_failure() {
                 esac
             fi
         else
-            if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc" ""; then
+            if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc" "" "$_fix_attempt"; then
                 vendor_rc=0
             else
                 vendor_rc=$?
@@ -2661,9 +2889,9 @@ ship_pr_vendor_conflict_csv_is_non_bump_only() {
 }
 
 _run_rebase_rebump_verify_plain_no_push() {
-    local phase=$1 rebase_out rebase_rc fail_file
+    local phase=$1 base_remote=${2:-origin} base_ref=${3:-main} rebase_out rebase_rc fail_file
     fail_file=$(failure_capture_path rebase)
-    rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>"$fail_file")
+    rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --base-remote "$base_remote" --base-ref "$base_ref" 2>"$fail_file")
     rebase_rc=$?
     printf '%s\n' "$rebase_out" >> "$fail_file"
     if [ "$rebase_rc" -ne 0 ]; then
@@ -2674,14 +2902,15 @@ _run_rebase_rebump_verify_plain_no_push() {
 }
 
 _run_rebase_rebump_from_step3() {
-    local phase=$1 fail_file rc classify_out classify_rc apply_out
+    local phase=$1 defer_push=${2:-false} base_remote=${3:-origin} base_ref=${4:-main}
+    local fail_file rc classify_out classify_rc apply_out
     local new_version bump_type reasoning_file reasoning_log_file
     local _origin_ver="" _classified_version="" _corrected=""
     local run_id pr_n repo_r
 
     # 3. Fast-forward local main so classify-bump.sh uses the correct merge-base
     fail_file=$(failure_capture_path rebase)
-    "$SCRIPT_DIR/git-sync-local-main.sh" > "$fail_file" 2>&1
+    "$SCRIPT_DIR/git-sync-local-main.sh" --base-remote "$base_remote" --base-ref "$base_ref" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure rebase "git-sync-local-main.sh" "$rc" "$fail_file" Warnings
 
@@ -2710,7 +2939,7 @@ _run_rebase_rebump_from_step3() {
                 record_failure rebase "classify-bump.sh" 1 "$fail_file" "CI Issues"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
-            _origin_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null \
+            _origin_ver=$(git show "${base_remote}/${base_ref}:.claude-plugin/plugin.json" 2>/dev/null \
                 | jq -r '.version // empty' 2>/dev/null || echo "")
             if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && semver_lt "$new_version" "$_origin_ver"; then
                 IFS='.' read -r _ov_maj _ov_min _ov_pat <<< "$_origin_ver"
@@ -2720,8 +2949,8 @@ _run_rebase_rebump_from_step3() {
                     PATCH) _corrected="${_ov_maj}.${_ov_min}.$(( _ov_pat + 1 ))" ;;
                     *)     _corrected="$new_version" ;;
                 esac
-                printf 'WARN: run_rebase_rebump: version regression detected: classify-bump produced %s < origin/main %s; corrected to %s\n' \
-                    "$new_version" "$_origin_ver" "$_corrected" >> "$fail_file"
+                printf 'WARN: run_rebase_rebump: version regression detected: classify-bump produced %s < %s/%s %s; corrected to %s\n' \
+                    "$new_version" "$base_remote" "$base_ref" "$_origin_ver" "$_corrected" >> "$fail_file"
                 new_version="$_corrected"
                 if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
                     if ! rewrite_reasoning_new_version "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected"; then
@@ -2780,31 +3009,54 @@ _run_rebase_rebump_from_step3() {
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
-    fail_file=$(failure_capture_path rebase)
-    "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
-    rc=$?
-    if [ "$rc" -ne 0 ]; then
-        record_failure rebase "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
-        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    if [ "$defer_push" != true ]; then
+        fail_file=$(failure_capture_path rebase)
+        "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            record_failure rebase "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
+            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        fi
     fi
 
-    state_set_many \
-        REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
-        ITERATION "$(( $(read_state ITERATION) + 1 ))" \
-        TRANSIENT_RETRIES 0
+    if [ "$defer_push" = true ]; then
+        state_set_many \
+            REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
+            ITERATION "$(( $(read_state ITERATION) + 1 ))" \
+            TRANSIENT_RETRIES 0
+    else
+        state_set_many \
+            REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
+            ITERATION "$(( $(read_state ITERATION) + 1 ))" \
+            TRANSIENT_RETRIES 0
+    fi
 }
 
 run_rebase_rebump() {
-    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id
+    local phase=$1 defer_push=false base_remote=origin base_ref=main
+    local drop_out rebase_out rebase_rc conflict_out run_id
     local fail_file rc tool_label plan_file
     local plan_args=()
+    shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            defer-push) defer_push=true; shift ;;
+            *)
+                base_remote=$1
+                shift
+                [ "$#" -gt 0 ] || break
+                base_ref=$1
+                shift
+                ;;
+        esac
+    done
     larch_err "⚠ ship-pr: rebase + re-bump"
 
     # Resume after prompt-side Conflict Resolution Procedure (Phase 1–4) for
     # non-bump conflicts: skip drop/rebase replay; verify tree then continue.
     if [ -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
-        _run_rebase_rebump_verify_plain_no_push "$phase"
-        _run_rebase_rebump_from_step3 "$phase"
+        _run_rebase_rebump_verify_plain_no_push "$phase" "$base_remote" "$base_ref"
+        _run_rebase_rebump_from_step3 "$phase" "$defer_push" "$base_remote" "$base_ref"
         rm -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
         state_set_many RESUME_PHASE "" CALLER_KIND ""
         return 0
@@ -2909,7 +3161,7 @@ run_rebase_rebump() {
     # 2. Rebase without pushing; keep in-progress on conflict for vendor resolution
     fail_file=$(failure_capture_path rebase)
     ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
-        "$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict
+        "$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict --base-remote "$base_remote" --base-ref "$base_ref"
     rebase_rc=$_WTR_RC
     rebase_out=$_WTR_OUT
     if [ "$rebase_rc" -eq 1 ]; then
@@ -3045,7 +3297,7 @@ run_rebase_rebump() {
         # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
         # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the
         # vendor left a conflict or broke the tree it fails, causing exit_stall.
-        _run_rebase_rebump_verify_plain_no_push "$phase"
+        _run_rebase_rebump_verify_plain_no_push "$phase" "$base_remote" "$base_ref"
     elif [ "$rebase_rc" -ne 0 ]; then
         record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
         # Classify against combined stderr + stdout — git/network helpers
@@ -3057,7 +3309,7 @@ run_rebase_rebump() {
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 
-    _run_rebase_rebump_from_step3 "$phase"
+    _run_rebase_rebump_from_step3 "$phase" "$defer_push" "$base_remote" "$base_ref"
 }
 
 run_ci_phase() {
@@ -3363,6 +3615,7 @@ main() {
     fi
     [ -r "$STATE_FILE" ] || die_usage "--state-file must be readable"
     validate_state_syntax
+    _ci_fix_pending_hydrate
 
     for key in \
         PHASE BRANCH_NAME ISSUE_NUMBER RUN_ID REPO REPO_UNAVAILABLE FORKED_TARGET \
@@ -3377,7 +3630,7 @@ main() {
         require_key "$key"
     done
 
-    for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
+    for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING CI_FIX_REBASE_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
         is_bool "$(read_state "$key")" || die_usage "state-file key $key must be true or false"
     done
 

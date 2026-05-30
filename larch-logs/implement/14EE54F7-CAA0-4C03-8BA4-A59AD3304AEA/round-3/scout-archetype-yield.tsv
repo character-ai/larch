@@ -1,0 +1,10 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+structure	code-quality	1	6	2	0	0.333333
+correctness	correctness	1	5	2	3	0.400000
+testing	risk-integration	1	5	4	0	0.800000
+security	security	1	4	2	0	0.500000
+edge-cases	correctness	1	5	4	0	0.800000
+plan-fidelity	architecture	1	5	4	0	0.800000
+dyn-bash-parser-quoting	correctness	1	5	5	0	1.000000
+dyn-rebase-dirty-state	risk-integration	1	2	2	0	1.000000
+dyn-waterfall-rotation-semantics	correctness	1	1	1	0	1.000000
