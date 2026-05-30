@@ -1,0 +1,21 @@
+Reviewing the branch diff and commit history, with extra attention to the hook-parser parsing logic described in the scout notes.
+Focusing on `hook-anti-read-poll.sh` parsing logic per the scout directive, and scanning the stderr-tail implementation for correctness issues.
+### In-Scope Findings
+
+- **correctness** `scripts/hook-anti-read-poll.sh:53-56,168-178,107-138` — Bash task-output detection strips single- and double-quoted spans in `bash_strip_quoted_for_read_verb` before `extract_task_output_token` runs, and `bash_line_task_output_poll_token` then requires the extracted `tasks/<id>.output` token to appear in that stripped line. For a common poll shape like `cat '/tmp/proj/tasks/testtask123.output'`, quote removal leaves only `cat ` with no `tasks/…` token, so the hook never classifies the command as a poll (false negative). That contradicts `scripts/hook-anti-read-poll.md:40-43`, which says quoted paths should count, and it conflicts with `scripts/test-hook-anti-read-poll.sh:210-215`, which expects the second such call to emit a reminder. **Suggested fix:** Extract the canonical `tasks/<id>.output` token from the original segment (or from a quote-aware scan) and use quote-stripping only for read-verb detection, not for token presence; align the `.md` contract and harness with whichever behavior you choose.
+
+- **correctness** `scripts/hook-anti-read-poll.sh:84-90,160-167` — `bash_segment_is_echo_only` treats any segment whose trimmed text matches `echo*` or `printf*` as non-poll noise. A segment such as `echolocation "$TASK_OUT"` or `printf_debug; cat …/tasks/id.output` is skipped entirely, so a real second read of the same task output in that segment would not advance the counter (false negative). **Suggested fix:** Match only known no-op prefixes (e.g. `echo `, `echo\t`, `printf ` with word boundaries) or require the segment to be nothing beyond `echo`/`printf` and its arguments.
+
+- **correctness** `scripts/hook-anti-read-poll.sh:141-166,208-212` — `extract_bash_task_output_poll_token` uses a global `lines=()` array (not `local`), which pollutes the caller’s namespace if the hook is ever sourced or nested. Today the hook is executed as a script, so impact is low, but it is fragile for tests or future refactors. **Suggested fix:** Declare `local lines=()` inside `extract_bash_task_output_poll_token` (Bash 3.2 supports `local` arrays in functions).
+
+### Out-of-Scope Observations
+
+- **Pre-existing (not introduced by this branch):** Generic Read polling still keys state only with `state-${cwd_hash}.tsv` (`scripts/hook-anti-read-poll.sh:229-234`), while task-output polling adds `session_hash`. Unrelated sessions sharing the same `cwd` can still share generic Read counters and trigger a reminder on the third read across sessions.
+
+- **Documented accepted gaps (not regressions):** `scripts/hook-anti-read-poll.md:45-46` documents no expansion for `VAR=…/tasks/id.output` then `cat "$VAR"`, subshell/heredoc indirection, and unquoted `;` splitting inside strings—these remain false-negative shapes by design.
+
+- **Fail-open invariant holds:** The hook omits `set -e`, guards `jq`/parse paths with `|| exit 0`, and always ends with `exit 0` (`scripts/hook-anti-read-poll.sh:8-10,293`), so parse failures should not block tools.
+
+- **#3202 stderr-tail work (branch primary feature):** Collector dedup is intentionally skipped under `--summary-only` (`scripts/collect-agent-results.sh:1426-1428`, used from `scripts/dispatch-with-waterfall.sh:377`) to avoid noisy phase-1 tails before fallback succeeds; final plan-review collects without `--summary-only` still emit tails. `failed_agent_stderr_signature` normalizes paths/hex but not arbitrary digit runs; harness explicitly keeps distinct HTTP status codes (`scripts/test-lib-failed-agent-stderr-tail.sh:118-128`)—weaker dedup for line-number-only diffs, not a hook issue.
+
+**Commits on branch (since merge-base with `main`):** `c7b17e5fd` … `2fc05d968` (8 ahead; feature + hook hardening + version `47.0.4`).

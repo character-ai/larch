@@ -1,0 +1,38 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- inlined §3.8 works; extraction is maintainability-only follow-up
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- minor fence drift risk between larch_err and raw emit paths
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- hook expansion is orthogonal; split-PR is process not a code defect
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing failure diagnostics shape; low payoff follow-up
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale sidecar only matters across basename reuse; pre-launch rm covers relaunch
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dedup/tail assertions exist; full stdout golden is optional hardening
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- lib harness covers mode order; integration test is nice-to-have
+FINDING_14: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- launch-claude-subprocess already checks tail presence; ordering race is theoretical
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- documented larch-logs exclusion; redaction quality is the real control
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly OOS implement launchers; doc note suffices
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- hook scope creep is review hygiene, not a concrete stderr-tail defect
+FINDING_25: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_26: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- global lines=() is low risk while hook runs as standalone script
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_29: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documented accepted parser gaps, not a regression worth filing
+FINDING_30: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive invariant observation, not a defect
+FINDING_31: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- contextual note on intentional collector behavior, not an issue
+FINDING_32: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_33: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_34: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- residual transcript-shape risk after redaction; document rather than block
+FINDING_35: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a problem to file
+FINDING_36: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- side effect of in-scope FINDING_32 fail-open spool path
+FINDING_37: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- duplicates in-scope FINDING_19 compose redaction gap
+FINDING_38: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- duplicates in-scope FINDING_20 gitleaks policy note

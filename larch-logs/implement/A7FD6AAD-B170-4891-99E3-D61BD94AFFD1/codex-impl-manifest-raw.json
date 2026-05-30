@@ -1,0 +1,51 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "scripts/lib-failed-agent-stderr-tail.sh", "lines_added": 140, "lines_removed": 0},
+    {"path": "scripts/lib-failed-agent-stderr-tail.md", "lines_added": 35, "lines_removed": 0},
+    {"path": "scripts/test-lib-failed-agent-stderr-tail.sh", "lines_added": 130, "lines_removed": 0},
+    {"path": "scripts/test-lib-failed-agent-stderr-tail.md", "lines_added": 3, "lines_removed": 0},
+    {"path": "scripts/run-external-agent.sh", "lines_added": 14, "lines_removed": 2},
+    {"path": "scripts/run-external-agent.md", "lines_added": 2, "lines_removed": 1},
+    {"path": "scripts/collect-agent-results.sh", "lines_added": 77, "lines_removed": 2},
+    {"path": "scripts/collect-agent-results.md", "lines_added": 4, "lines_removed": 0},
+    {"path": "scripts/launch-claude-subprocess.sh", "lines_added": 5, "lines_removed": 0},
+    {"path": "scripts/launch-claude-review.sh", "lines_added": 10, "lines_removed": 0},
+    {"path": "scripts/launch-claude-review.md", "lines_added": 4, "lines_removed": 0},
+    {"path": "scripts/dispatch-with-waterfall.sh", "lines_added": 2, "lines_removed": 2},
+    {"path": "scripts/dispatch-with-waterfall.md", "lines_added": 2, "lines_removed": 0},
+    {"path": "skills/review/scripts/collect-findings.sh", "lines_added": 1, "lines_removed": 1},
+    {"path": "skills/review/scripts/collect-findings.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "agent-lint.toml", "lines_added": 7, "lines_removed": 0},
+    {"path": "docs/configuration-and-permissions.md", "lines_added": 13, "lines_removed": 0},
+    {"path": "Makefile", "lines_added": 4, "lines_removed": 1},
+    {"path": "scripts/test-run-external-agent.sh", "lines_added": 11, "lines_removed": 0},
+    {"path": "scripts/test-collect-agent-results.sh", "lines_added": 30, "lines_removed": 0},
+    {"path": "scripts/test-launch-claude-review.sh", "lines_added": 22, "lines_removed": 0},
+    {"path": "scripts/test-launch-claude-subprocess.sh", "lines_added": 14, "lines_removed": 0},
+    {"path": "scripts/test-dispatch-with-waterfall.sh", "lines_added": 2, "lines_removed": 0}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-lib-failed-agent-stderr-tail.sh",
+    "scripts/test-run-external-agent.sh",
+    "scripts/test-collect-agent-results.sh",
+    "scripts/test-launch-claude-review.sh",
+    "scripts/test-launch-claude-subprocess.sh",
+    "scripts/test-dispatch-with-waterfall.sh"
+  ],
+  "summary_bullets": [
+    "Surface redacted failed-agent stderr tails to chat on FD 2 with a shared library and mode-aware capture at launcher/collector choke points (#3202).",
+    "Dedup duplicate same-root-cause failures within one collector batch while preserving the stdout KEY=value RESULTS contract.",
+    "Clamp Claude review timeouts above 1800s and capture waterfall launcher stderr to per-slot sidecars so panel failures stay visible."
+  ],
+  "commit_message": "Surface failed agent stderr tails to chat (#3202)\n\nAdd lib-failed-agent-stderr-tail for redacted bounded tails, wire run-external-agent and collector dedup emit, clamp Claude review timeout to 1800, and capture waterfall launcher stderr. Includes offline harness and regression extensions.",
+  "todos_left": [
+    "Extend skills/review/scripts/test-collect-findings.sh to assert collector stderr tails reach FD 2 on successful collect (FINDING_3 harness gap)."
+  ],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}
