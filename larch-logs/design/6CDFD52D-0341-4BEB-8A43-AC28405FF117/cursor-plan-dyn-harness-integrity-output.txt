@@ -1,0 +1,24 @@
+Reading the plan and verifying harness contracts against the repository.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:177 / skills/review/scripts/collect-findings.sh:230	Wait-relay harness names `$REVIEW_TMPDIR/wait.log` but production uses `wait-for-claude-reviewers.log`	Stub writes BEL/ESC to `wait.log` while `collect-findings.sh` relays from `$REVIEW_TMPDIR/wait-for-claude-reviewers.log` after `> "$wait_log" 2>&1`; wait-relay case never exercises the changed loops	Use `$REVIEW_TMPDIR/wait-for-claude-reviewers.log` (or “same path as `$wait_log` in collect-findings.sh:230”) in plan + `test-collect-findings.md`; stub should emit fixture bytes to stderr/stdout so they land in that file
+2	in_scope	important	correctness	skills/review/scripts/collect-findings.sh:10 / skills/review/scripts/test-collect-findings.sh:1-12	New collect-findings relay cases specify merged `2>&1` only; harness does not set `LARCH_QUIET_DISABLE=1`	`larch_quiet_init` (line 10) redirects FD 1/2 to a quiet log (`lib-quiet.sh:73-78`); `larch_err` relay lines go there, not the command-substitution stream—`2>&1` alone can miss BEL/ESC on stderr while stdout-only checks false-green	Same as sibling harnesses: export `LARCH_QUIET_DISABLE=1` for new relay cases (or assert against `LARCH_QUIET_LOG_FILE`); keep merged `2>&1` for stderr capture
+3	in_scope	important	correctness	plan.txt:223-224 / skills/review/scripts/review-core.sh:526-528	Plan allows pre-seeding `review-core-aggregate.stderr` instead of stubbing `aggregate-findings.sh`	`review-core.sh` always runs `"$AGGREGATE_FINDINGS_SH" ... 2>"$aggregate_stderr"`, truncating any pre-seed before the relay at 531-534	Drop pre-seed option; use `REVIEW_CORE_AGGREGATE_FINDINGS_SH` stub that writes T8 `printf '%b\n'` bytes to stderr (non-zero exit optional) plus merged `2>&1` under `LARCH_QUIET_DISABLE=1` (already exported in `test-review-core.sh:5`)
+
+### Findings
+
+1. **correctness** — `plan.txt:177` / `skills/review/scripts/collect-findings.sh:230`  
+   The wait-relay harness fixture path is wrong. Production sets `wait_log="$REVIEW_TMPDIR/wait-for-claude-reviewers.log"` and relays from that file on non-zero `wait-for-reviewers.sh` exit. The plan names `$REVIEW_TMPDIR/wait.log`, so a stub writing only there would not feed the relay under test.
+
+2. **correctness** — `skills/review/scripts/collect-findings.sh:10` / `skills/review/scripts/test-collect-findings.sh:1-12`  
+   New relay cases require merged `2>&1`, but unlike `scripts/test-design-log-publish.sh:6`, `scripts/test-ship-pr.sh:6`, `scripts/test-collect-agent-results.sh:7`, and `skills/review/scripts/test-review-core.sh:5`, `test-collect-findings.sh` does not disable quiet mode. With `larch_quiet_init` active, `larch_err` diagnostics go to the quiet log, not the `$(... 2>&1)` capture—so BEL/ESC assertions on merged output can false-green.
+
+3. **correctness** — `plan.txt:223-224` / `skills/review/scripts/review-core.sh:526-528`  
+   Pre-seeding `$REVIEW_TMPDIR/review-core-aggregate.stderr` cannot work: aggregate always reopens that path for stderr truncation before the `larch_err` relay. Use a stub via `REVIEW_CORE_AGGREGATE_FINDINGS_SH` instead.
+
+### Verified (no issue)
+
+- **ship-pr fallback forcing** — `scripts/ship-pr.sh:889` branch is `[ -z "$log_tmpdir" ] || [ ! -x "$SCRIPT_DIR/append-tool-failure.sh" ]`; `chmod -x` on the harness `append-tool-failure.sh` while keeping `IMPLEMENT_TMPDIR` populated (as `write_state` does) satisfies the predicate and reaches the three `larch_err` loops at 896-899. `test-ship-pr.sh` already sets `LARCH_QUIET_DISABLE=1`.
+- **CLAUDE_PLUGIN_ROOT stub layout** — `collect-findings.sh:7-9,208,232` hardcodes `"$PLUGIN_ROOT/scripts/{collect-agent-results,wait-for-reviewers,redact-secrets}.sh"`; the planned minimal tree (real `lib-quiet.sh` + `redact-secrets.sh`, stub collector/wait under `scripts/`) matches.
+- **Plan-review ancestor layout** — `round-1/findings-classification.tsv` matches `^round-[1-9][0-9]*/[A-Za-z0-9._+-]+$` and `design_round_artifact_included` (`scripts/design-log-publish.sh:401-404`, `scripts/lib-design-round-artifacts.sh:17`); swapping physical `round-1` via `make_find_ancestor_race_stub` with `exit 0` (no `exec find`) mirrors the leaf stub and reaches the proposed ancestor guard after allowlist/`[[ -L "$f" ]]`.
+- **design-log-publish ancestor capture** — `test-design-log-publish.sh:6` exports `LARCH_QUIET_DISABLE=1`, so merged `2>&1` + ancestor `larch_err` substring assertions are viable.
+- **render-cache ancestor layout** — `render-cache/sub/file.txt` with `ANCESTOR_RACE_PARENT` = physical `sub` correctly targets parent re-resolution, distinct from the flat leaf-race case at `scripts/test-design-log-publish.sh:1048-1052`.

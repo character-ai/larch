@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review/scripts/test-collect-findings.sh:162-176	Item B harness stubs collect-agent-results.sh / wait-for-reviewers.sh but collect-findings.sh hardcodes "$PLUGIN_ROOT/scripts/collect-agent-results.sh" and "$PLUGIN_ROOT/scripts/wait-for-reviewers.sh" with no env override (unlike review-core's REVIEW_CORE_AGGREGATE_FINDINGS_SH)	A stub on PATH or editing the repo copy never runs; merged 2>&1 capture can false-green while relay lines stay unsanitized	Spell out a minimal temporary CLAUDE_PLUGIN_ROOT tree (stub scripts plus lib-quiet.sh and redact-secrets.sh siblings) and export it for the new failure-relay cases; mirror the ship-pr harness copy/stub pattern rather than implying PATH-only stubs
+
+### Finding 1 (correctness)
+
+`collect-findings.sh` always invokes collector and waiter via `$PLUGIN_ROOT/scripts/...` (lines 208 and 232). The plan’s Item B tests say to stub those scripts, but `test-collect-findings.sh` does not set `CLAUDE_PLUGIN_ROOT` today and there is no `COLLECT_FINDINGS_*` override hook. Without an explicit mini-plugin-root layout in the plan, implementers may add stubs that never execute, leaving the new `sanitize_diagnostic_line` relays untested despite merged `2>&1` assertions.
+
+**Suggested revision:** Document building `$TMP/plugin/scripts/{collect-agent-results.sh,wait-for-reviewers.sh,lib-quiet.sh,redact-secrets.sh}`, exporting `CLAUDE_PLUGIN_ROOT=$TMP/plugin`, and driving non-zero exits with T8-style `printf '%b\n'` stderr into `$collector_log` / `$wait_log`.

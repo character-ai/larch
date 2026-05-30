@@ -1,0 +1,145 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -86,10 +86,12 @@
+ - Add sibling helper `make_find_ancestor_race_stub()` near
+   `make_find_symlink_race_stub` (~line 142): for `"$1" ==
+   "${ANCESTOR_RACE_FIND_ROOT:-}" && "$2" == "-type" && "$3" == "f"`, run
+   `rm -rf "${ANCESTOR_RACE_PARENT:?}"`, `ln -s "${ANCESTOR_RACE_TARGET:?}"
+-  "${ANCESTOR_RACE_PARENT:?}"`, `printf '%s\n' "${ANCESTOR_RACE_PATH:?}"`;
+-  otherwise `exec` the real `find` (including `-type l` scans while the tree is
+-  still all real directories).
++  "${ANCESTOR_RACE_PARENT:?}"`, `printf '%s\n' "${ANCESTOR_RACE_PATH:?}"`,
++  then `exit 0` (mirror `make_find_symlink_race_stub` ~147-151 — do not fall
++  through to `exec` the real `find` after the swap, which would re-enumerate a
++  mutated tree); otherwise `exec` the real `find` (including `-type l` scans
++  while the tree is still all real directories).
+ - Harness env vars (document in `.md`): `ANCESTOR_RACE_FIND_ROOT` (physical
+   subtree root, e.g. `pwd -P` of render-cache or plan-review), `ANCESTOR_RACE_PATH`
+   (regular file path returned by `-type f`), `ANCESTOR_RACE_PARENT` (intermediate
+@@ -168,16 +170,28 @@
+ Note the per-line control-byte sanitization on the collector/wait stderr relays.
+ 
+ ### UPDATED: `skills/review/scripts/test-collect-findings.sh`
+-Item B coverage. Add case(s) for the `$collector_log` relay (~217-220) and/or
+-`$wait_log` relay (~241-243) when the subprocess exits non-zero.
+-- **Trigger paths:** stub `collect-agent-results.sh` to exit non-zero with
+-  control-byte stderr captured into `$collector_log`; and/or stub
+-  `wait-for-reviewers.sh` to exit non-zero with control bytes in combined output
+-  written to `$wait_log`.
++Item B coverage. Add case(s) for the `$collector_log` relay (~217-220) and/or
++`$wait_log` relay (~241-243) when the subprocess exits non-zero. **Do not**
++rely on PATH-only stubs or in-repo edits of the real scripts:
++`collect-findings.sh` hardcodes `"$PLUGIN_ROOT/scripts/collect-agent-results.sh"`
++and `"$PLUGIN_ROOT/scripts/wait-for-reviewers.sh"` (~208, ~232) with no env
++override (unlike `review-core.sh`'s `REVIEW_CORE_AGGREGATE_FINDINGS_SH`).
++- **Harness root (required):** build a minimal `CLAUDE_PLUGIN_ROOT` tree under
++  `$TMP` (mirror `scripts/test-ship-pr.sh` `make_repo` + per-invocation
++  `CLAUDE_PLUGIN_ROOT="$root"`): copy or symlink the real `scripts/lib-quiet.sh`
++  and `scripts/redact-secrets.sh`; place stub `scripts/collect-agent-results.sh`
++  and/or `scripts/wait-for-reviewers.sh` that exit non-zero and write BEL/ESC
++  fixture bytes into the log path `collect-findings` will relay
++  (`$REVIEW_TMPDIR/collect-agent-results.log` and/or `$REVIEW_TMPDIR/wait.log`).
++  Export `CLAUDE_PLUGIN_ROOT="$harness_root"` (and `REVIEW_TMPDIR`) when invoking
++  `collect-findings.sh` so the changed relay loops run against the stubs.
++- **Trigger paths:** collector case — stub exits non-zero after writing
++  `printf '%b\n'` control-byte stderr into `$collector_log`; wait case — stub
++  exits non-zero after writing control bytes into `$wait_log` (combined output
++  path the production script reads for relay).
+ - **Fixture:** seed relay input with `printf '%b\n'` BEL/ESC content (same T8
+   pattern as above).
+-- **Capture contract (required):** merged `2>&1` capture **or**
+-  `LARCH_QUIET_DISABLE=1` — existing harness uses stdout-only `out=$(...)` which
+-  cannot see `larch_err` relay bytes on stderr. Assert captured output preserves
+-  printable text (`HTTP 500`, `Bad Gateway`) **and** lacks `\x07`/`\x1b` (mirror
+-  `scripts/test-ci-failed-jobs.sh:178-194`; do **not** assert relay correctness
+-  from stdout alone).
++- **Capture contract (required):** merged `2>&1` capture only (`out=$(... 2>&1)`
++  or equivalent) — `LARCH_QUIET_DISABLE=1` does **not** substitute: with quiet
++  disabled, `larch_err` still writes only to stderr (`lib-quiet.sh` diagnostic
++  path), so stdout-only `out=$(...)` can false-green. Assert captured output
++  preserves printable text (`HTTP 500`, `Bad Gateway`) **and** lacks `\x07`/`\x1b`
++  (mirror `scripts/test-ci-failed-jobs.sh:178-194`; do **not** assert relay
++  correctness from stdout alone).
++
++### UPDATED: `skills/review/scripts/test-collect-findings.md`
++Document failure-relay cases: minimal `CLAUDE_PLUGIN_ROOT` harness with stub
++`collect-agent-results.sh` / `wait-for-reviewers.sh` (not PATH-only); merged
++`2>&1` capture required; BEL/ESC-absence assertions on the relay path.
+ 
+ ### UPDATED: `scripts/collect-agent-results.sh`
+ Item B MEDIUM. Wrap the `$WAIT_STDERR` relay `larch_err "$line"` (~line 311) with
+@@ -192,9 +206,10 @@
+ Item B coverage. Stub `wait-for-reviewers.sh` to exit non-zero with BEL/ESC on
+ stderr (T8 `printf '%b\n'` fixture). **Capture contract:** merged `2>&1` (or
+-`LARCH_QUIET_DISABLE=1`); assert printable text preserved and `\x07`/`\x1b`
+-absent in capture — same pattern as `test-ci-failed-jobs.sh:178-194` (stdout-only
+-`out=$(...)` false-greens relay sanitization).
++`2>&1` only — not `LARCH_QUIET_DISABLE=1` alone); assert printable text
++preserved and `\x07`/`\x1b` absent in capture — same pattern as
++`test-ci-failed-jobs.sh:178-194` (stdout-only `out=$(...)` false-greens relay
++sanitization).
+ 
+ ### UPDATED: `skills/review/scripts/review-core.sh`
+ Item B MEDIUM. Wrap the `$aggregate_stderr` relay `larch_err "$line"`
+@@ -210,9 +225,9 @@
+ Item B coverage. Stub `aggregate-findings.sh` (or pre-seed
+ `$REVIEW_TMPDIR/review-core-aggregate.stderr`) with T8-style BEL/ESC content and
+ exercise the `$aggregate_stderr` relay path. **Capture contract:** merged `2>&1`
+-(or `LARCH_QUIET_DISABLE=1`); assert printable text preserved and `\x07`/`\x1b`
+-absent — not stdout-only grep.
++only; assert printable text preserved and `\x07`/`\x1b` absent — not
++stdout-only grep (`LARCH_QUIET_DISABLE=1` alone is insufficient).
+ 
+ ## Approach
+ - Item A uses a per-file ancestor re-resolution (`cd "$(dirname "$f")" && pwd -P`
+@@ -232,8 +247,11 @@
+ - Item C harness: force `append_tool_failure_local` fallback (non-executable
+   helper or empty `log_tmpdir`); merged `2>&1` + BEL/ESC-absence assertions —
+   default `make_repo` alone exercises the `--redact` path, not the changed loops.
+-- Item B relay harnesses: merged `2>&1` or `LARCH_QUIET_DISABLE=1` for every new
+-  control-byte case; `larch_quiet_init` keeps failure relays on stderr.
++- Item B relay harnesses: `collect-findings` failure cases need a minimal
++  `CLAUDE_PLUGIN_ROOT` tree (stub `collect-agent-results.sh` /
++  `wait-for-reviewers.sh` under `scripts/`, plus real `lib-quiet.sh` /
++  `redact-secrets.sh` siblings) because production paths are
++  `"$PLUGIN_ROOT/scripts/..."` with no env override; every new control-byte case
++  uses merged `2>&1` only (`larch_err` relays stay on stderr).
+ 
+ ## Edge cases
+ - File directly under a subtree root: `dirname` is the root itself; the `case`
+@@ -255,8 +273,8 @@
+ - `sanitize_diagnostic_line` stripping wanted bytes: it removes only C0 controls
+   + DEL; LF survives because wrapping is per-line. Earliest signal: a
+   test-*-sh relay assertion diff. Mitigation: per-line form, covered by harnesses.
+-- False-green relay tests: stdout-only capture while `larch_err` relays on stderr
+-  (ship-pr fallback, collect-findings collector/wait relays) — mitigated by
+-  merged `2>&1` or `LARCH_QUIET_DISABLE=1` plus BEL/ESC-absence grep.
++- False-green relay tests: stdout-only capture while `larch_err` relays on stderr
++  (ship-pr fallback, collect-findings collector/wait relays) — mitigated by
++  merged `2>&1` (not `LARCH_QUIET_DISABLE=1` alone) plus BEL/ESC-absence grep.
+ - Missed relay site: the broad sweep (audit-findings.md) enumerated all
+   `larch_err`/`larch_errf` relays; LOW sites are documented, not silently
+   skipped.
+@@ -268,8 +286,9 @@
+ - `bash scripts/test-ship-pr.sh`, `bash skills/review/scripts/test-collect-findings.sh`,
+   `bash scripts/test-collect-agent-results.sh`, `bash skills/review/scripts/test-review-core.sh`
+   — control-byte-stripping relay assertions on the **actual relay paths** (ship-pr
+-  fallback via non-executable helper/empty tmpdir; collect-findings
+-  collector/wait failure relays) with merged `2>&1` or `LARCH_QUIET_DISABLE=1`
+-  and T8-style BEL/ESC-absence checks.
++  fallback via non-executable helper/empty tmpdir; collect-findings
++  collector/wait failure relays via `CLAUDE_PLUGIN_ROOT` stub tree) with merged
++  `2>&1` only and T8-style BEL/ESC-absence checks.
+ - `bash scripts/test-lib-quiet.sh` — unchanged (no `lib-quiet.sh` code change;
+   only `lib-quiet.md` audit text).
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — bash32 portability,
+@@ -277,6 +296,6 @@
+   script-md-sibling presence, bare-grep-probe, renderer-substitution-safety.
+ 
+ ## Diff size estimate
+-diff_added: 295
+-diff_deleted: 28
+-diff_lines: 323
++diff_added: 338
++diff_deleted: 34
++diff_lines: 372

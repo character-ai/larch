@@ -1,0 +1,98 @@
+Reviewing the test harness and plan sections to revise the ancestor-race coverage per the findings.
+Constructing the unified plan diff from the original plan and FINDING_1 revisions.
+--- a/plan.txt
++++ b/plan.txt
+@@ -41,8 +41,25 @@
+ ### UPDATED: `scripts/test-design-log-publish.sh`
+-Item A coverage. Add an ancestor-directory-race case (mirror the existing
+-"render-cache symlink race rejection" block, ~lines 1038-1057). Set up
+-`render-cache/sub/file.txt` where `sub` resolves to a symlink pointing outside
+-the root, stub `find` so the `-type l` scan reports clean and `-type f` lists the
+-file, and assert `PUBLISH_OK=false`. Add one parallel case for the plan-review
+-subtree if cheap (reuse the find-stub helper). Reuse / extend
+-`make_find_symlink_race_stub` rather than duplicating it.
++Item A coverage. **Do not** reuse the leaf-file `make_find_symlink_race_stub`
++pattern for ancestor coverage — that stub swaps the enumerated *file* at `-type f`
++time (existing blocks ~963–976 and ~1038–1057) and exercises only the existing
++`[[ -L "$f" ]]` guard, not `design_publish_ancestor_within_root`.
++
++- Add sibling helper `make_find_ancestor_race_stub()` near
++  `make_find_symlink_race_stub` (~line 142): for `"$1" ==
++  "${ANCESTOR_RACE_FIND_ROOT:-}" && "$2" == "-type" && "$3" == "f"`, run
++  `rm -rf "${ANCESTOR_RACE_PARENT:?}"`, `ln -s "${ANCESTOR_RACE_TARGET:?}"
++  "${ANCESTOR_RACE_PARENT:?}"`, `printf '%s\n' "${ANCESTOR_RACE_PATH:?}"`;
++  otherwise `exec` the real `find` (including `-type l` scans while the tree is
++  still all real directories).
++- Harness env vars (document in `.md`): `ANCESTOR_RACE_FIND_ROOT` (physical
++  subtree root, e.g. `pwd -P` of render-cache), `ANCESTOR_RACE_PATH` (regular
++  file path returned by `-type f`), `ANCESTOR_RACE_PARENT` (intermediate dir under
++  root, e.g. `.../render-cache/sub`), `ANCESTOR_RACE_TARGET` (directory outside the
++  resolved root).
++- **render-cache ancestor-directory race** (new block ~after line 1057): layout
++  `render-cache/sub/file.txt` with `sub` a normal directory before publish; export
++  stub env; assert `PUBLISH_OK=false` **and** stderr/output contains
++  `design-log-publish: render-cache ancestor became a symlink before staging`.
++- **plan-review ancestor-directory race** (parallel): same stub against
++  `plan-review/round-1/sub/...`; assert substring `plan-review ancestor became a
++  symlink before staging`. Existing leaf-race cases stay unchanged.
+ 
+ ### UPDATED: `scripts/test-design-log-publish.md`
+-Note the new ancestor-race assertion(s) in the harness case list.
++List ancestor-directory-race cases separately from leaf symlink-race cases: stub
++swaps `ANCESTOR_RACE_PARENT` at `-type f` while `-type l` stayed clean; each case
++must assert the matching ancestor `larch_err` substring (not `PUBLISH_OK=false`
++alone).
+ 
+ ### UPDATED: `scripts/ship-pr.sh`
+@@ -108,6 +125,9 @@
+   relevant case (an ancestor symlink that escapes the resolved physical root) and
+   fails closed (`cd` failure → reject). The existing leaf `[ -L ]` checks and
+   `find -type l` tree scans stay; the guard is additive.
++- Harness: `make_find_ancestor_race_stub` swaps the *parent* directory at the
++  `-type f` enumeration pass (after a clean `-type l` scan); assertions require the
++  ancestor-specific `larch_err` text so a broken/missing guard cannot pass on
++  publish failure alone or on the leaf-race stub path.
+ - Items B/C use the canonical per-line wrap from the original #3063 plan,
+   layered on top of (never replacing) `redact-secrets.sh`. No new `lib-quiet.sh`
+   API is introduced (smallest change; the documented per-line contract already
+@@ -118,6 +136,8 @@
+   benign (stays in-tree); the `find -type l` scan already rejects pre-existing
+   symlinks, so this is only the post-scan race backstop for escapes.
++- Ancestor harness with outside symlink present before publish: fails at
++  `find -type l` — ancestor cases must parent-swap only after a clean scan.
+ - Empty / blank `$line` in relays: `printf '%s' "$line" | sanitize_diagnostic_line`
+   yields empty; `larch_err ""` emits a blank line, preserving the original
+   blank-line behavior.
+@@ -127,6 +147,8 @@
+ - Over-strict ancestor guard rejecting a legitimate publish (e.g. symlink-to-
+   inside): low risk; signal is `PUBLISH_OK=false` with the new ancestor message.
+   Mitigation: containment check passes symlink-to-inside; only escapes fail.
++- False-green ancestor harness: leaf-race stub or `PUBLISH_OK=false`-only assert —
++  mitigated by parent-swap stub + ancestor message substring requirement.
+ - `sanitize_diagnostic_line` stripping wanted bytes: it removes only C0 controls
+   + DEL; LF survives because wrapping is per-line. Earliest signal: a
+   test-*-sh relay assertion diff. Mitigation: per-line form, covered by harnesses.
+@@ -135,8 +157,9 @@
+   `larch_err`/`larch_errf` relays; LOW sites are documented, not silently
+   skipped.
+ 
+ ## Testing strategy
+-- `bash scripts/test-design-log-publish.sh` — existing render-cache/plan-review
+-  symlink cases must still pass; new ancestor-race case(s) assert PUBLISH_OK=false.
++- `bash scripts/test-design-log-publish.sh` — existing symlink cases unchanged; new
++  ancestor-race case(s) assert `PUBLISH_OK=false` and ancestor-specific
++  `larch_err` substring (`... ancestor became a symlink before staging`).
+ - `bash scripts/test-ship-pr.sh`, `bash skills/review/scripts/test-collect-findings.sh`,
+   `bash scripts/test-collect-agent-results.sh`, `bash skills/review/scripts/test-review-core.sh`
+   — control-byte-stripping relay assertions.
+@@ -147,6 +170,6 @@
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — bash32 portability,
+   script-md-sibling presence, bare-grep-probe, renderer-substitution-safety.
+ 
+ ## Diff size estimate
+-diff_added: 185
+-diff_deleted: 25
+-diff_lines: 210
++diff_added: 235
++diff_deleted: 28
++diff_lines: 263
