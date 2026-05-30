@@ -363,6 +363,47 @@ run_orchestrator_case() {
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
 
+work_hook_residue="$TMP/round-hook-residue"
+make_work_repo "$work_hook_residue"
+mkdir -p "$work_hook_residue/.git/hooks"
+cat > "$work_hook_residue/.git/hooks/pre-commit" <<'HOOK'
+#!/usr/bin/env bash
+set -euo pipefail
+stamp="${GIT_DIR:-.git}/hooks/.pre-commit-residue-once"
+if [[ -f "$stamp" ]]; then
+  exit 0
+fi
+printf 'hook residue\n' >> src/main.py
+: > "$stamp"
+exit 0
+HOOK
+chmod +x "$work_hook_residue/.git/hooks/pre-commit"
+implement_hook="$work_hook_residue/implement"
+mkdir -p "$implement_hook"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_hook/session-env.sh"
+set +e
+out_hook=$(TEST_AGENT_BEHAVIOR=cursor-success run_review_and_fix "$work_hook_residue" \
+    --implement-tmpdir "$implement_hook" --mode diff --round-num 1 \
+    --session-env-path "$implement_hook/session-env.sh" --run-id hook-residue-run)
+rc_hook=$?
+set -e
+[[ "$rc_hook" -eq 0 ]] || { echo "$out_hook" >&2; fail "round hook residue expected exit 0 got $rc_hook"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=fix-applied' <<< "$out_hook" || fail "round hook residue status"
+grep -Fq 'CODER_STATUS=applied' <<< "$out_hook" || fail "round hook residue coder applied"
+if [[ -z "$(git -C "$work_hook_residue" status --porcelain --untracked-files=no)" ]]; then
+    pass "round hook residue: tracked tree clean after follow-up"
+else
+    fail "round hook residue should leave tracked tree clean"
+    git -C "$work_hook_residue" status --porcelain | sed 's/^/    status: /' || true
+fi
+primary_sha=$(git -C "$work_hook_residue" rev-parse HEAD~1)
+follow_sha=$(git -C "$work_hook_residue" rev-parse HEAD)
+git -C "$work_hook_residue" log -1 --format='%s' "$primary_sha" | grep -Fq 'Address code review feedback (round 1)' \
+    || fail "round hook residue primary commit message"
+git -C "$work_hook_residue" log -1 --format='%s' "$follow_sha" | grep -Fq 'Address code review feedback (round 1) — follow-up' \
+    || fail "round hook residue follow-up commit message"
+grep -Eq "^CODER_COMMIT_SHA=${follow_sha}$" <<< "$out_hook" || fail "round hook residue CODER_COMMIT_SHA is follow-up"
+
 work_codex_telemetry="$TMP/codex-telemetry"
 make_work_repo "$work_codex_telemetry"
 implement_tmp="$work_codex_telemetry/implement"

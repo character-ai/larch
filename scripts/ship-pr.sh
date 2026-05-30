@@ -2850,6 +2850,25 @@ run_rebase_rebump() {
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
+    # 0b. Commit tracked leftovers before drop-bump so Guard 1 cannot stall on
+    # a dirty tree (issue #3209). Best-effort: failure falls through to
+    # drop-bump-commit.sh, which still refuses when the tree stays dirty.
+    if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+        fail_file=$(failure_capture_path rebase)
+        git add -u > "$fail_file" 2>&1
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            record_failure rebase "git add -u (pre-rebase fixup)" "$rc" "$fail_file" Warnings
+        elif ! git diff --cached --quiet 2>/dev/null; then
+            fail_file=$(failure_capture_path rebase)
+            "$SCRIPT_DIR/git-commit.sh" -m "chore: pre-rebase working-tree fixup (#3209)" > "$fail_file" 2>&1
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+                record_failure rebase "git-commit.sh (pre-rebase fixup)" "$rc" "$fail_file" Warnings
+            fi
+        fi
+    fi
+
     # 1. Drop existing bump commit before rebasing. No-op is acceptable only
     # when no bump commit exists in the walk window; other DROPPED=false cases
     # stall so a stale bump is never silently force-pushed.

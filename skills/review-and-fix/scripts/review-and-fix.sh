@@ -458,6 +458,19 @@ apply_findings_with_coder() {
             return 2
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
+        if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+            if git add -A 2>>"$round_dir/coder-commit.log" && \
+                "$PLUGIN_ROOT/scripts/git-commit.sh" \
+                    -m "Address code review feedback (round $round_num) — follow-up" \
+                    >>"$round_dir/coder-commit.log" 2>&1; then
+                commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
+            else
+                larch_err "⚠ review-and-fix: round $round_num follow-up commit failed; leaving residue for the ship-pr Option A backstop"
+            fi
+            if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+                larch_err "⚠ review-and-fix: round $round_num left tracked changes uncommitted after follow-up"
+            fi
+        fi
     fi
     larch_err "→ review-and-fix: $(cat "$tool_file") applied ${scrubbed_count} fixes (commit ${commit_sha:0:7})"
 
