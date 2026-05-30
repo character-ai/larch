@@ -2624,6 +2624,11 @@ printf 'hook rebump residue\n' >> larch-logs/implement/rebump-dirty-hook-run/sen
 exit 0
 HOOK
 chmod +x "$root/.git/hooks/pre-commit"
+# Create the larch-logs directory before any git commit so the hook can write to it.
+mkdir -p "$root/larch-logs/implement/rebump-dirty-hook-run"
+# Pre-set the hook stamp so setup commits don't consume the one-shot trigger;
+# it is cleared just before ship-pr runs so the hook fires exactly once there.
+: > "$root/.git/hooks/.pre-commit-rebump-once"
 mkdir -p "$root/.claude-plugin"
 cat > "$root/.claude-plugin/plugin.json" <<'JSON'
 {"version":"1.2.2"}
@@ -2644,7 +2649,6 @@ cat > "$root/.claude-plugin/plugin.json" <<'JSON'
 JSON
 git -C "$root" add .claude-plugin/plugin.json
 git -C "$root" commit -q -m "Bump version to 1.2.3"
-mkdir -p "$root/larch-logs/implement/rebump-dirty-hook-run"
 printf 'dirty tracked residue\n' > "$root/larch-logs/implement/rebump-dirty-hook-run/sentinel-fix.txt"
 git -C "$root" add larch-logs/
 git -C "$root" commit -q -m "Track larch-logs sentinel"
@@ -2677,6 +2681,8 @@ echo "COMMIT_SHA=$(git rev-parse HEAD)"
 STUB
 chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh" \
          "$root/.claude/skills/bump-version/scripts/apply-bump.sh"
+# Clear the stamp so ship-pr's fixup commit triggers the hook exactly once.
+rm -f "$root/.git/hooks/.pre-commit-rebump-once"
 set +e
 (cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
     "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \

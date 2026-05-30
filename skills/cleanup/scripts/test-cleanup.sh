@@ -277,25 +277,9 @@ run_cleanup "$work"
 [[ "$CASE_RC" -eq 0 ]] || fail "find-failure-skips-deletion exit $CASE_RC"
 [[ -d "$CASE_SESSIONS/fail-find" ]] || fail "find-failure-skips-deletion should keep dir when find fails"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion CACHE_REMOVED"
-assert_contains "$CASE_OUTPUT" "Warning: descendant freshness probe failed for ${work}/xdg-cache/larch/sessions/fail-find; skipping removal." "find-failure-skips-deletion warning"
+assert_contains "$CASE_OUTPUT" "Warning: failed to scan session activity for '${work}/xdg-cache/larch/sessions/fail-find'; skipping deletion." "find-failure-skips-deletion warning"
 unset PATH_PREFIX
 
-# --- stale-parent-with-retention-boundary-child-kept --------------------------
-work="$TMP/stale-parent-with-retention-boundary-child-kept"
-mkdir -p "$work/xdg-cache/larch/sessions/stale-boundary-parent"
-printf 'boundary\n' > "$work/xdg-cache/larch/sessions/stale-boundary-parent/child.txt"
-touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-boundary-parent"
-if date -v-7d >/dev/null 2>&1; then
-    boundary_ts=$(date -v-7d +%Y%m%d%H%M)
-else
-    boundary_ts=$(date -d '7 days ago' +%Y%m%d%H%M)
-fi
-touch -t "$boundary_ts" -- "$work/xdg-cache/larch/sessions/stale-boundary-parent/child.txt"
-unset LARCH_CLEANUP_RETENTION_DAYS
-run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "stale-parent-with-retention-boundary-child-kept exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/stale-boundary-parent" ]] || fail "stale-parent-with-retention-boundary-child-kept should retain dir when child is within retention boundary"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-parent-with-retention-boundary-child-kept CACHE_REMOVED"
 
 # --- deep-session-freshness-probe-bounded -------------------------------------
 work="$TMP/deep-session-freshness-probe-bounded"

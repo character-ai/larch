@@ -915,10 +915,10 @@ append_tool_failure_local() {
         # never leaks tokens to operator transcripts.
         if [ -n "$output_file" ] && [ -f "$output_file" ]; then
             if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
-                "$SCRIPT_DIR/redact-secrets.sh" < "$output_file" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
-                    while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$output_file"
+                "$SCRIPT_DIR/redact-secrets.sh" < "$output_file" | sanitize_diagnostic_line | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done || \
+                    sanitize_diagnostic_line < "$output_file" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
             else
-                while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done < "$output_file"
+                sanitize_diagnostic_line < "$output_file" | while IFS= read -r line || [[ -n "$line" ]]; do larch_err "$line"; done
             fi
         fi
         return 0

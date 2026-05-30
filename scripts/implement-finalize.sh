@@ -1354,7 +1354,9 @@ run_teardown() {
 
     kill_session_background_processes
 
-    if verify_cleanup_target; then
+    if [ "$stall_tracking" = "true" ]; then
+        larch_err "$(printf 'ℹ 18: skipping tmpdir cleanup — run stalled; artifacts preserved at %s' "$IMPLEMENT_TMPDIR")"
+    elif verify_cleanup_target; then
         set +e
         out=$("$SCRIPT_DIR/cleanup-tmpdir.sh" --dir "$IMPLEMENT_TMPDIR")
         cleanup_rc=$?
