@@ -197,6 +197,22 @@ assert_eq "stdout-only prefers diag" "${merged_out}.diag" "$sel"
 sel=$(select_failed_agent_stderr_source "$merged_out" false false)
 assert_eq "default prefers sidecar" "$sidecar" "$sel"
 
+explicit_sink="$TMPROOT/explicit-sink.log"
+printf 'explicit sink stderr\n' >"$explicit_sink"
+sel=$(select_failed_agent_stderr_source "$merged_out" false false "$explicit_sink")
+assert_eq "default prefers explicit sink over sidecar" "$explicit_sink" "$sel"
+
+empty_sink="$TMPROOT/empty-sink.log"
+: >"$empty_sink"
+sel=$(select_failed_agent_stderr_source "$merged_out" false false "$empty_sink")
+assert_eq "default empty explicit sink falls back to sidecar" "$sidecar" "$sel"
+
+sel=$(select_failed_agent_stderr_source "$merged_out" true false "$explicit_sink")
+assert_eq "capture-stdout ignores explicit sink" "$merged_out" "$sel"
+
+sel=$(select_failed_agent_stderr_source "$merged_out" false true "$explicit_sink")
+assert_eq "capture-stdout-only ignores explicit sink" "${merged_out}.diag" "$sel"
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then

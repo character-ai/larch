@@ -252,7 +252,9 @@ run_coder_dispatch() {
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
     rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
-    "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 -- \
+    # shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
+    "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 \
+        --stderr-sink "$codex_wrapper_log" -- \
         codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" \
         --output-last-message "$round_dir/coder-codex.log" \
         --json \
