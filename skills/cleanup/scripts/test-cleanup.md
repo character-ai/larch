@@ -11,7 +11,7 @@ Covered cases:
 - **fresh-dir-kept**: session directory with recent mtime is retained; `CACHE_REMOVED=0`
 - **stale-dir-with-keepalive-removed**: stale session directory that still carries `.larch-keepalive` is removed when top-level mtime is past the retention cutoff; `CACHE_REMOVED=1`
 - **symlinked-session-dir-skipped**: top-level session entry that is a symlink to another tree is not traversed with `rm -rf`; `CACHE_REMOVED=0`
-- **stale-toplevel-with-fresh-deep-child-removed**: stale session root mtime but a fresh file at depth 1; directory removed because age uses top-level mtime only
+- **stale-toplevel-with-fresh-deep-child-kept**: stale session root mtime but a fresh file at depth 1; directory retained because descendant activity within depth 5 is newer than the retention cutoff
 - **invalid-retention-fallback**: `LARCH_CLEANUP_RETENTION_DAYS=abc` emits a stderr warning and falls back to 7 days; a stale session dir is still removed under the fallback
 - **custom-retention-one-day**: `LARCH_CLEANUP_RETENTION_DAYS=1` removes a stale session dir while keeping a fresh one
 - **dangling-symlink-reaped**: broken `current-design-env-test.sh` symlink in the sessions parent (`-L` and `! -e`) is removed; `SYMLINKS_REMOVED=1`
