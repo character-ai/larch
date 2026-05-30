@@ -1,0 +1,21 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-grep-literal-sync-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-grep-literal-sync-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-anti-polling-rule.sh:58-61	Proposed `check` third argument uses single quotes around a literal containing ASCII apostrophe in `task's`	With U+0027 in `task's`, the opening `'` after `task` terminates the single-quoted string; the script fails bash parse (or never passes the intended substring to `grep -qF`), so the AGENTS pin does not run as designed	Use double quotes for the literal, matching `scripts/test-design-structure.sh:323` (`grep -Fq "NEVER treat a sub-skill's terminal output..."`)
+
+1. **[correctness]** `scripts/test-implement-anti-polling-rule.sh:58-61` (proposed) — The verbatim `check` uses `'do not poll the task's output file once per turn'`. Plan prose at `plan.txt:23` and the pin substring both use ASCII `'` (U+0027) in `task's` (not U+2019). That byte inside a single-quoted shell argument ends the quoted span at `task`, so the third argument is not the intended grep needle. **Revision:** Use `"do not poll the task's output file once per turn"` (same bytes as the `AGENTS.md` bullet at `plan.txt:23`).
+
+**Exonerated (grep-literal sync):**
+
+- **orchestrator-never.md / `test-design-structure.sh`:** Proposed grep `NEVER poll a background task by reading its output file once per turn` (`plan.txt:43`) is byte-identical to the core of rule #3’s opening (`plan.txt:33`); `-Fq` substring match is consistent with Check 17’s existing sub-skill pin at `scripts/test-design-structure.sh:323-324`.
+- **Curly apostrophe:** Plan instances of `task's` at lines 5, 23, 33, 60, and 65 all match `task\x27s`; no smart-apostrophe drift vs the AGENTS pin phrase.
+- **HTML entities:** `<task-notification>` appears only in prose (`plan.txt:23`, `33`); neither harness grep literal includes angle brackets, so `&lt;`/`&gt;` issue-body rendering does not affect the proposed pins.
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-grep-literal-sync-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-dyn-grep-literal-sync-output.txt.diag)
+

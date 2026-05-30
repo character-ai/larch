@@ -1,0 +1,4 @@
+Reading the plan and cross-checking grep literals against the proposed AGENTS.md and orchestrator-never.md text.
+Checking existing test harness patterns and proposed prose blocks for pin alignment.
+Checking how existing orchestrator-never pins handle punctuation for consistency:
+{"no_issues_found": true}

@@ -1,0 +1,10 @@
+Reviewing the plan against the codebase: reading the plan and inspecting hooks, tests, and related scripts.
+1. **correctness** — `plan.txt:114-115` (proposed `scripts/test-hook-anti-read-poll.sh`): The registration pin uses two file-wide `grep -Fq` checks (`hook-anti-read-poll.sh` and `Read|Bash`) even though the plan text asks for a literal “on the same entry.” Those greps only prove both strings exist somewhere in `hooks/hooks.json`, not that the `hook-anti-read-poll.sh` PostToolUse block’s `matcher` is `Read|Bash`. A revert to `"matcher": "Read"` for that hook while another entry (or a future duplicate PostToolUse) carries `Read|Bash` would still pass CI — the exact failure mode FINDING_1 is meant to block.
+
+**Verified OK (no separate findings):**
+- **Pipe syntax** — `Read|Bash` matches existing repo conventions: `hooks/hooks.json:60` (`startup|resume|clear|compact`), `skills/research/SKILL.md:8` (`Edit|Write|NotebookEdit`), and `docs/dev-hook-audit.md:29` (PostToolUse `Edit|Write`).
+- **Bash JSON field** — `tool_input.command` aligns with the existing harness (`scripts/test-hook-anti-read-poll.sh:87`) and incident transcripts (`input.command` on Bash tool calls, e.g. `larch-logs/implement/4529BA14-.../session-transcript.jsonl:43`).
+- **Harness vs production** — Piping crafted JSON exercises the same stdin/early-exit/state-file paths as production hook invocation; matcher wiring is a separate concern the plan correctly calls out, aside from the weak pin above.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:114-115; hooks/hooks.json:36-45	Registration pin uses file-wide grep not co-located matcher assertion	PostToolUse entry for hook-anti-read-poll.sh can stay matcher Read only while another hooks.json line contains Read|Bash; both greps pass and CI misses registration drift	Pin with jq on the PostToolUse object whose hooks[].command references hook-anti-read-poll.sh and assert its matcher matches Read|Bash (e.g. jq -e '.hooks.PostToolUse[] | select(.hooks[]?.command | test("hook-anti-read-poll")) | .matcher | test("Bash")')
