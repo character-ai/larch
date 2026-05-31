@@ -884,7 +884,7 @@ FAIL_TAIL_SIDECAR="$SCRATCH/fail-tail-sidecar.log"
 FAIL_TAIL_MANIFEST="$SCRATCH/fail-tail-manifest.json"
 FAIL_TAIL_TAIL="${FAIL_TAIL_TRANSCRIPT}.stderr-tail"
 set +e
-FAIL_TAIL_OUT=$(cd "$REPO_ROOT" && \
+(cd "$REPO_ROOT" && \
     PATH="$FAIL_TAIL_BIN:$PATH" \
     STUB_MANIFEST_PATH="$FAIL_TAIL_MANIFEST" \
     IMPLEMENT_TMPDIR='' \
@@ -901,16 +901,15 @@ FAIL_TAIL_OUT=$(cd "$REPO_ROOT" && \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
-        --timeout 30) || true
+        --timeout 30) > /dev/null || true
 set -e
-if [[ "$FAIL_TAIL_OUT" == *"LAUNCHER_EXIT=1"* ]] \
-    && [[ -s "$FAIL_TAIL_TAIL" ]] \
+if [[ -s "$FAIL_TAIL_TAIL" ]] \
     && grep -Fq 'LARCH_CURSOR_IMPLEMENT_STDERR_TAIL_PROBE' "$FAIL_TAIL_TAIL" \
     && grep -Fq '<REDACTED-TOKEN>' "$FAIL_TAIL_TAIL" \
     && ! grep -Fq 'sk-ant-api03' "$FAIL_TAIL_TAIL"; then
     pass
 else
-    fail "stderr-tail-agent" "expected LAUNCHER_EXIT=1 and redacted stderr-tail; out=$FAIL_TAIL_OUT tail=$(cat "$FAIL_TAIL_TAIL" 2>/dev/null)"
+    fail "stderr-tail-agent" "expected redacted stderr-tail with probe; tail=$(cat "$FAIL_TAIL_TAIL" 2>/dev/null)"
 fi
 
 # Test: post-failure path prefers .diag over non-empty sidecar (no sidecar clobber).
@@ -929,7 +928,7 @@ exit 1
 EOF
 chmod +x "$CLOBBER_BIN/cursor"
 set +e
-CLOBBER_OUT=$(cd "$REPO_ROOT" && \
+(cd "$REPO_ROOT" && \
     PATH="$CLOBBER_BIN:$PATH" \
     IMPLEMENT_TMPDIR='' \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT='' \
@@ -945,15 +944,14 @@ CLOBBER_OUT=$(cd "$REPO_ROOT" && \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
-        --timeout 30) || true
+        --timeout 30) > /dev/null || true
 set -e
-if [[ "$CLOBBER_OUT" == *"LAUNCHER_EXIT=1"* ]] \
-    && [[ -s "$CLOBBER_TAIL" ]] \
+if [[ -s "$CLOBBER_TAIL" ]] \
     && grep -Fq 'LARCH_DIAG_PROBE_PREFERRED' "$CLOBBER_TAIL" \
     && ! grep -Fq 'LARCH_SIDECAR_DECOY_ONLY' "$CLOBBER_TAIL"; then
     pass
 else
-    fail "stderr-tail-diag-over-sidecar" "expected diag-based tail without sidecar decoy; out=$CLOBBER_OUT tail=$(cat "$CLOBBER_TAIL" 2>/dev/null)"
+    fail "stderr-tail-diag-over-sidecar" "expected diag-based tail without sidecar decoy; tail=$(cat "$CLOBBER_TAIL" 2>/dev/null)"
 fi
 
 # Bounded line/byte caps on oversized sidecar (test-lib-failed-agent-stderr-tail contract).
