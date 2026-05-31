@@ -6055,6 +6055,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
+    IMPLEMENT_TMPDIR="$impl"  # re-set after ship-pr.sh init clears it
     run_recovery_waterfall checks fix "" checks-step6
 ) >"$impl/wf.stdout" 2>"$wf_caller_err"
 wf_rc=$?
@@ -6131,6 +6132,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
+    IMPLEMENT_TMPDIR="$impl"  # re-set after ship-pr.sh init clears it
     run_recovery_waterfall checks fix "" checks-step6
 ) >"$impl/wf.stdout" 2>"$wf_exit0_err"
 wf_exit0_rc=$?
@@ -6221,6 +6223,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
+    IMPLEMENT_TMPDIR="$tmp"  # re-set after ship-pr.sh init clears it
     run_ci_fix_vendor ci-initial run123 0 0 "" 0
 ) >"$tmp/ci-fix.stdout" 2>"$ci_fix_err"
 ci_fix_rc=$?
@@ -6286,6 +6289,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
+    IMPLEMENT_TMPDIR="$tmp"  # re-set after ship-pr.sh init clears it
     run_ci_fix_vendor ci-initial run123 0 0 "" 0
 ) >"$tmp/wrapper-rc2.stdout" 2>"$rc2_err"
 rc2_fix_rc=$?
@@ -6349,6 +6353,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
+    IMPLEMENT_TMPDIR="$impl"  # re-set after ship-pr.sh init clears it
     run_recovery_waterfall checks fix "" checks-step6
 ) >"$impl/tier-rc.stdout" 2>"$tier_rc_err"
 tier_rc_wf_rc=$?
