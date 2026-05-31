@@ -823,7 +823,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`). Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`.
 
-**Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`; on that path, roll back to the prior count. If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
+**Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`, when `LOOP_STATUS=tally-error`, or when `LOOP_STATUS=degraded-empty-collector`; on those paths, roll back to the prior count (same semantics as `run-step3-review.sh` persist/rollback). If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
 
 **IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: **10 static** external slots (5 Cursor + 5 Codex for Arch, Edge, Innovation, Pragmatic, Requirements) plus **up to 12 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 6). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
 
@@ -870,7 +870,14 @@ fi
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   _key="${_line%%=*}"; _value="${_line#*=}"
   case "$_key" in
-    LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
+    LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS)
+      if [[ "${_plan_review_rc:-0}" -ne 0 ]]; then
+        [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
+      else
+        [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
+      fi
+      ;;
+    ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
       [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
     WARN) printf '%s\n' "WARN=$_value" ;;
   esac
@@ -878,8 +885,8 @@ done <<<"${_plan_review_out:-}"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
   printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
 fi
-if [[ -z "${LOOP_STATUS:-}" ]]; then
-  printf '%s\n' "**⚠ Step 3: missing LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
+if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|cap-reached|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|optional-trailer-dedup-loss|panel-failed|main-agent-vote-required)$ ]]; then
+  printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
   LOOP_STATUS=panel-failed
 fi
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security

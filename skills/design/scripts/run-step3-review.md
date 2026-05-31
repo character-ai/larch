@@ -24,8 +24,8 @@ The driver does **not** re-read `LARCH_DESIGN_*` env vars.
 
 1. Review-round cap entry guard → `.step3-review-cap.env`
 2. Symlink-safe `plan-review/round-*` cleanup
-3. Pending round persist to `review-round-count.txt` before launch
-4. HARD round-cursor read/advance via `snapshot-plan-round.sh`
+3. HARD round-cursor read/advance via `snapshot-plan-round.sh`
+4. Pending round persist to `review-round-count.txt` before launch
 5. Foreground `plan-review-loop.sh` (`RUN_STEP3_PLAN_REVIEW_LOOP_SH` override for tests)
 6. Parse `.step3-plan-review-result.env` + stdout fallback; normalize `LOOP_STATUS`
 7. Persist vs rollback `review-round-count.txt` on `tally-error` / `degraded-empty-collector`
@@ -54,3 +54,5 @@ Stops before semantic finding dedup (#6), Gate B (Step 3.5), and `main-agent-vot
 ## Harness
 
 `skills/design/scripts/test-run-step3-review.sh` (stub: `test-run-step3-review.md`).
+
+`skills/design/scripts/test-step3-orchestrator-fence.sh` (stub: `test-step3-orchestrator-fence.md`) — mirrors the Step 3 orchestrator handoff fence in `SKILL.md` (result env allowlist, stdout merge, `LOOP_STATUS` normalization, exit `2`).
