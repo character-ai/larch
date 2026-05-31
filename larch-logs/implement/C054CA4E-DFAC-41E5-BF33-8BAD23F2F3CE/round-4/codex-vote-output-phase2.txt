@@ -1,0 +1,21 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- inline WARN/ERROR print on merge makes arrays redundant; symlink gap is narrow given stdout capture
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rc-2 REASON not surfaced but argv validation makes invalid-input fallthrough unlikely in practice
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate validators are real but low-risk maintenance debt
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated plan-marker logic is maintainability-only
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- dual handoff fences are doc churn cost, not a runtime defect
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- acceptance enum drift is doc hygiene, not operator impact
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- unrelated harness exports with no breakage
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- bundled lint exclusion is unrelated and harmless to Step 0b
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- observational only; guard is defensive given tracking-issue-write always emits RENAMED
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms allowlisted case arms; not a regression
+OOS_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- write-side gap duplicates in-scope FINDING_7; not a separate filing priority
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer found no defect in equals-in-value handling
+OOS_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- fixed case arms on pause-load parse; no issue to file
+OOS_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- init path may duplicate WARN lines but impact is cosmetic inconsistency only

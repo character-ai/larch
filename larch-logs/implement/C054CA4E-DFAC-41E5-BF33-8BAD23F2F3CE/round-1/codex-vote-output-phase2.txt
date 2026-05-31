@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated validators are real DRY drift risk but not worth blocking this extraction
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- mirrored Step 3 handoff fences are intentional per plan; maintenance cost alone does not warrant a fix vote
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- invalid-input reentry output is swallowed by stderr suppression but run still continues safely without the old breadcrumb
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- accurate PR-scope note for reviewers, not a product defect worth a tracked issue
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- driver plan_block_present logic matches plan-block-read; plan explicitly deferred new driver harnesses
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- missing Step 0b fence harness is an accepted plan tradeoff, not a regression in shipped code
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- weakened ordering pins align with plan Round 5; predicate-order regressions are low likelihood
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SKILL OR driver greps are deliberate to cover extracted strings without duplicating every pin
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- tmpdir is orchestrator-owned from session-setup; missing validate in route driver is defense-in-depth only
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- sub-step 6 prose follows proceed-only tier step; clarify/already-planned paths exit earlier in numbered flow
