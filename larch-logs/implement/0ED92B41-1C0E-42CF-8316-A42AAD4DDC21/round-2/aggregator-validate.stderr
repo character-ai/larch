@@ -1,0 +1,6 @@
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Import errors where appropriate or update plan import list  ### OOS_1: [OUT_OF_S')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Extract a shared test helper module if test duplication becomes painful repo-wid')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Submodule paths inlined in')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Strip or reject control characters in submodule path lists if hardening consumer')
+warning: fix text for slot 'dyn-parity-drift-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_5: [OUT_OF_SCOPE] Implement self-fix / run-l')
+warning: fix text for slot 'dyn-parity-drift-output.txt' in FINDING_20 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_6: [OUT_OF_SCOPE] `_scripts_dir` ignoring `r')

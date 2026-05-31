@@ -25,6 +25,8 @@ class StubRunner:
         cwd: str | None = None,  # pylint: disable=unused-argument
         env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
         check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
     ) -> CommandResult:
         key = tuple(argv)
         if key not in self.responses:
@@ -257,8 +259,10 @@ def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) ->
             cwd: str | None = None,
             env: Mapping[str, str] | None = None,
             check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
         ) -> CommandResult:
-            _ = timeout, cwd, check
+            _ = timeout, cwd, check, stdout, stderr
             captured["env"] = dict(env) if env else {}
             return CommandResult(tuple(argv), 0, "", "", 0.01)
 

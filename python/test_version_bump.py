@@ -32,8 +32,18 @@ class ProcRunner:
         cwd: str | None = None,
         env: Mapping[str, str] | None = None,
         check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
     ) -> CommandResult:
-        return proc.run(argv, timeout=timeout, cwd=cwd, env=env, check=check)
+        return proc.run(
+            argv,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stdout=stdout,
+            stderr=stderr,
+        )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CLASSIFY_SH = REPO_ROOT / ".claude/skills/bump-version/scripts/classify-bump.sh"
@@ -54,6 +64,8 @@ class StubRunner:
         cwd: str | None = None,  # pylint: disable=unused-argument
         env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
         check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
     ) -> CommandResult:
         key = tuple(argv)
         if key in self.responses:
@@ -164,8 +176,10 @@ def test_apply_same_version_race_retries(tmp_path: Path) -> None:
             cwd: str | None = None,  # pylint: disable=unused-argument
             env: Mapping[str, str] | None = None,
             check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
         ) -> CommandResult:
-            _ = timeout, cwd, env, check
+            _ = timeout, cwd, env, check, stdout, stderr
             key = " ".join(argv)
             calls.append(key)
             if len(argv) >= 3 and argv[0] == "git" and argv[1] == "status":
@@ -208,8 +222,10 @@ def test_apply_regression_correction(tmp_path: Path) -> None:
             cwd: str | None = None,  # pylint: disable=unused-argument
             env: Mapping[str, str] | None = None,
             check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
         ) -> CommandResult:
-            _ = timeout, cwd, env, check
+            _ = timeout, cwd, env, check, stdout, stderr
             if len(argv) >= 3 and argv[0] == "git" and argv[1] == "status":
                 return CommandResult(tuple(argv), 0, "", "", 0.01)
             if len(argv) >= 4 and argv[:4] == ["git", "fetch", "origin", "main"]:
@@ -546,8 +562,10 @@ def test_apply_max_retries_exhausted(
             cwd: str | None = None,
             env: Mapping[str, str] | None = None,
             check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
         ) -> CommandResult:
-            _ = timeout, cwd, env, check
+            _ = timeout, cwd, env, check, stdout, stderr
             nonlocal fetch_calls
             if len(argv) >= 3 and argv[0] == "git" and argv[1] == "status":
                 return CommandResult(tuple(argv), 0, "", "", 0.01)

@@ -1,0 +1,29 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Phase 4 monolith is expected; split before cutover is optional hardening not a defect.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Bash marks step3/step6 ledger sites; Python `run_relevant_checks` omits those shell-outs.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Gap exists only when `allowed_tmpdir` is unset; `run_checks_phase` always passes canonical tmpdir.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicated stub patterns are real but test refactor is not required for Phase 4 parity.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Baseline tuple params are intentionally discarded with `_=` for bash API shape parity, not a logic bug.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- `LoopResult` is mutated in-place by the loop driver; freezing would add friction without a safety win.
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- `runner.run` captures all check output in memory before writing the log, unlike bash streaming to file.
+FINDING_8: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Stale plan/acceptance text still mandates `classify_launch_failure` though code/README intentionally match bash #3207.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `proc.Runner` always buffers full stdout/stderr; worth a cross-cutting streaming hardening issue.
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Case `t` forces git-mode lint of tracked `larch-logs` markdown with no `iter_markdown_files` exclusion, conflicting with skip-ci log-flush risk.
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Unlike redact/agents, `checks.py` lacks a bash-vs-Python parity harness before Phase 7 cutover.
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- No tests cover `validate_tmpdir` `/tmp` and `/private/tmp` acceptance paths present in bash.
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Codex argv tests do not assert serial-lock / `lib-external-launcher-common.sh` sourcing behavior.
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- `run_checks_phase` tests monkeypatch inner runners; no stub-backed fail-fix-pass wiring integration test.
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Invalid tmpdir is tested only via `run_checks_phase`, not direct `run_relevant_checks` exit_code 2 parity.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Git-mode `larch-logs` scanning predates this branch; worth a separate CI-hygiene issue.
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Poll-interval export move is an intentional positive harness optimization, not a problem.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `parent.parent` widening needs a miswired `run_parent`; production `run_checks_phase` always passes `…/lint-fix-loop`.
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Marker grep and failure redaction use 60KB tail while bash scans/redacts the full capture log.
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- `_read_log_text_bounded` calls `read_bytes()` on the whole file before tailing, defeating the byte cap for huge logs.
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Raw logs use `O_CREAT|0o600` and dirs `0o700`; missing bash `umask 077` wrapper is defense-in-depth not shown to widen perms in practice.
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Per-dispatch `mkdtemp` retention matches bash; session `cleanup-tmpdir.sh` owns teardown.
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- TOCTOU symlink swap after validation is theoretical in a private session tmpdir.
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `log_fd` from `_allocate_log_file` is not closed if `runner.run` raises before `fdopen`.
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Redaction `OSError` paths return without unlinking partial `*.redacted` files that bash removes with `rm -f`.
+FINDING_26: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan-only `errors` import mismatch has no runtime effect and is not worth an issue.
+FINDING_27: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- `run_dir` retention is bash-parity behavior, not a Python-specific leak.
+FINDING_28: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Reviewer correctly found no double-close defect.
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Orphaned fallback `.redacted` in session tmpdir is low-impact debris cleaned with implement tmpdir.

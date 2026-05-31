@@ -75,7 +75,8 @@ def iter_markdown_files(root: Path) -> list[Path]:
         files = [
             root / rel.decode("utf-8")
             for rel in result.stdout.split(b"\0")
-            if rel and not rel.decode("utf-8").startswith("larch-logs/")
+            if rel
+            and not rel.decode("utf-8").startswith("larch-logs/")
         ]
         return sorted(path for path in files if path.is_file() and not path.is_symlink())
 
@@ -87,6 +88,12 @@ def iter_markdown_files(root: Path) -> list[Path]:
                 continue
             path = Path(dirpath) / filename
             if path.is_symlink():
+                continue
+            try:
+                rel = path.relative_to(root)
+            except ValueError:
+                rel = path
+            if rel.parts and rel.parts[0] == "larch-logs":
                 continue
             files.append(path)
     return sorted(files)

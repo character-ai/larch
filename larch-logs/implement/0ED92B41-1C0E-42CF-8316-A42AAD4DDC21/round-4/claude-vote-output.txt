@@ -1,0 +1,29 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Phase 4 is an explicit parity port of monolithic bash scripts; splitting now adds complexity beyond the task scope
+FINDING_2: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- Cannot verify from diff whether bash capture helper includes ledger marks; valid Phase-7 concern if true
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Test verbosity is intentional; shared fixtures add abstraction complexity; each test explicitly covers a distinct scenario
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- LoopResult is intentionally mutable as a loop accumulator updated by _handle_fix_outcome; inconsistency is real but design is deliberate
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real systemic concern about proc.Runner full-capture memory profile worth tracking holistically
+FINDING_10: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- Cannot verify the "reverted larch-logs exclusion" claim from the diff; if accurate, skip-ci log-flush CI breakage is real
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan acceptance explicitly accepts semantic Python stubs; no bash parity harness is required
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Existing skipped-checks and monkeypatched-site-split tests adequately cover the wiring; adding a third integration shape introduces marginal value
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real pre-existing CI hygiene issue predating this branch; worth a separate tracking issue
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- No problem described; poll-interval exports are a positive improvement with no action needed
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Raw log correctly uses os.open mode 0o600; redacted log write_text→chmod has a TOCTOU window when written outside the 0o700 log_dir
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Matches lint-fix-loop.sh behavior; cleanup-tmpdir.sh owns session teardown
+FINDING_23: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Unused import listed in plan docs is too minor to warrant a separate issue; no runtime impact
+FINDING_27: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Not a problem; documents correct bash-parity behavior where session teardown owns cleanup
+FINDING_28: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- No defect; correct behavior confirmed
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Session-scoped debris auto-cleaned with implement tmpdir; not worth a separate issue

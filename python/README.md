@@ -16,7 +16,9 @@ imported by runtime code.
 - `version_bump.py`, `changelog.py` — Phase 2 ports of bump-version / CHANGELOG scripts
   (not wired into the live `/implement` path until Phase 7). `commit_changelog` is Markdown-only
   today; RST changelog commit is deferred until Phase 7 (no bash `commit-changelog` counterpart for RST).
-- `test_<module>.py` — colocated unit tests; `test_stdlib_only.py` enforces stdlib-only imports
+- `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
+  fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
+- `test_<module>.py` — colocated unit tests; `test_checks_bash_parity.py` bash-sourced parity harness; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies
 
@@ -50,3 +52,7 @@ The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=py
 ## Phase 1 wiring outside `python/`
 
 Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). **`scripts/ship-pr.sh`** is an intentional fifth wiring change: failed-job replay maps `python-lint` / `python-tests` CI jobs to `make py-lint` / `make py-test` (see `scripts/test-ship-pr.sh` replay cases). Revert only if replay stays allowlist-only until a later phase.
+
+## Phase 4 scope note (branch hygiene)
+
+The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, and this README. The same branch may also carry ancillary harness or plugin surface updates (for example `scripts/test-lint-literal-counts.sh`, `scripts/test-plan-review-loop.sh`, `.claude-plugin/plugin.json`) that are not Phase-4 module ports; review those diffs separately from the `python/` parity work.

@@ -1,0 +1,16 @@
+Reviewing the branch diff and `python/checks.py` for shell-injection risks in bash `-c` construction.
+Comparing bash parity and how interpolated values are handled in the shell scripts.
+Checking whether `run_lint_fix` validates `site` and how bash handles the serial-lock wrapper elsewhere.
+### In-Scope Findings
+
+- **security** `python/checks.py:525-530` — `_run_with_serial_lock` embeds `LARCH_EXTERNAL_SERIAL_LOCK_DELAY` verbatim into the `bash -c` script body (`external_serial_lock_release_after "$_SERIAL_LOCK" "{delay}"`). A value such as `0.5"; arbitrary-command; #` closes the double-quoted string and runs shell commands when the wrapper is parsed. The bash port in `scripts/lint-fix-loop.sh` passes the same variable as a function argument (`"${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"` → `sleep "$delay"`), which does not re-parse the delay string as script syntax. This is a regression introduced by the Python `bash -c` wrapper pattern. **Suggested fix:** Do not interpolate `delay` into the script text. Pass it as a positional parameter to `bash -c` (e.g. `bash -c '… release_after "$_SERIAL_LOCK" "$2" …' bash "$lib" "$delay" "$tool" …`) and/or validate with a strict numeric pattern (e.g. `^[0-9]+(\.[0-9]+)?$`) before use; default to `0.5` when validation fails.
+
+- **security** `python/checks.py:527-530,583-586,665-669,694-695` — Four `bash -c` fragments are built with Python f-strings and double-quoted bash literals for filesystem paths (`lib`, `preflight_log`, `plugin_root`, `codex_events`, `sidecar`, `cursor-wrap-prompt.sh`). None of these values are escaped with `shlex.quote()` or passed as `$1`/`$2` positional parameters. `repo_root` is unconstrained in `run_lint_fix` / `run_checks_phase`; paths containing `"`, newlines, `` ` ``, or `$` can break out of the quoted context (injection) or trigger unintended expansion (e.g. `source "/work/$USER/repo/scripts/..."`). `_run_cursor` correctly passes `prompt_body` via `"$1"` (lines 694–699) and does not embed it in the script; the other three sites do not use that safe pattern for paths. **Suggested fix:** For every `bash -c` helper, pass all dynamic values as positional arguments after the script name (`bash -c 'source "$1"; … 2>>"$2"' bash "$lib" "$preflight_log" …`) or wrap each interpolation with `shlex.quote()`. Optionally reject `repo_root` paths that contain shell metacharacters before dispatch.
+
+### Out-of-Scope Observations
+
+- **security** `python/test_agents.py:19-22` — Pre-existing test helper uses the same `f'source "{LIB_COMMON}"\n…'` pattern; not introduced by this branch’s runtime surface.
+
+- **risk-integration** `python/checks.py:517-536` vs `scripts/lint-fix-loop.sh:241-242` — Bash runs `external_serial_lock_acquire` in the same shell after sourcing the lib; Python wraps lock + `exec "$@"` in a nested `bash -c`. That structural difference is what makes env/path embedding exploable here while the shell script path is not.
+
+**Branch commits (vs main):** `abfbc565c`, `3cdb1d390`, `cee777a21`, `f44395376`.

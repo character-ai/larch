@@ -1,0 +1,28 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- bash lib-submodule-prohibition.sh not visible; Python prompt includes prohibition text; gap unverifiable
+FINDING_3: EXONERATE CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- structure-only concern; plan does not require refactoring; parity-faithful port is the goal
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- reviewer explicitly says "after Phase 4 acceptance"; not a current defect
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Phase 4 callers are internal; plan does not mention this validation; latent only at Phase 7
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly says run_checks_phase does NOT port ship-pr phase glue; single-site is in-scope
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent Phase 7 concern; additive module not yet in live path
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- _ = repo_root explicitly documents intentional discard; OOS_6 confirms bash parity
+FINDING_16: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- OOS_7 confirms bash also ignores baselines; _ = documents intentional discard
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan table fully covered; string multi-digit tests no new code path
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- None default; backward compatible; Phase 7 consumers unaffected
+FINDING_20: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- errors not needed by implementation; plan import list was aspirational
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Python being stricter than bash is not a defect worth filing
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- expected workflow commits; not a problem to file
+OOS_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- expected implement workflow commits; not a problem to file
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- clarifying note explaining FINDING_15 is intentional; not worth a separate issue
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- clarifying note explaining FINDING_16 is intentional; not worth a separate issue
+OOS_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Phase 7 scoping clarification for FINDING_11; not worth a separate issue

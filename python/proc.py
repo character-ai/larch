@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 from collections.abc import Mapping, Sequence
 
 import config
@@ -29,6 +29,8 @@ class Runner(Protocol):
         cwd: str | None = None,
         env: Mapping[str, str] | None = None,
         check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
     ) -> CommandResult:
         ...
 
@@ -48,22 +50,31 @@ def run(
     cwd: str | None = None,
     env: Mapping[str, str] | None = None,
     check: bool = False,
+    stdout: int | None = None,
+    stderr: int | None = None,
 ) -> CommandResult:
     """Run a subprocess with timeout and captured stdout/stderr."""
     argv_tuple = tuple(argv)
     start = time.monotonic()
+    stream_stdout = stdout if stdout is not None else subprocess.PIPE
+    stream_stderr = stderr if stderr is not None else subprocess.PIPE
+    popen_text = stream_stdout is subprocess.PIPE and stream_stderr is subprocess.PIPE
+    popen_kwargs: dict[str, Any] = {
+        "stdout": stream_stdout,
+        "stderr": stream_stderr,
+        "cwd": cwd,
+        "env": None if env is None else dict(env),
+    }
+    if popen_text:
+        popen_kwargs["text"] = True
+        popen_kwargs["errors"] = "replace"
     if timeout is not None:
         with subprocess.Popen(
             argv_tuple,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            errors="replace",
-            cwd=cwd,
-            env=None if env is None else dict(env),
+            **popen_kwargs,
         ) as proc:
             try:
-                stdout, stderr = proc.communicate(timeout=timeout)
+                out_data, err_data = proc.communicate(timeout=timeout)
             except subprocess.TimeoutExpired as exc:
                 proc.kill()
                 rest_out, rest_err = proc.communicate()
@@ -80,26 +91,47 @@ def run(
                 result = CommandResult(
                     argv=argv_tuple,
                     returncode=proc.returncode,
-                    stdout=stdout,
-                    stderr=stderr,
+                    stdout=_decode_output(out_data),
+                    stderr=_decode_output(err_data),
                     duration=duration,
                 )
     else:
-        completed = subprocess.run(
-            argv_tuple,
-            capture_output=True,
-            text=True,
-            errors="replace",
-            cwd=cwd,
-            env=None if env is None else dict(env),
-            check=False,
-        )
+        if stream_stdout is subprocess.PIPE and stream_stderr is subprocess.PIPE:
+            completed = subprocess.run(
+                argv_tuple,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                cwd=cwd,
+                env=None if env is None else dict(env),
+                check=False,
+            )
+        elif popen_text:
+            completed = subprocess.run(
+                argv_tuple,
+                stdout=stream_stdout,
+                stderr=stream_stderr,
+                cwd=cwd,
+                env=None if env is None else dict(env),
+                text=True,
+                errors="replace",
+                check=False,
+            )
+        else:
+            completed = subprocess.run(
+                argv_tuple,
+                stdout=stream_stdout,
+                stderr=stream_stderr,
+                cwd=cwd,
+                env=None if env is None else dict(env),
+                check=False,
+            )
         duration = time.monotonic() - start
         result = CommandResult(
             argv=argv_tuple,
             returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            stdout=_decode_output(completed.stdout),
+            stderr=_decode_output(completed.stderr),
             duration=duration,
         )
     if check and result.returncode != 0:

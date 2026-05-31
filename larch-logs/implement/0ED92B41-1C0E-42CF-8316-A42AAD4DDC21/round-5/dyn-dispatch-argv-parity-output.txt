@@ -1,0 +1,18 @@
+I'll compare the Python dispatch argv builders against the bash originals and read the precomputed diff.
+### In-Scope Findings
+
+- **correctness** `python/checks.py:822-830` — `_run_codex` wraps the `run-external-agent.sh` invocation in `bash -c 'exec "$@" >"$1" 2>"$2"'` with `$1`/`$2` set to `codex.events.jsonl` and `codex.wrapper.log`. Under bash `-c`, `"$@"` expands from `$1` onward, so `exec` tries to run the events path as the executable instead of `run-external-agent.sh`. That diverges from `lint-fix-loop.sh:245-252`, where redirection applies to the wrapper command itself. Stub unit tests never execute this shell, so they can still pass argv-parity assertions while real dispatch would fail (non-zero RC → `dispatch-failed` / `main-agent-required`). **Suggested fix:** Use offset slicing, e.g. `exec "${@:3}" >"$1" 2>"$2"`, or drop the inner wrapper and pass stdout/stderr redirection through `Runner` the way bash does; add a small integration test that runs the wrapper against a no-op leaf and asserts the intended process is exec’d.
+
+- **correctness** `python/checks.py:950-957` — `_run_cursor` has the same bug: `bash -c 'exec "$@" >"$1" 2>&1'` with only `cursor.wrapper.log` before `*argv` means `"$@"` is `wrapper.log` plus the real argv, so `exec` targets the log file instead of `run-external-agent.sh`, unlike `lint-fix-loop.sh:290-296`. **Suggested fix:** Same pattern as codex, e.g. `exec "${@:2}" >"$1" 2>&1`, or equivalent non-shell redirection; cover with an integration test.
+
+- **correctness** `python/checks.py:914-925` — Cursor preflight in bash runs `cursor-wrap-prompt.sh` with stderr appended to `cursor.preflight.log` (`lint-fix-loop.sh:285`). The Python port runs the same script via `runner.run` with no `2>>` redirect, so wrap-time errors go to the runner’s default stderr capture and are not in `preflight_log`. On failure, `_write_failed_agent_stderr_tail` prefers an empty preflight file (`python/checks.py:926-933`), weakening parity with `_run_cursor_record_early_fail` in `lint-fix-loop.sh:261-287`. **Suggested fix:** Mirror bash with a subshell redirect, e.g. `bash -c '"$1" "$2"; s=$?; printf X; exit $s' bash … 2>>"$preflight_log"`, or merge captured stderr into `preflight_log` before tail extraction.
+
+### Out-of-Scope Observations
+
+- **correctness** `python/checks.py:935-940` — After the `X` sentinel, `wrapped.rstrip("\n")` can strip trailing newlines that bash keeps via `${_wrapped_prompt%X}` only (`lint-fix-loop.sh:289`). Low risk because `cursor-wrap-prompt.sh` documents no trailing newline, but prompts ending in `\n` would diverge.
+
+- **correctness** `python/checks.py:833-840` — Bash also calls `_lint_fix_set_stderr_tail_stem` on codex/cursor failure (`lint-fix-loop.sh:255-257`, `307`); Python only calls `_write_failed_agent_stderr_tail`. May affect downstream stderr-tail stem wiring, not argv shape.
+
+- **risk-integration** `python/checks.py:815-818` — Pre-delete of codex artifacts runs before `_run_with_serial_lock`; bash deletes after lock acquire (`lint-fix-loop.sh:241-243`). Unlikely to matter unless another process races on the same `run_dir`.
+
+**Commits on branch (since merge-base with main):** `3cdb1d390` Add ship-pr Phase 4 checks module; rounds `f44395376`–`a04c290da` address review feedback; plus log/chore commits.

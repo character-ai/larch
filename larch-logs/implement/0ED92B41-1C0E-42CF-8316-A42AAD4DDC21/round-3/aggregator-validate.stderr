@@ -1,0 +1,6 @@
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt' in FINDING_1 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt' in FINDING_4 (not present on any input finding)
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Split or explicitly document ancillary changes outside the Phase 4 file list.  #')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Address in proc.py with output limits or streaming (Phase 1 seam)  ### OOS_2: [O')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Use O_NOFOLLOW open or openat-style pinned reads under session dir  ### OOS_3: [')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_22 not traceable to scoped input (first 80 chars: 'Track separately if epic acceptance still requires scripts/test-* bash harness f')

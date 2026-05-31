@@ -36,6 +36,8 @@ class RecordingRunner:
         cwd: str | None = None,  # pylint: disable=unused-argument
         env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
         check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
     ) -> CommandResult:
         self.calls.append(list(argv))
         if self._index >= len(self.responses):

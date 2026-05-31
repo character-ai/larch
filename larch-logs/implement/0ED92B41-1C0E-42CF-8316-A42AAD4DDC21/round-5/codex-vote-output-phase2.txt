@@ -1,0 +1,40 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Monolithic run_lint_fix is real but refactor cost outweighs benefit this phase.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Large flat module is accurate; splitting deferred without relaxed layout constraint.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Untracked incomplete bash-parity harness leaves acceptance gaps outside CI.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- No ship-pr-sourced RCC loop parity; status strings can drift undetected.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Generic check-first loop lacks Step 6 no-changes stall short-circuit present in ship-pr.sh.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- On-demand redact dispatches after capture redaction-failed semantics in bash.
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Fallback uses *.log.redacted vs capture *.redacted.log naming.
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Empty XDG_CACHE_HOME becomes Path('') and accepts CWD-relative session paths.
+FINDING_9: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false -- proc.run passes errors= with text=False on FD redirect; masks agent-lint in production.
+FINDING_10: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false -- bash -c exec "$@" mis-indexes; exec targets events path not run-external-agent.sh.
+FINDING_11: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false -- Same $@ bug in _run_cursor; exec targets wrapper log instead of agent launcher.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate StubRunners are real but low-risk test maintenance debt.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Direct Path checks limit stub coverage; acceptable for current test depth.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- mkdtemp run dirs uncleaned is minor accumulation, not a correctness bug.
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Redaction failure sets exit_code=1 matching bash redaction-failed exit 1.
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Missing git toplevel guard is latent until Phase 7 wiring with untrusted REPO.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- TOCTOU on is_file before resolve is theoretical in typical single-runner sessions.
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Bare except drops raw_log_path, weakening loop accounting on runner faults.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- TRANSIENT dispatch-failed mapping matches intentional bash #3207 parity.
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dispatch_first loop unit tests exist; run_checks_phase wiring gap is narrow.
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan still references agents.classify_launch_failure while code and README document #3207 path.
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Cursor preflight stderr not appended to preflight_log unlike lint-fix-loop.sh 2>> redirect.
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- _read_log_tail wrapper is harmless indirection, not worth a change.
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Triple submodule collection is redundant but not incorrect.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- LoopResult mutability is stylistic inconsistency only.
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- target_cmd string API is a documented Phase 7 integrator concern, not a current bug.
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- main-agent-required loop tests omit failure_reason=dispatch-failed assertion.
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- allowed_root fallback on None allowed_tmpdir only affects direct API misuse.
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Unchecked stat in _compose_prompt is a rare TOCTOU edge, not production-critical.
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Large single test module is a fair maintainability issue to track.
+OOS_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Ancillary lint-literal-counts exclusion is already documented branch hygiene.
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Pre-existing gap: bash ship-pr harness does not exercise Python checks until cutover.
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- README/plan classify_launch_failure tension is worth a doc cleanup issue.
+OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Bash compose_prompt exposes unredacted metadata on live path; valid security follow-up.
+OOS_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- target_cmd_display backtick injection in fixer prompt is a real pre-existing concern.
+OOS_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- FD mode empty stdout contract is subsumed by in-scope FINDING_9 proc.run fix.
+OOS_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Explicitly subsumed by FINDING_9; not a separate actionable OOS issue.
+OOS_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- rstrip vs bash ${var%X} newline difference is low risk per script contract.
+OOS_10: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- Missing _lint_fix_set_stderr_tail_stem may matter later but argv parity is unaffected.
+OOS_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- Codex artifact pre-delete before lock is unlikely race versus bash ordering.

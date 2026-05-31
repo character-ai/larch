@@ -1,0 +1,19 @@
+Reviewing the branch diff and the scout-flagged parity areas in `checks.py` and the bash sources.
+Comparing the Python implementation with the bash sources for the flagged parity areas.
+### In-Scope Findings
+
+- **correctness** `python/checks.py:1061-1077` — When codex and/or cursor dispatch both fail, `run_lint_fix` branches on `agents.classify_launch_failure()` and returns `FixOutcome(status="failed", failure_reason="dispatch-failed")` if any attempt has `failure_class == "health"`. `lint-fix-loop.sh` always emits `LINT_FIX_STATUS=main-agent-required` with `FAILURE_REASON=dispatch-failed` for the same case (lines 414–429), and the Phase 4 plan explicitly requires `main-agent-required` for dual-tier dispatch failure (#3207). `_handle_fix_outcome` then maps `failed` → loop status `dispatch-failed`, and `escalate()` maps that to `Outcome.TRANSIENT` instead of `Outcome.NEEDS_USER_INPUT`, so transient infra/auth probe failures take a different recovery path than bash and than non-health dispatch failures. **Suggested fix:** Remove the health-only branch and always return `FixOutcome(status="main-agent-required", failure_reason="dispatch-failed", …)` when `coder_tool is None` and at least one external was present, matching `lint-fix-loop.sh`; keep `classify_launch_failure` only for logging/tests if needed, not for status selection.
+
+- **correctness** `python/checks.py:1347-1352` — In the check-first branch of `run_check_fix_loop`, a failing `ChecksResult` with a non-empty `raw_log_path` but `redacted_log_path=None` immediately terminates with `dispatch-failed` and never attempts on-the-fly redaction. `run_captured_cmd_then_fix_loop` in `scripts/ship-pr.sh:314-317` always builds `${_RCC_RAW_LOG_PATH}.redacted` via `redact-secrets.sh` before dispatch; the dispatch-first branch in Python already has a fallback redaction path (`checks.py:1317-1328`). A `run_relevant_checks` redaction `OSError` (or any future `checks_runner` that only sets `raw_log_path`) therefore cannot enter the fix loop even though bash would. **Suggested fix:** Mirror the dispatch-first fallback in the check-first path—when `redacted_log_path` is missing but `raw_log_path` is a non-empty file, write `Path(raw_path).with_suffix(suffix + ".redacted")` via `redact.redact()` (or reuse a small shared helper) and proceed to `fixer()`; only set `dispatch-failed` if that write fails.
+
+### Out-of-Scope Observations
+
+- **`_scripts_dir` / `repo_root`:** Ignoring `repo_root` and resolving `Path(__file__).parents[1] / "scripts"` matches bash `lint-fix-loop.sh` (`SCRIPT_DIR` / plugin scripts), not `repo_root/scripts`. Consumer `relevant-checks.sh` is correctly resolved under `repo_root` in `run_relevant_checks`. Not a production parity defect; tests that monkeypatch `_scripts_dir` to the consumer tree exercise a different layout.
+
+- **`_post_dispatch_forbidden_revert` baselines:** Bash `post_dispatch_forbidden_revert` also ignores pre-dispatch baselines and reverts any current tracked/untracked path matching the forbidden list (`scripts/lint-fix-loop.sh:170-199`). Python’s discard of `baseline_tracked` / `baseline_untracked` matches that behavior; forbidden detection does not require baselines in this helper.
+
+- **`run_checks_phase` site wiring:** Python uses one `site` for both checks and fix (default `step6`). Bash `run_checks_phase` runs checks with `--site step6` but lint-fix with `ship-pr-ci-initial` (`scripts/ship-pr.sh:1184,1203`). Relevant only when this API replaces ship-pr’s custom checks loop at cutover; the plan positions `run_checks_phase` as `run_captured_cmd_then_fix_loop` wiring, not a full port of bash `run_checks_phase`.
+
+- **Unrelated branch commits:** `abfbc565c` (lint-literal-counts / plan-review-loop poll / version bump), `cee777a21` / `f44395376` (run logs / implement commit) are outside the Phase 4 `checks.py` surface.
+
+**Commits reviewed:** `3cdb1d390`, `3f22cf685`, plus unrelated commits on the branch.
