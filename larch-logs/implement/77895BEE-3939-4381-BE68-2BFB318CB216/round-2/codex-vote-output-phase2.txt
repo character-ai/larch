@@ -1,0 +1,16 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Cases 13–16 overlap primary cases but add closing-line pins the matrix lacked
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated BOTH_DOWN branches are small; factoring is optional cleanup
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- post-Continue “availability-gated dispatch per skill” misstates /review and /research waterfall behavior
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- sketch doc still implies unconditional operator warning, not BOTH_DOWN-conditioned gate
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- degraded-tools-gate.md and :40 heading omit empty/unset BOTH_DOWN fail-safe spelled in SKILL prose and :41
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- prose grep would not catch orchestrator misparsing; SKILL exact-string rule is the real guard
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- healthy Case 1 omits BOTH_DOWN=false but DEGRADED=false early-exits before BOTH_DOWN matters
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dual probe-failed Case 4 already pins BOTH_DOWN=true closing lines; binary-missing both-down is low incremental value
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- relevant-checks maps only gate scripts, not SKILL/external-reviewers prose edits
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- env fallback is pre-existing; callers must pass four flags per contract, not a new BOTH_DOWN regression
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- interactive gate is intentionally LLM-orchestrated; a shell helper is disproportionate here
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- unvalidated --skill is pre-existing presentation-only risk, not introduced by this branch
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- --caller-env can skip probes and mask both-down before the gate; worth a separate hardening issue
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- sentinel already blocks re-AskUserQuestion; skip-entire-gate on resume is extra procedure surface
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- /research uses [[ -t 0 ]], /review adds non-subagent, design/implement use bare interactive around the same BOTH_DOWN split
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing abort/sentinel/subagent path inconsistencies remain worth tracking as follow-up issues

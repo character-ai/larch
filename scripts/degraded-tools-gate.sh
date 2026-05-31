@@ -8,9 +8,10 @@
 #
 # This script is a PURE DETECTOR. It never prompts and never blocks. The skill
 # orchestrator consumes the KV output and, when DEGRADED=true, presents the
-# explanation and asks the operator (via AskUserQuestion) whether to continue
-# with the degraded waterfall or abort — see skills/shared/external-reviewers.md
-# "Degraded-tools gate (Step 0)".
+# explanation: on interactive runs it asks via AskUserQuestion only when
+# BOTH_DOWN=true (both tools down); when BOTH_DOWN=false (one tool down) it
+# prints the explanation as a notice and auto-proceeds — see
+# skills/shared/external-reviewers.md "Degraded-tools gate (Step 0)".
 #
 # A tool is AVAILABLE only when its binary is found AND its runtime probe
 # passed (binary-found=true AND present=true), matching the codex_available /
@@ -20,6 +21,7 @@
 #   DEGRADED=true|false
 #   CODEX_STATE=ok|binary-missing|probe-failed
 #   CURSOR_STATE=ok|binary-missing|probe-failed
+#   BOTH_DOWN=true|false
 #   DEGRADED_EXPLANATION_BEGIN
 #   <multi-line explanation lines>
 #   DEGRADED_EXPLANATION_END
@@ -101,9 +103,15 @@ if [ "$CODEX_STATE" != "ok" ] || [ "$CURSOR_STATE" != "ok" ]; then
     DEGRADED=true
 fi
 
+BOTH_DOWN=false
+if [ "$CODEX_STATE" != "ok" ] && [ "$CURSOR_STATE" != "ok" ]; then
+    BOTH_DOWN=true
+fi
+
 emit_kv DEGRADED "$DEGRADED"
 emit_kv CODEX_STATE "$CODEX_STATE"
 emit_kv CURSOR_STATE "$CURSOR_STATE"
+emit_kv BOTH_DOWN "$BOTH_DOWN"
 
 [ "$DEGRADED" = "true" ] || exit 0
 
@@ -132,7 +140,11 @@ if [[ "$SKILL_LABEL" == "design" ]]; then
     emit "reviewer covering all archetype lenses. Expect fewer reviewers and possible"
     emit "zero-findings / degraded tally paths — not per-slot Codex→Cursor→Claude waterfall."
     emit ""
-    emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"
+    if [[ "$BOTH_DOWN" == "true" ]]; then
+        emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"
+    else
+        emit "⚠ Warning: proceeding automatically (one tool available). Retry once the unavailable tool is healthy."
+    fi
 else
     emit "What this means: multi-tool roles (reviewer/voter panels, decomposition, the"
     emit "implementer, and CI/fix coders) run through the per-slot backup waterfall —"
@@ -143,8 +155,12 @@ else
     emit "than substituted (e.g. /design Codex dialectic buckets and Codex sketch"
     emit "personalities when Codex is down)."
     emit ""
-    emit "Continue in this degraded mode (backup waterfall), or abort and retry once"
-    emit "the tool is healthy?"
+    if [[ "$BOTH_DOWN" == "true" ]]; then
+        emit "Continue in this degraded mode (backup waterfall), or abort and retry once"
+        emit "the tool is healthy?"
+    else
+        emit "⚠ Warning: proceeding automatically (one tool available). Retry once the unavailable tool is healthy."
+    fi
 fi
 emit DEGRADED_EXPLANATION_END
 
