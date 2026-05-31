@@ -50,9 +50,14 @@ printf 'PHASE2_RELAUNCH_COUNT=%s\n' "$p2"
 printf 'COMBINED_FALLBACK_COUNT=%s\n' "$cfc"
 printf 'STATIC_DISPATCH_OK=%s\n' "$static_ok"
 printf 'DYNAMIC_DISPATCH_OK=true\n'
-printf 'ALL_OUTPUT_FILES=%s/a.txt\n' "$(dirname "$log")"
+_outpath="$(dirname "$log")/a.txt"
+: >"$_outpath"
+printf 'ALL_OUTPUT_FILES=%s\n' "$_outpath"
 printf 'ALL_OUTPUT_TOOLS=cursor\n'
-printf 'ALL_OUTPUT_FILES_PATH=%s\n' "${WATERFALL_STUB_PATHS_OUT:?}"
+if [[ -n "${WATERFALL_STUB_PATHS_OUT:-}" ]]; then
+    printf '%s\n' "$_outpath" >"${WATERFALL_STUB_PATHS_OUT}"
+fi
+printf 'ALL_OUTPUT_FILES_PATH=%s\n' "${WATERFALL_STUB_PATHS_OUT:-$_outpath}"
 STUB
 chmod +x "$STUB"
 
@@ -315,5 +320,47 @@ _paths_file=$(grep '^PANEL_PATHS_FILE=' "$D10/out.env" | head -1 | cut -d= -f2-)
 [[ -n "$_paths_file" && -f "$_paths_file" ]] || fail "both-absent missing panel paths file"
 [[ "$(grep -c . "$_paths_file")" == "1" ]] || fail "both-absent expected exactly one reviewer path"
 grep -Fq 'claude-plan-generic-output.txt' "$_paths_file" || fail "both-absent path must be generic Claude output"
+
+echo "=== codex-down panel paths: collect stub completes without SENTINEL_TIMEOUT ==="
+COLLECT_STUB="$TMP/collect-stub.sh"
+cat >"$COLLECT_STUB" <<'COLLECT_EOF'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 0
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -n "$p" ]] || continue
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\nFAILURE_REASON=\n\n' "$p"
+done <"$paths"
+COLLECT_EOF
+chmod +x "$COLLECT_STUB"
+D11="$TMP/s11"
+prep "$D11"
+printf '{"archetypes":[]}\n' >"$D11/scout-plan-manifest.json"
+log11="$D11/wf.log"
+: >"$log11"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    WATERFALL_STUB_LOG="$log11" \
+    WATERFALL_STUB_PATHS_OUT="$D11/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D11" \
+    --codex-present false \
+    --cursor-present true \
+    --plan-file "$D11/plan.txt" \
+    --timeout 60 >"$D11/out.env"
+_paths11=$(grep '^PANEL_PATHS_FILE=' "$D11/out.env" | head -1 | cut -d= -f2-)
+[[ -n "$_paths11" && -s "$_paths11" ]] || fail "codex-down collect case needs non-empty paths file"
+_collect11=$(LARCH_QUIET_DISABLE=1 bash "$COLLECT_STUB" \
+    --timeout 5 \
+    --paths-file "$_paths11" 2>/dev/null || true)
+printf '%s\n' "$_collect11" | grep -Fq 'SENTINEL_TIMEOUT' && fail "codex-down collect must not return SENTINEL_TIMEOUT under short timeout"
 
 echo "All dispatch-plan-review-panel harness assertions passed."

@@ -303,7 +303,23 @@ if [[ -n "$ALL_OUTPUT_FILES_PATH" && -f "$ALL_OUTPUT_FILES_PATH" ]]; then
     done <"$ALL_OUTPUT_FILES_PATH"
 fi
 
-_i=0
+_match_resolved_output() {
+    local manifest_out="$1"
+    local rp _base _mbase _alt
+    _base=$(basename "$manifest_out")
+    for rp in "${_resolved_paths[@]}"; do
+        [[ "$rp" == "$manifest_out" ]] && { printf '%s' "$rp"; return 0; }
+        _mbase=$(basename "$rp")
+        [[ "$_mbase" == "$_base" ]] && { printf '%s' "$rp"; return 0; }
+    done
+    for _alt in "${manifest_out%.txt}-phase2.txt" "${manifest_out%.txt}-phase3.txt"; do
+        for rp in "${_resolved_paths[@]}"; do
+            [[ "$rp" == "$_alt" ]] && { printf '%s' "$rp"; return 0; }
+        done
+    done
+    return 1
+}
+
 _warned_missing_paths=false
 while IFS= read -r row || [[ -n "$row" ]]; do
     [[ -n "$row" ]] || continue
@@ -313,7 +329,11 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     _arch="${_slot#decomp-cursor-}"
     _arch="${_arch#decomp-codex-}"
     if (( ${#_resolved_paths[@]} > 0 )); then
-        _outp_resolved="${_resolved_paths[$_i]:-$_outp}"
+        if _outp_resolved=$(_match_resolved_output "$_outp"); then
+            :
+        else
+            _outp_resolved="$_outp"
+        fi
     else
         if [[ "$_warned_missing_paths" != true ]]; then
             larch_err "decompose-panel-dispatch.sh: ALL_OUTPUT_FILES_PATH empty or missing; falling back to manifest paths for panel-outputs rows"
@@ -334,7 +354,6 @@ while IFS= read -r row || [[ -n "$row" ]]; do
         --arg output "$_outp_resolved" \
         --arg status "$_status" \
         '{archetype:$archetype,vendor:$vendor,output:$output,status:$status}' >>"$_panel_rows"
-    _i=$((_i + 1))
 done <"$_manifest"
 
 PANEL_STATUS="ok"

@@ -23,7 +23,7 @@ Launch eligibility requires `*_PRESENT=true`. Runtime failures do not mutate `se
 
 ## Degraded-tools gate (Step 0)
 
-Issue #3207: when an external tool is unhealthy at session start, the skill MUST **tell the operator and let them choose** rather than silently proceeding degraded. Immediately after presence detection, run the gate detector with the four `--check-reviewers` keys (contract: `scripts/degraded-tools-gate.md`):
+Issue #3207: when an external tool is unhealthy at session start, the skill MUST **tell the operator and let them choose** rather than silently proceeding degraded. Immediately after presence detection, run the gate detector with **all four** `--check-reviewers` keys on every invocation (contract: `scripts/degraded-tools-gate.md`). Do not rely on exported env from an earlier skill in the same shell — re-parse `session-setup.sh` stdout in the current Step 0 block and pass explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh \

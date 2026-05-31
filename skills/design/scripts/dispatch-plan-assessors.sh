@@ -130,18 +130,9 @@ if [[ -s "$manifest" ]]; then
         esac
     done <<<"$waterfall_output"
 
-    read -r -a outputs_arr <<< "$all_outputs"
-    read -r -a tools_arr <<< "$all_tools"
-    _wf_idx=0
-    if [[ "$CODEX_PRESENT" == "true" ]]; then
-        CODEX_PATH="${outputs_arr[$_wf_idx]:-$CODEX_PATH}"
-        CODEX_TOOL="${tools_arr[$_wf_idx]:-codex}"
-        _wf_idx=$((_wf_idx + 1))
-    fi
-    if [[ "$CURSOR_PRESENT" == "true" ]]; then
-        CURSOR_PATH="${outputs_arr[$_wf_idx]:-$CURSOR_PATH}"
-        CURSOR_TOOL="${tools_arr[$_wf_idx]:-cursor}"
-    fi
+    # Under --no-fallback, ALL_OUTPUT_FILES is compact; keep stable manifest paths.
+    CODEX_TOOL=codex
+    CURSOR_TOOL=cursor
 else
     larch_err "→ assessor-dispatch: round=${ROUND_NUM} waterfall-skipped (no external tools)"
 fi

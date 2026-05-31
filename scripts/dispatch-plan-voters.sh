@@ -170,23 +170,14 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     esac
 done <<< "$waterfall_output"
 
-read -r -a outputs_arr <<< "$all_outputs"
-read -r -a tools_arr <<< "$all_tools"
-
 VOTER_2_TOOL=codex
 VOTER_3_TOOL=cursor
 VOTER_2_STATUS="failed"
 VOTER_3_STATUS="failed"
-_wf_idx=0
 if [[ "$CODEX_AVAILABLE" == "true" ]]; then
-    VOTER_2_PATH="${outputs_arr[$_wf_idx]:-$VOTER_2_PATH}"
-    VOTER_2_TOOL="${tools_arr[$_wf_idx]:-codex}"
     VOTER_2_STATUS="launched"
-    _wf_idx=$((_wf_idx + 1))
 fi
 if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
-    VOTER_3_PATH="${outputs_arr[$_wf_idx]:-$VOTER_3_PATH}"
-    VOTER_3_TOOL="${tools_arr[$_wf_idx]:-cursor}"
     VOTER_3_STATUS="launched"
 fi
 [[ "$VOTER_2_STATUS" == "launched" && "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"

@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step **2b.5 Split-path** only — after a hard trigger or `--partition` / `-p`. This file is **not** loaded during routine Step 2b plan emission, Step 3 plan review, or Gate A/B/C flows unless Split-path runs.
 
-**Contract**: single normative source for **panel input selection**, **8-slot external dispatch** (`scripts/dispatch-with-waterfall.sh`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed -->
+**Contract**: single normative source for **panel input selection**, **availability-gated external dispatch** (up to four archetypes × present vendors via `decompose-panel-dispatch.sh` → `scripts/dispatch-with-waterfall.sh --no-fallback`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed manifest cap when both tools present -->
 
 **When to load**: immediately when Step 2b.5 enters **Split-path (decomposition panel)** in `skills/design/SKILL.md` — read this entire file before invoking any helper below.
 
@@ -27,7 +27,9 @@ Always pass `--design-tmpdir "$DESIGN_TMPDIR"` and the session’s `codex_presen
 
 ---
 
-## 2) Dispatch the fixed 8-slot panel
+## 2) Dispatch the decomposition panel (availability-gated, `--no-fallback`)
+
+`decompose-panel-dispatch.sh` emits only rows for tools present at Step 0 (`codex_present` / `cursor_present`). It invokes `dispatch-with-waterfall.sh` with **`--no-fallback`**: each slot gets a single launch; absent tools are omitted from the manifest; failed or narration-only outputs are **dropped** (no cross-tool relaunch, no per-slot Claude pad). `ALL_OUTPUT_FILES_PATH` lists **only succeeded** paths; panel rows match manifest `output` paths to that list (unmatched rows are `missing`).
 
 Run (stdout is KV-shaped; parse `PANEL_OUTPUTS_FILE`, `DEGRADED_PANEL`, `PANEL_STATUS`):
 
@@ -63,7 +65,7 @@ Read `PANEL_OUTPUTS_FILE` (NDJSON: one JSON object per line with `archetype`, `v
 
 If exactly **one** vendor produced a parseable proposal for an archetype, **skip stage-2** for that archetype and auto-select the surviving vendor. Print:
 
-`**ℹ archetype <name>: only <vendor> proposal available (other vendor failed after waterfall)**`
+`**ℹ archetype <name>: only <vendor> proposal available (other vendor absent or dropped under --no-fallback)**`
 
 ---
 
@@ -104,9 +106,9 @@ Concatenate the eight panel outputs and merge into one canonical partition propo
   --timeout 1800
 ```
 
-`aggregate-findings.sh` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges therefore use this dedicated **single-slot Codex → Cursor → Claude waterfall** merger prompt — **not** the findings aggregator.
+`aggregate-findings.sh` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges use `decompose-aggregator.sh`, which still runs the **legacy three-tier waterfall** for its single merge slot (`/review`-style cross-tool + Claude pad). That is separate from the decomposition panel dispatch above.
 
-Both the aggregator and the 8-slot panel thread `--require-result-pattern '^[[:space:]]*## Recommendation'` into `dispatch-with-waterfall.sh`, so narration-only `STATUS=OK` outputs (Cursor `--mode plan` abstention, etc.) fall through to the next waterfall phase at the dispatcher boundary instead of settling silently. The panel rows written to `panel-outputs.ndjson` reflect the dispatcher's resolved final paths (`ALL_OUTPUT_FILES_PATH`), so phase-2/phase-3 fallback content reaches operator presentation when the primary tool returns narration-only.
+The decomposition panel threads `--require-result-pattern '^[[:space:]]*## Recommendation'` with `--no-fallback`, so narration-only `STATUS=OK` outputs are dropped rather than retried on another vendor. Panel rows in `panel-outputs.ndjson` bind each manifest `output` to a succeeded path from `ALL_OUTPUT_FILES_PATH` when present; otherwise the row stays `missing` / `unparsed` on the manifest path.
 
 Parse stdout for `AGGREGATOR_STATUS=ok|failed` and consume `AGGREGATOR_OUTPUT` when `ok`.
 

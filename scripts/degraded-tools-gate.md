@@ -33,6 +33,14 @@ Any value other than the literal `true` normalizes to not-true.
 - `--cursor-binary-found <bool>` / `--cursor-present <bool>`
 - `--skill <name>` — optional label woven into the explanation header (default `this`).
 
+**Caller contract:** every Step 0 invocation should pass all four probe flags from
+the **current** `session-setup.sh --check-reviewers` parse in that same Bash
+block (canonical example in `skills/shared/external-reviewers.md`). Env vars
+(`CODEX_BINARY_FOUND`, etc.) are initialized before argv parsing as a fallback
+only; if a flag is omitted while the corresponding env var is set, the script
+prints a stderr `WARNING` (stale or cross-skill inheritance in long-lived
+orchestrator shells).
+
 ## Output (stdout KV)
 
 - `DEGRADED=true|false` — `true` iff either tool's state is not `ok`.

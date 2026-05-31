@@ -768,7 +768,7 @@ if [[ -n "$PANEL_PATHS_FILE" && -f "$PANEL_PATHS_FILE" && -s "$PANEL_PATHS_FILE"
     _paths_readable=1
 fi
 
-if [[ "$_paths_readable" -eq 0 ]]; then
+if [[ "$_paths_readable" -eq 0 && "$PANEL_DISPATCH_OK" != "true" ]]; then
     write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**" "$round_num"
     : > "$DESIGN_TMPDIR/ballot.txt"
     TALLY_PLAN_REVIEW_STATUS=panel-failed
@@ -787,12 +787,17 @@ _collect_stderr_fd=2
 if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
     _collect_stderr_fd=4
 fi
-_collect_out=$(LARCH_QUIET_DISABLE=1 "$PLAN_REVIEW_COLLECT_SH" \
-    --timeout "$COLLECT_TIMEOUT" \
-    --substantive-validation \
-    --validation-mode \
-    --structured-reviewer-validation \
-    --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
+_collect_out=""
+if [[ "$_paths_readable" -eq 1 ]]; then
+    _collect_out=$(LARCH_QUIET_DISABLE=1 "$PLAN_REVIEW_COLLECT_SH" \
+        --timeout "$COLLECT_TIMEOUT" \
+        --substantive-validation \
+        --validation-mode \
+        --structured-reviewer-validation \
+        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
+else
+    emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback drops)"
+fi
 _last_collect_out="$_collect_out"
 
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"

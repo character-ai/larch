@@ -101,6 +101,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
         done
         append_shared_prompt_tail "$PLAN_FILE"
     } >"$_generic_prompt"
+    _generic_first_line_ere='^[[:space:]]*(schema_version|\{"no_issues_found)'
     set +e
     "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
         --output "$_generic_output" \
@@ -112,13 +113,28 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     _generic_rc=$?
     set -e
     [[ -f "${_generic_output}.done" ]] || printf '%s\n' "$_generic_rc" >"${_generic_output}.done"
-    printf '%s\n' "$_generic_output" >"$_panel_paths"
-    emit_kv DISPATCH_OK true
+    _generic_dispatch_ok=false
+    _generic_degraded=true
+    if [[ "$_generic_rc" -eq 0 && -s "$_generic_output" ]]; then
+        _generic_first=$(
+            awk 'NF { print; exit }' "$_generic_output" 2>/dev/null || true
+        )
+        if [[ -n "$_generic_first" ]] && printf '%s\n' "$_generic_first" | grep -Eq -- "$_generic_first_line_ere"; then
+            _generic_dispatch_ok=true
+            _generic_degraded=false
+        fi
+    fi
+    if [[ "$_generic_dispatch_ok" == "true" ]]; then
+        printf '%s\n' "$_generic_output" >"$_panel_paths"
+    else
+        : >"$_panel_paths"
+    fi
+    emit_kv DISPATCH_OK "$_generic_dispatch_ok"
     emit_kv FALLBACK_COUNT 0
     emit_kv COMBINED_FALLBACK_COUNT 0
-    emit_kv STATIC_DISPATCH_OK true
+    emit_kv STATIC_DISPATCH_OK "$_generic_dispatch_ok"
     emit_kv DYNAMIC_SLOT_COUNT 0
-    emit_kv DEGRADED_ROUND false
+    emit_kv DEGRADED_ROUND "$_generic_degraded"
     emit_kv PANEL_PATHS_FILE "$_panel_paths"
     exit 0
 fi
@@ -241,6 +257,10 @@ case "$COMBINED_FALLBACK_COUNT" in ''|*[!0-9]*) COMBINED_FALLBACK_COUNT="$FALLBA
 DEGRADED_ROUND=false
 [[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_ROUND=true
 if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
+    DEGRADED_ROUND=true
+fi
+_paths_sidecar="${ALL_OUTPUT_FILES_PATH:-${_manifest}.output-files}"
+if [[ "${DISPATCH_OK:-}" == "true" && -f "$_paths_sidecar" && ! -s "$_paths_sidecar" && slot_count -gt 0 ]]; then
     DEGRADED_ROUND=true
 fi
 

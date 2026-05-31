@@ -38,17 +38,34 @@ CODEX_PRESENT="${CODEX_PRESENT:-}"
 CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-unknown}"
 CURSOR_PRESENT="${CURSOR_PRESENT:-}"
 SKILL_LABEL="this"
+CODEX_BINARY_FOUND_SET=false
+CODEX_PRESENT_SET=false
+CURSOR_BINARY_FOUND_SET=false
+CURSOR_PRESENT_SET=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --codex-binary-found)  CODEX_BINARY_FOUND="${2-}"; shift 2 ;;
-        --codex-present)       CODEX_PRESENT="${2-}"; shift 2 ;;
-        --cursor-binary-found) CURSOR_BINARY_FOUND="${2-}"; shift 2 ;;
-        --cursor-present)      CURSOR_PRESENT="${2-}"; shift 2 ;;
+        --codex-binary-found)  CODEX_BINARY_FOUND="${2-}"; CODEX_BINARY_FOUND_SET=true; shift 2 ;;
+        --codex-present)       CODEX_PRESENT="${2-}"; CODEX_PRESENT_SET=true; shift 2 ;;
+        --cursor-binary-found) CURSOR_BINARY_FOUND="${2-}"; CURSOR_BINARY_FOUND_SET=true; shift 2 ;;
+        --cursor-present)      CURSOR_PRESENT="${2-}"; CURSOR_PRESENT_SET=true; shift 2 ;;
         --skill)               SKILL_LABEL="${2-}"; shift 2 ;;
         *) larch_err "degraded-tools-gate.sh: unknown argument: $1"; exit 2 ;;
     esac
 done
+
+if [[ "$CODEX_BINARY_FOUND_SET" == "false" && "$CODEX_BINARY_FOUND" != "unknown" ]]; then
+    larch_err "degraded-tools-gate.sh: WARNING: --codex-binary-found omitted; using CODEX_BINARY_FOUND from environment"
+fi
+if [[ "$CODEX_PRESENT_SET" == "false" && -n "${CODEX_PRESENT:-}" ]]; then
+    larch_err "degraded-tools-gate.sh: WARNING: --codex-present omitted; using CODEX_PRESENT from environment"
+fi
+if [[ "$CURSOR_BINARY_FOUND_SET" == "false" && "$CURSOR_BINARY_FOUND" != "unknown" ]]; then
+    larch_err "degraded-tools-gate.sh: WARNING: --cursor-binary-found omitted; using CURSOR_BINARY_FOUND from environment"
+fi
+if [[ "$CURSOR_PRESENT_SET" == "false" && -n "${CURSOR_PRESENT:-}" ]]; then
+    larch_err "degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment"
+fi
 
 # Normalize. Presence is always known (every skill parses it): true|false.
 # Binary-found is OPTIONAL — skills that do not parse it leave it `unknown`,
@@ -107,17 +124,28 @@ emit ""
 emit "  • Codex:  $(state_phrase "$CODEX_STATE")"
 emit "  • Cursor: $(state_phrase "$CURSOR_STATE")"
 emit ""
-emit "What this means: multi-tool roles (reviewer/voter panels, decomposition, the"
-emit "implementer, and CI/fix coders) run through the per-slot backup waterfall —"
-emit "Codex roles fall through to Cursor then Claude, and Cursor roles fall through"
-emit "to Codex then Claude — so the run will still COMPLETE. The cost is reduced"
-emit "model-family diversity: an unavailable tool's slots are covered by the other"
-emit "external tool (or Claude), and a few tool-specific roles are dropped rather"
-emit "than substituted (e.g. /design Codex dialectic buckets and Codex sketch"
-emit "personalities when Codex is down)."
-emit ""
-emit "Continue in this degraded mode (backup waterfall), or abort and retry once"
-emit "the tool is healthy?"
+if [[ "$SKILL_LABEL" == "design" ]]; then
+    emit "What this means for /design: plan-review, decomposition, assessor, and plan-voter"
+    emit "panels use availability-gated single launch (--no-fallback). Absent tools are"
+    emit "omitted from the manifest; failed slots are dropped without cross-tool or Claude"
+    emit "padding. When both externals are absent, plan-review uses one generic Claude"
+    emit "reviewer covering all archetype lenses. Expect fewer reviewers and possible"
+    emit "zero-findings / degraded tally paths — not per-slot Codex→Cursor→Claude waterfall."
+    emit ""
+    emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"
+else
+    emit "What this means: multi-tool roles (reviewer/voter panels, decomposition, the"
+    emit "implementer, and CI/fix coders) run through the per-slot backup waterfall —"
+    emit "Codex roles fall through to Cursor then Claude, and Cursor roles fall through"
+    emit "to Codex then Claude — so the run will still COMPLETE. The cost is reduced"
+    emit "model-family diversity: an unavailable tool's slots are covered by the other"
+    emit "external tool (or Claude), and a few tool-specific roles are dropped rather"
+    emit "than substituted (e.g. /design Codex dialectic buckets and Codex sketch"
+    emit "personalities when Codex is down)."
+    emit ""
+    emit "Continue in this degraded mode (backup waterfall), or abort and retry once"
+    emit "the tool is healthy?"
+fi
 emit DEGRADED_EXPLANATION_END
 
 exit 0

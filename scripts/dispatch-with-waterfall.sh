@@ -93,13 +93,6 @@ slot_outputs=()
 slot_agents=()
 slot_prompts=()
 
-manifest_validation_fail() {
-    local msg="$1"
-    emit_kv STEP_FAILED MANIFEST_VALIDATION
-    larch_err "dispatch-with-waterfall.sh: $msg"
-    exit 2
-}
-
 while IFS= read -r row || [[ -n "$row" ]]; do
     [[ -n "$row" ]] || continue
     printf '%s' "$row" \
@@ -467,6 +460,9 @@ emit_kv COMBINED_FALLBACK_COUNT "$combined_fallback"
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
 emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"
+if [[ "$NO_FALLBACK" == "true" && ${#all_output_files[@]} -eq 0 && slot_count -gt 0 ]]; then
+    emit_kv ALL_SLOTS_DROPPED true
+fi
 
 paths_tmp=$(mktemp "${paths_dir}/.dispatch-waterfall-paths.XXXXXX")
 for ((i=0; i<slot_count; i++)); do
