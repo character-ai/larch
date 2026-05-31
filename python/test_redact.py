@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 import redact
+import version_bump
+from proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECRETS_SH = REPO_ROOT / "scripts" / "redact-secrets.sh"
@@ -42,6 +46,34 @@ def _bash_redact_pipeline(text: str) -> str:
         check=False,
     )
     return secrets_proc.stdout
+
+
+def test_version_bump_error_redaction() -> None:
+    @dataclass
+    class _Stub:
+        responses: dict[tuple[str, ...], CommandResult]
+
+        def run(
+            self,
+            argv: Sequence[str],
+            **_kwargs: object,
+        ) -> CommandResult:
+            return self.responses[tuple(argv)]
+
+    home_path = "/Users/secret/larch6/skills/foo/SKILL.md"
+    stub = _Stub(
+        {
+            ("git", "status", "--porcelain", "--untracked-files=all"): CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                f"UU {home_path}\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = version_bump.apply_bump(stub, "1.0.1")  # type: ignore[arg-type]
+    assert "/Users/secret" not in result.error
 
 
 @pytest.mark.parametrize(

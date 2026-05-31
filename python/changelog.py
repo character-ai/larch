@@ -10,12 +10,12 @@ from pathlib import Path
 
 import config
 import git
-import version_bump
+import redact
+from bump_worktree import DropResult, porcelain_tracked_only, sorted_changed_files
 from proc import Runner
 
 _VERSION_HEADING_MD = re.compile(r"^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ")
-_VERSION_HEADING_MD_EXACT = re.compile(r"^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ")
-_SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+_SEMVER = re.compile(config.SEMVER_RE)
 _RST_ADORNMENT_CHARS = set("#*=-~^\"'`:.+_")
 _MIN_RST_ADORNMENT_LEN = 3
 _MIN_RST_SECTIONS_FOR_DOC_TITLE_SKIP = 2
@@ -28,6 +28,53 @@ def _today_iso() -> str:
 class ChangelogFormat(Enum):
     MARKDOWN = "markdown"
     RST = "rst"
+
+
+def _redact_outbound(text: str) -> str:
+    if not text:
+        return text
+    out = redact.redact(text)
+    if text.endswith("\n"):
+        return out
+    return out.rstrip("\n")
+
+
+def _rst_version_from_title(title: str) -> str | None:
+    if _SEMVER.fullmatch(title):
+        return title
+    bracket = re.search(r"\[([0-9]+\.[0-9]+\.[0-9]+)\]", title)
+    if bracket:
+        return bracket.group(1)
+    version_prefix = re.match(r"Version ([0-9]+\.[0-9]+\.[0-9]+)", title)
+    if version_prefix:
+        return version_prefix.group(1)
+    return None
+
+
+def _rst_matches_version_title(title: str, version: str) -> bool:
+    found = _rst_version_from_title(title)
+    return found == version
+
+
+def _rst_release_section_indices(lines: list[str]) -> list[int]:
+    return [
+        idx
+        for idx in _rst_title_indices(lines)
+        if _rst_version_from_title(lines[idx]) is not None
+    ]
+
+
+def _rst_second_title_index(lines: list[str], fh: int) -> int:
+    for i in range(fh + 2, len(lines) - 1):
+        title = lines[i]
+        ul = lines[i + 1]
+        if not title or not ul or title[0].isspace():
+            continue
+        if not re.search(r"[A-Za-z0-9]", title):
+            continue
+        if is_rst_adornment(ul, title):
+            return i
+    return 0
 
 
 class ChangelogError(Exception):
@@ -124,13 +171,10 @@ def first_version_heading(text: str, *, fmt: ChangelogFormat) -> str | None:
                 return match.group(1)
         return None
     lines = text.splitlines()
-    for idx in _rst_title_indices(lines):
-        title = lines[idx]
-        if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", title):
-            return title
-        match = re.search(r"\[([0-9]+\.[0-9]+\.[0-9]+)\]", title)
-        if match:
-            return match.group(1)
+    for idx in _rst_release_section_indices(lines):
+        version = _rst_version_from_title(lines[idx])
+        if version:
+            return version
     return None
 
 
@@ -143,9 +187,10 @@ def duplicate_version_heading_count(
     if fmt == ChangelogFormat.MARKDOWN:
         prefix = f"## [{version}] - "
         return sum(1 for line in text.splitlines() if line.startswith(prefix))
+    lines = text.splitlines()
     count = 0
-    for line in text.splitlines():
-        if line == version or line.startswith(f"## [{version}]"):
+    for idx in _rst_release_section_indices(lines):
+        if _rst_matches_version_title(lines[idx], version):
             count += 1
     return count
 
@@ -190,10 +235,10 @@ def _extract_md_body(text: str, version: str) -> str | None:
 
 def _extract_rst_body(text: str, version: str) -> str | None:
     lines = text.splitlines()
-    indices = _rst_title_indices(lines)
+    indices = _rst_release_section_indices(lines)
     start = -1
     for idx in indices:
-        if lines[idx] == version or f"[{version}]" in lines[idx]:
+        if _rst_matches_version_title(lines[idx], version):
             start = idx
             break
     if start < 0:
@@ -238,15 +283,11 @@ def _drop_md_section(text: str, version: str) -> str:
 
 def _drop_rst_section(text: str, version: str) -> str:
     lines = text.splitlines()
-    indices = _rst_title_indices(lines)
+    indices = _rst_release_section_indices(lines)
     out: list[str] = []
     i = 0
     while i < len(lines):
-        if i in indices and (
-            lines[i] == version
-            or f"[{version}]" in lines[i]
-            or lines[i].startswith(f"Version {version}")
-        ):
+        if i in indices and _rst_matches_version_title(lines[i], version):
             end = len(lines)
             for j in indices:
                 if j > i:
@@ -359,7 +400,7 @@ def _write_md_entry(
         out.extend(entry)
         inserted = True
     if not inserted:
-        raise ChangelogError("no anchor found for changelog entry", code=3)
+        return _insert_md_version_anchor(text, version, entry_lines=entry)
     result = "\n".join(out)
     return result + ("\n" if text.endswith("\n") else "")
 
@@ -443,16 +484,14 @@ def _auto_resolve_rst(ours: list[str], theirs: list[str]) -> list[str] | None:
     fh3 = _rst_merge_first_index(theirs)
     if fh2 < 0 or fh3 < 0 or ours[fh2] != theirs[fh3]:
         return None
-    sh2 = _rst_title_indices(ours)
-    sh3 = _rst_title_indices(theirs)
-    second2 = next((i for i in sh2 if i > fh2), 0)
-    second3 = next((i for i in sh3 if i > fh3), 0)
+    second2 = _rst_second_title_index(ours, fh2)
+    second3 = _rst_second_title_index(theirs, fh3)
     tail2 = ours[second2:] if second2 > 0 else []
     tail3 = theirs[second3:] if second3 > 0 else []
     if tail2 != tail3:
         return None
-    end2 = second2 - 1 if second2 > 0 else len(ours)
-    end3 = second3 - 1 if second3 > 0 else len(theirs)
+    end2 = second2 if second2 > 0 else len(ours)
+    end3 = second3 if second3 > 0 else len(theirs)
     out: list[str] = []
     out.extend(ours[:fh2])
     out.append(ours[fh2])
@@ -500,10 +539,16 @@ def auto_resolve(runner: Runner, conflict_path: str, *, cwd: str | None = None) 
     return True
 
 
-def _insert_version_heading_md(text: str, version: str) -> str:
-    """Insert empty ## [version] - today heading (commit-changelog.sh parity)."""
+def _insert_md_version_anchor(
+    text: str,
+    version: str,
+    *,
+    entry_lines: list[str] | None = None,
+) -> str:
+    """Insert a version heading block at the canonical Markdown anchor."""
     lines = text.splitlines()
     today = _today_iso()
+    block = entry_lines if entry_lines is not None else [f"## [{version}] - {today}"]
     out: list[str] = []
     inserted = False
     has_unreleased = any(line.startswith("## [Unreleased]") for line in lines)
@@ -517,7 +562,7 @@ def _insert_version_heading_md(text: str, version: str) -> str:
             in_unreleased = False
             if not inserted:
                 out.append("")
-                out.append(f"## [{version}] - {today}")
+                out.extend(block)
                 inserted = True
             out.append(line)
             continue
@@ -531,22 +576,27 @@ def _insert_version_heading_md(text: str, version: str) -> str:
             out.append(line)
             if not inserted:
                 out.append("")
-                out.append(f"## [{version}] - {today}")
+                out.extend(block)
                 inserted = True
             continue
         if not inserted and line.startswith("## ["):
-            out.append(f"## [{version}] - {today}")
+            out.extend(block)
             out.append("")
             inserted = True
         out.append(line)
     if in_unreleased and not inserted:
         out.append("")
-        out.append(f"## [{version}] - {today}")
+        out.extend(block)
         inserted = True
     if not inserted:
-        raise ChangelogError("no anchor found", code=3)
+        raise ChangelogError("no anchor found for changelog entry", code=3)
     result = "\n".join(out)
     return result + ("\n" if text.endswith("\n") else "")
+
+
+def _insert_version_heading_md(text: str, version: str) -> str:
+    """Insert empty ## [version] - today heading (commit-changelog.sh parity)."""
+    return _insert_md_version_anchor(text, version)
 
 
 def _retitle_version_heading_md(
@@ -591,22 +641,28 @@ def commit_changelog(
 ) -> CommitResult:
     """Insert/retitle changelog heading and commit."""
     if not _SEMVER.fullmatch(version):
-        return CommitResult(committed=False, error=f"invalid --version: {version}")
+        return CommitResult(
+            committed=False,
+            error=_redact_outbound(f"invalid --version: {version}"),
+        )
 
     root = Path(cwd) if cwd else Path.cwd()
     changelog_path = root / path
     if not changelog_path.is_file():
-        return CommitResult(committed=False, error=f"{path} not found")
+        return CommitResult(committed=False, error=_redact_outbound(f"{path} not found"))
 
     text = changelog_path.read_text(encoding="utf-8")
     fmt = detect_format(text, path=path)
     if fmt != ChangelogFormat.MARKDOWN:
-        return CommitResult(committed=False, error="commit_changelog supports Markdown only")
+        return CommitResult(
+            committed=False,
+            error=_redact_outbound("commit_changelog supports Markdown only"),
+        )
 
     if duplicate_version_heading_count(text, version, fmt=fmt) > 1:
         return CommitResult(
             committed=False,
-            error=f"multiple existing ## [{version}] - headings",
+            error=_redact_outbound(f"multiple existing ## [{version}] - headings"),
         )
 
     status = git.status_porcelain(runner, untracked_files="no", cwd=cwd)
@@ -620,7 +676,7 @@ def commit_changelog(
             if file_path != path:
                 return CommitResult(
                     committed=False,
-                    error=f"tracked file dirty outside {path}: {file_path}",
+                    error=_redact_outbound(f"tracked file dirty outside {path}: {file_path}"),
                 )
 
     replace = replaces_version or ""
@@ -632,7 +688,7 @@ def commit_changelog(
             except ChangelogError:
                 return CommitResult(
                     committed=False,
-                    error=f"replaces-version not found: {replace}",
+                    error=_redact_outbound(f"replaces-version not found: {replace}"),
                 )
         else:
             text = retitled
@@ -651,10 +707,10 @@ def commit_changelog(
     msg = config.CHANGELOG_COMMIT_SUBJECT_TEMPLATE.format(version=version)
     add_result = git.add(runner, path, cwd=cwd)
     if add_result.returncode != 0:
-        return CommitResult(committed=False, error="git add failed")
-    commit_result = git.commit(runner, msg, cwd=cwd)
+        return CommitResult(committed=False, error=_redact_outbound("git add failed"))
+    commit_result = git.commit(runner, msg, only=path, cwd=cwd)
     if commit_result.returncode != 0:
-        return CommitResult(committed=False, error="git commit failed")
+        return CommitResult(committed=False, error=_redact_outbound("git commit failed"))
     sha = git.rev_parse(runner, "HEAD", cwd=cwd)
     return CommitResult(committed=True, commit_sha=sha)
 
@@ -665,13 +721,16 @@ def drop_changelog_commit(
     *,
     max_depth: int = config.DROP_CHANGELOG_MAX_DEPTH,
     cwd: str | None = None,
-) -> version_bump.DropResult:
+) -> DropResult:
     """Drop the most recent Update CHANGELOG commit for version."""
     if not _SEMVER.fullmatch(version):
-        return version_bump.DropResult(dropped=False, error="invalid version")
+        return DropResult(dropped=False, error=_redact_outbound("invalid version"))
 
-    if version_bump.porcelain_tracked_only(runner, cwd=cwd):
-        return version_bump.DropResult(dropped=False, error="dirty worktree")
+    tracked = porcelain_tracked_only(runner, cwd=cwd)
+    if tracked is None:
+        return DropResult(dropped=False, error=_redact_outbound("git status failed"))
+    if tracked:
+        return DropResult(dropped=False, error="dirty worktree")
 
     expected = config.CHANGELOG_COMMIT_SUBJECT_TEMPLATE.format(version=version)
     found_at = -1
@@ -684,26 +743,26 @@ def drop_changelog_commit(
             break
 
     if found_at < 0:
-        return version_bump.DropResult(dropped=False, error="no changelog commit found")
+        return DropResult(dropped=False, error="no changelog commit found")
 
     parent_ref = f"HEAD~{found_at + 1}"
     if git.try_rev_parse(runner, parent_ref, cwd=cwd) is None:
-        return version_bump.DropResult(dropped=False, error="parent missing")
+        return DropResult(dropped=False, error="parent missing")
 
-    changed = version_bump.sorted_changed_files(
+    changed = sorted_changed_files(
         runner,
         parent_ref,
         f"HEAD~{found_at}",
         cwd=cwd,
     )
     if changed != config.CHANGELOG_DEFAULT_PATH:
-        return version_bump.DropResult(dropped=False, error="unexpected files")
+        return DropResult(dropped=False, error=_redact_outbound("unexpected files"))
 
     old_sha = git.rev_parse(runner, f"HEAD~{found_at}", cwd=cwd)
     if found_at == 0:
         reset = git.reset(runner, "--hard", "HEAD~1", cwd=cwd)
         if reset.returncode != 0:
-            return version_bump.DropResult(dropped=False, error="reset failed")
+            return DropResult(dropped=False, error="reset failed")
     else:
         rebase = git.rebase_onto(
             runner,
@@ -713,6 +772,6 @@ def drop_changelog_commit(
         )
         if rebase.returncode != 0:
             _ = git.rebase(runner, "--abort", cwd=cwd)
-            return version_bump.DropResult(dropped=False, error="rebase failed")
+            return DropResult(dropped=False, error="rebase failed")
 
-    return version_bump.DropResult(dropped=True, old_sha=old_sha)
+    return DropResult(dropped=True, old_sha=old_sha)

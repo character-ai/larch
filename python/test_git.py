@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import cast
 
 import pytest
 
@@ -202,3 +203,29 @@ def test_value_helper_raises_on_failure() -> None:
     )
     with pytest.raises(ShipError):
         _ = git.rev_parse(runner, "HEAD")
+
+
+def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_DIR", "/evil")
+    monkeypatch.setenv("GIT_WORK_TREE", "/evil")
+    captured: dict[str, object] = {}
+
+    class CaptureRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+        ) -> CommandResult:
+            _ = timeout, cwd, check
+            captured["env"] = dict(env) if env else {}
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    _ = git.rebase_onto(CaptureRunner(), "HEAD~2", "HEAD~1")
+    env = cast(dict[str, str], captured["env"])
+    assert "GIT_DIR" not in env
+    assert "GIT_WORK_TREE" not in env
+    assert env.get("GIT_SEQUENCE_EDITOR") == "true"

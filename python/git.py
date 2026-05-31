@@ -238,6 +238,17 @@ def diff_tree_name_only(
     )
 
 
+def _git_subprocess_env() -> dict[str, str]:
+    """Minimal env for git helpers; drop GIT_DIR/GIT_WORK_TREE overrides."""
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in ("GIT_DIR", "GIT_WORK_TREE")
+    }
+    env["GIT_SEQUENCE_EDITOR"] = "true"
+    return env
+
+
 def rebase_onto(
     runner: Runner,
     newbase: str,
@@ -245,12 +256,11 @@ def rebase_onto(
     *,
     cwd: str | None = None,
 ) -> CommandResult:
-    env = {**os.environ, "GIT_SEQUENCE_EDITOR": "true"}
     return _run(
         runner,
         ["git", "rebase", "--onto", newbase, upstream],
         cwd=cwd,
-        env=env,
+        env=_git_subprocess_env(),
     )
 
 

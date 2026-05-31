@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -52,10 +53,19 @@ class StubRunner:
         check: bool = False,  # pylint: disable=unused-argument
     ) -> CommandResult:
         key = tuple(argv)
-        if key not in self.responses:
-            msg = f"unexpected argv: {argv}"
-            raise AssertionError(msg)
-        return self.responses[key]
+        if key in self.responses:
+            return self.responses[key]
+        if (
+            len(key) >= 3
+            and key[0] == "git"
+            and key[1] == "status"
+            and key[2] == "--porcelain"
+        ):
+            short = ("git", "status", "--porcelain")
+            if short in self.responses:
+                return self.responses[short]
+        msg = f"unexpected argv: {argv}"
+        raise AssertionError(msg)
 
 
 def _parse_kv(stdout: str) -> dict[str, str]:
@@ -333,3 +343,304 @@ def test_parity_drop_bump_noop_without_commit(tmp_path: Path) -> None:
     py = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
     bash_kv = _parse_kv(bash.stdout)
     assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
+
+
+def test_drop_empty_larch_bump_files_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _init_bump_repo(tmp_path)
+    plugin = repo / ".claude-plugin/plugin.json"
+    _ = plugin.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+    _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 2.0.0"], cwd=repo, check=True)
+    monkeypatch.setenv(config.ENV_LARCH_BUMP_FILES, "::")
+    result = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
+    assert result.dropped is False
+    assert "empty" in result.error.lower()
+
+
+def test_drop_status_failure_refuses() -> None:
+    runner = StubRunner(
+        {
+            ("git", "status", "--porcelain", "--untracked-files=no"): CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=no"),
+                128,
+                "",
+                "fatal",
+                0.01,
+            ),
+        },
+    )
+    result = version_bump.drop_bump_commit(runner)
+    assert result.dropped is False
+    assert "status" in result.error.lower()
+
+
+def test_verify_git_error_on_rev_list_failure() -> None:
+    runner = StubRunner(
+        {
+            ("git", "rev-parse", "main"): CommandResult(
+                ("git", "rev-parse", "main"), 0, "abc\n", "", 0.01
+            ),
+            ("git", "rev-list", "--count", "main..HEAD"): CommandResult(
+                ("git", "rev-list", "--count", "main..HEAD"), 1, "", "fatal", 0.01
+            ),
+        },
+    )
+    verify = version_bump.verify_bump_commit_count(runner, 0)
+    assert verify.verified is False
+    assert verify.status == "git_error"
+
+
+def test_apply_status_failure_returns_apply_result() -> None:
+    runner = StubRunner(
+        {
+            ("git", "status", "--porcelain"): CommandResult(
+                ("git", "status", "--porcelain"), 128, "", "fatal", 0.01
+            ),
+        },
+    )
+    result = version_bump.apply_bump(runner, "1.0.1")
+    assert result.applied is False
+    assert "git status failed" in result.error
+
+
+def test_apply_git_add_failure_rolls_back(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    plugin_json = plugin / "plugin.json"
+    _ = plugin_json.write_text('{"version": "1.0.0"}\n', encoding="utf-8")
+
+    runner = StubRunner(
+        {
+            ("git", "status", "--porcelain"): CommandResult(
+                ("git", "status", "--porcelain"), 0, "", "", 0.01
+            ),
+            ("git", "add", config.PLUGIN_JSON_PATH): CommandResult(
+                ("git", "add", config.PLUGIN_JSON_PATH), 1, "", "fatal", 0.01
+            ),
+            ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH): CommandResult(
+                ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH), 0, "", "", 0.01
+            ),
+        },
+    )
+    result = version_bump.apply_bump(runner, "1.0.1", cwd=str(repo))
+    assert result.applied is False
+    assert "add" in result.error.lower()
+    assert plugin_json.read_text(encoding="utf-8") == '{"version": "1.0.0"}\n'
+    assert not (plugin_json.with_suffix(plugin_json.suffix + ".bump-backup")).exists()
+
+
+def test_apply_error_redacts_home_path() -> None:
+    home_path = "/Users/secret/larch6/skills/foo/SKILL.md"
+    runner = StubRunner(
+        {
+            ("git", "status", "--porcelain"): CommandResult(
+                ("git", "status", "--porcelain"),
+                0,
+                f"UU {home_path}\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = version_bump.apply_bump(runner, "1.0.1")
+    assert result.applied is False
+    assert "/Users/secret" not in result.error
+    assert config.REDACTED_OPERATOR_REPO in result.error
+
+
+def test_apply_max_retries_exhausted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(config, "APPLY_BUMP_MAX_RETRIES", 1)
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    plugin_json = plugin / "plugin.json"
+    _ = plugin_json.write_text('{"version": "1.0.0"}\n', encoding="utf-8")
+    fetch_calls = 0
+
+    class RetryRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+        ) -> CommandResult:
+            _ = timeout, cwd, env, check
+            nonlocal fetch_calls
+            if len(argv) >= 3 and argv[0] == "git" and argv[1] == "status":
+                return CommandResult(tuple(argv), 0, "", "", 0.01)
+            if len(argv) >= 4 and tuple(argv[:4]) == ("git", "fetch", "origin", "main"):
+                fetch_calls += 1
+                return CommandResult(tuple(argv), 0, "", "", 0.01)
+            if len(argv) >= 3 and argv[0] == "git" and argv[1] == "show" and "origin/main" in argv[2]:
+                current = json.loads(plugin_json.read_text(encoding="utf-8"))["version"]
+                return CommandResult(
+                    tuple(argv),
+                    0,
+                    json.dumps({"version": current}) + "\n",
+                    "",
+                    0.01,
+                )
+            if len(argv) >= 3 and argv[0] == "git" and argv[1] == "add":
+                return CommandResult(tuple(argv), 0, "", "", 0.01)
+            if len(argv) >= 4 and tuple(argv[:4]) == ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH):
+                return CommandResult(tuple(argv), 0, "", "", 0.01)
+            msg = f"unexpected: {argv}"
+            raise AssertionError(msg)
+
+    result = version_bump.apply_bump(RetryRunner(), "1.0.1", cwd=str(repo))
+    assert result.applied is False
+    assert "retries" in result.error.lower()
+    assert fetch_calls == 2
+
+
+def test_git_commit_argv_includes_message(tmp_path: Path) -> None:
+    runner = StubRunner(
+        {
+            ("git", "status", "--porcelain"): CommandResult(
+                ("git", "status", "--porcelain"), 0, "", "", 0.01
+            ),
+            ("git", "fetch", "origin", "main", "--quiet"): CommandResult(
+                ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
+            ),
+            ("git", "show", "origin/main:.claude-plugin/plugin.json"): CommandResult(
+                ("git", "show", "origin/main:.claude-plugin/plugin.json"),
+                0,
+                '{"version":"0.0.0"}\n',
+                "",
+                0.01,
+            ),
+            ("git", "add", config.PLUGIN_JSON_PATH): CommandResult(
+                ("git", "add", config.PLUGIN_JSON_PATH), 0, "", "", 0.01
+            ),
+            (
+                "git",
+                "commit",
+                "-m",
+                config.BUMP_COMMIT_SUBJECT_TEMPLATE.format(version="1.0.1"),
+            ): CommandResult(
+                (
+                    "git",
+                    "commit",
+                    "-m",
+                    config.BUMP_COMMIT_SUBJECT_TEMPLATE.format(version="1.0.1"),
+                ),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+            ("git", "rev-parse", "HEAD"): CommandResult(
+                ("git", "rev-parse", "HEAD"), 0, "sha\n", "", 0.01
+            ),
+            ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH): CommandResult(
+                ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH), 0, "", "", 0.01
+            ),
+        },
+    )
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True, exist_ok=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    result = version_bump.apply_bump(runner, "1.0.1", cwd=str(repo))
+    assert result.applied is True
+
+
+def _init_repo_with_origin(tmp_path: Path) -> tuple[Path, int]:
+    _ = tmp_path.mkdir(parents=True, exist_ok=True)
+    base = tmp_path / "origin.git"
+    _ = base.mkdir(parents=True, exist_ok=True)
+    _ = subprocess.run(["git", "init", "-q", "--bare", str(base)], check=True)
+    repo = tmp_path / "work"
+    _ = repo.mkdir()
+    _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    _ = subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "remote", "add", "origin", str(base)], cwd=repo, check=True)
+    _ = subprocess.run(["git", "push", "-q", "origin", "main"], cwd=repo, check=True)
+    pre = version_bump.check_bump_version_pre(ProcRunner(), cwd=str(repo))
+    return repo, pre.commits_before
+
+
+@pytest.mark.skipif(
+    not APPLY_SH.is_file() or shutil.which("bash") is None,
+    reason="apply-bump.sh or bash unavailable",
+)
+def test_parity_apply_bump_success_with_origin(tmp_path: Path) -> None:
+    repo_bash, _ = _init_repo_with_origin(tmp_path / "bash")
+    repo_py, _ = _init_repo_with_origin(tmp_path / "py")
+    bash = subprocess.run(
+        ["bash", str(APPLY_SH), "--new-version", "1.0.1"],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.apply_bump(ProcRunner(), "1.0.1", cwd=str(repo_py))
+    bash_kv = _parse_kv(bash.stdout)
+    assert bash_kv.get("APPLIED", "").lower() == "true"
+    assert py.applied is True
+    assert py.commit_sha
+    assert json.loads((repo_py / ".claude-plugin/plugin.json").read_text())["version"] == "1.0.1"
+
+
+@pytest.mark.skipif(
+    not CHECK_SH.is_file() or shutil.which("bash") is None,
+    reason="check-bump-version.sh or bash unavailable",
+)
+def test_parity_check_bump_post(tmp_path: Path) -> None:
+    repo, before = _init_repo_with_origin(tmp_path)
+    plugin = repo / ".claude-plugin/plugin.json"
+    _ = plugin.write_text('{"version":"1.0.1"}\n', encoding="utf-8")
+    _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.0.1"], cwd=repo, check=True)
+    bash = subprocess.run(
+        ["bash", str(CHECK_SH), "--mode", "post", "--before-count", str(before)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.verify_bump_commit_count(ProcRunner(), before, cwd=str(repo))
+    bash_kv = _parse_kv(bash.stdout)
+    assert str(py.verified).lower() == bash_kv.get("VERIFIED", "").lower()
+    assert str(py.commits_after) == bash_kv.get("COMMITS_AFTER")
+    assert py.status == bash_kv.get("STATUS")
+
+
+def test_classify_deleted_skill_major(tmp_path: Path) -> None:
+    repo = _init_bump_repo(tmp_path)
+    skill = repo / "skills/base/SKILL.md"
+    _ = subprocess.run(["git", "rm", "-q", str(skill.relative_to(repo))], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "remove base skill"], cwd=repo, check=True)
+    result = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
+    assert result.bump_type == "MAJOR"
+    assert any("Deleted" in reason for reason in result.major_reasons)
+
+
+def test_drop_reset_at_head(tmp_path: Path) -> None:
+    repo = _init_bump_repo(tmp_path)
+    plugin = repo / ".claude-plugin/plugin.json"
+    _ = plugin.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+    _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 2.0.0"], cwd=repo, check=True)
+    result = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
+    assert result.dropped is True
+    assert json.loads(plugin.read_text(encoding="utf-8"))["version"] == "1.2.2"

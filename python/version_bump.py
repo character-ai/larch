@@ -13,6 +13,8 @@ from typing import Literal
 
 import config
 import git
+import redact
+from bump_worktree import DropResult, porcelain_tracked_only, sorted_changed_files
 from errors import ShipError, Stalled
 from proc import Runner
 
@@ -61,11 +63,13 @@ class BumpVerify:
     status: CountStatus
 
 
-@dataclass(frozen=True)
-class DropResult:
-    dropped: bool
-    old_sha: str = ""
-    error: str = ""
+def _redact_outbound(text: str) -> str:
+    if not text:
+        return text
+    out = redact.redact(text)
+    if text.endswith("\n"):
+        return out
+    return out.rstrip("\n")
 
 
 def _plugin_path(cwd: Path | None) -> Path:
@@ -86,7 +90,7 @@ def _read_plugin_version(path: Path) -> str:
     if not isinstance(version, str) or not version:
         msg = f"{config.PLUGIN_JSON_PATH} missing .version field"
         raise ShipError(msg)
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
+    if not re.fullmatch(config.SEMVER_RE, version):
         msg = f"version {version!r} is not semver (expected X.Y.Z)"
         raise ShipError(msg)
     return version
@@ -263,7 +267,7 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
             bump_type="NONE",
             major_reasons=(),
             minor_reasons=(),
-            reasoning=reasoning,
+            reasoning=_redact_outbound(reasoning),
         )
 
     major: list[str] = []
@@ -355,7 +359,7 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
         bump_type=bump_type,
         major_reasons=tuple(major),
         minor_reasons=tuple(minor),
-        reasoning=reasoning,
+        reasoning=_redact_outbound(reasoning),
     )
 
 
@@ -432,16 +436,11 @@ def verify_bump_commit_count(
     )
 
 
-def porcelain_tracked_only(runner: Runner, *, cwd: str | None) -> list[str]:
-    result = git.status_porcelain(runner, untracked_files="no", cwd=cwd)
+def _porcelain_all(runner: Runner, *, cwd: str | None) -> list[str] | None:
+    result = git.status_porcelain(runner, cwd=cwd)
     if result.returncode != 0:
-        return []
+        return None
     return [line for line in result.stdout.splitlines() if line]
-
-
-def _porcelain_all(runner: Runner, *, cwd: str | None) -> list[str]:
-    status = git.status(runner, cwd=cwd)
-    return [line for line in status.porcelain.splitlines() if line]
 
 
 def _tolerated_untracked(line: str) -> bool:
@@ -451,9 +450,9 @@ def _tolerated_untracked(line: str) -> bool:
     return any(path.endswith(suffix) for suffix in config.APPLY_BUMP_ALLOWED_UNTRACKED_SUFFIXES)
 
 
-def _unmerged_paths(runner: Runner, *, cwd: str | None) -> list[str]:
+def _unmerged_paths_from_lines(lines: list[str]) -> list[str]:
     unmerged: list[str] = []
-    for line in _porcelain_all(runner, cwd=cwd):
+    for line in lines:
         if len(line) < _PORCELAIN_STATUS_PREFIX_LEN + 1:
             continue
         code = line[:2]
@@ -469,25 +468,30 @@ def apply_bump(
     cwd: str | None = None,
 ) -> ApplyResult:
     """Apply version bump to plugin.json and commit."""
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", new_version):
-        return ApplyResult(applied=False, error=f"--new-version {new_version!r} is not semver")
+    if not re.fullmatch(config.SEMVER_RE, new_version):
+        return ApplyResult(
+            applied=False,
+            error=_redact_outbound(f"--new-version {new_version!r} is not semver"),
+        )
 
     root = Path(cwd) if cwd else Path.cwd()
     plugin_path = _plugin_path(root)
     backup_path = plugin_path.with_suffix(plugin_path.suffix + ".bump-backup")
 
-    unmerged = _unmerged_paths(runner, cwd=cwd)
+    raw = _porcelain_all(runner, cwd=cwd)
+    if raw is None:
+        return ApplyResult(applied=False, error=_redact_outbound("git status failed"))
+
+    unmerged = _unmerged_paths_from_lines(raw)
     if unmerged:
         files = ",".join(unmerged)
         return ApplyResult(
             applied=False,
-            error=(
+            error=_redact_outbound(
                 f"unmerged paths present: {files}. Resolve conflicts from the "
-                "in-progress merge or rebase before bumping."
+                "in-progress merge or rebase before bumping.",
             ),
         )
-
-    raw = _porcelain_all(runner, cwd=cwd)
     non_internal = [
         line for line in raw
         if not _tolerated_untracked(line)
@@ -495,35 +499,54 @@ def apply_bump(
     if non_internal:
         return ApplyResult(
             applied=False,
-            error=(
+            error=_redact_outbound(
                 "Working tree is not clean (staged, unstaged, or untracked changes "
-                "present); refusing to bump version."
+                "present); refusing to bump version.",
             ),
         )
 
     try:
         original_current = _read_plugin_version(plugin_path)
     except ShipError as exc:
-        return ApplyResult(applied=False, error=str(exc))
+        return ApplyResult(applied=False, error=_redact_outbound(str(exc)))
 
     initial_target = new_version
+    tmp_path = plugin_path.with_suffix(".tmp")
+
+    def _cleanup_stage_artifacts() -> None:
+        if backup_path.is_file():
+            backup_path.unlink()
+        if tmp_path.is_file():
+            tmp_path.unlink()
 
     def rollback_before_commit() -> None:
         if backup_path.is_file():
             _ = shutil.copy2(backup_path, plugin_path)
+            backup_path.unlink()
             _ = git.unstage(runner, config.PLUGIN_JSON_PATH, cwd=cwd)
+        if tmp_path.is_file():
+            tmp_path.unlink()
 
     def backup_rewrite_stage(target: str) -> ApplyResult | None:
         try:
             _ = shutil.copy2(plugin_path, backup_path)
             data = json.loads(plugin_path.read_text(encoding="utf-8"))
             data["version"] = target
-            tmp = plugin_path.with_suffix(".tmp")
-            _ = tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-            _ = tmp.replace(plugin_path)
-            _ = git.add(runner, config.PLUGIN_JSON_PATH, cwd=cwd)
+            _ = tmp_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            _ = tmp_path.replace(plugin_path)
+            add_result = git.add(runner, config.PLUGIN_JSON_PATH, cwd=cwd)
+            if add_result.returncode != 0:
+                if backup_path.is_file():
+                    _ = shutil.copy2(backup_path, plugin_path)
+                _ = git.unstage(runner, config.PLUGIN_JSON_PATH, cwd=cwd)
+                _cleanup_stage_artifacts()
+                return ApplyResult(applied=False, error=_redact_outbound("git add failed"))
         except (OSError, json.JSONDecodeError) as exc:
-            return ApplyResult(applied=False, error=str(exc))
+            if backup_path.is_file():
+                _ = shutil.copy2(backup_path, plugin_path)
+            _ = git.unstage(runner, config.PLUGIN_JSON_PATH, cwd=cwd)
+            _cleanup_stage_artifacts()
+            return ApplyResult(applied=False, error=_redact_outbound(str(exc)))
         return None
 
     stage_err = backup_rewrite_stage(new_version)
@@ -537,7 +560,9 @@ def apply_bump(
             rollback_before_commit()
             return ApplyResult(
                 applied=False,
-                error="git fetch origin main failed; cannot verify origin/main version guards",
+                error=_redact_outbound(
+                    "git fetch origin main failed; cannot verify origin/main version guards",
+                ),
             )
 
         origin_show = git.show_file(
@@ -555,19 +580,22 @@ def apply_bump(
             except json.JSONDecodeError:
                 origin_version = ""
 
-        if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", origin_version):
+        if not re.fullmatch(config.SEMVER_RE, origin_version):
             rollback_before_commit()
-            return ApplyResult(applied=False, error="could not parse origin/main published version")
+            return ApplyResult(
+                applied=False,
+                error=_redact_outbound("could not parse origin/main published version"),
+            )
 
         if origin_version == new_version or _semver_lt(new_version, origin_version):
             rollback_before_commit()
             if retry_count >= config.APPLY_BUMP_MAX_RETRIES:
                 return ApplyResult(
                     applied=False,
-                    error=(
+                    error=_redact_outbound(
                         "origin/main bump race: could not land version after "
                         f"{config.APPLY_BUMP_MAX_RETRIES} retries "
-                        f"(last origin/main={origin_version})"
+                        f"(last origin/main={origin_version})",
                     ),
                 )
             bump_type = _infer_bump_type(original_current, initial_target)
@@ -585,27 +613,15 @@ def apply_bump(
         rollback_before_commit()
         return ApplyResult(
             applied=False,
-            error=f"git commit failed; rolled back {config.PLUGIN_JSON_PATH} from backup",
+            error=_redact_outbound(
+                f"git commit failed; rolled back {config.PLUGIN_JSON_PATH} from backup",
+            ),
         )
 
     if backup_path.is_file():
         backup_path.unlink()
     sha = git.rev_parse(runner, "HEAD", cwd=cwd)
     return ApplyResult(applied=True, new_version=new_version, commit_sha=sha)
-
-
-def sorted_changed_files(
-    runner: Runner,
-    parent: str,
-    child: str,
-    *,
-    cwd: str | None,
-) -> str:
-    result = git.diff_name_only(runner, parent, child, cwd=cwd)
-    if result.returncode != 0:
-        return ""
-    files = sorted(result.stdout.splitlines(), key=lambda s: s.encode("utf-8"))
-    return "\n".join(f for f in files if f)
 
 
 def _guard4_allows(
@@ -629,8 +645,9 @@ def _guard4_allows(
             return True
         return allow_changelog_only and changed == config.CHANGELOG_DEFAULT_PATH
 
-    allowed_one = config.PLUGIN_JSON_PATH
-    allowed_two = f"{config.PLUGIN_JSON_PATH}\n{config.CHANGELOG_DEFAULT_PATH}"
+    default_files = config.DEFAULT_BUMP_FILES
+    allowed_one = "\n".join(default_files)
+    allowed_two = "\n".join((*default_files, config.CHANGELOG_DEFAULT_PATH))
     if changed in (allowed_one, allowed_two):
         return True
     return allow_changelog_only and changed == config.CHANGELOG_DEFAULT_PATH
@@ -645,7 +662,10 @@ def drop_bump_commit(
     cwd: str | None = None,
 ) -> DropResult:
     """Drop the most recent bump version commit within max_depth."""
-    if porcelain_tracked_only(runner, cwd=cwd):
+    tracked = porcelain_tracked_only(runner, cwd=cwd)
+    if tracked is None:
+        return DropResult(dropped=False, error=_redact_outbound("git status failed"))
+    if tracked:
         return DropResult(dropped=False, error="uncommitted tracked changes")
 
     found_at = -1
@@ -675,14 +695,21 @@ def drop_bump_commit(
     effective_bump_files = bump_files
     if env_bump is not None and bump_files is None:
         segments = [s.strip() for s in env_bump.split(":") if s.strip()]
-        effective_bump_files = tuple(segments) if segments else ()
+        if not segments:
+            return DropResult(
+                dropped=False,
+                error=_redact_outbound(
+                    "LARCH_BUMP_FILES is set but empty after parsing; refusing to drop",
+                ),
+            )
+        effective_bump_files = tuple(segments)
 
     if not _guard4_allows(
         changed,
         allow_changelog_only=allow_changelog_only,
         bump_files=effective_bump_files,
     ):
-        return DropResult(dropped=False, error="unexpected changed files")
+        return DropResult(dropped=False, error=_redact_outbound("unexpected changed files"))
 
     old_sha = git.rev_parse(runner, f"HEAD~{found_at}", cwd=cwd)
 
