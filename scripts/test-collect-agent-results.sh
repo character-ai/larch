@@ -9,6 +9,10 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"
 TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-collect-agent-results-XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+# Collector on-demand launch-stderr tails use mktemp under TMPDIR; isolate so the
+# leak assertion below is not tripped by unrelated files in the host TMPDIR.
+export TMPDIR="$TMPROOT/collector-tmp"
+mkdir -p "$TMPDIR"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMPROOT/execution-issues.md"
 trap 'rm -rf "$TMPROOT" 2>/dev/null' EXIT
