@@ -1,0 +1,101 @@
+Incorporating accepted reviewer findings into the plan. Verifying referenced locations in the codebase.
+--- a/plan.txt
++++ b/plan.txt
+@@ -26,6 +26,7 @@
+ - Line 147: delete `emit_kv CONVERGENCE_STREAK ...`. Add `emit_kv NIT_ACCEPTED_COUNT ...` and `emit_kv NON_NIT_ACCEPTED_COUNT ...` (replaces the removed streak KV slot; gives tests a boundary to assert).
+ - Line 165: delete the `CONVERGENCE_STREAK=` line from `write_step3_result_env`; add `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT`.
++- Line 389 (`_write_round_summary`): replace `printf 'CONVERGENCE_STREAK=%s\n' "${CONVERGENCE_STREAK:-0}"` with `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` lines (same values as stdout / step3 result; mirrors lines 147 and 165).
+ - Lines 1222-1223: delete the `convergence_streak` / `CONVERGENCE_STREAK` loop-local init.
++- Lines 1258 and 1274: on `panel-failed` and `tally-error`, alongside `IMPORTANT_ACCEPTED_COUNT=0`, set `NIT_ACCEPTED_COUNT=0` and `NON_NIT_ACCEPTED_COUNT=0` so error exits do not emit stale nit counts from a prior round.
+ - Nit counter: add a `_count_nit_findings` helper mirroring `_count_important_findings` (lines 190-204) but matching `^- \*\*Severity\*\*: nit`. Compute `NIT_ACCEPTED_COUNT` from `accepted-plan-findings.md` next to the existing `IMPORTANT_ACCEPTED_COUNT` (lines 1285 and 1247) and derive `NON_NIT_ACCEPTED_COUNT=$((ACCEPTED_COUNT - NIT_ACCEPTED_COUNT))` (floor at 0).
+ - Main convergence block (currently lines 1363-1378): replace the degraded/elif-streak/else cascade with: when `DEGRADED_PANEL != 1` AND `NON_NIT_ACCEPTED_COUNT <= 5` AND `IMPORTANT_ACCEPTED_COUNT == 0`, set `LOOP_STATUS=converged`, `LOOP_REASON=converged`, write the round summary, `_terminal_exit 0`. No streak; a single qualifying round converges. A degraded round never converges.
+-- Lookahead block (lines 1333-1361, `_snapshot_round_dir`-failure path): drop `_next_convergence_streak`; set `_next_terminal_status=converged` / `_next_terminal_reason=converged` when `DEGRADED_PANEL != 1 && NON_NIT_ACCEPTED_COUNT <= 5 && IMPORTANT_ACCEPTED_COUNT == 0`. Preserve the `cap-hit` fallback, the `,snapshot-failed` reason suffix, and the `panel-failed` exit-1 tail exactly.
++- Lookahead block (lines 1333-1361, `_snapshot_round_dir`-failure path): drop `_next_convergence_streak` and delete `CONVERGENCE_STREAK="$_next_convergence_streak"` (~line 1353) before `_write_round_summary`; set `_next_terminal_status=converged` / `_next_terminal_reason=converged` when `DEGRADED_PANEL != 1 && NON_NIT_ACCEPTED_COUNT <= 5 && IMPORTANT_ACCEPTED_COUNT == 0`. Preserve the `cap-hit` fallback, the `,snapshot-failed` reason suffix, and the `panel-failed` exit-1 tail exactly.
+ - KEEP unchanged: zero-findings convergence (lines 1288-1305, `LOOP_REASON=zero-findings`), `_count_important_findings` (the 0-important gate), `degraded-empty-collector`, `revision-failed`, `manual-gate-b`, `cap-hit` terminal (lines 1380-1385).
+ - `LOOP_REASON` token: replace `streak` with `converged` at both sites.
+ 
+@@ -33,6 +34,7 @@
+ - Flag list (line 22): remove `optional --convergence-threshold N (default ${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3})`.
+ - KV table: remove the `CONVERGENCE_STREAK` row; add `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` rows; in the `REASON` row (line 40) replace `streak` with `converged`.
++- `round-summary.env` schema (~line 52): remove `CONVERGENCE_STREAK` from the key list; add `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT`.
+ - Convergence prose: "two consecutive non-degraded rounds with ≤3 accepted" → "one non-degraded round with ≤5 non-nit accepted and 0 important accepted (nits excluded from the count)".
+ 
+ ### UPDATED: `skills/design/SKILL.md`
+@@ -49,11 +51,12 @@
+ - Lines 76-77: delete the `--convergence-threshold) ...` argv case.
+ - Line 35: drop `[--convergence-threshold N]` from the `usage()` string.
+ - Lines 1044-1045: delete the `--convergence-threshold` validation block.
+-- Nit counter: add a helper to count `**Nit**`-severity findings in a round's `findings.md` (mirror `important_findings_present` / `count_high_severity_accepted` at lines 101-129; the nit marker is `**Nit**` / severity `nit` per `reviewer-templates.md`). Derive non-nit accepted = `accepted_count − nit_count` for the current round (floor at 0).
+-- Part A convergence (lines 1370-1405): hardcode the bound to `5` (line 1372 → `local small_threshold=5`). Drop the `round_num_dec >= 2` requirement and the previous-round (`find_previous_non_degraded_round` / `prev_accepted_a`) comparison from Part A. Converge when `convergence_candidate_status "$status"` AND `degraded_this_round == false` AND non-nit-accepted `<= 5` AND the current round has no important findings. Scan only the current round's `findings.md` via `important_findings_present "$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md"`. Preserve the `important_rc == 2` → `important_scan_abort=1` error path. Update the `larch_err "⏳ /implement Step 5: converged after round ..."` message to describe single-round, nit-excluded convergence.
++- Nit counter: add `_count_nit_accepted_findings` mirroring design `_count_nit_findings` (block-aware awk on `### FINDING_` blocks with `^- \*\*Severity\*\*: nit` — lowercase, same orchestrator-aggregator output as `/design`; not `**Nit**` title prose). Count only in the round's **accepted** population: resolve `accepted_file` the same way as `count_high_severity_accepted` (lines 1154/1188 / `review-core.env` → `$IMPLEMENT_TMPDIR/round-N/accepted-findings.md`), **not** merged ballot `findings.md` (rejected/exonerated nits in `findings.md` would inflate `nit_count`, floor `non_nit_accepted` to 0, and permit premature `converged-small-changes`). Derive `nit_count` from that accepted file and `non_nit_accepted = accepted_count − nit_count` (floor at 0).
++- Part A convergence (lines 1370-1405): hardcode the bound to `5` (replace `small_threshold` / `CONVERGENCE_THRESHOLD` with literal `5`). Drop `round_num_dec >= 2`, `find_previous_non_degraded_round`, and `prev_accepted_a` from Part A. Converge when `convergence_candidate_status "$status"` AND `degraded_this_round == false` AND `non_nit_accepted <= 5` AND no important findings in the **current** round via `important_findings_present "$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md"` only (drop previous-round `findings.md` from `important_scan_files`). Preserve the `important_rc == 2` → `important_scan_abort=1` error path. Update the `larch_err "⏳ /implement Step 5: converged after round ..."` message to describe single-round, nit-excluded convergence.
+ - KEEP unchanged: `important_findings_present` (101-120), `convergence_candidate_status` (162-168), `find_previous_non_degraded_round` (still used by Part C), Part C churn warning (1407-1422), `count_high_severity_accepted`, the `--round-cap` flag, `status="converged-small-changes"`.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/review-and-fix.md`
+-- Update the `--convergence-threshold N (default: 3) — two consecutive rounds with ACCEPTED_COUNT ≤ N` entry: the flag is removed; document the hardcoded single-round rule — one non-degraded round with ≤5 non-nit accepted and 0 important (nits excluded from the count).
++- Remove the `--convergence-threshold N` argv bullet (lines 47-50); replace with the hardcoded single-round rule — one non-degraded round with ≤5 non-nit accepted and 0 important (nits excluded from the count; degraded rounds never qualify).
++- Rewrite convergence early-termination prose on lines 48-50 (no two consecutive rounds, no threshold `N`, no `consecutive-rounds check`).
++- Line 62 (`converged-small-changes` exit `0` bullet): replace "two consecutive non-degraded rounds both had `ACCEPTED_COUNT ≤ convergence-threshold` and neither contained Important findings" with single-round semantics — one non-degraded round with ≤5 non-nit accepted, 0 important, nits excluded.
+ 
+ ### UPDATED: `skills/design/references/flags.md`
+ - "Multi-round loop env vars" section (lines 44-51): remove the `LARCH_DESIGN_CONVERGENCE_THRESHOLD` row and the `--convergence-threshold` mentions in the line-46 prose. Keep `LARCH_DESIGN_ROUND_CAP`. Update the convergence semantics to "one non-degraded round, ≤5 non-nit accepted, 0 important; nits excluded".
+@@ -88,7 +91,8 @@
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+ - Remove `--convergence-threshold` usage (lines 2119, 2144) and delete the invalid-value test (lines 2166, 2172). Update convergence cases to single-round / ≤5 non-nit / 0-important using the hardcoded bound, including a nit-heavy round that still converges.
++- Add harness: many **rejected** nits in `findings.md` plus 6 **accepted** latent findings in `accepted-findings.md` must **not** converge (guards counting nits from the merged ballot file instead of the accepted population).
+ 
+ ## Approach
+ The two loops share one structural shape: a candidate-status, non-degraded round
+@@ -106,6 +110,7 @@
+   that is already clean (candidate status, ≤5 non-nit accepted, 0 important)
+   converges immediately. Intended "a round" semantics; no minimum-round floor.
+ - **Nits excluded**: a round with 20 nits and 3 latent findings converges (3 ≤ 5).
+   A round with 6 latent findings does not. Nit count never blocks convergence.
++- **Rejected nits in findings.md**: only nit markers in `accepted-findings.md` (accepted population) subtract from `ACCEPTED_COUNT`; rejected/exonerated nits in merged `findings.md` must not affect `non_nit_accepted`.
+ - **Exactly 5 non-nit accepted**: converges (`<= 5`). 6 non-nit does not. Pin both.
+ - **Important present**: never converges regardless of nit/latent counts (gate
+   preserved in both loops).
+@@ -124,7 +129,7 @@
+   test, a doc example) passing the removed flag makes the loop exit 2
+   (`unknown option`). Earliest signal: the grep sweep and the structural/loop
+   harnesses. Mitigation: grep every `--convergence-threshold` and
+   `LARCH_DESIGN_CONVERGENCE_THRESHOLD` site before finalizing.
+-- **Nit miscount**: if the nit counter matches the wrong marker (e.g. counts
+-  `latent` as nit, or misses the rendered `- **Severity**: nit` line), the ≤5
+-  bound is wrong. Signal: the nit-exclusion boundary tests. Mitigation: reuse the
+-  exact `- **Severity**: nit` (design) / `**Nit**` (implement) markers the
+-  renderers and `_count_important_findings` already use.
++- **Nit miscount**: if the nit counter scans the wrong file (merged `findings.md`
++  instead of `accepted-findings.md` / `accepted-plan-findings.md`) or the wrong
++  marker (e.g. `**Nit**` title prose instead of `^- **Severity**: nit`), the ≤5
++  bound is wrong (inflated rejected nits can floor `non_nit_accepted` to 0 and
++  allow premature convergence; a `**Nit**`-only matcher never subtracts nits).
++  Signal: nit-exclusion boundary tests plus the rejected-nits + 6 accepted latent
++  harness case. Mitigation: block-aware awk on the accepted file with the same
++  `^- **Severity**: nit` line both loops' aggregators emit.
+ - **Dangling `CONVERGENCE_STREAK` reference**: a KV parsed but no longer emitted
+   is silently empty. Signal: grep `CONVERGENCE_STREAK`. Mitigation: remove all
+   `/design` references in the same change.
+@@ -137,8 +142,9 @@
+   `bash skills/design/scripts/test-step3-review-cap.sh` — all must pass.
+ - New boundary cases in both loop harnesses: 5 non-nit converges; 6 non-nit does
+   not; nit-heavy round (many nits, ≤5 non-nit) converges; important-present does
+-  not converge; degraded does not converge; single clean round converges with
+-  `REASON=converged` (`/design`) / `status=converged-small-changes`
+-  (`/implement`).
++  not converge; degraded does not converge; single clean round converges with
++  `REASON=converged` (`/design`) / `status=converged-small-changes`
++  (`/implement`); `/implement` rejected-nits-in-findings + 6 accepted latent does not converge.
+ - Run `bash scripts/relevant-checks.sh` (or `make lint`) for Bash 3.2,
+   bare-grep, script-md-sibling, and structural pins.
+ - Grep sweep: zero runtime (non-`larch-logs`) hits for `--convergence-threshold`
+@@ -146,6 +152,6 @@
+   and `LARCH_DESIGN_CONVERGENCE_THRESHOLD`; zero `CONVERGENCE_STREAK` hits under
+   `skills/design` runtime.
+ 
+-diff_added: 165
+-diff_deleted: 235
+-diff_lines: 400
++diff_added: 198
++diff_deleted: 242
++diff_lines: 440

@@ -1,0 +1,52 @@
+Reviewing the plan against the codebase for convergence-threshold callers and CONVERGENCE_STREAK coverage.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:209	`LARCH_DESIGN_CONVERGENCE_THRESHOLD` cited in Gate B loop carve-out but file absent from plan scope	After env removal, normative design doc still tells operators the inner loop is bounded by a deleted tunable; grep may catch the symbol but implementers following the plan file list can miss this reference	Add `### UPDATED: skills/design/references/approval-gates.md` — drop `LARCH_DESIGN_CONVERGENCE_THRESHOLD`; bound loop-internal auto-apply by `LARCH_DESIGN_ROUND_CAP` only (hardcoded ≤5 non-nit / 0-important convergence lives in `plan-review-loop.sh`)
+1	in_scope	important	correctness	skills/design/scripts/test-step3-review-cap.sh:184-192	Plan says only “Remove/adjust any `CONVERGENCE_STREAK` references” with no line-level stub edits	Stubs still emit `REASON=streak` and `CONVERGENCE_STREAK=1|2`; if SKILL drops streak parsing, harness keeps obsolete contract surface and can hide regressions in passive-summary fixtures	Spell out edits: lines 184 and 192 — `REASON=converged`, drop `CONVERGENCE_STREAK`, add `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` (e.g. `0` / `1`) matching post-change loop stdout
+1	in_scope	latent	correctness	scripts/test-design-multi-round-integration.sh:212	`assert_env_has_keys` still requires `CONVERGENCE_STREAK`; plan says “drop `CONVERGENCE_STREAK`” without citing this line or replacement keys	Implementer removes streak from loop output but omits harness update → integration test fails, or streak is dropped from assert without asserting new nit-exclusion KVs	Extend `### UPDATED: scripts/test-design-multi-round-integration.sh` with line 212: remove `CONVERGENCE_STREAK` from `assert_env_has_keys`; add `NIT_ACCEPTED_COUNT` and `NON_NIT_ACCEPTED_COUNT` when the loop emits them
+
+**1. [correctness] Missing scope: `approval-gates.md` still names removed env var**
+
+The plan’s caller sweep lists five harness/SKILL callers; under `skills/`, `scripts/`, `docs/`, and `.claude/` the only additional live reference to `LARCH_DESIGN_CONVERGENCE_THRESHOLD` (not already in the plan) is:
+
+```209:209:skills/design/references/approval-gates.md
+4. **Gate B apply contract**: ... bounded by `LARCH_DESIGN_ROUND_CAP` and `LARCH_DESIGN_CONVERGENCE_THRESHOLD` ...
+```
+
+The plan updates `flags.md`, `plan-review.md`, and `docs/*` but not `approval-gates.md`. That is a post-PR doc drift risk independent of the five listed callers.
+
+**2. [correctness] Vague `test-step3-review-cap.sh` guidance**
+
+Plan lines 94–95 give no line targets. Current stubs at 184 and 192 still use streak semantics:
+
+```184:192:skills/design/scripts/test-step3-review-cap.sh
+write_loop_stub "$DP" "... REASON=streak\n... CONVERGENCE_STREAK=2\n..."
+...
+write_loop_stub "$DP" "... CONVERGENCE_STREAK=1\n..."
+```
+
+`skills/review-and-fix/` has no `CONVERGENCE_STREAK` references (exonerated for that subtree).
+
+**3. [correctness] Caller-scope verification (otherwise complete)**
+
+Within `skills/`, `scripts/`, `docs/`, `.claude/` (excluding `larch-logs/`):
+
+| Surface | Covered by plan? |
+|--------|-------------------|
+| `--convergence-threshold` argv: `SKILL.md:945`, `plan-review-loop.sh`, `review-and-fix.sh`, three test harnesses | Yes |
+| `LARCH_DESIGN_CONVERGENCE_THRESHOLD`: docs + design references above | Yes except `approval-gates.md` |
+| `.claude/` | No hits |
+
+Listed callers match the repo; the gap is the undocumented `approval-gates.md` reference, not an extra script passing the flag.
+
+**4. [architecture] `CONVERGENCE_STREAK` removal in plan-covered design runtime**
+
+Plan line-level coverage for `plan-review-loop.sh`, `plan-review-loop.md`, `SKILL.md` (945, 953, 962, 972), `test-plan-review-loop.sh`, and `test-design-multi-round-integration.sh` is adequate. `test-plan-review-loop.sh:1141` is called out indirectly via “drop `CONVERGENCE_STREAK` assertions; add …” (less vague than step3).
+
+**5. [risk-integration] Exonerated**
+
+- `review-and-fix.sh:1370` comment (“two consecutive low-accept rounds”) — behavior covered; comment-only drift.
+- Plan line 51 “Update Step 3 prose … two consecutive rounds” — no such prose remains in `SKILL.md` beyond the argv line; references carry the old semantics and are already scoped.
+
+**6. [security] Exonerated** — convergence relaxation only; no new trust boundary.
+
+**7. [code-quality] Exonerated** — minimum-change intent aligns with hardcoded bound; no extra scope requested.

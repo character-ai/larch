@@ -1,0 +1,232 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Relax review-loop convergence: single round, ≤5 non-nit accepted, 0 important
+
+Relax the stopping condition in both larch review loops from "two consecutive
+non-degraded rounds with ≤3 accepted and 0 important accepted" to "one
+non-degraded round with ≤5 NON-NIT accepted and 0 important accepted, with any
+number of nits allowed". Hardcode the bound (5), remove the configurability
+surfaces (env var + `--convergence-threshold` flag), and remove the
+consecutive-round streak machinery from `/design`.
+
+Nit rule (Round 1 augmentation): nit-severity accepted findings do NOT count
+toward the convergence total. The ≤5 bound applies to accepted findings whose
+severity is NOT `nit` (`non_nit_accepted = ACCEPTED_COUNT − NIT_ACCEPTED_COUNT`).
+Severity vocabulary is `important` / `nit` / `latent` (per
+`skills/shared/reviewer-templates.md`); `important` must still be 0, `latent`
+still counts toward the ≤5, and nits are unbounded.
+
+Scope spans BOTH loops (Round 1 Decision 4):
+- `/design` plan review — `skills/design/scripts/plan-review-loop.sh`
+- `/implement` code review — `skills/review-and-fix/scripts/review-and-fix.sh`
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+Remove the streak machinery and the threshold configurability; converge on one qualifying round; exclude nits from the count.
+
+- Line 48: delete `CONVERGENCE_THRESHOLD="${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"`. The bound becomes a literal `5` at the convergence comparison sites (or a single named `readonly` local; do not reintroduce an env-var or flag default).
+- Line 63: delete `CONVERGENCE_STREAK=0` init.
+- Line 84: delete the `--convergence-threshold) ... shift 2 ;;` argv case.
+- Lines 109-110: delete the `--convergence-threshold` validation + normalization.
+- Line 40: drop `[--convergence-threshold N]` from the `usage()` string.
+- Line 147: delete `emit_kv CONVERGENCE_STREAK ...`. Add `emit_kv NIT_ACCEPTED_COUNT ...` and `emit_kv NON_NIT_ACCEPTED_COUNT ...` (replaces the removed streak KV slot; gives tests a boundary to assert).
+- Line 165: delete the `CONVERGENCE_STREAK=` line from `write_step3_result_env`; add `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT`.
+- Lines 1222-1223: delete the `convergence_streak` / `CONVERGENCE_STREAK` loop-local init.
+- Nit counter: add a `_count_nit_findings` helper mirroring `_count_important_findings` (lines 190-204) but matching `^- \*\*Severity\*\*: nit`. Compute `NIT_ACCEPTED_COUNT` from `accepted-plan-findings.md` next to the existing `IMPORTANT_ACCEPTED_COUNT` (lines 1285 and 1247) and derive `NON_NIT_ACCEPTED_COUNT=$((ACCEPTED_COUNT - NIT_ACCEPTED_COUNT))` (floor at 0).
+- Main convergence block (currently lines 1363-1378): replace the degraded/elif-streak/else cascade with: when `DEGRADED_PANEL != 1` AND `NON_NIT_ACCEPTED_COUNT <= 5` AND `IMPORTANT_ACCEPTED_COUNT == 0`, set `LOOP_STATUS=converged`, `LOOP_REASON=converged`, write the round summary, `_terminal_exit 0`. No streak; a single qualifying round converges. A degraded round never converges.
+- Lookahead block (lines 1333-1361, `_snapshot_round_dir`-failure path): drop `_next_convergence_streak`; set `_next_terminal_status=converged` / `_next_terminal_reason=converged` when `DEGRADED_PANEL != 1 && NON_NIT_ACCEPTED_COUNT <= 5 && IMPORTANT_ACCEPTED_COUNT == 0`. Preserve the `cap-hit` fallback, the `,snapshot-failed` reason suffix, and the `panel-failed` exit-1 tail exactly.
+- KEEP unchanged: zero-findings convergence (lines 1288-1305, `LOOP_REASON=zero-findings`), `_count_important_findings` (the 0-important gate), `degraded-empty-collector`, `revision-failed`, `manual-gate-b`, `cap-hit` terminal (lines 1380-1385).
+- `LOOP_REASON` token: replace `streak` with `converged` at both sites.
+
+### UPDATED: `skills/design/scripts/plan-review-loop.md`
+- Flag list (line 22): remove `optional --convergence-threshold N (default ${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3})`.
+- KV table: remove the `CONVERGENCE_STREAK` row; add `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` rows; in the `REASON` row (line 40) replace `streak` with `converged`.
+- Convergence prose: "two consecutive non-degraded rounds with ≤3 accepted" → "one non-degraded round with ≤5 non-nit accepted and 0 important accepted (nits excluded from the count)".
+
+### UPDATED: `skills/design/SKILL.md`
+- Step 3 driver call (line 945): delete the `--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"` argument (keep `--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"`).
+- Remove `CONVERGENCE_STREAK` from the two Step 3 result-parsing `case` key lists and the `CONVERGENCE_STREAK=""` local init. Add `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` to those parse lists if Gate B / branch-matrix prose surfaces them (optional; harmless to parse).
+- Update Step 3 prose describing the "two consecutive rounds / threshold 3 / streak" stopping condition to "one round, ≤5 non-nit accepted, 0 important; nits unbounded". Leave the `LARCH_DESIGN_ROUND_CAP` cap prose untouched.
+
+### UPDATED: `skills/review-and-fix/scripts/review-and-fix.sh`
+Apply the same relaxation to the `/implement` code-review loop, including nit exclusion.
+
+- Line 60: delete `CONVERGENCE_THRESHOLD=""` init.
+- Lines 76-77: delete the `--convergence-threshold) ...` argv case.
+- Line 35: drop `[--convergence-threshold N]` from the `usage()` string.
+- Lines 1044-1045: delete the `--convergence-threshold` validation block.
+- Nit counter: add a helper to count `**Nit**`-severity findings in a round's `findings.md` (mirror `important_findings_present` / `count_high_severity_accepted` at lines 101-129; the nit marker is `**Nit**` / severity `nit` per `reviewer-templates.md`). Derive non-nit accepted = `accepted_count − nit_count` for the current round (floor at 0).
+- Part A convergence (lines 1370-1405): hardcode the bound to `5` (line 1372 → `local small_threshold=5`). Drop the `round_num_dec >= 2` requirement and the previous-round (`find_previous_non_degraded_round` / `prev_accepted_a`) comparison from Part A. Converge when `convergence_candidate_status "$status"` AND `degraded_this_round == false` AND non-nit-accepted `<= 5` AND the current round has no important findings. Scan only the current round's `findings.md` via `important_findings_present "$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md"`. Preserve the `important_rc == 2` → `important_scan_abort=1` error path. Update the `larch_err "⏳ /implement Step 5: converged after round ..."` message to describe single-round, nit-excluded convergence.
+- KEEP unchanged: `important_findings_present` (101-120), `convergence_candidate_status` (162-168), `find_previous_non_degraded_round` (still used by Part C), Part C churn warning (1407-1422), `count_high_severity_accepted`, the `--round-cap` flag, `status="converged-small-changes"`.
+
+### UPDATED: `skills/review-and-fix/scripts/review-and-fix.md`
+- Update the `--convergence-threshold N (default: 3) — two consecutive rounds with ACCEPTED_COUNT ≤ N` entry: the flag is removed; document the hardcoded single-round rule — one non-degraded round with ≤5 non-nit accepted and 0 important (nits excluded from the count).
+
+### UPDATED: `skills/design/references/flags.md`
+- "Multi-round loop env vars" section (lines 44-51): remove the `LARCH_DESIGN_CONVERGENCE_THRESHOLD` row and the `--convergence-threshold` mentions in the line-46 prose. Keep `LARCH_DESIGN_ROUND_CAP`. Update the convergence semantics to "one non-degraded round, ≤5 non-nit accepted, 0 important; nits excluded".
+
+### UPDATED: `skills/design/references/plan-review.md`
+- Line 48: "two consecutive non-degraded rounds with ACCEPTED_COUNT <= ${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3} and IMPORTANT_ACCEPTED_COUNT == 0" → "one non-degraded round with non-nit ACCEPTED_COUNT <= 5 and IMPORTANT_ACCEPTED_COUNT == 0 (nit-severity findings excluded from the count)".
+- Line 50: remove `LARCH_DESIGN_CONVERGENCE_THRESHOLD (default 3)` from the env-vars bullet; keep `LARCH_DESIGN_ROUND_CAP`.
+
+### UPDATED: `docs/configuration-and-permissions.md`
+- Remove the `### LARCH_DESIGN_CONVERGENCE_THRESHOLD` section (lines 250-252). Leave the `LARCH_DESIGN_ROUND_CAP` section.
+
+### UPDATED: `docs/installation-and-setup.md`
+- Line 211: drop `LARCH_DESIGN_CONVERGENCE_THRESHOLD` from the "operator-tunable via ..." phrasing; keep `LARCH_DESIGN_ROUND_CAP`.
+
+### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+- Remove the `--convergence-threshold N` argument from every `run_loop` call (~25 sites).
+- Rework streak-specific cases to assert single-round convergence and `REASON=converged` instead of `REASON=streak` ("two-round nit streak", "above threshold resets streak", "important resets streak", "degraded resets streak", "degraded round 2 resets streak").
+- Add nit-exclusion cases: a round with many nits + ≤5 non-nit converges; a round with 6 non-nit (latent) findings does NOT; 5 non-nit converges; important present never converges. Pin the hardcoded-5 boundary on the non-nit count.
+- Drop `CONVERGENCE_STREAK` assertions; add `NON_NIT_ACCEPTED_COUNT` / `NIT_ACCEPTED_COUNT` assertions where useful.
+
+### UPDATED: `scripts/test-design-multi-round-integration.sh`
+- Remove `--convergence-threshold N` from the 4 `run_loop_fixture` calls. Update convergence assertions to single-round / `REASON=converged`; drop `CONVERGENCE_STREAK`.
+
+### UPDATED: `scripts/test-design-structure.sh`
+- Line 61: remove (or replace) the `--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"` pin. If a positive pin is wanted, assert the SKILL no longer passes `--convergence-threshold`.
+
+### UPDATED: `skills/design/scripts/test-step3-review-cap.sh`
+- Remove/adjust any `CONVERGENCE_STREAK` references so the harness matches the new KV surface.
+
+### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+- Remove `--convergence-threshold` usage (lines 2119, 2144) and delete the invalid-value test (lines 2166, 2172). Update convergence cases to single-round / ≤5 non-nit / 0-important using the hardcoded bound, including a nit-heavy round that still converges.
+
+## Approach
+The two loops share one structural shape: a candidate-status, non-degraded round
+whose accepted count is at-or-under a threshold with zero important findings.
+Today both require two such consecutive rounds and read the bound from a
+`--convergence-threshold` flag (default 3); `/design` also tracks a
+`convergence_streak`. The change collapses this to a single hardcoded check in
+each loop: `non_nit_accepted <= 5 && important == 0`, where nit-severity accepted
+findings are subtracted from the total first. It deletes the flag, the `/design`
+env var, and the `/design` streak bookkeeping; no new env var or flag replaces
+them (Round 1 Decisions 2 and 3). The "0 important" gate, the hard round cap,
+zero-findings convergence, degraded-round handling, and the `/implement` churn
+warning all stay.
+
+## Edge cases
+- **Round-1 convergence**: with the two-round requirement gone, a first round
+  that is already clean (candidate status, ≤5 non-nit accepted, 0 important)
+  converges immediately. Intended "a round" semantics; no minimum-round floor.
+- **Nits excluded**: a round with 20 nits and 3 latent findings converges (3 ≤ 5).
+  A round with 6 latent findings does not. Nit count never blocks convergence.
+- **Exactly 5 non-nit accepted**: converges (`<= 5`). 6 non-nit does not. Pin both.
+- **Important present**: never converges regardless of nit/latent counts (gate
+  preserved in both loops).
+- **Severity vocabulary**: only `important` / `nit` / `latent` exist; "non-nit"
+  = important + latent. The formula stays correct if a new severity is added
+  later (anything not `nit` counts).
+- **Degraded round**: never converges; `/design` no longer needs streak-reset.
+- **`important_findings_present` read failure (rc=2)** in `/implement`: still
+  routes to `important_scan_abort=1` → `classifier-failed` / exit 2.
+- **Snapshot-failure lookahead path** in `/design`: still reaches `converged`
+  (single round) or `cap-hit`, preserving the `,snapshot-failed` reason suffix.
+
+## Failure modes
+- **Stale `--convergence-threshold` caller**: any missed caller (SKILL.md, a
+  test, a doc example) passing the removed flag makes the loop exit 2
+  (`unknown option`). Earliest signal: the grep sweep and the structural/loop
+  harnesses. Mitigation: grep every `--convergence-threshold` and
+  `LARCH_DESIGN_CONVERGENCE_THRESHOLD` site before finalizing.
+- **Nit miscount**: if the nit counter matches the wrong marker (e.g. counts
+  `latent` as nit, or misses the rendered `- **Severity**: nit` line), the ≤5
+  bound is wrong. Signal: the nit-exclusion boundary tests. Mitigation: reuse the
+  exact `- **Severity**: nit` (design) / `**Nit**` (implement) markers the
+  renderers and `_count_important_findings` already use.
+- **Dangling `CONVERGENCE_STREAK` reference**: a KV parsed but no longer emitted
+  is silently empty. Signal: grep `CONVERGENCE_STREAK`. Mitigation: remove all
+  `/design` references in the same change.
+- **Premature convergence regression**: single-round convergence could stop a
+  loop while a real (non-important, ≤5 non-nit) concern remains. This is the
+  user's explicit intent; the `important` gate and the round cap bound the
+  downside.
+
+## Testing strategy
+- Run `bash skills/design/scripts/test-plan-review-loop.sh`,
+  `bash scripts/test-design-multi-round-integration.sh`,
+  `bash scripts/test-design-structure.sh`,
+  `bash skills/review-and-fix/scripts/test-review-and-fix.sh`, and
+  `bash skills/design/scripts/test-step3-review-cap.sh` — all must pass.
+- New boundary cases in both loop harnesses: 5 non-nit converges; 6 non-nit does
+  not; nit-heavy round (many nits, ≤5 non-nit) converges; important-present does
+  not converge; degraded does not converge; single clean round converges with
+  `REASON=converged` (`/design`) / `status=converged-small-changes`
+  (`/implement`).
+- Run `bash scripts/relevant-checks.sh` (or `make lint`) for Bash 3.2,
+  bare-grep, script-md-sibling, and structural pins.
+- Grep sweep: zero runtime (non-`larch-logs`) hits for `--convergence-threshold`
+  and `LARCH_DESIGN_CONVERGENCE_THRESHOLD`; zero `CONVERGENCE_STREAK` hits under
+  `skills/design` runtime.
+
+diff_added: 165
+diff_deleted: 235
+diff_lines: 400
+
+</plan>
+
+<findings>
+### FINDING_1: Implement Part A nit exclusion can miscount or never subtract nits
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, unknown-slot
+- **Severity**: important
+- **Concern**: The planned `/implement` Part A change derives `NON_NIT_ACCEPTED` from `ACCEPTED_COUNT` (accepted-only) but counts nits from the wrong population and/or the wrong marker. Code-review aggregator output uses `- **Severity**: nit` in `findings.md` / `accepted-findings.md`, not `**Nit**` headings. Counting nits in full-round `findings.md` includes rejected/exonerated nits, which can inflate `nit_count`, floor `non_nit_accepted` to 0, and allow premature `converged-small-changes` (e.g. six accepted latent plus many rejected nits). A `**Nit**`-only matcher can yield `nit_count=0`, so nits are never excluded and the ≤5 bound applies to all accepted findings including nits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Count nit markers in `$round_dir/accepted-findings.md` (same population as `ACCEPTED_COUNT`); add a harness case with many rejected nits plus six accepted latent that must not converge
+  - From Cursor-Edge: Count nit accepted findings in the round accepted_file (same block-aware - **Severity**: nit awk as design accepted-plan-findings.md), not findings.md
+  - From Cursor-Innovation: Mirror plan-review-loop _count_nit_findings: awk on ### FINDING_ blocks for /^- \*\*Severity\*\*: nit/ in round-N/findings.md (optionally add title-line fallbacks only if tests need them)
+  - From Cursor-Pragmatic: Mirror design: block-aware awk on `round-N/accepted-findings.md` with `^- **Severity**: nit` (or resolve `ACCEPTED_FINDINGS_FILE` from review-core.env); derive NON_NIT from accepted findings only
+  - From unknown-slot: Mirror `_count_important_findings` / design: awk or grep on `- **Severity**: nit` inside each `### FINDING_N:` block
+  - From unknown-slot: Count nit severity only in `round-N/accepted-findings.md` (same path as `ACCEPTED_COUNT`), not the merged ballot `findings.md`
+  - From unknown-slot: Specify ^- \*\*Severity\*\*: nit as the /implement nit marker, identical to the /design _count_nit_findings helper; both loops' findings.md files are produced by the orchestrator-aggregator which outputs `- **Severity**: important|latent|nit` (lowercase) — not **Nit** bold prose.
+  - From unknown-slot: Count nit findings from the round's accepted-findings.md (accepted-only), matching /design's pattern of scanning accepted-plan-findings.md; the accepted-findings.md per-round file already exists at $IMPLEMENT_TMPDIR/round-N/accepted-findings.md.
+  - From unknown-slot: Count nit-severity findings from `accepted_file` (accepted-findings.md), mirroring `count_high_severity_accepted` which already scans `accepted_file` — not `findings.md`. The nit marker `**Nit**` is correct; only the source file must change.
+
+
+### FINDING_5: `CONVERGENCE_STREAK` remains in per-round `round-summary.env`
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: The plan removes `CONVERGENCE_STREAK` from stdout and `.step3-plan-review-result.env` but not from `_write_round_summary`. Each `plan-review/round-N/round-summary.env` can still carry `CONVERGENCE_STREAK` (or `${CONVERGENCE_STREAK:-0}` after assignments are removed), contradicting the grep sweep and new KV contract and confusing harnesses or operators.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Remove `CONVERGENCE_STREAK` from `_write_round_summary`; update `skills/design/scripts/plan-review-loop.md` round-summary key list (~line 52) if still documented
+  - From unknown-slot: Add `skills/design/scripts/plan-review-loop.sh:389` to the explicit change list: replace `printf 'CONVERGENCE_STREAK=%s\n' "${CONVERGENCE_STREAK:-0}"` with `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` lines (mirroring the treatment at lines 147 and 165), and note `plan-review-loop.md:52` (round-summary.env schema) as a companion update.
+
+
+### FINDING_6: `review-and-fix.md` convergence prose still describes old behavior
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: The plan only rewrites the `--convergence-threshold` argv bullet. Other lines still describe two consecutive rounds and `convergence-threshold`, disagreeing with the planned single-round hardcoded ≤5 non-nit rule.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Replace argv bullet with hardcoded rule; update lines 48-50 and the `converged-small-changes` exit `0` bullet to single non-degraded round, ≤5 non-nit accepted, 0 important, nits excluded
+
+
+### FINDING_7: `NIT_ACCEPTED_COUNT` not cleared on design error exit paths
+- **Reviewer(s)**: unknown-slot
+- **Severity**: latent
+- **Concern**: On `panel-failed` and `tally-error` paths the plan sets `IMPORTANT_ACCEPTED_COUNT=0` but not `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT`, so round 2+ error exits can emit stale nit counts from the prior round. No downstream decision reads them on those paths, but emitted values are wrong and may confuse new test assertions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Alongside the `IMPORTANT_ACCEPTED_COUNT=0` assignments at lines 1258 and 1274, add `NIT_ACCEPTED_COUNT=0` and `NON_NIT_ACCEPTED_COUNT=0`, matching the parallel treatment already prescribed for `IMPORTANT_ACCEPTED_COUNT` on those paths.
+
+
+</findings>
+
+<feature>
+[DESIGNING] Relax the /design plan-review rounds stopping (convergence) condition.
+
+Relax the /design plan-review rounds stopping (convergence) condition.
+
+Currently, the multi-round plan-review loop (skills/design/scripts/plan-review-loop.sh, driven from skills/design/SKILL.md Step 3) declares convergence only after TWO consecutive non-degraded review rounds that each have ≤3 accepted findings AND 0 important accepted findings. The per-round accepted bound is LARCH_DESIGN_CONVERGENCE_THRESHOLD (default 3), and a 2-round consecutive streak is required (tracked via CONVERGENCE_STREAK).
+
+Requested change: relax convergence so a SINGLE round qualifies, and raise the accepted bound from 3 to 5. New rule: "convergence needs a round with ≤5 accepted and 0 important accepted." Concretely: bump the convergence threshold default from 3 to 5, and reduce the required consecutive-round streak from 2 to 1, so one qualifying round (≤5 accepted, 0 important accepted) ends the loop.
+
+Scope includes the convergence logic in plan-review-loop.sh and the documentation that states the threshold/streak (skills/design/references/flags.md env-var table, docs/configuration-and-permissions.md, and any SKILL.md prose describing the stopping condition).
+
+</feature>

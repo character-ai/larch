@@ -1,0 +1,26 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-dyn-cross-loop-parity-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 31s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-dyn-cross-loop-parity-output.txt)
+
+{"no_issues_found": true}
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-dyn-cross-loop-parity-output.txt.diag)
+
+Failed with exit code 1 after 31s. Output size: 0 bytes.
+
+## Failed-agent stderr tail (<TMPDIR>/codex-primary-plan-dyn-cross-loop-parity-output.txt.stderr-tail)
+
+Reading additional input from stdin...
+2026-05-31T01:30:48.165966Z ERROR rmcp::transport::worker: worker quit with fatal: Unexpected content type: Some("text/plain; body: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused"), when send initialized notification
+2026-05-31T01:30:57.570339Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-ab7d-7b62-ae69-9af2a98fb56b not found
+❌ codex agent: FAILED (exit code 1, 31s elapsed, output 0 bytes)
+
+## Launcher stderr (<TMPDIR>/codex-primary-plan-dyn-cross-loop-parity-output.txt.launch-stderr)
+
+rm: /tmp/larch-codex-review-home-BBOdQE/.tmp/plugins-clone-7uw9xg/plugins: Permission denied
+rm: /tmp/larch-codex-review-home-BBOdQE/.tmp/plugins-clone-7uw9xg: Permission denied
+rm: /tmp/larch-codex-review-home-BBOdQE/.tmp: Permission denied
+rm: /tmp/larch-codex-review-home-BBOdQE: Permission denied
+

@@ -1,0 +1,49 @@
+ns-retry: first-pass content preserved at cursor-plan-edge-output-first-pass.txt
+ns-retry: published retry content to cursor-plan-edge-output.txt; retry artifact retained at cursor-plan-edge-output-ns-retry.txt
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:32:21.921637Z ERROR codex_core::session: failed to record rollout items: thread 019e7b04-144e-70d3-8fb2-4d2469d99b6e not found
+❌ codex agent: FAILED (exit code 1, 30s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:32:08.481313Z ERROR codex_core::session: failed to record rollout items: thread 019e7b04-1174-7ae3-a14d-cc42d6114ad8 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:32:17.597226Z ERROR codex_core::session: failed to record rollout items: thread 019e7b04-0d37-7620-8ee6-15ef02e05a5f not found
+❌ codex agent: FAILED (exit code 1, 30s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:32:12.169265Z ERROR codex_core::session: failed to record rollout items: thread 019e7b04-0eb4-7b72-b9da-a2cf6c08212c not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-31T01:30:53.957430Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-9dd7-7c91-8e5d-23ac9d1f5199 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-31T01:30:52.540921Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-a7c1-7cc2-8d69-cf9b00e49556 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-31T01:30:56.757927Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-a07d-7711-a44e-c880d7f75014 not found
+❌ codex agent: FAILED (exit code 1, 31s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+rm: /tmp/larch-codex-review-home-2myQ9r/.tmp/plugins-clone-Lf1vPn/plugins: Permission denied
+rm: /tmp/larch-codex-review-home-2myQ9r/.tmp/plugins-clone-Lf1vPn: Permission denied
+rm: /tmp/larch-codex-review-home-2myQ9r/.tmp: Permission denied
+rm: /tmp/larch-codex-review-home-2myQ9r: Permission denied
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-31T01:30:56.852406Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-a7cb-7ac3-92c0-c110803f6975 not found
+❌ codex agent: FAILED (exit code 1, 30s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+↩ codex codex-primary-plan-dyn-cross-loop-parity-output.txt: identical failure to codex-primary-plan-pragmatic-output.txt (root-cause sig 2633970402); stderr tail suppressed

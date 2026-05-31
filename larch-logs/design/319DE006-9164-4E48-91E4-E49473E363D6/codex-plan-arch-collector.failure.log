@@ -1,0 +1,22 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-arch-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 20s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-arch-output.txt)
+
+{"no_issues_found": true}
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-arch-output.txt.diag)
+
+Failed with exit code 1 after 20s. Output size: 0 bytes.
+
+## Failed-agent stderr tail (<TMPDIR>/codex-primary-plan-arch-output.txt.stderr-tail)
+
+Reading additional input from stdin...
+2026-05-31T01:30:53.957430Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-9dd7-7c91-8e5d-23ac9d1f5199 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+
+## Launcher stderr (<TMPDIR>/codex-primary-plan-arch-output.txt.launch-stderr)
+
+(empty: <TMPDIR>/codex-primary-plan-arch-output.txt.launch-stderr)
+

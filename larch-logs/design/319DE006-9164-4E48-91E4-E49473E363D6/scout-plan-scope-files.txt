@@ -1,0 +1,14 @@
+skills/design/scripts/plan-review-loop.sh
+skills/design/scripts/plan-review-loop.md
+skills/design/SKILL.md
+skills/review-and-fix/scripts/review-and-fix.sh
+skills/review-and-fix/scripts/review-and-fix.md
+skills/design/references/flags.md
+skills/design/references/plan-review.md
+docs/configuration-and-permissions.md
+docs/installation-and-setup.md
+skills/design/scripts/test-plan-review-loop.sh
+scripts/test-design-multi-round-integration.sh
+scripts/test-design-structure.sh
+skills/design/scripts/test-step3-review-cap.sh
+skills/review-and-fix/scripts/test-review-and-fix.sh
