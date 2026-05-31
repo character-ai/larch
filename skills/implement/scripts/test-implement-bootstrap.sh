@@ -1752,6 +1752,58 @@ else
 fi
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 
+# --- B7-resume-tail-plugin-root-env ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess-plugin.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+plugin_root_value="$SANDBOX"
+mkdir -p "$SANDBOX_TMP"
+printf 'sessstub\n' >"$SANDBOX_TMP/session-id"
+cat >"$SANDBOX_TMP/session-env.sh" <<EOF
+REPO=owner/repo
+REPO_UNAVAILABLE=false
+FORKED_TARGET=false
+LARCH_CLAUDE_PLUGIN_ROOT=$plugin_root_value
+EOF
+rm -f "$SANDBOX_TMP/plugin-root.env"
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase infra --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-resume-tail-plugin-root-env first pass exit 0"
+if [ -f "$SANDBOX_TMP/plugin-root.env" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-resume-tail-plugin-root-env creates sibling"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-resume-tail-plugin-root-env creates sibling"
+fi
+if grep -Fxq "CLAUDE_PLUGIN_ROOT=$plugin_root_value" "$SANDBOX_TMP/plugin-root.env" 2>/dev/null; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-resume-tail-plugin-root-env correct value"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-resume-tail-plugin-root-env correct value"
+fi
+if ( unset CLAUDE_PLUGIN_ROOT
+     # shellcheck disable=SC1090
+     . "$SANDBOX_TMP/plugin-root.env"
+     [ "$CLAUDE_PLUGIN_ROOT" = "$plugin_root_value" ] ); then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-resume-tail-plugin-root-env sources cleanly"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-resume-tail-plugin-root-env sources cleanly"
+fi
+plugin_root_snapshot=$(cat "$SANDBOX_TMP/plugin-root.env")
+out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase infra --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B7-resume-tail-plugin-root-env repeat exit 0"
+if [ "$(cat "$SANDBOX_TMP/plugin-root.env")" = "$plugin_root_snapshot" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B7-resume-tail-plugin-root-env idempotent on repeat"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B7-resume-tail-plugin-root-env idempotent on repeat"
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
 # --- B7-plan-dirty-tree stale emergency log not replayed on non-emergency resume ---
 SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sessA.XXXXXX)
 SANDBOX_TMP_RESUME=$(mktemp -d /tmp/larch-ib-sessB.XXXXXX)

@@ -443,7 +443,7 @@ Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-b
 | Condition | Routing |
 |---|---|
 | `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty | Continue to Rebase Macro 1.r, then Step 2 with `--coder "$coder"`. |
-| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/session-env.sh`, then re-run `_ib_run_bootstrap --resume-plan-tail` inside the existing tmpdir and re-run `_ib_parse_bootstrap_out` before re-evaluating the routing table. Resume-tail reuses the persisted Step 0 availability keys from `session-env.sh`; it does not run fresh reviewer probes. |
+| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (pre-bootstrap: source guard plus one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk from `session-env.sh` when the sibling is absent), then re-run `_ib_run_bootstrap --resume-plan-tail` inside the existing tmpdir and re-run `_ib_parse_bootstrap_out` before re-evaluating the routing table. Resume-tail reuses the persisted Step 0 availability keys from `session-env.sh`; it does not run fresh reviewer probes. |
 | `IMPLEMENT_BAIL_REASON=adopted-issue-closed` or `adopted-issue-is-pr` | Skip to Step 18 cleanup. |
 | `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `run-flags-persist-failed`, or `branch-create-failed` | `STALL_TRACKING=true`; skip to Step 18 cleanup. |
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
@@ -510,7 +510,7 @@ export codex_available cursor_available
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit Cursor → Codex → Claude waterfall arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.
 
-The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash blocks that need ledgers must rehydrate `IMPLEMENT_TMPDIR`, `CLAUDE_PLUGIN_ROOT`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh`.
+The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. Later Bash blocks must rehydrate `IMPLEMENT_TMPDIR` first, then `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (canonical source guard), then `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` via `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` on `$IMPLEMENT_TMPDIR/session-env.sh`.
 
 ### Cross-Skill Presence Propagation
 

@@ -157,6 +157,8 @@ Audit of the `phase_plan_materialize` checkpoint-and-tail region around lines ~7
 
 **`phase_tracking` cross-reference (lines ~545–587):** On `RESUME_PLAN_TAIL=true`, `phase_tracking` short-circuits before `rename_to_implementing`, `run_larch_log_init`, or `post-tracking-issue.sh` can re-run, so the duplicate tracking-metadata concern in issue #2977 is already mitigated there.
 
+**Resume-tail `plugin-root.env` sync (`phase_infra`, lines ~587–596):** On `--resume-plan-tail`, when `$IMPLEMENT_TMPDIR/plugin-root.env` is absent and `LARCH_CLAUDE_PLUGIN_ROOT` is non-empty in the persisted `session-env.sh`, bootstrap sources `write-session-env.sh` (guard-scoped; no errexit leak) and calls `emit_plugin_root_env` idempotently. Skip when the sibling already exists or the key is empty; invalid values are ignored inside the helper (`return 0`). Legacy session-env-only tmpdirs therefore gain the sibling before post-Step-0 SKILL blocks that source-only rehydrate.
+
 **Scope:** This audit covers the canonical “dirty-tree bail → single resume” sequence (exercised by `test-implement-bootstrap.sh` case B7-plan-dirty-tree resume tail). Multi-resume sequences (resume → dirty-tree → resume again) are out of scope.
 
 ## Edit-in-sync

@@ -591,7 +591,13 @@ phase_infra() {
             if [ -n "$_root" ]; then
                 # shellcheck source=scripts/write-session-env.sh
                 . "$SCRIPT_DIR/write-session-env.sh"
-                emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root"
+                emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root" || true
+                if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
+                    emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root" || true
+                fi
+                if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
+                    larch_err "resume-tail: plugin-root.env missing after sync (LARCH_CLAUDE_PLUGIN_ROOT set)"
+                fi
             fi
         fi
     else

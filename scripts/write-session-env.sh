@@ -51,12 +51,16 @@ emit_plugin_root_env() {
   fi
 
   local tmpfile
-  tmpfile=$(mktemp "${plugin_root_env_path}.tmp.XXXXXX")
+  tmpfile=$(mktemp "${plugin_root_env_path}.tmp.XXXXXX") || return 1
   {
     echo "CLAUDE_PLUGIN_ROOT=$value"
     echo "export CLAUDE_PLUGIN_ROOT"
-  } >"$tmpfile"
-  mv "$tmpfile" "$plugin_root_env_path"
+  } >"$tmpfile" || {
+    rm -f "$tmpfile"
+    return 1
+  }
+  mv "$tmpfile" "$plugin_root_env_path" || return 1
+  return 0
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
