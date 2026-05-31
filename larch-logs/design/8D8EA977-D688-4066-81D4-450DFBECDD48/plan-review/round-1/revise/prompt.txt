@@ -1,0 +1,387 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Implementation Plan — ship-pr → Python Phase 1: Foundation & shared primitives + CI
+
+## Summary
+
+Stand up a flat `python/` tree (stdlib-only runtime, Python >= 3.12) holding the 11 foundation
+modules every later phase builds on, wire two new CI gates (Python Lint, Python Tests), add the
+linter/test configs, `make py-lint` / `py-test`, a `python/README.md`, and an `AGENTS.md`
+repo-layout note. Strangler-fig: **zero change to the live `/implement` path** — no `.sh` is
+modified or deleted, and nothing imports the new tree yet. Decisions locked in Round 1: full
+operation surface for `git.py` / `gh.py` / `agents.py`, parity tests for the modules with a clean
+bash counterpart (`redact`, `retry`, `agents`), exact tool versions pinned now.
+
+`errors.py / outcomes.py` in the issue is split into two files: `errors.py` (exception hierarchy)
+and `outcomes.py` (`Outcome` enum + `StepResult`) — distinct concerns, each unit-tested.
+
+## Files to modify/create
+
+### NEW: `python/config.py`
+Authored first. Every tunable for all later phases as module-level constants / frozen tables: exit
+codes, subprocess + CI-wait timeouts, retry counts and backoff schedule (2s, 4s — parity with
+`lib-net.sh`), loop caps, fixer tier order (`("cursor", "codex", "claude")`), env-var names
+(`LARCH_SHIP_PR_IMPL`, auth/retry vars), and path templates. No logic, no imports beyond stdlib.
+Colocated `test_config.py`: assert the tier-order tuple, that every documented constant exists, and
+types are immutable.
+
+### NEW: `python/proc.py`
+The single injectable subprocess seam. `run(argv, *, timeout, cwd=None, env=None, check=False) ->
+CommandResult` where `CommandResult` is `@dataclass(frozen=True)` (`argv`, `returncode`, `stdout`,
+`stderr`, `duration`). Wraps `subprocess.run` with timeout + capture; on `TimeoutExpired` returns a
+`CommandResult` carrying the configured timeout exit code. A module-level `Runner` Protocol types the
+seam so callers accept a stub. Colocated `test_proc.py`: real `run` against trivial argv (`true`,
+`false`, an `echo`) for returncode/stdout/stderr/duration, plus timeout behavior.
+
+### NEW: `python/errors.py`
+Exception hierarchy: `ShipError` (base) and subclasses `TransientNetworkError`, `NeedsUserInput`,
+`Stalled`. Stdlib only. Colocated `test_errors.py`: subclass relationships and that each carries the
+expected message/attributes.
+
+### NEW: `python/outcomes.py`
+`Outcome` enum (`OK`, `NEEDS_USER_INPUT`, `STALLED`, `TRANSIENT`) and `@dataclass(frozen=True)
+StepResult` (outcome + optional detail/payload). Colocated `test_outcomes.py`: enum membership,
+`StepResult` immutability, equality.
+
+### NEW: `python/run_context.py`
+`@dataclass(frozen=True) RunContext`: `branch`, `issue`, `repo`, `run_id`, `tmpdir`, `merge`,
+`draft`, `forked`, `manifest_path`, `tool_label`, `no_admin_fallback`, `repo_unavailable`.
+Copy-on-write `.with_(**changes) -> RunContext` (via `dataclasses.replace`). Colocated
+`test_run_context.py`: construction, `.with_()` returns a new frozen instance and leaves the original
+unchanged, rejects unknown fields.
+
+### NEW: `python/logging_util.py`
+Progress/breadcrumb stream + JSONL journal — the observability replacement for `lib-quiet.sh`.
+**Observability only; never load-bearing for correctness** (no caller branches on its return).
+Breadcrumb writer (stderr/quiet-aware) + append-only JSONL journal writer keyed by run_id. Colocated
+`test_logging_util.py`: a journal line round-trips as valid JSON with the expected keys; breadcrumb
+suppression honors the quiet flag.
+
+### NEW: `python/redact.py`
+Security-critical. Replaces `scripts/redact-secrets.sh` **and** `scripts/redact-tmpdir-paths.sh`.
+Port the secret families byte-for-byte (`sk-`/`sk-ant-`, `ghp_/gho_/ghu_/ghs_/ghr_/github_pat_`,
+`AKIA[0-9A-Z]{16}`, JWT `eyJ…`, multi-line PEM private-key blocks with fail-closed truncation +
+visible marker) and the tmpdir / `<OPERATOR_REPO_PATH>` rewrites. Public API `redact(text: str) ->
+str`, idempotent (re-running is a no-op). Colocated `test_redact.py` carries the **bash-parity**
+test (see Testing strategy) plus the ported vectors from `scripts/test-redact-secrets.sh` and
+`scripts/test-redact-tmpdir-paths.sh`, including the unterminated-PEM fail-closed case.
+
+### NEW: `python/retry.py`
+Replaces `scripts/lib-net.sh`. Port `is_transient_net_signature(text) -> bool` (the exact substring
+families, including the `no such hosted`/`no such hostname` negative cases) and
+`with_transient_retry(fn, *, predicate=None) -> Result` (<=3 attempts; transient when predicate true
+OR non-zero result with a net signature; 2s then 4s backoff via an **injectable sleeper** so tests
+run instantly). Colocated `test_retry.py`: bash-parity on the signature classifier + unit tests for
+the attempt count and backoff schedule with a fake sleeper.
+
+### NEW: `python/git.py`
+Full typed surface over `proc.run` (injected): `branch`, `rev_count`, `merge_base`, `rebase`,
+`push`, `force_push_with_lease`, `reset`, `status`, `log_subjects` (+ the helpers ship-pr.sh leans
+on: `rev_parse`, `current_branch`/`symbolic_ref`, `ls_files`). Each returns a typed frozen record or
+a plain typed value; no global state. Colocated `test_git.py`: every operation against a stub
+`Runner` asserting argv built correctly and stdout parsed into the right record (no real git).
+
+### NEW: `python/gh.py`
+Full typed surface over `proc.run` (injected), every call retry-wrapped via `retry.py`: PR
+`view`/`create`/`merge`/`for_branch`, run `list`/`view`, `failed_jobs`, `rerun`, issue
+`edit`/`comment`. Returns typed frozen records (PR, Run, Job, …). Colocated `test_gh.py`: every
+operation against a stub `Runner`; assert argv + JSON parsing + that the retry wrapper re-invokes on
+a simulated transient signature and stops on success.
+
+### NEW: `python/agents.py`
+Full surface replacing `scripts/launch-cursor-ci.sh` / `launch-codex-ci.sh` / `launch-claude-ci.sh`
+**and** the CI-fix waterfall in `scripts/dispatch-with-waterfall.sh`. Three parts: (1) single-tier
+fixer launch — build the per-tool argv and shell out via injected `proc.run`; (2) failure
+classification emitting the canonical token set pinned in the launchers
+(`none`/`health`/`other`/`auth`/`binary-missing`/`health-probe`/`timeout`/`parse`/`refusal`/`unknown`);
+(3) waterfall over `config` tier order that **short-circuits on first-fixer-non-health** (a real
+fix failure stops the cascade; only health/auth/binary problems fall through to the next tool).
+Colocated `test_agents.py`: bash-parity on classification fixtures + waterfall short-circuit /
+fall-through unit tests with a stub `Runner` (no real `cursor`/`codex`/`claude`).
+
+### NEW: `python/test_stdlib_only.py`
+The stdlib-only enforcement test. Discover every runtime module in `python/` (exclude `test_*.py`),
+import each, then `ast`-parse its source and assert every top-level import resolves to
+`sys.stdlib_module_names` or a sibling `python/` module — fail with the offending module + import
+name. Guards the runtime/dev boundary mechanically.
+
+### NEW: `python/requirements-dev.txt`
+Dev/CI-only pins (never imported by runtime), resolved 2026-05-30 from PyPI, all support Python 3.12:
+`ruff==0.15.15`, `pylint==4.0.5`, `pyright==1.1.409`, `pytest==9.0.3`. One `pkg==version` per line,
+matching the `.github/workflows/requirements-lint.txt` style.
+
+### NEW: `python/ruff.toml`
+Copied from the maintainer's `~/dev-tools/python` config, then sanitized: drop foreign `exclude`s
+(`chat/migrations`, photodna, `*_pb2*`, `typings`) leaving `.venv`/`.git`/caches; drop the
+Django/web ignores (`DJ*`, `FAST002`, `ASYNC*`, `DTZ*`) that cannot fire in a stdlib CLI; keep
+`select = ["ALL"]` + the genuinely-useful ignores; add a `[lint.per-file-ignores]` block for
+`test_*.py`.
+
+### NEW: `python/pyrightconfig.json`
+Copied + sanitized: drop `exclude: api_generator` and `extraPaths: [".."]`; point `include` at the
+`python/` tree; keep `strict`.
+
+### NEW: `python/.pylintrc`
+Copied + sanitized: remove the `init-hook` that reads `requirements-local.txt`,
+`known-third-party=enchant`, and the `requests`-based `timeout-methods`; rename the project.
+
+### NEW: `python/pyproject.toml`
+Copied + sanitized: rename off `cai-deployment-tools`; keep `[tool.pytest.ini_options]` with
+`pythonpath` set so flat `python/` imports resolve under pytest.
+
+### NEW: `python/README.md`
+The stdlib-only runtime rule, the flat-tree structure, the runtime-vs-dev dependency boundary, and
+how to run (`make py-lint`, `make py-test`).
+
+### UPDATED: `.github/workflows/ci.yaml`
+Add two jobs modeled on the existing `lint` job (same `actions/checkout@v6`,
+`actions/setup-python@v6` with `python-version: "3.12"`, `cache: pip`,
+`cache-dependency-path: python/requirements-dev.txt`):
+- **Python Lint** — also add `actions/setup-node@v5` (pyright's pip package bootstraps a Node
+  runtime; without Node the install fails), `pip install -r python/requirements-dev.txt`, then
+  `ruff check`, `pylint`, `pyright`.
+- **Python Tests** — `pip install -r python/requirements-dev.txt`, then `pytest` over `python/`.
+Both run on the existing `pull_request` + `push: main` triggers. No existing job is modified.
+
+### UPDATED: `Makefile`
+Add `py-lint` (`ruff check` + `pylint` + `pyright` over `python/`) and `py-test` (`pytest`) targets,
+each added to a `.PHONY` line. Single physical line per recipe; no behavior change to existing
+targets.
+
+### UPDATED: `AGENTS.md`
+One repo-layout note: `python/` is the in-progress `ship-pr.sh` → Python rework tree — dev/CI-only
+for now (stdlib-only runtime, not yet wired into the live `/implement` path until the Phase 7
+`LARCH_SHIP_PR_IMPL=python` cutover). No brittle counts in the prose.
+
+## Approach
+
+- Build inner-to-outer so each module only imports already-written siblings:
+  `config` → `proc` → `errors` → `outcomes` → `run_context` → `logging_util` → `redact` → `retry`
+  → `git` → `gh` → `agents`.
+- All cross-function data are `@dataclass(frozen=True)`. The `proc.run` seam is injected (a `Runner`
+  Protocol), so `git` / `gh` / `agents` unit-test against a stub runner with **no network and no
+  real binaries**.
+- Runtime modules import **stdlib only**; `test_stdlib_only.py` enforces this mechanically.
+- CI configs are copied from `~/dev-tools/python` and sanitized per the explicit drop-lists above —
+  do not carry over the old dev-tools version pins (those are resolved fresh in
+  `requirements-dev.txt`).
+- Strangler-fig: nothing here is imported by any `.sh` or skill; the live path is untouched.
+
+## Edge cases
+
+- **redact PEM fail-closed**: a BEGIN private-key marker with no END before EOF must drop the tail
+  and emit the visible truncation marker — never leak key material. Idempotence: re-running
+  `redact` over already-redacted text is a no-op.
+- **redact tmpdir/operator-path rewrites**: preserve the `lib-net`-adjacent boundary character
+  classes so trailing `,`/`;`/`:`/`"}` punctuation and escaped-newline (`\n`) forms still match.
+- **proc timeout**: a timed-out child returns a `CommandResult` with the configured timeout exit
+  code and captured partial output — it does not raise out of `run`.
+- **gh transient retry**: a transient network signature triggers retry; a genuine non-transient
+  failure returns immediately (no wasted backoff). Exhaustion returns the last result, not an
+  exception.
+- **agents waterfall**: a first-fixer **non-health** failure short-circuits the cascade; a
+  health/auth/binary-missing failure falls through to the next tier; an empty/exhausted tier order
+  yields a typed "no fixer succeeded" result.
+- **pytest import resolution**: flat `python/` (no package `__init__.py`) relies on
+  `pyproject.toml` `pythonpath` so `import config` etc. resolve in CI and locally.
+
+## Failure modes
+
+- **Runtime imports a dev tool** (e.g. a stray `import pytest`/`requests` in a runtime module) →
+  the live path would gain a non-guaranteed dependency. Earliest signal: `test_stdlib_only.py` fails
+  in the Python Tests job. Mitigation: the enforcement test is part of acceptance and runs on every
+  PR.
+- **pyright install fails for lack of Node** → Python Lint job dies at install with an opaque error.
+  Earliest signal: red Python Lint on the first PR. Mitigation: `setup-node` is included in the job
+  by design (called out in the issue); document the dependency in the job comment.
+- **redact parity drift** → the Python scrubber diverges from the bash one and a secret class leaks
+  on the (future) Python path. Earliest signal: the `test_redact.py` parity assertion fails when the
+  ported regex misses a vector. Mitigation: parity test feeds identical vectors to both
+  implementations and asserts byte-identical output; ship it with the module.
+
+## Testing strategy
+
+- **Unit tests, colocated** `python/test_<module>.py` for every module, each exercising the module
+  in isolation against a stub `Runner` where a subprocess seam exists (`git`, `gh`, `agents`) — no
+  network, no real binaries.
+- **bash-parity tests** (modules with a clean standalone bash counterpart):
+  - `test_redact.py` vs `scripts/redact-secrets.sh` + `scripts/redact-tmpdir-paths.sh` — feed shared
+    vectors to both, assert identical stdout.
+  - `test_retry.py` vs `scripts/lib-net.sh` `is_transient_net_signature` (via a tiny bash wrapper
+    that sources the lib and echoes the verdict) — assert identical classification across the vector
+    set; the 2s/4s backoff schedule is unit-tested with a fake sleeper.
+  - `test_agents.py` vs the launcher classifier (`external_classify_launch_failure` in
+    `scripts/lib-external-launcher-common.sh`, via a wrapper) — assert identical canonical failure
+    tokens for shared `(exit_code, diag)` fixtures; the launch argv and waterfall short-circuit are
+    unit-tested with a stub `Runner`.
+  - Each parity test skips gracefully (pytest skip) when bash or the target `.sh` is absent, so the
+    suite stays runnable off-CI while CI (ubuntu, bash present) exercises the parity path.
+- `test_stdlib_only.py` enforces the runtime/dev boundary.
+- **CI**: Python Lint (ruff + pylint + pyright strict) and Python Tests (pytest) must both go green,
+  satisfying acceptance "green against a trivial colocated test" — here, against the full foundation
+  suite.
+
+## Acceptance mapping
+
+- Both CI jobs green over `python/` → Python Lint + Python Tests jobs.
+- All foundation modules importable + unit-tested in isolation (stub `proc.run`) → the colocated
+  `test_*.py` set.
+- `redact.py` passes a parity test vs `redact-secrets.sh` → `test_redact.py` parity section.
+- Zero change to the live `/implement` path → only additive `python/**` files plus the three
+  enumerated `UPDATED:` edits (ci.yaml jobs, Makefile targets, AGENTS.md note); no `.sh` touched.
+
+## Diff size estimate
+
+Large but deliberate: ~11 runtime modules + ~11 colocated test files + the stdlib-only test + 6
+config/doc files, plus the three additive edits. Deletes nothing (strangler-fig). This exceeds the
+Step 2b.5 hard plan-size trigger (`diff_added > 2000`); the size is surfaced to the operator at that
+gate, not hidden. It is **not** mechanical churn — it is net-new hand-written code, so no
+`mechanical_churn` downgrade is claimed.
+
+diff_added: 2700
+diff_deleted: 0
+diff_lines: 2700
+
+</plan>
+
+<findings>
+### FINDING_1: CI-fix waterfall attributed to wrong script (review dispatcher vs ship-pr)
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan names `scripts/dispatch-with-waterfall.sh` as the CI-fix waterfall source for `agents.py`, but that script is the review dispatcher. The actual CI-fix waterfall (tier loop, `run_ci_fix_vendor`, `first-fixer-non-health`, rollback, launcher failure class handling, local verification, staging/push, conflict recovery, etc.) lives in `scripts/ship-pr.sh` (e.g. ~1994–2128, recovery ~2690–2765). Porting or testing against the wrong contract risks baking review-dispatch semantics into the Python foundation while missing ship-pr CI-fix behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch, Codex-Arch: Revise the agents.py plan to use scripts/ship-pr.sh run_ci_fix_vendor as the CI-fix waterfall source. Remove scripts/dispatch-with-waterfall.sh from this phase unless review dispatch is intentionally in scope.
+  - From Cursor-Innovation, Codex-Innovation: Keep Phase 1 agents.py scoped to launcher failure classification and the actual ship-pr CI-fix/recovery tier semantics, or defer waterfall modeling until the ship-pr migration phase
+  - From Cursor-Pragmatic: Retarget agents.py waterfall spec/tests to ship-pr.sh run_ci_fix_vendor; drop dispatch-with-waterfall.sh as a parity source unless explicitly scoping a later phase
+  - From Codex-Pragmatic: Retarget the Phase 1 parity surface to `run_ci_fix_vendor` and `run_recovery_waterfall`, or narrow `agents.py` now to launcher argv/classification primitives and leave waterfall porting to the phase that touches `ship-pr.sh`.
+
+
+### FINDING_2: Python lint/CI commands not bound to `python/` configs and tree
+- **Reviewer(s)**: Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation, Cursor-Requirements, Codex-Requirements, Cursor-dyn-ci-toolchain, Codex-dyn-ci-toolchain
+- **Severity**: important
+- **Concern**: Planned CI/Makefile recipes run bare `ruff check`, `pylint`, and `pyright` (and related tooling) from the repo root while configs live under `python/`. Ruff/pyright may not pick up child configs from root; bare `pylint` can exit with no targets; jobs may scan unrelated repo Python or fail without exercising the intended tree—so the Python Lint acceptance gate may not validate the proposed modules.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge, Codex-Edge: Run the lint job from working-directory: python, or pass explicit config/project/targets: ruff check python --config python/ruff.toml, pylint python/*.py --rcfile=python/.pylintrc, pyright -p python/pyrightconfig.json. Mirror the same explicit commands in make py-lint.
+  - From Cursor-Innovation, Codex-Innovation: Run tool-specific commands against the new tree and config, e.g. ruff check --config python/ruff.toml python, pylint --rcfile=python/.pylintrc python, pyright -p python/pyrightconfig.json
+  - From Cursor-Requirements, Codex-Requirements: Spell out exact commands in both CI and make py-lint, for example ruff check --config python/ruff.toml python, pylint --rcfile=python/.pylintrc python/*.py, and pyright -p python/pyrightconfig.json.
+  - From Cursor-dyn-ci-toolchain: One contract everywhere: cd python && ruff check . && pylint … && pyright && pytest (single-line recipes per Makefile convention), or equivalent explicit flags (-c python/pyproject.toml, pyright --project python, pylint --rcfile=python/.pylintrc, ruff check python/ with paths scoped to python/). Mirror the subdirectory cd pattern at Makefile:1039-1042
+  - From Codex-dyn-ci-toolchain: Pick one execution root. Either set CI working-directory: python and make py-lint/py-test cd python with config-relative paths like include "."; or keep repo root and pass explicit --config/--rcfile/--project arguments with paths that are correct relative to each config file.
+
+
+### FINDING_4: Generic `gh` retry must not wrap non-idempotent mutating calls
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan retry-wraps every `gh` call, including mutating operations. Existing issue-create paths avoid retry because create is not idempotent after server-side success with a lost response. A transient after a successful `gh pr create`, `gh issue comment`, `gh pr merge`, or `gh run rerun` can be retried and create duplicate side effects or turn a successful write into a confusing failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Limit generic retry to idempotent read/list/view operations. Give each mutating operation an explicit policy: no retry, or operation-specific recovery such as existing-PR lookup after PR-create conflict.
+
+
+### FINDING_5: Stdlib-only check may miss nested imports
+- **Reviewer(s)**: Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: Planned stdlib-only enforcement only checks top-level imports. A runtime module could add a function-local `import` of `requests`, `pytest`, or another non-stdlib package and still pass the AST check, violating the runtime dependency acceptance rule.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements, Codex-Requirements: Walk every ast.Import and ast.ImportFrom node in each runtime module, not only top-level statements, while still allowing stdlib and sibling python/ modules.
+
+
+### FINDING_8: Python Tests job may install pyright without Node handling
+- **Reviewer(s)**: Codex-dyn-ci-toolchain
+- **Severity**: important
+- **Concern**: `requirements-dev` includes pyright and Python Tests installs that file, but only Python Lint adds `setup-node` under the plan’s assumption that pyright’s pip package needs Node. The test job can fail during dependency install before pytest runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-ci-toolchain: Minimum-change fix: do not install the lint stack in Python Tests. Use a pytest-only pinned test requirements file or install the pinned pytest version there. If one shared requirements-dev.txt is retained, mirror setup-node in Python Tests and document that it exists only because pyright is in the shared file.
+
+
+### FINDING_9: New Python CI jobs vs ship-pr failed-job recognition (strangler boundary)
+- **Reviewer(s)**: Cursor-dyn-migration-boundary, Codex-dyn-migration-boundary
+- **Severity**: important
+- **Concern**: The plan adds pull_request/push Python CI jobs while claiming zero live `/implement` impact, but `ship-pr` consumes failed CI job names and only recognizes the current job set. A failing Python Lint/Python Tests job becomes observable to `/implement` CI handling; display names with spaces or ids like `python-lint`/`python-tests` may be malformed or unknown, so ship-pr classifies the failure unfixable and exits via `ci-local-unfixable`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-migration-boundary, Codex-dyn-migration-boundary: To preserve the strangler boundary, defer PR/push Python CI to the cutover phase or make it manual/non-required for now. If these jobs must be blocking now, update ci-failed-jobs.sh, ship-pr.sh per-job argv, docs, and harnesses, and remove the no-.sh/zero-live-impact claim.
+
+
+</findings>
+
+<feature>
+ship-pr -> Python Phase 1: Foundation & shared primitives + CI
+
+> Part of the **ship-pr.sh → Python** rework. **Full plan, research findings, and cross-phase context: #3132.**
+
+## Shared context (applies to every phase)
+
+**Why this exists.** `scripts/ship-pr.sh` (~3,400 lines) is the `/implement` post-review state machine (rebase → checks → bump → PR → CI → merge → post-merge). Its high failure rate is the motivation for a typed, unit-tested Python rewrite under a new flat `python/` directory shared by all larch skills.
+
+**Locked architecture decisions:**
+1. **Single idempotent process** — one long-lived run; recovery comes from querying gh/git **ground truth** (does the PR exist? is it merged? is the version already bumped?), NOT a persisted state file. There is **no `ship-pr-state.sh` and no `--resume-phase`**.
+2. **Strangler-fig cutover** — all Python lands in `python/` with **zero change to the live `/implement` path** until Phase 7 flips it behind `LARCH_SHIP_PR_IMPL=python`.
+3. **Reimplement logic in Python** — port the bash logic to typed Python; shell out only to true externals: `git`, `gh`, the agent CLIs (`cursor`/`codex`/`claude`), and the consumer repo's own test runner (`relevant-checks.sh` / pre-commit).
+
+**Runtime vs. dev dependencies.** `python/` **runtime** modules import **stdlib only** (Python ≥ 3.12) — the end user is guaranteed to have nothing else installed. `ruff` / `pylint` / `pyright` / `pytest` are **dev/CI-only** and are never imported by runtime code.
+
+**Conventions (all phases):**
+- Flat `python/` — **no subdirectories**. Tests colocated as `python/test_<module>.py`.
+- All tunables (timeouts, retry/backoff, loop caps, fixer tier order, env-var names, exit codes, path templates) live in `python/config.py`.
+- All data passed between functions are immutable `@dataclass(frozen=True)` records.
+- The subprocess seam (`proc.run`) is **injectable** so `gh`/`git`/agent calls are unit-tested with a stub runner — no network or real binaries in tests.
+- All outbound text (gh bodies, logs) passes through `python/redact.py`.
+
+**Quality bars (all phases):**
+- Must pass the two new CI jobs: **Python Lint** (ruff + pylint + pyright strict) and **Python Tests** (pytest).
+- Each ported component carries a **bash-parity test**: feed identical inputs to the existing `.sh` and the new module, assert identical observable output.
+- Do **not** delete any `.sh` until a caller grep across `skills/`, `scripts/`, `hooks/`, `.github/` shows zero remaining users — many helpers are shared with `/design`, `/review`, etc.
+
+**This phase is worked by `/design`** to produce the in-issue implementation plan, then `/implement`.
+
+---
+
+## Phase 1 — Foundation & shared primitives + CI
+
+Establish the `python/` tree, the two CI gates, and every shared primitive the later phases build on. **No live-path change.**
+
+### Modules to create
+- **`config.py`** (authored first) — all constants for every component: exit codes, timeouts, retry counts/backoff, loop caps, fixer tier order (`cursor`→`codex`→`claude`), env-var names, path templates.
+- **`proc.py`** — `run(argv, …) -> CommandResult` (frozen: argv, returncode, stdout, stderr, duration); timeout + capture. The single injectable subprocess seam.
+- **`errors.py` / `outcomes.py`** — exception hierarchy (`ShipError`, `TransientNetworkError`, `NeedsUserInput`, `Stalled`) + `Outcome` enum (`OK` / `NEEDS_USER_INPUT` / `STALLED` / `TRANSIENT`) + frozen `StepResult`.
+- **`run_context.py`** — frozen `RunContext` (branch, issue, repo, run_id, tmpdir, merge/draft/forked flags, manifest path, tool label, no_admin_fallback, repo_unavailable) with copy-on-write `.with_(…)`.
+- **`logging_util.py`** — progress/breadcrumb stream + JSONL journal (replaces `lib-quiet.sh`; observability only, never load-bearing for correctness).
+- **`redact.py`** — secret + tmpdir-path redaction (replaces `redact-secrets.sh` + `redact-tmpdir-paths.sh`). **Security-critical**; port the bash redaction test vectors.
+- **`retry.py`** — backoff + transient-network signature classification (replaces `lib-net.sh`).
+- **`git.py`** — branch / rev-count / merge-base / rebase / push / force-push-with-lease / reset / status / log-subjects; typed records.
+- **`gh.py`** — every GitHub op (PR view/create/merge/for-branch, run list/view, failed-jobs, rerun, issue edit/comment), all retry-wrapped, returning typed records.
+- **`agents.py`** — single-tier fixer launch (shell out to `cursor`/`codex`/`claude`) + **waterfall** (short-circuit on `first-fixer-non-health`) + failure classification (health/auth/other). Replaces `launch-cursor-ci.sh` / `launch-codex-ci.sh` / `launch-claude-ci.sh` + the waterfall logic.
+
+### CI (two new jobs in `.github/workflows/ci.yaml`)
+- **Python Lint** — `setup-python@v6` (3.12) **and `setup-node`** (pyright's pip package bootstraps a Node runtime — without Node it fails at install), `pip install -r python/requirements-dev.txt`, then `ruff check`, `pylint`, `pyright`.
+- **Python Tests** — `setup-python@v6` (3.12), install dev reqs, run `pytest`.
+- Model both on the existing `lint` job.
+
+### Configs (copied from the maintainer's `~/dev-tools/python` linter configs, then **sanitized**)
+- **Tool versions:** pin the **latest stable** of `ruff`/`pylint`/`pyright`/`pytest` that support Python 3.12 (resolved at authoring time; do not carry over the old dev-tools pins) in `python/requirements-dev.txt`.
+- **`ruff.toml`** — drop foreign `exclude`s (`chat/migrations`, photodna, `*_pb2*`, `typings`), leaving `.venv`/`.git`/caches; drop Django/web ignores (`DJ*`, `FAST002`, `ASYNC*`, `DTZ*`) that cannot fire in a stdlib CLI; keep `select=["ALL"]` + genuinely-useful ignores; add a tests `per-file-ignore` block.
+- **`pyrightconfig.json`** — drop `exclude: api_generator` and `extraPaths: [".."]`; point `include` at the python tree; keep `strict`.
+- **`.pylintrc`** — remove the `init-hook` reading `requirements-local.txt`, `known-third-party=enchant`, and the `requests`-based `timeout-methods`; rename project.
+- **`pyproject.toml`** — rename off `cai-deployment-tools`; keep `[tool.pytest.ini_options]` with `pythonpath` set so `python/` imports resolve.
+
+### Also
+- `make py-lint` / `make py-test` targets.
+- `python/README.md` (stdlib-only runtime rule, structure, how to run) + `AGENTS.md` repo-layout update.
+- **stdlib-only enforcement test**: import every runtime module and assert no non-stdlib import.
+
+### Acceptance criteria
+- Both CI jobs are green against a trivial colocated test.
+- All foundation modules importable and unit-tested in isolation (stub `proc.run`).
+- `redact.py` passes a parity test vs `redact-secrets.sh`.
+- Zero change to the live `/implement` path.
+
+### Dependencies
+**Blocked by:** none (root phase — blocks all others).
+
+
+</feature>

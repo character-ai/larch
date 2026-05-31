@@ -1,0 +1,171 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -5,10 +5,12 @@
+ `linter/test configs, `make py-lint` / `py-test`, a `python/README.md`, and an `AGENTS.md`
+ repo-layout note. Strangler-fig: **zero change to the live `/implement` path** — no `.sh` is
+ modified or deleted, and nothing imports the new tree yet. Decisions locked in Round 1: full
+ operation surface for `git.py` / `gh.py` / `agents.py`, parity tests for the modules with a clean
+ bash counterpart (`redact`, `retry`, `agents`), exact tool versions pinned now.
++**Phase 1 CI trigger:** new `python-lint` / `python-tests` jobs are **`workflow_dispatch` only**
++(not `pull_request` / `push`) so failures cannot reach live `ship-pr` / `ci-failed-jobs.sh` until
++Phase 7 cutover registers them; local `make py-lint` / `py-test` are the primary dev gates.
+ 
+ `errors.py / outcomes.py` in the issue is split into two files: `errors.py` (exception hierarchy)
+ and `outcomes.py` (`Outcome` enum + `StepResult`) — distinct concerns, each unit-tested.
+@@ -78,8 +80,12 @@
+ ### NEW: `python/gh.py`
+ Full typed surface over `proc.run` (injected), every call retry-wrapped via `retry.py`: PR
+ `view`/`create`/`merge`/`for_branch`, run `list`/`view`, `failed_jobs`, `rerun`, issue
+-`edit`/`comment`. Returns typed frozen records (PR, Run, Job, …). Colocated `test_gh.py`: every
+-operation against a stub `Runner`; assert argv + JSON parsing + that the retry wrapper re-invokes on
+-a simulated transient signature and stops on success.
++`edit`/`comment`. Returns typed frozen records (PR, Run, Job, …). **Retry policy:** only
++idempotent read/list/view paths (`pr view`, `pr list`, run `list`/`view`, `failed_jobs`,
++`for_branch` lookup) use `retry.with_transient_retry`; **mutating** ops (`pr create`, `pr merge`,
++`issue edit`/`comment`, `run rerun`) call `proc.run` once (mirror `skills/issue/scripts/create-one.sh`:
++`gh issue create` is not retry-wrapped — server-side success with a lost response is not
++idempotent). `pr create` documents conflict recovery (lookup open PR for branch after failure);
++other mutators fail fast with the last `CommandResult`. Colocated `test_gh.py`: every operation
++against a stub `Runner`; assert argv + JSON parsing; read paths assert retry re-invokes on a
++simulated transient signature; mutators assert **no** second `proc.run` on transient output.
+ 
+ ### NEW: `python/agents.py`
+ Full surface replacing `scripts/launch-cursor-ci.sh` / `launch-codex-ci.sh` / `launch-claude-ci.sh`
+-**and** the CI-fix waterfall in `scripts/dispatch-with-waterfall.sh`. Three parts: (1) single-tier
++**and** the ship-pr CI-fix tier loop in `scripts/ship-pr.sh` (`run_ci_fix_vendor`, ~1994–2128;
++`first-fixer-non-health` / health-class fall-through — **not** `scripts/dispatch-with-waterfall.sh`,
++which is the review dispatcher). Phase 1 ports launcher argv + classification + the tier
++short-circuit contract only; full `run_ci_fix_vendor` orchestration (failed-jobs TSV, local verify,
++stage/push, `run_recovery_waterfall`) defers to the ship-pr migration phase. Three parts: (1) single-tier
+ fixer launch — build the per-tool argv and shell out via injected `proc.run`; (2) failure
+ classification emitting the canonical token set pinned in the launchers
+ (`none`/`health`/`other`/`auth`/`binary-missing`/`health-probe`/`timeout`/`parse`/`refusal`/`unknown`);
+-(3) waterfall over `config` tier order that **short-circuits on first-fixer-non-health** (a real
++(3) waterfall over `config` tier order matching ship-pr `run_ci_fix_vendor` semantics:
++**short-circuits on first-fixer-non-health** (a real
+ fix failure stops the cascade; only health/auth/binary problems fall through to the next tool).
+ Colocated `test_agents.py`: bash-parity on classification fixtures + waterfall short-circuit /
+ fall-through unit tests with a stub `Runner` (no real `cursor`/`codex`/`claude`).
+@@ -88,8 +94,9 @@
+ ### NEW: `python/test_stdlib_only.py`
+ The stdlib-only enforcement test. Discover every runtime module in `python/` (exclude `test_*.py`),
+ import each, then `ast`-parse its source and assert every top-level import resolves to
+-`sys.stdlib_module_names` or a sibling `python/` module — fail with the offending module + import
+-name. Guards the runtime/dev boundary mechanically.
++`sys.stdlib_module_names` or a sibling `python/` module — walk **every** `ast.Import` and
++`ast.ImportFrom` node in the module (including nested function/class scopes), not only top-level
++statements — fail with the offending module + import name. Guards the runtime/dev boundary mechanically.
+ 
+ ### NEW: `python/requirements-dev.txt`
+ Dev/CI-only pins (never imported by runtime), resolved 2026-05-30 from PyPI, all support Python 3.12:
+@@ -97,6 +104,11 @@
+ matching the `.github/workflows/requirements-lint.txt` style.
+ 
++### NEW: `python/requirements-test.txt`
++Dev/CI-only pytest pin for the **Python Tests** job (never imported by runtime): `pytest==9.0.3`
++only — so that job does not install pyright from the lint manifest (pyright's pip package bootstraps
++Node; Python Lint carries `setup-node`, Python Tests does not).
++
+ ### NEW: `python/ruff.toml`
+ Copied from the maintainer's `~/dev-tools/python` config, then sanitized: drop foreign `exclude`s
+ (`chat/migrations`, photodna, `*_pb2*`, `typings`) leaving `.venv`/`.git`/caches; drop the
+@@ -119,21 +131,28 @@
+ `pythonpath` set so flat `python/` imports resolve under pytest.
+ 
+ ### NEW: `python/README.md`
+-The stdlib-only runtime rule, the flat-tree structure, the runtime-vs-dev dependency boundary, and
+-how to run (`make py-lint`, `make py-test`).
++The stdlib-only runtime rule, the flat-tree structure, the runtime-vs-dev dependency boundary,
++how to run (`make py-lint`, `make py-test`), and that CI jobs are **manual** (`workflow_dispatch`)
++until Phase 7 enables PR/push blocking + ship-pr registration.
+ 
+ ### UPDATED: `.github/workflows/ci.yaml`
+ Add two jobs modeled on the existing `lint` job (same `actions/checkout@v6`,
+ `actions/setup-python@v6` with `python-version: "3.12"`, `cache: pip`,
+-`cache-dependency-path: python/requirements-dev.txt`):
+-- **Python Lint** — also add `actions/setup-node@v5` (pyright's pip package bootstraps a Node
+-  runtime; without Node the install fails), `pip install -r python/requirements-dev.txt`, then
+-  `ruff check`, `pylint`, `pyright`.
+-- **Python Tests** — `pip install -r python/requirements-dev.txt`, then `pytest` over `python/`.
+-Both run on the existing `pull_request` + `push: main` triggers. No existing job is modified.
++`defaults.run.working-directory: python` on both jobs so configs and tree are co-located):
++- **`python-lint`** — `if: github.event_name == 'workflow_dispatch'` (Phase 1 strangler boundary).
++  Also add `actions/setup-node@v5` (pyright's pip package bootstraps a Node runtime; without Node
++  the install fails), `pip install -r requirements-dev.txt`, then `ruff check .`, `pylint *.py`,
++  `pyright` (configs resolve from `working-directory`).
++- **`python-tests`** — `if: github.event_name == 'workflow_dispatch'`. `pip install -r
++  `requirements-test.txt` (pytest only — no pyright/Node), then `pytest`.
++Job ids use underscores (no spaces) for future `ci-failed-jobs.sh` registration at cutover. No
++existing job is modified; PR/push triggers for these jobs land in Phase 7 with ship-pr / harness
++updates.
+ 
+ ### UPDATED: `Makefile`
+-Add `py-lint` (`ruff check` + `pylint` + `pyright` over `python/`) and `py-test` (`pytest`) targets,
+-each added to a `.PHONY` line. Single physical line per recipe; no behavior change to existing
+-targets.
++Add `py-lint` as one recipe `(cd python && ruff check . && pylint *.py && pyright)` and `py-test`
++as `(cd python && pytest)`, each added to a `.PHONY` line — mirrors the CI `working-directory:
++python` contract. Single physical line per recipe; no behavior change to existing targets.
+ 
+ ### UPDATED: `AGENTS.md`
+ One repo-layout note: `python/` is the in-progress `ship-pr.sh` → Python rework tree — dev/CI-only
+@@ -155,6 +174,8 @@
+   code and captured partial output — it does not raise out of `run`.
+-- **gh transient retry**: a transient network signature triggers retry; a genuine non-transient
+-  failure returns immediately (no wasted backoff). Exhaustion returns the last result, not an
+-  exception.
++- **gh transient retry (reads only)**: on idempotent read/list/view paths, a transient network
++  signature triggers retry; a genuine non-transient failure returns immediately. Mutating calls
++  never enter the generic retry wrapper — exhaustion semantics apply only to read paths.
+ - **agents waterfall**: a first-fixer **non-health** failure short-circuits the cascade; a
+   health/auth/binary-missing failure falls through to the next tier; an empty/exhausted tier order
+   yields a typed "no fixer succeeded" result.
+@@ -168,6 +189,11 @@
+   the live path would gain a non-guaranteed dependency. Earliest signal: `test_stdlib_only.py` fails
+   in the Python Tests job. Mitigation: the enforcement test is part of acceptance and runs on every
+   PR.
++- **Nested non-stdlib import** (function-local `import requests`) → top-level-only AST walk would
++  miss it. Mitigation: `test_stdlib_only.py` walks every `Import` / `ImportFrom` node.
++- **Python CI on PR/push before cutover** → failing `python-lint` / `python-tests` surfaces to
++  `ship-pr` as `unknown-job-name` / `ci-local-unfixable`. Mitigation: Phase 1 jobs are
++  `workflow_dispatch`-only; blocking PR/push + `ci-failed-jobs.sh` registration is Phase 7.
+ - **pyright install fails for lack of Node** → Python Lint job dies at install with an opaque error.
+   Earliest signal: red Python Lint on the first PR. Mitigation: `setup-node` is included in the job
+   by design (called out in the issue); document the dependency in the job comment.
+@@ -191,7 +217,8 @@
+   - `test_agents.py` vs the launcher classifier (`external_classify_launch_failure` in
+     `scripts/lib-external-launcher-common.sh`, via a wrapper) — assert identical canonical failure
+-    tokens for shared `(exit_code, diag)` fixtures; the launch argv and waterfall short-circuit are
+-    unit-tested with a stub `Runner`.
++    tokens for shared `(exit_code, diag)` fixtures; waterfall short-circuit / fall-through unit
++    tests assert ship-pr `run_ci_fix_vendor` tier semantics (not `dispatch-with-waterfall.sh`);
++    launch argv is unit-tested with a stub `Runner`.
+   - Each parity test skips gracefully (pytest skip) when bash or the target `.sh` is absent, so the
+     suite stays runnable off-CI while CI (ubuntu, bash present) exercises the parity path.
+ - `test_stdlib_only.py` enforces the runtime/dev boundary.
+@@ -201,11 +228,13 @@
+ 
+ ## Acceptance mapping
+ 
+-- Both CI jobs green over `python/` → Python Lint + Python Tests jobs.
++- Both CI jobs green over `python/` → run `workflow_dispatch` on `python-lint` + `python-tests`
++  (and `make py-lint` / `make py-test` locally on every PR).
+ - All foundation modules importable + unit-tested in isolation (stub `proc.run`) → the colocated
+   `test_*.py` set.
+ - `redact.py` passes a parity test vs `redact-secrets.sh` → `test_redact.py` parity section.
+ - Zero change to the live `/implement` path → only additive `python/**` files plus the three
+-  enumerated `UPDATED:` edits (ci.yaml jobs, Makefile targets, AGENTS.md note); no `.sh` touched.
++  enumerated `UPDATED:` edits (ci.yaml jobs with `workflow_dispatch`-only guard, Makefile targets,
++  AGENTS.md note); no `.sh` touched; Python job failures cannot affect live `/implement` CI recovery.
+ 
+ ## Diff size estimate
+ 
+@@ -217,5 +246,5 @@
+ gate, not hidden. It is **not** mechanical churn — it is net-new hand-written code, so no
+ `mechanical_churn` downgrade is claimed.
+ 
+-diff_added: 2700
++diff_added: 2760
+ diff_deleted: 0
+-diff_lines: 2700
++diff_lines: 2760
