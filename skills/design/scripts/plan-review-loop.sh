@@ -791,6 +791,7 @@ _collect_stderr_fd=2
 if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
     _collect_stderr_fd=4
 fi
+set +e
 _collect_rc=0
 _collect_out=""
 if [[ "$_paths_readable" -eq 1 ]]; then
@@ -799,11 +800,31 @@ if [[ "$_paths_readable" -eq 1 ]]; then
         --substantive-validation \
         --validation-mode \
         --structured-reviewer-validation \
-        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd})) || true
+        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
+    _collect_rc=$?
 else
     emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback drops)"
 fi
 _last_collect_out="$_collect_out"
+if [[ "$_collect_rc" -ne 0 ]]; then
+    _collect_parseable=0
+    while IFS= read -r _crec || [[ -n "$_crec" ]]; do
+        [[ -n "$_crec" ]] && _collect_parseable=1 && break
+    done < <(_parse_collect_records "$_collect_out")
+    if [[ "$_collect_parseable" -eq 0 ]]; then
+        write_empty_review_artifacts "**Plan-review collector failed with no parseable output; voting was not run.**" "$round_num"
+        : > "$DESIGN_TMPDIR/ballot.txt"
+        TALLY_PLAN_REVIEW_STATUS=panel-failed
+        AGGREGATOR_STATUS=skipped
+        ACCEPTED_COUNT=0
+        DEGRADED_PANEL=1
+        VOTER_1_PARSE_RATE_STATUS=SKIPPED
+        LOOP_STATUS=panel-failed
+        set +e
+        return 1
+    fi
+fi
+set -e
 
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
 _slot_lines=()

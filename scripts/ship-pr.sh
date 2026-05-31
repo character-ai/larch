@@ -152,6 +152,14 @@ run_lint_fix_loop_capture() {
     if [[ "$rc" -ne 0 ]] \
         || [[ "$lint_status" == "failed" || "$lint_status" == "main-agent-required" ]]; then
         _surface_lint_fix_stderr_tail "$output"
+    elif [[ -z "$lint_status" ]]; then
+        local _tail_stem="" _tail_coder=""
+        _tail_stem=$(printf '%s\n' "$output" | awk -F= '/^STDERR_TAIL_PATH=/ { print substr($0, index($0,"=")+1); exit }')
+        _tail_coder=$(printf '%s\n' "$output" | awk -F= '/^CODER_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+        if [[ -n "$_tail_stem" && -s "${_tail_stem}.stderr-tail" ]] \
+            || [[ -n "$_tail_coder" && -s "${_tail_coder}.stderr-tail" ]]; then
+            _surface_lint_fix_stderr_tail "$output"
+        fi
     fi
 }
 
@@ -2815,6 +2823,7 @@ run_recovery_waterfall() {
         esac
         launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ { print $2; exit }' "$launcher_stdout" 2>/dev/null || true)
         launcher_exit="${launcher_exit:-0}"
+        rm -f "$launcher_stdout"
         if [ "$tier_rc" -ne 0 ] || [ "$launcher_exit" -ne 0 ] || [ -s "${output}.stderr-tail" ]; then
             _surface_ci_stderr_tail "$output"
         fi

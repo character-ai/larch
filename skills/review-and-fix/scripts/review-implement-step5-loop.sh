@@ -9,7 +9,14 @@ source "$PLUGIN_ROOT/scripts/lib-failed-agent-stderr-tail.sh"
 
 step5_parse_kv_tokens() {
     # Always exits 0 under set -e; absent key yields empty stdout (callers use [[ -n "$v" ]]).
-    local line="$1" key="$2" tok
+    local line="$1" key="$2" tok v=""
+    case "$key" in
+        STDERR_TAIL_PATH|CODER_LOG_FILE|REDACTED_LOG_FILE)
+            v=$(printf '%s\n' "$line" | awk -F= -v k="$key" '$1 == k { print substr($0, index($0,"=")+1); exit }')
+            printf '%s\n' "${v:-}"
+            return 0
+            ;;
+    esac
     for tok in $line; do
         case "$tok" in
             "${key}="*) printf '%s\n' "${tok#*=}"; return 0 ;;

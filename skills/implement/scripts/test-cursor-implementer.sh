@@ -868,7 +868,8 @@ cat > "$FAIL_TAIL_BIN/cursor" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 : "${STUB_MANIFEST_PATH:?}"
-printf 'cursor agent failure\n' >&2
+printf 'LARCH_CURSOR_IMPLEMENT_STDERR_TAIL_PROBE\n' >&2
+printf 'before sk-ant-api03-abcdefghijklmnopqrstuvwxyz after\n' >&2
 cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
 {"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
 JSON
@@ -879,6 +880,7 @@ chmod +x "$FAIL_TAIL_BIN/cursor"
 FAIL_TAIL_TRANSCRIPT="$SCRATCH/fail-tail-transcript.txt"
 FAIL_TAIL_SIDECAR="$SCRATCH/fail-tail-sidecar.log"
 FAIL_TAIL_MANIFEST="$SCRATCH/fail-tail-manifest.json"
+FAIL_TAIL_TAIL="${FAIL_TAIL_TRANSCRIPT}.stderr-tail"
 FAIL_TAIL_OUT=$(cd "$REPO_ROOT" && \
     PATH="$FAIL_TAIL_BIN:$PATH" \
     STUB_MANIFEST_PATH="$FAIL_TAIL_MANIFEST" \
@@ -897,10 +899,42 @@ FAIL_TAIL_OUT=$(cd "$REPO_ROOT" && \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 30)
 if [[ "$FAIL_TAIL_OUT" == *"LAUNCHER_EXIT=1"* ]] \
-    && [[ -s "${FAIL_TAIL_TRANSCRIPT}.stderr-tail" ]]; then
+    && [[ -s "$FAIL_TAIL_TAIL" ]] \
+    && grep -Fq 'LARCH_CURSOR_IMPLEMENT_STDERR_TAIL_PROBE' "$FAIL_TAIL_TAIL" \
+    && grep -Fq '<REDACTED-TOKEN>' "$FAIL_TAIL_TAIL" \
+    && ! grep -Fq 'sk-ant-api03' "$FAIL_TAIL_TAIL"; then
     pass
 else
-    fail "stderr-tail-agent" "cursor agent failure must produce stderr-tail; out=$FAIL_TAIL_OUT"
+    fail "stderr-tail-agent" "expected LAUNCHER_EXIT=1 and redacted stderr-tail; out=$FAIL_TAIL_OUT tail=$(cat "$FAIL_TAIL_TAIL" 2>/dev/null)"
+fi
+
+# Bounded line/byte caps on oversized sidecar (test-lib-failed-agent-stderr-tail contract).
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh disable=SC1091
+source "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh"
+_cap_src="$SCRATCH/cursor-stderr-cap-src.log"
+_cap_out="$SCRATCH/cursor-stderr-cap-out"
+for i in $(seq 1 40); do
+    printf 'cap-line-%s\n' "$i"
+done >"$_cap_src"
+printf 'before sk-ant-api03-abcdefghijklmnopqrstuvwxyz after\n' >>"$_cap_src"
+export LARCH_FAILED_AGENT_STDERR_TAIL_LINES=5
+write_failed_agent_stderr_tail "$_cap_src" "$_cap_out" || true
+unset LARCH_FAILED_AGENT_STDERR_TAIL_LINES
+_cap_tail="${_cap_out}.stderr-tail"
+_cap_line_count=0
+if [[ -s "$_cap_tail" ]]; then
+    _cap_line_count=$(grep -c '^cap-line-' "$_cap_tail" || true)
+fi
+if [[ -s "$_cap_tail" ]] \
+    && [[ "$_cap_line_count" -le 5 ]] \
+    && [[ "$(wc -c <"$_cap_tail" | tr -d ' ')" -le 5120 ]] \
+    && grep -Fq 'cap-line-40' "$_cap_tail" \
+    && ! grep -Fq 'cap-line-1' "$_cap_tail" \
+    && grep -Fq '<REDACTED-TOKEN>' "$_cap_tail" \
+    && ! grep -Fq 'sk-ant-api03' "$_cap_tail"; then
+    pass
+else
+    fail "stderr-tail-bounds" "expected capped redacted sidecar tail; lines=$_cap_line_count tail=$(cat "$_cap_tail" 2>/dev/null)"
 fi
 
 # Test: model-args failure writes stderr-tail before run-external-agent.

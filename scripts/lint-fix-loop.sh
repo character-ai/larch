@@ -23,6 +23,19 @@ source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 
 _LINT_FIX_STDERR_TAIL_STEM=""
 
+_lint_fix_set_stderr_tail_stem() {
+    local stem="$1"
+    [[ -n "$stem" ]] || return 0
+    if [[ -n "$_LINT_FIX_STDERR_TAIL_STEM" && -s "${_LINT_FIX_STDERR_TAIL_STEM}.stderr-tail" ]]; then
+        return 0
+    fi
+    if [[ -s "${stem}.stderr-tail" ]]; then
+        _LINT_FIX_STDERR_TAIL_STEM="$stem"
+        return 0
+    fi
+    [[ -z "$_LINT_FIX_STDERR_TAIL_STEM" ]] && _LINT_FIX_STDERR_TAIL_STEM="$stem"
+}
+
 IMPLEMENT_TMPDIR=""
 SITE=""
 CHECKS_LOG=""
@@ -244,7 +257,7 @@ run_codex() {
         >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
     if (( codex_rc != 0 )); then
         write_failed_agent_stderr_tail "$codex_wrapper_log" "$run_dir/codex.log" || true
-        _LINT_FIX_STDERR_TAIL_STEM="$run_dir/codex.log"
+        _lint_fix_set_stderr_tail_stem "$run_dir/codex.log"
     fi
     codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_lint_fix" || true
     return "$codex_rc"
@@ -252,7 +265,7 @@ run_codex() {
 
 _run_cursor_record_early_fail() {
     local run_dir="$1" log_file="$2"
-    _LINT_FIX_STDERR_TAIL_STEM="$run_dir/cursor.log"
+    _lint_fix_set_stderr_tail_stem "$run_dir/cursor.log"
     if [[ -n "$log_file" && -s "$log_file" ]]; then
         write_failed_agent_stderr_tail "$log_file" "$run_dir/cursor.log" || true
     elif [[ ! -s "${run_dir}/cursor.log.stderr-tail" ]]; then
@@ -289,7 +302,6 @@ run_cursor() {
         "$_wrapped_prompt" \
         > "$run_dir/cursor.wrapper.log" 2>&1 || cursor_rc=$?
     if (( cursor_rc != 0 )); then
-        _LINT_FIX_STDERR_TAIL_STEM="$run_dir/cursor.log"
         if [[ ! -s "${run_dir}/cursor.log.stderr-tail" ]]; then
             if [[ -s "${run_dir}/cursor.log.diag" ]]; then
                 write_failed_agent_stderr_tail "${run_dir}/cursor.log.diag" "$run_dir/cursor.log" || true
@@ -297,6 +309,7 @@ run_cursor() {
                 write_failed_agent_stderr_tail "$run_dir/cursor.log" "$run_dir/cursor.log" || true
             fi
         fi
+        _lint_fix_set_stderr_tail_stem "$run_dir/cursor.log"
     fi
     return "$cursor_rc"
 }

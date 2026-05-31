@@ -1077,6 +1077,7 @@ case "$STATUS" in
         emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
         emit_kv SIDECAR_LOG "$SIDECAR_LOG"
         emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
+        emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true
         ;;
 esac
 exit 0

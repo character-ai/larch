@@ -6070,6 +6070,82 @@ else
     sed 's/^/    stderr: /' "$wf_caller_err" 2>/dev/null || true
 fi
 
+# #3227: recovery waterfall surfaces non-empty stderr-tail when LAUNCHER_EXIT=0.
+root=$(mktemp -d "$TMP_BASE/recovery-wf-stderr-exit0.XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/recovery-wf-stderr-exit0-impl.XXXXXX")
+write_subject "$root"
+write_stubs "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'base\n' >"$root/README.md"
+git -C "$root" add README.md
+git -C "$root" commit -q -m base
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LARCH_RECOVERY_WF_STDERR_EXIT0_PROBE\n' > "${output}.stderr-tail"
+printf 'LAUNCHER_EXIT=0\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LAUNCHER_EXIT=0\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+  printf 'verify-called\n' >> "$IMPLEMENT_TMPDIR/recovery-wf-exit0-verify-sentinel.txt"
+fi
+echo "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
+    "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
+wf_exit0_err="$impl/caller.stderr"
+set +e
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    run_recovery_waterfall checks fix "" checks-step6
+) >"$impl/wf.stdout" 2>"$wf_exit0_err"
+wf_exit0_rc=$?
+set -e
+# shellcheck disable=SC2031
+if [[ "$wf_exit0_rc" -eq 0 ]] \
+    && grep -Fq 'LARCH_RECOVERY_WF_STDERR_EXIT0_PROBE' "$wf_exit0_err" \
+    && [[ -f "$impl/recovery-wf-exit0-verify-sentinel.txt" ]]; then
+    ok "recovery waterfall surfaces stderr-tail when LAUNCHER_EXIT=0"
+else
+    fail "recovery waterfall must surface tail when LAUNCHER_EXIT=0 but stderr-tail is non-empty"
+    printf '    wf_rc: %s\n' "$wf_exit0_rc"
+    sed 's/^/    stderr: /' "$wf_exit0_err" 2>/dev/null || true
+fi
+
 # #3227: _surface_ci_stderr_tail emits on every call in one process (no re-source guard).
 root=$(mktemp -d "$TMP_BASE/stderr-tail-resurface.XXXXXX")
 write_subject "$root"
@@ -6157,6 +6233,68 @@ else
     sed 's/^/    stderr: /' "$ci_fix_err" 2>/dev/null || true
 fi
 
+# #3227: first-fixer-non-health surfaces tier stderr-tail before early return.
+root=$(mktemp -d "$TMP_BASE/first-fixer-stderr.XXXXXX")
+write_subject "$root"
+write_stubs "$root"
+tmp=$(mktemp -d "$root/session.XXXXXX")
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'base\n' >"$root/README.md"
+git -C "$root" add README.md
+git -C "$root" commit -q -m base
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LARCH_FIRST_FIXER_STDERR_PROBE\n' > "${output}.stderr-tail"
+printf 'LAUNCHER_EXIT=1\n'
+printf 'LAUNCHER_FAILURE_CLASS=other\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+printf 'RUN_ID=test-run\nREPO=owner/repo\n' >"$tmp/ship-pr-state.sh"
+STATE_FILE="$tmp/ship-pr-state.sh"
+ff_err="$tmp/first-fixer-caller.stderr"
+set +e
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    run_ci_fix_vendor ci-initial run123 0 0 "" 0
+) >"$tmp/ff.stdout" 2>"$ff_err"
+ff_rc=$?
+set -e
+# shellcheck disable=SC2031
+if [[ "$ff_rc" -eq 1 ]] \
+    && grep -qxF 'BAIL_REASON=first-fixer-non-health' "$tmp/ship-pr-state.sh" \
+    && grep -Fq 'LARCH_FIRST_FIXER_STDERR_PROBE' "$ff_err"; then
+    ok "first-fixer-non-health surfaces tier stderr-tail before early return"
+else
+    fail "first-fixer-non-health must surface stderr-tail on caller stderr before bail"
+    printf '    ff_rc: %s\n' "$ff_rc"
+    sed 's/^/    stderr: /' "$ff_err" 2>/dev/null || true
+    # shellcheck disable=SC2031
+    sed 's/^/    state: /' "$tmp/ship-pr-state.sh" 2>/dev/null || true
+fi
+
 # #3227: caller-scope stderr-tail surfacing for CI tier stems and lint-fix capture.
 root=$(mktemp -d "$TMP_BASE/stderr-tail.XXXXXX")
 write_subject "$root"
@@ -6199,6 +6337,54 @@ if grep -Fq 'LARCH_SHIP_PR_LINT_STDERR_TAIL_PROBE' "$lint_caller_err"; then
     ok "run_lint_fix_loop_capture surfaces lint-fix stderr-tail to caller stderr"
 else
     fail "run_lint_fix_loop_capture must emit STDERR_TAIL_PATH tail to caller stderr (not only fail_file)"
+fi
+
+run_dir_fb="$tmp/lint-run-fallback"
+mkdir -p "$run_dir_fb"
+printf 'LARCH_SHIP_PR_LINT_CODER_LOG_FALLBACK_PROBE\n' > "$run_dir_fb/codex.log.stderr-tail"
+cat > "$root/scripts/lint-fix-loop.sh" <<STUB
+#!/usr/bin/env bash
+printf 'LINT_FIX_STATUS=main-agent-required\n'
+printf 'FAILURE_REASON=dispatch-failed\n'
+printf 'CODER_LOG_FILE=%s\n' "$run_dir_fb/codex.log"
+STUB
+chmod +x "$root/scripts/lint-fix-loop.sh"
+fail_file_fb="$tmp/lint-fail-fb.err"
+lint_fb_err="$tmp/lint-coder-log-fallback.err"
+set +e
+(
+    cd "$root" && IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+        bash -c 'source scripts/ship-pr.sh; run_lint_fix_loop_capture "'"$fail_file_fb"'" test-site /dev/null fix_out fix_rc'
+) >"$tmp/lint-fb-out.txt" 2>"$lint_fb_err"
+set -e
+if grep -Fq 'LARCH_SHIP_PR_LINT_CODER_LOG_FALLBACK_PROBE' "$lint_fb_err"; then
+    ok "run_lint_fix_loop_capture surfaces lint-fix stderr-tail via CODER_LOG_FILE fallback"
+else
+    fail "run_lint_fix_loop_capture must emit CODER_LOG_FILE fallback tail to caller stderr"
+fi
+
+run_dir_failed="$tmp/lint-run-failed"
+mkdir -p "$run_dir_failed"
+printf 'LARCH_SHIP_PR_LINT_FAILED_STATUS_PROBE\n' > "$run_dir_failed/codex.log.stderr-tail"
+cat > "$root/scripts/lint-fix-loop.sh" <<STUB
+#!/usr/bin/env bash
+printf 'LINT_FIX_STATUS=failed\n'
+printf 'FAILURE_REASON=dispatch-failed\n'
+printf 'CODER_LOG_FILE=%s\n' "$run_dir_failed/codex.log"
+STUB
+chmod +x "$root/scripts/lint-fix-loop.sh"
+fail_file_failed="$tmp/lint-fail-failed.err"
+lint_failed_err="$tmp/lint-failed-status.err"
+set +e
+(
+    cd "$root" && IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+        bash -c 'source scripts/ship-pr.sh; run_lint_fix_loop_capture "'"$fail_file_failed"'" test-site /dev/null fix_out fix_rc'
+) >"$tmp/lint-failed-out.txt" 2>"$lint_failed_err"
+set -e
+if grep -Fq 'LARCH_SHIP_PR_LINT_FAILED_STATUS_PROBE' "$lint_failed_err"; then
+    ok "run_lint_fix_loop_capture surfaces lint-fix stderr-tail on LINT_FIX_STATUS=failed"
+else
+    fail "run_lint_fix_loop_capture must emit failed-status stderr-tail to caller stderr"
 fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then

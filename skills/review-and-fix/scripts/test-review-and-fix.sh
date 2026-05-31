@@ -2423,6 +2423,42 @@ if section_runs parsers; then
         || fail "parsers step5_surface_lint_stderr_tail must emit seeded tail under set -e"
     pass "parsers step5-surface-lint-stderr-tail"
 
+    cap="$parsers_tmp/lint-coder-log-fallback.txt"
+    err="$parsers_tmp/lint-coder-log-fallback.stderr"
+    stem="$parsers_tmp/lint-run/legacy-coder.log"
+    mkdir -p "$(dirname "$stem")"
+    printf 'LARCH_STEP5_CODER_LOG_FALLBACK_PROBE\n' >"${stem}.stderr-tail"
+    printf '%s\n' 'LINT_FIX_STATUS=failed' >"$cap"
+    printf 'CODER_LOG_FILE=%s\n' "$stem" >>"$cap"
+    : >"$err"
+    step5_parse_lint_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_LINT_CODER_LOG_STEM:-}" == "$stem" ]] \
+        || fail "parsers lint-coder-log-fallback: CODER_LOG_FILE stem"
+    step5_surface_err="$parsers_tmp/step5-coder-log-surface.stderr"
+    : >"$step5_surface_err"
+    (
+        set -euo pipefail
+        step5_surface_lint_stderr_tail
+    ) 2>>"$step5_surface_err" || true
+    grep -Fq 'LARCH_STEP5_CODER_LOG_FALLBACK_PROBE' "$step5_surface_err" \
+        || fail "parsers step5_surface_lint_stderr_tail must emit CODER_LOG_FILE fallback tail"
+    pass "parsers step5-surface-coder-log-fallback"
+
+    cap="$parsers_tmp/lint-stderr-tail-path-spaces.txt"
+    err="$parsers_tmp/lint-stderr-tail-path-spaces.stderr"
+    stem="$parsers_tmp/lint run/with spaces/codex.log"
+    mkdir -p "$(dirname "$stem")"
+    printf 'LARCH_STEP5_STDERR_TAIL_SPACES_PROBE\n' >"${stem}.stderr-tail"
+    {
+        printf '%s\n' 'LINT_FIX_STATUS=main-agent-required'
+        printf 'STDERR_TAIL_PATH=%s\n' "$stem"
+    } >"$cap"
+    : >"$err"
+    step5_parse_lint_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_LINT_STDERR_TAIL_STEM:-}" == "$stem" ]] \
+        || fail "parsers lint-stderr-tail-path-spaces: STDERR_TAIL_PATH with spaces"
+    pass "parsers lint-stderr-tail-path-spaces"
+
     cap="$parsers_tmp/lint-empty-stem.txt"
     err="$parsers_tmp/lint-empty-stem.stderr"
     printf '%s\n' 'LINT_FIX_STATUS=failed' >"$cap"
