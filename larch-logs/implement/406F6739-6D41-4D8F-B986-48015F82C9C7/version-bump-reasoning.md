@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `4e4b652b0` (chore(larch-logs): flush design run 657071F3-B85A-4B8C-8705-BBA2232EC915 [skip ci] (#3259))
-- **Current version**: `47.0.16`
+- **Base commit**: `e82897283` (Fixes #3234: Add ship-pr Python Phase 1 foundation tree and CI gates (#3268))
+- **Current version**: `47.0.17`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.17`
+- **New version**: `47.0.18`
 
 ### PATCH rationale
 
