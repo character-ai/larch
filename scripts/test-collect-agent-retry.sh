@@ -77,8 +77,8 @@ assert_meta_stderr_sink_before() {
     local meta="$2"
     local before_prefix="$3"
     local sink_ln before_ln
-    sink_ln=$(grep -n '^STDERR_SINK=' "$meta" 2>/dev/null | head -1 | cut -d: -f1)
-    before_ln=$(grep -n "^${before_prefix}=" "$meta" 2>/dev/null | head -1 | cut -d: -f1)
+    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
+    before_ln=$(grep -m 1 -n "^${before_prefix}=" "$meta" 2>/dev/null | cut -d: -f1)
     if [[ -n "$sink_ln" && -n "$before_ln" && "$sink_ln" -lt "$before_ln" ]]; then
         ok "$label"
     else

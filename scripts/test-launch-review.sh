@@ -100,8 +100,8 @@ assert_meta_stderr_sink_before_outer_launcher() {
     local label="$1"
     local meta="$2"
     local sink_ln outer_ln
-    sink_ln=$(grep -n '^STDERR_SINK=' "$meta" 2>/dev/null | head -1 | cut -d: -f1)
-    outer_ln=$(grep -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | head -1 | cut -d: -f1)
+    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
+    outer_ln=$(grep -m 1 -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | cut -d: -f1)
     if [[ -n "$sink_ln" && -n "$outer_ln" && "$sink_ln" -lt "$outer_ln" ]]; then
         pass
     else
@@ -1513,8 +1513,8 @@ assert_meta_stderr_sink_before_outer_launcher() {
     local label="$1"
     local meta="$2"
     local sink_ln outer_ln
-    sink_ln=$(grep -n '^STDERR_SINK=' "$meta" 2>/dev/null | head -1 | cut -d: -f1)
-    outer_ln=$(grep -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | head -1 | cut -d: -f1)
+    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
+    outer_ln=$(grep -m 1 -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | cut -d: -f1)
     if [[ -n "$sink_ln" && -n "$outer_ln" && "$sink_ln" -lt "$outer_ln" ]]; then
         pass
     else
