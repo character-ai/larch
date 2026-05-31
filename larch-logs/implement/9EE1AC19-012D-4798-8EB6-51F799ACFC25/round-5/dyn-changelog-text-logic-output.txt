@@ -1,0 +1,16 @@
+Reviewing changelog text logic against the scout checklist: reading the diff, `changelog.py`, and commit history.
+### In-Scope Findings
+
+- **correctness** `python/changelog.py:155-169` — `_rst_section_end_index` falls back to the first `_rst_title_indices` entry with `idx > anchor + 1` when `_rst_release_section_indices` is empty. On RST changelogs that have an `Unreleased` (or other non-semver) anchor but no `Version X.Y.Z` release sections yet, the next adorned title is often a subsection (e.g. `Changed` / `~~~~~` under Unreleased, as in `RST_SAMPLE`). `_insert_rst_after` then inserts the new release block *before* that subsection instead of after the full Unreleased body (the path used when a release section exists is `for idx in release_indices: if idx > anchor`). `test_rst_insert_after_unreleased_keeps_pending_under_unreleased` only covers the case with a downstream `Version` line, so this mis-insert is untested. **Suggested fix:** When the anchor is not in `release_indices`, treat the section end as the next *release* title if any exist; otherwise walk `_rst_title_indices` but only stop at titles at the same structural level as the anchor (e.g. same adornment rank as the anchor’s underline), or scan forward to EOF when no semver release exists—then add a unit test for “Unreleased + subsection, no Version yet” asserting the new entry lands after all Unreleased content.
+
+### Out-of-Scope Observations
+
+- **`seen` line dedupe in `_auto_resolve_markdown` / `_auto_resolve_rst` (`python/changelog.py:564-571`, `594-601`)** — Identical upstream/replayed lines in the first section are merged with exact-line dedupe, so duplicate bullets or extra blank lines on only one side can be dropped. This matches `scripts/auto-resolve-changelog.sh` (awk `seen[...]`) and `scripts/auto-resolve-changelog.md` (“exact-line dedupe”); it is inherited merge semantics, not a Python regression.
+
+- **`_rst_second_title_index` returns `0` for “not found” (`python/changelog.py:66-77`)** — Same sentinel as bash (`rst_second_title_index` returns 0). Callers guard with `second2 > 0`; the search starts at `fh + 2`, so a real second title cannot be line 0 when `fh >= 0`. No functional bug found.
+
+- **`idx > anchor + 1` in `_rst_section_end_index` (`python/changelog.py:166-168`)** — Intentionally skips the anchor’s underline line when choosing the next generic RST title; consistent with treating `anchor` as the title line index.
+
+- **`_write_md_entry` double-call path (`python/changelog.py:443-446`)** — The fallback calls `_insert_md_at_anchor` on processed `out`, then `_insert_md_version_anchor` on original `text` only if still not inserted; it does not stack two inserts on one buffer. No defect found.
+
+**Commits reviewed (since merge-base with `main`):** `e29c36209` (Phase 2 port) plus rounds 1–4 review fixups and larch-logs commits.

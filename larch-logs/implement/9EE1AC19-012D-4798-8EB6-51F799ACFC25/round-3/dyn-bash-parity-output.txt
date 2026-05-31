@@ -1,0 +1,26 @@
+Reviewing branch changes for bash-parity correctness. Reading the diff and comparing Python implementations to their shell counterparts.
+**Branch commits** (since `main`): `e29c36209` (Phase 2 port), `f61f28081` / `fefbddd8f` (review rounds), plus larch-logs chores.
+
+Compared `python/changelog.py`, `python/version_bump.py`, `python/bump_worktree.py` to `.claude/skills/bump-version/scripts/*.sh` and `scripts/{drop-bump-commit,drop-changelog-commit,lib-changelog,auto-resolve-changelog,commit-changelog,check-bump-version}.sh`.
+
+### In-Scope Findings
+
+- **correctness** `python/changelog.py:137-154` — `_rst_merge_first_index` only skips a leading `=`-underlined title when `lines[fh1] == "Changelog"` **or** that title is not in `_rst_release_section_indices`. `auto-resolve-changelog.sh` `rst_merge_fh` skips **any** first section whose underline is all `=` (`ul ~ /^=+$/`), with no title check. A semver release block at the top with an `=` underline (non-standard but valid-looking RST) is treated as the merge/insert anchor in Python while bash skips it—`auto_resolve`, `write_changelog_entry`, `drop_version_section`, and `extract_version_body` can diverge from the shell on the same file. **Suggested fix:** Drop the `(lines[fh1] == "Changelog" or fh1 not in release_indices)` guard and mirror bash: skip whenever `is_rst_adornment(ul, title)` and the underline is all `=`; keep the “need a second section” guard. Add a unit/parity fixture with a top-level `Version X.Y.Z` + `===` underline.
+
+- **correctness** `python/version_bump.py:131-140` — `_extract_frontmatter` treats the opening delimiter as `lines[0].strip() == "---"`, and closes on any line with `line.strip() == "---"`. Bash `classify-bump.sh` requires `^---$` at column 0 (no surrounding whitespace). A skill/agent file whose first line is ` --- ` or `--- ` can be classified differently (flag/`name:` evidence) between Python and bash. **Suggested fix:** Match bash literally: only enter frontmatter when `lines[0] == "---"` (no strip), and only close on a line exactly equal to `---`.
+
+- **correctness** `python/changelog.py:514-524` — `_insert_rst_after` always appends `"\n"` (`return result + "\n"`), while `_write_md_entry`, `_drop_md_section`, and `_drop_rst_section` preserve whether the input ended with a newline. Markdown writes via awk/`print` always end with a newline; RST insert can add a newline to a previously newline-free file and change byte-level diffs on round-trip edit/drop. **Suggested fix:** Use the same rule as `_write_md_entry`: `return result + ("\n" if original_text.endswith("\n") else "")`, passing the source `text` through `_write_rst_entry` / `_insert_rst_after`.
+
+### Out-of-Scope Observations
+
+- **`sorted_changed_files` / `LC_ALL=C`:** `files.sort(key=lambda s: s.encode("utf-8"))` in `python/bump_worktree.py:38-39` matches byte-order `sort` for UTF-8 paths; `test_sorted_changed_files_c_locale_order` covers non-ASCII ordering. Default drop guard string equality aligns with `drop-bump-commit.sh` / `drop-changelog-commit.sh`.
+
+- **`_today_iso()`:** `datetime.now().astimezone().date().isoformat()` matches `date +%Y-%m-%d` under the same `TZ` as the shell (format `YYYY-MM-DD`).
+
+- **Idempotency:** `_idempotency_transparent` / `_idempotency_ref` in `python/version_bump.py:166-202` match `idempotency_commit_is_transparent` (subject prefixes, `CHANGELOG.md`-only vs `larch-logs/**`, empty diff-tree, depth cap 3).
+
+- **KV booleans:** This phase returns frozen dataclass `bool`s, not stdout `APPLIED=true` / `COMMITTED=true` / `DROPPED=true`; parity tests normalize with `str(...).lower()`. Phase 7 needs an explicit `emit_kv` adapter (`true`/`false`, not `True`/`False`).
+
+- **`apply_bump` unmerged:** Returns `ApplyResult(applied=False, …)` rather than exit 4; matches the plan (exit mapping is driver-side). ERROR text is shorter than `apply-bump.sh` (no `git merge/rebase --continue` hints); parity tests only compare `APPLIED`.
+
+- **`check_bump_version_pre`:** Count/status behavior matches `check-bump-version.sh`; Python does not emit the `lib-count-commits.sh` stderr WARN on `missing_main_ref` (observability only).

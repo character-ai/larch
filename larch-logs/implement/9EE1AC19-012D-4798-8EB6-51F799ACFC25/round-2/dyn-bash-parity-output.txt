@@ -1,0 +1,16 @@
+Reviewing branch changes for bash-parity correctness. Reading the diff and comparing key Python functions to their shell counterparts.
+### In-Scope Findings
+
+- **correctness** `python/changelog.py:24-25,317-318,416-417,550-551,609-618` — Changelog heading dates use `datetime.now(tz=UTC).date()`, while `lib-changelog.sh`, `commit-changelog.sh`, and `apply-bump.sh` use `date +%Y-%m-%d` (the process local timezone). On a machine where local date ≠ UTC date, Python writes `## [X.Y.Z] - YYYY-MM-DD` / `Version X.Y.Z (YYYY-MM-DD)` with a different calendar day than bash for the same run, so byte-level parity with the shell scripts fails and Phase 7 could emit different CHANGELOG headings than the live path. **Suggested fix:** Match bash by using local date (e.g. `datetime.now().astimezone().date().isoformat()`), or inject a shared `today` callable in tests and document that CI assumes UTC if you intentionally standardize on UTC everywhere.
+
+- **correctness** `python/changelog.py:512-527` — For extensionless conflict paths, `auto_resolve` picks Markdown vs RST via `detect_format(ours_result.stdout, path=conflict_path)`, which only inspects the `:2:` (ours) side. `auto-resolve-changelog.sh` uses both stages: if either side has `## ` headings, it requires matching first headings or exits without merging; otherwise it uses RST. When ours has no `## ` but theirs does (or first headings differ), bash refuses; Python may still run `_auto_resolve_rst` on both bodies and can return `True` or `False` on a different code path than the awk script. **Suggested fix:** Port the extensionless branch from `auto-resolve-changelog.sh` (lines 182–195): consider both `:2:` and `:3:` for `md_has_any_l2_heading` / first-heading equality before choosing the merge mode.
+
+### Out-of-Scope Observations
+
+- **Added (`A`) name-status handling** in `python/version_bump.py:303-304` matches bash: `classify-bump.sh` reads the path into `$old` from the second tab field (`A\tpath`), same as Python `parts[1]`. Not a divergence.
+
+- **`_idempotency_transparent`**, **`_guard4_allows`** (exact sorted multiset via `sorted_changed_files`), **`_infer_bump_type` / apply race loop**, and **unmerged → `ApplyResult(applied=False)`** align with `classify-bump.sh`, `drop-bump-commit.sh`, `apply-bump.sh`, and the planned `Stalled` vs `ApplyResult` split. No additional correctness issues found there.
+
+- Bash-parity coverage is thin for classify idempotency edges (`scripts/test-classify-bump.sh` tests 4–5: CHANGELOG-over-feature PATCH, subject-only spoof → MINOR); pytest mostly checks HEAD-bump `NONE` parity.
+
+- `apply_bump` dirty-tree `ERROR` text is shorter than bash (no phantom-file hint); `APPLIED=false` behavior matches.

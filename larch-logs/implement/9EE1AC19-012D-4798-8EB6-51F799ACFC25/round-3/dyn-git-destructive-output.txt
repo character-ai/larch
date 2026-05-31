@@ -1,0 +1,19 @@
+Reviewing git-destructive paths in the branch diff and full source for drop/apply operations.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Audited the five scout checklist items against `python/version_bump.py` (`drop_bump_commit` ~662–734, `apply_bump` ~470–630), `python/changelog.py` (`drop_changelog_commit` ~801–860), `python/bump_worktree.py` (`sorted_changed_files`), and the bash counterparts `scripts/drop-bump-commit.sh` / `scripts/drop-changelog-commit.sh`.
+
+1. **TOCTOU between guards and `reset --hard` / `rebase --onto`** — Both drop helpers verify subject, parent, and `sorted_changed_files` once, then mutate git using symbolic refs (`HEAD~N`). If `HEAD` or the target commit changes before the destructive step (another process, concurrent automation), the drop can target the wrong commit. This matches the bash scripts; the repo’s single-`/implement` invariant is the operational mitigation, not code in this branch.
+
+2. **`rebase --abort` on failure** — `python/changelog.py:856-857` and `python/version_bump.py:730-731` call `git.rebase(runner, "--abort")` without checking the result, same as bash’s `git rebase --abort || true` (`scripts/drop-bump-commit.sh:222`, `scripts/drop-changelog-commit.sh:144`). That is safe when no rebase is in progress; if `--onto` leaves the repo mid-rebase and abort fails, the caller gets `dropped=False` while the worktree may still be in a rebase state (bash exits 1 instead).
+
+3. **`sorted_changed_files` vs guard comparison** — `bump_worktree.py:26-39` returns a single newline-joined sorted string; `changelog.py:841` compares that string to `config.CHANGELOG_DEFAULT_PATH` (`"CHANGELOG.md"`), which is correct and matches bash’s `[[ "$CHANGED_FILES" != "CHANGELOG.md" ]]`. Default bump guard uses exact string equality in `_guard4_allows` (`version_bump.py:654-658`), matching bash’s `ALLOWED_ONE` / `ALLOWED_TWO` equality, not subset checks.
+
+4. **`apply_bump` rollback** — `git add` failure restores `plugin.json` from `.bump-backup`, unstages, and removes artifacts (`version_bump.py:544-549`); commit failure uses `rollback_before_commit()` (`618-624`). This is at parity with bash commit rollback (`apply-bump.sh:216-219`) and stricter than bash on add failure (bash `set -e` exits without restore). `test_apply_git_add_failure_rolls_back` covers the add path.
+
+5. **Subject spoofing with extra files** — Guard 4 uses `git diff --name-only` parent→target commit; a `"Bump version to X.Y.Z"` commit that also touches e.g. `version.go` fails exact multiset checks (`version_bump.py:713-718`, `_guard4_allows:633-659`). Changelog drops require `changed == "CHANGELOG.md"` only. No bypass found beyond the shared TOCTOU window above.
+
+**Branch commits** (since merge-base with `main`): `e29c36209` Phase 2 port; `f61f28081` / `fefbddd8f` review rounds; plus larch-logs chores.

@@ -1,0 +1,16 @@
+Reviewing the branch diff and comparing Python ports against the shell scripts for the scout-highlighted paths.
+### In-Scope Findings
+
+- **correctness** `python/version_bump.py:674-684,611-630` — When `LARCH_BUMP_FILES` is set but parses to an empty list (e.g. `export LARCH_BUMP_FILES=""` or `":"`), `drop_bump_commit` sets `effective_bump_files = ()` and `_guard4_allows` treats that as the custom bump-files path with `allowed = [CHANGELOG.md]`. With `--allow-changelog-only`, a commit that only touches `CHANGELOG.md` is accepted. `scripts/drop-bump-commit.sh:140-144` fail-closed on an empty parsed set and refuse the drop before any membership check, so this path can drop in Python where bash would not. **Suggested fix:** After parsing `LARCH_BUMP_FILES`, if the variable is present in the environment and the parsed segment list is empty, return `DropResult(dropped=False, …)` immediately (mirror the bash WARN + `DROPPED=false` path). Do not enter `_guard4_allows` with an empty configured bump-file set.
+
+### Out-of-Scope Observations
+
+- **Scout item `commit_changelog` insert path:** No defect vs `scripts/commit-changelog.sh`. Both only call heading insert/retitle when `--replaces-version` is set and differs from `--version` (`commit-changelog.sh:145-190`, `changelog.py:626-638`). A plain `--version` call commits only if `CHANGELOG.md` already differs; parity test `test_parity_commit_changelog_idempotent` encodes that.
+
+- **Scout item `_idempotency_transparent`:** Matches `.claude/skills/bump-version/scripts/classify-bump.sh:89-126` — depth cap 3, subject prefixes, per-commit `diff-tree` path checks, and subject-only spoof over `skills/` correctly fails transparency (`version_bump.py:162-197`).
+
+- **Scout item default-path `_guard4_allows`:** Exact sorted multiset equality for `plugin.json` / `plugin.json+CHANGELOG.md` and the `allow_changelog_only` + `bump_files=None` default-path branch align with `drop-bump-commit.sh:186-200`.
+
+- **Acceptance / test gaps (branch):** No `StubRunner` tests for idempotency transparent-walk edge cases (subject spoof over `skills/`, depth cap) or drop-bump guard refusals, though the plan calls for them.
+
+- **Minor parity drift:** `_extract_frontmatter` uses `line.strip() == "---"` for delimiters; bash `classify-bump.sh` requires `^---$` at column 0. Unlikely in real SKILL files but could diverge on indented delimiter lines.

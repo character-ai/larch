@@ -1,0 +1,53 @@
+# Code Review Voting Tally
+
+## Per-finding vote breakdown
+
+| Item | YES | NO | EXON | JERR | Result |
+|---|---:|---:|---:|---:|---|
+| FINDING_1 | 2 | 0 | 1 | 0 | accepted |
+| FINDING_10 | 1 | 0 | 2 | 0 | exonerated |
+| FINDING_11 | 3 | 0 | 0 | 0 | accepted |
+| FINDING_12 | 3 | 0 | 0 | 0 | accepted |
+| FINDING_13 | 2 | 0 | 1 | 0 | accepted |
+| FINDING_14 | 3 | 0 | 0 | 0 | accepted |
+| FINDING_15 | 1 | 0 | 2 | 0 | exonerated |
+| FINDING_16 | 1 | 0 | 2 | 0 | exonerated |
+| FINDING_17 | 0 | 0 | 3 | 0 | exonerated |
+| FINDING_18 | 0 | 0 | 3 | 0 | exonerated |
+| FINDING_19 | 0 | 1 | 2 | 0 | exonerated |
+| FINDING_2 | 1 | 0 | 2 | 0 | exonerated |
+| FINDING_20 | 0 | 3 | 0 | 0 | rejected |
+| FINDING_21 | 1 | 0 | 2 | 0 | exonerated |
+| FINDING_22 | 1 | 0 | 2 | 0 | exonerated |
+| FINDING_23 | 2 | 0 | 1 | 0 | accepted |
+| FINDING_24 | 0 | 0 | 3 | 0 | exonerated |
+| FINDING_25 | 2 | 0 | 1 | 0 | accepted |
+| FINDING_26 | 1 | 0 | 2 | 0 | exonerated |
+| FINDING_27 | 3 | 0 | 0 | 0 | accepted |
+| FINDING_28 | 3 | 0 | 0 | 0 | accepted |
+| FINDING_29 | 0 | 3 | 0 | 0 | rejected |
+| FINDING_3 | 2 | 0 | 1 | 0 | accepted |
+| FINDING_30 | 0 | 3 | 0 | 0 | rejected |
+| FINDING_31 | 0 | 3 | 0 | 0 | rejected |
+| FINDING_32 | 1 | 1 | 1 | 0 | neutral |
+| FINDING_33 | 0 | 3 | 0 | 0 | rejected |
+| FINDING_34 | 0 | 0 | 3 | 0 | exonerated |
+| FINDING_4 | 0 | 0 | 3 | 0 | exonerated |
+| FINDING_5 | 0 | 0 | 3 | 0 | exonerated |
+| FINDING_6 | 0 | 0 | 3 | 0 | exonerated |
+| FINDING_7 | 3 | 0 | 0 | 0 | accepted |
+| FINDING_8 | 3 | 0 | 0 | 0 | accepted |
+| FINDING_9 | 3 | 0 | 0 | 0 | accepted |
+
+## Reviewer Competition Scoreboard
+
+| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score | Status |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| cursor-specialist-correctness | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 2 | STATUS=OK |
+| cursor-specialist-edge-cases | 5 | 2 | 3 | 0 | 0 | 0 | 0 | 0 | 2 | STATUS=OK |
+| cursor-specialist-plan-fidelity | 4 | 3 | 1 | 0 | 0 | 0 | 0 | 0 | 3 | STATUS=OK |
+| cursor-specialist-security | 2 | 0 | 2 | 0 | 2 | 0 | 1 | 1 | -1 | STATUS=OK |
+| cursor-specialist-structure | 6 | 2 | 4 | 0 | 1 | 1 | 0 | 0 | 3 | STATUS=OK |
+| cursor-specialist-testing | 7 | 5 | 2 | 0 | 0 | 0 | 0 | 0 | 5 | STATUS=OK |
+| dyn-bash-parity | 2 | 2 | 0 | 0 | 7 | 1 | 2 | 4 | -1 | STATUS=OK |
+| dyn-git-destructive | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |
