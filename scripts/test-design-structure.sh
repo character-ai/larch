@@ -195,9 +195,10 @@ grep -Fq 'set +e' "$RUN_STEP3_SH" \
   || fail "(14c0b) run-step3-review.sh missing set +e guard around plan-review-loop.sh"
 grep -Fq '_plan_review_rc=$?' "$SKILL_MD" \
   || fail "(14c0c) SKILL.md missing _plan_review_rc capture for run-step3-review.sh"
+# shellcheck disable=SC2016 # Markdown/bash excerpt literal; $DESIGN_TMPDIR must not expand here.
 contains "$SKILL_MD" '-f "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL must source .step3-review-result.env when present'
 contains "$SKILL_MD" 'WARN) printf' 'SKILL must re-emit WARN lines from step3 review handoff'
-contains "$SKILL_MD" 'missing LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed' 'SKILL must default missing LOOP_STATUS to panel-failed (not hard abort on driver exit 1)'
+contains "$SKILL_MD" 'missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed' 'SKILL must default missing LOOP_STATUS to panel-failed (not hard abort on driver exit 1)'
 contains "$SKILL_MD" 'configuration error (exit 2)' 'SKILL must warn on run-step3-review.sh exit 2'
 grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
   || fail "(14c1) plan-review-loop.sh missing scout-plan-archetypes-wrapper.sh"
