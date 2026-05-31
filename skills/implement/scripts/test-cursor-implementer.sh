@@ -91,6 +91,7 @@ assert_subprocess_guard_absent() {
 SCRATCH=$(mktemp -d -t cursor-implementer-test.XXXXXX)
 trap 'rm -rf "$SCRATCH"' EXIT
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+export LARCH_QUIET_DISABLE=1  # prevent launcher quiet-mode from swallowing test harness FDs
 export LARCH_EXECUTION_ISSUES_LOG="$SCRATCH/execution-issues.md"
 export LARCH_TIMING_LEDGER="$SCRATCH/timing-ledger.tsv"
 

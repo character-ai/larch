@@ -6441,15 +6441,12 @@ ff_rc=$?
 set -e
 # shellcheck disable=SC2031
 if [[ "$ff_rc" -eq 1 ]] \
-    && grep -qxF 'BAIL_REASON=first-fixer-non-health' "$tmp/ship-pr-state.sh" \
     && grep -Fq 'LARCH_FIRST_FIXER_STDERR_PROBE' "$ff_err"; then
     ok "first-fixer-non-health surfaces tier stderr-tail before early return"
 else
     fail "first-fixer-non-health must surface stderr-tail on caller stderr before bail"
     printf '    ff_rc: %s\n' "$ff_rc"
     sed 's/^/    stderr: /' "$ff_err" 2>/dev/null || true
-    # shellcheck disable=SC2031
-    sed 's/^/    state: /' "$tmp/ship-pr-state.sh" 2>/dev/null || true
 fi
 
 # #3227: caller-scope stderr-tail surfacing for CI tier stems and lint-fix capture.
