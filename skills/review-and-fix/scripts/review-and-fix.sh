@@ -356,6 +356,13 @@ pre_coder_path_diff_file() {
     printf '%s/pre-coder-path-diffs/%s.patch\n' "$round_dir" "$safe"
 }
 
+pre_coder_path_cached_diff_file() {
+    local round_dir="$1" path="$2"
+    local safe
+    safe=$(printf '%s' "$path" | tr "/\\" "__")
+    printf '%s/pre-coder-path-diffs/%s.cached.patch\n' "$round_dir" "$safe"
+}
+
 snapshot_pre_coder_tracked_state() {
     local round_dir="$1" pre_head="$2"
     local paths_file="$round_dir/pre-coder-tracked-paths.txt"
@@ -366,7 +373,35 @@ snapshot_pre_coder_tracked_state() {
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
         git diff "$pre_head" -- "$path" > "$(pre_coder_path_diff_file "$round_dir" "$path")" 2>/dev/null || true
+        git diff --cached "$pre_head" -- "$path" > "$(pre_coder_path_cached_diff_file "$round_dir" "$path")" 2>/dev/null || true
     done < "$paths_file"
+}
+
+path_matches_pre_coder_snapshot() {
+    local round_dir="$1" pre_head="$2" path="$3"
+    local wt_snap idx_snap
+
+    wt_snap=$(pre_coder_path_diff_file "$round_dir" "$path")
+    idx_snap=$(pre_coder_path_cached_diff_file "$round_dir" "$path")
+    [[ -f "$wt_snap" && -f "$idx_snap" ]] || return 1
+
+    if git diff "$pre_head" -- "$path" | cmp -s - "$wt_snap" \
+        && git diff --cached "$pre_head" -- "$path" | cmp -s - "$idx_snap"; then
+        return 0
+    fi
+    if git diff "$pre_head" -- "$path" | cmp -s - "$wt_snap" && [[ ! -s "$idx_snap" ]] \
+        && git diff --cached "$pre_head" -- "$path" | cmp -s - "$idx_snap"; then
+        return 0
+    fi
+    if git diff --cached "$pre_head" -- "$path" | cmp -s - "$idx_snap" && [[ ! -s "$wt_snap" ]] \
+        && git diff "$pre_head" -- "$path" | cmp -s - "$wt_snap"; then
+        return 0
+    fi
+    if [[ ! -s "$idx_snap" ]] \
+        && git diff --cached "$pre_head" -- "$path" | cmp -s - "$wt_snap"; then
+        return 0
+    fi
+    return 1
 }
 
 round_coder_delta_paths() {
@@ -378,8 +413,7 @@ round_coder_delta_paths() {
     } | while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
         if [[ -s "$pre_tracked" ]] && grep -Fxq "$path" "$pre_tracked"; then
-            snap=$(pre_coder_path_diff_file "$round_dir" "$path")
-            if [[ -f "$snap" ]] && git diff "$pre_head" -- "$path" | cmp -s - "$snap"; then
+            if path_matches_pre_coder_snapshot "$round_dir" "$pre_head" "$path"; then
                 continue
             fi
         fi
@@ -414,12 +448,10 @@ stage_round_dirty_paths() {
 
 path_is_pre_coder_carryover() {
     local round_dir="$1" pre_head="$2" path="$3"
-    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt" snap
+    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt"
     [[ -n "$pre_head" ]] || return 1
     [[ -s "$pre_tracked" ]] && grep -Fxq "$path" "$pre_tracked" || return 1
-    snap=$(pre_coder_path_diff_file "$round_dir" "$path")
-    [[ -f "$snap" ]] || return 1
-    git diff "$pre_head" -- "$path" | cmp -s - "$snap"
+    path_matches_pre_coder_snapshot "$round_dir" "$pre_head" "$path"
 }
 
 round_tracked_dirty_outside_manifest() {

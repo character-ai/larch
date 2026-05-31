@@ -160,8 +160,9 @@ case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
     ;;
   outside-manifest-break-carryover:codex)
     printf 'modified by codex stub\n' >> src/main.py
-    # Stage snapshotted carryover then restore worktree to HEAD so the path stays
-    # in capture_round_tracked_paths but not in the auto-built manifest.
+    # Keep other.txt out of the auto-built manifest (add + worktree restore) but
+    # stage content that no longer matches the pre-coder worktree snapshot.
+    printf 'broken carryover\n' >> other.txt
     git add other.txt
     git restore --source=HEAD --worktree other.txt
     printf 'APPLIED: FINDING_1\n' > "$last_message"
@@ -503,9 +504,12 @@ mkdir -p "$carryover_round_dir/pre-coder-path-diffs"
 printf '%s\n' "$carryover_pre_head" > "$carryover_round_dir/pre-coder-head.txt"
 printf 'other.txt\n' > "$carryover_round_dir/pre-coder-tracked-paths.txt"
 git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
+: > "$carryover_round_dir/pre-coder-path-diffs/other.txt.cached.patch"
 printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
 larch_err() { printf '%s\n' "$*" >&2; }
 eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^pre_coder_path_cached_diff_file/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
@@ -524,6 +528,38 @@ rm -f "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
     fi
     exit 1
 ) || fail "manifest-carryover-guard negative control should fire without snapshot"
+
+work_index_carryover_guard="$TMP/manifest-index-carryover-guard"
+make_work_repo "$work_index_carryover_guard"
+printf 'outside manifest\n' >> "$work_index_carryover_guard/other.txt"
+git -C "$work_index_carryover_guard" add other.txt
+git -C "$work_index_carryover_guard" restore --worktree other.txt
+printf 'modified by coder\n' >> "$work_index_carryover_guard/src/main.py"
+index_carryover_pre_head=$(git -C "$work_index_carryover_guard" rev-parse HEAD)
+index_carryover_round_dir="$work_index_carryover_guard/implement/round-1"
+mkdir -p "$index_carryover_round_dir/pre-coder-path-diffs"
+printf '%s\n' "$index_carryover_pre_head" > "$index_carryover_round_dir/pre-coder-head.txt"
+printf 'other.txt\n' > "$index_carryover_round_dir/pre-coder-tracked-paths.txt"
+: > "$index_carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
+git -C "$work_index_carryover_guard" diff --cached "$index_carryover_pre_head" -- other.txt \
+    > "$index_carryover_round_dir/pre-coder-path-diffs/other.txt.cached.patch"
+printf 'src/main.py\n' > "$index_carryover_round_dir/coder-stage-paths.txt"
+index_only_blob=$(printf 'coder index-only mutation\n' | git -C "$work_index_carryover_guard" hash-object -w --stdin)
+git -C "$work_index_carryover_guard" update-index --cacheinfo 100644,"$index_only_blob",other.txt
+larch_err() { printf '%s\n' "$*" >&2; }
+eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^pre_coder_path_cached_diff_file/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+(
+    cd "$work_index_carryover_guard"
+    if round_tracked_dirty_outside_manifest "$index_carryover_round_dir/coder-stage-paths.txt" "$index_carryover_round_dir"; then
+        exit 0
+    fi
+    exit 1
+) || fail "manifest-index-carryover-guard should detect index-only coder mutation"
 
 work_carryover_orchestrator="$TMP/carryover-orchestrator"
 make_work_repo "$work_carryover_orchestrator"
@@ -569,7 +605,7 @@ printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_staged_carryove
 set +e
 out_staged_carryover=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_staged_carryover_orchestrator" \
     --implement-tmpdir "$implement_staged_carryover" --mode diff --round-num 1 \
-    --session-env-path "$implement_staged_carryover/session-env.sh" --run-id staged-carryover-run)
+    --session-env-path "$implement_staged_carryover/session-env.sh" --run-id staged-carryover-run 2>&1)
 rc_staged_carryover=$?
 set -e
 [[ "$rc_staged_carryover" -eq 0 ]] || { echo "$out_staged_carryover" >&2; fail "staged-carryover-orchestrator expected exit 0 got $rc_staged_carryover"; }
@@ -580,6 +616,8 @@ git -C "$work_staged_carryover_orchestrator" show --name-only --format='' HEAD |
     && fail "staged-carryover-orchestrator commit must not include other.txt"
 git -C "$work_staged_carryover_orchestrator" diff --cached --name-only | grep -Fxq 'other.txt' \
     || fail "staged-carryover-orchestrator other.txt should remain staged"
+grep -Fq 'pre-existing dirty path carried over (not committed): other.txt' <<< "$out_staged_carryover" \
+    || fail "staged-carryover-orchestrator carryover warning breadcrumb"
 
 work_manifest_outside_orchestrator="$TMP/manifest-outside-orchestrator"
 make_work_repo "$work_manifest_outside_orchestrator"

@@ -128,6 +128,7 @@ The script emits breadcrumbs at major round-loop and coder-dispatch boundaries t
 - `→ review-and-fix: dispatching coder (N fixes)` — before `run_coder_dispatch`
 - `→ review-and-fix: <tool> applied N fixes (commit <sha>)` — after a successful coder commit
 - `⚠ review-and-fix: pre-existing dirty path carried over (not committed): <path>` — when round mode skips unchanged pre-coder carryover dirt
+- `⚠ review-and-fix: round N left tracked changes uncommitted after follow-up` — when non-carryover tracked residue remains after the single follow-up commit
 - `⚠ review-and-fix: coder dispatch failed (both codex and cursor)` — when both coders fail
 - `⚠ review-and-fix: reviewer panel failed (>50% slots)` — on `core_status=panel-failed`
 - `⚠ review-and-fix: round N — coder dispatch exited 0 but did not modify the working tree; halting loop` — when the coder reports success but makes no repo changes
